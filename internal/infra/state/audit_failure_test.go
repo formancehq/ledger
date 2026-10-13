@@ -728,51 +728,44 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{},
 		},
 		{
+			name:        "MetadataFactFailure",
+			err:         domain.ValidateMetadataKey(""),
+			wantReason:  domain.ErrReasonValidation,
+			wantContext: map[string]string{"key": ""},
+		},
+		{
 			// ErrMetadataKeyValidation adds {"key": Key} and merges the Cause's
-			// stable facts. Reason() delegates to the Cause. The practical
-			// Cause here is a factless validation sentinel.
-			name: "MetadataKeyValidationFactlessCause",
+			// stable facts. Reason() delegates to the Cause.
+			name: "MetadataKeyValidationContextualCause",
 			err: &domain.ErrMetadataKeyValidation{
 				Key:   "invoice",
-				Cause: domain.ErrMetadataValueContainsNullByte,
+				Cause: domain.ValidateMetadataString("invoice", "invalid\x00value"),
 			},
 			wantReason:  domain.ErrReasonValidation,
 			wantContext: map[string]string{"key": "invoice"},
 		},
 		{
-			// A diagnostic Cause keeps its Reason but contributes no free-form
-			// text to the facts.
-			name: "MetadataKeyValidationOmitsDiagnosticCause",
-			err: &domain.ErrMetadataKeyValidation{
-				Key:   "invoice",
-				Cause: &domain.ErrNumscriptRuntime{Detail: "metadata key produced by expression is malformed"},
-			},
-			wantReason: domain.ErrReasonNumscriptRuntime,
-			wantContext: map[string]string{
-				"key": "invoice",
-			},
-		},
-		{
-			// Same shape as ErrMetadataKeyValidation but keyed on the account.
-			name: "AccountValidationFactlessCause",
+			// Account context is valid for a metadata failure.
+			name: "AccountValidationMetadataCause",
 			err: &domain.ErrAccountValidation{
 				Account: "user:jack",
-				Cause:   domain.ErrAccountAddressInvalidChar,
+				Cause:   domain.ValidateMetadataString("invoice", "invalid\x00value"),
 			},
 			wantReason:  domain.ErrReasonValidation,
-			wantContext: map[string]string{"account": "user:jack"},
+			wantContext: map[string]string{"account": "user:jack", "key": "invoice"},
 		},
 		{
 			name: "AccountValidationMergesCauseFacts",
 			err: &domain.ErrAccountValidation{
 				Account: "user:jack",
-				Cause:   &domain.ErrMetadataNotFound{Target: "account:user:jack", Key: "tier"},
+				Cause:   &domain.ErrMetadataLimitExceeded{Dimension: domain.MetadataLimitDimensionEntries, Limit: 1, Actual: 2},
 			},
-			wantReason: domain.ErrReasonMetadataNotFound,
+			wantReason: domain.ErrReasonMetadataLimitExceeded,
 			wantContext: map[string]string{
-				"account": "user:jack",
-				"target":  "account:user:jack",
-				"key":     "tier",
+				"account":   "user:jack",
+				"dimension": domain.MetadataLimitDimensionEntries,
+				"limit":     "1",
+				"actual":    "2",
 			},
 		},
 		{

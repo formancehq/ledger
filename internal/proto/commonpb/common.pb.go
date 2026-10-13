@@ -9460,8 +9460,6 @@ func (*FailureDetails_WritesBlockedDiskFull) isFailureDetails_Kind() {}
 
 type AccountAddressEmptyDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9496,24 +9494,8 @@ func (*AccountAddressEmptyDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{72}
 }
 
-func (x *AccountAddressEmptyDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *AccountAddressEmptyDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type AccountAddressEmptySegmentDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9548,24 +9530,8 @@ func (*AccountAddressEmptySegmentDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{73}
 }
 
-func (x *AccountAddressEmptySegmentDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *AccountAddressEmptySegmentDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type AccountAddressInvalidCharDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9600,24 +9566,8 @@ func (*AccountAddressInvalidCharDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{74}
 }
 
-func (x *AccountAddressInvalidCharDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *AccountAddressInvalidCharDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type AccountAddressTooLongDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9650,20 +9600,6 @@ func (x *AccountAddressTooLongDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use AccountAddressTooLongDetails.ProtoReflect.Descriptor instead.
 func (*AccountAddressTooLongDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{75}
-}
-
-func (x *AccountAddressTooLongDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *AccountAddressTooLongDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type AccountNotMatchingTypeDetails struct {
@@ -9860,8 +9796,6 @@ func (x *AccountTypeHasAccountsDetails) GetName() string {
 
 type AccountTypeNameTooLongDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9894,20 +9828,6 @@ func (x *AccountTypeNameTooLongDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use AccountTypeNameTooLongDetails.ProtoReflect.Descriptor instead.
 func (*AccountTypeNameTooLongDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{80}
-}
-
-func (x *AccountTypeNameTooLongDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *AccountTypeNameTooLongDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type AccountTypeNotFoundDetails struct {
@@ -9956,8 +9876,6 @@ func (x *AccountTypeNotFoundDetails) GetName() string {
 
 type AccountTypePatternTooLongDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9990,20 +9908,6 @@ func (x *AccountTypePatternTooLongDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use AccountTypePatternTooLongDetails.ProtoReflect.Descriptor instead.
 func (*AccountTypePatternTooLongDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{82}
-}
-
-func (x *AccountTypePatternTooLongDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *AccountTypePatternTooLongDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type AggregateOverflowDetails struct {
@@ -10060,8 +9964,6 @@ func (x *AggregateOverflowDetails) GetSide() string {
 
 type AssetInvalidDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -10094,20 +9996,6 @@ func (x *AssetInvalidDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use AssetInvalidDetails.ProtoReflect.Descriptor instead.
 func (*AssetInvalidDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{84}
-}
-
-func (x *AssetInvalidDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *AssetInvalidDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type AuditDisabledDetails struct {
@@ -10428,8 +10316,6 @@ func (x *CheckpointNotReadyDetails) GetCheckpointId() uint64 {
 
 type ClusterPolicyInvalidDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
-	Key           *string                `protobuf:"bytes,2,opt,name=key,proto3,oneof" json:"key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -10462,20 +10348,6 @@ func (x *ClusterPolicyInvalidDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ClusterPolicyInvalidDetails.ProtoReflect.Descriptor instead.
 func (*ClusterPolicyInvalidDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{92}
-}
-
-func (x *ClusterPolicyInvalidDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
-func (x *ClusterPolicyInvalidDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
 }
 
 type ClusterPolicyRevisionConflictDetails struct {
@@ -10560,8 +10432,6 @@ func (*ClusterUnhealthyDetails) Descriptor() ([]byte, []int) {
 
 type ColorInvalidDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -10596,24 +10466,8 @@ func (*ColorInvalidDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{95}
 }
 
-func (x *ColorInvalidDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *ColorInvalidDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type ColorTooLongDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -10646,20 +10500,6 @@ func (x *ColorTooLongDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ColorTooLongDetails.ProtoReflect.Descriptor instead.
 func (*ColorTooLongDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{96}
-}
-
-func (x *ColorTooLongDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *ColorTooLongDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type CoverageMissDetails struct {
@@ -10732,8 +10572,6 @@ func (x *CoverageMissDetails) GetRaftIndex() uint64 {
 
 type DependencyDiscoveryFailedDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -10768,24 +10606,8 @@ func (*DependencyDiscoveryFailedDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{98}
 }
 
-func (x *DependencyDiscoveryFailedDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *DependencyDiscoveryFailedDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type EmptyTransactionDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -10818,20 +10640,6 @@ func (x *EmptyTransactionDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use EmptyTransactionDetails.ProtoReflect.Descriptor instead.
 func (*EmptyTransactionDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{99}
-}
-
-func (x *EmptyTransactionDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *EmptyTransactionDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type ExecutionPlanTooLargeDetails struct {
@@ -11004,8 +10812,6 @@ func (x *IdempotencyKeyConflictDetails) GetKey() string {
 
 type IdRequiredDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11038,20 +10844,6 @@ func (x *IdRequiredDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use IdRequiredDetails.ProtoReflect.Descriptor instead.
 func (*IdRequiredDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{104}
-}
-
-func (x *IdRequiredDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *IdRequiredDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type IndexAlreadyExistsDetails struct {
@@ -11232,8 +11024,6 @@ func (x *IndexNotFoundDetails) GetIndex() string {
 
 type IndexTargetUnsupportedDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11266,20 +11056,6 @@ func (x *IndexTargetUnsupportedDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use IndexTargetUnsupportedDetails.ProtoReflect.Descriptor instead.
 func (*IndexTargetUnsupportedDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{109}
-}
-
-func (x *IndexTargetUnsupportedDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *IndexTargetUnsupportedDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type InsufficientFundsDetails struct {
@@ -11592,9 +11368,7 @@ func (x *InvalidPatternDetails) GetPattern() string {
 
 type InvalidSkippableReasonDetails struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	Key            *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account        *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
-	ProvidedReason *string                `protobuf:"bytes,3,opt,name=provided_reason,json=providedReason,proto3,oneof" json:"provided_reason,omitempty"`
+	ProvidedReason *string                `protobuf:"bytes,1,opt,name=provided_reason,json=providedReason,proto3,oneof" json:"provided_reason,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -11627,20 +11401,6 @@ func (x *InvalidSkippableReasonDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use InvalidSkippableReasonDetails.ProtoReflect.Descriptor instead.
 func (*InvalidSkippableReasonDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{117}
-}
-
-func (x *InvalidSkippableReasonDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *InvalidSkippableReasonDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 func (x *InvalidSkippableReasonDetails) GetProvidedReason() string {
@@ -11784,8 +11544,6 @@ func (x *LedgerInMirrorModeDetails) GetName() string {
 
 type LedgerNameInvalidCharDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11820,24 +11578,8 @@ func (*LedgerNameInvalidCharDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{121}
 }
 
-func (x *LedgerNameInvalidCharDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *LedgerNameInvalidCharDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type LedgerNameRequiredDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11872,24 +11614,8 @@ func (*LedgerNameRequiredDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{122}
 }
 
-func (x *LedgerNameRequiredDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *LedgerNameRequiredDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type LedgerNameReservedPrefixDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11924,24 +11650,8 @@ func (*LedgerNameReservedPrefixDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{123}
 }
 
-func (x *LedgerNameReservedPrefixDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *LedgerNameReservedPrefixDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type LedgerNameTooLongDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11974,20 +11684,6 @@ func (x *LedgerNameTooLongDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use LedgerNameTooLongDetails.ProtoReflect.Descriptor instead.
 func (*LedgerNameTooLongDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{124}
-}
-
-func (x *LedgerNameTooLongDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *LedgerNameTooLongDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type LedgerNotFoundDetails struct {
@@ -12272,8 +11968,6 @@ func (x *MetadataKeyInvalidCharDetails) GetAccount() string {
 
 type MetadataKeyRequiredDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12306,20 +12000,6 @@ func (x *MetadataKeyRequiredDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use MetadataKeyRequiredDetails.ProtoReflect.Descriptor instead.
 func (*MetadataKeyRequiredDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{131}
-}
-
-func (x *MetadataKeyRequiredDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *MetadataKeyRequiredDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type MetadataLimitsUnconfiguredDetails struct {
@@ -12454,7 +12134,6 @@ type MetadataNotFoundDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Target        *string                `protobuf:"bytes,1,opt,name=target,proto3,oneof" json:"target,omitempty"`
 	Key           *string                `protobuf:"bytes,2,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,3,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12499,13 +12178,6 @@ func (x *MetadataNotFoundDetails) GetTarget() string {
 func (x *MetadataNotFoundDetails) GetKey() string {
 	if x != nil && x.Key != nil {
 		return *x.Key
-	}
-	return ""
-}
-
-func (x *MetadataNotFoundDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
 	}
 	return ""
 }
@@ -12564,8 +12236,6 @@ func (x *MetadataValueContainsNullByteDetails) GetAccount() string {
 
 type MirrorHttpUrlInvalidDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12600,24 +12270,8 @@ func (*MirrorHttpUrlInvalidDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{136}
 }
 
-func (x *MirrorHttpUrlInvalidDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *MirrorHttpUrlInvalidDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type MirrorIamRegionRequiredDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12652,24 +12306,8 @@ func (*MirrorIamRegionRequiredDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{137}
 }
 
-func (x *MirrorIamRegionRequiredDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *MirrorIamRegionRequiredDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type MirrorIamRequiresTlsDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12704,24 +12342,8 @@ func (*MirrorIamRequiresTlsDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{138}
 }
 
-func (x *MirrorIamRequiresTlsDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *MirrorIamRequiresTlsDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type MirrorRewriteRuleInvalidDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12754,20 +12376,6 @@ func (x *MirrorRewriteRuleInvalidDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use MirrorRewriteRuleInvalidDetails.ProtoReflect.Descriptor instead.
 func (*MirrorRewriteRuleInvalidDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{139}
-}
-
-func (x *MirrorRewriteRuleInvalidDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *MirrorRewriteRuleInvalidDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type MirrorV2LogIdGapDetails struct {
@@ -13920,8 +13528,6 @@ func (x *NumscriptCompileUnknownFunctionDetails) GetWrongContext() string {
 
 type NumscriptContentRequiredDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -13954,20 +13560,6 @@ func (x *NumscriptContentRequiredDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use NumscriptContentRequiredDetails.ProtoReflect.Descriptor instead.
 func (*NumscriptContentRequiredDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{165}
-}
-
-func (x *NumscriptContentRequiredDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *NumscriptContentRequiredDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type NumscriptCurrencyMismatchDetails struct {
@@ -14992,8 +14584,6 @@ func (x *NumscriptMissingVariableDetails) GetName() string {
 
 type NumscriptNameInvalidCharDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -15028,24 +14618,8 @@ func (*NumscriptNameInvalidCharDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{189}
 }
 
-func (x *NumscriptNameInvalidCharDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *NumscriptNameInvalidCharDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type NumscriptNameRequiredDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -15080,24 +14654,8 @@ func (*NumscriptNameRequiredDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{190}
 }
 
-func (x *NumscriptNameRequiredDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *NumscriptNameRequiredDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type NumscriptNameTooLongDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -15130,20 +14688,6 @@ func (x *NumscriptNameTooLongDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use NumscriptNameTooLongDetails.ProtoReflect.Descriptor instead.
 func (*NumscriptNameTooLongDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{191}
-}
-
-func (x *NumscriptNameTooLongDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *NumscriptNameTooLongDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type NumscriptNegativeAmountDetails struct {
@@ -15496,7 +15040,6 @@ func (x *NumscriptPostingNegativeAmountDetails) GetAmount() string {
 
 type NumscriptRuntimeDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -15531,17 +15074,8 @@ func (*NumscriptRuntimeDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{199}
 }
 
-func (x *NumscriptRuntimeDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
 type NumscriptScalingUnsupportedDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -15574,20 +15108,6 @@ func (x *NumscriptScalingUnsupportedDetails) ProtoReflect() protoreflect.Message
 // Deprecated: Use NumscriptScalingUnsupportedDetails.ProtoReflect.Descriptor instead.
 func (*NumscriptScalingUnsupportedDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{200}
-}
-
-func (x *NumscriptScalingUnsupportedDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *NumscriptScalingUnsupportedDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type NumscriptTypeErrorDetails struct {
@@ -15776,8 +15296,6 @@ func (x *NumscriptVersionAlreadyExistsDetails) GetVersion() string {
 
 type PostingsAndScriptConflictDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -15810,20 +15328,6 @@ func (x *PostingsAndScriptConflictDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use PostingsAndScriptConflictDetails.ProtoReflect.Descriptor instead.
 func (*PostingsAndScriptConflictDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{205}
-}
-
-func (x *PostingsAndScriptConflictDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *PostingsAndScriptConflictDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type PreloadUnavailableDetails struct {
@@ -15916,8 +15420,6 @@ func (x *PreparedQueryAlreadyExistsDetails) GetName() string {
 
 type PreparedQueryNameInvalidCharDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -15952,24 +15454,8 @@ func (*PreparedQueryNameInvalidCharDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{208}
 }
 
-func (x *PreparedQueryNameInvalidCharDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *PreparedQueryNameInvalidCharDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type PreparedQueryNameRequiredDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -16004,24 +15490,8 @@ func (*PreparedQueryNameRequiredDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{209}
 }
 
-func (x *PreparedQueryNameRequiredDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *PreparedQueryNameRequiredDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type PreparedQueryNameTooLongDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -16054,20 +15524,6 @@ func (x *PreparedQueryNameTooLongDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use PreparedQueryNameTooLongDetails.ProtoReflect.Descriptor instead.
 func (*PreparedQueryNameTooLongDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{210}
-}
-
-func (x *PreparedQueryNameTooLongDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *PreparedQueryNameTooLongDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type PreparedQueryNotFoundDetails struct {
@@ -16124,8 +15580,6 @@ func (x *PreparedQueryNotFoundDetails) GetName() string {
 
 type PreparedQueryRequiredDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -16160,24 +15614,8 @@ func (*PreparedQueryRequiredDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{212}
 }
 
-func (x *PreparedQueryRequiredDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *PreparedQueryRequiredDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type PreparedQueryTargetUnsupportedDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -16210,20 +15648,6 @@ func (x *PreparedQueryTargetUnsupportedDetails) ProtoReflect() protoreflect.Mess
 // Deprecated: Use PreparedQueryTargetUnsupportedDetails.ProtoReflect.Descriptor instead.
 func (*PreparedQueryTargetUnsupportedDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{213}
-}
-
-func (x *PreparedQueryTargetUnsupportedDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *PreparedQueryTargetUnsupportedDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type RevertTargetCreatedInBatchDetails struct {
@@ -16272,8 +15696,6 @@ func (x *RevertTargetCreatedInBatchDetails) GetTransactionId() uint64 {
 
 type ScopedBalanceUnsupportedDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -16308,24 +15730,8 @@ func (*ScopedBalanceUnsupportedDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{215}
 }
 
-func (x *ScopedBalanceUnsupportedDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *ScopedBalanceUnsupportedDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type ScriptAndReferenceConflictDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -16360,24 +15766,8 @@ func (*ScriptAndReferenceConflictDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{216}
 }
 
-func (x *ScriptAndReferenceConflictDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *ScriptAndReferenceConflictDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type ScriptRequiredDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -16410,20 +15800,6 @@ func (x *ScriptRequiredDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ScriptRequiredDetails.ProtoReflect.Descriptor instead.
 func (*ScriptRequiredDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{217}
-}
-
-func (x *ScriptRequiredDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *ScriptRequiredDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type SequenceExhaustedDetails struct {
@@ -16472,8 +15848,6 @@ func (x *SequenceExhaustedDetails) GetCounter() string {
 
 type SigningKeyIdInvalidCharDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -16508,24 +15882,8 @@ func (*SigningKeyIdInvalidCharDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{219}
 }
 
-func (x *SigningKeyIdInvalidCharDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *SigningKeyIdInvalidCharDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type SigningKeyIdRequiredDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -16560,24 +15918,8 @@ func (*SigningKeyIdRequiredDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{220}
 }
 
-func (x *SigningKeyIdRequiredDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *SigningKeyIdRequiredDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type SigningKeyIdTooLongDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -16612,24 +15954,8 @@ func (*SigningKeyIdTooLongDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{221}
 }
 
-func (x *SigningKeyIdTooLongDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *SigningKeyIdTooLongDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
-}
-
 type SigningKeyInvalidLengthDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -16662,20 +15988,6 @@ func (x *SigningKeyInvalidLengthDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use SigningKeyInvalidLengthDetails.ProtoReflect.Descriptor instead.
 func (*SigningKeyInvalidLengthDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{222}
-}
-
-func (x *SigningKeyInvalidLengthDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *SigningKeyInvalidLengthDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type SinkAlreadyExistsDetails struct {
@@ -17040,8 +16352,6 @@ func (*StorageOperationFailedDetails) Descriptor() ([]byte, []int) {
 
 type TargetRequiredDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -17074,20 +16384,6 @@ func (x *TargetRequiredDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use TargetRequiredDetails.ProtoReflect.Descriptor instead.
 func (*TargetRequiredDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{231}
-}
-
-func (x *TargetRequiredDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *TargetRequiredDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type TransactionAlreadyRevertedDetails struct {
@@ -17284,8 +16580,6 @@ func (x *TransactionReferenceNotFoundDetails) GetReference() string {
 
 type TransactionReferenceTooLongDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -17318,20 +16612,6 @@ func (x *TransactionReferenceTooLongDetails) ProtoReflect() protoreflect.Message
 // Deprecated: Use TransactionReferenceTooLongDetails.ProtoReflect.Descriptor instead.
 func (*TransactionReferenceTooLongDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{236}
-}
-
-func (x *TransactionReferenceTooLongDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *TransactionReferenceTooLongDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type TransactionStateInconsistentDetails struct {
@@ -17380,8 +16660,6 @@ func (x *TransactionStateInconsistentDetails) GetTransactionId() uint64 {
 
 type TransactionTargetMissingDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -17414,20 +16692,6 @@ func (x *TransactionTargetMissingDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use TransactionTargetMissingDetails.ProtoReflect.Descriptor instead.
 func (*TransactionTargetMissingDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{238}
-}
-
-func (x *TransactionTargetMissingDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *TransactionTargetMissingDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type TransientAccountNonZeroDetails struct {
@@ -17476,8 +16740,6 @@ func (x *TransientAccountNonZeroDetails) GetAccounts() string {
 
 type ValidationDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -17510,20 +16772,6 @@ func (x *ValidationDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ValidationDetails.ProtoReflect.Descriptor instead.
 func (*ValidationDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{240}
-}
-
-func (x *ValidationDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
-}
-
-func (x *ValidationDetails) GetAccount() string {
-	if x != nil && x.Account != nil {
-		return *x.Account
-	}
-	return ""
 }
 
 type VolumeNotMaterializedDetails struct {
@@ -24883,31 +24131,11 @@ const file_common_proto_rawDesc = "" +
 	"H\x00R\x0evolumeOverflow\x12j\n" +
 	"\x19writes_blocked_clock_skew\x18\xac\x01 \x01(\v2%.common.WritesBlockedClockSkewDetailsB\x05\x82\xbd\x18\x016H\x00R\x16writesBlockedClockSkew\x12g\n" +
 	"\x18writes_blocked_disk_full\x18\xad\x01 \x01(\v2$.common.WritesBlockedDiskFullDetailsB\x05\x82\xbd\x18\x015H\x00R\x15writesBlockedDiskFullB\x06\n" +
-	"\x04kind\"f\n" +
-	"\x1aAccountAddressEmptyDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"m\n" +
-	"!AccountAddressEmptySegmentDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"l\n" +
-	" AccountAddressInvalidCharDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"h\n" +
-	"\x1cAccountAddressTooLongDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"P\n" +
+	"\x04kind\"\x1c\n" +
+	"\x1aAccountAddressEmptyDetails\"#\n" +
+	"!AccountAddressEmptySegmentDetails\"\"\n" +
+	" AccountAddressInvalidCharDetails\"\x1e\n" +
+	"\x1cAccountAddressTooLongDetails\"P\n" +
 	"\x1dAccountNotMatchingTypeDetails\x12#\n" +
 	"\aaddress\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaddress\x88\x01\x01B\n" +
 	"\n" +
@@ -24925,33 +24153,18 @@ const file_common_proto_rawDesc = "" +
 	"\x11_existing_pattern\"G\n" +
 	"\x1dAccountTypeHasAccountsDetails\x12\x1d\n" +
 	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"i\n" +
-	"\x1dAccountTypeNameTooLongDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"D\n" +
+	"\x05_name\"\x1f\n" +
+	"\x1dAccountTypeNameTooLongDetails\"D\n" +
 	"\x1aAccountTypeNotFoundDetails\x12\x1d\n" +
 	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"l\n" +
-	" AccountTypePatternTooLongDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"m\n" +
+	"\x05_name\"\"\n" +
+	" AccountTypePatternTooLongDetails\"m\n" +
 	"\x18AggregateOverflowDetails\x12\x1f\n" +
 	"\x05stage\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x05stage\x88\x01\x01\x12\x1d\n" +
 	"\x04side\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x04side\x88\x01\x01B\b\n" +
 	"\x06_stageB\a\n" +
-	"\x05_side\"_\n" +
-	"\x13AssetInvalidDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"\x16\n" +
+	"\x05_side\"\x15\n" +
+	"\x13AssetInvalidDetails\"\x16\n" +
 	"\x14AuditDisabledDetails\"t\n" +
 	"\x16BalanceNotFoundDetails\x12#\n" +
 	"\aaccount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaccount\x88\x01\x01\x12\x1f\n" +
@@ -24976,29 +24189,14 @@ const file_common_proto_rawDesc = "" +
 	"\x0e_checkpoint_id\"]\n" +
 	"\x19CheckpointNotReadyDetails\x12.\n" +
 	"\rcheckpoint_id\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\fcheckpointId\x88\x01\x01B\x10\n" +
-	"\x0e_checkpoint_id\"g\n" +
-	"\x1bClusterPolicyInvalidDetails\x12\x1d\n" +
-	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x15\n" +
-	"\x03key\x18\x02 \x01(\tH\x01R\x03key\x88\x01\x01B\n" +
-	"\n" +
-	"\b_accountB\x06\n" +
-	"\x04_key\"Z\n" +
+	"\x0e_checkpoint_id\"\x1d\n" +
+	"\x1bClusterPolicyInvalidDetails\"Z\n" +
 	"$ClusterPolicyRevisionConflictDetails\x12%\n" +
 	"\brevision\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\brevision\x88\x01\x01B\v\n" +
 	"\t_revision\"\x19\n" +
-	"\x17ClusterUnhealthyDetails\"_\n" +
-	"\x13ColorInvalidDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"_\n" +
-	"\x13ColorTooLongDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"\xf4\x01\n" +
+	"\x17ClusterUnhealthyDetails\"\x15\n" +
+	"\x13ColorInvalidDetails\"\x15\n" +
+	"\x13ColorTooLongDetails\"\xf4\x01\n" +
 	"\x13CoverageMissDetails\x12'\n" +
 	"\tattribute\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\tattribute\x88\x01\x01\x12.\n" +
 	"\rcanonical_hex\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\fcanonicalHex\x88\x01\x01\x12 \n" +
@@ -25009,19 +24207,9 @@ const file_common_proto_rawDesc = "" +
 	"_attributeB\x10\n" +
 	"\x0e_canonical_hexB\t\n" +
 	"\a_id_hexB\r\n" +
-	"\v_raft_index\"l\n" +
-	" DependencyDiscoveryFailedDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"c\n" +
-	"\x17EmptyTransactionDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"q\n" +
+	"\v_raft_index\"\"\n" +
+	" DependencyDiscoveryFailedDetails\"\x19\n" +
+	"\x17EmptyTransactionDetails\"q\n" +
 	"\x1cExecutionPlanTooLargeDetails\x12\x1d\n" +
 	"\x04size\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\x04size\x88\x01\x01\x12\x1f\n" +
 	"\x05limit\x18\x02 \x01(\x04B\x04\x88\xbd\x18\x01H\x01R\x05limit\x88\x01\x01B\a\n" +
@@ -25031,13 +24219,8 @@ const file_common_proto_rawDesc = "" +
 	"\x1dIdempotencyCheckFailedDetails\"D\n" +
 	"\x1dIdempotencyKeyConflictDetails\x12\x1b\n" +
 	"\x03key\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x03key\x88\x01\x01B\x06\n" +
-	"\x04_key\"]\n" +
-	"\x11IdRequiredDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"F\n" +
+	"\x04_key\"\x13\n" +
+	"\x11IdRequiredDetails\"F\n" +
 	"\x19IndexAlreadyExistsDetails\x12\x1f\n" +
 	"\x05index\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x05index\x88\x01\x01B\b\n" +
 	"\x06_index\"A\n" +
@@ -25049,13 +24232,8 @@ const file_common_proto_rawDesc = "" +
 	"\x06_index\"A\n" +
 	"\x14IndexNotFoundDetails\x12\x1f\n" +
 	"\x05index\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x05index\x88\x01\x01B\b\n" +
-	"\x06_index\"i\n" +
-	"\x1dIndexTargetUnsupportedDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"\xfa\x01\n" +
+	"\x06_index\"\x1f\n" +
+	"\x1dIndexTargetUnsupportedDetails\"\xfa\x01\n" +
 	"\x18InsufficientFundsDetails\x12#\n" +
 	"\aaccount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaccount\x88\x01\x01\x12\x1f\n" +
 	"\x05asset\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x05asset\x88\x01\x01\x12!\n" +
@@ -25081,14 +24259,9 @@ const file_common_proto_rawDesc = "" +
 	"\x15InvalidPatternDetails\x12#\n" +
 	"\apattern\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\apattern\x88\x01\x01B\n" +
 	"\n" +
-	"\b_pattern\"\xb1\x01\n" +
-	"\x1dInvalidSkippableReasonDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01\x122\n" +
-	"\x0fprovided_reason\x18\x03 \x01(\tB\x04\x88\xbd\x18\x01H\x02R\x0eprovidedReason\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_accountB\x12\n" +
+	"\b_pattern\"g\n" +
+	"\x1dInvalidSkippableReasonDetails\x122\n" +
+	"\x0fprovided_reason\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x0eprovidedReason\x88\x01\x01B\x12\n" +
 	"\x10_provided_reason\"D\n" +
 	"\x1aLedgerAlreadyExistsDetails\x12\x1d\n" +
 	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
@@ -25098,31 +24271,11 @@ const file_common_proto_rawDesc = "" +
 	"\x05_name\"C\n" +
 	"\x19LedgerInMirrorModeDetails\x12\x1d\n" +
 	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"h\n" +
-	"\x1cLedgerNameInvalidCharDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"e\n" +
-	"\x19LedgerNameRequiredDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"k\n" +
-	"\x1fLedgerNameReservedPrefixDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"d\n" +
-	"\x18LedgerNameTooLongDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"?\n" +
+	"\x05_name\"\x1e\n" +
+	"\x1cLedgerNameInvalidCharDetails\"\x1b\n" +
+	"\x19LedgerNameRequiredDetails\"!\n" +
+	"\x1fLedgerNameReservedPrefixDetails\"\x1a\n" +
+	"\x18LedgerNameTooLongDetails\"?\n" +
 	"\x15LedgerNotFoundDetails\x12\x1d\n" +
 	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
 	"\x05_name\"F\n" +
@@ -25134,25 +24287,20 @@ const file_common_proto_rawDesc = "" +
 	"\x06target\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06target\x88\x01\x01\x12\x1b\n" +
 	"\x03key\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x03key\x88\x01\x01B\t\n" +
 	"\a_targetB\x06\n" +
-	"\x04_key\"c\n" +
-	"\x17MetadataKeyEmptyDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\x04_key\"i\n" +
+	"\x17MetadataKeyEmptyDetails\x12\x1b\n" +
+	"\x03key\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x03key\x88\x01\x01\x12\x1d\n" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"i\n" +
-	"\x1dMetadataKeyInvalidCharDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\b_account\"o\n" +
+	"\x1dMetadataKeyInvalidCharDetails\x12\x1b\n" +
+	"\x03key\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x03key\x88\x01\x01\x12\x1d\n" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"f\n" +
-	"\x1aMetadataKeyRequiredDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"m\n" +
+	"\b_account\"\x1c\n" +
+	"\x1aMetadataKeyRequiredDetails\"m\n" +
 	"!MetadataLimitsUnconfiguredDetails\x12\x1d\n" +
 	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x15\n" +
 	"\x03key\x18\x02 \x01(\tH\x01R\x03key\x88\x01\x01B\n" +
@@ -25171,45 +24319,22 @@ const file_common_proto_rawDesc = "" +
 	"\a_actualB\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"\x97\x01\n" +
+	"\b_account\"l\n" +
 	"\x17MetadataNotFoundDetails\x12!\n" +
 	"\x06target\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06target\x88\x01\x01\x12\x1b\n" +
-	"\x03key\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x03 \x01(\tH\x02R\aaccount\x88\x01\x01B\t\n" +
+	"\x03key\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x03key\x88\x01\x01B\t\n" +
 	"\a_targetB\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"p\n" +
-	"$MetadataValueContainsNullByteDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\x04_key\"v\n" +
+	"$MetadataValueContainsNullByteDetails\x12\x1b\n" +
+	"\x03key\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x03key\x88\x01\x01\x12\x1d\n" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"g\n" +
-	"\x1bMirrorHttpUrlInvalidDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"j\n" +
-	"\x1eMirrorIamRegionRequiredDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"g\n" +
-	"\x1bMirrorIamRequiresTlsDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"k\n" +
-	"\x1fMirrorRewriteRuleInvalidDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"\x9a\x01\n" +
+	"\b_account\"\x1d\n" +
+	"\x1bMirrorHttpUrlInvalidDetails\" \n" +
+	"\x1eMirrorIamRegionRequiredDetails\"\x1d\n" +
+	"\x1bMirrorIamRequiresTlsDetails\"!\n" +
+	"\x1fMirrorRewriteRuleInvalidDetails\"\x9a\x01\n" +
 	"\x17MirrorV2LogIdGapDetails\x12\x1d\n" +
 	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01\x12\x1b\n" +
 	"\x03got\x18\x02 \x01(\x04B\x04\x88\xbd\x18\x01H\x01R\x03got\x88\x01\x01\x12%\n" +
@@ -25301,13 +24426,8 @@ const file_common_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01\x12.\n" +
 	"\rwrong_context\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\fwrongContext\x88\x01\x01B\a\n" +
 	"\x05_nameB\x10\n" +
-	"\x0e_wrong_context\"k\n" +
-	"\x1fNumscriptContentRequiredDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"{\n" +
+	"\x0e_wrong_context\"!\n" +
+	"\x1fNumscriptContentRequiredDetails\"{\n" +
 	" NumscriptCurrencyMismatchDetails\x12%\n" +
 	"\bexpected\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\bexpected\x88\x01\x01\x12\x1b\n" +
 	"\x03got\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x03got\x88\x01\x01B\v\n" +
@@ -25386,25 +24506,10 @@ const file_common_proto_rawDesc = "" +
 	"_available\"I\n" +
 	"\x1fNumscriptMissingVariableDetails\x12\x1d\n" +
 	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"k\n" +
-	"\x1fNumscriptNameInvalidCharDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"h\n" +
-	"\x1cNumscriptNameRequiredDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"g\n" +
-	"\x1bNumscriptNameTooLongDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"N\n" +
+	"\x05_name\"!\n" +
+	"\x1fNumscriptNameInvalidCharDetails\"\x1e\n" +
+	"\x1cNumscriptNameRequiredDetails\"\x1d\n" +
+	"\x1bNumscriptNameTooLongDetails\"N\n" +
 	"\x1eNumscriptNegativeAmountDetails\x12!\n" +
 	"\x06amount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06amount\x88\x01\x01B\t\n" +
 	"\a_amount\"\xca\x01\n" +
@@ -25438,16 +24543,9 @@ const file_common_proto_rawDesc = "" +
 	"\rposting_index\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\fpostingIndex\x88\x01\x01\x12!\n" +
 	"\x06amount\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x06amount\x88\x01\x01B\x10\n" +
 	"\x0e_posting_indexB\t\n" +
-	"\a_amount\"8\n" +
-	"\x17NumscriptRuntimeDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01B\x06\n" +
-	"\x04_key\"n\n" +
-	"\"NumscriptScalingUnsupportedDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"O\n" +
+	"\a_amount\"\x19\n" +
+	"\x17NumscriptRuntimeDetails\"$\n" +
+	"\"NumscriptScalingUnsupportedDetails\"O\n" +
 	"\x19NumscriptTypeErrorDetails\x12%\n" +
 	"\bexpected\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\bexpected\x88\x01\x01B\v\n" +
 	"\t_expected\"I\n" +
@@ -25462,103 +24560,38 @@ const file_common_proto_rawDesc = "" +
 	"\aversion\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\aversion\x88\x01\x01B\a\n" +
 	"\x05_nameB\n" +
 	"\n" +
-	"\b_version\"l\n" +
-	" PostingsAndScriptConflictDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"\x1b\n" +
+	"\b_version\"\"\n" +
+	" PostingsAndScriptConflictDetails\"\x1b\n" +
 	"\x19PreloadUnavailableDetails\"y\n" +
 	"!PreparedQueryAlreadyExistsDetails\x12!\n" +
 	"\x06ledger\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06ledger\x88\x01\x01\x12\x1d\n" +
 	"\x04name\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x04name\x88\x01\x01B\t\n" +
 	"\a_ledgerB\a\n" +
-	"\x05_name\"o\n" +
-	"#PreparedQueryNameInvalidCharDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"l\n" +
-	" PreparedQueryNameRequiredDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"k\n" +
-	"\x1fPreparedQueryNameTooLongDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"t\n" +
+	"\x05_name\"%\n" +
+	"#PreparedQueryNameInvalidCharDetails\"\"\n" +
+	" PreparedQueryNameRequiredDetails\"!\n" +
+	"\x1fPreparedQueryNameTooLongDetails\"t\n" +
 	"\x1cPreparedQueryNotFoundDetails\x12!\n" +
 	"\x06ledger\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06ledger\x88\x01\x01\x12\x1d\n" +
 	"\x04name\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x04name\x88\x01\x01B\t\n" +
 	"\a_ledgerB\a\n" +
-	"\x05_name\"h\n" +
-	"\x1cPreparedQueryRequiredDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"q\n" +
-	"%PreparedQueryTargetUnsupportedDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"h\n" +
+	"\x05_name\"\x1e\n" +
+	"\x1cPreparedQueryRequiredDetails\"'\n" +
+	"%PreparedQueryTargetUnsupportedDetails\"h\n" +
 	"!RevertTargetCreatedInBatchDetails\x120\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
-	"\x0f_transaction_id\"k\n" +
-	"\x1fScopedBalanceUnsupportedDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"m\n" +
-	"!ScriptAndReferenceConflictDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"a\n" +
-	"\x15ScriptRequiredDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"K\n" +
+	"\x0f_transaction_id\"!\n" +
+	"\x1fScopedBalanceUnsupportedDetails\"#\n" +
+	"!ScriptAndReferenceConflictDetails\"\x17\n" +
+	"\x15ScriptRequiredDetails\"K\n" +
 	"\x18SequenceExhaustedDetails\x12#\n" +
 	"\acounter\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\acounter\x88\x01\x01B\n" +
 	"\n" +
-	"\b_counter\"j\n" +
-	"\x1eSigningKeyIdInvalidCharDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"g\n" +
-	"\x1bSigningKeyIdRequiredDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"f\n" +
-	"\x1aSigningKeyIdTooLongDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"j\n" +
-	"\x1eSigningKeyInvalidLengthDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"B\n" +
+	"\b_counter\" \n" +
+	"\x1eSigningKeyIdInvalidCharDetails\"\x1d\n" +
+	"\x1bSigningKeyIdRequiredDetails\"\x1c\n" +
+	"\x1aSigningKeyIdTooLongDetails\" \n" +
+	"\x1eSigningKeyInvalidLengthDetails\"B\n" +
 	"\x18SinkAlreadyExistsDetails\x12\x1d\n" +
 	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
 	"\x05_name\"\xa4\x01\n" +
@@ -25585,13 +24618,8 @@ const file_common_proto_rawDesc = "" +
 	"\x11_applied_revision\"\x1e\n" +
 	"\x1cStaleInputsResolutionDetails\"\x16\n" +
 	"\x14StaleProposalDetails\"\x1f\n" +
-	"\x1dStorageOperationFailedDetails\"a\n" +
-	"\x15TargetRequiredDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"h\n" +
+	"\x1dStorageOperationFailedDetails\"\x17\n" +
+	"\x15TargetRequiredDetails\"h\n" +
 	"!TransactionAlreadyRevertedDetails\x120\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
 	"\x0f_transaction_id\"a\n" +
@@ -25609,31 +24637,16 @@ const file_common_proto_rawDesc = "" +
 	"#TransactionReferenceNotFoundDetails\x12'\n" +
 	"\treference\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\treference\x88\x01\x01B\f\n" +
 	"\n" +
-	"_reference\"n\n" +
-	"\"TransactionReferenceTooLongDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"j\n" +
+	"_reference\"$\n" +
+	"\"TransactionReferenceTooLongDetails\"j\n" +
 	"#TransactionStateInconsistentDetails\x120\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
-	"\x0f_transaction_id\"k\n" +
-	"\x1fTransactionTargetMissingDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"T\n" +
+	"\x0f_transaction_id\"!\n" +
+	"\x1fTransactionTargetMissingDetails\"T\n" +
 	"\x1eTransientAccountNonZeroDetails\x12%\n" +
 	"\baccounts\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\baccounts\x88\x01\x01B\v\n" +
-	"\t_accounts\"]\n" +
-	"\x11ValidationDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
-	"\n" +
-	"\b_account\"\xcd\x01\n" +
+	"\t_accounts\"\x13\n" +
+	"\x11ValidationDetails\"\xcd\x01\n" +
 	"\x1cVolumeNotMaterializedDetails\x12#\n" +
 	"\aaccount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaccount\x88\x01\x01\x12\x1f\n" +
 	"\x05asset\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x05asset\x88\x01\x01\x12\x1f\n" +
@@ -27392,39 +26405,25 @@ func file_common_proto_init() {
 		(*FailureDetails_WritesBlockedClockSkew)(nil),
 		(*FailureDetails_WritesBlockedDiskFull)(nil),
 	}
-	file_common_proto_msgTypes[72].OneofWrappers = []any{}
-	file_common_proto_msgTypes[73].OneofWrappers = []any{}
-	file_common_proto_msgTypes[74].OneofWrappers = []any{}
-	file_common_proto_msgTypes[75].OneofWrappers = []any{}
 	file_common_proto_msgTypes[76].OneofWrappers = []any{}
 	file_common_proto_msgTypes[77].OneofWrappers = []any{}
 	file_common_proto_msgTypes[78].OneofWrappers = []any{}
 	file_common_proto_msgTypes[79].OneofWrappers = []any{}
-	file_common_proto_msgTypes[80].OneofWrappers = []any{}
 	file_common_proto_msgTypes[81].OneofWrappers = []any{}
-	file_common_proto_msgTypes[82].OneofWrappers = []any{}
 	file_common_proto_msgTypes[83].OneofWrappers = []any{}
-	file_common_proto_msgTypes[84].OneofWrappers = []any{}
 	file_common_proto_msgTypes[86].OneofWrappers = []any{}
 	file_common_proto_msgTypes[87].OneofWrappers = []any{}
 	file_common_proto_msgTypes[89].OneofWrappers = []any{}
 	file_common_proto_msgTypes[90].OneofWrappers = []any{}
 	file_common_proto_msgTypes[91].OneofWrappers = []any{}
-	file_common_proto_msgTypes[92].OneofWrappers = []any{}
 	file_common_proto_msgTypes[93].OneofWrappers = []any{}
-	file_common_proto_msgTypes[95].OneofWrappers = []any{}
-	file_common_proto_msgTypes[96].OneofWrappers = []any{}
 	file_common_proto_msgTypes[97].OneofWrappers = []any{}
-	file_common_proto_msgTypes[98].OneofWrappers = []any{}
-	file_common_proto_msgTypes[99].OneofWrappers = []any{}
 	file_common_proto_msgTypes[100].OneofWrappers = []any{}
 	file_common_proto_msgTypes[103].OneofWrappers = []any{}
-	file_common_proto_msgTypes[104].OneofWrappers = []any{}
 	file_common_proto_msgTypes[105].OneofWrappers = []any{}
 	file_common_proto_msgTypes[106].OneofWrappers = []any{}
 	file_common_proto_msgTypes[107].OneofWrappers = []any{}
 	file_common_proto_msgTypes[108].OneofWrappers = []any{}
-	file_common_proto_msgTypes[109].OneofWrappers = []any{}
 	file_common_proto_msgTypes[110].OneofWrappers = []any{}
 	file_common_proto_msgTypes[113].OneofWrappers = []any{}
 	file_common_proto_msgTypes[116].OneofWrappers = []any{}
@@ -27432,24 +26431,15 @@ func file_common_proto_init() {
 	file_common_proto_msgTypes[118].OneofWrappers = []any{}
 	file_common_proto_msgTypes[119].OneofWrappers = []any{}
 	file_common_proto_msgTypes[120].OneofWrappers = []any{}
-	file_common_proto_msgTypes[121].OneofWrappers = []any{}
-	file_common_proto_msgTypes[122].OneofWrappers = []any{}
-	file_common_proto_msgTypes[123].OneofWrappers = []any{}
-	file_common_proto_msgTypes[124].OneofWrappers = []any{}
 	file_common_proto_msgTypes[125].OneofWrappers = []any{}
 	file_common_proto_msgTypes[126].OneofWrappers = []any{}
 	file_common_proto_msgTypes[128].OneofWrappers = []any{}
 	file_common_proto_msgTypes[129].OneofWrappers = []any{}
 	file_common_proto_msgTypes[130].OneofWrappers = []any{}
-	file_common_proto_msgTypes[131].OneofWrappers = []any{}
 	file_common_proto_msgTypes[132].OneofWrappers = []any{}
 	file_common_proto_msgTypes[133].OneofWrappers = []any{}
 	file_common_proto_msgTypes[134].OneofWrappers = []any{}
 	file_common_proto_msgTypes[135].OneofWrappers = []any{}
-	file_common_proto_msgTypes[136].OneofWrappers = []any{}
-	file_common_proto_msgTypes[137].OneofWrappers = []any{}
-	file_common_proto_msgTypes[138].OneofWrappers = []any{}
-	file_common_proto_msgTypes[139].OneofWrappers = []any{}
 	file_common_proto_msgTypes[140].OneofWrappers = []any{}
 	file_common_proto_msgTypes[141].OneofWrappers = []any{}
 	file_common_proto_msgTypes[142].OneofWrappers = []any{}
@@ -27469,7 +26459,6 @@ func file_common_proto_init() {
 	file_common_proto_msgTypes[162].OneofWrappers = []any{}
 	file_common_proto_msgTypes[163].OneofWrappers = []any{}
 	file_common_proto_msgTypes[164].OneofWrappers = []any{}
-	file_common_proto_msgTypes[165].OneofWrappers = []any{}
 	file_common_proto_msgTypes[166].OneofWrappers = []any{}
 	file_common_proto_msgTypes[167].OneofWrappers = []any{}
 	file_common_proto_msgTypes[169].OneofWrappers = []any{}
@@ -27488,53 +26477,31 @@ func file_common_proto_init() {
 	file_common_proto_msgTypes[186].OneofWrappers = []any{}
 	file_common_proto_msgTypes[187].OneofWrappers = []any{}
 	file_common_proto_msgTypes[188].OneofWrappers = []any{}
-	file_common_proto_msgTypes[189].OneofWrappers = []any{}
-	file_common_proto_msgTypes[190].OneofWrappers = []any{}
-	file_common_proto_msgTypes[191].OneofWrappers = []any{}
 	file_common_proto_msgTypes[192].OneofWrappers = []any{}
 	file_common_proto_msgTypes[193].OneofWrappers = []any{}
 	file_common_proto_msgTypes[194].OneofWrappers = []any{}
 	file_common_proto_msgTypes[195].OneofWrappers = []any{}
 	file_common_proto_msgTypes[197].OneofWrappers = []any{}
 	file_common_proto_msgTypes[198].OneofWrappers = []any{}
-	file_common_proto_msgTypes[199].OneofWrappers = []any{}
-	file_common_proto_msgTypes[200].OneofWrappers = []any{}
 	file_common_proto_msgTypes[201].OneofWrappers = []any{}
 	file_common_proto_msgTypes[202].OneofWrappers = []any{}
 	file_common_proto_msgTypes[203].OneofWrappers = []any{}
 	file_common_proto_msgTypes[204].OneofWrappers = []any{}
-	file_common_proto_msgTypes[205].OneofWrappers = []any{}
 	file_common_proto_msgTypes[207].OneofWrappers = []any{}
-	file_common_proto_msgTypes[208].OneofWrappers = []any{}
-	file_common_proto_msgTypes[209].OneofWrappers = []any{}
-	file_common_proto_msgTypes[210].OneofWrappers = []any{}
 	file_common_proto_msgTypes[211].OneofWrappers = []any{}
-	file_common_proto_msgTypes[212].OneofWrappers = []any{}
-	file_common_proto_msgTypes[213].OneofWrappers = []any{}
 	file_common_proto_msgTypes[214].OneofWrappers = []any{}
-	file_common_proto_msgTypes[215].OneofWrappers = []any{}
-	file_common_proto_msgTypes[216].OneofWrappers = []any{}
-	file_common_proto_msgTypes[217].OneofWrappers = []any{}
 	file_common_proto_msgTypes[218].OneofWrappers = []any{}
-	file_common_proto_msgTypes[219].OneofWrappers = []any{}
-	file_common_proto_msgTypes[220].OneofWrappers = []any{}
-	file_common_proto_msgTypes[221].OneofWrappers = []any{}
-	file_common_proto_msgTypes[222].OneofWrappers = []any{}
 	file_common_proto_msgTypes[223].OneofWrappers = []any{}
 	file_common_proto_msgTypes[224].OneofWrappers = []any{}
 	file_common_proto_msgTypes[225].OneofWrappers = []any{}
 	file_common_proto_msgTypes[226].OneofWrappers = []any{}
 	file_common_proto_msgTypes[227].OneofWrappers = []any{}
-	file_common_proto_msgTypes[231].OneofWrappers = []any{}
 	file_common_proto_msgTypes[232].OneofWrappers = []any{}
 	file_common_proto_msgTypes[233].OneofWrappers = []any{}
 	file_common_proto_msgTypes[234].OneofWrappers = []any{}
 	file_common_proto_msgTypes[235].OneofWrappers = []any{}
-	file_common_proto_msgTypes[236].OneofWrappers = []any{}
 	file_common_proto_msgTypes[237].OneofWrappers = []any{}
-	file_common_proto_msgTypes[238].OneofWrappers = []any{}
 	file_common_proto_msgTypes[239].OneofWrappers = []any{}
-	file_common_proto_msgTypes[240].OneofWrappers = []any{}
 	file_common_proto_msgTypes[241].OneofWrappers = []any{}
 	file_common_proto_msgTypes[242].OneofWrappers = []any{}
 	file_common_proto_msgTypes[255].OneofWrappers = []any{

@@ -977,23 +977,15 @@ message FailureDetails {
 }
 
 message AccountAddressEmptyDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message AccountAddressEmptySegmentDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message AccountAddressInvalidCharDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message AccountAddressTooLongDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message AccountNotMatchingTypeDetails {
@@ -1015,8 +1007,6 @@ message AccountTypeHasAccountsDetails {
 }
 
 message AccountTypeNameTooLongDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message AccountTypeNotFoundDetails {
@@ -1024,8 +1014,6 @@ message AccountTypeNotFoundDetails {
 }
 
 message AccountTypePatternTooLongDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message AggregateOverflowDetails {
@@ -1034,8 +1022,6 @@ message AggregateOverflowDetails {
 }
 
 message AssetInvalidDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message AuditDisabledDetails {
@@ -1068,8 +1054,6 @@ message CheckpointNotReadyDetails {
 }
 
 message ClusterPolicyInvalidDetails {
-  optional string account = 1;
-  optional string key = 2;
 }
 
 message ClusterPolicyRevisionConflictDetails {
@@ -1080,13 +1064,9 @@ message ClusterUnhealthyDetails {
 }
 
 message ColorInvalidDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message ColorTooLongDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message CoverageMissDetails {
@@ -1097,13 +1077,9 @@ message CoverageMissDetails {
 }
 
 message DependencyDiscoveryFailedDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message EmptyTransactionDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message ExecutionPlanTooLargeDetails {
@@ -1122,8 +1098,6 @@ message IdempotencyKeyConflictDetails {
 }
 
 message IdRequiredDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message IndexAlreadyExistsDetails {
@@ -1143,8 +1117,6 @@ message IndexNotFoundDetails {
 }
 
 message IndexTargetUnsupportedDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message InsufficientFundsDetails {
@@ -1176,9 +1148,7 @@ message InvalidPatternDetails {
 }
 
 message InvalidSkippableReasonDetails {
-  optional string key = 1;
-  optional string account = 2;
-  optional string provided_reason = 3 [(failure_fact_required) = true];
+  optional string provided_reason = 1 [(failure_fact_required) = true];
 }
 
 message LedgerAlreadyExistsDetails {
@@ -1194,23 +1164,15 @@ message LedgerInMirrorModeDetails {
 }
 
 message LedgerNameInvalidCharDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message LedgerNameRequiredDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message LedgerNameReservedPrefixDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message LedgerNameTooLongDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message LedgerNotFoundDetails {
@@ -1230,18 +1192,16 @@ message MetadataFieldNotInSchemaDetails {
 }
 
 message MetadataKeyEmptyDetails {
-  optional string key = 1;
+  optional string key = 1 [(failure_fact_required) = true];
   optional string account = 2;
 }
 
 message MetadataKeyInvalidCharDetails {
-  optional string key = 1;
+  optional string key = 1 [(failure_fact_required) = true];
   optional string account = 2;
 }
 
 message MetadataKeyRequiredDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message MetadataLimitsUnconfiguredDetails {
@@ -1260,32 +1220,24 @@ message MetadataLimitExceededDetails {
 message MetadataNotFoundDetails {
   optional string target = 1 [(failure_fact_required) = true];
   optional string key = 2 [(failure_fact_required) = true];
-  optional string account = 3;
+
 }
 
 message MetadataValueContainsNullByteDetails {
-  optional string key = 1;
+  optional string key = 1 [(failure_fact_required) = true];
   optional string account = 2;
 }
 
 message MirrorHttpUrlInvalidDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message MirrorIamRegionRequiredDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message MirrorIamRequiresTlsDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message MirrorRewriteRuleInvalidDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message MirrorV2LogIdGapDetails {
@@ -1395,8 +1347,6 @@ message NumscriptCompileUnknownFunctionDetails {
 }
 
 message NumscriptContentRequiredDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message NumscriptCurrencyMismatchDetails {
@@ -1493,18 +1443,12 @@ message NumscriptMissingVariableDetails {
 }
 
 message NumscriptNameInvalidCharDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message NumscriptNameRequiredDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message NumscriptNameTooLongDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message NumscriptNegativeAmountDetails {
@@ -1541,12 +1485,9 @@ message NumscriptPostingNegativeAmountDetails {
 }
 
 message NumscriptRuntimeDetails {
-  optional string key = 1;
 }
 
 message NumscriptScalingUnsupportedDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message NumscriptTypeErrorDetails {
@@ -1567,8 +1508,6 @@ message NumscriptVersionAlreadyExistsDetails {
 }
 
 message PostingsAndScriptConflictDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message PreloadUnavailableDetails {
@@ -1580,18 +1519,12 @@ message PreparedQueryAlreadyExistsDetails {
 }
 
 message PreparedQueryNameInvalidCharDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message PreparedQueryNameRequiredDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message PreparedQueryNameTooLongDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message PreparedQueryNotFoundDetails {
@@ -1600,13 +1533,9 @@ message PreparedQueryNotFoundDetails {
 }
 
 message PreparedQueryRequiredDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message PreparedQueryTargetUnsupportedDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message RevertTargetCreatedInBatchDetails {
@@ -1614,18 +1543,12 @@ message RevertTargetCreatedInBatchDetails {
 }
 
 message ScopedBalanceUnsupportedDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message ScriptAndReferenceConflictDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message ScriptRequiredDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message SequenceExhaustedDetails {
@@ -1633,23 +1556,15 @@ message SequenceExhaustedDetails {
 }
 
 message SigningKeyIdInvalidCharDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message SigningKeyIdRequiredDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message SigningKeyIdTooLongDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message SigningKeyInvalidLengthDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message SinkAlreadyExistsDetails {
@@ -1686,8 +1601,6 @@ message StorageOperationFailedDetails {
 }
 
 message TargetRequiredDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message TransactionAlreadyRevertedDetails {
@@ -1709,8 +1622,6 @@ message TransactionReferenceNotFoundDetails {
 }
 
 message TransactionReferenceTooLongDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message TransactionStateInconsistentDetails {
@@ -1718,8 +1629,6 @@ message TransactionStateInconsistentDetails {
 }
 
 message TransactionTargetMissingDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message TransientAccountNonZeroDetails {
@@ -1727,8 +1636,6 @@ message TransientAccountNonZeroDetails {
 }
 
 message ValidationDetails {
-  optional string key = 1;
-  optional string account = 2;
 }
 
 message VolumeNotMaterializedDetails {

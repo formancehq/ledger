@@ -48,9 +48,9 @@ func TestNumscriptMetadataFailureSameAuditOnReplicas(t *testing.T) {
 
 		result, err := machine.ApplyEntries(ctx, store, entry)
 		require.NoError(t, err)
-		var keyErr *domain.ErrMetadataKeyValidation
-		require.ErrorAs(t, result.Results[0].Error, &keyErr)
-		require.Equal(t, "a", keyErr.Key)
+		var serializable domain.SerializableError
+		require.ErrorAs(t, result.Results[0].Error, &serializable)
+		require.Equal(t, "a", domain.FailureFactsOf(serializable).Facts["key"])
 		require.Empty(t, result.Results[0].Logs)
 		require.Equal(t, before, readBusinessProjections(t, store, attrs))
 		audit := listAuditEntries(t, store, 0)

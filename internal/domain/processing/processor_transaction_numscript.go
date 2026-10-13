@@ -281,7 +281,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			// The library renders metadata values to their stored string form.
 			value := row.Value
 
-			if err := domain.ValidateMetadataString(value); err != nil {
+			if err := domain.ValidateMetadataString(row.Key, value); err != nil {
 				return nil, &domain.ErrAccountValidation{Account: row.Account, Cause: err}
 			}
 
@@ -308,8 +308,8 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 				return nil, err
 			}
 
-			if err := domain.ValidateMetadataString(value); err != nil {
-				return nil, &domain.ErrMetadataKeyValidation{Key: key, Cause: err}
+			if err := domain.ValidateMetadataString(key, value); err != nil {
+				return nil, err
 			}
 
 			txMeta[key] = commonpb.NewStringValue(value)

@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 32:
+leader. For example, with a schema implementing revision 33:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 32' \
+grpcurl -plaintext -H 'ledger-protocol-version: 33' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -477,3 +477,18 @@ sorted rendered fact keys and values. Persisted failures from revision 31
 cannot be read or verified under revision 32. Ledger v3 is unreleased, so
 deployments must start with fresh state; mixed revisions cannot share a
 cluster or service connection.
+
+## Contextual metadata validation failures (revision 33)
+
+Revision 33 requires the `key` fact for `METADATA_KEY_EMPTY`,
+`METADATA_KEY_INVALID_CHAR`, and `METADATA_VALUE_CONTAINS_NULL_BYTE`.
+The validation producer retains the offending key, including an explicitly
+present empty string. The primitive validation sentinels remain available for
+`errors.Is`, but they cannot be serialized without the key. Account metadata
+failures also carry `account`; ledger and transaction metadata failures do not
+have an account. The public gRPC error metadata and audited failure details now
+include the key on paths that previously returned a bare sentinel. The schema
+also removes generic `key` and `account` fields from failure variants whose
+producers never supply metadata context. Remaining conditional fields reflect
+distinct producer paths. Previously persisted failures with the removed fields
+or without a now-required key cannot be read under revision 33.

@@ -460,10 +460,11 @@ func TestValidateOrderMetadataShapeSelectsStableKey(t *testing.T) {
 		"a": metadataStringValue("invalid\x00"),
 	})
 	for range 100 {
-		var keyErr *domain.ErrMetadataKeyValidation
-		require.ErrorAs(t, validateOrderMetadata(order), &keyErr)
-		require.Equal(t, "a", keyErr.Key)
-		require.ErrorIs(t, keyErr, domain.ErrMetadataValueContainsNullByte)
+		err := validateOrderMetadata(order)
+		serializable, ok := err.(domain.SerializableError)
+		require.True(t, ok)
+		require.Equal(t, "a", domain.FailureFactsOf(serializable).Facts["key"])
+		require.ErrorIs(t, err, domain.ErrMetadataValueContainsNullByte)
 	}
 }
 

@@ -10,8 +10,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// TestValidateWrapping pins the wrapper contract: each Validate* function in
-// this package calls invariants.Validate* and maps the primitive sentinel
+// TestValidateWrapping pins the sentinel contract: these Validate* functions
+// call invariants.Validate* and map the primitive sentinel
 // back to the matching local Describable sentinel by pointer identity. The
 // exhaustive case coverage lives in github.com/formancehq/invariants; here
 // we only verify that the bridge is wired correctly.
@@ -33,11 +33,6 @@ func TestValidateWrapping(t *testing.T) {
 		{name: "signing key id newline", got: ValidateSigningKeyID("a\nb"), want: ErrSigningKeyIDInvalidChar},
 		{name: "account address empty", got: ValidateAccountAddress(""), want: ErrAccountAddressEmpty},
 		{name: "account address invalid char", got: ValidateAccountAddress("a b"), want: ErrAccountAddressInvalidChar},
-		{name: "metadata key empty", got: ValidateMetadataKey(""), want: ErrMetadataKeyEmpty},
-		{name: "metadata key null byte", got: ValidateMetadataKey("a\x00b"), want: ErrMetadataKeyInvalidChar},
-		{name: "metadata key space", got: ValidateMetadataKey("a b"), want: ErrMetadataKeyInvalidChar},
-		{name: "metadata key non-ASCII", got: ValidateMetadataKey("étape"), want: ErrMetadataKeyInvalidChar},
-		{name: "metadata string null byte", got: ValidateMetadataString("a\x00b"), want: ErrMetadataValueContainsNullByte},
 		{name: "asset invalid", got: ValidateAsset("lowercase"), want: ErrAssetInvalid},
 	}
 
@@ -64,8 +59,29 @@ func TestValidateWrapping_NilOnValidInput(t *testing.T) {
 	require.Nil(t, ValidateSigningKeyID("admin-key-1"))
 	require.Nil(t, ValidateAccountAddress("users:alice"))
 	require.Nil(t, ValidateMetadataKey("category"))
-	require.Nil(t, ValidateMetadataString("admin"))
+	require.Nil(t, ValidateMetadataString("category", "admin"))
 	require.Nil(t, ValidateAsset("EUR/2"))
+}
+
+func TestMetadataValidationRetainsKey(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, key, code string
+		err             SerializableError
+		cause           error
+	}{
+		{"empty key", "", "METADATA_KEY_EMPTY", ValidateMetadataKey(""), ErrMetadataKeyEmpty},
+		{"invalid key", "bad key", "METADATA_KEY_INVALID_CHAR", ValidateMetadataKey("bad key"), ErrMetadataKeyInvalidChar},
+		{"invalid value", "invoice", "METADATA_VALUE_CONTAINS_NULL_BYTE", ValidateMetadataString("invoice", "bad\x00value"), ErrMetadataValueContainsNullByte},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.ErrorIs(t, tc.err, tc.cause)
+			_, code, details := TypedFailureOf(tc.err)
+			require.Equal(t, tc.code, code)
+			require.Equal(t, tc.key, commonpb.FailureDetailsFacts(details)["key"])
+		})
+	}
 }
 
 // TestValidateMetadataValue exercises the *commonpb.MetadataValue dispatch,
@@ -76,7 +92,7 @@ func TestValidateMetadataValue(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   *commonpb.MetadataValue
-		wantErr Describable
+		wantErr error
 	}{
 		{name: "nil value"},
 		{name: "valid string", input: commonpb.NewStringValue("admin")},
@@ -94,9 +110,10 @@ func TestValidateMetadataValue(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := ValidateMetadataValue(tt.input)
+			got := ValidateMetadataValue("category", tt.input)
 			if tt.wantErr != nil {
-				require.Same(t, tt.wantErr, got)
+				require.ErrorIs(t, got, tt.wantErr)
+				require.Equal(t, "category", FailureFactsOf(got).Facts["key"])
 			} else {
 				require.Nil(t, got)
 			}

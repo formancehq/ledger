@@ -79,6 +79,7 @@ func validateOrderAccountType(order *raftcmdpb.Order) domain.Describable {
 				return domain.ErrAccountTypePatternTooLong
 			}
 		}
+
 		return nil
 	}
 

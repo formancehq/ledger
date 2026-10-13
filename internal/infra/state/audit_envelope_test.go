@@ -302,12 +302,14 @@ func TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns(t *testing.T) {
 		Ledgers:     []string{"ledger-a"},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason: commonpb.ErrorReason_ERROR_REASON_VALIDATION,
-				Code:   "INVALID_SKIPPABLE_REASON",
-				Details: commonpb.MustFailureDetails("INVALID_SKIPPABLE_REASON", map[string]string{
-					"providedReason": "LEDGER_NOT_FOUND",
-					"key":            "k1",
-					"account":        "bank",
+				Reason: commonpb.ErrorReason_ERROR_REASON_METADATA_LIMIT_EXCEEDED,
+				Code:   "METADATA_LIMIT_EXCEEDED",
+				Details: commonpb.MustFailureDetails("METADATA_LIMIT_EXCEEDED", map[string]string{
+					"dimension": "value",
+					"limit":     "16",
+					"actual":    "17",
+					"key":       "k1",
+					"account":   "bank",
 				}),
 			},
 		},

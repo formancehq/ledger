@@ -5992,20 +5992,10 @@ func NewFailureDetailsListReader(s []*FailureDetails) FailureDetailsListReader {
 // AccountAddressEmptyDetailsReader provides read-only access to AccountAddressEmptyDetails.
 // Call Mutate() to obtain a mutable clone.
 type AccountAddressEmptyDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *AccountAddressEmptyDetails
 }
 
 type accountAddressEmptyDetailsReadonly AccountAddressEmptyDetails
-
-func (r *accountAddressEmptyDetailsReadonly) GetKey() string {
-	return (*AccountAddressEmptyDetails)(r).GetKey()
-}
-
-func (r *accountAddressEmptyDetailsReadonly) GetAccount() string {
-	return (*AccountAddressEmptyDetails)(r).GetAccount()
-}
 
 func (r *accountAddressEmptyDetailsReadonly) Mutate() *AccountAddressEmptyDetails {
 	return (*AccountAddressEmptyDetails)(r).CloneVT()
@@ -6064,20 +6054,10 @@ func NewAccountAddressEmptyDetailsListReader(s []*AccountAddressEmptyDetails) Ac
 // AccountAddressEmptySegmentDetailsReader provides read-only access to AccountAddressEmptySegmentDetails.
 // Call Mutate() to obtain a mutable clone.
 type AccountAddressEmptySegmentDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *AccountAddressEmptySegmentDetails
 }
 
 type accountAddressEmptySegmentDetailsReadonly AccountAddressEmptySegmentDetails
-
-func (r *accountAddressEmptySegmentDetailsReadonly) GetKey() string {
-	return (*AccountAddressEmptySegmentDetails)(r).GetKey()
-}
-
-func (r *accountAddressEmptySegmentDetailsReadonly) GetAccount() string {
-	return (*AccountAddressEmptySegmentDetails)(r).GetAccount()
-}
 
 func (r *accountAddressEmptySegmentDetailsReadonly) Mutate() *AccountAddressEmptySegmentDetails {
 	return (*AccountAddressEmptySegmentDetails)(r).CloneVT()
@@ -6136,20 +6116,10 @@ func NewAccountAddressEmptySegmentDetailsListReader(s []*AccountAddressEmptySegm
 // AccountAddressInvalidCharDetailsReader provides read-only access to AccountAddressInvalidCharDetails.
 // Call Mutate() to obtain a mutable clone.
 type AccountAddressInvalidCharDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *AccountAddressInvalidCharDetails
 }
 
 type accountAddressInvalidCharDetailsReadonly AccountAddressInvalidCharDetails
-
-func (r *accountAddressInvalidCharDetailsReadonly) GetKey() string {
-	return (*AccountAddressInvalidCharDetails)(r).GetKey()
-}
-
-func (r *accountAddressInvalidCharDetailsReadonly) GetAccount() string {
-	return (*AccountAddressInvalidCharDetails)(r).GetAccount()
-}
 
 func (r *accountAddressInvalidCharDetailsReadonly) Mutate() *AccountAddressInvalidCharDetails {
 	return (*AccountAddressInvalidCharDetails)(r).CloneVT()
@@ -6208,20 +6178,10 @@ func NewAccountAddressInvalidCharDetailsListReader(s []*AccountAddressInvalidCha
 // AccountAddressTooLongDetailsReader provides read-only access to AccountAddressTooLongDetails.
 // Call Mutate() to obtain a mutable clone.
 type AccountAddressTooLongDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *AccountAddressTooLongDetails
 }
 
 type accountAddressTooLongDetailsReadonly AccountAddressTooLongDetails
-
-func (r *accountAddressTooLongDetailsReadonly) GetKey() string {
-	return (*AccountAddressTooLongDetails)(r).GetKey()
-}
-
-func (r *accountAddressTooLongDetailsReadonly) GetAccount() string {
-	return (*AccountAddressTooLongDetails)(r).GetAccount()
-}
 
 func (r *accountAddressTooLongDetailsReadonly) Mutate() *AccountAddressTooLongDetails {
 	return (*AccountAddressTooLongDetails)(r).CloneVT()
@@ -6558,20 +6518,10 @@ func NewAccountTypeHasAccountsDetailsListReader(s []*AccountTypeHasAccountsDetai
 // AccountTypeNameTooLongDetailsReader provides read-only access to AccountTypeNameTooLongDetails.
 // Call Mutate() to obtain a mutable clone.
 type AccountTypeNameTooLongDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *AccountTypeNameTooLongDetails
 }
 
 type accountTypeNameTooLongDetailsReadonly AccountTypeNameTooLongDetails
-
-func (r *accountTypeNameTooLongDetailsReadonly) GetKey() string {
-	return (*AccountTypeNameTooLongDetails)(r).GetKey()
-}
-
-func (r *accountTypeNameTooLongDetailsReadonly) GetAccount() string {
-	return (*AccountTypeNameTooLongDetails)(r).GetAccount()
-}
 
 func (r *accountTypeNameTooLongDetailsReadonly) Mutate() *AccountTypeNameTooLongDetails {
 	return (*AccountTypeNameTooLongDetails)(r).CloneVT()
@@ -6697,20 +6647,10 @@ func NewAccountTypeNotFoundDetailsListReader(s []*AccountTypeNotFoundDetails) Ac
 // AccountTypePatternTooLongDetailsReader provides read-only access to AccountTypePatternTooLongDetails.
 // Call Mutate() to obtain a mutable clone.
 type AccountTypePatternTooLongDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *AccountTypePatternTooLongDetails
 }
 
 type accountTypePatternTooLongDetailsReadonly AccountTypePatternTooLongDetails
-
-func (r *accountTypePatternTooLongDetailsReadonly) GetKey() string {
-	return (*AccountTypePatternTooLongDetails)(r).GetKey()
-}
-
-func (r *accountTypePatternTooLongDetailsReadonly) GetAccount() string {
-	return (*AccountTypePatternTooLongDetails)(r).GetAccount()
-}
 
 func (r *accountTypePatternTooLongDetailsReadonly) Mutate() *AccountTypePatternTooLongDetails {
 	return (*AccountTypePatternTooLongDetails)(r).CloneVT()
@@ -6841,20 +6781,10 @@ func NewAggregateOverflowDetailsListReader(s []*AggregateOverflowDetails) Aggreg
 // AssetInvalidDetailsReader provides read-only access to AssetInvalidDetails.
 // Call Mutate() to obtain a mutable clone.
 type AssetInvalidDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *AssetInvalidDetails
 }
 
 type assetInvalidDetailsReadonly AssetInvalidDetails
-
-func (r *assetInvalidDetailsReadonly) GetKey() string {
-	return (*AssetInvalidDetails)(r).GetKey()
-}
-
-func (r *assetInvalidDetailsReadonly) GetAccount() string {
-	return (*AssetInvalidDetails)(r).GetAccount()
-}
 
 func (r *assetInvalidDetailsReadonly) Mutate() *AssetInvalidDetails {
 	return (*AssetInvalidDetails)(r).CloneVT()
@@ -7387,20 +7317,10 @@ func NewCheckpointNotReadyDetailsListReader(s []*CheckpointNotReadyDetails) Chec
 // ClusterPolicyInvalidDetailsReader provides read-only access to ClusterPolicyInvalidDetails.
 // Call Mutate() to obtain a mutable clone.
 type ClusterPolicyInvalidDetailsReader interface {
-	GetAccount() string
-	GetKey() string
 	Mutate() *ClusterPolicyInvalidDetails
 }
 
 type clusterPolicyInvalidDetailsReadonly ClusterPolicyInvalidDetails
-
-func (r *clusterPolicyInvalidDetailsReadonly) GetAccount() string {
-	return (*ClusterPolicyInvalidDetails)(r).GetAccount()
-}
-
-func (r *clusterPolicyInvalidDetailsReadonly) GetKey() string {
-	return (*ClusterPolicyInvalidDetails)(r).GetKey()
-}
 
 func (r *clusterPolicyInvalidDetailsReadonly) Mutate() *ClusterPolicyInvalidDetails {
 	return (*ClusterPolicyInvalidDetails)(r).CloneVT()
@@ -7588,20 +7508,10 @@ func NewClusterUnhealthyDetailsListReader(s []*ClusterUnhealthyDetails) ClusterU
 // ColorInvalidDetailsReader provides read-only access to ColorInvalidDetails.
 // Call Mutate() to obtain a mutable clone.
 type ColorInvalidDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *ColorInvalidDetails
 }
 
 type colorInvalidDetailsReadonly ColorInvalidDetails
-
-func (r *colorInvalidDetailsReadonly) GetKey() string {
-	return (*ColorInvalidDetails)(r).GetKey()
-}
-
-func (r *colorInvalidDetailsReadonly) GetAccount() string {
-	return (*ColorInvalidDetails)(r).GetAccount()
-}
 
 func (r *colorInvalidDetailsReadonly) Mutate() *ColorInvalidDetails {
 	return (*ColorInvalidDetails)(r).CloneVT()
@@ -7660,20 +7570,10 @@ func NewColorInvalidDetailsListReader(s []*ColorInvalidDetails) ColorInvalidDeta
 // ColorTooLongDetailsReader provides read-only access to ColorTooLongDetails.
 // Call Mutate() to obtain a mutable clone.
 type ColorTooLongDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *ColorTooLongDetails
 }
 
 type colorTooLongDetailsReadonly ColorTooLongDetails
-
-func (r *colorTooLongDetailsReadonly) GetKey() string {
-	return (*ColorTooLongDetails)(r).GetKey()
-}
-
-func (r *colorTooLongDetailsReadonly) GetAccount() string {
-	return (*ColorTooLongDetails)(r).GetAccount()
-}
 
 func (r *colorTooLongDetailsReadonly) Mutate() *ColorTooLongDetails {
 	return (*ColorTooLongDetails)(r).CloneVT()
@@ -7814,20 +7714,10 @@ func NewCoverageMissDetailsListReader(s []*CoverageMissDetails) CoverageMissDeta
 // DependencyDiscoveryFailedDetailsReader provides read-only access to DependencyDiscoveryFailedDetails.
 // Call Mutate() to obtain a mutable clone.
 type DependencyDiscoveryFailedDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *DependencyDiscoveryFailedDetails
 }
 
 type dependencyDiscoveryFailedDetailsReadonly DependencyDiscoveryFailedDetails
-
-func (r *dependencyDiscoveryFailedDetailsReadonly) GetKey() string {
-	return (*DependencyDiscoveryFailedDetails)(r).GetKey()
-}
-
-func (r *dependencyDiscoveryFailedDetailsReadonly) GetAccount() string {
-	return (*DependencyDiscoveryFailedDetails)(r).GetAccount()
-}
 
 func (r *dependencyDiscoveryFailedDetailsReadonly) Mutate() *DependencyDiscoveryFailedDetails {
 	return (*DependencyDiscoveryFailedDetails)(r).CloneVT()
@@ -7886,20 +7776,10 @@ func NewDependencyDiscoveryFailedDetailsListReader(s []*DependencyDiscoveryFaile
 // EmptyTransactionDetailsReader provides read-only access to EmptyTransactionDetails.
 // Call Mutate() to obtain a mutable clone.
 type EmptyTransactionDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *EmptyTransactionDetails
 }
 
 type emptyTransactionDetailsReadonly EmptyTransactionDetails
-
-func (r *emptyTransactionDetailsReadonly) GetKey() string {
-	return (*EmptyTransactionDetails)(r).GetKey()
-}
-
-func (r *emptyTransactionDetailsReadonly) GetAccount() string {
-	return (*EmptyTransactionDetails)(r).GetAccount()
-}
 
 func (r *emptyTransactionDetailsReadonly) Mutate() *EmptyTransactionDetails {
 	return (*EmptyTransactionDetails)(r).CloneVT()
@@ -8221,20 +8101,10 @@ func NewIdempotencyKeyConflictDetailsListReader(s []*IdempotencyKeyConflictDetai
 // IdRequiredDetailsReader provides read-only access to IdRequiredDetails.
 // Call Mutate() to obtain a mutable clone.
 type IdRequiredDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *IdRequiredDetails
 }
 
 type idRequiredDetailsReadonly IdRequiredDetails
-
-func (r *idRequiredDetailsReadonly) GetKey() string {
-	return (*IdRequiredDetails)(r).GetKey()
-}
-
-func (r *idRequiredDetailsReadonly) GetAccount() string {
-	return (*IdRequiredDetails)(r).GetAccount()
-}
 
 func (r *idRequiredDetailsReadonly) Mutate() *IdRequiredDetails {
 	return (*IdRequiredDetails)(r).CloneVT()
@@ -8561,20 +8431,10 @@ func NewIndexNotFoundDetailsListReader(s []*IndexNotFoundDetails) IndexNotFoundD
 // IndexTargetUnsupportedDetailsReader provides read-only access to IndexTargetUnsupportedDetails.
 // Call Mutate() to obtain a mutable clone.
 type IndexTargetUnsupportedDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *IndexTargetUnsupportedDetails
 }
 
 type indexTargetUnsupportedDetailsReadonly IndexTargetUnsupportedDetails
-
-func (r *indexTargetUnsupportedDetailsReadonly) GetKey() string {
-	return (*IndexTargetUnsupportedDetails)(r).GetKey()
-}
-
-func (r *indexTargetUnsupportedDetailsReadonly) GetAccount() string {
-	return (*IndexTargetUnsupportedDetails)(r).GetAccount()
-}
 
 func (r *indexTargetUnsupportedDetailsReadonly) Mutate() *IndexTargetUnsupportedDetails {
 	return (*IndexTargetUnsupportedDetails)(r).CloneVT()
@@ -9102,21 +8962,11 @@ func NewInvalidPatternDetailsListReader(s []*InvalidPatternDetails) InvalidPatte
 // InvalidSkippableReasonDetailsReader provides read-only access to InvalidSkippableReasonDetails.
 // Call Mutate() to obtain a mutable clone.
 type InvalidSkippableReasonDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	GetProvidedReason() string
 	Mutate() *InvalidSkippableReasonDetails
 }
 
 type invalidSkippableReasonDetailsReadonly InvalidSkippableReasonDetails
-
-func (r *invalidSkippableReasonDetailsReadonly) GetKey() string {
-	return (*InvalidSkippableReasonDetails)(r).GetKey()
-}
-
-func (r *invalidSkippableReasonDetailsReadonly) GetAccount() string {
-	return (*InvalidSkippableReasonDetails)(r).GetAccount()
-}
 
 func (r *invalidSkippableReasonDetailsReadonly) GetProvidedReason() string {
 	return (*InvalidSkippableReasonDetails)(r).GetProvidedReason()
@@ -9380,20 +9230,10 @@ func NewLedgerInMirrorModeDetailsListReader(s []*LedgerInMirrorModeDetails) Ledg
 // LedgerNameInvalidCharDetailsReader provides read-only access to LedgerNameInvalidCharDetails.
 // Call Mutate() to obtain a mutable clone.
 type LedgerNameInvalidCharDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *LedgerNameInvalidCharDetails
 }
 
 type ledgerNameInvalidCharDetailsReadonly LedgerNameInvalidCharDetails
-
-func (r *ledgerNameInvalidCharDetailsReadonly) GetKey() string {
-	return (*LedgerNameInvalidCharDetails)(r).GetKey()
-}
-
-func (r *ledgerNameInvalidCharDetailsReadonly) GetAccount() string {
-	return (*LedgerNameInvalidCharDetails)(r).GetAccount()
-}
 
 func (r *ledgerNameInvalidCharDetailsReadonly) Mutate() *LedgerNameInvalidCharDetails {
 	return (*LedgerNameInvalidCharDetails)(r).CloneVT()
@@ -9452,20 +9292,10 @@ func NewLedgerNameInvalidCharDetailsListReader(s []*LedgerNameInvalidCharDetails
 // LedgerNameRequiredDetailsReader provides read-only access to LedgerNameRequiredDetails.
 // Call Mutate() to obtain a mutable clone.
 type LedgerNameRequiredDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *LedgerNameRequiredDetails
 }
 
 type ledgerNameRequiredDetailsReadonly LedgerNameRequiredDetails
-
-func (r *ledgerNameRequiredDetailsReadonly) GetKey() string {
-	return (*LedgerNameRequiredDetails)(r).GetKey()
-}
-
-func (r *ledgerNameRequiredDetailsReadonly) GetAccount() string {
-	return (*LedgerNameRequiredDetails)(r).GetAccount()
-}
 
 func (r *ledgerNameRequiredDetailsReadonly) Mutate() *LedgerNameRequiredDetails {
 	return (*LedgerNameRequiredDetails)(r).CloneVT()
@@ -9524,20 +9354,10 @@ func NewLedgerNameRequiredDetailsListReader(s []*LedgerNameRequiredDetails) Ledg
 // LedgerNameReservedPrefixDetailsReader provides read-only access to LedgerNameReservedPrefixDetails.
 // Call Mutate() to obtain a mutable clone.
 type LedgerNameReservedPrefixDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *LedgerNameReservedPrefixDetails
 }
 
 type ledgerNameReservedPrefixDetailsReadonly LedgerNameReservedPrefixDetails
-
-func (r *ledgerNameReservedPrefixDetailsReadonly) GetKey() string {
-	return (*LedgerNameReservedPrefixDetails)(r).GetKey()
-}
-
-func (r *ledgerNameReservedPrefixDetailsReadonly) GetAccount() string {
-	return (*LedgerNameReservedPrefixDetails)(r).GetAccount()
-}
 
 func (r *ledgerNameReservedPrefixDetailsReadonly) Mutate() *LedgerNameReservedPrefixDetails {
 	return (*LedgerNameReservedPrefixDetails)(r).CloneVT()
@@ -9596,20 +9416,10 @@ func NewLedgerNameReservedPrefixDetailsListReader(s []*LedgerNameReservedPrefixD
 // LedgerNameTooLongDetailsReader provides read-only access to LedgerNameTooLongDetails.
 // Call Mutate() to obtain a mutable clone.
 type LedgerNameTooLongDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *LedgerNameTooLongDetails
 }
 
 type ledgerNameTooLongDetailsReadonly LedgerNameTooLongDetails
-
-func (r *ledgerNameTooLongDetailsReadonly) GetKey() string {
-	return (*LedgerNameTooLongDetails)(r).GetKey()
-}
-
-func (r *ledgerNameTooLongDetailsReadonly) GetAccount() string {
-	return (*LedgerNameTooLongDetails)(r).GetAccount()
-}
 
 func (r *ledgerNameTooLongDetailsReadonly) Mutate() *LedgerNameTooLongDetails {
 	return (*LedgerNameTooLongDetails)(r).CloneVT()
@@ -10080,20 +9890,10 @@ func NewMetadataKeyInvalidCharDetailsListReader(s []*MetadataKeyInvalidCharDetai
 // MetadataKeyRequiredDetailsReader provides read-only access to MetadataKeyRequiredDetails.
 // Call Mutate() to obtain a mutable clone.
 type MetadataKeyRequiredDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *MetadataKeyRequiredDetails
 }
 
 type metadataKeyRequiredDetailsReadonly MetadataKeyRequiredDetails
-
-func (r *metadataKeyRequiredDetailsReadonly) GetKey() string {
-	return (*MetadataKeyRequiredDetails)(r).GetKey()
-}
-
-func (r *metadataKeyRequiredDetailsReadonly) GetAccount() string {
-	return (*MetadataKeyRequiredDetails)(r).GetAccount()
-}
 
 func (r *metadataKeyRequiredDetailsReadonly) Mutate() *MetadataKeyRequiredDetails {
 	return (*MetadataKeyRequiredDetails)(r).CloneVT()
@@ -10313,7 +10113,6 @@ func NewMetadataLimitExceededDetailsListReader(s []*MetadataLimitExceededDetails
 type MetadataNotFoundDetailsReader interface {
 	GetTarget() string
 	GetKey() string
-	GetAccount() string
 	Mutate() *MetadataNotFoundDetails
 }
 
@@ -10325,10 +10124,6 @@ func (r *metadataNotFoundDetailsReadonly) GetTarget() string {
 
 func (r *metadataNotFoundDetailsReadonly) GetKey() string {
 	return (*MetadataNotFoundDetails)(r).GetKey()
-}
-
-func (r *metadataNotFoundDetailsReadonly) GetAccount() string {
-	return (*MetadataNotFoundDetails)(r).GetAccount()
 }
 
 func (r *metadataNotFoundDetailsReadonly) Mutate() *MetadataNotFoundDetails {
@@ -10460,20 +10255,10 @@ func NewMetadataValueContainsNullByteDetailsListReader(s []*MetadataValueContain
 // MirrorHttpUrlInvalidDetailsReader provides read-only access to MirrorHttpUrlInvalidDetails.
 // Call Mutate() to obtain a mutable clone.
 type MirrorHttpUrlInvalidDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *MirrorHttpUrlInvalidDetails
 }
 
 type mirrorHttpUrlInvalidDetailsReadonly MirrorHttpUrlInvalidDetails
-
-func (r *mirrorHttpUrlInvalidDetailsReadonly) GetKey() string {
-	return (*MirrorHttpUrlInvalidDetails)(r).GetKey()
-}
-
-func (r *mirrorHttpUrlInvalidDetailsReadonly) GetAccount() string {
-	return (*MirrorHttpUrlInvalidDetails)(r).GetAccount()
-}
 
 func (r *mirrorHttpUrlInvalidDetailsReadonly) Mutate() *MirrorHttpUrlInvalidDetails {
 	return (*MirrorHttpUrlInvalidDetails)(r).CloneVT()
@@ -10532,20 +10317,10 @@ func NewMirrorHttpUrlInvalidDetailsListReader(s []*MirrorHttpUrlInvalidDetails) 
 // MirrorIamRegionRequiredDetailsReader provides read-only access to MirrorIamRegionRequiredDetails.
 // Call Mutate() to obtain a mutable clone.
 type MirrorIamRegionRequiredDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *MirrorIamRegionRequiredDetails
 }
 
 type mirrorIamRegionRequiredDetailsReadonly MirrorIamRegionRequiredDetails
-
-func (r *mirrorIamRegionRequiredDetailsReadonly) GetKey() string {
-	return (*MirrorIamRegionRequiredDetails)(r).GetKey()
-}
-
-func (r *mirrorIamRegionRequiredDetailsReadonly) GetAccount() string {
-	return (*MirrorIamRegionRequiredDetails)(r).GetAccount()
-}
 
 func (r *mirrorIamRegionRequiredDetailsReadonly) Mutate() *MirrorIamRegionRequiredDetails {
 	return (*MirrorIamRegionRequiredDetails)(r).CloneVT()
@@ -10604,20 +10379,10 @@ func NewMirrorIamRegionRequiredDetailsListReader(s []*MirrorIamRegionRequiredDet
 // MirrorIamRequiresTlsDetailsReader provides read-only access to MirrorIamRequiresTlsDetails.
 // Call Mutate() to obtain a mutable clone.
 type MirrorIamRequiresTlsDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *MirrorIamRequiresTlsDetails
 }
 
 type mirrorIamRequiresTlsDetailsReadonly MirrorIamRequiresTlsDetails
-
-func (r *mirrorIamRequiresTlsDetailsReadonly) GetKey() string {
-	return (*MirrorIamRequiresTlsDetails)(r).GetKey()
-}
-
-func (r *mirrorIamRequiresTlsDetailsReadonly) GetAccount() string {
-	return (*MirrorIamRequiresTlsDetails)(r).GetAccount()
-}
 
 func (r *mirrorIamRequiresTlsDetailsReadonly) Mutate() *MirrorIamRequiresTlsDetails {
 	return (*MirrorIamRequiresTlsDetails)(r).CloneVT()
@@ -10676,20 +10441,10 @@ func NewMirrorIamRequiresTlsDetailsListReader(s []*MirrorIamRequiresTlsDetails) 
 // MirrorRewriteRuleInvalidDetailsReader provides read-only access to MirrorRewriteRuleInvalidDetails.
 // Call Mutate() to obtain a mutable clone.
 type MirrorRewriteRuleInvalidDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *MirrorRewriteRuleInvalidDetails
 }
 
 type mirrorRewriteRuleInvalidDetailsReadonly MirrorRewriteRuleInvalidDetails
-
-func (r *mirrorRewriteRuleInvalidDetailsReadonly) GetKey() string {
-	return (*MirrorRewriteRuleInvalidDetails)(r).GetKey()
-}
-
-func (r *mirrorRewriteRuleInvalidDetailsReadonly) GetAccount() string {
-	return (*MirrorRewriteRuleInvalidDetails)(r).GetAccount()
-}
 
 func (r *mirrorRewriteRuleInvalidDetailsReadonly) Mutate() *MirrorRewriteRuleInvalidDetails {
 	return (*MirrorRewriteRuleInvalidDetails)(r).CloneVT()
@@ -12453,20 +12208,10 @@ func NewNumscriptCompileUnknownFunctionDetailsListReader(s []*NumscriptCompileUn
 // NumscriptContentRequiredDetailsReader provides read-only access to NumscriptContentRequiredDetails.
 // Call Mutate() to obtain a mutable clone.
 type NumscriptContentRequiredDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *NumscriptContentRequiredDetails
 }
 
 type numscriptContentRequiredDetailsReadonly NumscriptContentRequiredDetails
-
-func (r *numscriptContentRequiredDetailsReadonly) GetKey() string {
-	return (*NumscriptContentRequiredDetails)(r).GetKey()
-}
-
-func (r *numscriptContentRequiredDetailsReadonly) GetAccount() string {
-	return (*NumscriptContentRequiredDetails)(r).GetAccount()
-}
 
 func (r *numscriptContentRequiredDetailsReadonly) Mutate() *NumscriptContentRequiredDetails {
 	return (*NumscriptContentRequiredDetails)(r).CloneVT()
@@ -14071,20 +13816,10 @@ func NewNumscriptMissingVariableDetailsListReader(s []*NumscriptMissingVariableD
 // NumscriptNameInvalidCharDetailsReader provides read-only access to NumscriptNameInvalidCharDetails.
 // Call Mutate() to obtain a mutable clone.
 type NumscriptNameInvalidCharDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *NumscriptNameInvalidCharDetails
 }
 
 type numscriptNameInvalidCharDetailsReadonly NumscriptNameInvalidCharDetails
-
-func (r *numscriptNameInvalidCharDetailsReadonly) GetKey() string {
-	return (*NumscriptNameInvalidCharDetails)(r).GetKey()
-}
-
-func (r *numscriptNameInvalidCharDetailsReadonly) GetAccount() string {
-	return (*NumscriptNameInvalidCharDetails)(r).GetAccount()
-}
 
 func (r *numscriptNameInvalidCharDetailsReadonly) Mutate() *NumscriptNameInvalidCharDetails {
 	return (*NumscriptNameInvalidCharDetails)(r).CloneVT()
@@ -14143,20 +13878,10 @@ func NewNumscriptNameInvalidCharDetailsListReader(s []*NumscriptNameInvalidCharD
 // NumscriptNameRequiredDetailsReader provides read-only access to NumscriptNameRequiredDetails.
 // Call Mutate() to obtain a mutable clone.
 type NumscriptNameRequiredDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *NumscriptNameRequiredDetails
 }
 
 type numscriptNameRequiredDetailsReadonly NumscriptNameRequiredDetails
-
-func (r *numscriptNameRequiredDetailsReadonly) GetKey() string {
-	return (*NumscriptNameRequiredDetails)(r).GetKey()
-}
-
-func (r *numscriptNameRequiredDetailsReadonly) GetAccount() string {
-	return (*NumscriptNameRequiredDetails)(r).GetAccount()
-}
 
 func (r *numscriptNameRequiredDetailsReadonly) Mutate() *NumscriptNameRequiredDetails {
 	return (*NumscriptNameRequiredDetails)(r).CloneVT()
@@ -14215,20 +13940,10 @@ func NewNumscriptNameRequiredDetailsListReader(s []*NumscriptNameRequiredDetails
 // NumscriptNameTooLongDetailsReader provides read-only access to NumscriptNameTooLongDetails.
 // Call Mutate() to obtain a mutable clone.
 type NumscriptNameTooLongDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *NumscriptNameTooLongDetails
 }
 
 type numscriptNameTooLongDetailsReadonly NumscriptNameTooLongDetails
-
-func (r *numscriptNameTooLongDetailsReadonly) GetKey() string {
-	return (*NumscriptNameTooLongDetails)(r).GetKey()
-}
-
-func (r *numscriptNameTooLongDetailsReadonly) GetAccount() string {
-	return (*NumscriptNameTooLongDetails)(r).GetAccount()
-}
 
 func (r *numscriptNameTooLongDetailsReadonly) Mutate() *NumscriptNameTooLongDetails {
 	return (*NumscriptNameTooLongDetails)(r).CloneVT()
@@ -14781,15 +14496,10 @@ func NewNumscriptPostingNegativeAmountDetailsListReader(s []*NumscriptPostingNeg
 // NumscriptRuntimeDetailsReader provides read-only access to NumscriptRuntimeDetails.
 // Call Mutate() to obtain a mutable clone.
 type NumscriptRuntimeDetailsReader interface {
-	GetKey() string
 	Mutate() *NumscriptRuntimeDetails
 }
 
 type numscriptRuntimeDetailsReadonly NumscriptRuntimeDetails
-
-func (r *numscriptRuntimeDetailsReadonly) GetKey() string {
-	return (*NumscriptRuntimeDetails)(r).GetKey()
-}
 
 func (r *numscriptRuntimeDetailsReadonly) Mutate() *NumscriptRuntimeDetails {
 	return (*NumscriptRuntimeDetails)(r).CloneVT()
@@ -14848,20 +14558,10 @@ func NewNumscriptRuntimeDetailsListReader(s []*NumscriptRuntimeDetails) Numscrip
 // NumscriptScalingUnsupportedDetailsReader provides read-only access to NumscriptScalingUnsupportedDetails.
 // Call Mutate() to obtain a mutable clone.
 type NumscriptScalingUnsupportedDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *NumscriptScalingUnsupportedDetails
 }
 
 type numscriptScalingUnsupportedDetailsReadonly NumscriptScalingUnsupportedDetails
-
-func (r *numscriptScalingUnsupportedDetailsReadonly) GetKey() string {
-	return (*NumscriptScalingUnsupportedDetails)(r).GetKey()
-}
-
-func (r *numscriptScalingUnsupportedDetailsReadonly) GetAccount() string {
-	return (*NumscriptScalingUnsupportedDetails)(r).GetAccount()
-}
 
 func (r *numscriptScalingUnsupportedDetailsReadonly) Mutate() *NumscriptScalingUnsupportedDetails {
 	return (*NumscriptScalingUnsupportedDetails)(r).CloneVT()
@@ -15193,20 +14893,10 @@ func NewNumscriptVersionAlreadyExistsDetailsListReader(s []*NumscriptVersionAlre
 // PostingsAndScriptConflictDetailsReader provides read-only access to PostingsAndScriptConflictDetails.
 // Call Mutate() to obtain a mutable clone.
 type PostingsAndScriptConflictDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *PostingsAndScriptConflictDetails
 }
 
 type postingsAndScriptConflictDetailsReadonly PostingsAndScriptConflictDetails
-
-func (r *postingsAndScriptConflictDetailsReadonly) GetKey() string {
-	return (*PostingsAndScriptConflictDetails)(r).GetKey()
-}
-
-func (r *postingsAndScriptConflictDetailsReadonly) GetAccount() string {
-	return (*PostingsAndScriptConflictDetails)(r).GetAccount()
-}
 
 func (r *postingsAndScriptConflictDetailsReadonly) Mutate() *PostingsAndScriptConflictDetails {
 	return (*PostingsAndScriptConflictDetails)(r).CloneVT()
@@ -15399,20 +15089,10 @@ func NewPreparedQueryAlreadyExistsDetailsListReader(s []*PreparedQueryAlreadyExi
 // PreparedQueryNameInvalidCharDetailsReader provides read-only access to PreparedQueryNameInvalidCharDetails.
 // Call Mutate() to obtain a mutable clone.
 type PreparedQueryNameInvalidCharDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *PreparedQueryNameInvalidCharDetails
 }
 
 type preparedQueryNameInvalidCharDetailsReadonly PreparedQueryNameInvalidCharDetails
-
-func (r *preparedQueryNameInvalidCharDetailsReadonly) GetKey() string {
-	return (*PreparedQueryNameInvalidCharDetails)(r).GetKey()
-}
-
-func (r *preparedQueryNameInvalidCharDetailsReadonly) GetAccount() string {
-	return (*PreparedQueryNameInvalidCharDetails)(r).GetAccount()
-}
 
 func (r *preparedQueryNameInvalidCharDetailsReadonly) Mutate() *PreparedQueryNameInvalidCharDetails {
 	return (*PreparedQueryNameInvalidCharDetails)(r).CloneVT()
@@ -15471,20 +15151,10 @@ func NewPreparedQueryNameInvalidCharDetailsListReader(s []*PreparedQueryNameInva
 // PreparedQueryNameRequiredDetailsReader provides read-only access to PreparedQueryNameRequiredDetails.
 // Call Mutate() to obtain a mutable clone.
 type PreparedQueryNameRequiredDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *PreparedQueryNameRequiredDetails
 }
 
 type preparedQueryNameRequiredDetailsReadonly PreparedQueryNameRequiredDetails
-
-func (r *preparedQueryNameRequiredDetailsReadonly) GetKey() string {
-	return (*PreparedQueryNameRequiredDetails)(r).GetKey()
-}
-
-func (r *preparedQueryNameRequiredDetailsReadonly) GetAccount() string {
-	return (*PreparedQueryNameRequiredDetails)(r).GetAccount()
-}
 
 func (r *preparedQueryNameRequiredDetailsReadonly) Mutate() *PreparedQueryNameRequiredDetails {
 	return (*PreparedQueryNameRequiredDetails)(r).CloneVT()
@@ -15543,20 +15213,10 @@ func NewPreparedQueryNameRequiredDetailsListReader(s []*PreparedQueryNameRequire
 // PreparedQueryNameTooLongDetailsReader provides read-only access to PreparedQueryNameTooLongDetails.
 // Call Mutate() to obtain a mutable clone.
 type PreparedQueryNameTooLongDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *PreparedQueryNameTooLongDetails
 }
 
 type preparedQueryNameTooLongDetailsReadonly PreparedQueryNameTooLongDetails
-
-func (r *preparedQueryNameTooLongDetailsReadonly) GetKey() string {
-	return (*PreparedQueryNameTooLongDetails)(r).GetKey()
-}
-
-func (r *preparedQueryNameTooLongDetailsReadonly) GetAccount() string {
-	return (*PreparedQueryNameTooLongDetails)(r).GetAccount()
-}
 
 func (r *preparedQueryNameTooLongDetailsReadonly) Mutate() *PreparedQueryNameTooLongDetails {
 	return (*PreparedQueryNameTooLongDetails)(r).CloneVT()
@@ -15687,20 +15347,10 @@ func NewPreparedQueryNotFoundDetailsListReader(s []*PreparedQueryNotFoundDetails
 // PreparedQueryRequiredDetailsReader provides read-only access to PreparedQueryRequiredDetails.
 // Call Mutate() to obtain a mutable clone.
 type PreparedQueryRequiredDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *PreparedQueryRequiredDetails
 }
 
 type preparedQueryRequiredDetailsReadonly PreparedQueryRequiredDetails
-
-func (r *preparedQueryRequiredDetailsReadonly) GetKey() string {
-	return (*PreparedQueryRequiredDetails)(r).GetKey()
-}
-
-func (r *preparedQueryRequiredDetailsReadonly) GetAccount() string {
-	return (*PreparedQueryRequiredDetails)(r).GetAccount()
-}
 
 func (r *preparedQueryRequiredDetailsReadonly) Mutate() *PreparedQueryRequiredDetails {
 	return (*PreparedQueryRequiredDetails)(r).CloneVT()
@@ -15759,20 +15409,10 @@ func NewPreparedQueryRequiredDetailsListReader(s []*PreparedQueryRequiredDetails
 // PreparedQueryTargetUnsupportedDetailsReader provides read-only access to PreparedQueryTargetUnsupportedDetails.
 // Call Mutate() to obtain a mutable clone.
 type PreparedQueryTargetUnsupportedDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *PreparedQueryTargetUnsupportedDetails
 }
 
 type preparedQueryTargetUnsupportedDetailsReadonly PreparedQueryTargetUnsupportedDetails
-
-func (r *preparedQueryTargetUnsupportedDetailsReadonly) GetKey() string {
-	return (*PreparedQueryTargetUnsupportedDetails)(r).GetKey()
-}
-
-func (r *preparedQueryTargetUnsupportedDetailsReadonly) GetAccount() string {
-	return (*PreparedQueryTargetUnsupportedDetails)(r).GetAccount()
-}
 
 func (r *preparedQueryTargetUnsupportedDetailsReadonly) Mutate() *PreparedQueryTargetUnsupportedDetails {
 	return (*PreparedQueryTargetUnsupportedDetails)(r).CloneVT()
@@ -15898,20 +15538,10 @@ func NewRevertTargetCreatedInBatchDetailsListReader(s []*RevertTargetCreatedInBa
 // ScopedBalanceUnsupportedDetailsReader provides read-only access to ScopedBalanceUnsupportedDetails.
 // Call Mutate() to obtain a mutable clone.
 type ScopedBalanceUnsupportedDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *ScopedBalanceUnsupportedDetails
 }
 
 type scopedBalanceUnsupportedDetailsReadonly ScopedBalanceUnsupportedDetails
-
-func (r *scopedBalanceUnsupportedDetailsReadonly) GetKey() string {
-	return (*ScopedBalanceUnsupportedDetails)(r).GetKey()
-}
-
-func (r *scopedBalanceUnsupportedDetailsReadonly) GetAccount() string {
-	return (*ScopedBalanceUnsupportedDetails)(r).GetAccount()
-}
 
 func (r *scopedBalanceUnsupportedDetailsReadonly) Mutate() *ScopedBalanceUnsupportedDetails {
 	return (*ScopedBalanceUnsupportedDetails)(r).CloneVT()
@@ -15970,20 +15600,10 @@ func NewScopedBalanceUnsupportedDetailsListReader(s []*ScopedBalanceUnsupportedD
 // ScriptAndReferenceConflictDetailsReader provides read-only access to ScriptAndReferenceConflictDetails.
 // Call Mutate() to obtain a mutable clone.
 type ScriptAndReferenceConflictDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *ScriptAndReferenceConflictDetails
 }
 
 type scriptAndReferenceConflictDetailsReadonly ScriptAndReferenceConflictDetails
-
-func (r *scriptAndReferenceConflictDetailsReadonly) GetKey() string {
-	return (*ScriptAndReferenceConflictDetails)(r).GetKey()
-}
-
-func (r *scriptAndReferenceConflictDetailsReadonly) GetAccount() string {
-	return (*ScriptAndReferenceConflictDetails)(r).GetAccount()
-}
 
 func (r *scriptAndReferenceConflictDetailsReadonly) Mutate() *ScriptAndReferenceConflictDetails {
 	return (*ScriptAndReferenceConflictDetails)(r).CloneVT()
@@ -16042,20 +15662,10 @@ func NewScriptAndReferenceConflictDetailsListReader(s []*ScriptAndReferenceConfl
 // ScriptRequiredDetailsReader provides read-only access to ScriptRequiredDetails.
 // Call Mutate() to obtain a mutable clone.
 type ScriptRequiredDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *ScriptRequiredDetails
 }
 
 type scriptRequiredDetailsReadonly ScriptRequiredDetails
-
-func (r *scriptRequiredDetailsReadonly) GetKey() string {
-	return (*ScriptRequiredDetails)(r).GetKey()
-}
-
-func (r *scriptRequiredDetailsReadonly) GetAccount() string {
-	return (*ScriptRequiredDetails)(r).GetAccount()
-}
 
 func (r *scriptRequiredDetailsReadonly) Mutate() *ScriptRequiredDetails {
 	return (*ScriptRequiredDetails)(r).CloneVT()
@@ -16181,20 +15791,10 @@ func NewSequenceExhaustedDetailsListReader(s []*SequenceExhaustedDetails) Sequen
 // SigningKeyIdInvalidCharDetailsReader provides read-only access to SigningKeyIdInvalidCharDetails.
 // Call Mutate() to obtain a mutable clone.
 type SigningKeyIdInvalidCharDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *SigningKeyIdInvalidCharDetails
 }
 
 type signingKeyIdInvalidCharDetailsReadonly SigningKeyIdInvalidCharDetails
-
-func (r *signingKeyIdInvalidCharDetailsReadonly) GetKey() string {
-	return (*SigningKeyIdInvalidCharDetails)(r).GetKey()
-}
-
-func (r *signingKeyIdInvalidCharDetailsReadonly) GetAccount() string {
-	return (*SigningKeyIdInvalidCharDetails)(r).GetAccount()
-}
 
 func (r *signingKeyIdInvalidCharDetailsReadonly) Mutate() *SigningKeyIdInvalidCharDetails {
 	return (*SigningKeyIdInvalidCharDetails)(r).CloneVT()
@@ -16253,20 +15853,10 @@ func NewSigningKeyIdInvalidCharDetailsListReader(s []*SigningKeyIdInvalidCharDet
 // SigningKeyIdRequiredDetailsReader provides read-only access to SigningKeyIdRequiredDetails.
 // Call Mutate() to obtain a mutable clone.
 type SigningKeyIdRequiredDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *SigningKeyIdRequiredDetails
 }
 
 type signingKeyIdRequiredDetailsReadonly SigningKeyIdRequiredDetails
-
-func (r *signingKeyIdRequiredDetailsReadonly) GetKey() string {
-	return (*SigningKeyIdRequiredDetails)(r).GetKey()
-}
-
-func (r *signingKeyIdRequiredDetailsReadonly) GetAccount() string {
-	return (*SigningKeyIdRequiredDetails)(r).GetAccount()
-}
 
 func (r *signingKeyIdRequiredDetailsReadonly) Mutate() *SigningKeyIdRequiredDetails {
 	return (*SigningKeyIdRequiredDetails)(r).CloneVT()
@@ -16325,20 +15915,10 @@ func NewSigningKeyIdRequiredDetailsListReader(s []*SigningKeyIdRequiredDetails) 
 // SigningKeyIdTooLongDetailsReader provides read-only access to SigningKeyIdTooLongDetails.
 // Call Mutate() to obtain a mutable clone.
 type SigningKeyIdTooLongDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *SigningKeyIdTooLongDetails
 }
 
 type signingKeyIdTooLongDetailsReadonly SigningKeyIdTooLongDetails
-
-func (r *signingKeyIdTooLongDetailsReadonly) GetKey() string {
-	return (*SigningKeyIdTooLongDetails)(r).GetKey()
-}
-
-func (r *signingKeyIdTooLongDetailsReadonly) GetAccount() string {
-	return (*SigningKeyIdTooLongDetails)(r).GetAccount()
-}
 
 func (r *signingKeyIdTooLongDetailsReadonly) Mutate() *SigningKeyIdTooLongDetails {
 	return (*SigningKeyIdTooLongDetails)(r).CloneVT()
@@ -16397,20 +15977,10 @@ func NewSigningKeyIdTooLongDetailsListReader(s []*SigningKeyIdTooLongDetails) Si
 // SigningKeyInvalidLengthDetailsReader provides read-only access to SigningKeyInvalidLengthDetails.
 // Call Mutate() to obtain a mutable clone.
 type SigningKeyInvalidLengthDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *SigningKeyInvalidLengthDetails
 }
 
 type signingKeyInvalidLengthDetailsReadonly SigningKeyInvalidLengthDetails
-
-func (r *signingKeyInvalidLengthDetailsReadonly) GetKey() string {
-	return (*SigningKeyInvalidLengthDetails)(r).GetKey()
-}
-
-func (r *signingKeyInvalidLengthDetailsReadonly) GetAccount() string {
-	return (*SigningKeyInvalidLengthDetails)(r).GetAccount()
-}
 
 func (r *signingKeyInvalidLengthDetailsReadonly) Mutate() *SigningKeyInvalidLengthDetails {
 	return (*SigningKeyInvalidLengthDetails)(r).CloneVT()
@@ -17010,20 +16580,10 @@ func NewStorageOperationFailedDetailsListReader(s []*StorageOperationFailedDetai
 // TargetRequiredDetailsReader provides read-only access to TargetRequiredDetails.
 // Call Mutate() to obtain a mutable clone.
 type TargetRequiredDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *TargetRequiredDetails
 }
 
 type targetRequiredDetailsReadonly TargetRequiredDetails
-
-func (r *targetRequiredDetailsReadonly) GetKey() string {
-	return (*TargetRequiredDetails)(r).GetKey()
-}
-
-func (r *targetRequiredDetailsReadonly) GetAccount() string {
-	return (*TargetRequiredDetails)(r).GetAccount()
-}
 
 func (r *targetRequiredDetailsReadonly) Mutate() *TargetRequiredDetails {
 	return (*TargetRequiredDetails)(r).CloneVT()
@@ -17360,20 +16920,10 @@ func NewTransactionReferenceNotFoundDetailsListReader(s []*TransactionReferenceN
 // TransactionReferenceTooLongDetailsReader provides read-only access to TransactionReferenceTooLongDetails.
 // Call Mutate() to obtain a mutable clone.
 type TransactionReferenceTooLongDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *TransactionReferenceTooLongDetails
 }
 
 type transactionReferenceTooLongDetailsReadonly TransactionReferenceTooLongDetails
-
-func (r *transactionReferenceTooLongDetailsReadonly) GetKey() string {
-	return (*TransactionReferenceTooLongDetails)(r).GetKey()
-}
-
-func (r *transactionReferenceTooLongDetailsReadonly) GetAccount() string {
-	return (*TransactionReferenceTooLongDetails)(r).GetAccount()
-}
 
 func (r *transactionReferenceTooLongDetailsReadonly) Mutate() *TransactionReferenceTooLongDetails {
 	return (*TransactionReferenceTooLongDetails)(r).CloneVT()
@@ -17499,20 +17049,10 @@ func NewTransactionStateInconsistentDetailsListReader(s []*TransactionStateIncon
 // TransactionTargetMissingDetailsReader provides read-only access to TransactionTargetMissingDetails.
 // Call Mutate() to obtain a mutable clone.
 type TransactionTargetMissingDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *TransactionTargetMissingDetails
 }
 
 type transactionTargetMissingDetailsReadonly TransactionTargetMissingDetails
-
-func (r *transactionTargetMissingDetailsReadonly) GetKey() string {
-	return (*TransactionTargetMissingDetails)(r).GetKey()
-}
-
-func (r *transactionTargetMissingDetailsReadonly) GetAccount() string {
-	return (*TransactionTargetMissingDetails)(r).GetAccount()
-}
 
 func (r *transactionTargetMissingDetailsReadonly) Mutate() *TransactionTargetMissingDetails {
 	return (*TransactionTargetMissingDetails)(r).CloneVT()
@@ -17638,20 +17178,10 @@ func NewTransientAccountNonZeroDetailsListReader(s []*TransientAccountNonZeroDet
 // ValidationDetailsReader provides read-only access to ValidationDetails.
 // Call Mutate() to obtain a mutable clone.
 type ValidationDetailsReader interface {
-	GetKey() string
-	GetAccount() string
 	Mutate() *ValidationDetails
 }
 
 type validationDetailsReadonly ValidationDetails
-
-func (r *validationDetailsReadonly) GetKey() string {
-	return (*ValidationDetails)(r).GetKey()
-}
-
-func (r *validationDetailsReadonly) GetAccount() string {
-	return (*ValidationDetails)(r).GetAccount()
-}
 
 func (r *validationDetailsReadonly) Mutate() *ValidationDetails {
 	return (*ValidationDetails)(r).CloneVT()

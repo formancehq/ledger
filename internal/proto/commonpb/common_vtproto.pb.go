@@ -3631,14 +3631,6 @@ func (m *AccountAddressEmptyDetails) CloneVT() *AccountAddressEmptyDetails {
 		return (*AccountAddressEmptyDetails)(nil)
 	}
 	r := new(AccountAddressEmptyDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3655,14 +3647,6 @@ func (m *AccountAddressEmptySegmentDetails) CloneVT() *AccountAddressEmptySegmen
 		return (*AccountAddressEmptySegmentDetails)(nil)
 	}
 	r := new(AccountAddressEmptySegmentDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3679,14 +3663,6 @@ func (m *AccountAddressInvalidCharDetails) CloneVT() *AccountAddressInvalidCharD
 		return (*AccountAddressInvalidCharDetails)(nil)
 	}
 	r := new(AccountAddressInvalidCharDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3703,14 +3679,6 @@ func (m *AccountAddressTooLongDetails) CloneVT() *AccountAddressTooLongDetails {
 		return (*AccountAddressTooLongDetails)(nil)
 	}
 	r := new(AccountAddressTooLongDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3815,14 +3783,6 @@ func (m *AccountTypeNameTooLongDetails) CloneVT() *AccountTypeNameTooLongDetails
 		return (*AccountTypeNameTooLongDetails)(nil)
 	}
 	r := new(AccountTypeNameTooLongDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3859,14 +3819,6 @@ func (m *AccountTypePatternTooLongDetails) CloneVT() *AccountTypePatternTooLongD
 		return (*AccountTypePatternTooLongDetails)(nil)
 	}
 	r := new(AccountTypePatternTooLongDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3907,14 +3859,6 @@ func (m *AssetInvalidDetails) CloneVT() *AssetInvalidDetails {
 		return (*AssetInvalidDetails)(nil)
 	}
 	r := new(AssetInvalidDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4075,14 +4019,6 @@ func (m *ClusterPolicyInvalidDetails) CloneVT() *ClusterPolicyInvalidDetails {
 		return (*ClusterPolicyInvalidDetails)(nil)
 	}
 	r := new(ClusterPolicyInvalidDetails)
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4135,14 +4071,6 @@ func (m *ColorInvalidDetails) CloneVT() *ColorInvalidDetails {
 		return (*ColorInvalidDetails)(nil)
 	}
 	r := new(ColorInvalidDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4159,14 +4087,6 @@ func (m *ColorTooLongDetails) CloneVT() *ColorTooLongDetails {
 		return (*ColorTooLongDetails)(nil)
 	}
 	r := new(ColorTooLongDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4215,14 +4135,6 @@ func (m *DependencyDiscoveryFailedDetails) CloneVT() *DependencyDiscoveryFailedD
 		return (*DependencyDiscoveryFailedDetails)(nil)
 	}
 	r := new(DependencyDiscoveryFailedDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4239,14 +4151,6 @@ func (m *EmptyTransactionDetails) CloneVT() *EmptyTransactionDetails {
 		return (*EmptyTransactionDetails)(nil)
 	}
 	r := new(EmptyTransactionDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4339,14 +4243,6 @@ func (m *IdRequiredDetails) CloneVT() *IdRequiredDetails {
 		return (*IdRequiredDetails)(nil)
 	}
 	r := new(IdRequiredDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4443,14 +4339,6 @@ func (m *IndexTargetUnsupportedDetails) CloneVT() *IndexTargetUnsupportedDetails
 		return (*IndexTargetUnsupportedDetails)(nil)
 	}
 	r := new(IndexTargetUnsupportedDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4607,14 +4495,6 @@ func (m *InvalidSkippableReasonDetails) CloneVT() *InvalidSkippableReasonDetails
 		return (*InvalidSkippableReasonDetails)(nil)
 	}
 	r := new(InvalidSkippableReasonDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if rhs := m.ProvidedReason; rhs != nil {
 		tmpVal := *rhs
 		r.ProvidedReason = &tmpVal
@@ -4695,14 +4575,6 @@ func (m *LedgerNameInvalidCharDetails) CloneVT() *LedgerNameInvalidCharDetails {
 		return (*LedgerNameInvalidCharDetails)(nil)
 	}
 	r := new(LedgerNameInvalidCharDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4719,14 +4591,6 @@ func (m *LedgerNameRequiredDetails) CloneVT() *LedgerNameRequiredDetails {
 		return (*LedgerNameRequiredDetails)(nil)
 	}
 	r := new(LedgerNameRequiredDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4743,14 +4607,6 @@ func (m *LedgerNameReservedPrefixDetails) CloneVT() *LedgerNameReservedPrefixDet
 		return (*LedgerNameReservedPrefixDetails)(nil)
 	}
 	r := new(LedgerNameReservedPrefixDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4767,14 +4623,6 @@ func (m *LedgerNameTooLongDetails) CloneVT() *LedgerNameTooLongDetails {
 		return (*LedgerNameTooLongDetails)(nil)
 	}
 	r := new(LedgerNameTooLongDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4919,14 +4767,6 @@ func (m *MetadataKeyRequiredDetails) CloneVT() *MetadataKeyRequiredDetails {
 		return (*MetadataKeyRequiredDetails)(nil)
 	}
 	r := new(MetadataKeyRequiredDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5011,10 +4851,6 @@ func (m *MetadataNotFoundDetails) CloneVT() *MetadataNotFoundDetails {
 		tmpVal := *rhs
 		r.Key = &tmpVal
 	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5055,14 +4891,6 @@ func (m *MirrorHttpUrlInvalidDetails) CloneVT() *MirrorHttpUrlInvalidDetails {
 		return (*MirrorHttpUrlInvalidDetails)(nil)
 	}
 	r := new(MirrorHttpUrlInvalidDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5079,14 +4907,6 @@ func (m *MirrorIamRegionRequiredDetails) CloneVT() *MirrorIamRegionRequiredDetai
 		return (*MirrorIamRegionRequiredDetails)(nil)
 	}
 	r := new(MirrorIamRegionRequiredDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5103,14 +4923,6 @@ func (m *MirrorIamRequiresTlsDetails) CloneVT() *MirrorIamRequiresTlsDetails {
 		return (*MirrorIamRequiresTlsDetails)(nil)
 	}
 	r := new(MirrorIamRequiresTlsDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5127,14 +4939,6 @@ func (m *MirrorRewriteRuleInvalidDetails) CloneVT() *MirrorRewriteRuleInvalidDet
 		return (*MirrorRewriteRuleInvalidDetails)(nil)
 	}
 	r := new(MirrorRewriteRuleInvalidDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5675,14 +5479,6 @@ func (m *NumscriptContentRequiredDetails) CloneVT() *NumscriptContentRequiredDet
 		return (*NumscriptContentRequiredDetails)(nil)
 	}
 	r := new(NumscriptContentRequiredDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6163,14 +5959,6 @@ func (m *NumscriptNameInvalidCharDetails) CloneVT() *NumscriptNameInvalidCharDet
 		return (*NumscriptNameInvalidCharDetails)(nil)
 	}
 	r := new(NumscriptNameInvalidCharDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6187,14 +5975,6 @@ func (m *NumscriptNameRequiredDetails) CloneVT() *NumscriptNameRequiredDetails {
 		return (*NumscriptNameRequiredDetails)(nil)
 	}
 	r := new(NumscriptNameRequiredDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6211,14 +5991,6 @@ func (m *NumscriptNameTooLongDetails) CloneVT() *NumscriptNameTooLongDetails {
 		return (*NumscriptNameTooLongDetails)(nil)
 	}
 	r := new(NumscriptNameTooLongDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6395,10 +6167,6 @@ func (m *NumscriptRuntimeDetails) CloneVT() *NumscriptRuntimeDetails {
 		return (*NumscriptRuntimeDetails)(nil)
 	}
 	r := new(NumscriptRuntimeDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6415,14 +6183,6 @@ func (m *NumscriptScalingUnsupportedDetails) CloneVT() *NumscriptScalingUnsuppor
 		return (*NumscriptScalingUnsupportedDetails)(nil)
 	}
 	r := new(NumscriptScalingUnsupportedDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6523,14 +6283,6 @@ func (m *PostingsAndScriptConflictDetails) CloneVT() *PostingsAndScriptConflictD
 		return (*PostingsAndScriptConflictDetails)(nil)
 	}
 	r := new(PostingsAndScriptConflictDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6587,14 +6339,6 @@ func (m *PreparedQueryNameInvalidCharDetails) CloneVT() *PreparedQueryNameInvali
 		return (*PreparedQueryNameInvalidCharDetails)(nil)
 	}
 	r := new(PreparedQueryNameInvalidCharDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6611,14 +6355,6 @@ func (m *PreparedQueryNameRequiredDetails) CloneVT() *PreparedQueryNameRequiredD
 		return (*PreparedQueryNameRequiredDetails)(nil)
 	}
 	r := new(PreparedQueryNameRequiredDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6635,14 +6371,6 @@ func (m *PreparedQueryNameTooLongDetails) CloneVT() *PreparedQueryNameTooLongDet
 		return (*PreparedQueryNameTooLongDetails)(nil)
 	}
 	r := new(PreparedQueryNameTooLongDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6683,14 +6411,6 @@ func (m *PreparedQueryRequiredDetails) CloneVT() *PreparedQueryRequiredDetails {
 		return (*PreparedQueryRequiredDetails)(nil)
 	}
 	r := new(PreparedQueryRequiredDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6707,14 +6427,6 @@ func (m *PreparedQueryTargetUnsupportedDetails) CloneVT() *PreparedQueryTargetUn
 		return (*PreparedQueryTargetUnsupportedDetails)(nil)
 	}
 	r := new(PreparedQueryTargetUnsupportedDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6751,14 +6463,6 @@ func (m *ScopedBalanceUnsupportedDetails) CloneVT() *ScopedBalanceUnsupportedDet
 		return (*ScopedBalanceUnsupportedDetails)(nil)
 	}
 	r := new(ScopedBalanceUnsupportedDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6775,14 +6479,6 @@ func (m *ScriptAndReferenceConflictDetails) CloneVT() *ScriptAndReferenceConflic
 		return (*ScriptAndReferenceConflictDetails)(nil)
 	}
 	r := new(ScriptAndReferenceConflictDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6799,14 +6495,6 @@ func (m *ScriptRequiredDetails) CloneVT() *ScriptRequiredDetails {
 		return (*ScriptRequiredDetails)(nil)
 	}
 	r := new(ScriptRequiredDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6843,14 +6531,6 @@ func (m *SigningKeyIdInvalidCharDetails) CloneVT() *SigningKeyIdInvalidCharDetai
 		return (*SigningKeyIdInvalidCharDetails)(nil)
 	}
 	r := new(SigningKeyIdInvalidCharDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6867,14 +6547,6 @@ func (m *SigningKeyIdRequiredDetails) CloneVT() *SigningKeyIdRequiredDetails {
 		return (*SigningKeyIdRequiredDetails)(nil)
 	}
 	r := new(SigningKeyIdRequiredDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6891,14 +6563,6 @@ func (m *SigningKeyIdTooLongDetails) CloneVT() *SigningKeyIdTooLongDetails {
 		return (*SigningKeyIdTooLongDetails)(nil)
 	}
 	r := new(SigningKeyIdTooLongDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6915,14 +6579,6 @@ func (m *SigningKeyInvalidLengthDetails) CloneVT() *SigningKeyInvalidLengthDetai
 		return (*SigningKeyInvalidLengthDetails)(nil)
 	}
 	r := new(SigningKeyInvalidLengthDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -7103,14 +6759,6 @@ func (m *TargetRequiredDetails) CloneVT() *TargetRequiredDetails {
 		return (*TargetRequiredDetails)(nil)
 	}
 	r := new(TargetRequiredDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -7215,14 +6863,6 @@ func (m *TransactionReferenceTooLongDetails) CloneVT() *TransactionReferenceTooL
 		return (*TransactionReferenceTooLongDetails)(nil)
 	}
 	r := new(TransactionReferenceTooLongDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -7259,14 +6899,6 @@ func (m *TransactionTargetMissingDetails) CloneVT() *TransactionTargetMissingDet
 		return (*TransactionTargetMissingDetails)(nil)
 	}
 	r := new(TransactionTargetMissingDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -7303,14 +6935,6 @@ func (m *ValidationDetails) CloneVT() *ValidationDetails {
 		return (*ValidationDetails)(nil)
 	}
 	r := new(ValidationDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -17757,12 +17381,6 @@ func (this *AccountAddressEmptyDetails) EqualVT(that *AccountAddressEmptyDetails
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -17777,12 +17395,6 @@ func (this *AccountAddressEmptySegmentDetails) EqualVT(that *AccountAddressEmpty
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -17801,12 +17413,6 @@ func (this *AccountAddressInvalidCharDetails) EqualVT(that *AccountAddressInvali
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -17821,12 +17427,6 @@ func (this *AccountAddressTooLongDetails) EqualVT(that *AccountAddressTooLongDet
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -17927,12 +17527,6 @@ func (this *AccountTypeNameTooLongDetails) EqualVT(that *AccountTypeNameTooLongD
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -17966,12 +17560,6 @@ func (this *AccountTypePatternTooLongDetails) EqualVT(that *AccountTypePatternTo
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -18010,12 +17598,6 @@ func (this *AssetInvalidDetails) EqualVT(that *AssetInvalidDetails) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -18170,12 +17752,6 @@ func (this *ClusterPolicyInvalidDetails) EqualVT(that *ClusterPolicyInvalidDetai
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -18227,12 +17803,6 @@ func (this *ColorInvalidDetails) EqualVT(that *ColorInvalidDetails) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -18247,12 +17817,6 @@ func (this *ColorTooLongDetails) EqualVT(that *ColorTooLongDetails) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -18299,12 +17863,6 @@ func (this *DependencyDiscoveryFailedDetails) EqualVT(that *DependencyDiscoveryF
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -18319,12 +17877,6 @@ func (this *EmptyTransactionDetails) EqualVT(that *EmptyTransactionDetails) bool
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -18414,12 +17966,6 @@ func (this *IdRequiredDetails) EqualVT(that *IdRequiredDetails) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -18512,12 +18058,6 @@ func (this *IndexTargetUnsupportedDetails) EqualVT(that *IndexTargetUnsupportedD
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -18669,12 +18209,6 @@ func (this *InvalidSkippableReasonDetails) EqualVT(that *InvalidSkippableReasonD
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	if p, q := this.ProvidedReason, that.ProvidedReason; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
@@ -18751,12 +18285,6 @@ func (this *LedgerNameInvalidCharDetails) EqualVT(that *LedgerNameInvalidCharDet
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -18771,12 +18299,6 @@ func (this *LedgerNameRequiredDetails) EqualVT(that *LedgerNameRequiredDetails) 
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -18795,12 +18317,6 @@ func (this *LedgerNameReservedPrefixDetails) EqualVT(that *LedgerNameReservedPre
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -18815,12 +18331,6 @@ func (this *LedgerNameTooLongDetails) EqualVT(that *LedgerNameTooLongDetails) bo
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -18959,12 +18469,6 @@ func (this *MetadataKeyRequiredDetails) EqualVT(that *MetadataKeyRequiredDetails
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -19040,9 +18544,6 @@ func (this *MetadataNotFoundDetails) EqualVT(that *MetadataNotFoundDetails) bool
 	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -19081,12 +18582,6 @@ func (this *MirrorHttpUrlInvalidDetails) EqualVT(that *MirrorHttpUrlInvalidDetai
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -19101,12 +18596,6 @@ func (this *MirrorIamRegionRequiredDetails) EqualVT(that *MirrorIamRegionRequire
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -19125,12 +18614,6 @@ func (this *MirrorIamRequiresTlsDetails) EqualVT(that *MirrorIamRequiresTlsDetai
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -19145,12 +18628,6 @@ func (this *MirrorRewriteRuleInvalidDetails) EqualVT(that *MirrorRewriteRuleInva
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -19662,12 +19139,6 @@ func (this *NumscriptContentRequiredDetails) EqualVT(that *NumscriptContentRequi
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -20124,12 +19595,6 @@ func (this *NumscriptNameInvalidCharDetails) EqualVT(that *NumscriptNameInvalidC
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -20146,12 +19611,6 @@ func (this *NumscriptNameRequiredDetails) EqualVT(that *NumscriptNameRequiredDet
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -20166,12 +19625,6 @@ func (this *NumscriptNameTooLongDetails) EqualVT(that *NumscriptNameTooLongDetai
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -20338,9 +19791,6 @@ func (this *NumscriptRuntimeDetails) EqualVT(that *NumscriptRuntimeDetails) bool
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -20355,12 +19805,6 @@ func (this *NumscriptScalingUnsupportedDetails) EqualVT(that *NumscriptScalingUn
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -20458,12 +19902,6 @@ func (this *PostingsAndScriptConflictDetails) EqualVT(that *PostingsAndScriptCon
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -20518,12 +19956,6 @@ func (this *PreparedQueryNameInvalidCharDetails) EqualVT(that *PreparedQueryName
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -20540,12 +19972,6 @@ func (this *PreparedQueryNameRequiredDetails) EqualVT(that *PreparedQueryNameReq
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -20560,12 +19986,6 @@ func (this *PreparedQueryNameTooLongDetails) EqualVT(that *PreparedQueryNameTooL
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -20606,12 +20026,6 @@ func (this *PreparedQueryRequiredDetails) EqualVT(that *PreparedQueryRequiredDet
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -20626,12 +20040,6 @@ func (this *PreparedQueryTargetUnsupportedDetails) EqualVT(that *PreparedQueryTa
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -20669,12 +20077,6 @@ func (this *ScopedBalanceUnsupportedDetails) EqualVT(that *ScopedBalanceUnsuppor
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -20691,12 +20093,6 @@ func (this *ScriptAndReferenceConflictDetails) EqualVT(that *ScriptAndReferenceC
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -20711,12 +20107,6 @@ func (this *ScriptRequiredDetails) EqualVT(that *ScriptRequiredDetails) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -20754,12 +20144,6 @@ func (this *SigningKeyIdInvalidCharDetails) EqualVT(that *SigningKeyIdInvalidCha
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -20774,12 +20158,6 @@ func (this *SigningKeyIdRequiredDetails) EqualVT(that *SigningKeyIdRequiredDetai
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -20798,12 +20176,6 @@ func (this *SigningKeyIdTooLongDetails) EqualVT(that *SigningKeyIdTooLongDetails
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -20818,12 +20190,6 @@ func (this *SigningKeyInvalidLengthDetails) EqualVT(that *SigningKeyInvalidLengt
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -20997,12 +20363,6 @@ func (this *TargetRequiredDetails) EqualVT(that *TargetRequiredDetails) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -21101,12 +20461,6 @@ func (this *TransactionReferenceTooLongDetails) EqualVT(that *TransactionReferen
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -21142,12 +20496,6 @@ func (this *TransactionTargetMissingDetails) EqualVT(that *TransactionTargetMiss
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -21181,12 +20529,6 @@ func (this *ValidationDetails) EqualVT(that *ValidationDetails) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -34345,20 +33687,6 @@ func (m *AccountAddressEmptyDetails) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -34391,20 +33719,6 @@ func (m *AccountAddressEmptySegmentDetails) MarshalToSizedBufferVT(dAtA []byte) 
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -34439,20 +33753,6 @@ func (m *AccountAddressInvalidCharDetails) MarshalToSizedBufferVT(dAtA []byte) (
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -34485,20 +33785,6 @@ func (m *AccountAddressTooLongDetails) MarshalToSizedBufferVT(dAtA []byte) (int,
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -34707,20 +33993,6 @@ func (m *AccountTypeNameTooLongDetails) MarshalToSizedBufferVT(dAtA []byte) (int
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -34793,20 +34065,6 @@ func (m *AccountTypePatternTooLongDetails) MarshalToSizedBufferVT(dAtA []byte) (
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -34887,20 +34145,6 @@ func (m *AssetInvalidDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -35216,20 +34460,6 @@ func (m *ClusterPolicyInvalidDetails) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -35334,20 +34564,6 @@ func (m *ColorInvalidDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -35380,20 +34596,6 @@ func (m *ColorTooLongDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -35487,20 +34689,6 @@ func (m *DependencyDiscoveryFailedDetails) MarshalToSizedBufferVT(dAtA []byte) (
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -35533,20 +34721,6 @@ func (m *EmptyTransactionDetails) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -35729,20 +34903,6 @@ func (m *IdRequiredDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -35936,20 +35096,6 @@ func (m *IndexTargetUnsupportedDetails) MarshalToSizedBufferVT(dAtA []byte) (int
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -36269,20 +35415,6 @@ func (m *InvalidSkippableReasonDetails) MarshalToSizedBufferVT(dAtA []byte) (int
 		copy(dAtA[i:], *m.ProvidedReason)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.ProvidedReason)))
 		i--
-		dAtA[i] = 0x1a
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
 		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
@@ -36438,20 +35570,6 @@ func (m *LedgerNameInvalidCharDetails) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -36484,20 +35602,6 @@ func (m *LedgerNameRequiredDetails) MarshalToSizedBufferVT(dAtA []byte) (int, er
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -36532,20 +35636,6 @@ func (m *LedgerNameReservedPrefixDetails) MarshalToSizedBufferVT(dAtA []byte) (i
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -36578,20 +35668,6 @@ func (m *LedgerNameTooLongDetails) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -36880,20 +35956,6 @@ func (m *MetadataKeyRequiredDetails) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -37038,13 +36100,6 @@ func (m *MetadataNotFoundDetails) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x1a
-	}
 	if m.Key != nil {
 		i -= len(*m.Key)
 		copy(dAtA[i:], *m.Key)
@@ -37139,20 +36194,6 @@ func (m *MirrorHttpUrlInvalidDetails) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -37185,20 +36226,6 @@ func (m *MirrorIamRegionRequiredDetails) MarshalToSizedBufferVT(dAtA []byte) (in
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -37233,20 +36260,6 @@ func (m *MirrorIamRequiresTlsDetails) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -37279,20 +36292,6 @@ func (m *MirrorRewriteRuleInvalidDetails) MarshalToSizedBufferVT(dAtA []byte) (i
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -38361,20 +37360,6 @@ func (m *NumscriptContentRequiredDetails) MarshalToSizedBufferVT(dAtA []byte) (i
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -39335,20 +38320,6 @@ func (m *NumscriptNameInvalidCharDetails) MarshalToSizedBufferVT(dAtA []byte) (i
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -39382,20 +38353,6 @@ func (m *NumscriptNameRequiredDetails) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -39428,20 +38385,6 @@ func (m *NumscriptNameTooLongDetails) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -39787,13 +38730,6 @@ func (m *NumscriptRuntimeDetails) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -39826,20 +38762,6 @@ func (m *NumscriptScalingUnsupportedDetails) MarshalToSizedBufferVT(dAtA []byte)
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -40041,20 +38963,6 @@ func (m *PostingsAndScriptConflictDetails) MarshalToSizedBufferVT(dAtA []byte) (
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -40168,20 +39076,6 @@ func (m *PreparedQueryNameInvalidCharDetails) MarshalToSizedBufferVT(dAtA []byte
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -40215,20 +39109,6 @@ func (m *PreparedQueryNameRequiredDetails) MarshalToSizedBufferVT(dAtA []byte) (
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -40261,20 +39141,6 @@ func (m *PreparedQueryNameTooLongDetails) MarshalToSizedBufferVT(dAtA []byte) (i
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -40356,20 +39222,6 @@ func (m *PreparedQueryRequiredDetails) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -40402,20 +39254,6 @@ func (m *PreparedQueryTargetUnsupportedDetails) MarshalToSizedBufferVT(dAtA []by
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -40488,20 +39326,6 @@ func (m *ScopedBalanceUnsupportedDetails) MarshalToSizedBufferVT(dAtA []byte) (i
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -40535,20 +39359,6 @@ func (m *ScriptAndReferenceConflictDetails) MarshalToSizedBufferVT(dAtA []byte) 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -40581,20 +39391,6 @@ func (m *ScriptRequiredDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -40669,20 +39465,6 @@ func (m *SigningKeyIdInvalidCharDetails) MarshalToSizedBufferVT(dAtA []byte) (in
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -40715,20 +39497,6 @@ func (m *SigningKeyIdRequiredDetails) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -40763,20 +39531,6 @@ func (m *SigningKeyIdTooLongDetails) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -40809,20 +39563,6 @@ func (m *SigningKeyInvalidLengthDetails) MarshalToSizedBufferVT(dAtA []byte) (in
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -41176,20 +39916,6 @@ func (m *TargetRequiredDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -41391,20 +40117,6 @@ func (m *TransactionReferenceTooLongDetails) MarshalToSizedBufferVT(dAtA []byte)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -41475,20 +40187,6 @@ func (m *TransactionTargetMissingDetails) MarshalToSizedBufferVT(dAtA []byte) (i
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -41562,20 +40260,6 @@ func (m *ValidationDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Account != nil {
-		i -= len(*m.Account)
-		copy(dAtA[i:], *m.Account)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -52109,14 +50793,6 @@ func (m *AccountAddressEmptyDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52127,14 +50803,6 @@ func (m *AccountAddressEmptySegmentDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52145,14 +50813,6 @@ func (m *AccountAddressInvalidCharDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52163,14 +50823,6 @@ func (m *AccountAddressTooLongDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52245,14 +50897,6 @@ func (m *AccountTypeNameTooLongDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52277,14 +50921,6 @@ func (m *AccountTypePatternTooLongDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52313,14 +50949,6 @@ func (m *AssetInvalidDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52430,14 +51058,6 @@ func (m *ClusterPolicyInvalidDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52471,14 +51091,6 @@ func (m *ColorInvalidDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52489,14 +51101,6 @@ func (m *ColorTooLongDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52532,14 +51136,6 @@ func (m *DependencyDiscoveryFailedDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52550,14 +51146,6 @@ func (m *EmptyTransactionDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52618,14 +51206,6 @@ func (m *IdRequiredDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52692,14 +51272,6 @@ func (m *IndexTargetUnsupportedDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52808,14 +51380,6 @@ func (m *InvalidSkippableReasonDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if m.ProvidedReason != nil {
 		l = len(*m.ProvidedReason)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -52872,14 +51436,6 @@ func (m *LedgerNameInvalidCharDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52890,14 +51446,6 @@ func (m *LedgerNameRequiredDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52908,14 +51456,6 @@ func (m *LedgerNameReservedPrefixDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -52926,14 +51466,6 @@ func (m *LedgerNameTooLongDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -53036,14 +51568,6 @@ func (m *MetadataKeyRequiredDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -53108,10 +51632,6 @@ func (m *MetadataNotFoundDetails) SizeVT() (n int) {
 		l = len(*m.Key)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -53140,14 +51660,6 @@ func (m *MirrorHttpUrlInvalidDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -53158,14 +51670,6 @@ func (m *MirrorIamRegionRequiredDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -53176,14 +51680,6 @@ func (m *MirrorIamRequiresTlsDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -53194,14 +51690,6 @@ func (m *MirrorRewriteRuleInvalidDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -53582,14 +52070,6 @@ func (m *NumscriptContentRequiredDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -53926,14 +52406,6 @@ func (m *NumscriptNameInvalidCharDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -53944,14 +52416,6 @@ func (m *NumscriptNameRequiredDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -53962,14 +52426,6 @@ func (m *NumscriptNameTooLongDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54096,10 +52552,6 @@ func (m *NumscriptRuntimeDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54110,14 +52562,6 @@ func (m *NumscriptScalingUnsupportedDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54188,14 +52632,6 @@ func (m *PostingsAndScriptConflictDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54234,14 +52670,6 @@ func (m *PreparedQueryNameInvalidCharDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54252,14 +52680,6 @@ func (m *PreparedQueryNameRequiredDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54270,14 +52690,6 @@ func (m *PreparedQueryNameTooLongDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54306,14 +52718,6 @@ func (m *PreparedQueryRequiredDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54324,14 +52728,6 @@ func (m *PreparedQueryTargetUnsupportedDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54355,14 +52751,6 @@ func (m *ScopedBalanceUnsupportedDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54373,14 +52761,6 @@ func (m *ScriptAndReferenceConflictDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54391,14 +52771,6 @@ func (m *ScriptRequiredDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54423,14 +52795,6 @@ func (m *SigningKeyIdInvalidCharDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54441,14 +52805,6 @@ func (m *SigningKeyIdRequiredDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54459,14 +52815,6 @@ func (m *SigningKeyIdTooLongDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54477,14 +52825,6 @@ func (m *SigningKeyInvalidLengthDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54607,14 +52947,6 @@ func (m *TargetRequiredDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54686,14 +53018,6 @@ func (m *TransactionReferenceTooLongDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54717,14 +53041,6 @@ func (m *TransactionTargetMissingDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -54749,14 +53065,6 @@ func (m *ValidationDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Account != nil {
-		l = len(*m.Account)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -76890,72 +75198,6 @@ func (m *AccountAddressEmptyDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: AccountAddressEmptyDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -77007,72 +75249,6 @@ func (m *AccountAddressEmptySegmentDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: AccountAddressEmptySegmentDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -77124,72 +75300,6 @@ func (m *AccountAddressInvalidCharDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: AccountAddressInvalidCharDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -77241,72 +75351,6 @@ func (m *AccountAddressTooLongDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: AccountAddressTooLongDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -77760,72 +75804,6 @@ func (m *AccountTypeNameTooLongDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: AccountTypeNameTooLongDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -77961,72 +75939,6 @@ func (m *AccountTypePatternTooLongDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: AccountTypePatternTooLongDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -78195,72 +76107,6 @@ func (m *AssetInvalidDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: AssetInvalidDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -78894,72 +76740,6 @@ func (m *ClusterPolicyInvalidDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: ClusterPolicyInvalidDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -79133,72 +76913,6 @@ func (m *ColorInvalidDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: ColorInvalidDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -79250,72 +76964,6 @@ func (m *ColorTooLongDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: ColorTooLongDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -79537,72 +77185,6 @@ func (m *DependencyDiscoveryFailedDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: DependencyDiscoveryFailedDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -79654,72 +77236,6 @@ func (m *EmptyTransactionDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: EmptyTransactionDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -80048,72 +77564,6 @@ func (m *IdRequiredDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: IdRequiredDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -80501,72 +77951,6 @@ func (m *IndexTargetUnsupportedDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: IndexTargetUnsupportedDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -81208,72 +78592,6 @@ func (m *InvalidSkippableReasonDetails) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ProvidedReason", wireType)
 			}
 			var stringLen uint64
@@ -81608,72 +78926,6 @@ func (m *LedgerNameInvalidCharDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: LedgerNameInvalidCharDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -81725,72 +78977,6 @@ func (m *LedgerNameRequiredDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: LedgerNameRequiredDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -81842,72 +79028,6 @@ func (m *LedgerNameReservedPrefixDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: LedgerNameReservedPrefixDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -81959,72 +79079,6 @@ func (m *LedgerNameTooLongDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: LedgerNameTooLongDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -82646,72 +79700,6 @@ func (m *MetadataKeyRequiredDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: MetadataKeyRequiredDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -83136,39 +80124,6 @@ func (m *MetadataNotFoundDetails) UnmarshalVT(dAtA []byte) error {
 			s := string(dAtA[iNdEx:postIndex])
 			m.Key = &s
 			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -83337,72 +80292,6 @@ func (m *MirrorHttpUrlInvalidDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: MirrorHttpUrlInvalidDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -83454,72 +80343,6 @@ func (m *MirrorIamRegionRequiredDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: MirrorIamRegionRequiredDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -83571,72 +80394,6 @@ func (m *MirrorIamRequiresTlsDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: MirrorIamRequiresTlsDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -83688,72 +80445,6 @@ func (m *MirrorRewriteRuleInvalidDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: MirrorRewriteRuleInvalidDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -86051,72 +82742,6 @@ func (m *NumscriptContentRequiredDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: NumscriptContentRequiredDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -88133,72 +84758,6 @@ func (m *NumscriptNameInvalidCharDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: NumscriptNameInvalidCharDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -88250,72 +84809,6 @@ func (m *NumscriptNameRequiredDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: NumscriptNameRequiredDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -88367,72 +84860,6 @@ func (m *NumscriptNameTooLongDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: NumscriptNameTooLongDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -89211,39 +85638,6 @@ func (m *NumscriptRuntimeDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: NumscriptRuntimeDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -89295,72 +85689,6 @@ func (m *NumscriptScalingUnsupportedDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: NumscriptScalingUnsupportedDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -89781,72 +86109,6 @@ func (m *PostingsAndScriptConflictDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: PostingsAndScriptConflictDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -90066,72 +86328,6 @@ func (m *PreparedQueryNameInvalidCharDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: PreparedQueryNameInvalidCharDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -90183,72 +86379,6 @@ func (m *PreparedQueryNameRequiredDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: PreparedQueryNameRequiredDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -90300,72 +86430,6 @@ func (m *PreparedQueryNameTooLongDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: PreparedQueryNameTooLongDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -90534,72 +86598,6 @@ func (m *PreparedQueryRequiredDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: PreparedQueryRequiredDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -90651,72 +86649,6 @@ func (m *PreparedQueryTargetUnsupportedDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: PreparedQueryTargetUnsupportedDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -90839,72 +86771,6 @@ func (m *ScopedBalanceUnsupportedDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: ScopedBalanceUnsupportedDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -90956,72 +86822,6 @@ func (m *ScriptAndReferenceConflictDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: ScriptAndReferenceConflictDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -91073,72 +86873,6 @@ func (m *ScriptRequiredDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: ScriptRequiredDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -91274,72 +87008,6 @@ func (m *SigningKeyIdInvalidCharDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: SigningKeyIdInvalidCharDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -91391,72 +87059,6 @@ func (m *SigningKeyIdRequiredDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: SigningKeyIdRequiredDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -91508,72 +87110,6 @@ func (m *SigningKeyIdTooLongDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: SigningKeyIdTooLongDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -91625,72 +87161,6 @@ func (m *SigningKeyInvalidLengthDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: SigningKeyInvalidLengthDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -92395,72 +87865,6 @@ func (m *TargetRequiredDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: TargetRequiredDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -92875,72 +88279,6 @@ func (m *TransactionReferenceTooLongDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: TransactionReferenceTooLongDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -93063,72 +88401,6 @@ func (m *TransactionTargetMissingDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: TransactionTargetMissingDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -93264,72 +88536,6 @@ func (m *ValidationDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: ValidationDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Account = &s
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

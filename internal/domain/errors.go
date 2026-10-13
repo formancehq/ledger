@@ -1598,12 +1598,9 @@ func (e *ErrVolumeNotMaterialized) Error() string {
 func (*ErrVolumeNotMaterialized) Kind() ErrorKind { return KindInternal }
 func (*ErrVolumeNotMaterialized) Reason() string  { return ErrReasonVolumeNotMaterialized }
 
-// ErrMetadataKeyValidation wraps another SerializableError to add the metadata-key
-// name that caused a value-level validation failure. Same shape as
-// ErrAccountValidation but for the metadata-map iteration in
-// validateMetadataMap / numscript-produced metadata. Lets operator logs and
-// the client identify which specific key violated which sentinel rule
-// through stable facts, without parsing the diagnostic text.
+// ErrMetadataKeyValidation attaches the offending key to a metadata limit
+// error found while walking a map. Key and value shape errors already carry
+// the key in their concrete metadataFactFailure producer.
 type ErrMetadataKeyValidation struct {
 	Key   string
 	Cause SerializableError
