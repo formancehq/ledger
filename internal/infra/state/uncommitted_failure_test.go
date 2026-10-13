@@ -23,6 +23,7 @@ func TestApplyProposal_InvalidClusterPolicyIsUncommittedAndRetryable(t *testing.
 	t.Parallel()
 	fsm, store, _ := newTestMachine(t)
 	before := fsm.State.NextAuditSequenceID
+	beforeTimestamp := fsm.State.LastAppliedTimestamp
 
 	proposal := makeProposal(1, clusterPolicyOrder(nil))
 	proposal.Idempotency = &commonpb.Idempotency{Key: "policy-retry"}
@@ -32,6 +33,7 @@ func TestApplyProposal_InvalidClusterPolicyIsUncommittedAndRetryable(t *testing.
 	require.ErrorAs(t, result.Results[0].Error, &invalid)
 	require.False(t, result.Results[0].AuditEntryWritten)
 	require.Equal(t, before, fsm.State.NextAuditSequenceID)
+	require.Equal(t, beforeTimestamp, fsm.State.LastAppliedTimestamp)
 	_, frozen := fsm.Registry.Idempotency.Get("policy-retry")
 	require.False(t, frozen)
 
@@ -53,6 +55,7 @@ func TestApplyProposal_ClusterPolicyRevisionConflictIsUncommitted(t *testing.T) 
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)
 	before := fsm.State.NextAuditSequenceID
+	beforeTimestamp := fsm.State.LastAppliedTimestamp
 
 	conflicting := idempotencyTestPolicy(2, 2000)
 	proposal := makeProposal(2, clusterPolicyOrder(conflicting))
@@ -63,6 +66,7 @@ func TestApplyProposal_ClusterPolicyRevisionConflictIsUncommitted(t *testing.T) 
 	require.ErrorAs(t, result.Results[0].Error, &conflict)
 	require.False(t, result.Results[0].AuditEntryWritten)
 	require.Equal(t, before, fsm.State.NextAuditSequenceID)
+	require.Equal(t, beforeTimestamp, fsm.State.LastAppliedTimestamp)
 	_, frozen := fsm.Registry.Idempotency.Get("policy-conflict")
 	require.False(t, frozen)
 }

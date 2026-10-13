@@ -48,11 +48,13 @@ func TestApplyProposal_PreloadUnavailableIsNotAuditedOrFrozen(t *testing.T) {
 	}
 
 	before := machine.State.NextAuditSequenceID
+	beforeTimestamp := machine.State.LastAppliedTimestamp
 	result, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, keyed(1, true)))
 	require.NoError(t, err)
 	require.ErrorIs(t, result.Results[0].Error, domain.ErrPreloadUnavailable)
 	require.False(t, result.Results[0].AuditEntryWritten)
 	require.Equal(t, before, machine.State.NextAuditSequenceID)
+	require.Equal(t, beforeTimestamp, machine.State.LastAppliedTimestamp)
 	_, frozen := machine.Registry.Idempotency.Get("preload-key")
 	require.False(t, frozen)
 
@@ -62,6 +64,7 @@ func TestApplyProposal_PreloadUnavailableIsNotAuditedOrFrozen(t *testing.T) {
 	require.True(t, result.Results[0].AuditEntryWritten)
 	require.False(t, result.Results[0].Replayed)
 	require.Equal(t, before+1, machine.State.NextAuditSequenceID)
+	auditedTimestamp := machine.State.LastAppliedTimestamp
 
 	result, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 3, keyed(3, true)))
 	require.NoError(t, err)
@@ -69,6 +72,7 @@ func TestApplyProposal_PreloadUnavailableIsNotAuditedOrFrozen(t *testing.T) {
 	require.True(t, result.Results[0].Replayed)
 	require.False(t, result.Results[0].AuditEntryWritten)
 	require.Equal(t, before+1, machine.State.NextAuditSequenceID)
+	require.Equal(t, auditedTimestamp, machine.State.LastAppliedTimestamp)
 }
 
 // TestApplyProposal_PerProposalIdempotency exercises the per-proposal

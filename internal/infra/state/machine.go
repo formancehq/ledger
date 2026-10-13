@@ -1343,7 +1343,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return result, nil
 	}
 
-	// Compute the effective date using the HLC to guarantee monotonicity
+	// Compute the effective date using the HLC to guarantee monotonicity.
+	// Keep the previous value: a proposal that returns without an audit entry
+	// must not advance the durable clock, because incremental restore rebuilds
+	// post-checkpoint HLC progress from audited timestamps alone.
+	previousTimestamp := fsm.State.LastAppliedTimestamp
 	effectiveDate := &commonpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.GetDate().GetData())}
 
 	// Freeze the retention window for any idempotency outcome this apply stores,
@@ -1438,6 +1442,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// duplicate the order bytes on every retry. A conflict (same key, different
 	// orders) is a fresh rejection, not a replay, so it still audits below.
 	if replayed {
+		fsm.State.LastAppliedTimestamp = previousTimestamp
 		result.Replayed = true
 		if err != nil {
 			result.Error = &domain.BusinessError{Err: err}
@@ -1456,6 +1461,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	if err == nil {
 		for _, order := range orders {
 			if order.GetTechnical().GetPreloadUnavailable() {
+				fsm.State.LastAppliedTimestamp = previousTimestamp
 				result.Error = &domain.BusinessError{Err: domain.ErrPreloadUnavailable}
 
 				return result, nil
@@ -1482,6 +1488,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// The error type owns this disposition; successes still take the normal
 	// audited path, including successful cluster-policy updates.
 	if _, uncommitted := err.(domain.UncommittedFailure); uncommitted {
+		fsm.State.LastAppliedTimestamp = previousTimestamp
 		result.Error = &domain.BusinessError{Err: err}
 
 		return result, nil
@@ -1652,6 +1659,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	if err := transientErr; err != nil {
 		if _, uncommitted := err.(domain.UncommittedFailure); uncommitted {
+			fsm.State.LastAppliedTimestamp = previousTimestamp
 			result.Error = &domain.BusinessError{Err: err}
 
 			return result, nil

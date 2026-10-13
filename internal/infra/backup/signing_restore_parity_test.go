@@ -130,6 +130,79 @@ func signingRegisterOrder(keyID string, publicKey []byte, parentKeyID string) *r
 	}
 }
 
+func TestBackup_UncommittedRejectionKeepsHLCParityAfterDelta(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	storage := newInMemoryBackupStorage()
+	source, sourceStore, _ := newSigningParityMachine(t)
+	applySigningEntry(t, source, sourceStore, 1, signingRegisterOrder("before", make([]byte, 32), ""))
+	require.NoError(t, sourceStore.Flush())
+	_, err := RunBackup(ctx, testLogger(), sourceStore, storage, "hlc-parity", "full")
+	require.NoError(t, err)
+
+	// The non-empty post-checkpoint delta supplies the restored HLC. A later
+	// uncommitted rejection must leave that clock unchanged on the source.
+	applySigningEntry(t, source, sourceStore, 2, signingRegisterOrder("after", make([]byte, 32), ""))
+	auditedTimestamp := source.State.LastAppliedTimestamp
+	key := "retry-after-uncommitted"
+	newProposal := func(id uint64, preloadUnavailable bool) *raftcmdpb.Proposal {
+		order := signingRegisterOrder("retry", make([]byte, 32), "")
+		if preloadUnavailable {
+			order.Technical = &raftcmdpb.OrderTechnical{PreloadUnavailable: true}
+		}
+		return &raftcmdpb.Proposal{
+			Id: id, Orders: []*raftcmdpb.Order{order},
+			Date:           &commonpb.Timestamp{Data: auditedTimestamp + 1_000_000},
+			Idempotency:    &commonpb.Idempotency{Key: key},
+			ExecutionPlan:  &raftcmdpb.ExecutionPlan{},
+			CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterConfig),
+		}
+	}
+	apply := func(machine *state.Machine, store *dal.Store, index uint64, proposal *raftcmdpb.Proposal) state.ApplyResult {
+		data, marshalErr := proto.Marshal(proposal)
+		require.NoError(t, marshalErr)
+		result, applyErr := machine.ApplyEntries(ctx, store, &raftpb.Entry{
+			Index: new(index), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal), Data: data,
+		})
+		require.NoError(t, applyErr)
+		require.Len(t, result.Results, 1)
+		return result.Results[0]
+	}
+
+	rejected := apply(source, sourceStore, 3, newProposal(3, true))
+	require.ErrorIs(t, rejected.Error, domain.ErrPreloadUnavailable)
+	require.False(t, rejected.AuditEntryWritten)
+	require.Equal(t, auditedTimestamp, source.State.LastAppliedTimestamp)
+	require.NoError(t, sourceStore.Flush())
+	inc, err := RunIncrementalBackup(ctx, testLogger(), sourceStore, storage, "hlc-parity", 0)
+	require.NoError(t, err)
+	require.Positive(t, inc.AuditEntriesExported)
+	manifest, err := ReadManifest(ctx, storage, ManifestKey("hlc-parity"))
+	require.NoError(t, err)
+	restoredStore := restoreAuditKeyCheckpoint(t, storage, manifest)
+	sourceTimestamp, err := query.ReadLastAppliedTimestamp(sourceStore)
+	require.NoError(t, err)
+	restoredTimestamp, err := query.ReadLastAppliedTimestamp(restoredStore)
+	require.NoError(t, err)
+	require.Equal(t, auditedTimestamp, sourceTimestamp)
+	require.Equal(t, sourceTimestamp, restoredTimestamp)
+
+	// The same keyed request must execute on both stores; the rejected attempt
+	// left no frozen outcome, and both clocks issue the same effective date.
+	restored := recoveredAuditKeyMachine(t, restoredStore)
+	for _, pair := range []struct {
+		machine *state.Machine
+		store   *dal.Store
+	}{{source, sourceStore}, {restored, restoredStore}} {
+		index := pair.machine.State.LastAppliedIndex + 1
+		result := apply(pair.machine, pair.store, index, newProposal(index, false))
+		require.NoError(t, result.Error)
+		require.False(t, result.Replayed)
+		require.True(t, result.AuditEntryWritten)
+		require.Equal(t, auditedTimestamp+1_000_000, pair.machine.State.LastAppliedTimestamp)
+	}
+}
+
 func signingRevokeOrder(keyID string, cascade bool) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_SystemScoped{

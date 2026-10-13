@@ -62,6 +62,7 @@ func TestScope_CoverageMissDoesNotFreezeIdempotency(t *testing.T) {
 	proposal.Idempotency = &commonpb.Idempotency{Key: "retryable"}
 	proposal.ExecutionPlan.Attributes = nil // Deliberately omit the ledger read.
 	before := fsm.State.NextAuditSequenceID
+	beforeTimestamp := fsm.State.LastAppliedTimestamp
 	result, err := fsm.ApplyEntries(context.Background(), store, makeEntry(t, 1, proposal))
 	require.NoError(t, err, "a coverage miss must not become a fatal apply failure")
 	var miss *ErrCoverageMiss
@@ -75,6 +76,7 @@ func TestScope_CoverageMissDoesNotFreezeIdempotency(t *testing.T) {
 	require.Empty(t, metadata)
 	require.False(t, result.Results[0].AuditEntryWritten)
 	require.Equal(t, before, fsm.State.NextAuditSequenceID)
+	require.Equal(t, beforeTimestamp, fsm.State.LastAppliedTimestamp)
 	_, frozen := fsm.Registry.Idempotency.Get("retryable")
 	require.False(t, frozen)
 
