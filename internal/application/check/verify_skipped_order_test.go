@@ -60,11 +60,9 @@ func TestVerifySkippedOrder_AllowedReasonEmitsNothing(t *testing.T) {
 }
 
 // TestVerifySkippedOrder_ReferenceConflictRejectsStrippedContext catches a
-// tampered LedgerLog where the persisted context fields were removed.
-// domain.FailureFactsOf(ErrTransactionReferenceConflict).Facts always writes both `ledger`
-// and `reference`, so missing/empty values are a tampering signal —
-// validating only "present and mismatched" lets a stripped context dodge
-// the check.
+// tampered LedgerLog where the typed details or a required fact were removed.
+// ErrTransactionReferenceConflict always writes both ledger and reference;
+// the structured-failure boundary rejects their absence before replay checks.
 func TestVerifySkippedOrder_ReferenceConflictRejectsStrippedContext(t *testing.T) {
 	t.Parallel()
 
@@ -80,9 +78,10 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsStrippedContext(t *testing.T
 	}
 
 	// Context entirely missing.
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := skippedPayloadWithoutDetails(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 	events := captureEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "invalid structured skip failure")
 
 	// Only one field stripped.
 	payload = &commonpb.LedgerLogPayload{
@@ -97,6 +96,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsStrippedContext(t *testing.T
 
 	events = captureEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "missing required fact reference")
 }
 
 // TestVerifySkippedOrder_RejectsKindInternal pins the defense-in-depth gate.
@@ -123,7 +123,7 @@ func TestVerifySkippedOrder_RejectsMissingDetails(t *testing.T) {
 		7: {reasons: []commonpb.ErrorReason{reason}},
 	}
 
-	events := captureEvents(t, "L", 7, skippedPayload(reason), expected, nil)
+	events := captureEvents(t, "L", 7, skippedPayloadWithoutDetails(reason), expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 	require.Contains(t, events[0].GetError().GetMessage(), "invalid structured skip failure")
 }
@@ -136,9 +136,10 @@ func TestVerifySkippedOrder_RejectsUnspecified(t *testing.T) {
 		7: {reasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}},
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
+	payload := skippedPayloadWithoutDetails(commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
 	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "invalid structured skip failure")
 }
 
 // TestVerifySkippedOrder_RejectsReasonOutsideWhitelist.
@@ -190,9 +191,11 @@ func TestVerifySkippedOrder_RejectsWhitelistedReasonWithoutReplayBranch(t *testi
 func TestVerifySkippedOrder_RejectsMissingExpectedEntry(t *testing.T) {
 	t.Parallel()
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		map[string]string{"ledger": "L", "reference": "ref"})
 	events := captureEvents(t, "L", 7, payload, nil, nil)
 	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "did not authorise any skippable reason")
 }
 
 // TestVerifySkippedOrder_IgnoresNonSkipPayloads.
@@ -535,9 +538,11 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsUnclaimedReference(t *testin
 		},
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		map[string]string{"ledger": "L", "reference": "ref-not-claimed"})
 	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "was not claimed on ledger")
 }
 
 // TestVerifySkippedOrder_ReferenceConflictRejectsLaterClaim guards against
@@ -557,9 +562,11 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsLaterClaim(t *testing.T) {
 		"L": {"ref-late": 7}, // first claimed at same seq → not "before"
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		map[string]string{"ledger": "L", "reference": "ref-late"})
 	events := captureEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "was not claimed on ledger")
 }
 
 // TestVerifySkippedOrder_ReferenceConflictRejectsEmptyReference catches the
@@ -575,9 +582,11 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsEmptyReference(t *testing.T)
 		},
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		map[string]string{"ledger": "L", "reference": ""})
 	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "has no reference set")
 }
 
 // TestVerifySkippedOrder_ReferenceConflictRejectsLedgerMismatch flags a
@@ -597,9 +606,11 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsLedgerMismatch(t *testing.T)
 		"L-projection": {"ref-mix": 3},
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		map[string]string{"ledger": "L-projection", "reference": "ref-mix"})
 	events := captureEvents(t, "L-projection", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "chain-bound order targets ledger")
 }
 
 // TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextReference
@@ -626,13 +637,14 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextReference(t *
 			OrderSkipped: &commonpb.OrderSkippedLog{
 				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Code:    "TRANSACTION_REFERENCE_CONFLICT",
-				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"reference": "ref-tampered"}),
+				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L", "reference": "ref-tampered"}),
 			},
 		},
 	}
 
 	events := captureEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "context.reference=")
 }
 
 // TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextLedger
@@ -656,13 +668,14 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextLedger(t *tes
 			OrderSkipped: &commonpb.OrderSkippedLog{
 				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Code:    "TRANSACTION_REFERENCE_CONFLICT",
-				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L-tampered"}),
+				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L-tampered", "reference": "ref"}),
 			},
 		},
 	}
 
 	events := captureEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "context.ledger=")
 }
 
 // TestVerifySkippedOrder_ReferenceConflictAcceptsMatchingContext pins the
@@ -742,6 +755,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedExistingTxID(t *test
 
 	events := captureEventsState(t, "L", 7, payload, expected, cb)
 	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "context.existingTransactionId=")
 }
 
 // TestVerifySkippedOrder_ReferenceConflictPermissiveWhenOwnerUnknown pins the
@@ -797,10 +811,13 @@ func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenOwnerUnknown(t *testi
 func TestVerifySkippedOrder_HandlesNilExpectedMaps(t *testing.T) {
 	t.Parallel()
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		map[string]string{"ledger": "L", "reference": "ref"})
 
 	require.NotPanics(t, func() {
-		captureEvents(t, "L", 7, payload, nil, nil)
+		events := captureEvents(t, "L", 7, payload, nil, nil)
+		requireInvalidSkipEvent(t, events, 7)
+		require.Contains(t, events[0].GetError().GetMessage(), "did not authorise any skippable reason")
 	})
 }
 
@@ -1494,7 +1511,9 @@ func TestCollectExpectedSkippable_DedupesFoldOfLegacyDupKeyReplay(t *testing.T) 
 	requireInvalidSkipEvent(t, events, 60)
 }
 
-func skippedPayload(reason commonpb.ErrorReason) *commonpb.LedgerLogPayload {
+// skippedPayloadWithoutDetails is only for tests of malformed persisted skips.
+// Tests of later verifier branches must use skippedPayloadWithContext instead.
+func skippedPayloadWithoutDetails(reason commonpb.ErrorReason) *commonpb.LedgerLogPayload {
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
 			OrderSkipped: &commonpb.OrderSkippedLog{Reason: reason, Code: domain.ReasonString(reason)},
