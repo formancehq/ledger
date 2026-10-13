@@ -23,10 +23,10 @@ var defaultExternalCIDRExcept = []string{
 }
 
 func (r *ClusterReconciler) reconcileNetworkPolicy(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
-	name := resourceName(ledger.Name)
+	name := clusterBaseName(ledger)
 
 	if ledger.Spec.NetworkPolicy == nil || !ledger.Spec.NetworkPolicy.Enabled {
-		return r.deleteIfExists(ctx, &networkingv1.NetworkPolicy{
+		return r.deleteIfExists(ctx, ledger, &networkingv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: ledger.Namespace,
@@ -45,7 +45,7 @@ func (r *ClusterReconciler) reconcileNetworkPolicy(ctx context.Context, ledger *
 		np.Labels = commonLabels(ledger)
 		np.Spec = buildNetworkPolicySpec(ledger)
 
-		return controllerutil.SetControllerReference(ledger, np, r.Scheme)
+		return setOwnedControllerReference(ledger, np, r.Scheme, "NetworkPolicy")
 	})
 
 	return err

@@ -41,7 +41,7 @@ func (r *ClusterReconciler) reconcileDNSEndpoint(ctx context.Context, ledger *le
 			continue
 		}
 
-		name := dnsEndpointName(ledger.Name, spec.Name)
+		name := dnsEndpointName(ledger, spec.Name)
 		desired[name] = struct{}{}
 
 		if err := r.applyDNSEndpoint(ctx, ledger, name, spec.Annotations, endpoints); err != nil {
@@ -80,7 +80,7 @@ func (r *ClusterReconciler) applyDNSEndpoint(
 			return err
 		}
 
-		return controllerutil.SetControllerReference(ledger, obj, r.Scheme)
+		return setOwnedControllerReference(ledger, obj, r.Scheme, "DNSEndpoint")
 	})
 
 	return err

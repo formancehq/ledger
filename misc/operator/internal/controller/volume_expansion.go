@@ -160,10 +160,22 @@ func (r *VolumeExpansionReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	resetVolumeGaugeMetrics(ledger.Namespace, ledger.Name)
 
 	var statefulSet appsv1.StatefulSet
-	if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: resourceName(ledger.Name)}, &statefulSet); err != nil {
+	if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: clusterBaseName(&ledger)}, &statefulSet); err != nil {
 		for _, definition := range definitions {
 			r.recordWarningf(&ledger, "VolumeExpansionPending", "%s auto-expansion is waiting for the live StatefulSet: %v", definition.Name, err)
 			setVolumeExpansionCondition(&ledger, definition.Name, metav1.ConditionFalse, "StatefulSetUnavailable", err.Error())
+		}
+		volumeExpansionErrorsMetric.WithLabelValues("statefulset", "cluster").Inc()
+
+		return ctrl.Result{RequeueAfter: volumeExpansionRetryInterval}, nil
+	}
+	if notControlledBy(&statefulSet, &ledger) {
+		// Resource name conflict: the StatefulSet (and the PVCs derived from
+		// its name) were not created by this Cluster. Never measure or expand them.
+		message := "resource name conflict: " + describeOwnership("StatefulSet", &statefulSet, &ledger)
+		for _, definition := range definitions {
+			r.recordWarningf(&ledger, "VolumeExpansionPending", "%s auto-expansion refused: %s", definition.Name, message)
+			setVolumeExpansionCondition(&ledger, definition.Name, metav1.ConditionFalse, "ResourceNameConflict", message)
 		}
 		volumeExpansionErrorsMetric.WithLabelValues("statefulset", "cluster").Inc()
 
@@ -391,7 +403,7 @@ func (r *VolumeExpansionReconciler) loadVolumePVCs(
 	states := make([]volumePVCState, 0, replicas)
 	now := r.now()
 	for ordinal := range replicas {
-		name := fmt.Sprintf("%s-%s-%d", volume, resourceName(ledger.Name), ordinal)
+		name := pvcName(ledger, volume, ordinal)
 		var pvc corev1.PersistentVolumeClaim
 		// PVCs are intentionally read through the uncached APIReader. The
 		// controller only has get/list/patch RBAC for PVCs (no watch), so the
@@ -492,7 +504,7 @@ func (r *VolumeExpansionReconciler) collectDiskUsage(
 	var waitGroup sync.WaitGroup
 	for ordinal := range replicas {
 		waitGroup.Go(func() {
-			pod := podName(ledger.Name, int(ordinal))
+			pod := podName(ledger, int(ordinal))
 			usage, err := read(ctx, ledger, pod, tlsMode)
 			results[ordinal] = podDiskUsageResult{Pod: pod, Usage: usage, Err: err}
 		})
@@ -603,7 +615,7 @@ func (r *VolumeExpansionReconciler) readPodDiskUsage(
 	pod, tlsMode string,
 ) (podDiskUsage, error) {
 	result, err := podExecWithTimeout(ctx, r.Config, r.Clientset, ledger.Namespace, pod, ledgerContainer,
-		volumeDiskUsageCommand(ledger.Name, tlsMode),
+		volumeDiskUsageCommand(ledger, tlsMode),
 	)
 	if err != nil {
 		return podDiskUsage{}, fmt.Errorf("reading disk usage from %s: %w", pod, err)
@@ -617,11 +629,11 @@ func (r *VolumeExpansionReconciler) readPodDiskUsage(
 	return usage, nil
 }
 
-func volumeDiskUsageCommand(ledgerName, tlsMode string) []string {
+func volumeDiskUsageCommand(ledger *ledgerv1alpha1.Cluster, tlsMode string) []string {
 	// The command runs inside the target pod. Its GRPC_PORT is the actual
 	// listener port, even when a rejected Cluster spec or a partial rollout
 	// differs from the pod that is still serving.
-	serverAddr := fmt.Sprintf("$POD_NAME.%s.$POD_NAMESPACE.svc.cluster.local:$GRPC_PORT", headlessServiceName(ledgerName))
+	serverAddr := fmt.Sprintf("$POD_NAME.%s.$POD_NAMESPACE.svc.cluster.local:$GRPC_PORT", headlessServiceName(ledger))
 
 	return ledgerctlCommand(serverAddr, tlsMode, "cluster", "disk-usage", "--json")
 }

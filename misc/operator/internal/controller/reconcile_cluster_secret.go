@@ -31,7 +31,7 @@ const clusterSecretKey = "cluster-secret"
 func (r *ClusterReconciler) reconcileClusterSecret(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      clusterSecretName(ledger.Name),
+			Name:      clusterSecretName(ledger),
 			Namespace: ledger.Namespace,
 		},
 	}
@@ -51,7 +51,7 @@ func (r *ClusterReconciler) reconcileClusterSecret(ctx context.Context, ledger *
 			}
 		}
 
-		return controllerutil.SetControllerReference(ledger, secret, r.Scheme)
+		return setOwnedControllerReference(ledger, secret, r.Scheme, "Secret")
 	})
 
 	return err
@@ -64,13 +64,18 @@ func (r *ClusterReconciler) reconcileClusterSecret(ctx context.Context, ledger *
 func (r *ClusterReconciler) deleteClusterSecret(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	secret := &corev1.Secret{}
 
-	err := r.Get(ctx, types.NamespacedName{Name: clusterSecretName(ledger.Name), Namespace: ledger.Namespace}, secret)
+	err := r.Get(ctx, types.NamespacedName{Name: clusterSecretName(ledger), Namespace: ledger.Namespace}, secret)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
 		}
 
 		return err
+	}
+	if notControlledBy(secret, ledger) {
+		// Never delete a Secret under the derived name that this Cluster
+		// did not create (resource name conflict).
+		return nil
 	}
 
 	if err := r.Delete(ctx, secret, &client.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {

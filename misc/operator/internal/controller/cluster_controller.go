@@ -126,6 +126,25 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ObservedGeneration: ledger.Generation,
 	})
 
+	// Refuse to touch objects this Cluster does not control under its derived
+	// names (spec.resourceName collision, or unrelated objects). This runs
+	// before every step that creates, updates or deletes derived objects by
+	// name, including the pruning below; the same conflict raised later at an
+	// adoption point (setOwnedControllerReference) takes the same path.
+	if err := r.validateResourceNameOwnership(ctx, ledger); err != nil {
+		if result, conflict := r.reportResourceNameConflict(ctx, ledger, err); conflict {
+			return result, nil
+		}
+
+		return ctrl.Result{}, fmt.Errorf("validating resource name ownership: %w", err)
+	}
+	meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+		Type:               conditionResourceNamesAvailable,
+		Status:             metav1.ConditionTrue,
+		Reason:             "Owned",
+		ObservedGeneration: ledger.Generation,
+	})
+
 	// Prune optional Services whose spec marks them disabled BEFORE running
 	// the drift guard: an edit that both disables a Service and tweaks
 	// additionalLabels would otherwise abort on drift detected on the
@@ -231,6 +250,10 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if err := rec.fn(ctx, ledger); err != nil {
 			logger.Error(err, "failed to reconcile", "resource", rec.name)
 
+			if result, conflict := r.reportResourceNameConflict(ctx, ledger, err); conflict {
+				return result, nil
+			}
+
 			return ctrl.Result{}, fmt.Errorf("reconciling %s: %w", rec.name, err)
 		}
 	}
@@ -239,6 +262,10 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	credentials, pendingReason, err := r.reconcileAuthKeys(ctx, ledger)
 	if err != nil {
 		logger.Error(err, "failed to reconcile auth keys")
+
+		if result, conflict := r.reportResourceNameConflict(ctx, ledger, err); conflict {
+			return result, nil
+		}
 
 		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
 	}
@@ -255,6 +282,10 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// (EN-1487; only the pod-template mutation may be frozen, not this).
 	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
 		logger.Error(err, "failed to reconcile cluster secret")
+
+		if result, conflict := r.reportResourceNameConflict(ctx, ledger, err); conflict {
+			return result, nil
+		}
 
 		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
 	}
@@ -296,6 +327,10 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if _, err := r.reconcileVolumeProtectionPass(ctx, ledger); err != nil {
 			logger.Error(err, "failed to reconcile volume protection while auth keys pending")
 
+			if result, conflict := r.reportResourceNameConflict(ctx, ledger, err); conflict {
+				return result, nil
+			}
+
 			return ctrl.Result{}, fmt.Errorf("reconciling volume protection while auth keys pending: %w", err)
 		}
 
@@ -310,6 +345,10 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err != nil {
 		logger.Error(err, "failed to reconcile StatefulSet")
 
+		if result, conflict := r.reportResourceNameConflict(ctx, ledger, err); conflict {
+			return result, nil
+		}
+
 		return ctrl.Result{}, fmt.Errorf("reconciling StatefulSet: %w", err)
 	}
 
@@ -319,6 +358,10 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// deferred TLS-off cleanup the pre-gate pass intentionally skipped.
 	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, true); err != nil {
 		logger.Error(err, "failed to reconcile cluster secret after StatefulSet")
+
+		if result, conflict := r.reportResourceNameConflict(ctx, ledger, err); conflict {
+			return result, nil
+		}
 
 		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret after StatefulSet: %w", err)
 	}
@@ -406,9 +449,14 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 	// Get the StatefulSet to read ready replicas
 	sts := &appsv1.StatefulSet{}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      resourceName(ledger.Name),
+		Name:      clusterBaseName(ledger),
 		Namespace: ledger.Namespace,
 	}, sts)
+	if err == nil && notControlledBy(sts, ledger) {
+		// Base-name conflict: never report the readiness of a StatefulSet
+		// this Cluster did not create.
+		err = apierrors.NewNotFound(appsv1.Resource("statefulsets"), sts.Name)
+	}
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// If the reconciler already set a phase (e.g. "Degraded" from
@@ -488,12 +536,12 @@ func resolveEndpoints(ledger *ledgerv1alpha1.Cluster) *ledgerv1alpha1.EndpointsS
 
 	external := grpcHost != "" || httpHost != ""
 
-	grpcEndpoint := fmt.Sprintf("%s.%s.svc.cluster.local:8888", resourceName(ledger.Name), ledger.Namespace)
+	grpcEndpoint := fmt.Sprintf("%s.%s.svc.cluster.local:8888", clusterBaseName(ledger), ledger.Namespace)
 	if grpcHost != "" {
 		grpcEndpoint = grpcHost + ":443"
 	}
 
-	httpEndpoint := fmt.Sprintf("http://%s.%s.svc.cluster.local:9000", resourceName(ledger.Name), ledger.Namespace)
+	httpEndpoint := fmt.Sprintf("http://%s.%s.svc.cluster.local:9000", clusterBaseName(ledger), ledger.Namespace)
 	if httpHost != "" {
 		scheme := "http"
 		if httpTLS {
@@ -507,19 +555,6 @@ func resolveEndpoints(ledger *ledgerv1alpha1.Cluster) *ledgerv1alpha1.EndpointsS
 		HTTP:     httpEndpoint,
 		External: external,
 	}
-}
-
-// deleteIfExists deletes a resource if it exists, ignoring not-found errors.
-func (r *ClusterReconciler) deleteIfExists(ctx context.Context, obj client.Object) error {
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      obj.GetName(),
-		Namespace: obj.GetNamespace(),
-	}, obj)
-	if err != nil {
-		return ignoreNotFound(err)
-	}
-
-	return r.Delete(ctx, obj)
 }
 
 func (r *ClusterReconciler) deleteUnstructuredIfExists(ctx context.Context, obj *unstructured.Unstructured) error {
@@ -596,14 +631,26 @@ func applyDefaults(ledger *ledgerv1alpha1.Cluster) {
 // cause reconciliation to fail. Errors are surfaced via status conditions
 // rather than silently failing in operator logs.
 func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
-	// The headless Service name is the tightest DNS-1035 label the operator
-	// derives from the CR name (resourcePrefix + name + "-headless"), capped at
-	// 63 chars. Reject over-long names at admission with a clear message instead
-	// of letting reconciliation fail later on an invalid Service name (EN-1319).
-	if derived := headlessServiceName(ledger.Name); len(derived) > dns1035LabelMaxLength {
+	// The Cluster base name is the StatefulSet name, the tightest bound on any
+	// derived name: pods carry controller-revision-hash=<statefulset>-<hash>,
+	// a label value capped at 63 chars, so the base name is capped at 52
+	// (statefulSetNameMaxLength). That also keeps every derived DNS-1035 label
+	// ("<base>-headless", pods) within 63 (EN-1319). Reject over-long names with
+	// a clear message instead of letting pod creation fail later. The CRD bounds
+	// spec.resourceName too; this is defence in depth and the only bound on the
+	// default "ledger-<name>" base.
+	if base := clusterBaseName(ledger); len(base) > statefulSetNameMaxLength {
+		const reason = "the StatefulSet controller labels pods with controller-revision-hash=<statefulset>-<10-char hash>, and label values are capped at 63 chars"
+		if ledger.Spec.ResourceName != "" {
+			return fmt.Errorf(
+				"resourceName %q is too long: it is the StatefulSet name and is %d chars, exceeding the %d-char limit (%s)",
+				ledger.Spec.ResourceName, len(base), statefulSetNameMaxLength, reason,
+			)
+		}
+
 		return fmt.Errorf(
-			"name %q is too long: derived Service name %q is %d chars, exceeds the %d-char DNS-1035 limit",
-			ledger.Name, derived, len(derived), dns1035LabelMaxLength,
+			"name %q is too long: derived StatefulSet name %q is %d chars, exceeding the %d-char limit (%s); recreate the Cluster with a shorter name or spec.resourceName",
+			ledger.Name, base, len(base), statefulSetNameMaxLength, reason,
 		)
 	}
 

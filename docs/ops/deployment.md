@@ -170,6 +170,84 @@ with a different ID fails the normal persisted-configuration check; set the
 original ID when reattaching data. A new Cluster with fresh storage gets a new
 ID even if its name is reused. Direct `ledger run` still requires `--cluster-id`.
 
+#### Resource names
+
+Every object the operator derives from a Cluster shares one base name. By
+default it is `ledger-<metadata.name>`. Set `spec.resourceName` to replace the
+whole base name; the `ledger-` prefix and the CR name are then not used:
+
+```yaml
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: jdxmvkvwlyiy-cukg
+spec:
+  resourceName: payments
+```
+
+| Object | Default | With `resourceName: payments` |
+|--------|---------|-------------------------------|
+| StatefulSet, ClusterIP Service, Ingress, NetworkPolicy | `ledger-jdxmvkvwlyiy-cukg` | `payments` |
+| Pods | `ledger-jdxmvkvwlyiy-cukg-<n>` | `payments-<n>` |
+| Headless Service | `ledger-jdxmvkvwlyiy-cukg-headless` | `payments-headless` |
+| gRPC Service and Ingress | `ledger-jdxmvkvwlyiy-cukg-grpc` | `payments-grpc` |
+| Auth-keys ConfigMap | `ledger-jdxmvkvwlyiy-cukg-auth-keys` | `payments-auth-keys` |
+| Cluster Secret | `ledger-jdxmvkvwlyiy-cukg-cluster-secret` | `payments-cluster-secret` |
+| DNSEndpoint for entry `<e>` | `ledger-jdxmvkvwlyiy-cukg-<e>` | `payments-<e>` |
+| Default ServiceAccount | `ledger-jdxmvkvwlyiy-cukg` | `payments` |
+| PVCs | `<wal\|data>-ledger-jdxmvkvwlyiy-cukg-<n>` | `<wal\|data>-payments-<n>` |
+
+Raft peer, bootstrap and `ledgerctl` addresses, backup Jobs, the status
+endpoints (`payments.<namespace>.svc.cluster.local`) and the `kubectl ledger`
+plugin follow the same base name. `spec.serviceAccount.name` still overrides
+the ServiceAccount name. Labels (`app.kubernetes.io/instance`) keep the CR name.
+
+Rules:
+
+- `resourceName` must be a DNS-1035 label (`^[a-z]([-a-z0-9]*[a-z0-9])?$`) of
+  at most 52 characters. It is the StatefulSet name, and the StatefulSet
+  controller labels every pod with `controller-revision-hash=<statefulset>-<hash>`
+  (hash up to 10 characters); label values are capped at 63 characters, so a
+  longer name prevents pod creation
+  ([kubernetes#64023](https://github.com/kubernetes/kubernetes/issues/64023)).
+  The same 52-character limit applies to the default base name, so without
+  `resourceName` the Cluster `metadata.name` is limited to 45 characters
+  (`52 - len("ledger-")`); the operator reports a longer one as
+  `ConfigValid=False`.
+- It is create-time only. The API server rejects changing it, adding it to an
+  existing Cluster, or removing it, because that would orphan the StatefulSet
+  and its PVCs and change every Raft peer address. To rename, create a new
+  Cluster (restore from backup if the data must move).
+- The base name must be unique in the namespace. The operator never adopts an
+  existing object it did not create: any object under a derived name that this
+  Cluster will create or update and does not control — another Cluster's object
+  (two equal overrides, or an override equal to another Cluster's
+  `ledger-<name>`) or an unrelated object without a controller reference, such
+  as a Ledger v2 `ledger` Service — blocks the Cluster. It reports
+  `ResourceNamesAvailable=False` (reason `NameConflict`), phase `Error` and a
+  `ResourceNameConflict` warning event, re-checks every minute, and never
+  modifies, deletes or execs into the conflicting objects. Objects under names
+  the Cluster does not use (for example a disabled gRPC Service) do not block
+  it and are never deleted by it. The Ledger and EventSink controllers do not
+  exec into a Cluster whose StatefulSet is missing or not controlled by it
+  (a deleting Ledger or EventSink releases its finalizer without cleanup); a
+  BackupRun against such a StatefulSet fails without creating a Job, and waits
+  while the StatefulSet does not exist yet.
+- This applies to the ServiceAccount too. With `spec.serviceAccount.name` set to
+  an existing ServiceAccount (for example `default`), also set
+  `spec.serviceAccount.create: false`; otherwise the operator treats it as a
+  conflict instead of adopting it.
+- PVCs retained from a deleted Cluster with the same base name are reused by
+  the new StatefulSet, exactly as when a Cluster is recreated with the same
+  name; the persisted cluster ID check rejects mismatched data on boot.
+- To reattach data after deleting a Cluster with `kubectl delete
+  --cascade=orphan`, first delete the orphaned StatefulSet, Services, Ingresses,
+  NetworkPolicy, ConfigMap, Secret and ServiceAccount it left behind (keep the
+  PVCs), or restore their controller reference to the new Cluster. The
+  recreated Cluster does not re-adopt them and reports `NameConflict` until
+  they are gone. Deleting the orphaned StatefulSet with `--cascade=orphan`
+  keeps its pods running until the new StatefulSet replaces them.
+
 ### Main Configuration
 
 #### Number of Replicas

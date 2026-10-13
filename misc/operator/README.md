@@ -121,6 +121,16 @@ Ledger rejects an ID mismatch on boot. A deleted Cluster recreated with fresh
 storage receives a new ID. Inspect `kubectl get cluster my-ledger -o
 jsonpath='{.spec.clusterID}'` to discover the resolved value.
 
+Objects derived from a Cluster are named `ledger-<metadata.name>` by default.
+Set `spec.resourceName` at creation to replace that whole base name (for
+example `resourceName: payments` yields StatefulSet `payments`, pods
+`payments-<n>`, Service `payments-headless`). It is create-time only, at most
+52 characters (the StatefulSet `controller-revision-hash` label limit, which
+also caps `metadata.name` at 45 characters without an override), and must be
+unique in the namespace: the operator never adopts
+an existing object it did not create and reports `ResourceNamesAvailable=False`
+instead. See [Resource names](../../docs/ops/deployment.md#resource-names).
+
 ```yaml
 apiVersion: ledger.formance.com/v1alpha1
 kind: Cluster

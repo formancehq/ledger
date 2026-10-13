@@ -35,7 +35,7 @@ func TestRaftScaleDownReplacementMembership(t *testing.T) {
 						continue
 					}
 					pod := &corev1.Pod{
-						ObjectMeta: metav1.ObjectMeta{Name: podName(cluster.Name, ordinal), Namespace: cluster.Namespace},
+						ObjectMeta: metav1.ObjectMeta{Name: podName(cluster, ordinal), Namespace: cluster.Namespace},
 						Status: corev1.PodStatus{Phase: corev1.PodRunning, ContainerStatuses: []corev1.ContainerStatus{{
 							Name: "ledger", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
 						}}},
@@ -65,7 +65,7 @@ func TestRaftScaleDownReplacementMembership(t *testing.T) {
 					namespace, pod, container string, command []string,
 				) (*execResult, error) {
 					require.Equal(t, cluster.Namespace, namespace)
-					require.Equal(t, podName(cluster.Name, 0), pod)
+					require.Equal(t, podName(cluster, 0), pod)
 					require.Equal(t, "ledger", container)
 					cmd := command[2]
 					calls = append(calls, cmd)

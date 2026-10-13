@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -40,20 +42,34 @@ func desiredTLSMode(ledger *ledgerv1alpha1.Cluster) string {
 	return tlsModeDisabled
 }
 
+// errClusterRuntimeAbsent signals that the Cluster has no StatefulSet under its
+// base name, so there is no pod of this Cluster to exec into or dial. A pod
+// named "<base>-0" may still exist (e.g. orphaned by a deleted Cluster that had
+// the same base name), which is exactly why the exec paths must not proceed.
+var errClusterRuntimeAbsent = errors.New("cluster StatefulSet not found")
+
 // fetchTLSMode returns the TLS_MODE currently in effect on the running pods of
-// the named Cluster, by reading the TLS_MODE env var from the
-// StatefulSet pod template. Returns an empty string (and no error) if the
-// StatefulSet does not exist yet; the caller's exec is meaningless in that
-// case and will fail on the pod lookup, but this keeps the bootstrap path
-// from masking the original error.
-func fetchTLSMode(ctx context.Context, c client.Client, namespace, name string) (string, error) {
+// the Cluster, by reading the TLS_MODE env var from the StatefulSet pod
+// template.
+//
+// It is the gate of every cross-CRD exec/dial path (Ledger, EventSink,
+// BackupRun): it returns errClusterRuntimeAbsent when the StatefulSet does not
+// exist, and errResourceNameConflict when one exists under the Cluster base
+// name but is not controlled by the Cluster (no controller reference, or
+// another one). Callers must not exec or dial in either case, so they never act
+// on pods the Cluster did not create.
+func fetchTLSMode(ctx context.Context, c client.Client, cluster *ledgerv1alpha1.Cluster) (string, error) {
 	sts := &appsv1.StatefulSet{}
-	if err := c.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, sts); err != nil {
+	key := types.NamespacedName{Name: clusterBaseName(cluster), Namespace: cluster.Namespace}
+	if err := c.Get(ctx, key, sts); err != nil {
 		if apierrors.IsNotFound(err) {
-			return "", nil
+			return "", fmt.Errorf("%w: %s", errClusterRuntimeAbsent, key)
 		}
 
 		return "", err
+	}
+	if notControlledBy(sts, cluster) {
+		return "", fmt.Errorf("%w: %s", errResourceNameConflict, describeOwnership("StatefulSet", sts, cluster))
 	}
 
 	return currentTLSModeFromStatefulSet(sts), nil
@@ -163,7 +179,7 @@ func tlsMigrationPhase(desired, target string) string {
 func (r *ClusterReconciler) fetchExistingStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (*appsv1.StatefulSet, error) {
 	sts := &appsv1.StatefulSet{}
 
-	err := r.Get(ctx, types.NamespacedName{Name: resourceName(ledger.Name), Namespace: ledger.Namespace}, sts)
+	err := r.Get(ctx, types.NamespacedName{Name: clusterBaseName(ledger), Namespace: ledger.Namespace}, sts)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil

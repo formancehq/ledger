@@ -196,16 +196,16 @@ func TestVolumeExpansionReconcilerExpandsAllLiveReplicas(t *testing.T) {
 		},
 	}
 	// The rejected desired port must not enter the real measurement command.
-	command := volumeDiskUsageCommand(ledger.Name, tlsModeDisabled)
+	command := volumeDiskUsageCommand(ledger, tlsModeDisabled)
 	require.Len(t, command, 3)
 	require.Contains(t, command[2], `--server "$POD_NAME.ledger-test-headless.$POD_NAMESPACE.svc.cluster.local:$GRPC_PORT"`)
 	require.NotContains(t, command[2], ":9999")
 	objects := []runtime.Object{
 		ledger,
-		&appsv1.StatefulSet{
+		controlledByCluster(&appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{Name: "ledger-test", Namespace: "default"},
 			Spec:       appsv1.StatefulSetSpec{Replicas: &liveReplicas},
-		},
+		}, ledger),
 		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: storageClassName}, AllowVolumeExpansion: &allowExpansion},
 	}
 	for ordinal := range liveReplicas {
@@ -299,10 +299,10 @@ func TestVolumeExpansionReconcilerConvergesPartialPatchAfterRestart(t *testing.T
 	}
 	objects := []runtime.Object{
 		ledger,
-		&appsv1.StatefulSet{
+		controlledByCluster(&appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{Name: "ledger-restart", Namespace: "default"},
 			Spec:       appsv1.StatefulSetSpec{Replicas: &replicas},
-		},
+		}, ledger),
 		&storagev1.StorageClass{
 			ObjectMeta:           metav1.ObjectMeta{Name: storageClassName},
 			AllowVolumeExpansion: &allowExpansion,
@@ -459,10 +459,10 @@ func TestVolumeExpansionReconcilerIgnoresMalformedCooldownAnnotation(t *testing.
 	pvc.Annotations = map[string]string{annotationLastExpansionAt: "not-a-timestamp"}
 	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(ledger).WithRuntimeObjects(
 		ledger,
-		&appsv1.StatefulSet{
+		controlledByCluster(&appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{Name: "ledger-malformed-cooldown", Namespace: "default"},
 			Spec:       appsv1.StatefulSetSpec{Replicas: &replicas},
-		},
+		}, ledger),
 		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: storageClassName}, AllowVolumeExpansion: &allowExpansion},
 		pvc,
 	).Build()
@@ -527,7 +527,7 @@ func TestVolumeExpansionReconcilerCollectsWALAndDataOnceInParallel(t *testing.T)
 	}
 	objects := []runtime.Object{
 		ledger,
-		&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "ledger-shared-measurement", Namespace: "default"}, Spec: appsv1.StatefulSetSpec{Replicas: &replicas}},
+		controlledByCluster(&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "ledger-shared-measurement", Namespace: "default"}, Spec: appsv1.StatefulSetSpec{Replicas: &replicas}}, ledger),
 		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: storageClassName}, AllowVolumeExpansion: &allowExpansion},
 	}
 	for ordinal := range replicas {
@@ -792,10 +792,10 @@ func TestVolumeExpansionReconcilerRejectsHostPathPolicyBeforeSideEffects(t *test
 	pvc := boundTestPVC("data-ledger-host-path-0", "fixed", "100Gi")
 	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(ledger).WithRuntimeObjects(
 		ledger,
-		&appsv1.StatefulSet{
+		controlledByCluster(&appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{Name: "ledger-host-path", Namespace: "default"},
 			Spec:       appsv1.StatefulSetSpec{Replicas: &replicas},
-		},
+		}, ledger),
 		pvc,
 	).Build()
 	recorder := record.NewFakeRecorder(10)
@@ -865,10 +865,10 @@ func TestVolumeExpansionReconcilerDoesNotConvergeAboveMaximum(t *testing.T) {
 	pvc1 := boundTestPVC("data-ledger-above-maximum-1", storageClassName, "100Gi")
 	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(ledger).WithRuntimeObjects(
 		ledger,
-		&appsv1.StatefulSet{
+		controlledByCluster(&appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{Name: "ledger-above-maximum", Namespace: "default"},
 			Spec:       appsv1.StatefulSetSpec{Replicas: &replicas},
-		},
+		}, ledger),
 		&storagev1.StorageClass{
 			ObjectMeta:           metav1.ObjectMeta{Name: storageClassName},
 			AllowVolumeExpansion: &allowExpansion,

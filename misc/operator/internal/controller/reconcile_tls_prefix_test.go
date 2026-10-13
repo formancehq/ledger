@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -19,9 +20,11 @@ import (
 // exec path end-to-end against a fake client to lock in the EN-1319 invariant:
 // fetchTLSMode must look up the StatefulSet by the operator-created (prefixed)
 // name, not the bare CR name. The reconciler creates the StatefulSet as
-// resourceName(cr); if the exec/backup call sites look it up by the bare CR
-// name the Get returns NotFound, fetchTLSMode silently returns "", and the Job
-// runs ledgerctl with --insecure against a TLS-required server.
+// clusterBaseName(cr); if the exec/backup call sites looked it up by the bare
+// CR name the Get would return NotFound. A missing StatefulSet is now
+// errClusterRuntimeAbsent (no Job, the run waits) and one not controlled by the
+// Cluster is a permanent errResourceNameConflict (no Job, the run fails):
+// neither may silently degrade to an --insecure Job dialing another runtime.
 func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 	t.Parallel()
 
@@ -54,8 +57,8 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 
 	// makeSTS builds a running StatefulSet carrying TLS_MODE=required, mirroring
 	// what the reconciler renders for a TLS-required Cluster.
-	makeSTS := func(name string) *appsv1.StatefulSet {
-		return &appsv1.StatefulSet{
+	makeSTS := func(name string, owned bool) *appsv1.StatefulSet {
+		sts := &appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
 			Spec: appsv1.StatefulSetSpec{
 				Template: corev1.PodTemplateSpec{
@@ -68,23 +71,37 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 				},
 			},
 		}
+		if owned {
+			return controlledByCluster(sts, ls)
+		}
+
+		return sts
 	}
 
 	tests := []struct {
 		name         string
 		stsName      string
+		owned        bool
 		wantTLSCA    bool // command must carry --tls-ca-cert
-		wantInsecure bool // command must carry --insecure
+		wantAbsent   bool // no Job; transient errClusterRuntimeAbsent
+		wantConflict bool // no Job; permanent errResourceNameConflict
 	}{
 		{
 			name:      "prefixed StatefulSet name resolves TLS-required",
-			stsName:   resourceName(crName), // what the operator actually creates
+			stsName:   clusterBaseName(clusterNamed(crName)), // what the operator actually creates
+			owned:     true,
 			wantTLSCA: true,
 		},
 		{
-			name:         "bare StatefulSet name is NotFound and degrades to insecure",
-			stsName:      crName, // the pre-fix bug: bare CR name
-			wantInsecure: true,
+			name:       "bare StatefulSet name is NotFound and creates no Job",
+			stsName:    crName, // the pre-fix bug: bare CR name
+			owned:      true,
+			wantAbsent: true,
+		},
+		{
+			name:         "StatefulSet not controlled by the Cluster fails permanently without a Job",
+			stsName:      clusterBaseName(clusterNamed(crName)),
+			wantConflict: true,
 		},
 	}
 
@@ -100,12 +117,28 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 
 			c := fake.NewClientBuilder().
 				WithScheme(scheme).
-				WithObjects(makeSTS(tt.stsName)).
+				WithObjects(makeSTS(tt.stsName, tt.owned)).
 				Build()
 
 			r := &BackupRunReconciler{Client: c, Scheme: scheme}
 
 			job, err := r.ensureBackupJob(context.Background(), run, backup, ls)
+			if tt.wantAbsent || tt.wantConflict {
+				require.Nil(t, job)
+				var permanent *permanentBackupJobError
+				if tt.wantAbsent {
+					require.ErrorIs(t, err, errClusterRuntimeAbsent)
+					require.False(t, errors.As(err, &permanent), "a missing StatefulSet is transient")
+				} else {
+					require.True(t, errors.As(err, &permanent), "a name conflict fails the run")
+					require.ErrorIs(t, permanent.error, errResourceNameConflict)
+				}
+				jobs := &batchv1.JobList{}
+				require.NoError(t, c.List(context.Background(), jobs))
+				require.Empty(t, jobs.Items, "no backup Job may be created")
+
+				return
+			}
 			require.NoError(t, err)
 			require.Len(t, job.Spec.Template.Spec.Containers, 1)
 
@@ -114,11 +147,6 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 				require.Contains(t, shell, `--tls-ca-cert "$TLS_CA_CERT_FILE"`,
 					"TLS-required StatefulSet found under prefixed name must yield a TLS ledgerctl command")
 				require.NotContains(t, shell, "--insecure")
-			}
-			if tt.wantInsecure {
-				require.Contains(t, shell, "--insecure",
-					"bare-name lookup misses the StatefulSet and silently degrades to plaintext")
-				require.NotContains(t, shell, "--tls-ca-cert")
 			}
 		})
 	}

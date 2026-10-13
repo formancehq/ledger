@@ -3,23 +3,71 @@ package controller
 import (
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
+// clusterNamed returns a Cluster with the given CR name and no
+// spec.resourceName, i.e. the default "ledger-<name>" base name.
+func clusterNamed(name string) *ledgerv1alpha1.Cluster {
+	return &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: name}}
+}
+
+// controlledByCluster stamps the controller reference the operator sets on
+// every object it creates (CreateOrUpdate + SetControllerReference), so test
+// fixtures seed derived objects as the operator would actually have left them.
+func controlledByCluster[T metav1.Object](obj T, cluster *ledgerv1alpha1.Cluster) T {
+	obj.SetOwnerReferences(append(obj.GetOwnerReferences(),
+		*metav1.NewControllerRef(cluster, ledgerv1alpha1.GroupVersion.WithKind("Cluster"))))
+
+	return obj
+}
+
+// clusterWithResourceName returns a Cluster whose base name is overridden by
+// spec.resourceName.
+func clusterWithResourceName(name, resourceName string) *ledgerv1alpha1.Cluster {
+	cluster := clusterNamed(name)
+	cluster.Spec.ResourceName = resourceName
+
+	return cluster
+}
+
 func TestNameHelpers(t *testing.T) {
+	t.Parallel()
+
+	defaulted := clusterNamed("foo")
+	overridden := clusterWithResourceName("jdxmvkvwlyiy-cukg", "payments")
+
 	tests := []struct {
 		name string
 		got  string
 		want string
 	}{
-		{"resourceName", resourceName("foo"), "ledger-foo"},
-		{"headlessServiceName", headlessServiceName("foo"), "ledger-foo-headless"},
-		{"grpcServiceName", grpcServiceName("foo"), "ledger-foo-grpc"},
-		{"grpcIngressName", grpcIngressName("foo"), "ledger-foo-grpc"},
-		{"authKeysConfigMapName", authKeysConfigMapName("foo"), "ledger-foo-auth-keys"},
-		{"clusterSecretName", clusterSecretName("foo"), "ledger-foo-cluster-secret"},
-		{"podName-0", podName("foo", 0), "ledger-foo-0"},
-		{"podName-2", podName("foo", 2), "ledger-foo-2"},
+		{"clusterBaseName", clusterBaseName(defaulted), "ledger-foo"},
+		{"headlessServiceName", headlessServiceName(defaulted), "ledger-foo-headless"},
+		{"grpcServiceName", grpcServiceName(defaulted), "ledger-foo-grpc"},
+		{"grpcIngressName", grpcIngressName(defaulted), "ledger-foo-grpc"},
+		{"authKeysConfigMapName", authKeysConfigMapName(defaulted), "ledger-foo-auth-keys"},
+		{"clusterSecretName", clusterSecretName(defaulted), "ledger-foo-cluster-secret"},
+		{"dnsEndpointName", dnsEndpointName(defaulted, "public"), "ledger-foo-public"},
+		{"serviceAccountName", serviceAccountName(defaulted), "ledger-foo"},
+		{"podName-0", podName(defaulted, 0), "ledger-foo-0"},
+		{"podName-2", podName(defaulted, 2), "ledger-foo-2"},
+		{"pvcName", pvcName(defaulted, "data", 1), "data-ledger-foo-1"},
+
+		// spec.resourceName replaces the whole base name: no "ledger-" prefix
+		// and no CR name.
+		{"override/clusterBaseName", clusterBaseName(overridden), "payments"},
+		{"override/headlessServiceName", headlessServiceName(overridden), "payments-headless"},
+		{"override/grpcServiceName", grpcServiceName(overridden), "payments-grpc"},
+		{"override/grpcIngressName", grpcIngressName(overridden), "payments-grpc"},
+		{"override/authKeysConfigMapName", authKeysConfigMapName(overridden), "payments-auth-keys"},
+		{"override/clusterSecretName", clusterSecretName(overridden), "payments-cluster-secret"},
+		{"override/dnsEndpointName", dnsEndpointName(overridden, "public"), "payments-public"},
+		{"override/serviceAccountName", serviceAccountName(overridden), "payments"},
+		{"override/podName-0", podName(overridden, 0), "payments-0"},
+		{"override/pvcName", pvcName(overridden, "wal", 2), "wal-payments-2"},
 	}
 	for _, tt := range tests {
 		if tt.got != tt.want {
@@ -28,21 +76,40 @@ func TestNameHelpers(t *testing.T) {
 	}
 }
 
+// TestPrefixedNameUnaffectedByResourceName guards that objects not derived
+// from a Cluster base name keep the plain prefix.
+func TestPrefixedNameUnaffectedByResourceName(t *testing.T) {
+	t.Parallel()
+
+	if got := credentialsCanonicalSecretName("creds"); got != "ledger-creds-credentials-canonical" {
+		t.Errorf("credentialsCanonicalSecretName = %q", got)
+	}
+	if got := prefixedName("run"); got != "ledger-run" {
+		t.Errorf("prefixedName = %q", got)
+	}
+}
+
 // TestScaleDownPodNameMatchesStatefulSet guards the EN-1319 regression where
 // scale-down dialed bare-CR pod names (foo-N) while the StatefulSet — and thus
-// its pods — is resourceName(cr) (ledger-foo-N). The pod name for any ordinal
-// must equal the StatefulSet name plus the ordinal.
+// its pods — is clusterBaseName(cr) (ledger-foo-N). The pod name for any
+// ordinal must equal the StatefulSet name plus the ordinal, with or without a
+// spec.resourceName override.
 func TestScaleDownPodNameMatchesStatefulSet(t *testing.T) {
-	cr := "foo"
-	if got, want := podName(cr, 0), "ledger-foo-0"; got != want {
-		t.Fatalf("podName(%q,0) = %q, want %q", cr, got, want)
+	t.Parallel()
+
+	for _, cluster := range []*ledgerv1alpha1.Cluster{clusterNamed("foo"), clusterWithResourceName("foo", "bar")} {
+		if got, want := podName(cluster, 2), clusterBaseName(cluster)+"-2"; got != want {
+			t.Fatalf("podName(%+v,2) = %q, want %q", cluster.Spec.ResourceName, got, want)
+		}
 	}
-	if got, want := podName(cr, 2), resourceName(cr)+"-2"; got != want {
-		t.Fatalf("podName(%q,2) = %q, want %q", cr, got, want)
+	if got, want := podName(clusterNamed("foo"), 0), "ledger-foo-0"; got != want {
+		t.Fatalf("podName(foo,0) = %q, want %q", got, want)
 	}
 }
 
 func TestServiceAccountName(t *testing.T) {
+	t.Parallel()
+
 	defaulted := &ledgerv1alpha1.Cluster{}
 	defaulted.Name = "foo"
 	if got := serviceAccountName(defaulted); got != "ledger-foo" {
@@ -52,46 +119,37 @@ func TestServiceAccountName(t *testing.T) {
 	overridden := &ledgerv1alpha1.Cluster{}
 	overridden.Name = "foo"
 	overridden.Spec.ServiceAccount.Name = "custom-sa"
+	overridden.Spec.ResourceName = "bar"
 	if got := serviceAccountName(overridden); got != "custom-sa" {
 		t.Errorf("overridden serviceAccountName = %q, want %q (verbatim)", got, "custom-sa")
 	}
 }
 
 // TestBootstrapDNSConsistency guards that the two halves of the raft bootstrap
-// DNS address — podName(cr, 0) and headlessServiceName(cr) — both derive from
-// the same prefixed StatefulSet base (resourceName(cr)). A mismatch would
+// DNS address — podName(cluster, 0) and headlessServiceName(cluster) — both
+// derive from the same StatefulSet base (clusterBaseName). A mismatch would
 // produce an unresolvable DNS name at cluster bootstrap.
 func TestBootstrapDNSConsistency(t *testing.T) {
-	cr := "foo"
-	pod0 := podName(cr, 0)
-	hls := headlessServiceName(cr)
-	if pod0 != "ledger-foo-0" {
-		t.Fatalf("pod0 = %q, want ledger-foo-0", pod0)
-	}
-	if hls != "ledger-foo-headless" {
-		t.Fatalf("headless = %q, want ledger-foo-headless", hls)
-	}
-	// Both halves must derive from the same prefixed StatefulSet base.
-	if want := resourceName(cr); pod0 != want+"-0" || hls != want+"-headless" {
-		t.Fatalf("pod0=%q hls=%q must both derive from %q", pod0, hls, want)
-	}
-}
+	t.Parallel()
 
-// TestCrossCRDPodNameConsistency guards that the Ledger CRD controller and the
-// Cluster reconciler agree on pod names: the Ledger controller dials
-// podName(ClusterRef, 0) while the Cluster reconciler creates pods via
-// the same helper. A divergence would cause the dial to target a non-existent
-// pod.
-func TestCrossCRDPodNameConsistency(t *testing.T) {
-	clusterRef := "foo"
-	// Cluster reconciler names StatefulSet pods via podName.
-	clusterPod0 := podName(clusterRef, 0)
-	// Ledger CRD controller dials the same pod via podName(ClusterRef, 0).
-	ledgerCRDDialTarget := podName(clusterRef, 0)
-	if clusterPod0 != ledgerCRDDialTarget {
-		t.Fatalf("cross-CRD pod-0 mismatch: %q vs %q", clusterPod0, ledgerCRDDialTarget)
-	}
-	if clusterPod0 != "ledger-foo-0" {
-		t.Fatalf("pod-0 = %q, want ledger-foo-0", clusterPod0)
+	for _, tc := range []struct {
+		cluster  *ledgerv1alpha1.Cluster
+		pod0     string
+		headless string
+	}{
+		{clusterNamed("foo"), "ledger-foo-0", "ledger-foo-headless"},
+		{clusterWithResourceName("foo", "bar"), "bar-0", "bar-headless"},
+	} {
+		pod0 := podName(tc.cluster, 0)
+		hls := headlessServiceName(tc.cluster)
+		if pod0 != tc.pod0 {
+			t.Fatalf("pod0 = %q, want %q", pod0, tc.pod0)
+		}
+		if hls != tc.headless {
+			t.Fatalf("headless = %q, want %q", hls, tc.headless)
+		}
+		if want := clusterBaseName(tc.cluster); pod0 != want+"-0" || hls != want+"-headless" {
+			t.Fatalf("pod0=%q hls=%q must both derive from %q", pod0, hls, want)
+		}
 	}
 }
