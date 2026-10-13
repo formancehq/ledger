@@ -72,8 +72,8 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		}},
 		{"failure_message", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetFailure().Code = "tampered" }},
 		{"failure_context_add", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			asset := "USD"
-			e.GetFailure().GetDetails().GetInsufficientFunds().Asset = &asset
+			color := "red"
+			e.GetFailure().GetDetails().GetInsufficientFunds().Color = &color
 		}},
 		{"failure_context_value", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			account := "changed"
@@ -265,7 +265,7 @@ func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.Audi
 			Failure: &auditpb.AuditFailure{
 				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 				Code:    "INSUFFICIENT_FUNDS",
-				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank"}),
+				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0"}),
 			},
 		}
 	default:
@@ -418,7 +418,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 			Failure: &auditpb.AuditFailure{
 				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 				Code:    "INSUFFICIENT_FUNDS",
-				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank"}),
+				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0"}),
 			},
 		},
 	}
@@ -431,7 +431,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		Failure: &commonpb.IdempotencyFailure{
 			Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 			Code:    "INSUFFICIENT_FUNDS",
-			Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank"}),
+			Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0"}),
 		},
 	}
 

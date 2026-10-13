@@ -6637,8 +6637,9 @@ func (*LedgerLogPayload_OrderSkipped) isLedgerLogPayload_Payload() {}
 // FailureDetails is the typed business context of an audited failure.
 // Each arm identifies one concrete stable failure code. The reason and
 // code on the containing record are validated against the selected arm.
-// Scalar fields are optional so absence remains distinct from a present
-// zero or empty value.
+// Scalar fields track presence so absence remains distinct from a present
+// zero or empty value. failure_fact_required marks values that every producer
+// of a variant must supply; unmarked values are genuinely conditional.
 type FailureDetails struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Kind:
@@ -24240,6 +24241,14 @@ var file_common_proto_extTypes = []protoimpl.ExtensionInfo{
 		Tag:           "varint,50128,rep,packed,name=failure_reasons,enum=common.ErrorReason",
 		Filename:      "common.proto",
 	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         50129,
+		Name:          "common.failure_fact_required",
+		Tag:           "varint,50129,opt,name=failure_fact_required",
+		Filename:      "common.proto",
+	},
 }
 
 // Extension fields to descriptorpb.MethodOptions.
@@ -24278,6 +24287,11 @@ var (
 	//
 	// repeated common.ErrorReason failure_reasons = 50128;
 	E_FailureReasons = &file_common_proto_extTypes[6]
+	// Required presence for a scalar fact in a typed audited failure variant.
+	// proto3 optional tracks presence but cannot require it on its own.
+	//
+	// optional bool failure_fact_required = 50129;
+	E_FailureFactRequired = &file_common_proto_extTypes[7]
 )
 
 var File_common_proto protoreflect.FileDescriptor
@@ -24893,43 +24907,43 @@ const file_common_proto_rawDesc = "" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"J\n" +
-	"\x1dAccountNotMatchingTypeDetails\x12\x1d\n" +
-	"\aaddress\x18\x01 \x01(\tH\x00R\aaddress\x88\x01\x01B\n" +
+	"\b_account\"P\n" +
+	"\x1dAccountNotMatchingTypeDetails\x12#\n" +
+	"\aaddress\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaddress\x88\x01\x01B\n" +
 	"\n" +
-	"\b_address\"C\n" +
-	"\x1fAccountTypeAlreadyExistsDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"\xc8\x01\n" +
-	"\x1aAccountTypeConflictDetails\x12\x1d\n" +
-	"\apattern\x18\x01 \x01(\tH\x00R\apattern\x88\x01\x01\x12(\n" +
-	"\rexisting_name\x18\x02 \x01(\tH\x01R\fexistingName\x88\x01\x01\x12.\n" +
-	"\x10existing_pattern\x18\x03 \x01(\tH\x02R\x0fexistingPattern\x88\x01\x01B\n" +
+	"\b_address\"I\n" +
+	"\x1fAccountTypeAlreadyExistsDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"\xda\x01\n" +
+	"\x1aAccountTypeConflictDetails\x12#\n" +
+	"\apattern\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\apattern\x88\x01\x01\x12.\n" +
+	"\rexisting_name\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\fexistingName\x88\x01\x01\x124\n" +
+	"\x10existing_pattern\x18\x03 \x01(\tB\x04\x88\xbd\x18\x01H\x02R\x0fexistingPattern\x88\x01\x01B\n" +
 	"\n" +
 	"\b_patternB\x10\n" +
 	"\x0e_existing_nameB\x13\n" +
-	"\x11_existing_pattern\"A\n" +
-	"\x1dAccountTypeHasAccountsDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x11_existing_pattern\"G\n" +
+	"\x1dAccountTypeHasAccountsDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
 	"\x05_name\"i\n" +
 	"\x1dAccountTypeNameTooLongDetails\x12\x15\n" +
 	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\">\n" +
-	"\x1aAccountTypeNotFoundDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\b_account\"D\n" +
+	"\x1aAccountTypeNotFoundDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
 	"\x05_name\"l\n" +
 	" AccountTypePatternTooLongDetails\x12\x15\n" +
 	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"a\n" +
-	"\x18AggregateOverflowDetails\x12\x19\n" +
-	"\x05stage\x18\x01 \x01(\tH\x00R\x05stage\x88\x01\x01\x12\x17\n" +
-	"\x04side\x18\x02 \x01(\tH\x01R\x04side\x88\x01\x01B\b\n" +
+	"\b_account\"m\n" +
+	"\x18AggregateOverflowDetails\x12\x1f\n" +
+	"\x05stage\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x05stage\x88\x01\x01\x12\x1d\n" +
+	"\x04side\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x04side\x88\x01\x01B\b\n" +
 	"\x06_stageB\a\n" +
 	"\x05_side\"_\n" +
 	"\x13AssetInvalidDetails\x12\x15\n" +
@@ -24938,39 +24952,39 @@ const file_common_proto_rawDesc = "" +
 	"\x04_keyB\n" +
 	"\n" +
 	"\b_account\"\x16\n" +
-	"\x14AuditDisabledDetails\"h\n" +
-	"\x16BalanceNotFoundDetails\x12\x1d\n" +
-	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
-	"\x05asset\x18\x02 \x01(\tH\x01R\x05asset\x88\x01\x01B\n" +
+	"\x14AuditDisabledDetails\"t\n" +
+	"\x16BalanceNotFoundDetails\x12#\n" +
+	"\aaccount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaccount\x88\x01\x01\x12\x1f\n" +
+	"\x05asset\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x05asset\x88\x01\x01B\n" +
 	"\n" +
 	"\b_accountB\b\n" +
-	"\x06_asset\"\x91\x01\n" +
-	"\x1aBalanceNotPreloadedDetails\x12\x1d\n" +
-	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
-	"\x05asset\x18\x02 \x01(\tH\x01R\x05asset\x88\x01\x01\x12\x19\n" +
-	"\x05color\x18\x03 \x01(\tH\x02R\x05color\x88\x01\x01B\n" +
+	"\x06_asset\"\xa3\x01\n" +
+	"\x1aBalanceNotPreloadedDetails\x12#\n" +
+	"\aaccount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaccount\x88\x01\x01\x12\x1f\n" +
+	"\x05asset\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x05asset\x88\x01\x01\x12\x1f\n" +
+	"\x05color\x18\x03 \x01(\tB\x04\x88\xbd\x18\x01H\x02R\x05color\x88\x01\x01B\n" +
 	"\n" +
 	"\b_accountB\b\n" +
 	"\x06_assetB\b\n" +
 	"\x06_color\"\x1d\n" +
-	"\x1bCheckpointIdRequiredDetails\"D\n" +
-	"\x1dCheckpointLimitReachedDetails\x12\x19\n" +
-	"\x05limit\x18\x01 \x01(\x04H\x00R\x05limit\x88\x01\x01B\b\n" +
-	"\x06_limit\"W\n" +
-	"\x19CheckpointNotFoundDetails\x12(\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x04H\x00R\fcheckpointId\x88\x01\x01B\x10\n" +
-	"\x0e_checkpoint_id\"W\n" +
-	"\x19CheckpointNotReadyDetails\x12(\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x04H\x00R\fcheckpointId\x88\x01\x01B\x10\n" +
+	"\x1bCheckpointIdRequiredDetails\"J\n" +
+	"\x1dCheckpointLimitReachedDetails\x12\x1f\n" +
+	"\x05limit\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\x05limit\x88\x01\x01B\b\n" +
+	"\x06_limit\"]\n" +
+	"\x19CheckpointNotFoundDetails\x12.\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\fcheckpointId\x88\x01\x01B\x10\n" +
+	"\x0e_checkpoint_id\"]\n" +
+	"\x19CheckpointNotReadyDetails\x12.\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\fcheckpointId\x88\x01\x01B\x10\n" +
 	"\x0e_checkpoint_id\"g\n" +
 	"\x1bClusterPolicyInvalidDetails\x12\x1d\n" +
 	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x15\n" +
 	"\x03key\x18\x02 \x01(\tH\x01R\x03key\x88\x01\x01B\n" +
 	"\n" +
 	"\b_accountB\x06\n" +
-	"\x04_key\"T\n" +
-	"$ClusterPolicyRevisionConflictDetails\x12\x1f\n" +
-	"\brevision\x18\x01 \x01(\x04H\x00R\brevision\x88\x01\x01B\v\n" +
+	"\x04_key\"Z\n" +
+	"$ClusterPolicyRevisionConflictDetails\x12%\n" +
+	"\brevision\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\brevision\x88\x01\x01B\v\n" +
 	"\t_revision\"\x19\n" +
 	"\x17ClusterUnhealthyDetails\"_\n" +
 	"\x13ColorInvalidDetails\x12\x15\n" +
@@ -24984,13 +24998,13 @@ const file_common_proto_rawDesc = "" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"\xdc\x01\n" +
-	"\x13CoverageMissDetails\x12!\n" +
-	"\tattribute\x18\x01 \x01(\tH\x00R\tattribute\x88\x01\x01\x12(\n" +
-	"\rcanonical_hex\x18\x02 \x01(\tH\x01R\fcanonicalHex\x88\x01\x01\x12\x1a\n" +
-	"\x06id_hex\x18\x03 \x01(\tH\x02R\x05idHex\x88\x01\x01\x12\"\n" +
+	"\b_account\"\xf4\x01\n" +
+	"\x13CoverageMissDetails\x12'\n" +
+	"\tattribute\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\tattribute\x88\x01\x01\x12.\n" +
+	"\rcanonical_hex\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\fcanonicalHex\x88\x01\x01\x12 \n" +
+	"\x06id_hex\x18\x03 \x01(\tB\x04\x88\xbd\x18\x01H\x02R\x05idHex\x88\x01\x01\x12(\n" +
 	"\n" +
-	"raft_index\x18\x04 \x01(\x04H\x03R\traftIndex\x88\x01\x01B\f\n" +
+	"raft_index\x18\x04 \x01(\x04B\x04\x88\xbd\x18\x01H\x03R\traftIndex\x88\x01\x01B\f\n" +
 	"\n" +
 	"_attributeB\x10\n" +
 	"\x0e_canonical_hexB\t\n" +
@@ -25007,46 +25021,46 @@ const file_common_proto_rawDesc = "" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"e\n" +
-	"\x1cExecutionPlanTooLargeDetails\x12\x17\n" +
-	"\x04size\x18\x01 \x01(\x04H\x00R\x04size\x88\x01\x01\x12\x19\n" +
-	"\x05limit\x18\x02 \x01(\x04H\x01R\x05limit\x88\x01\x01B\a\n" +
+	"\b_account\"q\n" +
+	"\x1cExecutionPlanTooLargeDetails\x12\x1d\n" +
+	"\x04size\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\x04size\x88\x01\x01\x12\x1f\n" +
+	"\x05limit\x18\x02 \x01(\x04B\x04\x88\xbd\x18\x01H\x01R\x05limit\x88\x01\x01B\a\n" +
 	"\x05_sizeB\b\n" +
 	"\x06_limit\"\x1f\n" +
 	"\x1dFilterCompilationErrorDetails\"\x1f\n" +
-	"\x1dIdempotencyCheckFailedDetails\">\n" +
-	"\x1dIdempotencyKeyConflictDetails\x12\x15\n" +
-	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01B\x06\n" +
+	"\x1dIdempotencyCheckFailedDetails\"D\n" +
+	"\x1dIdempotencyKeyConflictDetails\x12\x1b\n" +
+	"\x03key\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x03key\x88\x01\x01B\x06\n" +
 	"\x04_key\"]\n" +
 	"\x11IdRequiredDetails\x12\x15\n" +
 	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"@\n" +
-	"\x19IndexAlreadyExistsDetails\x12\x19\n" +
-	"\x05index\x18\x01 \x01(\tH\x00R\x05index\x88\x01\x01B\b\n" +
-	"\x06_index\";\n" +
-	"\x14IndexBuildingDetails\x12\x19\n" +
-	"\x05index\x18\x01 \x01(\tH\x00R\x05index\x88\x01\x01B\b\n" +
-	"\x06_index\"?\n" +
-	"\x18IndexInconsistentDetails\x12\x19\n" +
-	"\x05index\x18\x01 \x01(\tH\x00R\x05index\x88\x01\x01B\b\n" +
-	"\x06_index\";\n" +
-	"\x14IndexNotFoundDetails\x12\x19\n" +
-	"\x05index\x18\x01 \x01(\tH\x00R\x05index\x88\x01\x01B\b\n" +
+	"\b_account\"F\n" +
+	"\x19IndexAlreadyExistsDetails\x12\x1f\n" +
+	"\x05index\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x05index\x88\x01\x01B\b\n" +
+	"\x06_index\"A\n" +
+	"\x14IndexBuildingDetails\x12\x1f\n" +
+	"\x05index\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x05index\x88\x01\x01B\b\n" +
+	"\x06_index\"E\n" +
+	"\x18IndexInconsistentDetails\x12\x1f\n" +
+	"\x05index\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x05index\x88\x01\x01B\b\n" +
+	"\x06_index\"A\n" +
+	"\x14IndexNotFoundDetails\x12\x1f\n" +
+	"\x05index\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x05index\x88\x01\x01B\b\n" +
 	"\x06_index\"i\n" +
 	"\x1dIndexTargetUnsupportedDetails\x12\x15\n" +
 	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"\xe2\x01\n" +
-	"\x18InsufficientFundsDetails\x12\x1d\n" +
-	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
-	"\x05asset\x18\x02 \x01(\tH\x01R\x05asset\x88\x01\x01\x12\x1b\n" +
-	"\x06amount\x18\x03 \x01(\tH\x02R\x06amount\x88\x01\x01\x12\x1d\n" +
-	"\abalance\x18\x04 \x01(\tH\x03R\abalance\x88\x01\x01\x12\x19\n" +
+	"\b_account\"\xfa\x01\n" +
+	"\x18InsufficientFundsDetails\x12#\n" +
+	"\aaccount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaccount\x88\x01\x01\x12\x1f\n" +
+	"\x05asset\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x05asset\x88\x01\x01\x12!\n" +
+	"\x06amount\x18\x03 \x01(\tB\x04\x88\xbd\x18\x01H\x02R\x06amount\x88\x01\x01\x12#\n" +
+	"\abalance\x18\x04 \x01(\tB\x04\x88\xbd\x18\x01H\x03R\abalance\x88\x01\x01\x12\x19\n" +
 	"\x05color\x18\x05 \x01(\tH\x04R\x05color\x88\x01\x01B\n" +
 	"\n" +
 	"\b_accountB\b\n" +
@@ -25056,34 +25070,34 @@ const file_common_proto_rawDesc = "" +
 	"\b_balanceB\b\n" +
 	"\x06_color\"\x19\n" +
 	"\x17InvalidApplyTypeDetails\"!\n" +
-	"\x1fInvalidCallerAttributionDetails\"R\n" +
-	"\x1cInvalidCronExpressionDetails\x12#\n" +
+	"\x1fInvalidCallerAttributionDetails\"X\n" +
+	"\x1cInvalidCronExpressionDetails\x12)\n" +
 	"\n" +
-	"expression\x18\x01 \x01(\tH\x00R\n" +
+	"expression\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\n" +
 	"expression\x88\x01\x01B\r\n" +
 	"\v_expression\"\x1d\n" +
 	"\x1bInvalidExecutionPlanDetails\"\x19\n" +
-	"\x17InvalidOrderTypeDetails\"B\n" +
-	"\x15InvalidPatternDetails\x12\x1d\n" +
-	"\apattern\x18\x01 \x01(\tH\x00R\apattern\x88\x01\x01B\n" +
+	"\x17InvalidOrderTypeDetails\"H\n" +
+	"\x15InvalidPatternDetails\x12#\n" +
+	"\apattern\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\apattern\x88\x01\x01B\n" +
 	"\n" +
-	"\b_pattern\"\xab\x01\n" +
+	"\b_pattern\"\xb1\x01\n" +
 	"\x1dInvalidSkippableReasonDetails\x12\x15\n" +
 	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01\x12,\n" +
-	"\x0fprovided_reason\x18\x03 \x01(\tH\x02R\x0eprovidedReason\x88\x01\x01B\x06\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01\x122\n" +
+	"\x0fprovided_reason\x18\x03 \x01(\tB\x04\x88\xbd\x18\x01H\x02R\x0eprovidedReason\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
 	"\b_accountB\x12\n" +
-	"\x10_provided_reason\">\n" +
-	"\x1aLedgerAlreadyExistsDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"8\n" +
-	"\x14LedgerDeletedDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"=\n" +
-	"\x19LedgerInMirrorModeDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x10_provided_reason\"D\n" +
+	"\x1aLedgerAlreadyExistsDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\">\n" +
+	"\x14LedgerDeletedDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"C\n" +
+	"\x19LedgerInMirrorModeDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
 	"\x05_name\"h\n" +
 	"\x1cLedgerNameInvalidCharDetails\x12\x15\n" +
 	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
@@ -25108,17 +25122,17 @@ const file_common_proto_rawDesc = "" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"9\n" +
-	"\x15LedgerNotFoundDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"@\n" +
-	"\x1cLedgerNotInMirrorModeDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\b_account\"?\n" +
+	"\x15LedgerNotFoundDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"F\n" +
+	"\x1cLedgerNotInMirrorModeDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
 	"\x05_name\"\x18\n" +
-	"\x16MaintenanceModeDetails\"h\n" +
-	"\x1fMetadataFieldNotInSchemaDetails\x12\x1b\n" +
-	"\x06target\x18\x01 \x01(\tH\x00R\x06target\x88\x01\x01\x12\x15\n" +
-	"\x03key\x18\x02 \x01(\tH\x01R\x03key\x88\x01\x01B\t\n" +
+	"\x16MaintenanceModeDetails\"t\n" +
+	"\x1fMetadataFieldNotInSchemaDetails\x12!\n" +
+	"\x06target\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06target\x88\x01\x01\x12\x1b\n" +
+	"\x03key\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x03key\x88\x01\x01B\t\n" +
 	"\a_targetB\x06\n" +
 	"\x04_key\"c\n" +
 	"\x17MetadataKeyEmptyDetails\x12\x15\n" +
@@ -25144,11 +25158,11 @@ const file_common_proto_rawDesc = "" +
 	"\x03key\x18\x02 \x01(\tH\x01R\x03key\x88\x01\x01B\n" +
 	"\n" +
 	"\b_accountB\x06\n" +
-	"\x04_key\"\xe6\x01\n" +
-	"\x1cMetadataLimitExceededDetails\x12!\n" +
-	"\tdimension\x18\x01 \x01(\tH\x00R\tdimension\x88\x01\x01\x12\x19\n" +
-	"\x05limit\x18\x02 \x01(\x04H\x01R\x05limit\x88\x01\x01\x12\x1b\n" +
-	"\x06actual\x18\x03 \x01(\x04H\x02R\x06actual\x88\x01\x01\x12\x15\n" +
+	"\x04_key\"\xf8\x01\n" +
+	"\x1cMetadataLimitExceededDetails\x12'\n" +
+	"\tdimension\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\tdimension\x88\x01\x01\x12\x1f\n" +
+	"\x05limit\x18\x02 \x01(\x04B\x04\x88\xbd\x18\x01H\x01R\x05limit\x88\x01\x01\x12!\n" +
+	"\x06actual\x18\x03 \x01(\x04B\x04\x88\xbd\x18\x01H\x02R\x06actual\x88\x01\x01\x12\x15\n" +
 	"\x03key\x18\x04 \x01(\tH\x03R\x03key\x88\x01\x01\x12\x1d\n" +
 	"\aaccount\x18\x05 \x01(\tH\x04R\aaccount\x88\x01\x01B\f\n" +
 	"\n" +
@@ -25157,10 +25171,10 @@ const file_common_proto_rawDesc = "" +
 	"\a_actualB\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"\x8b\x01\n" +
-	"\x17MetadataNotFoundDetails\x12\x1b\n" +
-	"\x06target\x18\x01 \x01(\tH\x00R\x06target\x88\x01\x01\x12\x15\n" +
-	"\x03key\x18\x02 \x01(\tH\x01R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\b_account\"\x97\x01\n" +
+	"\x17MetadataNotFoundDetails\x12!\n" +
+	"\x06target\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06target\x88\x01\x01\x12\x1b\n" +
+	"\x03key\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x03key\x88\x01\x01\x12\x1d\n" +
 	"\aaccount\x18\x03 \x01(\tH\x02R\aaccount\x88\x01\x01B\t\n" +
 	"\a_targetB\x06\n" +
 	"\x04_keyB\n" +
@@ -25195,97 +25209,97 @@ const file_common_proto_rawDesc = "" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"\x88\x01\n" +
-	"\x17MirrorV2LogIdGapDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x15\n" +
-	"\x03got\x18\x02 \x01(\x04H\x01R\x03got\x88\x01\x01\x12\x1f\n" +
-	"\bexpected\x18\x03 \x01(\x04H\x02R\bexpected\x88\x01\x01B\a\n" +
+	"\b_account\"\x9a\x01\n" +
+	"\x17MirrorV2LogIdGapDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01\x12\x1b\n" +
+	"\x03got\x18\x02 \x01(\x04B\x04\x88\xbd\x18\x01H\x01R\x03got\x88\x01\x01\x12%\n" +
+	"\bexpected\x18\x03 \x01(\x04B\x04\x88\xbd\x18\x01H\x02R\bexpected\x88\x01\x01B\a\n" +
 	"\x05_nameB\x06\n" +
 	"\x04_gotB\v\n" +
-	"\t_expected\"?\n" +
-	"\x1bMirrorV2LogIdInvalidDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"l\n" +
-	"\x1dNumscriptAssetMismatchDetails\x12\x1f\n" +
-	"\bexpected\x18\x01 \x01(\tH\x00R\bexpected\x88\x01\x01\x12\x15\n" +
-	"\x03got\x18\x02 \x01(\tH\x01R\x03got\x88\x01\x01B\v\n" +
+	"\t_expected\"E\n" +
+	"\x1bMirrorV2LogIdInvalidDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"x\n" +
+	"\x1dNumscriptAssetMismatchDetails\x12%\n" +
+	"\bexpected\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\bexpected\x88\x01\x01\x12\x1b\n" +
+	"\x03got\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x03got\x88\x01\x01B\v\n" +
 	"\t_expectedB\x06\n" +
-	"\x04_got\"\x9b\x01\n" +
-	"\x18NumscriptBadArityDetails\x12*\n" +
-	"\x0eexpected_arity\x18\x01 \x01(\tH\x00R\rexpectedArity\x88\x01\x01\x12,\n" +
-	"\x0fgiven_arguments\x18\x02 \x01(\tH\x01R\x0egivenArguments\x88\x01\x01B\x11\n" +
+	"\x04_got\"\xa7\x01\n" +
+	"\x18NumscriptBadArityDetails\x120\n" +
+	"\x0eexpected_arity\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\rexpectedArity\x88\x01\x01\x122\n" +
+	"\x0fgiven_arguments\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x0egivenArguments\x88\x01\x01B\x11\n" +
 	"\x0f_expected_arityB\x12\n" +
-	"\x10_given_arguments\"h\n" +
-	"\x1cNumscriptBadMetaValueDetails\x12\x1d\n" +
-	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x15\n" +
-	"\x03key\x18\x02 \x01(\tH\x01R\x03key\x88\x01\x01B\n" +
+	"\x10_given_arguments\"t\n" +
+	"\x1cNumscriptBadMetaValueDetails\x12#\n" +
+	"\aaccount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaccount\x88\x01\x01\x12\x1b\n" +
+	"\x03key\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x03key\x88\x01\x01B\n" +
 	"\n" +
 	"\b_accountB\x06\n" +
-	"\x04_key\"D\n" +
-	"\x1aNumscriptBadPortionDetails\x12\x1b\n" +
-	"\x06source\x18\x01 \x01(\tH\x00R\x06source\x88\x01\x01B\t\n" +
-	"\a_source\"y\n" +
-	"'NumscriptCannotCastScopedAccountDetails\x12\x1d\n" +
-	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
-	"\x05scope\x18\x02 \x01(\tH\x01R\x05scope\x88\x01\x01B\n" +
+	"\x04_key\"J\n" +
+	"\x1aNumscriptBadPortionDetails\x12!\n" +
+	"\x06source\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06source\x88\x01\x01B\t\n" +
+	"\a_source\"\x85\x01\n" +
+	"'NumscriptCannotCastScopedAccountDetails\x12#\n" +
+	"\aaccount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaccount\x88\x01\x01\x12\x1f\n" +
+	"\x05scope\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x05scope\x88\x01\x01B\n" +
 	"\n" +
 	"\b_accountB\b\n" +
 	"\x06_scope\"$\n" +
-	"\"NumscriptCannotCastToStringDetails\"z\n" +
-	"(NumscriptCannotStoreScopedAccountDetails\x12\x1d\n" +
-	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
-	"\x05scope\x18\x02 \x01(\tH\x01R\x05scope\x88\x01\x01B\n" +
+	"\"NumscriptCannotCastToStringDetails\"\x86\x01\n" +
+	"(NumscriptCannotStoreScopedAccountDetails\x12#\n" +
+	"\aaccount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaccount\x88\x01\x01\x12\x1f\n" +
+	"\x05scope\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x05scope\x88\x01\x01B\n" +
 	"\n" +
 	"\b_accountB\b\n" +
-	"\x06_scope\"w\n" +
-	"\x1fNumscriptCompileBadArityDetails\x12\x1f\n" +
-	"\bexpected\x18\x01 \x01(\x04H\x00R\bexpected\x88\x01\x01\x12\x1b\n" +
-	"\x06actual\x18\x02 \x01(\x04H\x01R\x06actual\x88\x01\x01B\v\n" +
+	"\x06_scope\"\x83\x01\n" +
+	"\x1fNumscriptCompileBadArityDetails\x12%\n" +
+	"\bexpected\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\bexpected\x88\x01\x01\x12!\n" +
+	"\x06actual\x18\x02 \x01(\x04B\x04\x88\xbd\x18\x01H\x01R\x06actual\x88\x01\x01B\v\n" +
 	"\t_expectedB\t\n" +
-	"\a_actual\"M\n" +
-	")NumscriptCompileCannotCastToStringDetails\x12\x17\n" +
-	"\x04type\x18\x01 \x01(\tH\x00R\x04type\x88\x01\x01B\a\n" +
+	"\a_actual\"S\n" +
+	")NumscriptCompileCannotCastToStringDetails\x12\x1d\n" +
+	"\x04type\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04type\x88\x01\x01B\a\n" +
 	"\x05_type\"1\n" +
 	"/NumscriptCompileCannotStoreScopedAccountDetails\"+\n" +
-	")NumscriptCompileDuplicateRemainingDetails\"L\n" +
-	"(NumscriptCompileDuplicateVariableDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	")NumscriptCompileDuplicateRemainingDetails\"R\n" +
+	"(NumscriptCompileDuplicateVariableDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
 	"\x05_name\"\x1e\n" +
-	"\x1cNumscriptCompileErrorDetails\"\\\n" +
-	"*NumscriptCompileExperimentalFeatureDetails\x12 \n" +
-	"\tflag_name\x18\x01 \x01(\tH\x00R\bflagName\x88\x01\x01B\f\n" +
+	"\x1cNumscriptCompileErrorDetails\"b\n" +
+	"*NumscriptCompileExperimentalFeatureDetails\x12&\n" +
+	"\tflag_name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\bflagName\x88\x01\x01B\f\n" +
 	"\n" +
-	"_flag_name\"R\n" +
-	"%NumscriptCompileInvalidFeatureDetails\x12\x1d\n" +
-	"\afeature\x18\x01 \x01(\tH\x00R\afeature\x88\x01\x01B\n" +
+	"_flag_name\"X\n" +
+	"%NumscriptCompileInvalidFeatureDetails\x12#\n" +
+	"\afeature\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\afeature\x88\x01\x01B\n" +
 	"\n" +
 	"\b_feature\",\n" +
-	"*NumscriptCompileInvalidMetaPositionDetails\"F\n" +
-	"\"NumscriptCompileInvalidTypeDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"*NumscriptCompileInvalidMetaPositionDetails\"L\n" +
+	"\"NumscriptCompileInvalidTypeDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
 	"\x05_name\".\n" +
-	",NumscriptCompileInvalidUncappedSourceDetails\"q\n" +
-	"+NumscriptCompileInvalidVariableValueDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x17\n" +
-	"\x04type\x18\x02 \x01(\tH\x01R\x04type\x88\x01\x01B\a\n" +
+	",NumscriptCompileInvalidUncappedSourceDetails\"}\n" +
+	"+NumscriptCompileInvalidVariableValueDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01\x12\x1d\n" +
+	"\x04type\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x04type\x88\x01\x01B\a\n" +
 	"\x05_nameB\a\n" +
-	"\x05_type\"J\n" +
-	"&NumscriptCompileMissingVariableDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"r\n" +
-	"#NumscriptCompileTypeMismatchDetails\x12\x1f\n" +
-	"\bexpected\x18\x01 \x01(\tH\x00R\bexpected\x88\x01\x01\x12\x15\n" +
-	"\x03got\x18\x02 \x01(\tH\x01R\x03got\x88\x01\x01B\v\n" +
+	"\x05_type\"P\n" +
+	"&NumscriptCompileMissingVariableDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"~\n" +
+	"#NumscriptCompileTypeMismatchDetails\x12%\n" +
+	"\bexpected\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\bexpected\x88\x01\x01\x12\x1b\n" +
+	"\x03got\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x03got\x88\x01\x01B\v\n" +
 	"\t_expectedB\x06\n" +
-	"\x04_got\"l\n" +
-	"&NumscriptCompileUnboundVariableDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x17\n" +
-	"\x04type\x18\x02 \x01(\tH\x01R\x04type\x88\x01\x01B\a\n" +
+	"\x04_got\"x\n" +
+	"&NumscriptCompileUnboundVariableDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01\x12\x1d\n" +
+	"\x04type\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x04type\x88\x01\x01B\a\n" +
 	"\x05_nameB\a\n" +
-	"\x05_type\"\x86\x01\n" +
-	"&NumscriptCompileUnknownFunctionDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12(\n" +
-	"\rwrong_context\x18\x02 \x01(\tH\x01R\fwrongContext\x88\x01\x01B\a\n" +
+	"\x05_type\"\x92\x01\n" +
+	"&NumscriptCompileUnknownFunctionDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01\x12.\n" +
+	"\rwrong_context\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\fwrongContext\x88\x01\x01B\a\n" +
 	"\x05_nameB\x10\n" +
 	"\x0e_wrong_context\"k\n" +
 	"\x1fNumscriptContentRequiredDetails\x12\x15\n" +
@@ -25293,85 +25307,85 @@ const file_common_proto_rawDesc = "" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"o\n" +
-	" NumscriptCurrencyMismatchDetails\x12\x1f\n" +
-	"\bexpected\x18\x01 \x01(\tH\x00R\bexpected\x88\x01\x01\x12\x15\n" +
-	"\x03got\x18\x02 \x01(\tH\x01R\x03got\x88\x01\x01B\v\n" +
+	"\b_account\"{\n" +
+	" NumscriptCurrencyMismatchDetails\x12%\n" +
+	"\bexpected\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\bexpected\x88\x01\x01\x12\x1b\n" +
+	"\x03got\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x03got\x88\x01\x01B\v\n" +
 	"\t_expectedB\x06\n" +
 	"\x04_got\"O\n" +
 	"\x1cNumscriptDivideByZeroDetails\x12!\n" +
 	"\tnumerator\x18\x01 \x01(\tH\x00R\tnumerator\x88\x01\x01B\f\n" +
 	"\n" +
 	"_numerator\" \n" +
-	"\x1eNumscriptExecutionErrorDetails\"U\n" +
-	"#NumscriptExperimentalFeatureDetails\x12 \n" +
-	"\tflag_name\x18\x01 \x01(\tH\x00R\bflagName\x88\x01\x01B\f\n" +
+	"\x1eNumscriptExecutionErrorDetails\"[\n" +
+	"#NumscriptExperimentalFeatureDetails\x12&\n" +
+	"\tflag_name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\bflagName\x88\x01\x01B\f\n" +
 	"\n" +
-	"_flag_name\"F\n" +
-	"\"NumscriptInvalidAccountNameDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"_flag_name\"L\n" +
+	"\"NumscriptInvalidAccountNameDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
 	"\x05_name\"+\n" +
-	")NumscriptInvalidAllotmentInSendAllDetails\"X\n" +
-	"#NumscriptInvalidAllotmentSumDetails\x12\"\n" +
+	")NumscriptInvalidAllotmentInSendAllDetails\"^\n" +
+	"#NumscriptInvalidAllotmentSumDetails\x12(\n" +
 	"\n" +
-	"actual_sum\x18\x01 \x01(\tH\x00R\tactualSum\x88\x01\x01B\r\n" +
-	"\v_actual_sum\"@\n" +
-	"\x1cNumscriptInvalidAssetDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"C\n" +
-	"\x1cNumscriptInvalidColorDetails\x12\x19\n" +
-	"\x05color\x18\x01 \x01(\tH\x00R\x05color\x88\x01\x01B\b\n" +
-	"\x06_color\"K\n" +
-	"\x1eNumscriptInvalidFeatureDetails\x12\x1d\n" +
-	"\afeature\x18\x01 \x01(\tH\x00R\afeature\x88\x01\x01B\n" +
+	"actual_sum\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\tactualSum\x88\x01\x01B\r\n" +
+	"\v_actual_sum\"F\n" +
+	"\x1cNumscriptInvalidAssetDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"I\n" +
+	"\x1cNumscriptInvalidColorDetails\x12\x1f\n" +
+	"\x05color\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x05color\x88\x01\x01B\b\n" +
+	"\x06_color\"Q\n" +
+	"\x1eNumscriptInvalidFeatureDetails\x12#\n" +
+	"\afeature\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\afeature\x88\x01\x01B\n" +
 	"\n" +
-	"\b_feature\"P\n" +
-	"&NumscriptInvalidMonetaryLiteralDetails\x12\x1b\n" +
-	"\x06source\x18\x01 \x01(\tH\x00R\x06source\x88\x01\x01B\t\n" +
+	"\b_feature\"V\n" +
+	"&NumscriptInvalidMonetaryLiteralDetails\x12!\n" +
+	"\x06source\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06source\x88\x01\x01B\t\n" +
 	"\a_source\"#\n" +
-	"!NumscriptInvalidNestedMetaDetails\"N\n" +
-	"$NumscriptInvalidNumberLiteralDetails\x12\x1b\n" +
-	"\x06source\x18\x01 \x01(\tH\x00R\x06source\x88\x01\x01B\t\n" +
+	"!NumscriptInvalidNestedMetaDetails\"T\n" +
+	"$NumscriptInvalidNumberLiteralDetails\x12!\n" +
+	"\x06source\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06source\x88\x01\x01B\t\n" +
 	"\a_source\"+\n" +
-	")NumscriptInvalidRemainingAllotmentDetails\"C\n" +
-	"\x1cNumscriptInvalidScopeDetails\x12\x19\n" +
-	"\x05scope\x18\x01 \x01(\tH\x00R\x05scope\x88\x01\x01B\b\n" +
-	"\x06_scope\"?\n" +
-	"\x1bNumscriptInvalidTypeDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	")NumscriptInvalidRemainingAllotmentDetails\"I\n" +
+	"\x1cNumscriptInvalidScopeDetails\x12\x1f\n" +
+	"\x05scope\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x05scope\x88\x01\x01B\b\n" +
+	"\x06_scope\"E\n" +
+	"\x1bNumscriptInvalidTypeDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
 	"\x05_name\"0\n" +
-	".NumscriptInvalidUnboundedScalingAddressDetails\"p\n" +
-	"'NumscriptInvalidUnboundedSendAllDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x19\n" +
-	"\x05scope\x18\x02 \x01(\tH\x01R\x05scope\x88\x01\x01B\a\n" +
+	".NumscriptInvalidUnboundedScalingAddressDetails\"|\n" +
+	"'NumscriptInvalidUnboundedSendAllDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01\x12\x1f\n" +
+	"\x05scope\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x05scope\x88\x01\x01B\a\n" +
 	"\x05_nameB\b\n" +
-	"\x06_scope\"R\n" +
-	"%NumscriptInvalidUncappedSourceDetails\x12\x1d\n" +
-	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01B\n" +
+	"\x06_scope\"X\n" +
+	"%NumscriptInvalidUncappedSourceDetails\x12#\n" +
+	"\aaccount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaccount\x88\x01\x01B\n" +
 	"\n" +
-	"\b_account\"K\n" +
-	"\x1eNumscriptInvalidVersionDetails\x12\x1d\n" +
-	"\aversion\x18\x01 \x01(\tH\x00R\aversion\x88\x01\x01B\n" +
+	"\b_account\"Q\n" +
+	"\x1eNumscriptInvalidVersionDetails\x12#\n" +
+	"\aversion\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aversion\x88\x01\x01B\n" +
 	"\n" +
-	"\b_version\"\x91\x01\n" +
-	" NumscriptMetadataNotFoundDetails\x12\x1d\n" +
-	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
-	"\x05scope\x18\x02 \x01(\tH\x01R\x05scope\x88\x01\x01\x12\x15\n" +
-	"\x03key\x18\x03 \x01(\tH\x02R\x03key\x88\x01\x01B\n" +
+	"\b_version\"\x9d\x01\n" +
+	" NumscriptMetadataNotFoundDetails\x12#\n" +
+	"\aaccount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaccount\x88\x01\x01\x12\x19\n" +
+	"\x05scope\x18\x02 \x01(\tH\x01R\x05scope\x88\x01\x01\x12\x1b\n" +
+	"\x03key\x18\x03 \x01(\tB\x04\x88\xbd\x18\x01H\x02R\x03key\x88\x01\x01B\n" +
 	"\n" +
 	"\b_accountB\b\n" +
 	"\x06_scopeB\x06\n" +
-	"\x04_key\"\x9c\x01\n" +
-	"\x1cNumscriptMissingFundsDetails\x12\x19\n" +
-	"\x05asset\x18\x01 \x01(\tH\x00R\x05asset\x88\x01\x01\x12\x1b\n" +
-	"\x06needed\x18\x02 \x01(\tH\x01R\x06needed\x88\x01\x01\x12!\n" +
-	"\tavailable\x18\x03 \x01(\tH\x02R\tavailable\x88\x01\x01B\b\n" +
+	"\x04_key\"\xae\x01\n" +
+	"\x1cNumscriptMissingFundsDetails\x12\x1f\n" +
+	"\x05asset\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x05asset\x88\x01\x01\x12!\n" +
+	"\x06needed\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x06needed\x88\x01\x01\x12'\n" +
+	"\tavailable\x18\x03 \x01(\tB\x04\x88\xbd\x18\x01H\x02R\tavailable\x88\x01\x01B\b\n" +
 	"\x06_assetB\t\n" +
 	"\a_neededB\f\n" +
 	"\n" +
-	"_available\"C\n" +
-	"\x1fNumscriptMissingVariableDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"_available\"I\n" +
+	"\x1fNumscriptMissingVariableDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
 	"\x05_name\"k\n" +
 	"\x1fNumscriptNameInvalidCharDetails\x12\x15\n" +
 	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
@@ -25390,39 +25404,39 @@ const file_common_proto_rawDesc = "" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"H\n" +
-	"\x1eNumscriptNegativeAmountDetails\x12\x1b\n" +
-	"\x06amount\x18\x01 \x01(\tH\x00R\x06amount\x88\x01\x01B\t\n" +
-	"\a_amount\"\xbe\x01\n" +
-	"\x1fNumscriptNegativeBalanceDetails\x12\x1d\n" +
-	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
+	"\b_account\"N\n" +
+	"\x1eNumscriptNegativeAmountDetails\x12!\n" +
+	"\x06amount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06amount\x88\x01\x01B\t\n" +
+	"\a_amount\"\xca\x01\n" +
+	"\x1fNumscriptNegativeBalanceDetails\x12#\n" +
+	"\aaccount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaccount\x88\x01\x01\x12\x19\n" +
 	"\x05scope\x18\x02 \x01(\tH\x01R\x05scope\x88\x01\x01\x12\x19\n" +
-	"\x05asset\x18\x03 \x01(\tH\x02R\x05asset\x88\x01\x01\x12\x1b\n" +
-	"\x06amount\x18\x04 \x01(\tH\x03R\x06amount\x88\x01\x01B\n" +
+	"\x05asset\x18\x03 \x01(\tH\x02R\x05asset\x88\x01\x01\x12!\n" +
+	"\x06amount\x18\x04 \x01(\tB\x04\x88\xbd\x18\x01H\x03R\x06amount\x88\x01\x01B\n" +
 	"\n" +
 	"\b_accountB\b\n" +
 	"\x06_scopeB\b\n" +
 	"\x06_assetB\t\n" +
-	"\a_amount\"L\n" +
-	"\x1fNumscriptNegativePortionDetails\x12\x1d\n" +
-	"\aportion\x18\x01 \x01(\tH\x00R\aportion\x88\x01\x01B\n" +
+	"\a_amount\"R\n" +
+	"\x1fNumscriptNegativePortionDetails\x12#\n" +
+	"\aportion\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aportion\x88\x01\x01B\n" +
 	"\n" +
-	"\b_portion\"g\n" +
-	"\x18NumscriptNotFoundDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x1d\n" +
+	"\b_portion\"m\n" +
+	"\x18NumscriptNotFoundDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01\x12\x1d\n" +
 	"\aversion\x18\x02 \x01(\tH\x01R\aversion\x88\x01\x01B\a\n" +
 	"\x05_nameB\n" +
 	"\n" +
 	"\b_version\"\x1c\n" +
-	"\x1aNumscriptParseErrorDetails\"\x8b\x01\n" +
-	"%NumscriptPostingAmountOverflowDetails\x12(\n" +
-	"\rposting_index\x18\x01 \x01(\x04H\x00R\fpostingIndex\x88\x01\x01\x12\x1b\n" +
-	"\x06amount\x18\x02 \x01(\tH\x01R\x06amount\x88\x01\x01B\x10\n" +
+	"\x1aNumscriptParseErrorDetails\"\x97\x01\n" +
+	"%NumscriptPostingAmountOverflowDetails\x12.\n" +
+	"\rposting_index\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\fpostingIndex\x88\x01\x01\x12!\n" +
+	"\x06amount\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x06amount\x88\x01\x01B\x10\n" +
 	"\x0e_posting_indexB\t\n" +
-	"\a_amount\"\x8b\x01\n" +
-	"%NumscriptPostingNegativeAmountDetails\x12(\n" +
-	"\rposting_index\x18\x01 \x01(\x04H\x00R\fpostingIndex\x88\x01\x01\x12\x1b\n" +
-	"\x06amount\x18\x02 \x01(\tH\x01R\x06amount\x88\x01\x01B\x10\n" +
+	"\a_amount\"\x97\x01\n" +
+	"%NumscriptPostingNegativeAmountDetails\x12.\n" +
+	"\rposting_index\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\fpostingIndex\x88\x01\x01\x12!\n" +
+	"\x06amount\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x06amount\x88\x01\x01B\x10\n" +
 	"\x0e_posting_indexB\t\n" +
 	"\a_amount\"8\n" +
 	"\x17NumscriptRuntimeDetails\x12\x15\n" +
@@ -25433,19 +25447,19 @@ const file_common_proto_rawDesc = "" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"I\n" +
-	"\x19NumscriptTypeErrorDetails\x12\x1f\n" +
-	"\bexpected\x18\x01 \x01(\tH\x00R\bexpected\x88\x01\x01B\v\n" +
-	"\t_expected\"C\n" +
-	"\x1fNumscriptUnboundFunctionDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"C\n" +
-	"\x1fNumscriptUnboundVariableDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"s\n" +
-	"$NumscriptVersionAlreadyExistsDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x1d\n" +
-	"\aversion\x18\x02 \x01(\tH\x01R\aversion\x88\x01\x01B\a\n" +
+	"\b_account\"O\n" +
+	"\x19NumscriptTypeErrorDetails\x12%\n" +
+	"\bexpected\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\bexpected\x88\x01\x01B\v\n" +
+	"\t_expected\"I\n" +
+	"\x1fNumscriptUnboundFunctionDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"I\n" +
+	"\x1fNumscriptUnboundVariableDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"\x7f\n" +
+	"$NumscriptVersionAlreadyExistsDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01\x12#\n" +
+	"\aversion\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\aversion\x88\x01\x01B\a\n" +
 	"\x05_nameB\n" +
 	"\n" +
 	"\b_version\"l\n" +
@@ -25455,10 +25469,10 @@ const file_common_proto_rawDesc = "" +
 	"\x04_keyB\n" +
 	"\n" +
 	"\b_account\"\x1b\n" +
-	"\x19PreloadUnavailableDetails\"m\n" +
-	"!PreparedQueryAlreadyExistsDetails\x12\x1b\n" +
-	"\x06ledger\x18\x01 \x01(\tH\x00R\x06ledger\x88\x01\x01\x12\x17\n" +
-	"\x04name\x18\x02 \x01(\tH\x01R\x04name\x88\x01\x01B\t\n" +
+	"\x19PreloadUnavailableDetails\"y\n" +
+	"!PreparedQueryAlreadyExistsDetails\x12!\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06ledger\x88\x01\x01\x12\x1d\n" +
+	"\x04name\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x04name\x88\x01\x01B\t\n" +
 	"\a_ledgerB\a\n" +
 	"\x05_name\"o\n" +
 	"#PreparedQueryNameInvalidCharDetails\x12\x15\n" +
@@ -25478,10 +25492,10 @@ const file_common_proto_rawDesc = "" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"h\n" +
-	"\x1cPreparedQueryNotFoundDetails\x12\x1b\n" +
-	"\x06ledger\x18\x01 \x01(\tH\x00R\x06ledger\x88\x01\x01\x12\x17\n" +
-	"\x04name\x18\x02 \x01(\tH\x01R\x04name\x88\x01\x01B\t\n" +
+	"\b_account\"t\n" +
+	"\x1cPreparedQueryNotFoundDetails\x12!\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06ledger\x88\x01\x01\x12\x1d\n" +
+	"\x04name\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x04name\x88\x01\x01B\t\n" +
 	"\a_ledgerB\a\n" +
 	"\x05_name\"h\n" +
 	"\x1cPreparedQueryRequiredDetails\x12\x15\n" +
@@ -25495,9 +25509,9 @@ const file_common_proto_rawDesc = "" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"b\n" +
-	"!RevertTargetCreatedInBatchDetails\x12*\n" +
-	"\x0etransaction_id\x18\x01 \x01(\x04H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
+	"\b_account\"h\n" +
+	"!RevertTargetCreatedInBatchDetails\x120\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
 	"\x0f_transaction_id\"k\n" +
 	"\x1fScopedBalanceUnsupportedDetails\x12\x15\n" +
 	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
@@ -25516,9 +25530,9 @@ const file_common_proto_rawDesc = "" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"E\n" +
-	"\x18SequenceExhaustedDetails\x12\x1d\n" +
-	"\acounter\x18\x01 \x01(\tH\x00R\acounter\x88\x01\x01B\n" +
+	"\b_account\"K\n" +
+	"\x18SequenceExhaustedDetails\x12#\n" +
+	"\acounter\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\acounter\x88\x01\x01B\n" +
 	"\n" +
 	"\b_counter\"j\n" +
 	"\x1eSigningKeyIdInvalidCharDetails\x12\x15\n" +
@@ -25544,29 +25558,29 @@ const file_common_proto_rawDesc = "" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"<\n" +
-	"\x18SinkAlreadyExistsDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"\x92\x01\n" +
-	"\x1cSinkBatchSizeTooLargeDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\"\n" +
+	"\b_account\"B\n" +
+	"\x18SinkAlreadyExistsDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"\xa4\x01\n" +
+	"\x1cSinkBatchSizeTooLargeDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01\x12(\n" +
 	"\n" +
-	"batch_size\x18\x02 \x01(\x04H\x01R\tbatchSize\x88\x01\x01\x12\x15\n" +
-	"\x03max\x18\x03 \x01(\x04H\x02R\x03max\x88\x01\x01B\a\n" +
+	"batch_size\x18\x02 \x01(\x04B\x04\x88\xbd\x18\x01H\x01R\tbatchSize\x88\x01\x01\x12\x1b\n" +
+	"\x03max\x18\x03 \x01(\x04B\x04\x88\xbd\x18\x01H\x02R\x03max\x88\x01\x01B\a\n" +
 	"\x05_nameB\r\n" +
 	"\v_batch_sizeB\x06\n" +
-	"\x04_max\"}\n" +
-	"\x1dSinkControllerMismatchDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12(\n" +
-	"\rcontroller_id\x18\x02 \x01(\tH\x01R\fcontrollerId\x88\x01\x01B\a\n" +
+	"\x04_max\"\x89\x01\n" +
+	"\x1dSinkControllerMismatchDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01\x12.\n" +
+	"\rcontroller_id\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\fcontrollerId\x88\x01\x01B\a\n" +
 	"\x05_nameB\x10\n" +
-	"\x0e_controller_id\"7\n" +
-	"\x13SinkNotFoundDetails\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
-	"\x05_name\"\xa8\x01\n" +
-	"\x19StaleClusterPolicyDetails\x120\n" +
-	"\x11proposed_revision\x18\x01 \x01(\x04H\x00R\x10proposedRevision\x88\x01\x01\x12.\n" +
-	"\x10applied_revision\x18\x02 \x01(\x04H\x01R\x0fappliedRevision\x88\x01\x01B\x14\n" +
+	"\x0e_controller_id\"=\n" +
+	"\x13SinkNotFoundDetails\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"\xb4\x01\n" +
+	"\x19StaleClusterPolicyDetails\x126\n" +
+	"\x11proposed_revision\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\x10proposedRevision\x88\x01\x01\x124\n" +
+	"\x10applied_revision\x18\x02 \x01(\x04B\x04\x88\xbd\x18\x01H\x01R\x0fappliedRevision\x88\x01\x01B\x14\n" +
 	"\x12_proposed_revisionB\x13\n" +
 	"\x11_applied_revision\"\x1e\n" +
 	"\x1cStaleInputsResolutionDetails\"\x16\n" +
@@ -25577,23 +25591,23 @@ const file_common_proto_rawDesc = "" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"b\n" +
-	"!TransactionAlreadyRevertedDetails\x12*\n" +
-	"\x0etransaction_id\x18\x01 \x01(\x04H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
-	"\x0f_transaction_id\"[\n" +
-	"\x1aTransactionNotFoundDetails\x12*\n" +
-	"\x0etransaction_id\x18\x01 \x01(\x04H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
-	"\x0f_transaction_id\"\xd7\x01\n" +
-	"#TransactionReferenceConflictDetails\x12\x1b\n" +
-	"\x06ledger\x18\x01 \x01(\tH\x00R\x06ledger\x88\x01\x01\x12!\n" +
-	"\treference\x18\x02 \x01(\tH\x01R\treference\x88\x01\x01\x12;\n" +
+	"\b_account\"h\n" +
+	"!TransactionAlreadyRevertedDetails\x120\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
+	"\x0f_transaction_id\"a\n" +
+	"\x1aTransactionNotFoundDetails\x120\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
+	"\x0f_transaction_id\"\xe3\x01\n" +
+	"#TransactionReferenceConflictDetails\x12!\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06ledger\x88\x01\x01\x12'\n" +
+	"\treference\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\treference\x88\x01\x01\x12;\n" +
 	"\x17existing_transaction_id\x18\x03 \x01(\x04H\x02R\x15existingTransactionId\x88\x01\x01B\t\n" +
 	"\a_ledgerB\f\n" +
 	"\n" +
 	"_referenceB\x1a\n" +
-	"\x18_existing_transaction_id\"V\n" +
-	"#TransactionReferenceNotFoundDetails\x12!\n" +
-	"\treference\x18\x01 \x01(\tH\x00R\treference\x88\x01\x01B\f\n" +
+	"\x18_existing_transaction_id\"\\\n" +
+	"#TransactionReferenceNotFoundDetails\x12'\n" +
+	"\treference\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\treference\x88\x01\x01B\f\n" +
 	"\n" +
 	"_reference\"n\n" +
 	"\"TransactionReferenceTooLongDetails\x12\x15\n" +
@@ -25601,42 +25615,42 @@ const file_common_proto_rawDesc = "" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"d\n" +
-	"#TransactionStateInconsistentDetails\x12*\n" +
-	"\x0etransaction_id\x18\x01 \x01(\x04H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
+	"\b_account\"j\n" +
+	"#TransactionStateInconsistentDetails\x120\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x04B\x04\x88\xbd\x18\x01H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
 	"\x0f_transaction_id\"k\n" +
 	"\x1fTransactionTargetMissingDetails\x12\x15\n" +
 	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"N\n" +
-	"\x1eTransientAccountNonZeroDetails\x12\x1f\n" +
-	"\baccounts\x18\x01 \x01(\tH\x00R\baccounts\x88\x01\x01B\v\n" +
+	"\b_account\"T\n" +
+	"\x1eTransientAccountNonZeroDetails\x12%\n" +
+	"\baccounts\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\baccounts\x88\x01\x01B\v\n" +
 	"\t_accounts\"]\n" +
 	"\x11ValidationDetails\x12\x15\n" +
 	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
 	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
 	"\x04_keyB\n" +
 	"\n" +
-	"\b_account\"\xb5\x01\n" +
-	"\x1cVolumeNotMaterializedDetails\x12\x1d\n" +
-	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
-	"\x05asset\x18\x02 \x01(\tH\x01R\x05asset\x88\x01\x01\x12\x19\n" +
-	"\x05color\x18\x03 \x01(\tH\x02R\x05color\x88\x01\x01\x12\x17\n" +
-	"\x04side\x18\x04 \x01(\tH\x03R\x04side\x88\x01\x01B\n" +
+	"\b_account\"\xcd\x01\n" +
+	"\x1cVolumeNotMaterializedDetails\x12#\n" +
+	"\aaccount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaccount\x88\x01\x01\x12\x1f\n" +
+	"\x05asset\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x05asset\x88\x01\x01\x12\x1f\n" +
+	"\x05color\x18\x03 \x01(\tB\x04\x88\xbd\x18\x01H\x02R\x05color\x88\x01\x01\x12\x1d\n" +
+	"\x04side\x18\x04 \x01(\tB\x04\x88\xbd\x18\x01H\x03R\x04side\x88\x01\x01B\n" +
 	"\n" +
 	"\b_accountB\b\n" +
 	"\x06_assetB\b\n" +
 	"\x06_colorB\a\n" +
-	"\x05_side\"\x81\x02\n" +
-	"\x15VolumeOverflowDetails\x12\x1d\n" +
-	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
-	"\x05asset\x18\x02 \x01(\tH\x01R\x05asset\x88\x01\x01\x12\x19\n" +
-	"\x05color\x18\x03 \x01(\tH\x02R\x05color\x88\x01\x01\x12\x17\n" +
-	"\x04side\x18\x04 \x01(\tH\x03R\x04side\x88\x01\x01\x12\x1b\n" +
-	"\x06amount\x18\x05 \x01(\tH\x04R\x06amount\x88\x01\x01\x12\x1d\n" +
-	"\acurrent\x18\x06 \x01(\tH\x05R\acurrent\x88\x01\x01B\n" +
+	"\x05_side\"\xa5\x02\n" +
+	"\x15VolumeOverflowDetails\x12#\n" +
+	"\aaccount\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\aaccount\x88\x01\x01\x12\x1f\n" +
+	"\x05asset\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x05asset\x88\x01\x01\x12\x1f\n" +
+	"\x05color\x18\x03 \x01(\tB\x04\x88\xbd\x18\x01H\x02R\x05color\x88\x01\x01\x12\x1d\n" +
+	"\x04side\x18\x04 \x01(\tB\x04\x88\xbd\x18\x01H\x03R\x04side\x88\x01\x01\x12!\n" +
+	"\x06amount\x18\x05 \x01(\tB\x04\x88\xbd\x18\x01H\x04R\x06amount\x88\x01\x01\x12#\n" +
+	"\acurrent\x18\x06 \x01(\tB\x04\x88\xbd\x18\x01H\x05R\acurrent\x88\x01\x01B\n" +
 	"\n" +
 	"\b_accountB\b\n" +
 	"\x06_assetB\b\n" +
@@ -26261,7 +26275,8 @@ const file_common_proto_rawDesc = "" +
 	"\x15ledger_log_is_history\x12\x1d.google.protobuf.FieldOptions\x18͇\x03 \x01(\bR\x12ledgerLogIsHistory:=\n" +
 	"\tsensitive\x12\x1d.google.protobuf.FieldOptions\x18·\x03 \x01(\bR\tsensitive:D\n" +
 	"\rsensitive_url\x12\x1d.google.protobuf.FieldOptions\x18χ\x03 \x01(\bR\fsensitiveUrl:]\n" +
-	"\x0ffailure_reasons\x12\x1d.google.protobuf.FieldOptions\x18Ї\x03 \x03(\x0e2\x13.common.ErrorReasonR\x0efailureReasonsB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
+	"\x0ffailure_reasons\x12\x1d.google.protobuf.FieldOptions\x18Ї\x03 \x03(\x0e2\x13.common.ErrorReasonR\x0efailureReasons:S\n" +
+	"\x15failure_fact_required\x12\x1d.google.protobuf.FieldOptions\x18ч\x03 \x01(\bR\x13failureFactRequiredB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
 
 var (
 	file_common_proto_rawDescOnce sync.Once
@@ -27108,13 +27123,14 @@ var file_common_proto_depIdxs = []int32{
 	373, // 451: common.sensitive:extendee -> google.protobuf.FieldOptions
 	373, // 452: common.sensitive_url:extendee -> google.protobuf.FieldOptions
 	373, // 453: common.failure_reasons:extendee -> google.protobuf.FieldOptions
-	18,  // 454: common.auth_policy:type_name -> common.MethodAuthPolicy
-	16,  // 455: common.allowed_query_targets:type_name -> common.QueryTarget
-	11,  // 456: common.failure_reasons:type_name -> common.ErrorReason
-	457, // [457:457] is the sub-list for method output_type
-	457, // [457:457] is the sub-list for method input_type
-	454, // [454:457] is the sub-list for extension type_name
-	447, // [447:454] is the sub-list for extension extendee
+	373, // 454: common.failure_fact_required:extendee -> google.protobuf.FieldOptions
+	18,  // 455: common.auth_policy:type_name -> common.MethodAuthPolicy
+	16,  // 456: common.allowed_query_targets:type_name -> common.QueryTarget
+	11,  // 457: common.failure_reasons:type_name -> common.ErrorReason
+	458, // [458:458] is the sub-list for method output_type
+	458, // [458:458] is the sub-list for method input_type
+	455, // [455:458] is the sub-list for extension type_name
+	447, // [447:455] is the sub-list for extension extendee
 	0,   // [0:447] is the sub-list for field type_name
 }
 
@@ -27639,7 +27655,7 @@ func file_common_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      18,
 			NumMessages:   353,
-			NumExtensions: 7,
+			NumExtensions: 8,
 			NumServices:   0,
 		},
 		GoTypes:           file_common_proto_goTypes,

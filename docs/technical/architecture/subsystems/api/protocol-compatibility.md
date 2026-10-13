@@ -460,11 +460,15 @@ failure format changes between revisions 30 and 31.
 Revision 32 replaces the persisted and service-visible `facts` string maps in
 `AuditFailure`, `IdempotencyFailure`, and `OrderSkippedLog` with one shared
 `FailureDetails` protobuf oneof. Each arm names a concrete stable failure code
-and carries optional fields with explicit protobuf types; numeric correlators
-are `uint64` instead of decimal text. The containing reason must be one of the
-arm's `failure_reasons` annotations, and the code must name that arm. Ledger
-rejects missing arms, mismatched codes, unknown
-fields, and malformed values when reading audited failures. HTTP and public
+and carries presence-tracked fields with explicit protobuf types; numeric
+correlators are `uint64` instead of decimal text. The `failure_fact_required`
+field option marks facts that every producer of that arm supplies. Bare
+validation sentinels may gain `key` or `account` context from wrappers, while
+some Numscript facts vary between interpreter and VM errors; those fields remain
+conditional. The containing reason must be one of the arm's `failure_reasons`
+annotations, and the code must name that arm. Ledger rejects missing arms,
+mismatched codes, absent required facts, unknown fields, and malformed values
+when reading audited failures. HTTP and public
 `ErrorInfo.metadata` still render the named facts as strings at their API
 boundaries.
 

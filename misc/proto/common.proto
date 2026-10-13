@@ -795,8 +795,9 @@ message LedgerLogPayload {
 // FailureDetails is the typed business context of an audited failure.
 // Each arm identifies one concrete stable failure code. The reason and
 // code on the containing record are validated against the selected arm.
-// Scalar fields are optional so absence remains distinct from a present
-// zero or empty value.
+// Scalar fields track presence so absence remains distinct from a present
+// zero or empty value. failure_fact_required marks values that every producer
+// of a variant must supply; unmarked values are genuinely conditional.
 message FailureDetails {
   oneof kind {
     AccountAddressEmptyDetails account_address_empty = 1 [(failure_reasons) = ERROR_REASON_VALIDATION];
@@ -996,21 +997,21 @@ message AccountAddressTooLongDetails {
 }
 
 message AccountNotMatchingTypeDetails {
-  optional string address = 1;
+  optional string address = 1 [(failure_fact_required) = true];
 }
 
 message AccountTypeAlreadyExistsDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message AccountTypeConflictDetails {
-  optional string pattern = 1;
-  optional string existing_name = 2;
-  optional string existing_pattern = 3;
+  optional string pattern = 1 [(failure_fact_required) = true];
+  optional string existing_name = 2 [(failure_fact_required) = true];
+  optional string existing_pattern = 3 [(failure_fact_required) = true];
 }
 
 message AccountTypeHasAccountsDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message AccountTypeNameTooLongDetails {
@@ -1019,7 +1020,7 @@ message AccountTypeNameTooLongDetails {
 }
 
 message AccountTypeNotFoundDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message AccountTypePatternTooLongDetails {
@@ -1028,8 +1029,8 @@ message AccountTypePatternTooLongDetails {
 }
 
 message AggregateOverflowDetails {
-  optional string stage = 1;
-  optional string side = 2;
+  optional string stage = 1 [(failure_fact_required) = true];
+  optional string side = 2 [(failure_fact_required) = true];
 }
 
 message AssetInvalidDetails {
@@ -1041,29 +1042,29 @@ message AuditDisabledDetails {
 }
 
 message BalanceNotFoundDetails {
-  optional string account = 1;
-  optional string asset = 2;
+  optional string account = 1 [(failure_fact_required) = true];
+  optional string asset = 2 [(failure_fact_required) = true];
 }
 
 message BalanceNotPreloadedDetails {
-  optional string account = 1;
-  optional string asset = 2;
-  optional string color = 3;
+  optional string account = 1 [(failure_fact_required) = true];
+  optional string asset = 2 [(failure_fact_required) = true];
+  optional string color = 3 [(failure_fact_required) = true];
 }
 
 message CheckpointIdRequiredDetails {
 }
 
 message CheckpointLimitReachedDetails {
-  optional uint64 limit = 1;
+  optional uint64 limit = 1 [(failure_fact_required) = true];
 }
 
 message CheckpointNotFoundDetails {
-  optional uint64 checkpoint_id = 1;
+  optional uint64 checkpoint_id = 1 [(failure_fact_required) = true];
 }
 
 message CheckpointNotReadyDetails {
-  optional uint64 checkpoint_id = 1;
+  optional uint64 checkpoint_id = 1 [(failure_fact_required) = true];
 }
 
 message ClusterPolicyInvalidDetails {
@@ -1072,7 +1073,7 @@ message ClusterPolicyInvalidDetails {
 }
 
 message ClusterPolicyRevisionConflictDetails {
-  optional uint64 revision = 1;
+  optional uint64 revision = 1 [(failure_fact_required) = true];
 }
 
 message ClusterUnhealthyDetails {
@@ -1089,10 +1090,10 @@ message ColorTooLongDetails {
 }
 
 message CoverageMissDetails {
-  optional string attribute = 1;
-  optional string canonical_hex = 2;
-  optional string id_hex = 3;
-  optional uint64 raft_index = 4;
+  optional string attribute = 1 [(failure_fact_required) = true];
+  optional string canonical_hex = 2 [(failure_fact_required) = true];
+  optional string id_hex = 3 [(failure_fact_required) = true];
+  optional uint64 raft_index = 4 [(failure_fact_required) = true];
 }
 
 message DependencyDiscoveryFailedDetails {
@@ -1106,8 +1107,8 @@ message EmptyTransactionDetails {
 }
 
 message ExecutionPlanTooLargeDetails {
-  optional uint64 size = 1;
-  optional uint64 limit = 2;
+  optional uint64 size = 1 [(failure_fact_required) = true];
+  optional uint64 limit = 2 [(failure_fact_required) = true];
 }
 
 message FilterCompilationErrorDetails {
@@ -1117,7 +1118,7 @@ message IdempotencyCheckFailedDetails {
 }
 
 message IdempotencyKeyConflictDetails {
-  optional string key = 1;
+  optional string key = 1 [(failure_fact_required) = true];
 }
 
 message IdRequiredDetails {
@@ -1126,19 +1127,19 @@ message IdRequiredDetails {
 }
 
 message IndexAlreadyExistsDetails {
-  optional string index = 1;
+  optional string index = 1 [(failure_fact_required) = true];
 }
 
 message IndexBuildingDetails {
-  optional string index = 1;
+  optional string index = 1 [(failure_fact_required) = true];
 }
 
 message IndexInconsistentDetails {
-  optional string index = 1;
+  optional string index = 1 [(failure_fact_required) = true];
 }
 
 message IndexNotFoundDetails {
-  optional string index = 1;
+  optional string index = 1 [(failure_fact_required) = true];
 }
 
 message IndexTargetUnsupportedDetails {
@@ -1147,10 +1148,10 @@ message IndexTargetUnsupportedDetails {
 }
 
 message InsufficientFundsDetails {
-  optional string account = 1;
-  optional string asset = 2;
-  optional string amount = 3;
-  optional string balance = 4;
+  optional string account = 1 [(failure_fact_required) = true];
+  optional string asset = 2 [(failure_fact_required) = true];
+  optional string amount = 3 [(failure_fact_required) = true];
+  optional string balance = 4 [(failure_fact_required) = true];
   optional string color = 5;
 }
 
@@ -1161,7 +1162,7 @@ message InvalidCallerAttributionDetails {
 }
 
 message InvalidCronExpressionDetails {
-  optional string expression = 1;
+  optional string expression = 1 [(failure_fact_required) = true];
 }
 
 message InvalidExecutionPlanDetails {
@@ -1171,25 +1172,25 @@ message InvalidOrderTypeDetails {
 }
 
 message InvalidPatternDetails {
-  optional string pattern = 1;
+  optional string pattern = 1 [(failure_fact_required) = true];
 }
 
 message InvalidSkippableReasonDetails {
   optional string key = 1;
   optional string account = 2;
-  optional string provided_reason = 3;
+  optional string provided_reason = 3 [(failure_fact_required) = true];
 }
 
 message LedgerAlreadyExistsDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message LedgerDeletedDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message LedgerInMirrorModeDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message LedgerNameInvalidCharDetails {
@@ -1213,19 +1214,19 @@ message LedgerNameTooLongDetails {
 }
 
 message LedgerNotFoundDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message LedgerNotInMirrorModeDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message MaintenanceModeDetails {
 }
 
 message MetadataFieldNotInSchemaDetails {
-  optional string target = 1;
-  optional string key = 2;
+  optional string target = 1 [(failure_fact_required) = true];
+  optional string key = 2 [(failure_fact_required) = true];
 }
 
 message MetadataKeyEmptyDetails {
@@ -1249,16 +1250,16 @@ message MetadataLimitsUnconfiguredDetails {
 }
 
 message MetadataLimitExceededDetails {
-  optional string dimension = 1;
-  optional uint64 limit = 2;
-  optional uint64 actual = 3;
+  optional string dimension = 1 [(failure_fact_required) = true];
+  optional uint64 limit = 2 [(failure_fact_required) = true];
+  optional uint64 actual = 3 [(failure_fact_required) = true];
   optional string key = 4;
   optional string account = 5;
 }
 
 message MetadataNotFoundDetails {
-  optional string target = 1;
-  optional string key = 2;
+  optional string target = 1 [(failure_fact_required) = true];
+  optional string key = 2 [(failure_fact_required) = true];
   optional string account = 3;
 }
 
@@ -1288,54 +1289,54 @@ message MirrorRewriteRuleInvalidDetails {
 }
 
 message MirrorV2LogIdGapDetails {
-  optional string name = 1;
-  optional uint64 got = 2;
-  optional uint64 expected = 3;
+  optional string name = 1 [(failure_fact_required) = true];
+  optional uint64 got = 2 [(failure_fact_required) = true];
+  optional uint64 expected = 3 [(failure_fact_required) = true];
 }
 
 message MirrorV2LogIdInvalidDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptAssetMismatchDetails {
-  optional string expected = 1;
-  optional string got = 2;
+  optional string expected = 1 [(failure_fact_required) = true];
+  optional string got = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptBadArityDetails {
-  optional string expected_arity = 1;
-  optional string given_arguments = 2;
+  optional string expected_arity = 1 [(failure_fact_required) = true];
+  optional string given_arguments = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptBadMetaValueDetails {
-  optional string account = 1;
-  optional string key = 2;
+  optional string account = 1 [(failure_fact_required) = true];
+  optional string key = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptBadPortionDetails {
-  optional string source = 1;
+  optional string source = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptCannotCastScopedAccountDetails {
-  optional string account = 1;
-  optional string scope = 2;
+  optional string account = 1 [(failure_fact_required) = true];
+  optional string scope = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptCannotCastToStringDetails {
 }
 
 message NumscriptCannotStoreScopedAccountDetails {
-  optional string account = 1;
-  optional string scope = 2;
+  optional string account = 1 [(failure_fact_required) = true];
+  optional string scope = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptCompileBadArityDetails {
-  optional uint64 expected = 1;
-  optional uint64 actual = 2;
+  optional uint64 expected = 1 [(failure_fact_required) = true];
+  optional uint64 actual = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptCompileCannotCastToStringDetails {
-  optional string type = 1;
+  optional string type = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptCompileCannotStoreScopedAccountDetails {
@@ -1345,52 +1346,52 @@ message NumscriptCompileDuplicateRemainingDetails {
 }
 
 message NumscriptCompileDuplicateVariableDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptCompileErrorDetails {
 }
 
 message NumscriptCompileExperimentalFeatureDetails {
-  optional string flag_name = 1;
+  optional string flag_name = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptCompileInvalidFeatureDetails {
-  optional string feature = 1;
+  optional string feature = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptCompileInvalidMetaPositionDetails {
 }
 
 message NumscriptCompileInvalidTypeDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptCompileInvalidUncappedSourceDetails {
 }
 
 message NumscriptCompileInvalidVariableValueDetails {
-  optional string name = 1;
-  optional string type = 2;
+  optional string name = 1 [(failure_fact_required) = true];
+  optional string type = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptCompileMissingVariableDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptCompileTypeMismatchDetails {
-  optional string expected = 1;
-  optional string got = 2;
+  optional string expected = 1 [(failure_fact_required) = true];
+  optional string got = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptCompileUnboundVariableDetails {
-  optional string name = 1;
-  optional string type = 2;
+  optional string name = 1 [(failure_fact_required) = true];
+  optional string type = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptCompileUnknownFunctionDetails {
-  optional string name = 1;
-  optional string wrong_context = 2;
+  optional string name = 1 [(failure_fact_required) = true];
+  optional string wrong_context = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptContentRequiredDetails {
@@ -1399,8 +1400,8 @@ message NumscriptContentRequiredDetails {
 }
 
 message NumscriptCurrencyMismatchDetails {
-  optional string expected = 1;
-  optional string got = 2;
+  optional string expected = 1 [(failure_fact_required) = true];
+  optional string got = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptDivideByZeroDetails {
@@ -1411,84 +1412,84 @@ message NumscriptExecutionErrorDetails {
 }
 
 message NumscriptExperimentalFeatureDetails {
-  optional string flag_name = 1;
+  optional string flag_name = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptInvalidAccountNameDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptInvalidAllotmentInSendAllDetails {
 }
 
 message NumscriptInvalidAllotmentSumDetails {
-  optional string actual_sum = 1;
+  optional string actual_sum = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptInvalidAssetDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptInvalidColorDetails {
-  optional string color = 1;
+  optional string color = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptInvalidFeatureDetails {
-  optional string feature = 1;
+  optional string feature = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptInvalidMonetaryLiteralDetails {
-  optional string source = 1;
+  optional string source = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptInvalidNestedMetaDetails {
 }
 
 message NumscriptInvalidNumberLiteralDetails {
-  optional string source = 1;
+  optional string source = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptInvalidRemainingAllotmentDetails {
 }
 
 message NumscriptInvalidScopeDetails {
-  optional string scope = 1;
+  optional string scope = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptInvalidTypeDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptInvalidUnboundedScalingAddressDetails {
 }
 
 message NumscriptInvalidUnboundedSendAllDetails {
-  optional string name = 1;
-  optional string scope = 2;
+  optional string name = 1 [(failure_fact_required) = true];
+  optional string scope = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptInvalidUncappedSourceDetails {
-  optional string account = 1;
+  optional string account = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptInvalidVersionDetails {
-  optional string version = 1;
+  optional string version = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptMetadataNotFoundDetails {
-  optional string account = 1;
+  optional string account = 1 [(failure_fact_required) = true];
   optional string scope = 2;
-  optional string key = 3;
+  optional string key = 3 [(failure_fact_required) = true];
 }
 
 message NumscriptMissingFundsDetails {
-  optional string asset = 1;
-  optional string needed = 2;
-  optional string available = 3;
+  optional string asset = 1 [(failure_fact_required) = true];
+  optional string needed = 2 [(failure_fact_required) = true];
+  optional string available = 3 [(failure_fact_required) = true];
 }
 
 message NumscriptMissingVariableDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptNameInvalidCharDetails {
@@ -1507,22 +1508,22 @@ message NumscriptNameTooLongDetails {
 }
 
 message NumscriptNegativeAmountDetails {
-  optional string amount = 1;
+  optional string amount = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptNegativeBalanceDetails {
-  optional string account = 1;
+  optional string account = 1 [(failure_fact_required) = true];
   optional string scope = 2;
   optional string asset = 3;
-  optional string amount = 4;
+  optional string amount = 4 [(failure_fact_required) = true];
 }
 
 message NumscriptNegativePortionDetails {
-  optional string portion = 1;
+  optional string portion = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptNotFoundDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
   optional string version = 2;
 }
 
@@ -1530,13 +1531,13 @@ message NumscriptParseErrorDetails {
 }
 
 message NumscriptPostingAmountOverflowDetails {
-  optional uint64 posting_index = 1;
-  optional string amount = 2;
+  optional uint64 posting_index = 1 [(failure_fact_required) = true];
+  optional string amount = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptPostingNegativeAmountDetails {
-  optional uint64 posting_index = 1;
-  optional string amount = 2;
+  optional uint64 posting_index = 1 [(failure_fact_required) = true];
+  optional string amount = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptRuntimeDetails {
@@ -1549,20 +1550,20 @@ message NumscriptScalingUnsupportedDetails {
 }
 
 message NumscriptTypeErrorDetails {
-  optional string expected = 1;
+  optional string expected = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptUnboundFunctionDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptUnboundVariableDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptVersionAlreadyExistsDetails {
-  optional string name = 1;
-  optional string version = 2;
+  optional string name = 1 [(failure_fact_required) = true];
+  optional string version = 2 [(failure_fact_required) = true];
 }
 
 message PostingsAndScriptConflictDetails {
@@ -1574,8 +1575,8 @@ message PreloadUnavailableDetails {
 }
 
 message PreparedQueryAlreadyExistsDetails {
-  optional string ledger = 1;
-  optional string name = 2;
+  optional string ledger = 1 [(failure_fact_required) = true];
+  optional string name = 2 [(failure_fact_required) = true];
 }
 
 message PreparedQueryNameInvalidCharDetails {
@@ -1594,8 +1595,8 @@ message PreparedQueryNameTooLongDetails {
 }
 
 message PreparedQueryNotFoundDetails {
-  optional string ledger = 1;
-  optional string name = 2;
+  optional string ledger = 1 [(failure_fact_required) = true];
+  optional string name = 2 [(failure_fact_required) = true];
 }
 
 message PreparedQueryRequiredDetails {
@@ -1609,7 +1610,7 @@ message PreparedQueryTargetUnsupportedDetails {
 }
 
 message RevertTargetCreatedInBatchDetails {
-  optional uint64 transaction_id = 1;
+  optional uint64 transaction_id = 1 [(failure_fact_required) = true];
 }
 
 message ScopedBalanceUnsupportedDetails {
@@ -1628,7 +1629,7 @@ message ScriptRequiredDetails {
 }
 
 message SequenceExhaustedDetails {
-  optional string counter = 1;
+  optional string counter = 1 [(failure_fact_required) = true];
 }
 
 message SigningKeyIdInvalidCharDetails {
@@ -1652,27 +1653,27 @@ message SigningKeyInvalidLengthDetails {
 }
 
 message SinkAlreadyExistsDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message SinkBatchSizeTooLargeDetails {
-  optional string name = 1;
-  optional uint64 batch_size = 2;
-  optional uint64 max = 3;
+  optional string name = 1 [(failure_fact_required) = true];
+  optional uint64 batch_size = 2 [(failure_fact_required) = true];
+  optional uint64 max = 3 [(failure_fact_required) = true];
 }
 
 message SinkControllerMismatchDetails {
-  optional string name = 1;
-  optional string controller_id = 2;
+  optional string name = 1 [(failure_fact_required) = true];
+  optional string controller_id = 2 [(failure_fact_required) = true];
 }
 
 message SinkNotFoundDetails {
-  optional string name = 1;
+  optional string name = 1 [(failure_fact_required) = true];
 }
 
 message StaleClusterPolicyDetails {
-  optional uint64 proposed_revision = 1;
-  optional uint64 applied_revision = 2;
+  optional uint64 proposed_revision = 1 [(failure_fact_required) = true];
+  optional uint64 applied_revision = 2 [(failure_fact_required) = true];
 }
 
 message StaleInputsResolutionDetails {
@@ -1690,21 +1691,21 @@ message TargetRequiredDetails {
 }
 
 message TransactionAlreadyRevertedDetails {
-  optional uint64 transaction_id = 1;
+  optional uint64 transaction_id = 1 [(failure_fact_required) = true];
 }
 
 message TransactionNotFoundDetails {
-  optional uint64 transaction_id = 1;
+  optional uint64 transaction_id = 1 [(failure_fact_required) = true];
 }
 
 message TransactionReferenceConflictDetails {
-  optional string ledger = 1;
-  optional string reference = 2;
+  optional string ledger = 1 [(failure_fact_required) = true];
+  optional string reference = 2 [(failure_fact_required) = true];
   optional uint64 existing_transaction_id = 3;
 }
 
 message TransactionReferenceNotFoundDetails {
-  optional string reference = 1;
+  optional string reference = 1 [(failure_fact_required) = true];
 }
 
 message TransactionReferenceTooLongDetails {
@@ -1713,7 +1714,7 @@ message TransactionReferenceTooLongDetails {
 }
 
 message TransactionStateInconsistentDetails {
-  optional uint64 transaction_id = 1;
+  optional uint64 transaction_id = 1 [(failure_fact_required) = true];
 }
 
 message TransactionTargetMissingDetails {
@@ -1722,7 +1723,7 @@ message TransactionTargetMissingDetails {
 }
 
 message TransientAccountNonZeroDetails {
-  optional string accounts = 1;
+  optional string accounts = 1 [(failure_fact_required) = true];
 }
 
 message ValidationDetails {
@@ -1731,19 +1732,19 @@ message ValidationDetails {
 }
 
 message VolumeNotMaterializedDetails {
-  optional string account = 1;
-  optional string asset = 2;
-  optional string color = 3;
-  optional string side = 4;
+  optional string account = 1 [(failure_fact_required) = true];
+  optional string asset = 2 [(failure_fact_required) = true];
+  optional string color = 3 [(failure_fact_required) = true];
+  optional string side = 4 [(failure_fact_required) = true];
 }
 
 message VolumeOverflowDetails {
-  optional string account = 1;
-  optional string asset = 2;
-  optional string color = 3;
-  optional string side = 4;
-  optional string amount = 5;
-  optional string current = 6;
+  optional string account = 1 [(failure_fact_required) = true];
+  optional string asset = 2 [(failure_fact_required) = true];
+  optional string color = 3 [(failure_fact_required) = true];
+  optional string side = 4 [(failure_fact_required) = true];
+  optional string amount = 5 [(failure_fact_required) = true];
+  optional string current = 6 [(failure_fact_required) = true];
 }
 
 message WritesBlockedClockSkewDetails {
@@ -2435,6 +2436,9 @@ extend google.protobuf.FieldOptions {
   bool sensitive_url = 50127;
   // Allowed coarse reasons for each typed audited failure variant.
   repeated ErrorReason failure_reasons = 50128;
+  // Required presence for a scalar fact in a typed audited failure variant.
+  // proto3 optional tracks presence but cannot require it on its own.
+  bool failure_fact_required = 50129;
 }
 
 message QueryFilter {

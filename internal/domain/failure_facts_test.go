@@ -53,6 +53,28 @@ func TestTypedFailureDetailsRoundTripAndRejectMismatches(t *testing.T) {
 	require.ErrorContains(t, err, "canonical")
 }
 
+func TestFailureFactPresenceFollowsSchema(t *testing.T) {
+	t.Parallel()
+
+	missingAmount := commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", nil)
+	_, err := FailureFactsFromDetails(
+		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR,
+		"NUMSCRIPT_NEGATIVE_AMOUNT", missingAmount,
+	)
+	require.ErrorContains(t, err, "missing required fact amount")
+	require.Panics(t, func() {
+		TypedFailureOf(&ErrNumscriptExecution{Details: missingAmount})
+	}, "an incomplete producer must fail before its outcome is audited")
+
+	withZero := commonpb.MustFailureDetails("NUMSCRIPT_POSTING_AMOUNT_OVERFLOW", map[string]string{
+		"postingIndex": "0", "amount": "1",
+	})
+	require.NoError(t, commonpb.ValidateRequiredFailureFacts(withZero))
+
+	withoutConditional := commonpb.MustFailureDetails("NUMSCRIPT_DIVIDE_BY_ZERO", nil)
+	require.NoError(t, commonpb.ValidateRequiredFailureFacts(withoutConditional))
+}
+
 func TestFailureFactsPreserveValues(t *testing.T) {
 	err := &ErrNumscriptExecution{
 		Detail:  "diagnostic only",

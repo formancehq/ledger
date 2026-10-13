@@ -39,6 +39,9 @@ func TypedFailureOf(d SerializableError) (commonpb.ErrorReason, string, *commonp
 	if !commonpb.FailureDetailsAllowsReason(details, reason) {
 		panic(fmt.Errorf("error %T emits code %q for reason %q", d, code, d.Reason()))
 	}
+	if err := commonpb.ValidateRequiredFailureFacts(details); err != nil {
+		panic(fmt.Errorf("error %T emits incomplete failure details: %w", d, err))
+	}
 
 	return reason, code, details
 }
@@ -96,6 +99,9 @@ func ValidateFailureFacts(f FailureFacts) error {
 	}
 	if !commonpb.FailureDetailsAllowsReason(details, f.Reason) {
 		return fmt.Errorf("failure code %q is not allowed for reason %q", f.Code, ReasonString(f.Reason))
+	}
+	if err := commonpb.ValidateRequiredFailureFacts(details); err != nil {
+		return err
 	}
 
 	return nil
