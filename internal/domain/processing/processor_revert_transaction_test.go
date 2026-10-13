@@ -496,6 +496,27 @@ func TestProcessRevertTransaction_EmptyPostingsIsInconsistent(t *testing.T) {
 	require.Equal(t, uint64(5), boundaries.GetNextTransactionId())
 }
 
+func TestProcessRevertTransaction_RejectsCompensatingTransaction(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	scope := NewMockScope(ctrl)
+	const txID = uint64(648)
+	key := domain.TransactionKey{LedgerName: "test-ledger", ID: txID}
+	scope.EXPECT().GetReverted(key).Return(false, nil)
+	expectGetTransactionState(scope, key, (&commonpb.TransactionState{
+		Postings: revertTestTargetPostings(), RevertsTransaction: 645,
+	}).AsReader(), nil)
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 649}
+	payload, err := processRevertTransaction("test-ledger", &raftcmdpb.RevertTransactionOrder{TransactionId: txID}, &Context{
+		Scope: scope, Boundaries: boundaries, LedgerInfo: (&commonpb.LedgerInfo{}).AsReader(),
+	})
+	require.Nil(t, payload)
+	var isRevert *domain.ErrTransactionIsRevert
+	require.ErrorAs(t, err, &isRevert)
+	require.Equal(t, txID, isRevert.TransactionID)
+	require.Equal(t, uint64(649), boundaries.GetNextTransactionId())
+}
+
 // revertTestTargetPostings is the target state these fixtures serve. Admission
 // binds a digest of what it observed on every revert order, and apply rejects an
 // order that carries none, so the fixtures stamp the matching digest rather than

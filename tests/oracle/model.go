@@ -1606,6 +1606,9 @@ func (s *LedgerState) applyRevert(
 	if orig.reverted {
 		return OrderResult{Reason: domain.ErrReasonTransactionAlreadyReverted}
 	}
+	if orig.revertsTransaction != 0 {
+		return OrderResult{Reason: domain.ErrReasonTransactionIsRevert}
+	}
 
 	if id > batchInitialTxCount {
 		// The target is created by an earlier order in this same batch. Admission

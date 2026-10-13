@@ -432,3 +432,13 @@ present in one bucket — either side silently selects the wrong chain.
 Ledger v3 is unreleased and no backup written under the old layout is
 supported, so there is no migration: operators re-run a full backup under the
 new layout.
+
+## Reverting compensating transactions (revision 30)
+
+Revision 30 rejects a revert whose target is itself a compensating transaction.
+The target's persisted `RevertsTransaction` link identifies this case even when
+its own reverted bit is unset. The response is `FailedPrecondition` with reason
+`TRANSACTION_IS_REVERT` and `transactionId` metadata; a matching idempotency
+key retains this business rejection. Revision 29 could create a second
+compensating transaction for the same funds. The added `ErrorReason` member and
+changed response semantics require matching client and server revisions.

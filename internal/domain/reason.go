@@ -105,6 +105,7 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 	case commonpb.ErrorReason_ERROR_REASON_LEDGER_DELETED,
 		commonpb.ErrorReason_ERROR_REASON_SINK_CONTROLLER_MISMATCH,
 		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED,
+		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_IS_REVERT,
 		commonpb.ErrorReason_ERROR_REASON_LEDGER_IN_MIRROR_MODE,
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_HAS_ACCOUNTS,
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_CONFLICT,

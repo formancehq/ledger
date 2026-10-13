@@ -195,6 +195,25 @@ var _ = Describe("Reversions", Ordered, func() {
 			Expect(info.Domain).To(Equal("ledger"))
 		})
 
+		It("Should fail to revert the compensating transaction", func() {
+			created, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
+			}, nil, nil)))
+			Expect(err).To(Succeed())
+			originalID := created.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
+			reverted, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, originalID, false, false, nil)))
+			Expect(err).To(Succeed())
+			compensatingID := reverted.Logs[0].Payload.GetApply().Log.Data.GetRevertedTransaction().RevertTransaction.Id
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, compensatingID, false, false, nil)))
+			Expect(err).To(HaveOccurred())
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
+			info := actions.ExtractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(domain.ErrReasonTransactionIsRevert))
+		})
+
 		It("Should revert multiple transactions in bulk", func() {
 			// Create multiple transactions
 			var transactionIDs []uint64

@@ -813,6 +813,7 @@ const (
 	// meta(), so the same script may succeed against other state
 	// (Kind=Precondition).
 	ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR ErrorReason = 74
+	ErrorReason_ERROR_REASON_TRANSACTION_IS_REVERT     ErrorReason = 75
 )
 
 // Enum value maps for ErrorReason.
@@ -893,6 +894,7 @@ var (
 		71: "ERROR_REASON_SINK_CONTROLLER_MISMATCH",
 		73: "ERROR_REASON_NUMSCRIPT_COMPILE_ERROR",
 		74: "ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR",
+		75: "ERROR_REASON_TRANSACTION_IS_REVERT",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -970,6 +972,7 @@ var (
 		"ERROR_REASON_SINK_CONTROLLER_MISMATCH":         71,
 		"ERROR_REASON_NUMSCRIPT_COMPILE_ERROR":          73,
 		"ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR":        74,
+		"ERROR_REASON_TRANSACTION_IS_REVERT":            75,
 	}
 )
 
@@ -14061,7 +14064,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xe6\x17\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\x8e\x18\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -14138,7 +14141,8 @@ const file_common_proto_rawDesc = "" +
 	"+ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH\x10F\x12)\n" +
 	"%ERROR_REASON_SINK_CONTROLLER_MISMATCH\x10G\x12(\n" +
 	"$ERROR_REASON_NUMSCRIPT_COMPILE_ERROR\x10I\x12*\n" +
-	"&ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR\x10J*Q\n" +
+	"&ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR\x10J\x12&\n" +
+	"\"ERROR_REASON_TRANSACTION_IS_REVERT\x10K*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +

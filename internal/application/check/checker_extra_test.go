@@ -230,6 +230,7 @@ func TestCheckReversionInvariantsValidCreationAndRevert(t *testing.T) {
 
 	knownTxIDs := make(map[string]*bitset.Bitset)
 	revertedTxIDs := make(map[string]*bitset.Bitset)
+	revertTxIDs := make(map[string]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {
@@ -245,7 +246,7 @@ func TestCheckReversionInvariantsValidCreationAndRevert(t *testing.T) {
 				Transaction: &commonpb.Transaction{Id: 1},
 			},
 		},
-	}, knownTxIDs, revertedTxIDs, callback)
+	}, knownTxIDs, revertedTxIDs, revertTxIDs, callback)
 
 	require.Empty(t, errors)
 
@@ -257,7 +258,7 @@ func TestCheckReversionInvariantsValidCreationAndRevert(t *testing.T) {
 				RevertTransaction:     &commonpb.Transaction{Id: 2},
 			},
 		},
-	}, knownTxIDs, revertedTxIDs, callback)
+	}, knownTxIDs, revertedTxIDs, revertTxIDs, callback)
 
 	require.Empty(t, errors, "valid revert should produce no errors")
 
@@ -272,6 +273,7 @@ func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 
 	knownTxIDs := make(map[string]*bitset.Bitset)
 	revertedTxIDs := make(map[string]*bitset.Bitset)
+	revertTxIDs := make(map[string]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {
@@ -287,7 +289,7 @@ func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 				Transaction: &commonpb.Transaction{Id: 1},
 			},
 		},
-	}, knownTxIDs, revertedTxIDs, callback)
+	}, knownTxIDs, revertedTxIDs, revertTxIDs, callback)
 
 	// Revert tx 1 (valid)
 	checkReversionInvariants("ledger", 2, &commonpb.LedgerLogPayload{
@@ -297,7 +299,7 @@ func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 				RevertTransaction:     &commonpb.Transaction{Id: 2},
 			},
 		},
-	}, knownTxIDs, revertedTxIDs, callback)
+	}, knownTxIDs, revertedTxIDs, revertTxIDs, callback)
 
 	require.Empty(t, errors)
 
@@ -309,11 +311,37 @@ func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 				RevertTransaction:     &commonpb.Transaction{Id: 3},
 			},
 		},
-	}, knownTxIDs, revertedTxIDs, callback)
+	}, knownTxIDs, revertedTxIDs, revertTxIDs, callback)
 
 	require.Len(t, errors, 1)
 	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH, errors[0].GetErrorType())
 	require.Contains(t, errors[0].GetMessage(), "double-reverts")
+}
+
+func TestCheckReversionInvariantsRevertOfRevert(t *testing.T) {
+	t.Parallel()
+	known := make(map[string]*bitset.Bitset)
+	reverted := make(map[string]*bitset.Bitset)
+	revertTransactions := make(map[string]*bitset.Bitset)
+	var findings []*servicepb.CheckStoreError
+	callback := func(event *servicepb.CheckStoreEvent) {
+		if e := event.GetError(); e != nil {
+			findings = append(findings, e)
+		}
+	}
+	checkReversionInvariants("ledger", 1, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+		CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 645}},
+	}}, known, reverted, revertTransactions, callback)
+	checkReversionInvariants("ledger", 2, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+		RevertedTransaction: &commonpb.RevertedTransaction{RevertedTransactionId: 645, RevertTransaction: &commonpb.Transaction{Id: 648}},
+	}}, known, reverted, revertTransactions, callback)
+	require.Empty(t, findings)
+	checkReversionInvariants("ledger", 3, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+		RevertedTransaction: &commonpb.RevertedTransaction{RevertedTransactionId: 648, RevertTransaction: &commonpb.Transaction{Id: 649}},
+	}}, known, reverted, revertTransactions, callback)
+	require.Len(t, findings, 1)
+	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH, findings[0].GetErrorType())
+	require.Contains(t, findings[0].GetMessage(), "reverts compensating transaction 648")
 }
 
 func TestCheckReversionInvariantsRevertNonExistent(t *testing.T) {
@@ -321,6 +349,7 @@ func TestCheckReversionInvariantsRevertNonExistent(t *testing.T) {
 
 	knownTxIDs := make(map[string]*bitset.Bitset)
 	revertedTxIDs := make(map[string]*bitset.Bitset)
+	revertTxIDs := make(map[string]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {
@@ -337,7 +366,7 @@ func TestCheckReversionInvariantsRevertNonExistent(t *testing.T) {
 				RevertTransaction:     &commonpb.Transaction{Id: 1},
 			},
 		},
-	}, knownTxIDs, revertedTxIDs, callback)
+	}, knownTxIDs, revertedTxIDs, revertTxIDs, callback)
 
 	require.Len(t, errors, 1)
 	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH, errors[0].GetErrorType())
@@ -349,6 +378,7 @@ func TestCheckReversionInvariantsMultipleLedgersIsolated(t *testing.T) {
 
 	knownTxIDs := make(map[string]*bitset.Bitset)
 	revertedTxIDs := make(map[string]*bitset.Bitset)
+	revertTxIDs := make(map[string]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {
@@ -364,7 +394,7 @@ func TestCheckReversionInvariantsMultipleLedgersIsolated(t *testing.T) {
 				Transaction: &commonpb.Transaction{Id: 1},
 			},
 		},
-	}, knownTxIDs, revertedTxIDs, callback)
+	}, knownTxIDs, revertedTxIDs, revertTxIDs, callback)
 
 	// Try to revert tx 1 from ledger-b (different ledger — tx 1 doesn't exist there)
 	checkReversionInvariants("ledger-b", 2, &commonpb.LedgerLogPayload{
@@ -374,7 +404,7 @@ func TestCheckReversionInvariantsMultipleLedgersIsolated(t *testing.T) {
 				RevertTransaction:     &commonpb.Transaction{Id: 1},
 			},
 		},
-	}, knownTxIDs, revertedTxIDs, callback)
+	}, knownTxIDs, revertedTxIDs, revertTxIDs, callback)
 
 	require.Len(t, errors, 1, "ledgers should be isolated for reversion tracking")
 	require.Contains(t, errors[0].GetMessage(), "non-existent")
@@ -385,6 +415,7 @@ func TestCheckReversionInvariantsNilPayload(t *testing.T) {
 
 	knownTxIDs := make(map[string]*bitset.Bitset)
 	revertedTxIDs := make(map[string]*bitset.Bitset)
+	revertTxIDs := make(map[string]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {
@@ -398,7 +429,7 @@ func TestCheckReversionInvariantsNilPayload(t *testing.T) {
 		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 			RevertedTransaction: nil,
 		},
-	}, knownTxIDs, revertedTxIDs, callback)
+	}, knownTxIDs, revertedTxIDs, revertTxIDs, callback)
 
 	require.Empty(t, errors)
 }

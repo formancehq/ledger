@@ -62,6 +62,12 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	}
 
 	origState := origStateReader.Mutate()
+	// A compensating transaction already reverses another transaction. Reverting
+	// it would create a second reversal chain, even though its own reverted bit
+	// is unset. The back-link is part of the authoritative transaction state.
+	if origState.GetRevertsTransaction() != 0 {
+		return nil, &domain.ErrTransactionIsRevert{TransactionID: order.GetTransactionId()}
+	}
 
 	originalPostings := origState.GetPostings()
 	if len(originalPostings) == 0 {

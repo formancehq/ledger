@@ -291,6 +291,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// Per-ledger reversion tracking using bitsets (1 bit per tx ID)
 		ledgerKnownTxIDs    = make(map[string]*bitset.Bitset)
 		ledgerRevertedTxIDs = make(map[string]*bitset.Bitset)
+		ledgerRevertTxIDs   = make(map[string]*bitset.Bitset)
 		// Per-ledger account types, updated as AddAccountType/RemoveAccountType
 		// logs replay. Drives the
 		// ephemeral-purge simulation and is verified against the stored
@@ -749,7 +750,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 							}
 						}
 
-						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
+						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, ledgerRevertTxIDs, callback)
 
 						verifySkippedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), expectedSkippable, chainBound, callback)
 
@@ -4946,6 +4947,7 @@ func checkReversionInvariants(
 	payload *commonpb.LedgerLogPayload,
 	knownTxIDs map[string]*bitset.Bitset,
 	revertedTxIDs map[string]*bitset.Bitset,
+	revertTxIDs map[string]*bitset.Bitset,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	switch p := payload.GetPayload().(type) {
@@ -4976,13 +4978,20 @@ func checkReversionInvariants(
 				fmt.Sprintf("log %d double-reverts transaction %d in ledger %q", seq, revertedID, ledgerName),
 				ledgerName, revertedID))
 		}
+		if rb := revertTxIDs[ledgerName]; rb != nil && rb.Test(revertedID) {
+			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+				fmt.Sprintf("log %d reverts compensating transaction %d in ledger %q", seq, revertedID, ledgerName),
+				ledgerName, revertedID))
+		}
 
 		// Mark the transaction as reverted
 		trackTxID(revertedTxIDs, ledgerName, revertedID)
 
 		// Track the revert transaction's own ID
 		if p.RevertedTransaction.GetRevertTransaction() != nil {
-			trackTxID(knownTxIDs, ledgerName, p.RevertedTransaction.GetRevertTransaction().GetId())
+			revertID := p.RevertedTransaction.GetRevertTransaction().GetId()
+			trackTxID(knownTxIDs, ledgerName, revertID)
+			trackTxID(revertTxIDs, ledgerName, revertID)
 		}
 	}
 }

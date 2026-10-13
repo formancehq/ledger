@@ -1357,6 +1357,7 @@ enum ErrorReason {
   // meta(), so the same script may succeed against other state
   // (Kind=Precondition).
   ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR = 74;
+  ERROR_REASON_TRANSACTION_IS_REVERT = 75;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

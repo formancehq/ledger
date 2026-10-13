@@ -249,6 +249,7 @@ const (
 	ErrReasonTransactionReferenceNotFound = "TRANSACTION_REFERENCE_NOT_FOUND"
 	ErrReasonTransactionNotFound          = "TRANSACTION_NOT_FOUND"
 	ErrReasonTransactionAlreadyReverted   = "TRANSACTION_ALREADY_REVERTED"
+	ErrReasonTransactionIsRevert          = "TRANSACTION_IS_REVERT"
 	ErrReasonInsufficientFunds            = "INSUFFICIENT_FUNDS"
 	ErrReasonVolumeOverflow               = "VOLUME_OVERFLOW"
 	// ErrReasonAggregateOverflow is the wire constant for the read-side
@@ -750,6 +751,20 @@ func (e *ErrTransactionAlreadyReverted) Error() string {
 func (*ErrTransactionAlreadyReverted) Kind() ErrorKind { return KindConflict }
 func (*ErrTransactionAlreadyReverted) Reason() string  { return ErrReasonTransactionAlreadyReverted }
 func (e *ErrTransactionAlreadyReverted) Metadata() map[string]string {
+	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
+}
+
+// ErrTransactionIsRevert rejects reverting a compensating transaction.
+type ErrTransactionIsRevert struct {
+	TransactionID uint64
+}
+
+func (e *ErrTransactionIsRevert) Error() string {
+	return fmt.Sprintf("transaction %d is a revert transaction and cannot be reverted", e.TransactionID)
+}
+func (*ErrTransactionIsRevert) Kind() ErrorKind { return KindConflict }
+func (*ErrTransactionIsRevert) Reason() string  { return ErrReasonTransactionIsRevert }
+func (e *ErrTransactionIsRevert) Metadata() map[string]string {
 	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
 }
 
