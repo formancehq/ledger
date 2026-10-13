@@ -480,12 +480,13 @@ cluster or service connection.
 
 ## Contextual metadata validation failures (revision 33)
 
-Revision 33 requires the `key` fact for `METADATA_KEY_EMPTY`,
-`METADATA_KEY_INVALID_CHAR`, and `METADATA_VALUE_CONTAINS_NULL_BYTE`.
-The validation producer retains the offending key, including an explicitly
-present empty string. The primitive validation sentinels remain available for
-`errors.Is`, but they cannot be serialized without the key. Account metadata
-failures also carry `account`; ledger and transaction metadata failures do not
+Revision 33 requires the `key` fact for `METADATA_KEY_INVALID_CHAR` and
+`METADATA_VALUE_CONTAINS_NULL_BYTE`. `METADATA_KEY_EMPTY` is a distinct code
+whose key is necessarily empty, so it carries no redundant `key` fact. The
+validation producer retains the offending key for the other variants. Their
+primitive validation sentinels remain available for `errors.Is`, but cannot
+be serialized without the key. Account metadata failures also carry `account`;
+ledger and transaction metadata failures do not
 have an account. The public gRPC error metadata and audited failure details now
 include the key on paths that previously returned a bare sentinel. The schema
 also removes generic `key` and `account` fields from failure variants whose

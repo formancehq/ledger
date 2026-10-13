@@ -70,7 +70,6 @@ func TestMetadataValidationRetainsKey(t *testing.T) {
 		err             SerializableError
 		cause           error
 	}{
-		{"empty key", "", "METADATA_KEY_EMPTY", ValidateMetadataKey(""), ErrMetadataKeyEmpty},
 		{"invalid key", "bad key", "METADATA_KEY_INVALID_CHAR", ValidateMetadataKey("bad key"), ErrMetadataKeyInvalidChar},
 		{"invalid value", "invoice", "METADATA_VALUE_CONTAINS_NULL_BYTE", ValidateMetadataString("invoice", "bad\x00value"), ErrMetadataValueContainsNullByte},
 	} {
@@ -82,6 +81,10 @@ func TestMetadataValidationRetainsKey(t *testing.T) {
 			require.Equal(t, tc.key, commonpb.FailureDetailsFacts(details)["key"])
 		})
 	}
+
+	_, code, details := TypedFailureOf(ValidateMetadataKey(""))
+	require.Equal(t, "METADATA_KEY_EMPTY", code)
+	require.Empty(t, commonpb.FailureDetailsFacts(details))
 }
 
 // TestValidateMetadataValue exercises the *commonpb.MetadataValue dispatch,

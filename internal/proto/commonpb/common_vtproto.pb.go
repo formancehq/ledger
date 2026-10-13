@@ -4719,10 +4719,6 @@ func (m *MetadataKeyEmptyDetails) CloneVT() *MetadataKeyEmptyDetails {
 		return (*MetadataKeyEmptyDetails)(nil)
 	}
 	r := new(MetadataKeyEmptyDetails)
-	if rhs := m.Key; rhs != nil {
-		tmpVal := *rhs
-		r.Key = &tmpVal
-	}
 	if rhs := m.Account; rhs != nil {
 		tmpVal := *rhs
 		r.Account = &tmpVal
@@ -18423,9 +18419,6 @@ func (this *MetadataKeyEmptyDetails) EqualVT(that *MetadataKeyEmptyDetails) bool
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
@@ -35867,13 +35860,6 @@ func (m *MetadataKeyEmptyDetails) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		copy(dAtA[i:], *m.Account)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
 		i--
-		dAtA[i] = 0x12
-	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
 		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
@@ -51532,10 +51518,6 @@ func (m *MetadataKeyEmptyDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(*m.Key)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if m.Account != nil {
 		l = len(*m.Account)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -79467,39 +79449,6 @@ func (m *MetadataKeyEmptyDetails) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Key = &s
-			iNdEx = postIndex
-		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
 			}

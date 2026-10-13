@@ -729,9 +729,9 @@ func auditFailureCases() []auditFailureCase {
 		},
 		{
 			name:        "MetadataFactFailure",
-			err:         domain.ValidateMetadataKey(""),
+			err:         domain.ValidateMetadataKey("bad key"),
 			wantReason:  domain.ErrReasonValidation,
-			wantContext: map[string]string{"key": ""},
+			wantContext: map[string]string{"key": "bad key"},
 		},
 		{
 			// ErrMetadataKeyValidation adds {"key": Key} and merges the Cause's

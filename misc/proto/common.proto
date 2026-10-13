@@ -1192,8 +1192,7 @@ message MetadataFieldNotInSchemaDetails {
 }
 
 message MetadataKeyEmptyDetails {
-  optional string key = 1 [(failure_fact_required) = true];
-  optional string account = 2;
+  optional string account = 1;
 }
 
 message MetadataKeyInvalidCharDetails {

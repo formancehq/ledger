@@ -11864,8 +11864,7 @@ func (x *MetadataFieldNotInSchemaDetails) GetKey() string {
 
 type MetadataKeyEmptyDetails struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11898,13 +11897,6 @@ func (x *MetadataKeyEmptyDetails) ProtoReflect() protoreflect.Message {
 // Deprecated: Use MetadataKeyEmptyDetails.ProtoReflect.Descriptor instead.
 func (*MetadataKeyEmptyDetails) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{129}
-}
-
-func (x *MetadataKeyEmptyDetails) GetKey() string {
-	if x != nil && x.Key != nil {
-		return *x.Key
-	}
-	return ""
 }
 
 func (x *MetadataKeyEmptyDetails) GetAccount() string {
@@ -24287,11 +24279,9 @@ const file_common_proto_rawDesc = "" +
 	"\x06target\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x06target\x88\x01\x01\x12\x1b\n" +
 	"\x03key\x18\x02 \x01(\tB\x04\x88\xbd\x18\x01H\x01R\x03key\x88\x01\x01B\t\n" +
 	"\a_targetB\x06\n" +
-	"\x04_key\"i\n" +
-	"\x17MetadataKeyEmptyDetails\x12\x1b\n" +
-	"\x03key\x18\x01 \x01(\tB\x04\x88\xbd\x18\x01H\x00R\x03key\x88\x01\x01\x12\x1d\n" +
-	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
-	"\x04_keyB\n" +
+	"\x04_key\"D\n" +
+	"\x17MetadataKeyEmptyDetails\x12\x1d\n" +
+	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01B\n" +
 	"\n" +
 	"\b_account\"o\n" +
 	"\x1dMetadataKeyInvalidCharDetails\x12\x1b\n" +

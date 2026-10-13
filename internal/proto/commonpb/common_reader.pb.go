@@ -9746,16 +9746,11 @@ func NewMetadataFieldNotInSchemaDetailsListReader(s []*MetadataFieldNotInSchemaD
 // MetadataKeyEmptyDetailsReader provides read-only access to MetadataKeyEmptyDetails.
 // Call Mutate() to obtain a mutable clone.
 type MetadataKeyEmptyDetailsReader interface {
-	GetKey() string
 	GetAccount() string
 	Mutate() *MetadataKeyEmptyDetails
 }
 
 type metadataKeyEmptyDetailsReadonly MetadataKeyEmptyDetails
-
-func (r *metadataKeyEmptyDetailsReadonly) GetKey() string {
-	return (*MetadataKeyEmptyDetails)(r).GetKey()
-}
 
 func (r *metadataKeyEmptyDetailsReadonly) GetAccount() string {
 	return (*MetadataKeyEmptyDetails)(r).GetAccount()

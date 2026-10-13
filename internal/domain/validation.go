@@ -90,15 +90,15 @@ func (e *errValidation) FailureDetails() *commonpb.FailureDetails {
 // inside every volume key.
 const maxColorLength = 32
 
-// Storage-safety validation sentinels. Metadata key and value sentinels are
-// comparison targets only: a metadataFactFailure must carry the offending key
-// before it can be serialized. Other sentinels are independently serializable.
+// Storage-safety validation sentinels. Invalid metadata keys and values need
+// the offending key before serialization. An empty key is fully described by
+// its code, so its sentinel can be serialized directly.
 var (
 	ErrLedgerNameRequired    SerializableError = &errValidation{code: "LEDGER_NAME_REQUIRED", err: invariants.ErrLedgerNameRequired}
 	ErrLedgerNameInvalidChar SerializableError = &errValidation{code: "LEDGER_NAME_INVALID_CHAR", err: invariants.ErrLedgerNameInvalidChar}
 	ErrLedgerNameTooLong     SerializableError = &errValidation{code: "LEDGER_NAME_TOO_LONG", err: invariants.ErrLedgerNameTooLong}
 
-	ErrMetadataKeyEmpty              error = invariants.ErrMetadataKeyEmpty
+	ErrMetadataKeyEmpty              SerializableError = &errValidation{code: "METADATA_KEY_EMPTY", err: invariants.ErrMetadataKeyEmpty}
 	ErrMetadataKeyInvalidChar        error = invariants.ErrMetadataKeyInvalidChar
 	ErrMetadataValueContainsNullByte error = invariants.ErrMetadataValueContainsNullByte
 
@@ -424,9 +424,9 @@ func ValidateAccountAddress(address string) SerializableError {
 	return wrapValidationErr(invariants.ValidateLedgerAccountAddress(address))
 }
 
-// metadataFactFailure carries the offending key even when its value is empty.
-// The primitive cause retains errors.Is compatibility without being an
-// independently serializable error that could omit the required key.
+// metadataFactFailure carries the offending key for errors where its value
+// identifies the invalid entry. The primitive cause retains errors.Is
+// compatibility without being independently serializable.
 type metadataFactFailure struct {
 	key   string
 	cause error
@@ -443,10 +443,6 @@ func (*metadataFactFailure) Kind() ErrorKind { return KindValidation }
 func (*metadataFactFailure) Reason() string  { return ErrReasonValidation }
 func (e *metadataFactFailure) FailureDetails() *commonpb.FailureDetails {
 	switch {
-	case errors.Is(e.cause, ErrMetadataKeyEmpty):
-		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataKeyEmpty{
-			MetadataKeyEmpty: &commonpb.MetadataKeyEmptyDetails{Key: new(e.key)},
-		}}
 	case errors.Is(e.cause, ErrMetadataKeyInvalidChar):
 		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataKeyInvalidChar{
 			MetadataKeyInvalidChar: &commonpb.MetadataKeyInvalidCharDetails{Key: new(e.key)},
@@ -460,9 +456,13 @@ func (e *metadataFactFailure) FailureDetails() *commonpb.FailureDetails {
 	}
 }
 
-// ValidateMetadataKey attaches the offending key to its validation error.
+// ValidateMetadataKey retains the offending key when its value adds context.
 func ValidateMetadataKey(key string) SerializableError {
 	if err := invariants.ValidateMetadataKey(key); err != nil {
+		if errors.Is(err, invariants.ErrMetadataKeyEmpty) {
+			return ErrMetadataKeyEmpty
+		}
+
 		return &metadataFactFailure{key: key, cause: err}
 	}
 
