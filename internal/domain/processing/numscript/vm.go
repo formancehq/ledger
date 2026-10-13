@@ -217,7 +217,7 @@ func mapVMError(err error) domain.SerializableError {
 		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptNegativePortion{NumscriptNegativePortion: &commonpb.NumscriptNegativePortionDetails{Portion: new(e.Portion.String())}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.VmDivideByZeroError](err); ok {
-		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptDivideByZero{NumscriptDivideByZero: &commonpb.NumscriptDivideByZeroDetails{Numerator: new(e.Numerator.String())}}})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptDivideByZeroWithNumerator{NumscriptDivideByZeroWithNumerator: &commonpb.NumscriptDivideByZeroWithNumeratorDetails{Numerator: new(e.Numerator.String())}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.VmInvalidAccountName](err); ok {
 		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidAccountName{NumscriptInvalidAccountName: &commonpb.NumscriptInvalidAccountNameDetails{Name: new(e.Name)}}})

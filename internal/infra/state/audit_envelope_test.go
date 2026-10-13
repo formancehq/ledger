@@ -229,6 +229,7 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 					"account": "bank",
 					"amount":  "10",
 					"asset":   "USD",
+					"color":   "",
 				}),
 			},
 		},
@@ -303,8 +304,8 @@ func TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns(t *testing.T) {
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
 				Reason: commonpb.ErrorReason_ERROR_REASON_METADATA_LIMIT_EXCEEDED,
-				Code:   "METADATA_LIMIT_EXCEEDED",
-				Details: commonpb.MustFailureDetails("METADATA_LIMIT_EXCEEDED", map[string]string{
+				Code:   "ACCOUNT_METADATA_KEY_LIMIT_EXCEEDED",
+				Details: commonpb.MustFailureDetails("ACCOUNT_METADATA_KEY_LIMIT_EXCEEDED", map[string]string{
 					"dimension": "value",
 					"limit":     "16",
 					"actual":    "17",

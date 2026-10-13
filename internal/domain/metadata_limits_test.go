@@ -347,6 +347,7 @@ func TestMetadataLimitsValidateEntryPrefersKeyOverValue(t *testing.T) {
 
 	require.NotNil(t, err)
 	require.Equal(t, MetadataLimitDimensionKey, FailureFactsOf(err).Facts["dimension"])
+	require.Equal(t, strings.Repeat("k", 9), FailureFactsOf(err).Facts["key"])
 }
 
 func TestMetadataLimitsValidateCommandBytes(t *testing.T) {
@@ -375,6 +376,7 @@ func TestMetadataLimitsValidateKey(t *testing.T) {
 	err := limits.ValidateKey(strings.Repeat("k", 9))
 	require.NotNil(t, err)
 	require.Equal(t, MetadataLimitDimensionKey, FailureFactsOf(err).Facts["dimension"])
+	require.Equal(t, strings.Repeat("k", 9), FailureFactsOf(err).Facts["key"])
 }
 
 // An unconfigured contract must reject rather than admit unbounded metadata:

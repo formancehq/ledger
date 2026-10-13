@@ -232,6 +232,10 @@ func (l MetadataLimits) ValidateMap(m map[string]*commonpb.MetadataValue) Serial
 	}
 
 	if worstErr != nil {
+		if _, keyed := worstErr.(*ErrMetadataKeyValidation); keyed {
+			return worstErr
+		}
+
 		return &ErrMetadataKeyValidation{Key: worstKey, Cause: worstErr}
 	}
 
@@ -249,11 +253,11 @@ func (l MetadataLimits) ValidateKey(key string) SerializableError {
 	}
 
 	if keyBytes := uint64(len(key)); keyBytes > l.MaxKeyBytes {
-		return &ErrMetadataLimitExceeded{
+		return &ErrMetadataKeyValidation{Key: key, Cause: &ErrMetadataLimitExceeded{
 			Dimension: MetadataLimitDimensionKey,
 			Limit:     l.MaxKeyBytes,
 			Actual:    keyBytes,
-		}
+		}}
 	}
 
 	return nil

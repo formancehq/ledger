@@ -3626,6 +3626,114 @@ func (m *FailureDetails_WritesBlockedDiskFull) CloneVT() isFailureDetails_Kind {
 	return r
 }
 
+func (m *FailureDetails_AccountMetadataKeyEmpty) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_AccountMetadataKeyEmpty)(nil)
+	}
+	r := new(FailureDetails_AccountMetadataKeyEmpty)
+	r.AccountMetadataKeyEmpty = m.AccountMetadataKeyEmpty.CloneVT()
+	return r
+}
+
+func (m *FailureDetails_AccountMetadataKeyInvalidChar) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_AccountMetadataKeyInvalidChar)(nil)
+	}
+	r := new(FailureDetails_AccountMetadataKeyInvalidChar)
+	r.AccountMetadataKeyInvalidChar = m.AccountMetadataKeyInvalidChar.CloneVT()
+	return r
+}
+
+func (m *FailureDetails_AccountMetadataValueContainsNullByte) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_AccountMetadataValueContainsNullByte)(nil)
+	}
+	r := new(FailureDetails_AccountMetadataValueContainsNullByte)
+	r.AccountMetadataValueContainsNullByte = m.AccountMetadataValueContainsNullByte.CloneVT()
+	return r
+}
+
+func (m *FailureDetails_AccountMetadataLimitsUnconfigured) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_AccountMetadataLimitsUnconfigured)(nil)
+	}
+	r := new(FailureDetails_AccountMetadataLimitsUnconfigured)
+	r.AccountMetadataLimitsUnconfigured = m.AccountMetadataLimitsUnconfigured.CloneVT()
+	return r
+}
+
+func (m *FailureDetails_AccountMetadataLimitExceeded) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_AccountMetadataLimitExceeded)(nil)
+	}
+	r := new(FailureDetails_AccountMetadataLimitExceeded)
+	r.AccountMetadataLimitExceeded = m.AccountMetadataLimitExceeded.CloneVT()
+	return r
+}
+
+func (m *FailureDetails_MetadataKeyLimitExceeded) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_MetadataKeyLimitExceeded)(nil)
+	}
+	r := new(FailureDetails_MetadataKeyLimitExceeded)
+	r.MetadataKeyLimitExceeded = m.MetadataKeyLimitExceeded.CloneVT()
+	return r
+}
+
+func (m *FailureDetails_AccountMetadataKeyLimitExceeded) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_AccountMetadataKeyLimitExceeded)(nil)
+	}
+	r := new(FailureDetails_AccountMetadataKeyLimitExceeded)
+	r.AccountMetadataKeyLimitExceeded = m.AccountMetadataKeyLimitExceeded.CloneVT()
+	return r
+}
+
+func (m *FailureDetails_NumscriptInsufficientFunds) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_NumscriptInsufficientFunds)(nil)
+	}
+	r := new(FailureDetails_NumscriptInsufficientFunds)
+	r.NumscriptInsufficientFunds = m.NumscriptInsufficientFunds.CloneVT()
+	return r
+}
+
+func (m *FailureDetails_NumscriptDivideByZeroWithNumerator) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_NumscriptDivideByZeroWithNumerator)(nil)
+	}
+	r := new(FailureDetails_NumscriptDivideByZeroWithNumerator)
+	r.NumscriptDivideByZeroWithNumerator = m.NumscriptDivideByZeroWithNumerator.CloneVT()
+	return r
+}
+
+func (m *FailureDetails_NumscriptScopedMetadataNotFound) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_NumscriptScopedMetadataNotFound)(nil)
+	}
+	r := new(FailureDetails_NumscriptScopedMetadataNotFound)
+	r.NumscriptScopedMetadataNotFound = m.NumscriptScopedMetadataNotFound.CloneVT()
+	return r
+}
+
+func (m *FailureDetails_NumscriptScopedNegativeBalance) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_NumscriptScopedNegativeBalance)(nil)
+	}
+	r := new(FailureDetails_NumscriptScopedNegativeBalance)
+	r.NumscriptScopedNegativeBalance = m.NumscriptScopedNegativeBalance.CloneVT()
+	return r
+}
+
+func (m *FailureDetails_NumscriptVersionNotFound) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_NumscriptVersionNotFound)(nil)
+	}
+	r := new(FailureDetails_NumscriptVersionNotFound)
+	r.NumscriptVersionNotFound = m.NumscriptVersionNotFound.CloneVT()
+	return r
+}
+
 func (m *AccountAddressEmptyDetails) CloneVT() *AccountAddressEmptyDetails {
 	if m == nil {
 		return (*AccountAddressEmptyDetails)(nil)
@@ -4386,6 +4494,34 @@ func (m *InsufficientFundsDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
+func (m *NumscriptInsufficientFundsDetails) CloneVT() *NumscriptInsufficientFundsDetails {
+	if m == nil {
+		return (*NumscriptInsufficientFundsDetails)(nil)
+	}
+	r := new(NumscriptInsufficientFundsDetails)
+	if rhs := m.Asset; rhs != nil {
+		tmpVal := *rhs
+		r.Asset = &tmpVal
+	}
+	if rhs := m.Amount; rhs != nil {
+		tmpVal := *rhs
+		r.Amount = &tmpVal
+	}
+	if rhs := m.Balance; rhs != nil {
+		tmpVal := *rhs
+		r.Balance = &tmpVal
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *NumscriptInsufficientFundsDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (m *InvalidApplyTypeDetails) CloneVT() *InvalidApplyTypeDetails {
 	if m == nil {
 		return (*InvalidApplyTypeDetails)(nil)
@@ -4719,10 +4855,6 @@ func (m *MetadataKeyEmptyDetails) CloneVT() *MetadataKeyEmptyDetails {
 		return (*MetadataKeyEmptyDetails)(nil)
 	}
 	r := new(MetadataKeyEmptyDetails)
-	if rhs := m.Account; rhs != nil {
-		tmpVal := *rhs
-		r.Account = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4734,11 +4866,51 @@ func (m *MetadataKeyEmptyDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
+func (m *AccountMetadataKeyEmptyDetails) CloneVT() *AccountMetadataKeyEmptyDetails {
+	if m == nil {
+		return (*AccountMetadataKeyEmptyDetails)(nil)
+	}
+	r := new(AccountMetadataKeyEmptyDetails)
+	if rhs := m.Account; rhs != nil {
+		tmpVal := *rhs
+		r.Account = &tmpVal
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *AccountMetadataKeyEmptyDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (m *MetadataKeyInvalidCharDetails) CloneVT() *MetadataKeyInvalidCharDetails {
 	if m == nil {
 		return (*MetadataKeyInvalidCharDetails)(nil)
 	}
 	r := new(MetadataKeyInvalidCharDetails)
+	if rhs := m.Key; rhs != nil {
+		tmpVal := *rhs
+		r.Key = &tmpVal
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *MetadataKeyInvalidCharDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *AccountMetadataKeyInvalidCharDetails) CloneVT() *AccountMetadataKeyInvalidCharDetails {
+	if m == nil {
+		return (*AccountMetadataKeyInvalidCharDetails)(nil)
+	}
+	r := new(AccountMetadataKeyInvalidCharDetails)
 	if rhs := m.Key; rhs != nil {
 		tmpVal := *rhs
 		r.Key = &tmpVal
@@ -4754,7 +4926,7 @@ func (m *MetadataKeyInvalidCharDetails) CloneVT() *MetadataKeyInvalidCharDetails
 	return r
 }
 
-func (m *MetadataKeyInvalidCharDetails) CloneMessageVT() proto.Message {
+func (m *AccountMetadataKeyInvalidCharDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -4779,9 +4951,113 @@ func (m *MetadataLimitsUnconfiguredDetails) CloneVT() *MetadataLimitsUnconfigure
 		return (*MetadataLimitsUnconfiguredDetails)(nil)
 	}
 	r := new(MetadataLimitsUnconfiguredDetails)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *MetadataLimitsUnconfiguredDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *AccountMetadataLimitsUnconfiguredDetails) CloneVT() *AccountMetadataLimitsUnconfiguredDetails {
+	if m == nil {
+		return (*AccountMetadataLimitsUnconfiguredDetails)(nil)
+	}
+	r := new(AccountMetadataLimitsUnconfiguredDetails)
 	if rhs := m.Account; rhs != nil {
 		tmpVal := *rhs
 		r.Account = &tmpVal
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *AccountMetadataLimitsUnconfiguredDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *MetadataLimitExceededDetails) CloneVT() *MetadataLimitExceededDetails {
+	if m == nil {
+		return (*MetadataLimitExceededDetails)(nil)
+	}
+	r := new(MetadataLimitExceededDetails)
+	if rhs := m.Dimension; rhs != nil {
+		tmpVal := *rhs
+		r.Dimension = &tmpVal
+	}
+	if rhs := m.Limit; rhs != nil {
+		tmpVal := *rhs
+		r.Limit = &tmpVal
+	}
+	if rhs := m.Actual; rhs != nil {
+		tmpVal := *rhs
+		r.Actual = &tmpVal
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *MetadataLimitExceededDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *AccountMetadataLimitExceededDetails) CloneVT() *AccountMetadataLimitExceededDetails {
+	if m == nil {
+		return (*AccountMetadataLimitExceededDetails)(nil)
+	}
+	r := new(AccountMetadataLimitExceededDetails)
+	if rhs := m.Dimension; rhs != nil {
+		tmpVal := *rhs
+		r.Dimension = &tmpVal
+	}
+	if rhs := m.Limit; rhs != nil {
+		tmpVal := *rhs
+		r.Limit = &tmpVal
+	}
+	if rhs := m.Actual; rhs != nil {
+		tmpVal := *rhs
+		r.Actual = &tmpVal
+	}
+	if rhs := m.Account; rhs != nil {
+		tmpVal := *rhs
+		r.Account = &tmpVal
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *AccountMetadataLimitExceededDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *MetadataKeyLimitExceededDetails) CloneVT() *MetadataKeyLimitExceededDetails {
+	if m == nil {
+		return (*MetadataKeyLimitExceededDetails)(nil)
+	}
+	r := new(MetadataKeyLimitExceededDetails)
+	if rhs := m.Dimension; rhs != nil {
+		tmpVal := *rhs
+		r.Dimension = &tmpVal
+	}
+	if rhs := m.Limit; rhs != nil {
+		tmpVal := *rhs
+		r.Limit = &tmpVal
+	}
+	if rhs := m.Actual; rhs != nil {
+		tmpVal := *rhs
+		r.Actual = &tmpVal
 	}
 	if rhs := m.Key; rhs != nil {
 		tmpVal := *rhs
@@ -4794,15 +5070,15 @@ func (m *MetadataLimitsUnconfiguredDetails) CloneVT() *MetadataLimitsUnconfigure
 	return r
 }
 
-func (m *MetadataLimitsUnconfiguredDetails) CloneMessageVT() proto.Message {
+func (m *MetadataKeyLimitExceededDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *MetadataLimitExceededDetails) CloneVT() *MetadataLimitExceededDetails {
+func (m *AccountMetadataKeyLimitExceededDetails) CloneVT() *AccountMetadataKeyLimitExceededDetails {
 	if m == nil {
-		return (*MetadataLimitExceededDetails)(nil)
+		return (*AccountMetadataKeyLimitExceededDetails)(nil)
 	}
-	r := new(MetadataLimitExceededDetails)
+	r := new(AccountMetadataKeyLimitExceededDetails)
 	if rhs := m.Dimension; rhs != nil {
 		tmpVal := *rhs
 		r.Dimension = &tmpVal
@@ -4830,7 +5106,7 @@ func (m *MetadataLimitExceededDetails) CloneVT() *MetadataLimitExceededDetails {
 	return r
 }
 
-func (m *MetadataLimitExceededDetails) CloneMessageVT() proto.Message {
+func (m *AccountMetadataKeyLimitExceededDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -4867,6 +5143,26 @@ func (m *MetadataValueContainsNullByteDetails) CloneVT() *MetadataValueContainsN
 		tmpVal := *rhs
 		r.Key = &tmpVal
 	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *MetadataValueContainsNullByteDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *AccountMetadataValueContainsNullByteDetails) CloneVT() *AccountMetadataValueContainsNullByteDetails {
+	if m == nil {
+		return (*AccountMetadataValueContainsNullByteDetails)(nil)
+	}
+	r := new(AccountMetadataValueContainsNullByteDetails)
+	if rhs := m.Key; rhs != nil {
+		tmpVal := *rhs
+		r.Key = &tmpVal
+	}
 	if rhs := m.Account; rhs != nil {
 		tmpVal := *rhs
 		r.Account = &tmpVal
@@ -4878,7 +5174,7 @@ func (m *MetadataValueContainsNullByteDetails) CloneVT() *MetadataValueContainsN
 	return r
 }
 
-func (m *MetadataValueContainsNullByteDetails) CloneMessageVT() proto.Message {
+func (m *AccountMetadataValueContainsNullByteDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -5515,6 +5811,22 @@ func (m *NumscriptDivideByZeroDetails) CloneVT() *NumscriptDivideByZeroDetails {
 		return (*NumscriptDivideByZeroDetails)(nil)
 	}
 	r := new(NumscriptDivideByZeroDetails)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *NumscriptDivideByZeroDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *NumscriptDivideByZeroWithNumeratorDetails) CloneVT() *NumscriptDivideByZeroWithNumeratorDetails {
+	if m == nil {
+		return (*NumscriptDivideByZeroWithNumeratorDetails)(nil)
+	}
+	r := new(NumscriptDivideByZeroWithNumeratorDetails)
 	if rhs := m.Numerator; rhs != nil {
 		tmpVal := *rhs
 		r.Numerator = &tmpVal
@@ -5526,7 +5838,7 @@ func (m *NumscriptDivideByZeroDetails) CloneVT() *NumscriptDivideByZeroDetails {
 	return r
 }
 
-func (m *NumscriptDivideByZeroDetails) CloneMessageVT() proto.Message {
+func (m *NumscriptDivideByZeroWithNumeratorDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -5883,6 +6195,30 @@ func (m *NumscriptMetadataNotFoundDetails) CloneVT() *NumscriptMetadataNotFoundD
 		tmpVal := *rhs
 		r.Account = &tmpVal
 	}
+	if rhs := m.Key; rhs != nil {
+		tmpVal := *rhs
+		r.Key = &tmpVal
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *NumscriptMetadataNotFoundDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *NumscriptScopedMetadataNotFoundDetails) CloneVT() *NumscriptScopedMetadataNotFoundDetails {
+	if m == nil {
+		return (*NumscriptScopedMetadataNotFoundDetails)(nil)
+	}
+	r := new(NumscriptScopedMetadataNotFoundDetails)
+	if rhs := m.Account; rhs != nil {
+		tmpVal := *rhs
+		r.Account = &tmpVal
+	}
 	if rhs := m.Scope; rhs != nil {
 		tmpVal := *rhs
 		r.Scope = &tmpVal
@@ -5898,7 +6234,7 @@ func (m *NumscriptMetadataNotFoundDetails) CloneVT() *NumscriptMetadataNotFoundD
 	return r
 }
 
-func (m *NumscriptMetadataNotFoundDetails) CloneMessageVT() proto.Message {
+func (m *NumscriptScopedMetadataNotFoundDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -6027,6 +6363,30 @@ func (m *NumscriptNegativeBalanceDetails) CloneVT() *NumscriptNegativeBalanceDet
 		tmpVal := *rhs
 		r.Account = &tmpVal
 	}
+	if rhs := m.Amount; rhs != nil {
+		tmpVal := *rhs
+		r.Amount = &tmpVal
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *NumscriptNegativeBalanceDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *NumscriptScopedNegativeBalanceDetails) CloneVT() *NumscriptScopedNegativeBalanceDetails {
+	if m == nil {
+		return (*NumscriptScopedNegativeBalanceDetails)(nil)
+	}
+	r := new(NumscriptScopedNegativeBalanceDetails)
+	if rhs := m.Account; rhs != nil {
+		tmpVal := *rhs
+		r.Account = &tmpVal
+	}
 	if rhs := m.Scope; rhs != nil {
 		tmpVal := *rhs
 		r.Scope = &tmpVal
@@ -6046,7 +6406,7 @@ func (m *NumscriptNegativeBalanceDetails) CloneVT() *NumscriptNegativeBalanceDet
 	return r
 }
 
-func (m *NumscriptNegativeBalanceDetails) CloneMessageVT() proto.Message {
+func (m *NumscriptScopedNegativeBalanceDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -6079,6 +6439,26 @@ func (m *NumscriptNotFoundDetails) CloneVT() *NumscriptNotFoundDetails {
 		tmpVal := *rhs
 		r.Name = &tmpVal
 	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *NumscriptNotFoundDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *NumscriptVersionNotFoundDetails) CloneVT() *NumscriptVersionNotFoundDetails {
+	if m == nil {
+		return (*NumscriptVersionNotFoundDetails)(nil)
+	}
+	r := new(NumscriptVersionNotFoundDetails)
+	if rhs := m.Name; rhs != nil {
+		tmpVal := *rhs
+		r.Name = &tmpVal
+	}
 	if rhs := m.Version; rhs != nil {
 		tmpVal := *rhs
 		r.Version = &tmpVal
@@ -6090,7 +6470,7 @@ func (m *NumscriptNotFoundDetails) CloneVT() *NumscriptNotFoundDetails {
 	return r
 }
 
-func (m *NumscriptNotFoundDetails) CloneMessageVT() proto.Message {
+func (m *NumscriptVersionNotFoundDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -17371,6 +17751,306 @@ func (this *FailureDetails_WritesBlockedDiskFull) EqualVT(thatIface isFailureDet
 	return true
 }
 
+func (this *FailureDetails_AccountMetadataKeyEmpty) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_AccountMetadataKeyEmpty)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.AccountMetadataKeyEmpty, that.AccountMetadataKeyEmpty; p != q {
+		if p == nil {
+			p = &AccountMetadataKeyEmptyDetails{}
+		}
+		if q == nil {
+			q = &AccountMetadataKeyEmptyDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *FailureDetails_AccountMetadataKeyInvalidChar) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_AccountMetadataKeyInvalidChar)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.AccountMetadataKeyInvalidChar, that.AccountMetadataKeyInvalidChar; p != q {
+		if p == nil {
+			p = &AccountMetadataKeyInvalidCharDetails{}
+		}
+		if q == nil {
+			q = &AccountMetadataKeyInvalidCharDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *FailureDetails_AccountMetadataValueContainsNullByte) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_AccountMetadataValueContainsNullByte)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.AccountMetadataValueContainsNullByte, that.AccountMetadataValueContainsNullByte; p != q {
+		if p == nil {
+			p = &AccountMetadataValueContainsNullByteDetails{}
+		}
+		if q == nil {
+			q = &AccountMetadataValueContainsNullByteDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *FailureDetails_AccountMetadataLimitsUnconfigured) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_AccountMetadataLimitsUnconfigured)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.AccountMetadataLimitsUnconfigured, that.AccountMetadataLimitsUnconfigured; p != q {
+		if p == nil {
+			p = &AccountMetadataLimitsUnconfiguredDetails{}
+		}
+		if q == nil {
+			q = &AccountMetadataLimitsUnconfiguredDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *FailureDetails_AccountMetadataLimitExceeded) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_AccountMetadataLimitExceeded)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.AccountMetadataLimitExceeded, that.AccountMetadataLimitExceeded; p != q {
+		if p == nil {
+			p = &AccountMetadataLimitExceededDetails{}
+		}
+		if q == nil {
+			q = &AccountMetadataLimitExceededDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *FailureDetails_MetadataKeyLimitExceeded) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_MetadataKeyLimitExceeded)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.MetadataKeyLimitExceeded, that.MetadataKeyLimitExceeded; p != q {
+		if p == nil {
+			p = &MetadataKeyLimitExceededDetails{}
+		}
+		if q == nil {
+			q = &MetadataKeyLimitExceededDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *FailureDetails_AccountMetadataKeyLimitExceeded) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_AccountMetadataKeyLimitExceeded)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.AccountMetadataKeyLimitExceeded, that.AccountMetadataKeyLimitExceeded; p != q {
+		if p == nil {
+			p = &AccountMetadataKeyLimitExceededDetails{}
+		}
+		if q == nil {
+			q = &AccountMetadataKeyLimitExceededDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *FailureDetails_NumscriptInsufficientFunds) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_NumscriptInsufficientFunds)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.NumscriptInsufficientFunds, that.NumscriptInsufficientFunds; p != q {
+		if p == nil {
+			p = &NumscriptInsufficientFundsDetails{}
+		}
+		if q == nil {
+			q = &NumscriptInsufficientFundsDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *FailureDetails_NumscriptDivideByZeroWithNumerator) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_NumscriptDivideByZeroWithNumerator)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.NumscriptDivideByZeroWithNumerator, that.NumscriptDivideByZeroWithNumerator; p != q {
+		if p == nil {
+			p = &NumscriptDivideByZeroWithNumeratorDetails{}
+		}
+		if q == nil {
+			q = &NumscriptDivideByZeroWithNumeratorDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *FailureDetails_NumscriptScopedMetadataNotFound) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_NumscriptScopedMetadataNotFound)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.NumscriptScopedMetadataNotFound, that.NumscriptScopedMetadataNotFound; p != q {
+		if p == nil {
+			p = &NumscriptScopedMetadataNotFoundDetails{}
+		}
+		if q == nil {
+			q = &NumscriptScopedMetadataNotFoundDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *FailureDetails_NumscriptScopedNegativeBalance) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_NumscriptScopedNegativeBalance)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.NumscriptScopedNegativeBalance, that.NumscriptScopedNegativeBalance; p != q {
+		if p == nil {
+			p = &NumscriptScopedNegativeBalanceDetails{}
+		}
+		if q == nil {
+			q = &NumscriptScopedNegativeBalanceDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *FailureDetails_NumscriptVersionNotFound) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_NumscriptVersionNotFound)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.NumscriptVersionNotFound, that.NumscriptVersionNotFound; p != q {
+		if p == nil {
+			p = &NumscriptVersionNotFoundDetails{}
+		}
+		if q == nil {
+			q = &NumscriptVersionNotFoundDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *AccountAddressEmptyDetails) EqualVT(that *AccountAddressEmptyDetails) bool {
 	if this == that {
 		return true
@@ -18097,6 +18777,31 @@ func (this *InsufficientFundsDetails) EqualMessageVT(thatMsg proto.Message) bool
 	}
 	return this.EqualVT(that)
 }
+func (this *NumscriptInsufficientFundsDetails) EqualVT(that *NumscriptInsufficientFundsDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if p, q := this.Asset, that.Asset; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.Amount, that.Amount; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.Balance, that.Balance; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *NumscriptInsufficientFundsDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*NumscriptInsufficientFundsDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (this *InvalidApplyTypeDetails) EqualVT(that *InvalidApplyTypeDetails) bool {
 	if this == that {
 		return true
@@ -18421,14 +19126,30 @@ func (this *MetadataKeyEmptyDetails) EqualVT(that *MetadataKeyEmptyDetails) bool
 	} else if this == nil || that == nil {
 		return false
 	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *MetadataKeyEmptyDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*MetadataKeyEmptyDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *AccountMetadataKeyEmptyDetails) EqualVT(that *AccountMetadataKeyEmptyDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
 	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *MetadataKeyEmptyDetails) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*MetadataKeyEmptyDetails)
+func (this *AccountMetadataKeyEmptyDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AccountMetadataKeyEmptyDetails)
 	if !ok {
 		return false
 	}
@@ -18443,14 +19164,33 @@ func (this *MetadataKeyInvalidCharDetails) EqualVT(that *MetadataKeyInvalidCharD
 	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *MetadataKeyInvalidCharDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*MetadataKeyInvalidCharDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *AccountMetadataKeyInvalidCharDetails) EqualVT(that *AccountMetadataKeyInvalidCharDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
 	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *MetadataKeyInvalidCharDetails) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*MetadataKeyInvalidCharDetails)
+func (this *AccountMetadataKeyInvalidCharDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AccountMetadataKeyInvalidCharDetails)
 	if !ok {
 		return false
 	}
@@ -18478,12 +19218,6 @@ func (this *MetadataLimitsUnconfiguredDetails) EqualVT(that *MetadataLimitsUncon
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -18494,7 +19228,107 @@ func (this *MetadataLimitsUnconfiguredDetails) EqualMessageVT(thatMsg proto.Mess
 	}
 	return this.EqualVT(that)
 }
+func (this *AccountMetadataLimitsUnconfiguredDetails) EqualVT(that *AccountMetadataLimitsUnconfiguredDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *AccountMetadataLimitsUnconfiguredDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AccountMetadataLimitsUnconfiguredDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (this *MetadataLimitExceededDetails) EqualVT(that *MetadataLimitExceededDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if p, q := this.Dimension, that.Dimension; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.Limit, that.Limit; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.Actual, that.Actual; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *MetadataLimitExceededDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*MetadataLimitExceededDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *AccountMetadataLimitExceededDetails) EqualVT(that *AccountMetadataLimitExceededDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if p, q := this.Dimension, that.Dimension; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.Limit, that.Limit; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.Actual, that.Actual; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *AccountMetadataLimitExceededDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AccountMetadataLimitExceededDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *MetadataKeyLimitExceededDetails) EqualVT(that *MetadataKeyLimitExceededDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if p, q := this.Dimension, that.Dimension; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.Limit, that.Limit; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.Actual, that.Actual; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *MetadataKeyLimitExceededDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*MetadataKeyLimitExceededDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *AccountMetadataKeyLimitExceededDetails) EqualVT(that *AccountMetadataKeyLimitExceededDetails) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -18518,8 +19352,8 @@ func (this *MetadataLimitExceededDetails) EqualVT(that *MetadataLimitExceededDet
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *MetadataLimitExceededDetails) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*MetadataLimitExceededDetails)
+func (this *AccountMetadataKeyLimitExceededDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AccountMetadataKeyLimitExceededDetails)
 	if !ok {
 		return false
 	}
@@ -18556,14 +19390,33 @@ func (this *MetadataValueContainsNullByteDetails) EqualVT(that *MetadataValueCon
 	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *MetadataValueContainsNullByteDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*MetadataValueContainsNullByteDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *AccountMetadataValueContainsNullByteDetails) EqualVT(that *AccountMetadataValueContainsNullByteDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
 	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *MetadataValueContainsNullByteDetails) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*MetadataValueContainsNullByteDetails)
+func (this *AccountMetadataValueContainsNullByteDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AccountMetadataValueContainsNullByteDetails)
 	if !ok {
 		return false
 	}
@@ -19170,14 +20023,30 @@ func (this *NumscriptDivideByZeroDetails) EqualVT(that *NumscriptDivideByZeroDet
 	} else if this == nil || that == nil {
 		return false
 	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *NumscriptDivideByZeroDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*NumscriptDivideByZeroDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *NumscriptDivideByZeroWithNumeratorDetails) EqualVT(that *NumscriptDivideByZeroWithNumeratorDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
 	if p, q := this.Numerator, that.Numerator; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *NumscriptDivideByZeroDetails) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*NumscriptDivideByZeroDetails)
+func (this *NumscriptDivideByZeroWithNumeratorDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*NumscriptDivideByZeroWithNumeratorDetails)
 	if !ok {
 		return false
 	}
@@ -19522,6 +20391,28 @@ func (this *NumscriptMetadataNotFoundDetails) EqualVT(that *NumscriptMetadataNot
 	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
+	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *NumscriptMetadataNotFoundDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*NumscriptMetadataNotFoundDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *NumscriptScopedMetadataNotFoundDetails) EqualVT(that *NumscriptScopedMetadataNotFoundDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
 	if p, q := this.Scope, that.Scope; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
@@ -19531,8 +20422,8 @@ func (this *NumscriptMetadataNotFoundDetails) EqualVT(that *NumscriptMetadataNot
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *NumscriptMetadataNotFoundDetails) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*NumscriptMetadataNotFoundDetails)
+func (this *NumscriptScopedMetadataNotFoundDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*NumscriptScopedMetadataNotFoundDetails)
 	if !ok {
 		return false
 	}
@@ -19658,6 +20549,28 @@ func (this *NumscriptNegativeBalanceDetails) EqualVT(that *NumscriptNegativeBala
 	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
+	if p, q := this.Amount, that.Amount; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *NumscriptNegativeBalanceDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*NumscriptNegativeBalanceDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *NumscriptScopedNegativeBalanceDetails) EqualVT(that *NumscriptScopedNegativeBalanceDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if p, q := this.Account, that.Account; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
 	if p, q := this.Scope, that.Scope; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
@@ -19670,8 +20583,8 @@ func (this *NumscriptNegativeBalanceDetails) EqualVT(that *NumscriptNegativeBala
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *NumscriptNegativeBalanceDetails) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*NumscriptNegativeBalanceDetails)
+func (this *NumscriptScopedNegativeBalanceDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*NumscriptScopedNegativeBalanceDetails)
 	if !ok {
 		return false
 	}
@@ -19705,14 +20618,33 @@ func (this *NumscriptNotFoundDetails) EqualVT(that *NumscriptNotFoundDetails) bo
 	if p, q := this.Name, that.Name; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *NumscriptNotFoundDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*NumscriptNotFoundDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *NumscriptVersionNotFoundDetails) EqualVT(that *NumscriptVersionNotFoundDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if p, q := this.Name, that.Name; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
 	if p, q := this.Version, that.Version; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *NumscriptNotFoundDetails) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*NumscriptNotFoundDetails)
+func (this *NumscriptVersionNotFoundDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*NumscriptVersionNotFoundDetails)
 	if !ok {
 		return false
 	}
@@ -33650,6 +34582,258 @@ func (m *FailureDetails_WritesBlockedDiskFull) MarshalToSizedBufferVT(dAtA []byt
 	}
 	return len(dAtA) - i, nil
 }
+func (m *FailureDetails_AccountMetadataKeyEmpty) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_AccountMetadataKeyEmpty) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.AccountMetadataKeyEmpty != nil {
+		size, err := m.AccountMetadataKeyEmpty.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+		i--
+		dAtA[i] = 0xf2
+	}
+	return len(dAtA) - i, nil
+}
+func (m *FailureDetails_AccountMetadataKeyInvalidChar) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_AccountMetadataKeyInvalidChar) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.AccountMetadataKeyInvalidChar != nil {
+		size, err := m.AccountMetadataKeyInvalidChar.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+		i--
+		dAtA[i] = 0xfa
+	}
+	return len(dAtA) - i, nil
+}
+func (m *FailureDetails_AccountMetadataValueContainsNullByte) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_AccountMetadataValueContainsNullByte) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.AccountMetadataValueContainsNullByte != nil {
+		size, err := m.AccountMetadataValueContainsNullByte.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xb
+		i--
+		dAtA[i] = 0x82
+	}
+	return len(dAtA) - i, nil
+}
+func (m *FailureDetails_AccountMetadataLimitsUnconfigured) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_AccountMetadataLimitsUnconfigured) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.AccountMetadataLimitsUnconfigured != nil {
+		size, err := m.AccountMetadataLimitsUnconfigured.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xb
+		i--
+		dAtA[i] = 0x8a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *FailureDetails_AccountMetadataLimitExceeded) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_AccountMetadataLimitExceeded) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.AccountMetadataLimitExceeded != nil {
+		size, err := m.AccountMetadataLimitExceeded.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xb
+		i--
+		dAtA[i] = 0x92
+	}
+	return len(dAtA) - i, nil
+}
+func (m *FailureDetails_MetadataKeyLimitExceeded) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_MetadataKeyLimitExceeded) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.MetadataKeyLimitExceeded != nil {
+		size, err := m.MetadataKeyLimitExceeded.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xb
+		i--
+		dAtA[i] = 0x9a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *FailureDetails_AccountMetadataKeyLimitExceeded) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_AccountMetadataKeyLimitExceeded) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.AccountMetadataKeyLimitExceeded != nil {
+		size, err := m.AccountMetadataKeyLimitExceeded.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xb
+		i--
+		dAtA[i] = 0xa2
+	}
+	return len(dAtA) - i, nil
+}
+func (m *FailureDetails_NumscriptInsufficientFunds) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_NumscriptInsufficientFunds) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.NumscriptInsufficientFunds != nil {
+		size, err := m.NumscriptInsufficientFunds.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xb
+		i--
+		dAtA[i] = 0xaa
+	}
+	return len(dAtA) - i, nil
+}
+func (m *FailureDetails_NumscriptDivideByZeroWithNumerator) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_NumscriptDivideByZeroWithNumerator) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.NumscriptDivideByZeroWithNumerator != nil {
+		size, err := m.NumscriptDivideByZeroWithNumerator.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xb
+		i--
+		dAtA[i] = 0xb2
+	}
+	return len(dAtA) - i, nil
+}
+func (m *FailureDetails_NumscriptScopedMetadataNotFound) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_NumscriptScopedMetadataNotFound) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.NumscriptScopedMetadataNotFound != nil {
+		size, err := m.NumscriptScopedMetadataNotFound.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xb
+		i--
+		dAtA[i] = 0xba
+	}
+	return len(dAtA) - i, nil
+}
+func (m *FailureDetails_NumscriptScopedNegativeBalance) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_NumscriptScopedNegativeBalance) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.NumscriptScopedNegativeBalance != nil {
+		size, err := m.NumscriptScopedNegativeBalance.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xb
+		i--
+		dAtA[i] = 0xc2
+	}
+	return len(dAtA) - i, nil
+}
+func (m *FailureDetails_NumscriptVersionNotFound) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_NumscriptVersionNotFound) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.NumscriptVersionNotFound != nil {
+		size, err := m.NumscriptVersionNotFound.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xb
+		i--
+		dAtA[i] = 0xca
+	}
+	return len(dAtA) - i, nil
+}
 func (m *AccountAddressEmptyDetails) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -35161,6 +36345,60 @@ func (m *InsufficientFundsDetails) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	return len(dAtA) - i, nil
 }
 
+func (m *NumscriptInsufficientFundsDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *NumscriptInsufficientFundsDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *NumscriptInsufficientFundsDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Balance != nil {
+		i -= len(*m.Balance)
+		copy(dAtA[i:], *m.Balance)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Balance)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.Amount != nil {
+		i -= len(*m.Amount)
+		copy(dAtA[i:], *m.Amount)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Amount)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Asset != nil {
+		i -= len(*m.Asset)
+		copy(dAtA[i:], *m.Asset)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Asset)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *InvalidApplyTypeDetails) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -35855,6 +37093,39 @@ func (m *MetadataKeyEmptyDetails) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	return len(dAtA) - i, nil
+}
+
+func (m *AccountMetadataKeyEmptyDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *AccountMetadataKeyEmptyDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AccountMetadataKeyEmptyDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
 	if m.Account != nil {
 		i -= len(*m.Account)
 		copy(dAtA[i:], *m.Account)
@@ -35884,6 +37155,46 @@ func (m *MetadataKeyInvalidCharDetails) MarshalToVT(dAtA []byte) (int, error) {
 }
 
 func (m *MetadataKeyInvalidCharDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Key != nil {
+		i -= len(*m.Key)
+		copy(dAtA[i:], *m.Key)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *AccountMetadataKeyInvalidCharDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *AccountMetadataKeyInvalidCharDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AccountMetadataKeyInvalidCharDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -35975,12 +37286,38 @@ func (m *MetadataLimitsUnconfiguredDetails) MarshalToSizedBufferVT(dAtA []byte) 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Key != nil {
-		i -= len(*m.Key)
-		copy(dAtA[i:], *m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
-		i--
-		dAtA[i] = 0x12
+	return len(dAtA) - i, nil
+}
+
+func (m *AccountMetadataLimitsUnconfiguredDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *AccountMetadataLimitsUnconfiguredDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AccountMetadataLimitsUnconfiguredDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.Account != nil {
 		i -= len(*m.Account)
@@ -36011,6 +37348,170 @@ func (m *MetadataLimitExceededDetails) MarshalToVT(dAtA []byte) (int, error) {
 }
 
 func (m *MetadataLimitExceededDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Actual != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Actual))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Limit != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Limit))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Dimension != nil {
+		i -= len(*m.Dimension)
+		copy(dAtA[i:], *m.Dimension)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Dimension)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *AccountMetadataLimitExceededDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *AccountMetadataLimitExceededDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AccountMetadataLimitExceededDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Account != nil {
+		i -= len(*m.Account)
+		copy(dAtA[i:], *m.Account)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if m.Actual != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Actual))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Limit != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Limit))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Dimension != nil {
+		i -= len(*m.Dimension)
+		copy(dAtA[i:], *m.Dimension)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Dimension)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MetadataKeyLimitExceededDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MetadataKeyLimitExceededDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *MetadataKeyLimitExceededDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Key != nil {
+		i -= len(*m.Key)
+		copy(dAtA[i:], *m.Key)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if m.Actual != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Actual))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Limit != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Limit))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Dimension != nil {
+		i -= len(*m.Dimension)
+		copy(dAtA[i:], *m.Dimension)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Dimension)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *AccountMetadataKeyLimitExceededDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *AccountMetadataKeyLimitExceededDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AccountMetadataKeyLimitExceededDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -36122,6 +37623,46 @@ func (m *MetadataValueContainsNullByteDetails) MarshalToVT(dAtA []byte) (int, er
 }
 
 func (m *MetadataValueContainsNullByteDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Key != nil {
+		i -= len(*m.Key)
+		copy(dAtA[i:], *m.Key)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *AccountMetadataValueContainsNullByteDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *AccountMetadataValueContainsNullByteDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AccountMetadataValueContainsNullByteDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -37426,6 +38967,39 @@ func (m *NumscriptDivideByZeroDetails) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	return len(dAtA) - i, nil
+}
+
+func (m *NumscriptDivideByZeroWithNumeratorDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *NumscriptDivideByZeroWithNumeratorDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *NumscriptDivideByZeroWithNumeratorDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
 	if m.Numerator != nil {
 		i -= len(*m.Numerator)
 		copy(dAtA[i:], *m.Numerator)
@@ -38163,6 +39737,53 @@ func (m *NumscriptMetadataNotFoundDetails) MarshalToSizedBufferVT(dAtA []byte) (
 		copy(dAtA[i:], *m.Key)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
 		i--
+		dAtA[i] = 0x12
+	}
+	if m.Account != nil {
+		i -= len(*m.Account)
+		copy(dAtA[i:], *m.Account)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *NumscriptScopedMetadataNotFoundDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *NumscriptScopedMetadataNotFoundDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *NumscriptScopedMetadataNotFoundDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Key != nil {
+		i -= len(*m.Key)
+		copy(dAtA[i:], *m.Key)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
+		i--
 		dAtA[i] = 0x1a
 	}
 	if m.Scope != nil {
@@ -38450,6 +40071,53 @@ func (m *NumscriptNegativeBalanceDetails) MarshalToSizedBufferVT(dAtA []byte) (i
 		copy(dAtA[i:], *m.Amount)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Amount)))
 		i--
+		dAtA[i] = 0x12
+	}
+	if m.Account != nil {
+		i -= len(*m.Account)
+		copy(dAtA[i:], *m.Account)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Account)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *NumscriptScopedNegativeBalanceDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *NumscriptScopedNegativeBalanceDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *NumscriptScopedNegativeBalanceDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Amount != nil {
+		i -= len(*m.Amount)
+		copy(dAtA[i:], *m.Amount)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Amount)))
+		i--
 		dAtA[i] = 0x22
 	}
 	if m.Asset != nil {
@@ -38535,6 +40203,46 @@ func (m *NumscriptNotFoundDetails) MarshalToVT(dAtA []byte) (int, error) {
 }
 
 func (m *NumscriptNotFoundDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Name != nil {
+		i -= len(*m.Name)
+		copy(dAtA[i:], *m.Name)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Name)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *NumscriptVersionNotFoundDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *NumscriptVersionNotFoundDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *NumscriptVersionNotFoundDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -50773,6 +52481,150 @@ func (m *FailureDetails_WritesBlockedDiskFull) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *FailureDetails_AccountMetadataKeyEmpty) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.AccountMetadataKeyEmpty != nil {
+		l = m.AccountMetadataKeyEmpty.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *FailureDetails_AccountMetadataKeyInvalidChar) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.AccountMetadataKeyInvalidChar != nil {
+		l = m.AccountMetadataKeyInvalidChar.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *FailureDetails_AccountMetadataValueContainsNullByte) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.AccountMetadataValueContainsNullByte != nil {
+		l = m.AccountMetadataValueContainsNullByte.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *FailureDetails_AccountMetadataLimitsUnconfigured) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.AccountMetadataLimitsUnconfigured != nil {
+		l = m.AccountMetadataLimitsUnconfigured.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *FailureDetails_AccountMetadataLimitExceeded) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.AccountMetadataLimitExceeded != nil {
+		l = m.AccountMetadataLimitExceeded.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *FailureDetails_MetadataKeyLimitExceeded) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.MetadataKeyLimitExceeded != nil {
+		l = m.MetadataKeyLimitExceeded.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *FailureDetails_AccountMetadataKeyLimitExceeded) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.AccountMetadataKeyLimitExceeded != nil {
+		l = m.AccountMetadataKeyLimitExceeded.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *FailureDetails_NumscriptInsufficientFunds) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.NumscriptInsufficientFunds != nil {
+		l = m.NumscriptInsufficientFunds.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *FailureDetails_NumscriptDivideByZeroWithNumerator) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.NumscriptDivideByZeroWithNumerator != nil {
+		l = m.NumscriptDivideByZeroWithNumerator.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *FailureDetails_NumscriptScopedMetadataNotFound) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.NumscriptScopedMetadataNotFound != nil {
+		l = m.NumscriptScopedMetadataNotFound.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *FailureDetails_NumscriptScopedNegativeBalance) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.NumscriptScopedNegativeBalance != nil {
+		l = m.NumscriptScopedNegativeBalance.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *FailureDetails_NumscriptVersionNotFound) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.NumscriptVersionNotFound != nil {
+		l = m.NumscriptVersionNotFound.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *AccountAddressEmptyDetails) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -51292,6 +53144,28 @@ func (m *InsufficientFundsDetails) SizeVT() (n int) {
 	return n
 }
 
+func (m *NumscriptInsufficientFundsDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Asset != nil {
+		l = len(*m.Asset)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Amount != nil {
+		l = len(*m.Amount)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Balance != nil {
+		l = len(*m.Balance)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *InvalidApplyTypeDetails) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -51518,6 +53392,16 @@ func (m *MetadataKeyEmptyDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *AccountMetadataKeyEmptyDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	if m.Account != nil {
 		l = len(*m.Account)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -51527,6 +53411,20 @@ func (m *MetadataKeyEmptyDetails) SizeVT() (n int) {
 }
 
 func (m *MetadataKeyInvalidCharDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Key != nil {
+		l = len(*m.Key)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *AccountMetadataKeyInvalidCharDetails) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -51560,9 +53458,83 @@ func (m *MetadataLimitsUnconfiguredDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *AccountMetadataLimitsUnconfiguredDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	if m.Account != nil {
 		l = len(*m.Account)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *MetadataLimitExceededDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Dimension != nil {
+		l = len(*m.Dimension)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Limit != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Limit))
+	}
+	if m.Actual != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Actual))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *AccountMetadataLimitExceededDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Dimension != nil {
+		l = len(*m.Dimension)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Limit != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Limit))
+	}
+	if m.Actual != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Actual))
+	}
+	if m.Account != nil {
+		l = len(*m.Account)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *MetadataKeyLimitExceededDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Dimension != nil {
+		l = len(*m.Dimension)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Limit != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Limit))
+	}
+	if m.Actual != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Actual))
 	}
 	if m.Key != nil {
 		l = len(*m.Key)
@@ -51572,7 +53544,7 @@ func (m *MetadataLimitsUnconfiguredDetails) SizeVT() (n int) {
 	return n
 }
 
-func (m *MetadataLimitExceededDetails) SizeVT() (n int) {
+func (m *AccountMetadataKeyLimitExceededDetails) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -51619,6 +53591,20 @@ func (m *MetadataNotFoundDetails) SizeVT() (n int) {
 }
 
 func (m *MetadataValueContainsNullByteDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Key != nil {
+		l = len(*m.Key)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *AccountMetadataValueContainsNullByteDetails) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -52080,6 +54066,16 @@ func (m *NumscriptDivideByZeroDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *NumscriptDivideByZeroWithNumeratorDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	if m.Numerator != nil {
 		l = len(*m.Numerator)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -52334,6 +54330,24 @@ func (m *NumscriptMetadataNotFoundDetails) SizeVT() (n int) {
 		l = len(*m.Account)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.Key != nil {
+		l = len(*m.Key)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *NumscriptScopedMetadataNotFoundDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Account != nil {
+		l = len(*m.Account)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	if m.Scope != nil {
 		l = len(*m.Scope)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -52436,6 +54450,24 @@ func (m *NumscriptNegativeBalanceDetails) SizeVT() (n int) {
 		l = len(*m.Account)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.Amount != nil {
+		l = len(*m.Amount)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *NumscriptScopedNegativeBalanceDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Account != nil {
+		l = len(*m.Account)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	if m.Scope != nil {
 		l = len(*m.Scope)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -52467,6 +54499,20 @@ func (m *NumscriptNegativePortionDetails) SizeVT() (n int) {
 }
 
 func (m *NumscriptNotFoundDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Name != nil {
+		l = len(*m.Name)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *NumscriptVersionNotFoundDetails) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -75129,6 +77175,498 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_WritesBlockedDiskFull{WritesBlockedDiskFull: v}
 			}
 			iNdEx = postIndex
+		case 174:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AccountMetadataKeyEmpty", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_AccountMetadataKeyEmpty); ok {
+				if err := oneof.AccountMetadataKeyEmpty.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &AccountMetadataKeyEmptyDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_AccountMetadataKeyEmpty{AccountMetadataKeyEmpty: v}
+			}
+			iNdEx = postIndex
+		case 175:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AccountMetadataKeyInvalidChar", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_AccountMetadataKeyInvalidChar); ok {
+				if err := oneof.AccountMetadataKeyInvalidChar.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &AccountMetadataKeyInvalidCharDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_AccountMetadataKeyInvalidChar{AccountMetadataKeyInvalidChar: v}
+			}
+			iNdEx = postIndex
+		case 176:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AccountMetadataValueContainsNullByte", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_AccountMetadataValueContainsNullByte); ok {
+				if err := oneof.AccountMetadataValueContainsNullByte.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &AccountMetadataValueContainsNullByteDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_AccountMetadataValueContainsNullByte{AccountMetadataValueContainsNullByte: v}
+			}
+			iNdEx = postIndex
+		case 177:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AccountMetadataLimitsUnconfigured", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_AccountMetadataLimitsUnconfigured); ok {
+				if err := oneof.AccountMetadataLimitsUnconfigured.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &AccountMetadataLimitsUnconfiguredDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_AccountMetadataLimitsUnconfigured{AccountMetadataLimitsUnconfigured: v}
+			}
+			iNdEx = postIndex
+		case 178:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AccountMetadataLimitExceeded", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_AccountMetadataLimitExceeded); ok {
+				if err := oneof.AccountMetadataLimitExceeded.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &AccountMetadataLimitExceededDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_AccountMetadataLimitExceeded{AccountMetadataLimitExceeded: v}
+			}
+			iNdEx = postIndex
+		case 179:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataKeyLimitExceeded", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_MetadataKeyLimitExceeded); ok {
+				if err := oneof.MetadataKeyLimitExceeded.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &MetadataKeyLimitExceededDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_MetadataKeyLimitExceeded{MetadataKeyLimitExceeded: v}
+			}
+			iNdEx = postIndex
+		case 180:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AccountMetadataKeyLimitExceeded", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_AccountMetadataKeyLimitExceeded); ok {
+				if err := oneof.AccountMetadataKeyLimitExceeded.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &AccountMetadataKeyLimitExceededDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_AccountMetadataKeyLimitExceeded{AccountMetadataKeyLimitExceeded: v}
+			}
+			iNdEx = postIndex
+		case 181:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInsufficientFunds", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_NumscriptInsufficientFunds); ok {
+				if err := oneof.NumscriptInsufficientFunds.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &NumscriptInsufficientFundsDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_NumscriptInsufficientFunds{NumscriptInsufficientFunds: v}
+			}
+			iNdEx = postIndex
+		case 182:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptDivideByZeroWithNumerator", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_NumscriptDivideByZeroWithNumerator); ok {
+				if err := oneof.NumscriptDivideByZeroWithNumerator.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &NumscriptDivideByZeroWithNumeratorDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_NumscriptDivideByZeroWithNumerator{NumscriptDivideByZeroWithNumerator: v}
+			}
+			iNdEx = postIndex
+		case 183:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptScopedMetadataNotFound", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_NumscriptScopedMetadataNotFound); ok {
+				if err := oneof.NumscriptScopedMetadataNotFound.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &NumscriptScopedMetadataNotFoundDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_NumscriptScopedMetadataNotFound{NumscriptScopedMetadataNotFound: v}
+			}
+			iNdEx = postIndex
+		case 184:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptScopedNegativeBalance", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_NumscriptScopedNegativeBalance); ok {
+				if err := oneof.NumscriptScopedNegativeBalance.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &NumscriptScopedNegativeBalanceDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_NumscriptScopedNegativeBalance{NumscriptScopedNegativeBalance: v}
+			}
+			iNdEx = postIndex
+		case 185:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptVersionNotFound", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_NumscriptVersionNotFound); ok {
+				if err := oneof.NumscriptVersionNotFound.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &NumscriptVersionNotFoundDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_NumscriptVersionNotFound{NumscriptVersionNotFound: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -78171,6 +80709,156 @@ func (m *InsufficientFundsDetails) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *NumscriptInsufficientFundsDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: NumscriptInsufficientFundsDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: NumscriptInsufficientFundsDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Asset", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Asset = &s
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Amount", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Amount = &s
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Balance", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Balance = &s
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *InvalidApplyTypeDetails) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -79448,6 +82136,57 @@ func (m *MetadataKeyEmptyDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: MetadataKeyEmptyDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AccountMetadataKeyEmptyDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AccountMetadataKeyEmptyDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AccountMetadataKeyEmptyDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		case 1:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
@@ -79530,6 +82269,90 @@ func (m *MetadataKeyInvalidCharDetails) UnmarshalVT(dAtA []byte) error {
 		}
 		if fieldNum <= 0 {
 			return fmt.Errorf("proto: MetadataKeyInvalidCharDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Key = &s
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AccountMetadataKeyInvalidCharDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AccountMetadataKeyInvalidCharDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AccountMetadataKeyInvalidCharDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -79700,6 +82523,57 @@ func (m *MetadataLimitsUnconfiguredDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: MetadataLimitsUnconfiguredDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AccountMetadataLimitsUnconfiguredDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AccountMetadataLimitsUnconfiguredDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AccountMetadataLimitsUnconfiguredDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		case 1:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
@@ -79733,7 +82607,412 @@ func (m *MetadataLimitsUnconfiguredDetails) UnmarshalVT(dAtA []byte) error {
 			s := string(dAtA[iNdEx:postIndex])
 			m.Account = &s
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MetadataLimitExceededDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MetadataLimitExceededDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MetadataLimitExceededDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Dimension", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Dimension = &s
+			iNdEx = postIndex
 		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Limit", wireType)
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Limit = &v
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Actual", wireType)
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Actual = &v
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AccountMetadataLimitExceededDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AccountMetadataLimitExceededDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AccountMetadataLimitExceededDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Dimension", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Dimension = &s
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Limit", wireType)
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Limit = &v
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Actual", wireType)
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Actual = &v
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Account = &s
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MetadataKeyLimitExceededDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MetadataKeyLimitExceededDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MetadataKeyLimitExceededDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Dimension", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Dimension = &s
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Limit", wireType)
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Limit = &v
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Actual", wireType)
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Actual = &v
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
 			}
@@ -79788,7 +83067,7 @@ func (m *MetadataLimitsUnconfiguredDetails) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *MetadataLimitExceededDetails) UnmarshalVT(dAtA []byte) error {
+func (m *AccountMetadataKeyLimitExceededDetails) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -79811,10 +83090,10 @@ func (m *MetadataLimitExceededDetails) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: MetadataLimitExceededDetails: wiretype end group for non-group")
+			return fmt.Errorf("proto: AccountMetadataKeyLimitExceededDetails: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: MetadataLimitExceededDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AccountMetadataKeyLimitExceededDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -80122,6 +83401,90 @@ func (m *MetadataValueContainsNullByteDetails) UnmarshalVT(dAtA []byte) error {
 		}
 		if fieldNum <= 0 {
 			return fmt.Errorf("proto: MetadataValueContainsNullByteDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Key = &s
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AccountMetadataValueContainsNullByteDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AccountMetadataValueContainsNullByteDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AccountMetadataValueContainsNullByteDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -82859,6 +86222,57 @@ func (m *NumscriptDivideByZeroDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: NumscriptDivideByZeroDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *NumscriptDivideByZeroWithNumeratorDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: NumscriptDivideByZeroWithNumeratorDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: NumscriptDivideByZeroWithNumeratorDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		case 1:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Numerator", wireType)
@@ -84358,6 +87772,123 @@ func (m *NumscriptMetadataNotFoundDetails) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Key = &s
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *NumscriptScopedMetadataNotFoundDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: NumscriptScopedMetadataNotFoundDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: NumscriptScopedMetadataNotFoundDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Account = &s
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Scope", wireType)
 			}
 			var stringLen uint64
@@ -84979,6 +88510,123 @@ func (m *NumscriptNegativeBalanceDetails) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Amount", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Amount = &s
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *NumscriptScopedNegativeBalanceDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: NumscriptScopedNegativeBalanceDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: NumscriptScopedNegativeBalanceDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Account = &s
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Scope", wireType)
 			}
 			var stringLen uint64
@@ -85209,6 +88857,90 @@ func (m *NumscriptNotFoundDetails) UnmarshalVT(dAtA []byte) error {
 		}
 		if fieldNum <= 0 {
 			return fmt.Errorf("proto: NumscriptNotFoundDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Name = &s
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *NumscriptVersionNotFoundDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: NumscriptVersionNotFoundDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: NumscriptVersionNotFoundDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

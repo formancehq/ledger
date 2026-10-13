@@ -88,23 +88,24 @@ func mapInterpreterError(err error) domain.SerializableError {
 		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCurrencyMismatch{NumscriptCurrencyMismatch: &commonpb.NumscriptCurrencyMismatchDetails{Expected: new(e.Expected), Got: new(e.Got)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.DivideByZero](err); ok {
-		details := &commonpb.NumscriptDivideByZeroDetails{}
 		if e.Numerator != nil {
-			details.Numerator = new(e.Numerator.String())
+			return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptDivideByZeroWithNumerator{
+				NumscriptDivideByZeroWithNumerator: &commonpb.NumscriptDivideByZeroWithNumeratorDetails{Numerator: new(e.Numerator.String())},
+			}})
 		}
 
 		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptDivideByZero{
-			NumscriptDivideByZero: details,
+			NumscriptDivideByZero: &commonpb.NumscriptDivideByZeroDetails{},
 		}})
 	}
 	if e, ok := errors.AsType[numscriptlib.TypeError](err); ok {
 		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptTypeError{NumscriptTypeError: &commonpb.NumscriptTypeErrorDetails{Expected: new(e.Expected)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.MetadataNotFound](err); ok {
-		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptMetadataNotFound{NumscriptMetadataNotFound: &commonpb.NumscriptMetadataNotFoundDetails{Account: new(e.Account), Scope: new(e.Scope), Key: new(e.Key)}}})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptScopedMetadataNotFound{NumscriptScopedMetadataNotFound: &commonpb.NumscriptScopedMetadataNotFoundDetails{Account: new(e.Account), Scope: new(e.Scope), Key: new(e.Key)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.NegativeBalanceError](err); ok {
-		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptNegativeBalance{NumscriptNegativeBalance: &commonpb.NumscriptNegativeBalanceDetails{Account: new(e.Account), Scope: new(e.Scope), Asset: new(e.Asset), Amount: new(e.Amount.String())}}})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptScopedNegativeBalance{NumscriptScopedNegativeBalance: &commonpb.NumscriptScopedNegativeBalanceDetails{Account: new(e.Account), Scope: new(e.Scope), Asset: new(e.Asset), Amount: new(e.Amount.String())}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.InvalidAllotmentSum](err); ok {
 		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidAllotmentSum{NumscriptInvalidAllotmentSum: &commonpb.NumscriptInvalidAllotmentSumDetails{ActualSum: new(e.ActualSum.String())}}})

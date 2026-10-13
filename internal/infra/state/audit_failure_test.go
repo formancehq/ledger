@@ -180,12 +180,10 @@ func auditFailureCases() []auditFailureCase {
 			},
 		},
 		{
-			// The Numscript path: Color is unresolved, so the key is OMITTED
-			// rather than emitted empty. Publishing "" here would tell a client
-			// the uncolored bucket definitely came up short.
+			// The Numscript VM reports asset and amounts, but neither the
+			// source account nor its color bucket. It has a distinct code.
 			name: "InsufficientFundsColorUnresolved",
 			err: &domain.ErrInsufficientFunds{
-				Account: "user:carol",
 				Asset:   "GBP/2",
 				Color:   "IGNORED-WHEN-UNKNOWN",
 				Amount:  "7",
@@ -193,7 +191,6 @@ func auditFailureCases() []auditFailureCase {
 			},
 			wantReason: domain.ErrReasonInsufficientFunds,
 			wantContext: map[string]string{
-				"account": "user:carol",
 				"asset":   "GBP/2",
 				"amount":  "7",
 				"balance": "3",
@@ -339,15 +336,14 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"key": "idem-key-9"},
 		},
 		{
-			// ExistingTransactionID is gated on != 0 (errors.go:561), so a
-			// collision detected without the owning id projects two keys.
-			name: "TransactionReferenceConflictWithoutExistingID",
+			// Zero is a valid explicit ID, and must retain presence on the wire.
+			name: "TransactionReferenceConflictWithZeroExistingID",
 			err: &domain.ErrTransactionReferenceConflict{
 				Ledger:    "main",
 				Reference: "invoice-7",
 			},
 			wantReason:  domain.ErrReasonTransactionReferenceConflict,
-			wantContext: map[string]string{"ledger": "main", "reference": "invoice-7"},
+			wantContext: map[string]string{"ledger": "main", "reference": "invoice-7", "existingTransactionId": "0"},
 		},
 		{
 			name: "TransactionReferenceConflictWithExistingID",

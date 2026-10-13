@@ -766,16 +766,16 @@ send [USD/2 200] (
 				map[string]string{"p": "3/2"}, false, "NUMSCRIPT_BAD_PORTION", "source"),
 			Entry("division by zero in an allotment",
 				"send [USD 10] ( source = @world destination = { 1/0 to @x remaining to @y } )",
-				nil, false, "NUMSCRIPT_DIVIDE_BY_ZERO", "numerator"),
+				nil, false, "NUMSCRIPT_DIVIDE_BY_ZERO_WITH_NUMERATOR", "numerator"),
 			Entry("missing metadata",
 				"vars { account $a = meta(@cfg, \"missing\") }\nsend [USD 1] ( source = @world destination = $a )",
-				nil, false, "NUMSCRIPT_METADATA_NOT_FOUND", "key"),
+				nil, false, "NUMSCRIPT_SCOPED_METADATA_NOT_FOUND", "key"),
 			Entry("metadata value of the wrong type",
 				"vars { monetary $m = meta(@cfg, \"amount\") }\nsend $m ( source = @world destination = @x )",
 				nil, false, "NUMSCRIPT_INVALID_MONETARY_LITERAL", "source"),
 			Entry("balance of a negative account",
 				"vars { monetary $m = balance(@neg, USD) }\nsend $m ( source = @world destination = @x )",
-				nil, false, "NUMSCRIPT_NEGATIVE_BALANCE", "account"),
+				nil, false, "NUMSCRIPT_SCOPED_NEGATIVE_BALANCE", "account"),
 		)
 	})
 })

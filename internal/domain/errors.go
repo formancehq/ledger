@@ -773,11 +773,9 @@ func (*ErrRevertTargetCreatedInBatch) Reason() string  { return ErrReasonRevertT
 // the VM's numscriptlib.VmMissingFundsError carries only {Asset, Needed, Got}
 // and never the resolved (account, color), so a colored spend surfaces here
 // with an empty Color that means "unknown", not "uncolored" (ColorKnown=false).
-// FailureDetails() therefore omits the color key entirely when the color is unknown,
+// FailureDetails() selects a distinct Numscript variant when the color is unknown,
 // so a client never mistakes an unresolved Numscript failure for a definite
-// hit on the uncolored bucket. When a future numscript bump attaches the
-// resolved bucket to VmMissingFundsError, the conversion path can set the real
-// Color with ColorKnown=true and this ambiguity disappears.
+// hit on the uncolored bucket.
 type ErrInsufficientFunds struct {
 	Account    string
 	Asset      string

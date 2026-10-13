@@ -50,7 +50,7 @@ func TestVerifySkippedOrder_AllowedReasonEmitsNothing(t *testing.T) {
 			OrderSkipped: &commonpb.OrderSkippedLog{
 				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Code:    "TRANSACTION_REFERENCE_CONFLICT",
-				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L", "reference": "ref-x"}),
+				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L", "reference": "ref-x", "existingTransactionId": "3"}),
 			},
 		},
 	}
@@ -637,7 +637,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextReference(t *
 			OrderSkipped: &commonpb.OrderSkippedLog{
 				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Code:    "TRANSACTION_REFERENCE_CONFLICT",
-				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L", "reference": "ref-tampered"}),
+				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L", "reference": "ref-tampered", "existingTransactionId": "3"}),
 			},
 		},
 	}
@@ -668,7 +668,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextLedger(t *tes
 			OrderSkipped: &commonpb.OrderSkippedLog{
 				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Code:    "TRANSACTION_REFERENCE_CONFLICT",
-				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L-tampered", "reference": "ref"}),
+				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L-tampered", "reference": "ref", "existingTransactionId": "3"}),
 			},
 		},
 	}
@@ -1640,6 +1640,13 @@ func requireInvalidSkipEvent(t *testing.T, events []*servicepb.CheckStoreEvent, 
 // verifier tests to exercise both the accept and tamper paths without
 // duplicating the payload constructor per case.
 func skippedPayloadWithContext(reason commonpb.ErrorReason, ctx map[string]string) *commonpb.LedgerLogPayload {
+	if reason == commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT {
+		ctx["existingTransactionId"] = "0"
+	}
+	if reason == commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS {
+		ctx["color"] = ""
+	}
+
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
 			OrderSkipped: &commonpb.OrderSkippedLog{

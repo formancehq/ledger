@@ -47,7 +47,7 @@ func newFailureAuditEntry(sequence uint64, orderCount int) (*auditpb.AuditEntry,
 			Failure: &auditpb.AuditFailure{
 				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 				Code:    "INSUFFICIENT_FUNDS",
-				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0"}),
+				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
 			},
 		},
 	}
@@ -260,7 +260,7 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome(t *testing.T
 		Failure: &commonpb.IdempotencyFailure{
 			Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 			Code:    "INSUFFICIENT_FUNDS",
-			Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0"}),
+			Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
 		},
 	}
 

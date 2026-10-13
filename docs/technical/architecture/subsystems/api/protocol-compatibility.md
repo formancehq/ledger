@@ -77,7 +77,7 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 33:
+leader. For example, with a schema implementing revision 34:
 
 ```bash
 grpcurl -plaintext -H 'ledger-protocol-version: 33' \
@@ -493,3 +493,21 @@ also removes generic `key` and `account` fields from failure variants whose
 producers never supply metadata context. Remaining conditional fields reflect
 distinct producer paths. Previously persisted failures with the removed fields
 or without a now-required key cannot be read under revision 33.
+
+## Deterministic failure fact shapes (revision 34)
+
+Revision 34 removes all conditionally present fields from `FailureDetails`.
+Every scalar fact in a selected variant is required, including empty strings
+and zero IDs when those are the actual values. `proto3 optional` remains on
+these required fields solely to distinguish an explicitly supplied zero value
+from an absent field during validation.
+
+Distinct variants now represent account-scoped metadata failures, metadata
+limits with a known key, direct posting versus Numscript insufficient funds,
+Numscript failures with a known numerator or scope, and an unknown script name
+versus an unknown exact version. The coarse `ErrorReason` stays the same for
+each pair; the stable detail code identifies its precise fact shape. An
+unconfigured metadata policy has no key context because validation stops
+before selecting an entry. Transaction reference conflicts always include
+`existingTransactionId`, even when its value is zero. The changed detail arms
+and field numbering require fresh state and a uniform revision 34 cluster.

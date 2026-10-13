@@ -1173,6 +1173,7 @@ func TestProcessCreateTransaction_Numscript_CompetingMetadataErrors(t *testing.T
 		require.Equal(t, "a", domain.FailureFactsOf(func() domain.SerializableError {
 			var target domain.SerializableError
 			_ = errors.As(err, &target)
+
 			return target
 		}()).Facts["key"])
 		ctrl.Finish()

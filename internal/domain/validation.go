@@ -99,8 +99,8 @@ var (
 	ErrLedgerNameTooLong     SerializableError = &errValidation{code: "LEDGER_NAME_TOO_LONG", err: invariants.ErrLedgerNameTooLong}
 
 	ErrMetadataKeyEmpty              SerializableError = &errValidation{code: "METADATA_KEY_EMPTY", err: invariants.ErrMetadataKeyEmpty}
-	ErrMetadataKeyInvalidChar        error = invariants.ErrMetadataKeyInvalidChar
-	ErrMetadataValueContainsNullByte error = invariants.ErrMetadataValueContainsNullByte
+	ErrMetadataKeyInvalidChar        error             = invariants.ErrMetadataKeyInvalidChar
+	ErrMetadataValueContainsNullByte error             = invariants.ErrMetadataValueContainsNullByte
 
 	ErrAccountAddressEmpty        SerializableError = &errValidation{code: "ACCOUNT_ADDRESS_EMPTY", err: invariants.ErrLedgerAccountAddressEmpty}
 	ErrAccountAddressInvalidChar  SerializableError = &errValidation{code: "ACCOUNT_ADDRESS_INVALID_CHAR", err: invariants.ErrLedgerAccountAddressInvalidChar}

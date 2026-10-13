@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -31,10 +30,7 @@ func (errMetadataLimitsUnconfigured) FailureDetails() *commonpb.FailureDetails {
 
 func (e *ErrTransactionReferenceConflict) FailureDetails() *commonpb.FailureDetails {
 	details := &commonpb.TransactionReferenceConflictDetails{
-		Ledger: new(e.Ledger), Reference: new(e.Reference),
-	}
-	if e.ExistingTransactionID != 0 {
-		details.ExistingTransactionId = new(e.ExistingTransactionID)
+		Ledger: new(e.Ledger), Reference: new(e.Reference), ExistingTransactionId: new(e.ExistingTransactionID),
 	}
 
 	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_TransactionReferenceConflict{
@@ -43,51 +39,97 @@ func (e *ErrTransactionReferenceConflict) FailureDetails() *commonpb.FailureDeta
 }
 
 func (e *ErrInsufficientFunds) FailureDetails() *commonpb.FailureDetails {
+	if !e.ColorKnown {
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInsufficientFunds{
+			NumscriptInsufficientFunds: &commonpb.NumscriptInsufficientFundsDetails{
+				Asset: new(e.Asset), Amount: new(e.Amount), Balance: new(e.Balance),
+			},
+		}}
+	}
 	details := &commonpb.InsufficientFundsDetails{
 		Account: new(e.Account), Asset: new(e.Asset),
-		Amount: new(e.Amount), Balance: new(e.Balance),
-	}
-	if e.ColorKnown {
-		details.Color = new(e.Color)
+		Amount: new(e.Amount), Balance: new(e.Balance), Color: new(e.Color),
 	}
 
 	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_InsufficientFunds{InsufficientFunds: details}}
 }
 
 func (e *ErrNumscriptNotFound) FailureDetails() *commonpb.FailureDetails {
-	details := &commonpb.NumscriptNotFoundDetails{Name: new(e.Name)}
 	if e.Version != "" {
-		details.Version = new(e.Version)
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptVersionNotFound{
+			NumscriptVersionNotFound: &commonpb.NumscriptVersionNotFoundDetails{Name: new(e.Name), Version: new(e.Version)},
+		}}
 	}
 
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptNotFound{NumscriptNotFound: details}}
-}
-
-func withFailureDetailString(details *commonpb.FailureDetails, key, value string) *commonpb.FailureDetails {
-	cloned := proto.Clone(details).(*commonpb.FailureDetails)
-	parent := cloned.ProtoReflect()
-	arm := parent.WhichOneof(parent.Descriptor().Oneofs().ByName("kind"))
-	if arm == nil {
-		panic("failure details lack a variant")
-	}
-	message := parent.Get(arm).Message()
-	for i := range message.Descriptor().Fields().Len() {
-		field := message.Descriptor().Fields().Get(i)
-		if field.JSONName() == key && field.Kind() == protoreflect.StringKind {
-			message.Set(field, protoreflect.ValueOfString(value))
-
-			return cloned
-		}
-	}
-	panic(fmt.Errorf("failure variant %s has no string fact %s", arm.Name(), key))
+	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptNotFound{
+		NumscriptNotFound: &commonpb.NumscriptNotFoundDetails{Name: new(e.Name)},
+	}}
 }
 
 func (e *ErrMetadataKeyValidation) FailureDetails() *commonpb.FailureDetails {
-	return withFailureDetailString(e.Cause.FailureDetails(), "key", e.Key)
+	switch cause := e.Cause.FailureDetails().GetKind().(type) {
+	case *commonpb.FailureDetails_MetadataLimitExceeded:
+		d := cause.MetadataLimitExceeded
+
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataKeyLimitExceeded{
+			MetadataKeyLimitExceeded: &commonpb.MetadataKeyLimitExceededDetails{
+				Dimension: d.Dimension, Limit: d.Limit, Actual: d.Actual, Key: new(e.Key),
+			},
+		}}
+	case *commonpb.FailureDetails_MetadataKeyInvalidChar:
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataKeyInvalidChar{
+			MetadataKeyInvalidChar: &commonpb.MetadataKeyInvalidCharDetails{Key: new(e.Key)},
+		}}
+	case *commonpb.FailureDetails_MetadataValueContainsNullByte:
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataValueContainsNullByte{
+			MetadataValueContainsNullByte: &commonpb.MetadataValueContainsNullByteDetails{Key: new(e.Key)},
+		}}
+	default:
+		panic(fmt.Errorf("metadata key context cannot wrap %T", cause))
+	}
 }
 
 func (e *ErrAccountValidation) FailureDetails() *commonpb.FailureDetails {
-	return withFailureDetailString(e.Cause.FailureDetails(), "account", e.Account)
+	switch cause := e.Cause.FailureDetails().GetKind().(type) {
+	case *commonpb.FailureDetails_MetadataKeyEmpty:
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountMetadataKeyEmpty{
+			AccountMetadataKeyEmpty: &commonpb.AccountMetadataKeyEmptyDetails{Account: new(e.Account)},
+		}}
+	case *commonpb.FailureDetails_MetadataKeyInvalidChar:
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountMetadataKeyInvalidChar{
+			AccountMetadataKeyInvalidChar: &commonpb.AccountMetadataKeyInvalidCharDetails{
+				Key: cause.MetadataKeyInvalidChar.Key, Account: new(e.Account),
+			},
+		}}
+	case *commonpb.FailureDetails_MetadataValueContainsNullByte:
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountMetadataValueContainsNullByte{
+			AccountMetadataValueContainsNullByte: &commonpb.AccountMetadataValueContainsNullByteDetails{
+				Key: cause.MetadataValueContainsNullByte.Key, Account: new(e.Account),
+			},
+		}}
+	case *commonpb.FailureDetails_MetadataLimitsUnconfigured:
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountMetadataLimitsUnconfigured{
+			AccountMetadataLimitsUnconfigured: &commonpb.AccountMetadataLimitsUnconfiguredDetails{Account: new(e.Account)},
+		}}
+	case *commonpb.FailureDetails_MetadataLimitExceeded:
+		d := cause.MetadataLimitExceeded
+
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountMetadataLimitExceeded{
+			AccountMetadataLimitExceeded: &commonpb.AccountMetadataLimitExceededDetails{
+				Dimension: d.Dimension, Limit: d.Limit, Actual: d.Actual, Account: new(e.Account),
+			},
+		}}
+	case *commonpb.FailureDetails_MetadataKeyLimitExceeded:
+		d := cause.MetadataKeyLimitExceeded
+
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountMetadataKeyLimitExceeded{
+			AccountMetadataKeyLimitExceeded: &commonpb.AccountMetadataKeyLimitExceededDetails{
+				Dimension: d.Dimension, Limit: d.Limit, Actual: d.Actual, Key: d.Key, Account: new(e.Account),
+			},
+		}}
+	default:
+		panic(fmt.Errorf("account metadata context cannot wrap %T", cause))
+	}
 }
 
 func (e *ErrDependencyDiscoveryFailed) FailureDetails() *commonpb.FailureDetails {

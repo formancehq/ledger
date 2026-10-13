@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/descriptorpb"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -27,6 +29,21 @@ func TestTypedFailureDetailsCoverEveryStableCode(t *testing.T) {
 			}
 		}
 		require.True(t, foundReason, "variant %s must declare a coarse reason", code)
+	}
+}
+
+func TestFailureDetailsHaveNoConditionalFacts(t *testing.T) {
+	t.Parallel()
+	arms := (&commonpb.FailureDetails{}).ProtoReflect().Descriptor().Oneofs().ByName("kind").Fields()
+	for i := range arms.Len() {
+		arm := arms.Get(i)
+		fields := arm.Message().Fields()
+		for j := range fields.Len() {
+			field := fields.Get(j)
+			options := field.Options().(*descriptorpb.FieldOptions)
+			require.True(t, proto.HasExtension(options, commonpb.E_FailureFactRequired), "%s.%s must declare required presence", arm.Name(), field.Name())
+			require.True(t, proto.GetExtension(options, commonpb.E_FailureFactRequired).(bool), "%s.%s cannot be conditional", arm.Name(), field.Name())
+		}
 	}
 }
 
@@ -115,9 +132,22 @@ func TestFailureFactsMetadataValidationWrappers(t *testing.T) {
 				{"account and key", &ErrAccountValidation{Account: "a", Cause: &ErrMetadataKeyValidation{Key: "k", Cause: cause.err}}},
 			}
 			for _, tc := range cases {
+				if cause.name == "limits unconfigured" && (tc.name == "key" || tc.name == "account and key") {
+					continue // An unconfigured policy is detected before entry validation selects a key.
+				}
 				t.Run(tc.name, func(t *testing.T) {
 					facts := FailureFactsOf(tc.err)
 					require.NoError(t, ValidateFailureFacts(facts))
+					if cause.name == "limits unconfigured" {
+						require.Equal(t, map[string]string{
+							"direct": "METADATA_LIMITS_UNCONFIGURED", "account": "ACCOUNT_METADATA_LIMITS_UNCONFIGURED",
+						}[tc.name], facts.Code)
+					} else {
+						require.Equal(t, map[string]string{
+							"direct": "METADATA_LIMIT_EXCEEDED", "account": "ACCOUNT_METADATA_LIMIT_EXCEEDED",
+							"key": "METADATA_KEY_LIMIT_EXCEEDED", "account and key": "ACCOUNT_METADATA_KEY_LIMIT_EXCEEDED",
+						}[tc.name], facts.Code)
+					}
 					if tc.name == "account" || tc.name == "account and key" {
 						require.Equal(t, "a", facts.Facts["account"])
 					}

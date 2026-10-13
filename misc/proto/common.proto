@@ -973,6 +973,18 @@ message FailureDetails {
     VolumeOverflowDetails volume_overflow = 171 [(failure_reasons) = ERROR_REASON_VOLUME_OVERFLOW];
     WritesBlockedClockSkewDetails writes_blocked_clock_skew = 172 [(failure_reasons) = ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW];
     WritesBlockedDiskFullDetails writes_blocked_disk_full = 173 [(failure_reasons) = ERROR_REASON_WRITES_BLOCKED_DISK_FULL];
+    AccountMetadataKeyEmptyDetails account_metadata_key_empty = 174 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    AccountMetadataKeyInvalidCharDetails account_metadata_key_invalid_char = 175 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    AccountMetadataValueContainsNullByteDetails account_metadata_value_contains_null_byte = 176 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    AccountMetadataLimitsUnconfiguredDetails account_metadata_limits_unconfigured = 177 [(failure_reasons) = ERROR_REASON_CLUSTER_POLICY_INVALID];
+    AccountMetadataLimitExceededDetails account_metadata_limit_exceeded = 178 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
+    MetadataKeyLimitExceededDetails metadata_key_limit_exceeded = 179 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
+    AccountMetadataKeyLimitExceededDetails account_metadata_key_limit_exceeded = 180 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
+    NumscriptInsufficientFundsDetails numscript_insufficient_funds = 181 [(failure_reasons) = ERROR_REASON_INSUFFICIENT_FUNDS];
+    NumscriptDivideByZeroWithNumeratorDetails numscript_divide_by_zero_with_numerator = 182 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptScopedMetadataNotFoundDetails numscript_scoped_metadata_not_found = 183 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptScopedNegativeBalanceDetails numscript_scoped_negative_balance = 184 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptVersionNotFoundDetails numscript_version_not_found = 185 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_NOT_FOUND];
   }
 }
 
@@ -1124,7 +1136,13 @@ message InsufficientFundsDetails {
   optional string asset = 2 [(failure_fact_required) = true];
   optional string amount = 3 [(failure_fact_required) = true];
   optional string balance = 4 [(failure_fact_required) = true];
-  optional string color = 5;
+  optional string color = 5 [(failure_fact_required) = true];
+}
+
+message NumscriptInsufficientFundsDetails {
+  optional string asset = 1 [(failure_fact_required) = true];
+  optional string amount = 2 [(failure_fact_required) = true];
+  optional string balance = 3 [(failure_fact_required) = true];
 }
 
 message InvalidApplyTypeDetails {
@@ -1192,28 +1210,57 @@ message MetadataFieldNotInSchemaDetails {
 }
 
 message MetadataKeyEmptyDetails {
-  optional string account = 1;
+}
+
+message AccountMetadataKeyEmptyDetails {
+  optional string account = 1 [(failure_fact_required) = true];
 }
 
 message MetadataKeyInvalidCharDetails {
   optional string key = 1 [(failure_fact_required) = true];
-  optional string account = 2;
+}
+
+message AccountMetadataKeyInvalidCharDetails {
+  optional string key = 1 [(failure_fact_required) = true];
+  optional string account = 2 [(failure_fact_required) = true];
 }
 
 message MetadataKeyRequiredDetails {
 }
 
 message MetadataLimitsUnconfiguredDetails {
-  optional string account = 1;
-  optional string key = 2;
+}
+
+message AccountMetadataLimitsUnconfiguredDetails {
+  optional string account = 1 [(failure_fact_required) = true];
 }
 
 message MetadataLimitExceededDetails {
   optional string dimension = 1 [(failure_fact_required) = true];
   optional uint64 limit = 2 [(failure_fact_required) = true];
   optional uint64 actual = 3 [(failure_fact_required) = true];
-  optional string key = 4;
-  optional string account = 5;
+}
+
+message AccountMetadataLimitExceededDetails {
+  optional string dimension = 1 [(failure_fact_required) = true];
+  optional uint64 limit = 2 [(failure_fact_required) = true];
+  optional uint64 actual = 3 [(failure_fact_required) = true];
+  optional string account = 4 [(failure_fact_required) = true];
+}
+
+message MetadataKeyLimitExceededDetails {
+  optional string dimension = 1 [(failure_fact_required) = true];
+  optional uint64 limit = 2 [(failure_fact_required) = true];
+  optional uint64 actual = 3 [(failure_fact_required) = true];
+  optional string key = 4 [(failure_fact_required) = true];
+}
+
+message AccountMetadataKeyLimitExceededDetails {
+  optional string dimension = 1 [(failure_fact_required) = true];
+  optional uint64 limit = 2 [(failure_fact_required) = true];
+  optional uint64 actual = 3 [(failure_fact_required) = true];
+  optional string key = 4 [(failure_fact_required) = true];
+  optional string account = 5 [(failure_fact_required) = true];
 }
 
 message MetadataNotFoundDetails {
@@ -1224,7 +1271,11 @@ message MetadataNotFoundDetails {
 
 message MetadataValueContainsNullByteDetails {
   optional string key = 1 [(failure_fact_required) = true];
-  optional string account = 2;
+}
+
+message AccountMetadataValueContainsNullByteDetails {
+  optional string key = 1 [(failure_fact_required) = true];
+  optional string account = 2 [(failure_fact_required) = true];
 }
 
 message MirrorHttpUrlInvalidDetails {
@@ -1354,7 +1405,10 @@ message NumscriptCurrencyMismatchDetails {
 }
 
 message NumscriptDivideByZeroDetails {
-  optional string numerator = 1;
+}
+
+message NumscriptDivideByZeroWithNumeratorDetails {
+  optional string numerator = 1 [(failure_fact_required) = true];
 }
 
 message NumscriptExecutionErrorDetails {
@@ -1427,7 +1481,12 @@ message NumscriptInvalidVersionDetails {
 
 message NumscriptMetadataNotFoundDetails {
   optional string account = 1 [(failure_fact_required) = true];
-  optional string scope = 2;
+  optional string key = 2 [(failure_fact_required) = true];
+}
+
+message NumscriptScopedMetadataNotFoundDetails {
+  optional string account = 1 [(failure_fact_required) = true];
+  optional string scope = 2 [(failure_fact_required) = true];
   optional string key = 3 [(failure_fact_required) = true];
 }
 
@@ -1456,8 +1515,13 @@ message NumscriptNegativeAmountDetails {
 
 message NumscriptNegativeBalanceDetails {
   optional string account = 1 [(failure_fact_required) = true];
-  optional string scope = 2;
-  optional string asset = 3;
+  optional string amount = 2 [(failure_fact_required) = true];
+}
+
+message NumscriptScopedNegativeBalanceDetails {
+  optional string account = 1 [(failure_fact_required) = true];
+  optional string scope = 2 [(failure_fact_required) = true];
+  optional string asset = 3 [(failure_fact_required) = true];
   optional string amount = 4 [(failure_fact_required) = true];
 }
 
@@ -1467,7 +1531,11 @@ message NumscriptNegativePortionDetails {
 
 message NumscriptNotFoundDetails {
   optional string name = 1 [(failure_fact_required) = true];
-  optional string version = 2;
+}
+
+message NumscriptVersionNotFoundDetails {
+  optional string name = 1 [(failure_fact_required) = true];
+  optional string version = 2 [(failure_fact_required) = true];
 }
 
 message NumscriptParseErrorDetails {
@@ -1613,7 +1681,7 @@ message TransactionNotFoundDetails {
 message TransactionReferenceConflictDetails {
   optional string ledger = 1 [(failure_fact_required) = true];
   optional string reference = 2 [(failure_fact_required) = true];
-  optional uint64 existing_transaction_id = 3;
+  optional uint64 existing_transaction_id = 3 [(failure_fact_required) = true];
 }
 
 message TransactionReferenceNotFoundDetails {

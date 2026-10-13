@@ -216,10 +216,11 @@ func TestBusinessErrorToGRPCStatus_InsufficientFunds(t *testing.T) {
 	t.Parallel()
 
 	bizErr := &domain.BusinessError{Err: &domain.ErrInsufficientFunds{
-		Account: "user:001",
-		Asset:   "USD",
-		Amount:  "1000",
-		Balance: "500",
+		Account:    "user:001",
+		Asset:      "USD",
+		Amount:     "1000",
+		Balance:    "500",
+		ColorKnown: true,
 	}}
 	st := businessErrorToGRPCStatus(bizErr)
 

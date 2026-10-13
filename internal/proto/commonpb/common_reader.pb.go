@@ -8577,6 +8577,83 @@ func NewInsufficientFundsDetailsListReader(s []*InsufficientFundsDetails) Insuff
 	return insufficientFundsDetailsListReadonly(s)
 }
 
+// NumscriptInsufficientFundsDetailsReader provides read-only access to NumscriptInsufficientFundsDetails.
+// Call Mutate() to obtain a mutable clone.
+type NumscriptInsufficientFundsDetailsReader interface {
+	GetAsset() string
+	GetAmount() string
+	GetBalance() string
+	Mutate() *NumscriptInsufficientFundsDetails
+}
+
+type numscriptInsufficientFundsDetailsReadonly NumscriptInsufficientFundsDetails
+
+func (r *numscriptInsufficientFundsDetailsReadonly) GetAsset() string {
+	return (*NumscriptInsufficientFundsDetails)(r).GetAsset()
+}
+
+func (r *numscriptInsufficientFundsDetailsReadonly) GetAmount() string {
+	return (*NumscriptInsufficientFundsDetails)(r).GetAmount()
+}
+
+func (r *numscriptInsufficientFundsDetailsReadonly) GetBalance() string {
+	return (*NumscriptInsufficientFundsDetails)(r).GetBalance()
+}
+
+func (r *numscriptInsufficientFundsDetailsReadonly) Mutate() *NumscriptInsufficientFundsDetails {
+	return (*NumscriptInsufficientFundsDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this NumscriptInsufficientFundsDetails.
+func (m *NumscriptInsufficientFundsDetails) AsReader() NumscriptInsufficientFundsDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*numscriptInsufficientFundsDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this NumscriptInsufficientFundsDetails.
+func (m *NumscriptInsufficientFundsDetails) Mutate() *NumscriptInsufficientFundsDetails {
+	return m.CloneVT()
+}
+
+// NumscriptInsufficientFundsDetailsListReader provides read-only iteration over []*NumscriptInsufficientFundsDetails.
+type NumscriptInsufficientFundsDetailsListReader interface {
+	Len() int
+	Get(i int) NumscriptInsufficientFundsDetailsReader
+	Range(yield func(int, NumscriptInsufficientFundsDetailsReader) bool)
+}
+
+type numscriptInsufficientFundsDetailsListReadonly []*NumscriptInsufficientFundsDetails
+
+func (l numscriptInsufficientFundsDetailsListReadonly) Len() int { return len(l) }
+
+func (l numscriptInsufficientFundsDetailsListReadonly) Get(i int) NumscriptInsufficientFundsDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l numscriptInsufficientFundsDetailsListReadonly) Range(yield func(int, NumscriptInsufficientFundsDetailsReader) bool) {
+	for i, v := range l {
+		var r NumscriptInsufficientFundsDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNumscriptInsufficientFundsDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNumscriptInsufficientFundsDetailsListReader(s []*NumscriptInsufficientFundsDetails) NumscriptInsufficientFundsDetailsListReader {
+	return numscriptInsufficientFundsDetailsListReadonly(s)
+}
+
 // InvalidApplyTypeDetailsReader provides read-only access to InvalidApplyTypeDetails.
 // Call Mutate() to obtain a mutable clone.
 type InvalidApplyTypeDetailsReader interface {
@@ -9746,15 +9823,10 @@ func NewMetadataFieldNotInSchemaDetailsListReader(s []*MetadataFieldNotInSchemaD
 // MetadataKeyEmptyDetailsReader provides read-only access to MetadataKeyEmptyDetails.
 // Call Mutate() to obtain a mutable clone.
 type MetadataKeyEmptyDetailsReader interface {
-	GetAccount() string
 	Mutate() *MetadataKeyEmptyDetails
 }
 
 type metadataKeyEmptyDetailsReadonly MetadataKeyEmptyDetails
-
-func (r *metadataKeyEmptyDetailsReadonly) GetAccount() string {
-	return (*MetadataKeyEmptyDetails)(r).GetAccount()
-}
 
 func (r *metadataKeyEmptyDetailsReadonly) Mutate() *MetadataKeyEmptyDetails {
 	return (*MetadataKeyEmptyDetails)(r).CloneVT()
@@ -9810,11 +9882,77 @@ func NewMetadataKeyEmptyDetailsListReader(s []*MetadataKeyEmptyDetails) Metadata
 	return metadataKeyEmptyDetailsListReadonly(s)
 }
 
+// AccountMetadataKeyEmptyDetailsReader provides read-only access to AccountMetadataKeyEmptyDetails.
+// Call Mutate() to obtain a mutable clone.
+type AccountMetadataKeyEmptyDetailsReader interface {
+	GetAccount() string
+	Mutate() *AccountMetadataKeyEmptyDetails
+}
+
+type accountMetadataKeyEmptyDetailsReadonly AccountMetadataKeyEmptyDetails
+
+func (r *accountMetadataKeyEmptyDetailsReadonly) GetAccount() string {
+	return (*AccountMetadataKeyEmptyDetails)(r).GetAccount()
+}
+
+func (r *accountMetadataKeyEmptyDetailsReadonly) Mutate() *AccountMetadataKeyEmptyDetails {
+	return (*AccountMetadataKeyEmptyDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AccountMetadataKeyEmptyDetails.
+func (m *AccountMetadataKeyEmptyDetails) AsReader() AccountMetadataKeyEmptyDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*accountMetadataKeyEmptyDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AccountMetadataKeyEmptyDetails.
+func (m *AccountMetadataKeyEmptyDetails) Mutate() *AccountMetadataKeyEmptyDetails {
+	return m.CloneVT()
+}
+
+// AccountMetadataKeyEmptyDetailsListReader provides read-only iteration over []*AccountMetadataKeyEmptyDetails.
+type AccountMetadataKeyEmptyDetailsListReader interface {
+	Len() int
+	Get(i int) AccountMetadataKeyEmptyDetailsReader
+	Range(yield func(int, AccountMetadataKeyEmptyDetailsReader) bool)
+}
+
+type accountMetadataKeyEmptyDetailsListReadonly []*AccountMetadataKeyEmptyDetails
+
+func (l accountMetadataKeyEmptyDetailsListReadonly) Len() int { return len(l) }
+
+func (l accountMetadataKeyEmptyDetailsListReadonly) Get(i int) AccountMetadataKeyEmptyDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountMetadataKeyEmptyDetailsListReadonly) Range(yield func(int, AccountMetadataKeyEmptyDetailsReader) bool) {
+	for i, v := range l {
+		var r AccountMetadataKeyEmptyDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountMetadataKeyEmptyDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountMetadataKeyEmptyDetailsListReader(s []*AccountMetadataKeyEmptyDetails) AccountMetadataKeyEmptyDetailsListReader {
+	return accountMetadataKeyEmptyDetailsListReadonly(s)
+}
+
 // MetadataKeyInvalidCharDetailsReader provides read-only access to MetadataKeyInvalidCharDetails.
 // Call Mutate() to obtain a mutable clone.
 type MetadataKeyInvalidCharDetailsReader interface {
 	GetKey() string
-	GetAccount() string
 	Mutate() *MetadataKeyInvalidCharDetails
 }
 
@@ -9822,10 +9960,6 @@ type metadataKeyInvalidCharDetailsReadonly MetadataKeyInvalidCharDetails
 
 func (r *metadataKeyInvalidCharDetailsReadonly) GetKey() string {
 	return (*MetadataKeyInvalidCharDetails)(r).GetKey()
-}
-
-func (r *metadataKeyInvalidCharDetailsReadonly) GetAccount() string {
-	return (*MetadataKeyInvalidCharDetails)(r).GetAccount()
 }
 
 func (r *metadataKeyInvalidCharDetailsReadonly) Mutate() *MetadataKeyInvalidCharDetails {
@@ -9880,6 +10014,78 @@ func (l metadataKeyInvalidCharDetailsListReadonly) Range(yield func(int, Metadat
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewMetadataKeyInvalidCharDetailsListReader(s []*MetadataKeyInvalidCharDetails) MetadataKeyInvalidCharDetailsListReader {
 	return metadataKeyInvalidCharDetailsListReadonly(s)
+}
+
+// AccountMetadataKeyInvalidCharDetailsReader provides read-only access to AccountMetadataKeyInvalidCharDetails.
+// Call Mutate() to obtain a mutable clone.
+type AccountMetadataKeyInvalidCharDetailsReader interface {
+	GetKey() string
+	GetAccount() string
+	Mutate() *AccountMetadataKeyInvalidCharDetails
+}
+
+type accountMetadataKeyInvalidCharDetailsReadonly AccountMetadataKeyInvalidCharDetails
+
+func (r *accountMetadataKeyInvalidCharDetailsReadonly) GetKey() string {
+	return (*AccountMetadataKeyInvalidCharDetails)(r).GetKey()
+}
+
+func (r *accountMetadataKeyInvalidCharDetailsReadonly) GetAccount() string {
+	return (*AccountMetadataKeyInvalidCharDetails)(r).GetAccount()
+}
+
+func (r *accountMetadataKeyInvalidCharDetailsReadonly) Mutate() *AccountMetadataKeyInvalidCharDetails {
+	return (*AccountMetadataKeyInvalidCharDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AccountMetadataKeyInvalidCharDetails.
+func (m *AccountMetadataKeyInvalidCharDetails) AsReader() AccountMetadataKeyInvalidCharDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*accountMetadataKeyInvalidCharDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AccountMetadataKeyInvalidCharDetails.
+func (m *AccountMetadataKeyInvalidCharDetails) Mutate() *AccountMetadataKeyInvalidCharDetails {
+	return m.CloneVT()
+}
+
+// AccountMetadataKeyInvalidCharDetailsListReader provides read-only iteration over []*AccountMetadataKeyInvalidCharDetails.
+type AccountMetadataKeyInvalidCharDetailsListReader interface {
+	Len() int
+	Get(i int) AccountMetadataKeyInvalidCharDetailsReader
+	Range(yield func(int, AccountMetadataKeyInvalidCharDetailsReader) bool)
+}
+
+type accountMetadataKeyInvalidCharDetailsListReadonly []*AccountMetadataKeyInvalidCharDetails
+
+func (l accountMetadataKeyInvalidCharDetailsListReadonly) Len() int { return len(l) }
+
+func (l accountMetadataKeyInvalidCharDetailsListReadonly) Get(i int) AccountMetadataKeyInvalidCharDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountMetadataKeyInvalidCharDetailsListReadonly) Range(yield func(int, AccountMetadataKeyInvalidCharDetailsReader) bool) {
+	for i, v := range l {
+		var r AccountMetadataKeyInvalidCharDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountMetadataKeyInvalidCharDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountMetadataKeyInvalidCharDetailsListReader(s []*AccountMetadataKeyInvalidCharDetails) AccountMetadataKeyInvalidCharDetailsListReader {
+	return accountMetadataKeyInvalidCharDetailsListReadonly(s)
 }
 
 // MetadataKeyRequiredDetailsReader provides read-only access to MetadataKeyRequiredDetails.
@@ -9947,20 +10153,10 @@ func NewMetadataKeyRequiredDetailsListReader(s []*MetadataKeyRequiredDetails) Me
 // MetadataLimitsUnconfiguredDetailsReader provides read-only access to MetadataLimitsUnconfiguredDetails.
 // Call Mutate() to obtain a mutable clone.
 type MetadataLimitsUnconfiguredDetailsReader interface {
-	GetAccount() string
-	GetKey() string
 	Mutate() *MetadataLimitsUnconfiguredDetails
 }
 
 type metadataLimitsUnconfiguredDetailsReadonly MetadataLimitsUnconfiguredDetails
-
-func (r *metadataLimitsUnconfiguredDetailsReadonly) GetAccount() string {
-	return (*MetadataLimitsUnconfiguredDetails)(r).GetAccount()
-}
-
-func (r *metadataLimitsUnconfiguredDetailsReadonly) GetKey() string {
-	return (*MetadataLimitsUnconfiguredDetails)(r).GetKey()
-}
 
 func (r *metadataLimitsUnconfiguredDetailsReadonly) Mutate() *MetadataLimitsUnconfiguredDetails {
 	return (*MetadataLimitsUnconfiguredDetails)(r).CloneVT()
@@ -10016,14 +10212,79 @@ func NewMetadataLimitsUnconfiguredDetailsListReader(s []*MetadataLimitsUnconfigu
 	return metadataLimitsUnconfiguredDetailsListReadonly(s)
 }
 
+// AccountMetadataLimitsUnconfiguredDetailsReader provides read-only access to AccountMetadataLimitsUnconfiguredDetails.
+// Call Mutate() to obtain a mutable clone.
+type AccountMetadataLimitsUnconfiguredDetailsReader interface {
+	GetAccount() string
+	Mutate() *AccountMetadataLimitsUnconfiguredDetails
+}
+
+type accountMetadataLimitsUnconfiguredDetailsReadonly AccountMetadataLimitsUnconfiguredDetails
+
+func (r *accountMetadataLimitsUnconfiguredDetailsReadonly) GetAccount() string {
+	return (*AccountMetadataLimitsUnconfiguredDetails)(r).GetAccount()
+}
+
+func (r *accountMetadataLimitsUnconfiguredDetailsReadonly) Mutate() *AccountMetadataLimitsUnconfiguredDetails {
+	return (*AccountMetadataLimitsUnconfiguredDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AccountMetadataLimitsUnconfiguredDetails.
+func (m *AccountMetadataLimitsUnconfiguredDetails) AsReader() AccountMetadataLimitsUnconfiguredDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*accountMetadataLimitsUnconfiguredDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AccountMetadataLimitsUnconfiguredDetails.
+func (m *AccountMetadataLimitsUnconfiguredDetails) Mutate() *AccountMetadataLimitsUnconfiguredDetails {
+	return m.CloneVT()
+}
+
+// AccountMetadataLimitsUnconfiguredDetailsListReader provides read-only iteration over []*AccountMetadataLimitsUnconfiguredDetails.
+type AccountMetadataLimitsUnconfiguredDetailsListReader interface {
+	Len() int
+	Get(i int) AccountMetadataLimitsUnconfiguredDetailsReader
+	Range(yield func(int, AccountMetadataLimitsUnconfiguredDetailsReader) bool)
+}
+
+type accountMetadataLimitsUnconfiguredDetailsListReadonly []*AccountMetadataLimitsUnconfiguredDetails
+
+func (l accountMetadataLimitsUnconfiguredDetailsListReadonly) Len() int { return len(l) }
+
+func (l accountMetadataLimitsUnconfiguredDetailsListReadonly) Get(i int) AccountMetadataLimitsUnconfiguredDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountMetadataLimitsUnconfiguredDetailsListReadonly) Range(yield func(int, AccountMetadataLimitsUnconfiguredDetailsReader) bool) {
+	for i, v := range l {
+		var r AccountMetadataLimitsUnconfiguredDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountMetadataLimitsUnconfiguredDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountMetadataLimitsUnconfiguredDetailsListReader(s []*AccountMetadataLimitsUnconfiguredDetails) AccountMetadataLimitsUnconfiguredDetailsListReader {
+	return accountMetadataLimitsUnconfiguredDetailsListReadonly(s)
+}
+
 // MetadataLimitExceededDetailsReader provides read-only access to MetadataLimitExceededDetails.
 // Call Mutate() to obtain a mutable clone.
 type MetadataLimitExceededDetailsReader interface {
 	GetDimension() string
 	GetLimit() uint64
 	GetActual() uint64
-	GetKey() string
-	GetAccount() string
 	Mutate() *MetadataLimitExceededDetails
 }
 
@@ -10039,14 +10300,6 @@ func (r *metadataLimitExceededDetailsReadonly) GetLimit() uint64 {
 
 func (r *metadataLimitExceededDetailsReadonly) GetActual() uint64 {
 	return (*MetadataLimitExceededDetails)(r).GetActual()
-}
-
-func (r *metadataLimitExceededDetailsReadonly) GetKey() string {
-	return (*MetadataLimitExceededDetails)(r).GetKey()
-}
-
-func (r *metadataLimitExceededDetailsReadonly) GetAccount() string {
-	return (*MetadataLimitExceededDetails)(r).GetAccount()
 }
 
 func (r *metadataLimitExceededDetailsReadonly) Mutate() *MetadataLimitExceededDetails {
@@ -10101,6 +10354,257 @@ func (l metadataLimitExceededDetailsListReadonly) Range(yield func(int, Metadata
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewMetadataLimitExceededDetailsListReader(s []*MetadataLimitExceededDetails) MetadataLimitExceededDetailsListReader {
 	return metadataLimitExceededDetailsListReadonly(s)
+}
+
+// AccountMetadataLimitExceededDetailsReader provides read-only access to AccountMetadataLimitExceededDetails.
+// Call Mutate() to obtain a mutable clone.
+type AccountMetadataLimitExceededDetailsReader interface {
+	GetDimension() string
+	GetLimit() uint64
+	GetActual() uint64
+	GetAccount() string
+	Mutate() *AccountMetadataLimitExceededDetails
+}
+
+type accountMetadataLimitExceededDetailsReadonly AccountMetadataLimitExceededDetails
+
+func (r *accountMetadataLimitExceededDetailsReadonly) GetDimension() string {
+	return (*AccountMetadataLimitExceededDetails)(r).GetDimension()
+}
+
+func (r *accountMetadataLimitExceededDetailsReadonly) GetLimit() uint64 {
+	return (*AccountMetadataLimitExceededDetails)(r).GetLimit()
+}
+
+func (r *accountMetadataLimitExceededDetailsReadonly) GetActual() uint64 {
+	return (*AccountMetadataLimitExceededDetails)(r).GetActual()
+}
+
+func (r *accountMetadataLimitExceededDetailsReadonly) GetAccount() string {
+	return (*AccountMetadataLimitExceededDetails)(r).GetAccount()
+}
+
+func (r *accountMetadataLimitExceededDetailsReadonly) Mutate() *AccountMetadataLimitExceededDetails {
+	return (*AccountMetadataLimitExceededDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AccountMetadataLimitExceededDetails.
+func (m *AccountMetadataLimitExceededDetails) AsReader() AccountMetadataLimitExceededDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*accountMetadataLimitExceededDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AccountMetadataLimitExceededDetails.
+func (m *AccountMetadataLimitExceededDetails) Mutate() *AccountMetadataLimitExceededDetails {
+	return m.CloneVT()
+}
+
+// AccountMetadataLimitExceededDetailsListReader provides read-only iteration over []*AccountMetadataLimitExceededDetails.
+type AccountMetadataLimitExceededDetailsListReader interface {
+	Len() int
+	Get(i int) AccountMetadataLimitExceededDetailsReader
+	Range(yield func(int, AccountMetadataLimitExceededDetailsReader) bool)
+}
+
+type accountMetadataLimitExceededDetailsListReadonly []*AccountMetadataLimitExceededDetails
+
+func (l accountMetadataLimitExceededDetailsListReadonly) Len() int { return len(l) }
+
+func (l accountMetadataLimitExceededDetailsListReadonly) Get(i int) AccountMetadataLimitExceededDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountMetadataLimitExceededDetailsListReadonly) Range(yield func(int, AccountMetadataLimitExceededDetailsReader) bool) {
+	for i, v := range l {
+		var r AccountMetadataLimitExceededDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountMetadataLimitExceededDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountMetadataLimitExceededDetailsListReader(s []*AccountMetadataLimitExceededDetails) AccountMetadataLimitExceededDetailsListReader {
+	return accountMetadataLimitExceededDetailsListReadonly(s)
+}
+
+// MetadataKeyLimitExceededDetailsReader provides read-only access to MetadataKeyLimitExceededDetails.
+// Call Mutate() to obtain a mutable clone.
+type MetadataKeyLimitExceededDetailsReader interface {
+	GetDimension() string
+	GetLimit() uint64
+	GetActual() uint64
+	GetKey() string
+	Mutate() *MetadataKeyLimitExceededDetails
+}
+
+type metadataKeyLimitExceededDetailsReadonly MetadataKeyLimitExceededDetails
+
+func (r *metadataKeyLimitExceededDetailsReadonly) GetDimension() string {
+	return (*MetadataKeyLimitExceededDetails)(r).GetDimension()
+}
+
+func (r *metadataKeyLimitExceededDetailsReadonly) GetLimit() uint64 {
+	return (*MetadataKeyLimitExceededDetails)(r).GetLimit()
+}
+
+func (r *metadataKeyLimitExceededDetailsReadonly) GetActual() uint64 {
+	return (*MetadataKeyLimitExceededDetails)(r).GetActual()
+}
+
+func (r *metadataKeyLimitExceededDetailsReadonly) GetKey() string {
+	return (*MetadataKeyLimitExceededDetails)(r).GetKey()
+}
+
+func (r *metadataKeyLimitExceededDetailsReadonly) Mutate() *MetadataKeyLimitExceededDetails {
+	return (*MetadataKeyLimitExceededDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this MetadataKeyLimitExceededDetails.
+func (m *MetadataKeyLimitExceededDetails) AsReader() MetadataKeyLimitExceededDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*metadataKeyLimitExceededDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this MetadataKeyLimitExceededDetails.
+func (m *MetadataKeyLimitExceededDetails) Mutate() *MetadataKeyLimitExceededDetails {
+	return m.CloneVT()
+}
+
+// MetadataKeyLimitExceededDetailsListReader provides read-only iteration over []*MetadataKeyLimitExceededDetails.
+type MetadataKeyLimitExceededDetailsListReader interface {
+	Len() int
+	Get(i int) MetadataKeyLimitExceededDetailsReader
+	Range(yield func(int, MetadataKeyLimitExceededDetailsReader) bool)
+}
+
+type metadataKeyLimitExceededDetailsListReadonly []*MetadataKeyLimitExceededDetails
+
+func (l metadataKeyLimitExceededDetailsListReadonly) Len() int { return len(l) }
+
+func (l metadataKeyLimitExceededDetailsListReadonly) Get(i int) MetadataKeyLimitExceededDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l metadataKeyLimitExceededDetailsListReadonly) Range(yield func(int, MetadataKeyLimitExceededDetailsReader) bool) {
+	for i, v := range l {
+		var r MetadataKeyLimitExceededDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMetadataKeyLimitExceededDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMetadataKeyLimitExceededDetailsListReader(s []*MetadataKeyLimitExceededDetails) MetadataKeyLimitExceededDetailsListReader {
+	return metadataKeyLimitExceededDetailsListReadonly(s)
+}
+
+// AccountMetadataKeyLimitExceededDetailsReader provides read-only access to AccountMetadataKeyLimitExceededDetails.
+// Call Mutate() to obtain a mutable clone.
+type AccountMetadataKeyLimitExceededDetailsReader interface {
+	GetDimension() string
+	GetLimit() uint64
+	GetActual() uint64
+	GetKey() string
+	GetAccount() string
+	Mutate() *AccountMetadataKeyLimitExceededDetails
+}
+
+type accountMetadataKeyLimitExceededDetailsReadonly AccountMetadataKeyLimitExceededDetails
+
+func (r *accountMetadataKeyLimitExceededDetailsReadonly) GetDimension() string {
+	return (*AccountMetadataKeyLimitExceededDetails)(r).GetDimension()
+}
+
+func (r *accountMetadataKeyLimitExceededDetailsReadonly) GetLimit() uint64 {
+	return (*AccountMetadataKeyLimitExceededDetails)(r).GetLimit()
+}
+
+func (r *accountMetadataKeyLimitExceededDetailsReadonly) GetActual() uint64 {
+	return (*AccountMetadataKeyLimitExceededDetails)(r).GetActual()
+}
+
+func (r *accountMetadataKeyLimitExceededDetailsReadonly) GetKey() string {
+	return (*AccountMetadataKeyLimitExceededDetails)(r).GetKey()
+}
+
+func (r *accountMetadataKeyLimitExceededDetailsReadonly) GetAccount() string {
+	return (*AccountMetadataKeyLimitExceededDetails)(r).GetAccount()
+}
+
+func (r *accountMetadataKeyLimitExceededDetailsReadonly) Mutate() *AccountMetadataKeyLimitExceededDetails {
+	return (*AccountMetadataKeyLimitExceededDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AccountMetadataKeyLimitExceededDetails.
+func (m *AccountMetadataKeyLimitExceededDetails) AsReader() AccountMetadataKeyLimitExceededDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*accountMetadataKeyLimitExceededDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AccountMetadataKeyLimitExceededDetails.
+func (m *AccountMetadataKeyLimitExceededDetails) Mutate() *AccountMetadataKeyLimitExceededDetails {
+	return m.CloneVT()
+}
+
+// AccountMetadataKeyLimitExceededDetailsListReader provides read-only iteration over []*AccountMetadataKeyLimitExceededDetails.
+type AccountMetadataKeyLimitExceededDetailsListReader interface {
+	Len() int
+	Get(i int) AccountMetadataKeyLimitExceededDetailsReader
+	Range(yield func(int, AccountMetadataKeyLimitExceededDetailsReader) bool)
+}
+
+type accountMetadataKeyLimitExceededDetailsListReadonly []*AccountMetadataKeyLimitExceededDetails
+
+func (l accountMetadataKeyLimitExceededDetailsListReadonly) Len() int { return len(l) }
+
+func (l accountMetadataKeyLimitExceededDetailsListReadonly) Get(i int) AccountMetadataKeyLimitExceededDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountMetadataKeyLimitExceededDetailsListReadonly) Range(yield func(int, AccountMetadataKeyLimitExceededDetailsReader) bool) {
+	for i, v := range l {
+		var r AccountMetadataKeyLimitExceededDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountMetadataKeyLimitExceededDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountMetadataKeyLimitExceededDetailsListReader(s []*AccountMetadataKeyLimitExceededDetails) AccountMetadataKeyLimitExceededDetailsListReader {
+	return accountMetadataKeyLimitExceededDetailsListReadonly(s)
 }
 
 // MetadataNotFoundDetailsReader provides read-only access to MetadataNotFoundDetails.
@@ -10179,7 +10683,6 @@ func NewMetadataNotFoundDetailsListReader(s []*MetadataNotFoundDetails) Metadata
 // Call Mutate() to obtain a mutable clone.
 type MetadataValueContainsNullByteDetailsReader interface {
 	GetKey() string
-	GetAccount() string
 	Mutate() *MetadataValueContainsNullByteDetails
 }
 
@@ -10187,10 +10690,6 @@ type metadataValueContainsNullByteDetailsReadonly MetadataValueContainsNullByteD
 
 func (r *metadataValueContainsNullByteDetailsReadonly) GetKey() string {
 	return (*MetadataValueContainsNullByteDetails)(r).GetKey()
-}
-
-func (r *metadataValueContainsNullByteDetailsReadonly) GetAccount() string {
-	return (*MetadataValueContainsNullByteDetails)(r).GetAccount()
 }
 
 func (r *metadataValueContainsNullByteDetailsReadonly) Mutate() *MetadataValueContainsNullByteDetails {
@@ -10245,6 +10744,78 @@ func (l metadataValueContainsNullByteDetailsListReadonly) Range(yield func(int, 
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewMetadataValueContainsNullByteDetailsListReader(s []*MetadataValueContainsNullByteDetails) MetadataValueContainsNullByteDetailsListReader {
 	return metadataValueContainsNullByteDetailsListReadonly(s)
+}
+
+// AccountMetadataValueContainsNullByteDetailsReader provides read-only access to AccountMetadataValueContainsNullByteDetails.
+// Call Mutate() to obtain a mutable clone.
+type AccountMetadataValueContainsNullByteDetailsReader interface {
+	GetKey() string
+	GetAccount() string
+	Mutate() *AccountMetadataValueContainsNullByteDetails
+}
+
+type accountMetadataValueContainsNullByteDetailsReadonly AccountMetadataValueContainsNullByteDetails
+
+func (r *accountMetadataValueContainsNullByteDetailsReadonly) GetKey() string {
+	return (*AccountMetadataValueContainsNullByteDetails)(r).GetKey()
+}
+
+func (r *accountMetadataValueContainsNullByteDetailsReadonly) GetAccount() string {
+	return (*AccountMetadataValueContainsNullByteDetails)(r).GetAccount()
+}
+
+func (r *accountMetadataValueContainsNullByteDetailsReadonly) Mutate() *AccountMetadataValueContainsNullByteDetails {
+	return (*AccountMetadataValueContainsNullByteDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AccountMetadataValueContainsNullByteDetails.
+func (m *AccountMetadataValueContainsNullByteDetails) AsReader() AccountMetadataValueContainsNullByteDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*accountMetadataValueContainsNullByteDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AccountMetadataValueContainsNullByteDetails.
+func (m *AccountMetadataValueContainsNullByteDetails) Mutate() *AccountMetadataValueContainsNullByteDetails {
+	return m.CloneVT()
+}
+
+// AccountMetadataValueContainsNullByteDetailsListReader provides read-only iteration over []*AccountMetadataValueContainsNullByteDetails.
+type AccountMetadataValueContainsNullByteDetailsListReader interface {
+	Len() int
+	Get(i int) AccountMetadataValueContainsNullByteDetailsReader
+	Range(yield func(int, AccountMetadataValueContainsNullByteDetailsReader) bool)
+}
+
+type accountMetadataValueContainsNullByteDetailsListReadonly []*AccountMetadataValueContainsNullByteDetails
+
+func (l accountMetadataValueContainsNullByteDetailsListReadonly) Len() int { return len(l) }
+
+func (l accountMetadataValueContainsNullByteDetailsListReadonly) Get(i int) AccountMetadataValueContainsNullByteDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountMetadataValueContainsNullByteDetailsListReadonly) Range(yield func(int, AccountMetadataValueContainsNullByteDetailsReader) bool) {
+	for i, v := range l {
+		var r AccountMetadataValueContainsNullByteDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountMetadataValueContainsNullByteDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountMetadataValueContainsNullByteDetailsListReader(s []*AccountMetadataValueContainsNullByteDetails) AccountMetadataValueContainsNullByteDetailsListReader {
+	return accountMetadataValueContainsNullByteDetailsListReadonly(s)
 }
 
 // MirrorHttpUrlInvalidDetailsReader provides read-only access to MirrorHttpUrlInvalidDetails.
@@ -12337,15 +12908,10 @@ func NewNumscriptCurrencyMismatchDetailsListReader(s []*NumscriptCurrencyMismatc
 // NumscriptDivideByZeroDetailsReader provides read-only access to NumscriptDivideByZeroDetails.
 // Call Mutate() to obtain a mutable clone.
 type NumscriptDivideByZeroDetailsReader interface {
-	GetNumerator() string
 	Mutate() *NumscriptDivideByZeroDetails
 }
 
 type numscriptDivideByZeroDetailsReadonly NumscriptDivideByZeroDetails
-
-func (r *numscriptDivideByZeroDetailsReadonly) GetNumerator() string {
-	return (*NumscriptDivideByZeroDetails)(r).GetNumerator()
-}
 
 func (r *numscriptDivideByZeroDetailsReadonly) Mutate() *NumscriptDivideByZeroDetails {
 	return (*NumscriptDivideByZeroDetails)(r).CloneVT()
@@ -12399,6 +12965,73 @@ func (l numscriptDivideByZeroDetailsListReadonly) Range(yield func(int, Numscrip
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewNumscriptDivideByZeroDetailsListReader(s []*NumscriptDivideByZeroDetails) NumscriptDivideByZeroDetailsListReader {
 	return numscriptDivideByZeroDetailsListReadonly(s)
+}
+
+// NumscriptDivideByZeroWithNumeratorDetailsReader provides read-only access to NumscriptDivideByZeroWithNumeratorDetails.
+// Call Mutate() to obtain a mutable clone.
+type NumscriptDivideByZeroWithNumeratorDetailsReader interface {
+	GetNumerator() string
+	Mutate() *NumscriptDivideByZeroWithNumeratorDetails
+}
+
+type numscriptDivideByZeroWithNumeratorDetailsReadonly NumscriptDivideByZeroWithNumeratorDetails
+
+func (r *numscriptDivideByZeroWithNumeratorDetailsReadonly) GetNumerator() string {
+	return (*NumscriptDivideByZeroWithNumeratorDetails)(r).GetNumerator()
+}
+
+func (r *numscriptDivideByZeroWithNumeratorDetailsReadonly) Mutate() *NumscriptDivideByZeroWithNumeratorDetails {
+	return (*NumscriptDivideByZeroWithNumeratorDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this NumscriptDivideByZeroWithNumeratorDetails.
+func (m *NumscriptDivideByZeroWithNumeratorDetails) AsReader() NumscriptDivideByZeroWithNumeratorDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*numscriptDivideByZeroWithNumeratorDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this NumscriptDivideByZeroWithNumeratorDetails.
+func (m *NumscriptDivideByZeroWithNumeratorDetails) Mutate() *NumscriptDivideByZeroWithNumeratorDetails {
+	return m.CloneVT()
+}
+
+// NumscriptDivideByZeroWithNumeratorDetailsListReader provides read-only iteration over []*NumscriptDivideByZeroWithNumeratorDetails.
+type NumscriptDivideByZeroWithNumeratorDetailsListReader interface {
+	Len() int
+	Get(i int) NumscriptDivideByZeroWithNumeratorDetailsReader
+	Range(yield func(int, NumscriptDivideByZeroWithNumeratorDetailsReader) bool)
+}
+
+type numscriptDivideByZeroWithNumeratorDetailsListReadonly []*NumscriptDivideByZeroWithNumeratorDetails
+
+func (l numscriptDivideByZeroWithNumeratorDetailsListReadonly) Len() int { return len(l) }
+
+func (l numscriptDivideByZeroWithNumeratorDetailsListReadonly) Get(i int) NumscriptDivideByZeroWithNumeratorDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l numscriptDivideByZeroWithNumeratorDetailsListReadonly) Range(yield func(int, NumscriptDivideByZeroWithNumeratorDetailsReader) bool) {
+	for i, v := range l {
+		var r NumscriptDivideByZeroWithNumeratorDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNumscriptDivideByZeroWithNumeratorDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNumscriptDivideByZeroWithNumeratorDetailsListReader(s []*NumscriptDivideByZeroWithNumeratorDetails) NumscriptDivideByZeroWithNumeratorDetailsListReader {
+	return numscriptDivideByZeroWithNumeratorDetailsListReadonly(s)
 }
 
 // NumscriptExecutionErrorDetailsReader provides read-only access to NumscriptExecutionErrorDetails.
@@ -13591,7 +14224,6 @@ func NewNumscriptInvalidVersionDetailsListReader(s []*NumscriptInvalidVersionDet
 // Call Mutate() to obtain a mutable clone.
 type NumscriptMetadataNotFoundDetailsReader interface {
 	GetAccount() string
-	GetScope() string
 	GetKey() string
 	Mutate() *NumscriptMetadataNotFoundDetails
 }
@@ -13600,10 +14232,6 @@ type numscriptMetadataNotFoundDetailsReadonly NumscriptMetadataNotFoundDetails
 
 func (r *numscriptMetadataNotFoundDetailsReadonly) GetAccount() string {
 	return (*NumscriptMetadataNotFoundDetails)(r).GetAccount()
-}
-
-func (r *numscriptMetadataNotFoundDetailsReadonly) GetScope() string {
-	return (*NumscriptMetadataNotFoundDetails)(r).GetScope()
 }
 
 func (r *numscriptMetadataNotFoundDetailsReadonly) GetKey() string {
@@ -13662,6 +14290,83 @@ func (l numscriptMetadataNotFoundDetailsListReadonly) Range(yield func(int, Nums
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewNumscriptMetadataNotFoundDetailsListReader(s []*NumscriptMetadataNotFoundDetails) NumscriptMetadataNotFoundDetailsListReader {
 	return numscriptMetadataNotFoundDetailsListReadonly(s)
+}
+
+// NumscriptScopedMetadataNotFoundDetailsReader provides read-only access to NumscriptScopedMetadataNotFoundDetails.
+// Call Mutate() to obtain a mutable clone.
+type NumscriptScopedMetadataNotFoundDetailsReader interface {
+	GetAccount() string
+	GetScope() string
+	GetKey() string
+	Mutate() *NumscriptScopedMetadataNotFoundDetails
+}
+
+type numscriptScopedMetadataNotFoundDetailsReadonly NumscriptScopedMetadataNotFoundDetails
+
+func (r *numscriptScopedMetadataNotFoundDetailsReadonly) GetAccount() string {
+	return (*NumscriptScopedMetadataNotFoundDetails)(r).GetAccount()
+}
+
+func (r *numscriptScopedMetadataNotFoundDetailsReadonly) GetScope() string {
+	return (*NumscriptScopedMetadataNotFoundDetails)(r).GetScope()
+}
+
+func (r *numscriptScopedMetadataNotFoundDetailsReadonly) GetKey() string {
+	return (*NumscriptScopedMetadataNotFoundDetails)(r).GetKey()
+}
+
+func (r *numscriptScopedMetadataNotFoundDetailsReadonly) Mutate() *NumscriptScopedMetadataNotFoundDetails {
+	return (*NumscriptScopedMetadataNotFoundDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this NumscriptScopedMetadataNotFoundDetails.
+func (m *NumscriptScopedMetadataNotFoundDetails) AsReader() NumscriptScopedMetadataNotFoundDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*numscriptScopedMetadataNotFoundDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this NumscriptScopedMetadataNotFoundDetails.
+func (m *NumscriptScopedMetadataNotFoundDetails) Mutate() *NumscriptScopedMetadataNotFoundDetails {
+	return m.CloneVT()
+}
+
+// NumscriptScopedMetadataNotFoundDetailsListReader provides read-only iteration over []*NumscriptScopedMetadataNotFoundDetails.
+type NumscriptScopedMetadataNotFoundDetailsListReader interface {
+	Len() int
+	Get(i int) NumscriptScopedMetadataNotFoundDetailsReader
+	Range(yield func(int, NumscriptScopedMetadataNotFoundDetailsReader) bool)
+}
+
+type numscriptScopedMetadataNotFoundDetailsListReadonly []*NumscriptScopedMetadataNotFoundDetails
+
+func (l numscriptScopedMetadataNotFoundDetailsListReadonly) Len() int { return len(l) }
+
+func (l numscriptScopedMetadataNotFoundDetailsListReadonly) Get(i int) NumscriptScopedMetadataNotFoundDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l numscriptScopedMetadataNotFoundDetailsListReadonly) Range(yield func(int, NumscriptScopedMetadataNotFoundDetailsReader) bool) {
+	for i, v := range l {
+		var r NumscriptScopedMetadataNotFoundDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNumscriptScopedMetadataNotFoundDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNumscriptScopedMetadataNotFoundDetailsListReader(s []*NumscriptScopedMetadataNotFoundDetails) NumscriptScopedMetadataNotFoundDetailsListReader {
+	return numscriptScopedMetadataNotFoundDetailsListReadonly(s)
 }
 
 // NumscriptMissingFundsDetailsReader provides read-only access to NumscriptMissingFundsDetails.
@@ -14065,8 +14770,6 @@ func NewNumscriptNegativeAmountDetailsListReader(s []*NumscriptNegativeAmountDet
 // Call Mutate() to obtain a mutable clone.
 type NumscriptNegativeBalanceDetailsReader interface {
 	GetAccount() string
-	GetScope() string
-	GetAsset() string
 	GetAmount() string
 	Mutate() *NumscriptNegativeBalanceDetails
 }
@@ -14075,14 +14778,6 @@ type numscriptNegativeBalanceDetailsReadonly NumscriptNegativeBalanceDetails
 
 func (r *numscriptNegativeBalanceDetailsReadonly) GetAccount() string {
 	return (*NumscriptNegativeBalanceDetails)(r).GetAccount()
-}
-
-func (r *numscriptNegativeBalanceDetailsReadonly) GetScope() string {
-	return (*NumscriptNegativeBalanceDetails)(r).GetScope()
-}
-
-func (r *numscriptNegativeBalanceDetailsReadonly) GetAsset() string {
-	return (*NumscriptNegativeBalanceDetails)(r).GetAsset()
 }
 
 func (r *numscriptNegativeBalanceDetailsReadonly) GetAmount() string {
@@ -14141,6 +14836,88 @@ func (l numscriptNegativeBalanceDetailsListReadonly) Range(yield func(int, Numsc
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewNumscriptNegativeBalanceDetailsListReader(s []*NumscriptNegativeBalanceDetails) NumscriptNegativeBalanceDetailsListReader {
 	return numscriptNegativeBalanceDetailsListReadonly(s)
+}
+
+// NumscriptScopedNegativeBalanceDetailsReader provides read-only access to NumscriptScopedNegativeBalanceDetails.
+// Call Mutate() to obtain a mutable clone.
+type NumscriptScopedNegativeBalanceDetailsReader interface {
+	GetAccount() string
+	GetScope() string
+	GetAsset() string
+	GetAmount() string
+	Mutate() *NumscriptScopedNegativeBalanceDetails
+}
+
+type numscriptScopedNegativeBalanceDetailsReadonly NumscriptScopedNegativeBalanceDetails
+
+func (r *numscriptScopedNegativeBalanceDetailsReadonly) GetAccount() string {
+	return (*NumscriptScopedNegativeBalanceDetails)(r).GetAccount()
+}
+
+func (r *numscriptScopedNegativeBalanceDetailsReadonly) GetScope() string {
+	return (*NumscriptScopedNegativeBalanceDetails)(r).GetScope()
+}
+
+func (r *numscriptScopedNegativeBalanceDetailsReadonly) GetAsset() string {
+	return (*NumscriptScopedNegativeBalanceDetails)(r).GetAsset()
+}
+
+func (r *numscriptScopedNegativeBalanceDetailsReadonly) GetAmount() string {
+	return (*NumscriptScopedNegativeBalanceDetails)(r).GetAmount()
+}
+
+func (r *numscriptScopedNegativeBalanceDetailsReadonly) Mutate() *NumscriptScopedNegativeBalanceDetails {
+	return (*NumscriptScopedNegativeBalanceDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this NumscriptScopedNegativeBalanceDetails.
+func (m *NumscriptScopedNegativeBalanceDetails) AsReader() NumscriptScopedNegativeBalanceDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*numscriptScopedNegativeBalanceDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this NumscriptScopedNegativeBalanceDetails.
+func (m *NumscriptScopedNegativeBalanceDetails) Mutate() *NumscriptScopedNegativeBalanceDetails {
+	return m.CloneVT()
+}
+
+// NumscriptScopedNegativeBalanceDetailsListReader provides read-only iteration over []*NumscriptScopedNegativeBalanceDetails.
+type NumscriptScopedNegativeBalanceDetailsListReader interface {
+	Len() int
+	Get(i int) NumscriptScopedNegativeBalanceDetailsReader
+	Range(yield func(int, NumscriptScopedNegativeBalanceDetailsReader) bool)
+}
+
+type numscriptScopedNegativeBalanceDetailsListReadonly []*NumscriptScopedNegativeBalanceDetails
+
+func (l numscriptScopedNegativeBalanceDetailsListReadonly) Len() int { return len(l) }
+
+func (l numscriptScopedNegativeBalanceDetailsListReadonly) Get(i int) NumscriptScopedNegativeBalanceDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l numscriptScopedNegativeBalanceDetailsListReadonly) Range(yield func(int, NumscriptScopedNegativeBalanceDetailsReader) bool) {
+	for i, v := range l {
+		var r NumscriptScopedNegativeBalanceDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNumscriptScopedNegativeBalanceDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNumscriptScopedNegativeBalanceDetailsListReader(s []*NumscriptScopedNegativeBalanceDetails) NumscriptScopedNegativeBalanceDetailsListReader {
+	return numscriptScopedNegativeBalanceDetailsListReadonly(s)
 }
 
 // NumscriptNegativePortionDetailsReader provides read-only access to NumscriptNegativePortionDetails.
@@ -14214,7 +14991,6 @@ func NewNumscriptNegativePortionDetailsListReader(s []*NumscriptNegativePortionD
 // Call Mutate() to obtain a mutable clone.
 type NumscriptNotFoundDetailsReader interface {
 	GetName() string
-	GetVersion() string
 	Mutate() *NumscriptNotFoundDetails
 }
 
@@ -14222,10 +14998,6 @@ type numscriptNotFoundDetailsReadonly NumscriptNotFoundDetails
 
 func (r *numscriptNotFoundDetailsReadonly) GetName() string {
 	return (*NumscriptNotFoundDetails)(r).GetName()
-}
-
-func (r *numscriptNotFoundDetailsReadonly) GetVersion() string {
-	return (*NumscriptNotFoundDetails)(r).GetVersion()
 }
 
 func (r *numscriptNotFoundDetailsReadonly) Mutate() *NumscriptNotFoundDetails {
@@ -14280,6 +15052,78 @@ func (l numscriptNotFoundDetailsListReadonly) Range(yield func(int, NumscriptNot
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewNumscriptNotFoundDetailsListReader(s []*NumscriptNotFoundDetails) NumscriptNotFoundDetailsListReader {
 	return numscriptNotFoundDetailsListReadonly(s)
+}
+
+// NumscriptVersionNotFoundDetailsReader provides read-only access to NumscriptVersionNotFoundDetails.
+// Call Mutate() to obtain a mutable clone.
+type NumscriptVersionNotFoundDetailsReader interface {
+	GetName() string
+	GetVersion() string
+	Mutate() *NumscriptVersionNotFoundDetails
+}
+
+type numscriptVersionNotFoundDetailsReadonly NumscriptVersionNotFoundDetails
+
+func (r *numscriptVersionNotFoundDetailsReadonly) GetName() string {
+	return (*NumscriptVersionNotFoundDetails)(r).GetName()
+}
+
+func (r *numscriptVersionNotFoundDetailsReadonly) GetVersion() string {
+	return (*NumscriptVersionNotFoundDetails)(r).GetVersion()
+}
+
+func (r *numscriptVersionNotFoundDetailsReadonly) Mutate() *NumscriptVersionNotFoundDetails {
+	return (*NumscriptVersionNotFoundDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this NumscriptVersionNotFoundDetails.
+func (m *NumscriptVersionNotFoundDetails) AsReader() NumscriptVersionNotFoundDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*numscriptVersionNotFoundDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this NumscriptVersionNotFoundDetails.
+func (m *NumscriptVersionNotFoundDetails) Mutate() *NumscriptVersionNotFoundDetails {
+	return m.CloneVT()
+}
+
+// NumscriptVersionNotFoundDetailsListReader provides read-only iteration over []*NumscriptVersionNotFoundDetails.
+type NumscriptVersionNotFoundDetailsListReader interface {
+	Len() int
+	Get(i int) NumscriptVersionNotFoundDetailsReader
+	Range(yield func(int, NumscriptVersionNotFoundDetailsReader) bool)
+}
+
+type numscriptVersionNotFoundDetailsListReadonly []*NumscriptVersionNotFoundDetails
+
+func (l numscriptVersionNotFoundDetailsListReadonly) Len() int { return len(l) }
+
+func (l numscriptVersionNotFoundDetailsListReadonly) Get(i int) NumscriptVersionNotFoundDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l numscriptVersionNotFoundDetailsListReadonly) Range(yield func(int, NumscriptVersionNotFoundDetailsReader) bool) {
+	for i, v := range l {
+		var r NumscriptVersionNotFoundDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNumscriptVersionNotFoundDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNumscriptVersionNotFoundDetailsListReader(s []*NumscriptVersionNotFoundDetails) NumscriptVersionNotFoundDetailsListReader {
+	return numscriptVersionNotFoundDetailsListReadonly(s)
 }
 
 // NumscriptParseErrorDetailsReader provides read-only access to NumscriptParseErrorDetails.

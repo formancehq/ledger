@@ -122,7 +122,7 @@ func TestAuditFailure_MarshalJSON(t *testing.T) {
 	f := &AuditFailure{
 		Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 		Code:    "INSUFFICIENT_FUNDS",
-		Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0"}),
+		Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
 	}
 
 	data, err := f.MarshalJSON()
