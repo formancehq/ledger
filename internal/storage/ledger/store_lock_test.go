@@ -4,6 +4,7 @@ package ledger_test
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -48,6 +49,11 @@ func TestLockLedgerReleaseOnBrokenConnection(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Error(t, release())
+
+	// The connection must be discarded, not kept out of the pool: a failed
+	// unlock on a live session would otherwise keep the lock forever.
+	_, err = conn.ExecContext(ctx, "select 1")
+	require.ErrorIs(t, err, sql.ErrConnDone)
 
 	lockCtx, lockCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer lockCancel()
