@@ -56,7 +56,7 @@ dockers_v2:
   - linux/arm64
   sbom: false
   flags:
-  - --provenance=false
+  - --provenance=mode=min
   labels:
     org.opencontainers.image.title: ledger-operator
     org.opencontainers.image.description: ledger-operator
