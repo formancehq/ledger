@@ -3,7 +3,7 @@ name: Repository Invariants
 on:
   merge_group:
   pull_request:
-    types: [assigned, opened, synchronize, reopened, labeled]
+    types: [assigned, opened, synchronize, reopened]
   push:
     branches:
       - main
@@ -29,3 +29,5 @@ jobs:
         uses: ./.github/actions/default
       - name: Check repository invariants
         run: nix develop .#ci --command bash scripts/check-repo-invariants
+      - name: Check PR image CI gate
+        run: nix develop .#ci --command node --test .github/scripts/pr-image-ci.test.cjs
