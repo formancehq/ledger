@@ -29,30 +29,78 @@ func testEventSink() *ledgerv1alpha1.EventSink {
 
 func TestEventSinkDeletionWaitsForOrphanedStatefulSet(t *testing.T) {
 	t.Parallel()
-	scheme := runtime.NewScheme()
-	require.NoError(t, appsv1.AddToScheme(scheme))
-	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
-	sink := testEventSink()
-	sink.Namespace = "test"
-	sink.Finalizers = []string{eventSinkFinalizer}
-	now := metav1.Now()
-	sink.DeletionTimestamp = &now
-	sts := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: resourceName("cluster"), Namespace: "test"}}
-	kube := fake.NewClientBuilder().WithScheme(scheme).WithObjects(sink, sts).Build()
-	r := &EventSinkReconciler{Client: kube, Scheme: scheme}
-	key := types.NamespacedName{Name: sink.Name, Namespace: sink.Namespace}
-	result, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
-	require.NoError(t, err)
-	require.Positive(t, result.RequeueAfter)
-	var stored ledgerv1alpha1.EventSink
-	require.NoError(t, kube.Get(context.Background(), key, &stored))
-	require.Contains(t, stored.Finalizers, eventSinkFinalizer)
 
-	require.NoError(t, kube.Delete(context.Background(), sts))
-	_, err = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
-	require.NoError(t, err)
-	if err := kube.Get(context.Background(), key, &stored); err == nil {
-		require.NotContains(t, stored.Finalizers, eventSinkFinalizer)
+	// The Cluster is already gone, so its base name (which spec.resourceName
+	// may have overridden) cannot be recomputed: the lingering StatefulSet is
+	// found by owner reference during the garbage-collection window, or, once an
+	// orphaning deletion stripped the owner reference, by the operator labels
+	// together with the default base name. The user-overridable instance label
+	// alone never holds the finalizer.
+	ownedBy := func(sts *appsv1.StatefulSet, cluster string) *appsv1.StatefulSet {
+		sts.OwnerReferences = []metav1.OwnerReference{{
+			APIVersion: ledgerv1alpha1.GroupVersion.String(), Kind: "Cluster",
+			Name: cluster, UID: types.UID(cluster + "-uid"), Controller: new(true),
+		}}
+
+		return sts
+	}
+	labelled := func(sts *appsv1.StatefulSet, cluster string) *appsv1.StatefulSet {
+		sts.Labels = commonLabels(clusterNamed(cluster))
+
+		return sts
+	}
+	named := func(name string) *appsv1.StatefulSet {
+		return &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "test"}}
+	}
+
+	for _, tc := range []struct {
+		name string
+		sts  *appsv1.StatefulSet
+		held bool
+	}{
+		{"default name, owner reference", ownedBy(named(clusterBaseName(clusterNamed("cluster"))), "cluster"), true},
+		{"resourceName override, owner reference", ownedBy(named("payments"), "cluster"), true},
+		{"default name, orphaned with operator labels", labelled(named(clusterBaseName(clusterNamed("cluster"))), "cluster"), true},
+		// Labels only prove the instance label, which spec.additionalLabels can
+		// set on any Cluster's StatefulSet: not enough to hold the finalizer.
+		{"resourceName override, orphaned with operator labels only", labelled(named("payments"), "cluster"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			scheme := runtime.NewScheme()
+			require.NoError(t, appsv1.AddToScheme(scheme))
+			require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+			sink := testEventSink()
+			sink.Namespace = "test"
+			sink.Finalizers = []string{eventSinkFinalizer}
+			now := metav1.Now()
+			sink.DeletionTimestamp = &now
+			// A StatefulSet of another Cluster must not hold the finalizer.
+			unrelated := labelled(ownedBy(named("ledger-other"), "other"), "other")
+			kube := fake.NewClientBuilder().WithScheme(scheme).WithObjects(sink, tc.sts, unrelated).Build()
+			r := &EventSinkReconciler{Client: kube, Scheme: scheme}
+			key := types.NamespacedName{Name: sink.Name, Namespace: sink.Namespace}
+			result, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
+			require.NoError(t, err)
+			var stored ledgerv1alpha1.EventSink
+			if !tc.held {
+				if err := kube.Get(context.Background(), key, &stored); err == nil {
+					require.NotContains(t, stored.Finalizers, eventSinkFinalizer)
+				}
+
+				return
+			}
+			require.Positive(t, result.RequeueAfter)
+			require.NoError(t, kube.Get(context.Background(), key, &stored))
+			require.Contains(t, stored.Finalizers, eventSinkFinalizer)
+
+			require.NoError(t, kube.Delete(context.Background(), tc.sts))
+			_, err = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
+			require.NoError(t, err)
+			if err := kube.Get(context.Background(), key, &stored); err == nil {
+				require.NotContains(t, stored.Finalizers, eventSinkFinalizer)
+			}
+		})
 	}
 }
 

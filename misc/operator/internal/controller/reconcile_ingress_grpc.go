@@ -13,12 +13,12 @@ import (
 
 // reconcileIngressGrpc manages the gRPC Ingress resource.
 func (r *ClusterReconciler) reconcileIngressGrpc(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
-	name := grpcIngressName(ledger.Name)
+	name := grpcIngressName(ledger)
 
 	enabled := ledger.Spec.IngressGrpc != nil && ledger.Spec.IngressGrpc.Enabled && len(ledger.Spec.IngressGrpc.Hosts) > 0
 
 	if !enabled {
-		return r.deleteIfExists(ctx, &networkingv1.Ingress{
+		return r.deleteIfExists(ctx, ledger, &networkingv1.Ingress{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: ledger.Namespace,
@@ -52,7 +52,7 @@ func (r *ClusterReconciler) reconcileIngressGrpc(ctx context.Context, ledger *le
 
 		ing.Spec = spec
 
-		return controllerutil.SetControllerReference(ledger, ing, r.Scheme)
+		return setOwnedControllerReference(ledger, ing, r.Scheme, "Ingress")
 	})
 
 	return err
@@ -61,7 +61,7 @@ func (r *ClusterReconciler) reconcileIngressGrpc(ctx context.Context, ledger *le
 func buildGrpcIngressRules(ledger *ledgerv1alpha1.Cluster, hosts []ledgerv1alpha1.IngressHost) []networkingv1.IngressRule {
 	rules := make([]networkingv1.IngressRule, 0, len(hosts))
 	grpcPort := serviceGrpcPort(ledger)
-	grpcSvcName := grpcServiceName(ledger.Name)
+	grpcSvcName := grpcServiceName(ledger)
 
 	for _, h := range hosts {
 		paths := h.Paths

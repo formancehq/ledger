@@ -28,7 +28,7 @@ func (r *ClusterReconciler) reconcileServiceAccount(ctx context.Context, ledger 
 		sa.Labels = commonLabels(ledger)
 		sa.Annotations = ledger.Spec.ServiceAccount.Annotations
 
-		return controllerutil.SetControllerReference(ledger, sa, r.Scheme)
+		return setOwnedControllerReference(ledger, sa, r.Scheme, "ServiceAccount")
 	})
 
 	return err

@@ -35,7 +35,7 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *le
 
 func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, ledger *ledgerv1alpha1.Cluster, specHash string, credentials []credentialsKeyInfo, exec ledgerctlExec) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	name := resourceName(ledger.Name)
+	name := clusterBaseName(ledger)
 
 	// Determine the TLS_MODE to apply this pass. The operator walks the
 	// StatefulSet through "optional" during a toggle so peers on either side
@@ -100,7 +100,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 					sts.Spec.MinReadySeconds = desired.MinReadySeconds
 				}
 
-				return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
+				return setOwnedControllerReference(ledger, sts, r.Scheme, "StatefulSet")
 			})
 			ledger.Spec.Replicas = savedReplicas
 			if err != nil {
@@ -134,6 +134,9 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	// VCTs are immutable — we must delete-recreate with orphan propagation.
 	existing := &appsv1.StatefulSet{}
 	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, existing); err == nil {
+		if notControlledBy(existing, ledger) {
+			return ctrl.Result{}, nameConflictError(name, []string{describeOwnership("StatefulSet", existing, ledger)})
+		}
 		if volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
 			logger.Info("VolumeClaimTemplates changed, recreating StatefulSet with orphan propagation")
 			orphan := metav1.DeletePropagationOrphan
@@ -165,7 +168,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			sts.Spec.MinReadySeconds = desired.MinReadySeconds
 		}
 
-		return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
+		return setOwnedControllerReference(ledger, sts, r.Scheme, "StatefulSet")
 	})
 	if err != nil {
 		return ctrl.Result{}, err
@@ -174,7 +177,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	// After the StatefulSet is updated (pods terminated), delete orphaned PVCs.
 	if scalingDown && r.Clientset != nil {
 		volNames := pvcVolumeNames(&ledger.Spec.Persistence)
-		if err := deleteScaledDownPVCs(ctx, r.Clientset, ledger.Namespace, name, previousReplicas, desiredReplicas, volNames); err != nil {
+		if err := deleteScaledDownPVCs(ctx, r.Clientset, ledger, previousReplicas, desiredReplicas, volNames); err != nil {
 			return ctrl.Result{}, fmt.Errorf("deleting PVCs after scale-down: %w", err)
 		}
 	}
@@ -223,9 +226,8 @@ func (r *ClusterReconciler) reconcileVolumeProtectionPass(ctx context.Context, l
 		desiredReplicas = *ledger.Spec.Replicas
 	}
 
-	name := resourceName(ledger.Name)
 	volNames := pvcVolumeNames(&ledger.Spec.Persistence)
-	pending, err := reconcileVolumeProtection(ctx, r.Clientset, ledger.Namespace, name, desiredReplicas, volNames, ledger.Spec.Persistence.DeletionProtectionEnabled())
+	pending, err := reconcileVolumeProtection(ctx, r.Clientset, ledger, desiredReplicas, volNames, ledger.Spec.Persistence.DeletionProtectionEnabled())
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("reconciling volume deletion-protection labels: %w", err)
 	}
@@ -251,7 +253,7 @@ func buildStatefulSetSpec(ledger *ledgerv1alpha1.Cluster, specHash string, crede
 	// clusters: etcd/raft only processes one ConfChange at a time and silently
 	// drops concurrent proposals, so nodes must join one at a time.
 	spec := appsv1.StatefulSetSpec{
-		ServiceName:         headlessServiceName(ledger.Name),
+		ServiceName:         headlessServiceName(ledger),
 		Replicas:            &replicas,
 		PodManagementPolicy: appsv1.OrderedReadyPodManagement,
 		UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
@@ -404,7 +406,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: authKeysConfigMapName(ledger.Name),
+						Name: authKeysConfigMapName(ledger),
 					},
 				},
 			},
@@ -420,7 +422,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 	if shouldInjectClusterSecret(targetTLSMode) {
 		envVars = append(envVars, secretKeyEnv(
 			"CLUSTER_SECRET",
-			clusterSecretName(ledger.Name),
+			clusterSecretName(ledger),
 			clusterSecretKey,
 		))
 	}
@@ -616,7 +618,7 @@ func buildCommand(ledger *ledgerv1alpha1.Cluster) []string {
 	if spec.Restore {
 		clusterLogic = `CLUSTER_FLAG="--restore"`
 	} else {
-		bootstrap0 := fmt.Sprintf("%s.%s.${POD_NAMESPACE}.svc.cluster.local", podName(ledger.Name, 0), headlessServiceName(ledger.Name))
+		bootstrap0 := fmt.Sprintf("%s.%s.${POD_NAMESPACE}.svc.cluster.local", podName(ledger, 0), headlessServiceName(ledger))
 		// --join targets the RaftServer (inter-node port), not the
 		// external GRPC service port. The joining node calls
 		// ClusterBootstrapService.GetPeers / JoinAsLearner there,

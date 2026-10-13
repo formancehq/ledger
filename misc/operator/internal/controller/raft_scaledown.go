@@ -109,9 +109,9 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 ) error {
 	logger := log.FromContext(ctx)
 	grpcPort := ledger.Spec.GrpcPort
-	pod0 := podName(ledger.Name, 0)
+	pod0 := podName(ledger, 0)
 	container := "ledger"
-	serverAddr := podSelfServerAddr(headlessServiceName(ledger.Name), grpcPort)
+	serverAddr := podSelfServerAddr(headlessServiceName(ledger), grpcPort)
 
 	// Transfer leadership to node 1 (pod-0) so the leader is never among the removed nodes.
 	logger.Info("transferring Raft leadership to node 1 before scale-down")
@@ -144,7 +144,7 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 	)
 	for ordinal := currentReplicas - 1; ordinal >= desiredReplicas; ordinal-- {
 		nodeID := ordinal + 1
-		pod := podName(ledger.Name, int(ordinal))
+		pod := podName(ledger, int(ordinal))
 
 		crashed := isPodCrashed(ctx, clientset, ledger.Namespace, pod)
 		n := nodeToRemove{ordinal: ordinal, nodeID: nodeID, crashed: crashed}
@@ -477,28 +477,28 @@ func isAlreadyLeader(stderr string) bool {
 // no PVC to clean up. This must be called after the StatefulSet update so the
 // pods are already terminated.
 func deleteScaledDownPVCs(ctx context.Context, clientset kubernetes.Interface,
-	namespace, stsName string, previousReplicas, currentReplicas int32,
+	cluster *ledgerv1alpha1.Cluster, previousReplicas, currentReplicas int32,
 	volumeNames []string,
 ) error {
 	logger := log.FromContext(ctx)
-	pvcs := clientset.CoreV1().PersistentVolumeClaims(namespace)
+	pvcs := clientset.CoreV1().PersistentVolumeClaims(cluster.Namespace)
 
 	for ordinal := previousReplicas - 1; ordinal >= currentReplicas; ordinal-- {
 		for _, vol := range volumeNames {
-			pvcName := fmt.Sprintf("%s-%s-%d", vol, stsName, ordinal)
+			claimName := pvcName(cluster, vol, ordinal)
 			logger.Info("deleting PVC for removed replica",
-				"pvc", pvcName,
+				"pvc", claimName,
 				"ordinal", ordinal,
 			)
-			if err := pvcs.Delete(ctx, pvcName, metav1.DeleteOptions{}); err != nil {
+			if err := pvcs.Delete(ctx, claimName, metav1.DeleteOptions{}); err != nil {
 				// Already gone — idempotent.
 				if strings.Contains(err.Error(), "not found") {
-					logger.Info("PVC already deleted, skipping", "pvc", pvcName)
+					logger.Info("PVC already deleted, skipping", "pvc", claimName)
 
 					continue
 				}
 
-				return fmt.Errorf("deleting PVC %s: %w", pvcName, err)
+				return fmt.Errorf("deleting PVC %s: %w", claimName, err)
 			}
 		}
 	}

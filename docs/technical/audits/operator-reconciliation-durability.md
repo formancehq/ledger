@@ -59,6 +59,20 @@ Subsequent container starts resolve current Secret values; existing process
 environments do not change on Secret updates. Check these transitions separately
 from confidentiality, which is owned by `sensitive-data-exposure-boundaries`.
 
+## Derived resource names
+
+Cluster-derived object names are not unique by construction:
+`spec.resourceName` lets two Clusters, or a Cluster and an unrelated object,
+share a base name (see
+[resource naming](../architecture/subsystems/operator/resource-naming.md)).
+A name match is never proof of ownership. A finding here must show a reachable
+path that creates, adopts, mutates, deletes, reports or execs into an object
+under a derived name without first establishing that the Cluster's UID controls
+it, or that derives the name from a CR name string instead of the Cluster
+object. A same-name replacement waiting for garbage collection, or a refused
+orphaned object, is the documented `ResourceNamesAvailable=False` behaviour,
+not a defect by itself.
+
 ## Severity
 
 Use the native P0–P3 scale with demonstrated impact and explicit preconditions:

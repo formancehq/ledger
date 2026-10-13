@@ -82,7 +82,7 @@ func backupServerAddr(ls *ledgerv1alpha1.Cluster) string {
 		port = 8888
 	}
 
-	return fmt.Sprintf("%s.%s.svc.cluster.local:%d", resourceName(ls.Name), ls.Namespace, port)
+	return fmt.Sprintf("%s.%s.svc.cluster.local:%d", clusterBaseName(ls), ls.Namespace, port)
 }
 
 // backupJobName returns the Job name for a given BackupRun.
@@ -160,7 +160,7 @@ func buildBackupJob(
 			Name: "CLUSTER_SECRET",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: clusterSecretName(ls.Name)},
+					LocalObjectReference: corev1.LocalObjectReference{Name: clusterSecretName(ls)},
 					Key:                  clusterSecretKey,
 				},
 			},

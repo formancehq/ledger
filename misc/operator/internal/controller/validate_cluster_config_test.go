@@ -14,23 +14,51 @@ import (
 func TestValidateSpec_NameLengthBoundary(t *testing.T) {
 	t.Parallel()
 
-	// The headless Service name is the tightest derived label:
-	// len("ledger-" + name + "-headless") = 16 + len(name) must stay <= 63,
-	// so a CR name of 47 chars is the longest accepted (47+16 = 63).
-	name47 := strings.Repeat("a", 47)
-	name48 := strings.Repeat("a", 48)
+	// The StatefulSet name ("ledger-" + name) is the tightest derived name:
+	// pods carry controller-revision-hash=<statefulset>-<10-char hash>, a
+	// label value capped at 63 chars, so the StatefulSet name is capped at 52
+	// and a CR name of 45 chars is the longest accepted (7+45 = 52).
+	require.Equal(t, 52, statefulSetNameMaxLength)
+	name45 := strings.Repeat("a", 45)
+	name46 := strings.Repeat("a", 46)
 
-	require.Len(t, headlessServiceName(name47), dns1035LabelMaxLength)
+	require.Len(t, clusterBaseName(clusterNamed(name45)), statefulSetNameMaxLength)
+	require.LessOrEqual(t, len(headlessServiceName(clusterNamed(name45))), dns1035LabelMaxLength)
 
 	require.NoError(t, validateSpec(&ledgerv1alpha1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{Name: name47},
-	}), "a 47-char name yields a 63-char headless Service name and must be accepted")
+		ObjectMeta: metav1.ObjectMeta{Name: name45},
+	}), "a 45-char name yields a 52-char StatefulSet name and must be accepted")
 
 	err := validateSpec(&ledgerv1alpha1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{Name: name48},
+		ObjectMeta: metav1.ObjectMeta{Name: name46},
 	})
-	require.Error(t, err, "a 48-char name overflows the 63-char DNS-1035 limit and must be rejected")
-	assert.Contains(t, err.Error(), headlessServiceName(name48))
+	require.Error(t, err, "a 46-char name yields a 53-char StatefulSet name and must be rejected")
+	assert.Contains(t, err.Error(), clusterBaseName(clusterNamed(name46)))
+	assert.Contains(t, err.Error(), "52-char limit")
+	assert.Contains(t, err.Error(), "controller-revision-hash")
+}
+
+func TestValidateSpec_ResourceNameLengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	// spec.resourceName is the StatefulSet name itself: 52 chars is the
+	// longest accepted (controller-revision-hash label limit).
+	rn52 := strings.Repeat("b", 52)
+	rn53 := strings.Repeat("b", 53)
+
+	require.NoError(t, validateSpec(clusterWithResourceName("x", rn52)),
+		"a 52-char resourceName fits the StatefulSet name limit and must be accepted")
+
+	err := validateSpec(clusterWithResourceName("x", rn53))
+	require.Error(t, err, "a 53-char resourceName exceeds the StatefulSet name limit and must be rejected")
+	assert.Contains(t, err.Error(), "resourceName")
+	assert.Contains(t, err.Error(), rn53)
+	assert.Contains(t, err.Error(), "52-char limit")
+	assert.Contains(t, err.Error(), "controller-revision-hash")
+
+	// The override bounds the derived names, not the CR name: a CR name too
+	// long for the default "ledger-<name>" base is accepted with a short one.
+	require.NoError(t, validateSpec(clusterWithResourceName(strings.Repeat("a", 60), "payments")))
 }
 
 func TestValidateClusterConfig_AcceptsNilAndEmpty(t *testing.T) {

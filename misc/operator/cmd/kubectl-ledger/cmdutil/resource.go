@@ -20,10 +20,11 @@ const (
 	LabelValue    = "ledger"
 
 	// resourcePrefix mirrors internal/controller.resourcePrefix (names.go), the
-	// source of truth. The operator prefixes every object it creates with it, so
-	// a Cluster's StatefulSet is named "ledger-<cr>", not "<cr>" (EN-1319).
-	// Duplicated here because that const is unexported and importing the
-	// controller package would pull controller-runtime into this CLI.
+	// source of truth. Unless spec.resourceName overrides the base name, the
+	// operator prefixes every object it creates with it, so a Cluster's
+	// StatefulSet is named "ledger-<cr>", not "<cr>" (EN-1319). Duplicated
+	// here because that const is unexported and importing the controller
+	// package would pull controller-runtime into this CLI.
 	resourcePrefix = "ledger-"
 )
 
@@ -70,17 +71,27 @@ func ClusterPVCs(ctx context.Context, cs kubernetes.Interface, namespace, name s
 	})
 }
 
-// ClusterStatefulSet fetches the StatefulSet for a Cluster. The
-// operator names it "ledger-<cr>" (resourcePrefix), not the bare CR name.
-func ClusterStatefulSet(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*appsv1.StatefulSet, error) {
-	return cs.AppsV1().StatefulSets(namespace).Get(ctx, resourcePrefix+name, metav1.GetOptions{})
+// ClusterBaseName returns the base name of every object the operator derives
+// from a Cluster: spec.resourceName when set, otherwise "ledger-<cr>". It
+// mirrors internal/controller.clusterBaseName (names.go), the source of truth.
+func ClusterBaseName(ledger *ledgerv1alpha1.Cluster) string {
+	if ledger.Spec.ResourceName != "" {
+		return ledger.Spec.ResourceName
+	}
+
+	return resourcePrefix + ledger.Name
+}
+
+// ClusterStatefulSet fetches the StatefulSet for a Cluster. It is named after
+// the Cluster base name (see ClusterBaseName), not the bare CR name.
+func ClusterStatefulSet(ctx context.Context, cs kubernetes.Interface, ledger *ledgerv1alpha1.Cluster) (*appsv1.StatefulSet, error) {
+	return cs.AppsV1().StatefulSets(ledger.Namespace).Get(ctx, ClusterBaseName(ledger), metav1.GetOptions{})
 }
 
 // ClusterPodName returns the name of the ordinal-th StatefulSet pod for a
-// Cluster. The operator names pods "ledger-<cr>-<ordinal>" (resourcePrefix),
-// not "<cr>-<ordinal>".
-func ClusterPodName(name string, ordinal int) string {
-	return fmt.Sprintf("%s%s-%d", resourcePrefix, name, ordinal)
+// Cluster: "<base>-<ordinal>" with base = ClusterBaseName, not "<cr>-<ordinal>".
+func ClusterPodName(ledger *ledgerv1alpha1.Cluster, ordinal int) string {
+	return fmt.Sprintf("%s-%d", ClusterBaseName(ledger), ordinal)
 }
 
 // Clusters lists services matching the selector labels for a Cluster.
