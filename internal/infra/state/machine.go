@@ -1780,13 +1780,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}, nil
 }
 
-// auditedFailurePresentation renders every audited rejection from its stable
-// facts, with or without an idempotency key, while retaining the original error
-// in the chain for internal callers.
+// auditedFailurePresentation retains the typed error and its own public
+// presentation. Audit facts are stored separately and may contain private
+// correlators that the error deliberately redacts from API responses.
 func auditedFailurePresentation(err domain.SerializableError) *domain.BusinessError {
-	facts := domain.FailureFactsOf(err)
-
-	return &domain.BusinessError{Err: err, PublicFailure: &facts}
+	return &domain.BusinessError{Err: err}
 }
 
 // recordIdempotencyFailure freezes a definitive business rejection against the

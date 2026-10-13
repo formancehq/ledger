@@ -66,6 +66,13 @@ func TestScope_CoverageMissDoesNotFreezeIdempotency(t *testing.T) {
 	var miss *ErrCoverageMiss
 	require.ErrorAs(t, result.Results[0].Error, &miss)
 	require.Equal(t, "ledgers", miss.Attribute)
+	var business *domain.BusinessError
+	require.ErrorAs(t, result.Results[0].Error, &business)
+	message, metadata, overridden := domain.PublicErrorDetails(business)
+	require.True(t, overridden)
+	require.Equal(t, "preload coverage miss", message)
+	require.Empty(t, metadata)
+	require.NotEmpty(t, buildAuditFailure(miss).GetFacts(), "audit retains the private coverage correlators")
 	_, frozen := fsm.Registry.Idempotency.Get("retryable")
 	require.False(t, frozen)
 
