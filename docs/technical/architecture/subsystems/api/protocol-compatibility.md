@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"32"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"34"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -80,7 +80,7 @@ including SDKs, automation, `grpcurl`, and internal requests forwarded to a
 leader. For example, with a schema implementing revision 34:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 33' \
+grpcurl -plaintext -H 'ledger-protocol-version: 34' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
