@@ -468,6 +468,7 @@ docker-build-pr image: (_assert-pr-image image)
     image='{{ image }}'
     export IMAGE_REPOSITORY="${image%:*}"
     export PR_IMAGE_TAG="${image##*:}"
+    export IMAGE_PROVENANCE=mode=min
     # GITHUB_TOKEN is removed on purpose: a PR build must never reach the GitHub
     # releases API, even if a release step were enabled by mistake.
     env -u GITHUB_TOKEN -u GH_TOKEN \
