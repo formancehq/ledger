@@ -80,7 +80,7 @@ The disjoint encoding pays exactly `len(ephemeral)` per log instead of `2 × len
 2. `splitPurged(partResult.purged)` (new, in `write_set_new_volumes.go`) partitions `purged` further into:
    - **ephemeral**: `!Old.IsDefined()` — the key had no prior persisted state, was touched, immediately purged.
    - **draining**: `Old.IsDefined()` — it had a prior persisted value, reached zero balance, and was evicted.
-3. `partitionVolumes` classifies `newKept` using the same defined-versus-tombstoned distinction. `makeNewKeptKeySet(partResult.newKept)` turns that classification into the annotation set.
+3. `makeNewKeptKeySet(partResult.kept)` (new) yields the subset of `kept` where `!Old.IsDefined()` — the same defined-versus-tombstoned distinction — i.e. new persistent volumes.
 4. `buildTouchedByLog(volumes.Slots(), setX)` (new, generalised from the previous `buildPurgedByLog`) intersects the per-order touched-volume tracking with each of the three sets to produce the per-log annotation lists. Deduplication + deterministic sort by (account, asset) keeps the log payload byte-identical across nodes.
 
 The three lists are injected into each `LedgerLog` inside the same `createdLogs` build loop that also injects `purged_volumes`. Note the audit hash chain does **not** cover `LedgerLog` content — it binds the audit header plus each item's order index, log sequence, and serialized order (see [Checker consumer](#checker-consumer) for what this means for tamper detection of the derived counters).
