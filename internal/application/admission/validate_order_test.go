@@ -34,6 +34,18 @@ func TestValidateOrder_AccountTypeFactBounds(t *testing.T) {
 	remove := order()
 	remove.GetLedgerScoped().GetApply().Data = &raftcmdpb.LedgerApplyOrder_RemoveAccountType{RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{Name: strings.Repeat("a", 257)}}
 	require.ErrorIs(t, validateOrder(remove), domain.ErrAccountTypeNameTooLong)
+
+	create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{
+			AccountTypes: map[string]*commonpb.AccountType{strings.Repeat("a", 257): {Pattern: "wallet:{id}"}},
+		}},
+	}}}
+	require.ErrorIs(t, validateOrder(create), domain.ErrAccountTypeNameTooLong)
+
+	create.GetLedgerScoped().GetCreateLedger().AccountTypes = map[string]*commonpb.AccountType{
+		"wallet": {Pattern: strings.Repeat("a", 4097)},
+	}
+	require.ErrorIs(t, validateOrder(create), domain.ErrAccountTypePatternTooLong)
 }
 
 func TestValidateOrder_TransactionReferenceFactBound(t *testing.T) {

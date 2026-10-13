@@ -2,7 +2,9 @@ package admission
 
 import (
 	"crypto/ed25519"
+	"maps"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -64,7 +66,23 @@ func validateOrder(order *raftcmdpb.Order) error {
 // oversized audited failure facts. The same bounds run in the FSM for orders
 // received directly from Raft or replayed by the checker.
 func validateOrderAccountType(order *raftcmdpb.Order) domain.Describable {
-	apply, ok := order.GetLedgerScoped().GetPayload().(*raftcmdpb.LedgerScopedOrder_Apply)
+	ledgerScoped := order.GetLedgerScoped()
+	if create, ok := ledgerScoped.GetPayload().(*raftcmdpb.LedgerScopedOrder_CreateLedger); ok {
+		for _, name := range slices.Sorted(maps.Keys(create.CreateLedger.GetAccountTypes())) {
+			if len(name) > domain.MaxAccountTypeNameLength {
+				return domain.ErrAccountTypeNameTooLong
+			}
+			if name == "" {
+				return &domain.ErrInvalidPattern{Pattern: "", Details: "account type name is required"}
+			}
+			if len(create.CreateLedger.GetAccountTypes()[name].GetPattern()) > domain.MaxAccountTypePatternLength {
+				return domain.ErrAccountTypePatternTooLong
+			}
+		}
+		return nil
+	}
+
+	apply, ok := ledgerScoped.GetPayload().(*raftcmdpb.LedgerScopedOrder_Apply)
 	if !ok {
 		return nil
 	}
