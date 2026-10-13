@@ -107,9 +107,25 @@ func TestVerifySkippedOrder_RejectsKindInternal(t *testing.T) {
 		7: {reasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN}},
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN)
+	payload := skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN, nil)
 	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "KindInternal reason")
+}
+
+// Missing typed details must fail at the structured-failure boundary, without
+// being mistaken for coverage of a later reason-specific guard.
+func TestVerifySkippedOrder_RejectsMissingDetails(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {reasons: []commonpb.ErrorReason{reason}},
+	}
+
+	events := captureEvents(t, "L", 7, skippedPayload(reason), expected, nil)
+	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "invalid structured skip failure")
 }
 
 // TestVerifySkippedOrder_RejectsUnspecified covers UNSPECIFIED tampering.
@@ -133,9 +149,12 @@ func TestVerifySkippedOrder_RejectsReasonOutsideWhitelist(t *testing.T) {
 		7: {reasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}},
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS)
+	payload := skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS, map[string]string{
+		"account": "assets:cash", "asset": "USD/2", "amount": "10", "balance": "0",
+	})
 	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "not in the originating order's skippable_reasons whitelist")
 }
 
 // TestVerifySkippedOrder_RejectsWhitelistedReasonWithoutReplayBranch pins
@@ -161,9 +180,10 @@ func TestVerifySkippedOrder_RejectsWhitelistedReasonWithoutReplayBranch(t *testi
 		7: {reasons: []commonpb.ErrorReason{reason}, ledger: "L"},
 	}
 
-	payload := skippedPayload(reason)
+	payload := skippedPayloadWithContext(reason, map[string]string{"name": "L"})
 	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
+	require.Contains(t, events[0].GetError().GetMessage(), "no reason-specific replay branch")
 }
 
 // TestVerifySkippedOrder_RejectsMissingExpectedEntry covers fabrication.
