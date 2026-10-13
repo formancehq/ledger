@@ -11,12 +11,15 @@ type V2GetExporterStateRequest struct {
 	ExporterID string `pathParam:"style=simple,explode=false,name=exporterID"`
 }
 
-func (o *V2GetExporterStateRequest) GetExporterID() string {
-	if o == nil {
+func (v *V2GetExporterStateRequest) GetExporterID() string {
+	if v == nil {
 		return ""
 	}
-	return o.ExporterID
+	return v.ExporterID
 }
+
+// #region class-body-v2getexporterstaterequest
+// #endregion class-body-v2getexporterstaterequest
 
 type V2GetExporterStateResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -24,16 +27,19 @@ type V2GetExporterStateResponse struct {
 	V2GetExporterStateResponse *components.V2GetExporterStateResponse
 }
 
-func (o *V2GetExporterStateResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2GetExporterStateResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2GetExporterStateResponse) GetV2GetExporterStateResponse() *components.V2GetExporterStateResponse {
-	if o == nil {
+func (v *V2GetExporterStateResponse) GetV2GetExporterStateResponse() *components.V2GetExporterStateResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2GetExporterStateResponse
+	return v.V2GetExporterStateResponse
 }
+
+// #region class-body-v2getexporterstateresponse
+// #endregion class-body-v2getexporterstateresponse

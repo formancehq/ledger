@@ -145,7 +145,7 @@ var _ = Context("Ledger account metadata deleted after a pit", func() {
 
 		_, err = client.Ledger.V2.ImportLogs(ctx, operations.V2ImportLogsRequest{
 			Ledger:              "replica",
-			V2ImportLogsRequest: export.HTTPMeta.Response.Body,
+			V2ImportLogsRequest: export.Bytes,
 		})
 		Expect(err).To(BeNil())
 

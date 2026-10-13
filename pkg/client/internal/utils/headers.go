@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+
+	"github.com/formancehq/ledger/pkg/client/optionalnullable"
 )
 
 func PopulateHeaders(_ context.Context, req *http.Request, headers interface{}, globals interface{}) {
@@ -43,6 +45,12 @@ func populateHeaders(headers interface{}, globals interface{}, reqHeaders http.H
 			continue
 		}
 
+		defaultConstValue := handleDefaultConstHeaderValue(valType, fieldType.Tag)
+		if defaultConstValue != "" {
+			reqHeaders.Add(tag.ParamName, defaultConstValue)
+			continue
+		}
+
 		value := serializeHeader(fieldType.Type, valType, tag.Explode)
 		if value != "" {
 			reqHeaders.Add(tag.ParamName, value)
@@ -50,6 +58,22 @@ func populateHeaders(headers interface{}, globals interface{}, reqHeaders http.H
 	}
 
 	return globalsAlreadyPopulated
+}
+
+func handleDefaultConstHeaderValue(v reflect.Value, tag reflect.StructTag) string {
+	constTag := tag.Get("const")
+	if constTag != "" {
+		return constTag
+	}
+
+	if isNil(v.Type(), v) {
+		defaultTag := tag.Get("default")
+		if defaultTag != "" {
+			return defaultTag
+		}
+	}
+
+	return ""
 }
 
 func serializeHeader(objType reflect.Type, objValue reflect.Value, explode bool) string {
@@ -89,15 +113,34 @@ func serializeHeader(objType reflect.Type, objValue reflect.Value, explode bool)
 				continue
 			}
 
-			if explode {
-				items = append(items, fmt.Sprintf("%s=%s", fieldName, valToString(valType.Interface())))
+			var value string
+
+			defaultConstValue := handleDefaultConstHeaderValue(valType, fieldType.Tag)
+			if defaultConstValue != "" {
+				value = defaultConstValue
 			} else {
-				items = append(items, fieldName, valToString(valType.Interface()))
+				value = valToString(valType.Interface())
+			}
+
+			if explode {
+				items = append(items, fmt.Sprintf("%s=%s", fieldName, value))
+			} else {
+				items = append(items, fieldName, value)
 			}
 		}
 
 		return strings.Join(items, ",")
 	case reflect.Map:
+		// check if optionalnullable.OptionalNullable[T]
+		if nullableValue, ok := optionalnullable.AsOptionalNullable(objValue); ok {
+			// Handle optionalnullable.OptionalNullable[T] using GetUntyped method
+			if value, isSet := nullableValue.GetUntyped(); isSet && value != nil {
+				return valToString(value)
+			}
+			// If not set or explicitly null, return empty string
+			return ""
+		}
+
 		items := []string{}
 
 		iter := objValue.MapRange()

@@ -2,21 +2,41 @@
 
 package components
 
+import (
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
+)
+
 type V2QueryTemplateVar struct {
-	Type    string `json:"type"`
-	Default any    `json:"default,omitempty"`
+	// Type of the variable
+	Type string `json:"type"`
+	// Value used when the variable is not supplied at query time
+	Default any `json:"default,omitempty"`
 }
 
-func (o *V2QueryTemplateVar) GetType() string {
-	if o == nil {
+func (v V2QueryTemplateVar) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
+}
+
+func (v *V2QueryTemplateVar) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"type"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2QueryTemplateVar) GetType() string {
+	if v == nil {
 		return ""
 	}
-	return o.Type
+	return v.Type
 }
 
-func (o *V2QueryTemplateVar) GetDefault() any {
-	if o == nil {
+func (v *V2QueryTemplateVar) GetDefault() any {
+	if v == nil {
 		return nil
 	}
-	return o.Default
+	return v.Default
 }
+
+// #region class-body-v2querytemplatevar
+// #endregion class-body-v2querytemplatevar

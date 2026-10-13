@@ -1,5 +1,17 @@
 # V2ErrorsEnum
 
+Machine-readable error code identifying the failure
+
+## Example Usage
+
+```go
+import (
+	"github.com/formancehq/ledger/pkg/client/models/components"
+)
+
+value := components.V2ErrorsEnumInternal
+```
+
 
 ## Values
 

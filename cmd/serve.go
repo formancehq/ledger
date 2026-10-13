@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
@@ -136,6 +137,7 @@ func NewServeCommand() *cobra.Command {
 					SchemaEnforcementMode: cfg.commonConfig.SchemaEnforcementMode,
 				}),
 				bus.NewFxModule(),
+				ballastModule(cfg.BallastSizeInBytes),
 				api.Module(api.Config{
 					Version: Version,
 					Debug:   service.IsDebug(cmd),
@@ -280,6 +282,26 @@ func assembleFinalRouter(
 	wrappedRouter.Mount("/", handler)
 
 	return wrappedRouter
+}
+
+func ballastModule(sizeInBytes uint) fx.Option {
+	if sizeInBytes == 0 {
+		return fx.Options()
+	}
+	return fx.Invoke(func(lc fx.Lifecycle) {
+		var ballast []byte
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				ballast = make([]byte, 0, sizeInBytes)
+				_ = ballast
+				return nil
+			},
+			OnStop: func(ctx context.Context) error {
+				ballast = nil
+				return nil
+			},
+		})
+	})
 }
 
 func experimentalFeatures(cfg *ServeCommandConfig) []string {

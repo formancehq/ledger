@@ -6,14 +6,30 @@ import (
 	"github.com/formancehq/ledger/pkg/client/internal/utils"
 )
 
+// DotSelf - Rules and metadata applied to the segment's own account, as opposed to its children
 type DotSelf struct {
+}
+
+func (d DotSelf) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(d, "", false)
+}
+
+func (d *DotSelf) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &d, "", false, nil); err != nil {
+		return err
+	}
+	return nil
 }
 
 // V2ChartSegment - Segment within a chart of accounts
 type V2ChartSegment struct {
-	DotSelf              *DotSelf                          `json:".self,omitempty"`
-	DotPattern           *string                           `json:".pattern,omitempty"`
-	DotRules             *V2ChartAccountRules              `json:".rules,omitempty"`
+	// Rules and metadata applied to the segment's own account, as opposed to its children
+	DotSelf *DotSelf `json:".self,omitempty"`
+	// Regular expression every child segment name must match
+	DotPattern *string `json:".pattern,omitempty"`
+	// Rules applied to accounts matching a chart-of-accounts segment
+	DotRules *V2ChartAccountRules `json:".rules,omitempty"`
+	// Metadata applied to accounts matching this segment, keyed by metadata key
 	DotMetadata          map[string]V2ChartAccountMetadata `json:".metadata,omitempty"`
 	AdditionalProperties map[string]V2ChartSegment         `additionalProperties:"true" json:"-"`
 }
@@ -23,43 +39,46 @@ func (v V2ChartSegment) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2ChartSegment) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2ChartSegment) GetDotSelf() *DotSelf {
-	if o == nil {
+func (v *V2ChartSegment) GetDotSelf() *DotSelf {
+	if v == nil {
 		return nil
 	}
-	return o.DotSelf
+	return v.DotSelf
 }
 
-func (o *V2ChartSegment) GetDotPattern() *string {
-	if o == nil {
+func (v *V2ChartSegment) GetDotPattern() *string {
+	if v == nil {
 		return nil
 	}
-	return o.DotPattern
+	return v.DotPattern
 }
 
-func (o *V2ChartSegment) GetDotRules() *V2ChartAccountRules {
-	if o == nil {
+func (v *V2ChartSegment) GetDotRules() *V2ChartAccountRules {
+	if v == nil {
 		return nil
 	}
-	return o.DotRules
+	return v.DotRules
 }
 
-func (o *V2ChartSegment) GetDotMetadata() map[string]V2ChartAccountMetadata {
-	if o == nil {
+func (v *V2ChartSegment) GetDotMetadata() map[string]V2ChartAccountMetadata {
+	if v == nil {
 		return nil
 	}
-	return o.DotMetadata
+	return v.DotMetadata
 }
 
-func (o *V2ChartSegment) GetAdditionalProperties() map[string]V2ChartSegment {
-	if o == nil {
+func (v *V2ChartSegment) GetAdditionalProperties() map[string]V2ChartSegment {
+	if v == nil {
 		return nil
 	}
-	return o.AdditionalProperties
+	return v.AdditionalProperties
 }
+
+// #region class-body-v2chartsegment
+// #endregion class-body-v2chartsegment

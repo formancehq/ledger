@@ -17,18 +17,18 @@ type GetAccountRequest struct {
 	Address string `pathParam:"style=simple,explode=false,name=address"`
 }
 
-func (o *GetAccountRequest) GetLedger() string {
-	if o == nil {
+func (g *GetAccountRequest) GetLedger() string {
+	if g == nil {
 		return ""
 	}
-	return o.Ledger
+	return g.Ledger
 }
 
-func (o *GetAccountRequest) GetAddress() string {
-	if o == nil {
+func (g *GetAccountRequest) GetAddress() string {
+	if g == nil {
 		return ""
 	}
-	return o.Address
+	return g.Address
 }
 
 type GetAccountResponse struct {
@@ -37,16 +37,16 @@ type GetAccountResponse struct {
 	AccountResponse *components.AccountResponse
 }
 
-func (o *GetAccountResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (g *GetAccountResponse) GetHTTPMeta() components.HTTPMetadata {
+	if g == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return g.HTTPMeta
 }
 
-func (o *GetAccountResponse) GetAccountResponse() *components.AccountResponse {
-	if o == nil {
+func (g *GetAccountResponse) GetAccountResponse() *components.AccountResponse {
+	if g == nil {
 		return nil
 	}
-	return o.AccountResponse
+	return g.AccountResponse
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 )
 
+// V2QueryResource - The resource a query template targets
 type V2QueryResource string
 
 const (

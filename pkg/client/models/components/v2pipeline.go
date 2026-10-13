@@ -8,7 +8,9 @@ import (
 )
 
 type V2Pipeline struct {
-	Ledger     string    `json:"ledger"`
+	// Name of the ledger the pipeline reads from
+	Ledger string `json:"ledger"`
+	// Identifier of the exporter the pipeline feeds
 	ExporterID string    `json:"exporterID"`
 	ID         string    `json:"id"`
 	CreatedAt  time.Time `json:"createdAt"`
@@ -21,50 +23,53 @@ func (v V2Pipeline) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2Pipeline) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2Pipeline) GetLedger() string {
-	if o == nil {
+func (v *V2Pipeline) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2Pipeline) GetExporterID() string {
-	if o == nil {
+func (v *V2Pipeline) GetExporterID() string {
+	if v == nil {
 		return ""
 	}
-	return o.ExporterID
+	return v.ExporterID
 }
 
-func (o *V2Pipeline) GetID() string {
-	if o == nil {
+func (v *V2Pipeline) GetID() string {
+	if v == nil {
 		return ""
 	}
-	return o.ID
+	return v.ID
 }
 
-func (o *V2Pipeline) GetCreatedAt() time.Time {
-	if o == nil {
+func (v *V2Pipeline) GetCreatedAt() time.Time {
+	if v == nil {
 		return time.Time{}
 	}
-	return o.CreatedAt
+	return v.CreatedAt
 }
 
-func (o *V2Pipeline) GetLastLogID() *int64 {
-	if o == nil {
+func (v *V2Pipeline) GetLastLogID() *int64 {
+	if v == nil {
 		return nil
 	}
-	return o.LastLogID
+	return v.LastLogID
 }
 
-func (o *V2Pipeline) GetEnabled() *bool {
-	if o == nil {
+func (v *V2Pipeline) GetEnabled() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.Enabled
+	return v.Enabled
 }
+
+// #region class-body-v2pipeline
+// #endregion class-body-v2pipeline

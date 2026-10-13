@@ -2,37 +2,42 @@
 
 package components
 
+// ConfigInfo - Configuration and version information for the ledger server
 type ConfigInfo struct {
-	Config               Config   `json:"config"`
-	Server               string   `json:"server"`
-	Version              string   `json:"version"`
+	// Configuration the ledger server is running with
+	Config Config `json:"config"`
+	// Name of the server serving the API
+	Server string `json:"server"`
+	// Version of the ledger service
+	Version string `json:"version"`
+	// Experimental feature flags enabled on this deployment
 	ExperimentalFeatures []string `json:"experimentalFeatures,omitempty"`
 }
 
-func (o *ConfigInfo) GetConfig() Config {
-	if o == nil {
+func (c *ConfigInfo) GetConfig() Config {
+	if c == nil {
 		return Config{}
 	}
-	return o.Config
+	return c.Config
 }
 
-func (o *ConfigInfo) GetServer() string {
-	if o == nil {
+func (c *ConfigInfo) GetServer() string {
+	if c == nil {
 		return ""
 	}
-	return o.Server
+	return c.Server
 }
 
-func (o *ConfigInfo) GetVersion() string {
-	if o == nil {
+func (c *ConfigInfo) GetVersion() string {
+	if c == nil {
 		return ""
 	}
-	return o.Version
+	return c.Version
 }
 
-func (o *ConfigInfo) GetExperimentalFeatures() []string {
-	if o == nil {
+func (c *ConfigInfo) GetExperimentalFeatures() []string {
+	if c == nil {
 		return nil
 	}
-	return o.ExperimentalFeatures
+	return c.ExperimentalFeatures
 }

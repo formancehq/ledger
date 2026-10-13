@@ -8,10 +8,14 @@ import (
 )
 
 type Posting struct {
-	Amount      *big.Int `json:"amount"`
-	Asset       string   `json:"asset"`
-	Destination string   `json:"destination"`
-	Source      string   `json:"source"`
+	// Amount to move, as an arbitrary-precision integer expressed in the asset's smallest unit
+	Amount *big.Int `json:"amount"`
+	// The asset being moved, optionally carrying a scale suffix such as USD/2
+	Asset string `json:"asset"`
+	// Address of the account credited by this posting
+	Destination string `json:"destination"`
+	// Address of the account debited by this posting
+	Source string `json:"source"`
 }
 
 func (p Posting) MarshalJSON() ([]byte, error) {
@@ -19,36 +23,36 @@ func (p Posting) MarshalJSON() ([]byte, error) {
 }
 
 func (p *Posting) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &p, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &p, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *Posting) GetAmount() *big.Int {
-	if o == nil {
+func (p *Posting) GetAmount() *big.Int {
+	if p == nil {
 		return big.NewInt(0)
 	}
-	return o.Amount
+	return p.Amount
 }
 
-func (o *Posting) GetAsset() string {
-	if o == nil {
+func (p *Posting) GetAsset() string {
+	if p == nil {
 		return ""
 	}
-	return o.Asset
+	return p.Asset
 }
 
-func (o *Posting) GetDestination() string {
-	if o == nil {
+func (p *Posting) GetDestination() string {
+	if p == nil {
 		return ""
 	}
-	return o.Destination
+	return p.Destination
 }
 
-func (o *Posting) GetSource() string {
-	if o == nil {
+func (p *Posting) GetSource() string {
+	if p == nil {
 		return ""
 	}
-	return o.Source
+	return p.Source
 }

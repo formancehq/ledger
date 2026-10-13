@@ -9,6 +9,11 @@ import (
 )
 
 type V2GetBalancesAggregatedRequest struct {
+	// When set to `true`, all bigint values in the response will be serialized
+	// as strings instead of JSON numbers.
+	// Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
+	//
+	FormanceBigintAsString *bool `default:"false" header:"style=simple,explode=false,name=Formance-Bigint-As-String"`
 	// Name of the ledger.
 	Ledger string     `pathParam:"style=simple,explode=false,name=ledger"`
 	Pit    *time.Time `queryParam:"style=form,explode=true,name=pit"`
@@ -22,39 +27,49 @@ func (v V2GetBalancesAggregatedRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2GetBalancesAggregatedRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2GetBalancesAggregatedRequest) GetLedger() string {
-	if o == nil {
+func (v *V2GetBalancesAggregatedRequest) GetFormanceBigintAsString() *bool {
+	if v == nil {
+		return nil
+	}
+	return v.FormanceBigintAsString
+}
+
+func (v *V2GetBalancesAggregatedRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2GetBalancesAggregatedRequest) GetPit() *time.Time {
-	if o == nil {
+func (v *V2GetBalancesAggregatedRequest) GetPit() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.Pit
+	return v.Pit
 }
 
-func (o *V2GetBalancesAggregatedRequest) GetUseInsertionDate() *bool {
-	if o == nil {
+func (v *V2GetBalancesAggregatedRequest) GetUseInsertionDate() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.UseInsertionDate
+	return v.UseInsertionDate
 }
 
-func (o *V2GetBalancesAggregatedRequest) GetRequestBody() map[string]any {
-	if o == nil {
+func (v *V2GetBalancesAggregatedRequest) GetRequestBody() map[string]any {
+	if v == nil {
 		return map[string]any{}
 	}
-	return o.RequestBody
+	return v.RequestBody
 }
+
+// #region class-body-v2getbalancesaggregatedrequest
+// #endregion class-body-v2getbalancesaggregatedrequest
 
 type V2GetBalancesAggregatedResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -62,16 +77,19 @@ type V2GetBalancesAggregatedResponse struct {
 	V2AggregateBalancesResponse *components.V2AggregateBalancesResponse
 }
 
-func (o *V2GetBalancesAggregatedResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2GetBalancesAggregatedResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2GetBalancesAggregatedResponse) GetV2AggregateBalancesResponse() *components.V2AggregateBalancesResponse {
-	if o == nil {
+func (v *V2GetBalancesAggregatedResponse) GetV2AggregateBalancesResponse() *components.V2AggregateBalancesResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2AggregateBalancesResponse
+	return v.V2AggregateBalancesResponse
 }
+
+// #region class-body-v2getbalancesaggregatedresponse
+// #endregion class-body-v2getbalancesaggregatedresponse

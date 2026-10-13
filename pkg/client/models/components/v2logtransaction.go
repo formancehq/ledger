@@ -10,22 +10,34 @@ import (
 
 // V2LogTransaction - Transaction structure as it appears in log payloads
 type V2LogTransaction struct {
-	ID         *big.Int          `json:"id"`
-	Postings   []V2Posting       `json:"postings"`
-	Metadata   map[string]string `json:"metadata"`
-	Timestamp  time.Time         `json:"timestamp"`
-	Reference  *string           `json:"reference,omitempty"`
-	InsertedAt *time.Time        `json:"insertedAt,omitempty"`
-	UpdatedAt  *time.Time        `json:"updatedAt,omitempty"`
-	RevertedAt *time.Time        `json:"revertedAt,omitempty"`
+	// Unique sequential identifier for this transaction within the ledger
+	ID *big.Int `json:"id"`
+	// The fund movements making up the transaction
+	Postings []V2Posting `json:"postings"`
+	// Arbitrary key/value pairs attached to the resource
+	Metadata map[string]string `json:"metadata"`
+	// The transaction time: when the transaction is considered to have occurred. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+	Timestamp time.Time `json:"timestamp"`
+	// Optional caller-supplied identifier, unique within the ledger
+	Reference *string `json:"reference,omitempty"`
+	// The request time: when the transaction was actually written to the ledger. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+	InsertedAt *time.Time `json:"insertedAt,omitempty"`
+	// When the transaction row was last modified
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+	// When the transaction was reverted, on the request-time axis
+	RevertedAt *time.Time `json:"revertedAt,omitempty"`
 	// Indicates if the transaction has been reverted
 	Reverted bool `json:"reverted"`
 	// Transaction template used
-	Template                   *string                        `json:"template,omitempty"`
-	PostCommitVolumes          map[string]map[string]V2Volume `json:"postCommitVolumes,omitempty"`
+	Template *string `json:"template,omitempty"`
+	// Volumes aggregated per account and per asset
+	PostCommitVolumes map[string]map[string]V2Volume `json:"postCommitVolumes,omitempty"`
+	// Volumes aggregated per account and per asset
 	PostCommitEffectiveVolumes map[string]map[string]V2Volume `json:"postCommitEffectiveVolumes,omitempty"`
-	PreCommitVolumes           map[string]map[string]V2Volume `json:"preCommitVolumes,omitempty"`
-	PreCommitEffectiveVolumes  map[string]map[string]V2Volume `json:"preCommitEffectiveVolumes,omitempty"`
+	// Volumes aggregated per account and per asset
+	PreCommitVolumes map[string]map[string]V2Volume `json:"preCommitVolumes,omitempty"`
+	// Volumes aggregated per account and per asset
+	PreCommitEffectiveVolumes map[string]map[string]V2Volume `json:"preCommitEffectiveVolumes,omitempty"`
 }
 
 func (v V2LogTransaction) MarshalJSON() ([]byte, error) {
@@ -33,106 +45,109 @@ func (v V2LogTransaction) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2LogTransaction) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"id", "postings", "metadata", "timestamp", "reverted"}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2LogTransaction) GetID() *big.Int {
-	if o == nil {
+func (v *V2LogTransaction) GetID() *big.Int {
+	if v == nil {
 		return big.NewInt(0)
 	}
-	return o.ID
+	return v.ID
 }
 
-func (o *V2LogTransaction) GetPostings() []V2Posting {
-	if o == nil {
+func (v *V2LogTransaction) GetPostings() []V2Posting {
+	if v == nil {
 		return []V2Posting{}
 	}
-	return o.Postings
+	return v.Postings
 }
 
-func (o *V2LogTransaction) GetMetadata() map[string]string {
-	if o == nil {
+func (v *V2LogTransaction) GetMetadata() map[string]string {
+	if v == nil {
 		return map[string]string{}
 	}
-	return o.Metadata
+	return v.Metadata
 }
 
-func (o *V2LogTransaction) GetTimestamp() time.Time {
-	if o == nil {
+func (v *V2LogTransaction) GetTimestamp() time.Time {
+	if v == nil {
 		return time.Time{}
 	}
-	return o.Timestamp
+	return v.Timestamp
 }
 
-func (o *V2LogTransaction) GetReference() *string {
-	if o == nil {
+func (v *V2LogTransaction) GetReference() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Reference
+	return v.Reference
 }
 
-func (o *V2LogTransaction) GetInsertedAt() *time.Time {
-	if o == nil {
+func (v *V2LogTransaction) GetInsertedAt() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.InsertedAt
+	return v.InsertedAt
 }
 
-func (o *V2LogTransaction) GetUpdatedAt() *time.Time {
-	if o == nil {
+func (v *V2LogTransaction) GetUpdatedAt() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.UpdatedAt
+	return v.UpdatedAt
 }
 
-func (o *V2LogTransaction) GetRevertedAt() *time.Time {
-	if o == nil {
+func (v *V2LogTransaction) GetRevertedAt() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.RevertedAt
+	return v.RevertedAt
 }
 
-func (o *V2LogTransaction) GetReverted() bool {
-	if o == nil {
+func (v *V2LogTransaction) GetReverted() bool {
+	if v == nil {
 		return false
 	}
-	return o.Reverted
+	return v.Reverted
 }
 
-func (o *V2LogTransaction) GetTemplate() *string {
-	if o == nil {
+func (v *V2LogTransaction) GetTemplate() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Template
+	return v.Template
 }
 
-func (o *V2LogTransaction) GetPostCommitVolumes() map[string]map[string]V2Volume {
-	if o == nil {
+func (v *V2LogTransaction) GetPostCommitVolumes() map[string]map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.PostCommitVolumes
+	return v.PostCommitVolumes
 }
 
-func (o *V2LogTransaction) GetPostCommitEffectiveVolumes() map[string]map[string]V2Volume {
-	if o == nil {
+func (v *V2LogTransaction) GetPostCommitEffectiveVolumes() map[string]map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.PostCommitEffectiveVolumes
+	return v.PostCommitEffectiveVolumes
 }
 
-func (o *V2LogTransaction) GetPreCommitVolumes() map[string]map[string]V2Volume {
-	if o == nil {
+func (v *V2LogTransaction) GetPreCommitVolumes() map[string]map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.PreCommitVolumes
+	return v.PreCommitVolumes
 }
 
-func (o *V2LogTransaction) GetPreCommitEffectiveVolumes() map[string]map[string]V2Volume {
-	if o == nil {
+func (v *V2LogTransaction) GetPreCommitEffectiveVolumes() map[string]map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.PreCommitEffectiveVolumes
+	return v.PreCommitEffectiveVolumes
 }
+
+// #region class-body-v2logtransaction
+// #endregion class-body-v2logtransaction

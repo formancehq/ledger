@@ -3,12 +3,13 @@
 package components
 
 type MappingResponse struct {
+	// Contracts constraining the balances a ledger's accounts may hold
 	Data *Mapping `json:"data,omitempty"`
 }
 
-func (o *MappingResponse) GetData() *Mapping {
-	if o == nil {
+func (m *MappingResponse) GetData() *Mapping {
+	if m == nil {
 		return nil
 	}
-	return o.Data
+	return m.Data
 }

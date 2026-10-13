@@ -15,25 +15,25 @@ type GetBalancesAggregatedRequest struct {
 	UseInsertionDate *bool `queryParam:"style=form,explode=true,name=useInsertionDate"`
 }
 
-func (o *GetBalancesAggregatedRequest) GetLedger() string {
-	if o == nil {
+func (g *GetBalancesAggregatedRequest) GetLedger() string {
+	if g == nil {
 		return ""
 	}
-	return o.Ledger
+	return g.Ledger
 }
 
-func (o *GetBalancesAggregatedRequest) GetAddress() *string {
-	if o == nil {
+func (g *GetBalancesAggregatedRequest) GetAddress() *string {
+	if g == nil {
 		return nil
 	}
-	return o.Address
+	return g.Address
 }
 
-func (o *GetBalancesAggregatedRequest) GetUseInsertionDate() *bool {
-	if o == nil {
+func (g *GetBalancesAggregatedRequest) GetUseInsertionDate() *bool {
+	if g == nil {
 		return nil
 	}
-	return o.UseInsertionDate
+	return g.UseInsertionDate
 }
 
 type GetBalancesAggregatedResponse struct {
@@ -42,16 +42,16 @@ type GetBalancesAggregatedResponse struct {
 	AggregateBalancesResponse *components.AggregateBalancesResponse
 }
 
-func (o *GetBalancesAggregatedResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (g *GetBalancesAggregatedResponse) GetHTTPMeta() components.HTTPMetadata {
+	if g == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return g.HTTPMeta
 }
 
-func (o *GetBalancesAggregatedResponse) GetAggregateBalancesResponse() *components.AggregateBalancesResponse {
-	if o == nil {
+func (g *GetBalancesAggregatedResponse) GetAggregateBalancesResponse() *components.AggregateBalancesResponse {
+	if g == nil {
 		return nil
 	}
-	return o.AggregateBalancesResponse
+	return g.AggregateBalancesResponse
 }

@@ -3,12 +3,16 @@
 package components
 
 type V2AccountResponse struct {
+	// An account in the ledger, identified by its address and carrying its metadata and volumes
 	Data V2Account `json:"data"`
 }
 
-func (o *V2AccountResponse) GetData() V2Account {
-	if o == nil {
+func (v *V2AccountResponse) GetData() V2Account {
+	if v == nil {
 		return V2Account{}
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2accountresponse
+// #endregion class-body-v2accountresponse

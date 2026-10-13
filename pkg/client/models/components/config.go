@@ -2,13 +2,15 @@
 
 package components
 
+// Config - Configuration the ledger server is running with
 type Config struct {
+	// Storage backend the ledgers are held in
 	Storage LedgerStorage `json:"storage"`
 }
 
-func (o *Config) GetStorage() LedgerStorage {
-	if o == nil {
+func (c *Config) GetStorage() LedgerStorage {
+	if c == nil {
 		return LedgerStorage{}
 	}
-	return o.Storage
+	return c.Storage
 }

@@ -3,12 +3,13 @@
 package components
 
 type Transactions struct {
+	// The transactions to create, applied in order
 	Transactions []TransactionData `json:"transactions"`
 }
 
-func (o *Transactions) GetTransactions() []TransactionData {
-	if o == nil {
+func (t *Transactions) GetTransactions() []TransactionData {
+	if t == nil {
 		return []TransactionData{}
 	}
-	return o.Transactions
+	return t.Transactions
 }

@@ -3,28 +3,34 @@
 package components
 
 type V2ErrorResponse struct {
-	ErrorCode    V2ErrorsEnum `json:"errorCode"`
-	ErrorMessage string       `json:"errorMessage"`
-	Details      *string      `json:"details,omitempty"`
+	// Machine-readable error code identifying the failure
+	ErrorCode V2ErrorsEnum `json:"errorCode"`
+	// Human-readable description of the error
+	ErrorMessage string `json:"errorMessage"`
+	// Optional link carrying additional context about the error, such as a Numscript playground URL reproducing it
+	Details *string `json:"details,omitempty"`
 }
 
-func (o *V2ErrorResponse) GetErrorCode() V2ErrorsEnum {
-	if o == nil {
+func (v *V2ErrorResponse) GetErrorCode() V2ErrorsEnum {
+	if v == nil {
 		return V2ErrorsEnum("")
 	}
-	return o.ErrorCode
+	return v.ErrorCode
 }
 
-func (o *V2ErrorResponse) GetErrorMessage() string {
-	if o == nil {
+func (v *V2ErrorResponse) GetErrorMessage() string {
+	if v == nil {
 		return ""
 	}
-	return o.ErrorMessage
+	return v.ErrorMessage
 }
 
-func (o *V2ErrorResponse) GetDetails() *string {
-	if o == nil {
+func (v *V2ErrorResponse) GetDetails() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Details
+	return v.Details
 }
+
+// #region class-body-v2errorresponse
+// #endregion class-body-v2errorresponse

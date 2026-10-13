@@ -32,46 +32,49 @@ func (v V2ListLedgersRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2ListLedgersRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2ListLedgersRequest) GetPageSize() *int64 {
-	if o == nil {
+func (v *V2ListLedgersRequest) GetPageSize() *int64 {
+	if v == nil {
 		return nil
 	}
-	return o.PageSize
+	return v.PageSize
 }
 
-func (o *V2ListLedgersRequest) GetCursor() *string {
-	if o == nil {
+func (v *V2ListLedgersRequest) GetCursor() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Cursor
+	return v.Cursor
 }
 
-func (o *V2ListLedgersRequest) GetIncludeDeleted() *bool {
-	if o == nil {
+func (v *V2ListLedgersRequest) GetIncludeDeleted() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.IncludeDeleted
+	return v.IncludeDeleted
 }
 
-func (o *V2ListLedgersRequest) GetSort() *string {
-	if o == nil {
+func (v *V2ListLedgersRequest) GetSort() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Sort
+	return v.Sort
 }
 
-func (o *V2ListLedgersRequest) GetRequestBody() map[string]any {
-	if o == nil {
+func (v *V2ListLedgersRequest) GetRequestBody() map[string]any {
+	if v == nil {
 		return map[string]any{}
 	}
-	return o.RequestBody
+	return v.RequestBody
 }
+
+// #region class-body-v2listledgersrequest
+// #endregion class-body-v2listledgersrequest
 
 type V2ListLedgersResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -79,16 +82,19 @@ type V2ListLedgersResponse struct {
 	V2LedgerListResponse *components.V2LedgerListResponse
 }
 
-func (o *V2ListLedgersResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2ListLedgersResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2ListLedgersResponse) GetV2LedgerListResponse() *components.V2LedgerListResponse {
-	if o == nil {
+func (v *V2ListLedgersResponse) GetV2LedgerListResponse() *components.V2LedgerListResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2LedgerListResponse
+	return v.V2LedgerListResponse
 }
+
+// #region class-body-v2listledgersresponse
+// #endregion class-body-v2listledgersresponse

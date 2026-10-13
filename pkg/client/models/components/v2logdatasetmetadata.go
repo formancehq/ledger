@@ -44,9 +44,10 @@ const (
 	TargetIDTypeBigint TargetIDType = "bigint"
 )
 
+// TargetID - Identifier of the entity the metadata was set on, either an account address or a transaction ID
 type TargetID struct {
-	Str    *string  `queryParam:"inline"`
-	Bigint *big.Int `queryParam:"inline"`
+	Str    *string  `queryParam:"inline" union:"member"`
+	Bigint *big.Int `queryParam:"inline" union:"member"`
 
 	Type TargetIDType
 }
@@ -72,14 +73,14 @@ func CreateTargetIDBigint(bigint *big.Int) TargetID {
 func (u *TargetID) UnmarshalJSON(data []byte) error {
 
 	var str string = ""
-	if err := utils.UnmarshalJSON(data, &str, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &str, "", true, nil); err == nil {
 		u.Str = &str
 		u.Type = TargetIDTypeStr
 		return nil
 	}
 
 	var bigint *big.Int = big.NewInt(0)
-	if err := utils.UnmarshalJSON(data, &bigint, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &bigint, "", true, nil); err == nil {
 		u.Bigint = bigint
 		u.Type = TargetIDTypeBigint
 		return nil
@@ -103,28 +104,44 @@ func (u TargetID) MarshalJSON() ([]byte, error) {
 // V2LogDataSetMetadata - Payload for SET_METADATA log entries. Contains the target entity and the metadata that was set.
 type V2LogDataSetMetadata struct {
 	// Type of the target entity
-	TargetType TargetType        `json:"targetType"`
-	TargetID   TargetID          `json:"targetId"`
-	Metadata   map[string]string `json:"metadata"`
+	TargetType TargetType `json:"targetType"`
+	// Identifier of the entity the metadata was set on, either an account address or a transaction ID
+	TargetID TargetID `json:"targetId"`
+	// Arbitrary key/value pairs attached to the resource
+	Metadata map[string]string `json:"metadata"`
 }
 
-func (o *V2LogDataSetMetadata) GetTargetType() TargetType {
-	if o == nil {
+func (v V2LogDataSetMetadata) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
+}
+
+func (v *V2LogDataSetMetadata) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"targetType", "targetId", "metadata"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2LogDataSetMetadata) GetTargetType() TargetType {
+	if v == nil {
 		return TargetType("")
 	}
-	return o.TargetType
+	return v.TargetType
 }
 
-func (o *V2LogDataSetMetadata) GetTargetID() TargetID {
-	if o == nil {
+func (v *V2LogDataSetMetadata) GetTargetID() TargetID {
+	if v == nil {
 		return TargetID{}
 	}
-	return o.TargetID
+	return v.TargetID
 }
 
-func (o *V2LogDataSetMetadata) GetMetadata() map[string]string {
-	if o == nil {
+func (v *V2LogDataSetMetadata) GetMetadata() map[string]string {
+	if v == nil {
 		return map[string]string{}
 	}
-	return o.Metadata
+	return v.Metadata
 }
+
+// #region class-body-v2logdatasetmetadata
+// #endregion class-body-v2logdatasetmetadata

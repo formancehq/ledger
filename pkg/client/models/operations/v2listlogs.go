@@ -9,6 +9,11 @@ import (
 )
 
 type V2ListLogsRequest struct {
+	// When set to `true`, all bigint values in the response will be serialized
+	// as strings instead of JSON numbers.
+	// Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
+	//
+	FormanceBigintAsString *bool `default:"false" header:"style=simple,explode=false,name=Formance-Bigint-As-String"`
 	// Name of the ledger.
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
 	// The maximum number of results to return per page.
@@ -33,53 +38,63 @@ func (v V2ListLogsRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2ListLogsRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2ListLogsRequest) GetLedger() string {
-	if o == nil {
+func (v *V2ListLogsRequest) GetFormanceBigintAsString() *bool {
+	if v == nil {
+		return nil
+	}
+	return v.FormanceBigintAsString
+}
+
+func (v *V2ListLogsRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2ListLogsRequest) GetPageSize() *int64 {
-	if o == nil {
+func (v *V2ListLogsRequest) GetPageSize() *int64 {
+	if v == nil {
 		return nil
 	}
-	return o.PageSize
+	return v.PageSize
 }
 
-func (o *V2ListLogsRequest) GetCursor() *string {
-	if o == nil {
+func (v *V2ListLogsRequest) GetCursor() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Cursor
+	return v.Cursor
 }
 
-func (o *V2ListLogsRequest) GetPit() *time.Time {
-	if o == nil {
+func (v *V2ListLogsRequest) GetPit() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.Pit
+	return v.Pit
 }
 
-func (o *V2ListLogsRequest) GetSort() *string {
-	if o == nil {
+func (v *V2ListLogsRequest) GetSort() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Sort
+	return v.Sort
 }
 
-func (o *V2ListLogsRequest) GetRequestBody() map[string]any {
-	if o == nil {
+func (v *V2ListLogsRequest) GetRequestBody() map[string]any {
+	if v == nil {
 		return map[string]any{}
 	}
-	return o.RequestBody
+	return v.RequestBody
 }
+
+// #region class-body-v2listlogsrequest
+// #endregion class-body-v2listlogsrequest
 
 type V2ListLogsResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -87,16 +102,19 @@ type V2ListLogsResponse struct {
 	V2LogsCursorResponse *components.V2LogsCursorResponse
 }
 
-func (o *V2ListLogsResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2ListLogsResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2ListLogsResponse) GetV2LogsCursorResponse() *components.V2LogsCursorResponse {
-	if o == nil {
+func (v *V2ListLogsResponse) GetV2LogsCursorResponse() *components.V2LogsCursorResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2LogsCursorResponse
+	return v.V2LogsCursorResponse
 }
+
+// #region class-body-v2listlogsresponse
+// #endregion class-body-v2listlogsresponse

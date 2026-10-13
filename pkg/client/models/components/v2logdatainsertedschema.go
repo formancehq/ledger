@@ -2,15 +2,33 @@
 
 package components
 
+import (
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
+)
+
 // V2LogDataInsertedSchema - Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted into the ledger.
 type V2LogDataInsertedSchema struct {
 	// Complete schema structure with metadata
 	Schema V2Schema `json:"schema"`
 }
 
-func (o *V2LogDataInsertedSchema) GetSchema() V2Schema {
-	if o == nil {
+func (v V2LogDataInsertedSchema) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
+}
+
+func (v *V2LogDataInsertedSchema) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"schema"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2LogDataInsertedSchema) GetSchema() V2Schema {
+	if v == nil {
 		return V2Schema{}
 	}
-	return o.Schema
+	return v.Schema
 }
+
+// #region class-body-v2logdatainsertedschema
+// #endregion class-body-v2logdatainsertedschema

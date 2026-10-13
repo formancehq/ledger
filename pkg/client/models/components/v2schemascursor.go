@@ -2,45 +2,54 @@
 
 package components
 
+// V2SchemasCursor - Paginated cursor over the ledger's schemas
 type V2SchemasCursor struct {
-	Data     []V2Schema `json:"data"`
-	HasMore  bool       `json:"hasMore"`
-	Previous *string    `json:"previous,omitempty"`
-	Next     *string    `json:"next,omitempty"`
-	PageSize int64      `json:"pageSize"`
+	// The schemas on this page
+	Data []V2Schema `json:"data"`
+	// Whether further pages are available
+	HasMore bool `json:"hasMore"`
+	// Cursor for the previous page, absent on the first page
+	Previous *string `json:"previous,omitempty"`
+	// Cursor for the next page, absent on the last page
+	Next *string `json:"next,omitempty"`
+	// Number of items requested per page
+	PageSize int64 `json:"pageSize"`
 }
 
-func (o *V2SchemasCursor) GetData() []V2Schema {
-	if o == nil {
+func (v *V2SchemasCursor) GetData() []V2Schema {
+	if v == nil {
 		return []V2Schema{}
 	}
-	return o.Data
+	return v.Data
 }
 
-func (o *V2SchemasCursor) GetHasMore() bool {
-	if o == nil {
+func (v *V2SchemasCursor) GetHasMore() bool {
+	if v == nil {
 		return false
 	}
-	return o.HasMore
+	return v.HasMore
 }
 
-func (o *V2SchemasCursor) GetPrevious() *string {
-	if o == nil {
+func (v *V2SchemasCursor) GetPrevious() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Previous
+	return v.Previous
 }
 
-func (o *V2SchemasCursor) GetNext() *string {
-	if o == nil {
+func (v *V2SchemasCursor) GetNext() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Next
+	return v.Next
 }
 
-func (o *V2SchemasCursor) GetPageSize() int64 {
-	if o == nil {
+func (v *V2SchemasCursor) GetPageSize() int64 {
+	if v == nil {
 		return 0
 	}
-	return o.PageSize
+	return v.PageSize
 }
+
+// #region class-body-v2schemascursor
+// #endregion class-body-v2schemascursor

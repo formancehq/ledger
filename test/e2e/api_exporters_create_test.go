@@ -40,7 +40,7 @@ var _ = Context("Exporters creation API tests", func() {
 
 	When("creating a new exporter", func() {
 		var (
-			createExporterRequest  components.V2ExporterConfiguration
+			createExporterRequest  components.V2CreateExporterRequest
 			createExporterResponse *operations.V2CreateExporterResponse
 			err                    error
 		)
@@ -49,7 +49,7 @@ var _ = Context("Exporters creation API tests", func() {
 		})
 		Context("with invalid configuration", func() {
 			BeforeEach(func() {
-				createExporterRequest = components.V2ExporterConfiguration{
+				createExporterRequest = components.V2CreateExporterRequest{
 					Driver: "clickhouse",
 				}
 			})
@@ -60,7 +60,7 @@ var _ = Context("Exporters creation API tests", func() {
 		})
 		Context("with valid configuration", func() {
 			BeforeEach(func() {
-				createExporterRequest = components.V2ExporterConfiguration{
+				createExporterRequest = components.V2CreateExporterRequest{
 					Driver: "clickhouse",
 					Config: map[string]any{
 						"dsn": "clickhouse://localhost:9000",

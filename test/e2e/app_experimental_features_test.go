@@ -36,7 +36,7 @@ var _ = Context("Ledger experimental features on /_info", func() {
 
 			resp, err := http.DefaultClient.Get(testservice.GetServerURL(srv).String() + "/v2/_info")
 			Expect(err).NotTo(HaveOccurred())
-			defer func() { _ = resp.Body.Close() }()
+			defer resp.Body.Close()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -75,7 +75,7 @@ var _ = Context("Ledger experimental features on /_info", func() {
 
 			resp, err := http.DefaultClient.Get(testservice.GetServerURL(srv).String() + "/v2/_info")
 			Expect(err).NotTo(HaveOccurred())
-			defer func() { _ = resp.Body.Close() }()
+			defer resp.Body.Close()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 

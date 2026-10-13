@@ -7,6 +7,7 @@ import (
 	"fmt"
 )
 
+// ErrorsEnum - Machine-readable error code identifying the failure
 type ErrorsEnum string
 
 const (

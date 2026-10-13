@@ -3,12 +3,13 @@
 package components
 
 type AccountResponse struct {
+	// An account together with its volumes and net balances per asset
 	Data AccountWithVolumesAndBalances `json:"data"`
 }
 
-func (o *AccountResponse) GetData() AccountWithVolumesAndBalances {
-	if o == nil {
+func (a *AccountResponse) GetData() AccountWithVolumesAndBalances {
+	if a == nil {
 		return AccountWithVolumesAndBalances{}
 	}
-	return o.Data
+	return a.Data
 }

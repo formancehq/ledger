@@ -3,12 +3,16 @@
 package components
 
 type V2GetLedgerResponse struct {
+	// A ledger and its configuration
 	Data V2Ledger `json:"data"`
 }
 
-func (o *V2GetLedgerResponse) GetData() V2Ledger {
-	if o == nil {
+func (v *V2GetLedgerResponse) GetData() V2Ledger {
+	if v == nil {
 		return V2Ledger{}
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2getledgerresponse
+// #endregion class-body-v2getledgerresponse

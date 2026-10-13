@@ -3,37 +3,40 @@
 package components
 
 type Script struct {
-	Plain string         `json:"plain"`
-	Vars  map[string]any `json:"vars,omitempty"`
+	// The Numscript program to execute
+	Plain string `json:"plain"`
+	// Values bound to the script's declared variables, keyed by variable name
+	Vars map[string]any `json:"vars,omitempty"`
 	// Reference to attach to the generated transaction
-	Reference *string        `json:"reference,omitempty"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
+	Reference *string `json:"reference,omitempty"`
+	// Arbitrary key/value pairs attached to the resource
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-func (o *Script) GetPlain() string {
-	if o == nil {
+func (s *Script) GetPlain() string {
+	if s == nil {
 		return ""
 	}
-	return o.Plain
+	return s.Plain
 }
 
-func (o *Script) GetVars() map[string]any {
-	if o == nil {
+func (s *Script) GetVars() map[string]any {
+	if s == nil {
 		return nil
 	}
-	return o.Vars
+	return s.Vars
 }
 
-func (o *Script) GetReference() *string {
-	if o == nil {
+func (s *Script) GetReference() *string {
+	if s == nil {
 		return nil
 	}
-	return o.Reference
+	return s.Reference
 }
 
-func (o *Script) GetMetadata() map[string]any {
-	if o == nil {
+func (s *Script) GetMetadata() map[string]any {
+	if s == nil {
 		return nil
 	}
-	return o.Metadata
+	return s.Metadata
 }

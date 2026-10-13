@@ -9,6 +9,11 @@ import (
 )
 
 type V2GetVolumesWithBalancesRequest struct {
+	// When set to `true`, all bigint values in the response will be serialized
+	// as strings instead of JSON numbers.
+	// Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
+	//
+	FormanceBigintAsString *bool `default:"false" header:"style=simple,explode=false,name=Formance-Bigint-As-String"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `queryParam:"style=form,explode=true,name=pageSize"`
@@ -38,74 +43,84 @@ func (v V2GetVolumesWithBalancesRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2GetVolumesWithBalancesRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2GetVolumesWithBalancesRequest) GetPageSize() *int64 {
-	if o == nil {
+func (v *V2GetVolumesWithBalancesRequest) GetFormanceBigintAsString() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.PageSize
+	return v.FormanceBigintAsString
 }
 
-func (o *V2GetVolumesWithBalancesRequest) GetCursor() *string {
-	if o == nil {
+func (v *V2GetVolumesWithBalancesRequest) GetPageSize() *int64 {
+	if v == nil {
 		return nil
 	}
-	return o.Cursor
+	return v.PageSize
 }
 
-func (o *V2GetVolumesWithBalancesRequest) GetLedger() string {
-	if o == nil {
+func (v *V2GetVolumesWithBalancesRequest) GetCursor() *string {
+	if v == nil {
+		return nil
+	}
+	return v.Cursor
+}
+
+func (v *V2GetVolumesWithBalancesRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2GetVolumesWithBalancesRequest) GetEndTime() *time.Time {
-	if o == nil {
+func (v *V2GetVolumesWithBalancesRequest) GetEndTime() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.EndTime
+	return v.EndTime
 }
 
-func (o *V2GetVolumesWithBalancesRequest) GetStartTime() *time.Time {
-	if o == nil {
+func (v *V2GetVolumesWithBalancesRequest) GetStartTime() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.StartTime
+	return v.StartTime
 }
 
-func (o *V2GetVolumesWithBalancesRequest) GetInsertionDate() *bool {
-	if o == nil {
+func (v *V2GetVolumesWithBalancesRequest) GetInsertionDate() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.InsertionDate
+	return v.InsertionDate
 }
 
-func (o *V2GetVolumesWithBalancesRequest) GetGroupBy() *int64 {
-	if o == nil {
+func (v *V2GetVolumesWithBalancesRequest) GetGroupBy() *int64 {
+	if v == nil {
 		return nil
 	}
-	return o.GroupBy
+	return v.GroupBy
 }
 
-func (o *V2GetVolumesWithBalancesRequest) GetSort() *string {
-	if o == nil {
+func (v *V2GetVolumesWithBalancesRequest) GetSort() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Sort
+	return v.Sort
 }
 
-func (o *V2GetVolumesWithBalancesRequest) GetRequestBody() map[string]any {
-	if o == nil {
+func (v *V2GetVolumesWithBalancesRequest) GetRequestBody() map[string]any {
+	if v == nil {
 		return map[string]any{}
 	}
-	return o.RequestBody
+	return v.RequestBody
 }
+
+// #region class-body-v2getvolumeswithbalancesrequest
+// #endregion class-body-v2getvolumeswithbalancesrequest
 
 type V2GetVolumesWithBalancesResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -113,16 +128,19 @@ type V2GetVolumesWithBalancesResponse struct {
 	V2VolumesWithBalanceCursorResponse *components.V2VolumesWithBalanceCursorResponse
 }
 
-func (o *V2GetVolumesWithBalancesResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2GetVolumesWithBalancesResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2GetVolumesWithBalancesResponse) GetV2VolumesWithBalanceCursorResponse() *components.V2VolumesWithBalanceCursorResponse {
-	if o == nil {
+func (v *V2GetVolumesWithBalancesResponse) GetV2VolumesWithBalanceCursorResponse() *components.V2VolumesWithBalanceCursorResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2VolumesWithBalanceCursorResponse
+	return v.V2VolumesWithBalanceCursorResponse
 }
+
+// #region class-body-v2getvolumeswithbalancesresponse
+// #endregion class-body-v2getvolumeswithbalancesresponse

@@ -3,28 +3,31 @@
 package components
 
 type Account struct {
-	Address  string         `json:"address"`
-	Type     *string        `json:"type,omitempty"`
+	// The account address, a colon-separated segmented path such as users:001
+	Address string `json:"address"`
+	// Free-form classification of the account
+	Type *string `json:"type,omitempty"`
+	// Arbitrary key/value pairs attached to the account
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-func (o *Account) GetAddress() string {
-	if o == nil {
+func (a *Account) GetAddress() string {
+	if a == nil {
 		return ""
 	}
-	return o.Address
+	return a.Address
 }
 
-func (o *Account) GetType() *string {
-	if o == nil {
+func (a *Account) GetType() *string {
+	if a == nil {
 		return nil
 	}
-	return o.Type
+	return a.Type
 }
 
-func (o *Account) GetMetadata() map[string]any {
-	if o == nil {
+func (a *Account) GetMetadata() map[string]any {
+	if a == nil {
 		return nil
 	}
-	return o.Metadata
+	return a.Metadata
 }

@@ -62,7 +62,7 @@ func (s *V1) GetInfo(ctx context.Context, opts ...operations.Option) (*operation
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "getInfo",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -270,7 +270,7 @@ func (s *V1) GetLedgerInfo(ctx context.Context, request operations.GetLedgerInfo
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "getLedgerInfo",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -478,7 +478,7 @@ func (s *V1) CountAccounts(ctx context.Context, request operations.CountAccounts
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "countAccounts",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -500,7 +500,7 @@ func (s *V1) CountAccounts(ctx context.Context, request operations.CountAccounts
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", s.sdkConfiguration.UserAgent)
 
-	if err := utils.PopulateQueryParams(ctx, req, request, nil); err != nil {
+	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
 	}
 
@@ -614,6 +614,7 @@ func (s *V1) CountAccounts(ctx context.Context, request operations.CountAccounts
 	case httpRes.StatusCode == 204:
 		res.Headers = httpRes.Header
 
+		utils.DrainBody(httpRes)
 	default:
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
@@ -673,7 +674,7 @@ func (s *V1) ListAccounts(ctx context.Context, request operations.ListAccountsRe
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "listAccounts",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -695,7 +696,7 @@ func (s *V1) ListAccounts(ctx context.Context, request operations.ListAccountsRe
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", s.sdkConfiguration.UserAgent)
 
-	if err := utils.PopulateQueryParams(ctx, req, request, nil); err != nil {
+	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
 	}
 
@@ -906,7 +907,7 @@ func (s *V1) GetAccount(ctx context.Context, request operations.GetAccountReques
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "getAccount",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -1114,7 +1115,7 @@ func (s *V1) AddMetadataToAccount(ctx context.Context, request operations.AddMet
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "addMetadataToAccount",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:write"},
+		OAuth2Scopes:     []string{"ledger:write"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 	bodyReader, reqContentType, err := utils.SerializeRequestBody(ctx, request, true, false, "RequestBody", "json", `request:"mediaType=application/json"`)
@@ -1253,6 +1254,7 @@ func (s *V1) AddMetadataToAccount(ctx context.Context, request operations.AddMet
 	case httpRes.StatusCode == 204:
 		res.Headers = httpRes.Header
 
+		utils.DrainBody(httpRes)
 	default:
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
@@ -1311,7 +1313,7 @@ func (s *V1) GetMapping(ctx context.Context, request operations.GetMappingReques
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "getMapping",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -1519,7 +1521,7 @@ func (s *V1) UpdateMapping(ctx context.Context, request operations.UpdateMapping
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "updateMapping",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:write"},
+		OAuth2Scopes:     []string{"ledger:write"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 	bodyReader, reqContentType, err := utils.SerializeRequestBody(ctx, request, true, false, "Mapping", "json", `request:"mediaType=application/json"`)
@@ -1737,7 +1739,7 @@ func (s *V1) RunScript(ctx context.Context, request operations.RunScriptRequest,
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "runScript",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:write"},
+		OAuth2Scopes:     []string{"ledger:write"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 	bodyReader, reqContentType, err := utils.SerializeRequestBody(ctx, request, false, false, "Script", "json", `request:"mediaType=application/json"`)
@@ -1766,7 +1768,7 @@ func (s *V1) RunScript(ctx context.Context, request operations.RunScriptRequest,
 		req.Header.Set("Content-Type", reqContentType)
 	}
 
-	if err := utils.PopulateQueryParams(ctx, req, request, nil); err != nil {
+	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
 	}
 
@@ -1942,7 +1944,7 @@ func (s *V1) ReadStats(ctx context.Context, request operations.ReadStatsRequest,
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "readStats",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -2150,7 +2152,7 @@ func (s *V1) CountTransactions(ctx context.Context, request operations.CountTran
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "countTransactions",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -2172,7 +2174,7 @@ func (s *V1) CountTransactions(ctx context.Context, request operations.CountTran
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", s.sdkConfiguration.UserAgent)
 
-	if err := utils.PopulateQueryParams(ctx, req, request, nil); err != nil {
+	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
 	}
 
@@ -2286,6 +2288,7 @@ func (s *V1) CountTransactions(ctx context.Context, request operations.CountTran
 	case httpRes.StatusCode == 200:
 		res.Headers = httpRes.Header
 
+		utils.DrainBody(httpRes)
 	default:
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
@@ -2345,7 +2348,7 @@ func (s *V1) ListTransactions(ctx context.Context, request operations.ListTransa
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "listTransactions",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -2367,7 +2370,7 @@ func (s *V1) ListTransactions(ctx context.Context, request operations.ListTransa
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", s.sdkConfiguration.UserAgent)
 
-	if err := utils.PopulateQueryParams(ctx, req, request, nil); err != nil {
+	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
 	}
 
@@ -2557,7 +2560,7 @@ func (s *V1) CreateTransaction(ctx context.Context, request operations.CreateTra
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "createTransaction",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:write"},
+		OAuth2Scopes:     []string{"ledger:write"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 	bodyReader, reqContentType, err := utils.SerializeRequestBody(ctx, request, false, false, "PostTransaction", "json", `request:"mediaType=application/json"`)
@@ -2586,7 +2589,7 @@ func (s *V1) CreateTransaction(ctx context.Context, request operations.CreateTra
 		req.Header.Set("Content-Type", reqContentType)
 	}
 
-	if err := utils.PopulateQueryParams(ctx, req, request, nil); err != nil {
+	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
 	}
 
@@ -2778,7 +2781,7 @@ func (s *V1) GetTransaction(ctx context.Context, request operations.GetTransacti
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "getTransaction",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -2986,7 +2989,7 @@ func (s *V1) AddMetadataOnTransaction(ctx context.Context, request operations.Ad
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "addMetadataOnTransaction",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:write"},
+		OAuth2Scopes:     []string{"ledger:write"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 	bodyReader, reqContentType, err := utils.SerializeRequestBody(ctx, request, true, false, "RequestBody", "json", `request:"mediaType=application/json"`)
@@ -3125,6 +3128,7 @@ func (s *V1) AddMetadataOnTransaction(ctx context.Context, request operations.Ad
 	case httpRes.StatusCode == 204:
 		res.Headers = httpRes.Header
 
+		utils.DrainBody(httpRes)
 	default:
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
@@ -3183,7 +3187,7 @@ func (s *V1) RevertTransaction(ctx context.Context, request operations.RevertTra
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "revertTransaction",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:write"},
+		OAuth2Scopes:     []string{"ledger:write"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -3205,7 +3209,7 @@ func (s *V1) RevertTransaction(ctx context.Context, request operations.RevertTra
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", s.sdkConfiguration.UserAgent)
 
-	if err := utils.PopulateQueryParams(ctx, req, request, nil); err != nil {
+	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
 	}
 
@@ -3397,7 +3401,7 @@ func (s *V1) CreateTransactions(ctx context.Context, request operations.CreateTr
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "CreateTransactions",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:write"},
+		OAuth2Scopes:     []string{"ledger:write"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 	bodyReader, reqContentType, err := utils.SerializeRequestBody(ctx, request, false, false, "Transactions", "json", `request:"mediaType=application/json"`)
@@ -3612,7 +3616,7 @@ func (s *V1) GetBalances(ctx context.Context, request operations.GetBalancesRequ
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "getBalances",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -3634,7 +3638,7 @@ func (s *V1) GetBalances(ctx context.Context, request operations.GetBalancesRequ
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", s.sdkConfiguration.UserAgent)
 
-	if err := utils.PopulateQueryParams(ctx, req, request, nil); err != nil {
+	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
 	}
 
@@ -3824,7 +3828,7 @@ func (s *V1) GetBalancesAggregated(ctx context.Context, request operations.GetBa
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "getBalancesAggregated",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -3846,7 +3850,7 @@ func (s *V1) GetBalancesAggregated(ctx context.Context, request operations.GetBa
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", s.sdkConfiguration.UserAgent)
 
-	if err := utils.PopulateQueryParams(ctx, req, request, nil); err != nil {
+	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
 	}
 
@@ -4037,7 +4041,7 @@ func (s *V1) ListLogs(ctx context.Context, request operations.ListLogsRequest, o
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "listLogs",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -4059,7 +4063,7 @@ func (s *V1) ListLogs(ctx context.Context, request operations.ListLogsRequest, o
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", s.sdkConfiguration.UserAgent)
 
-	if err := utils.PopulateQueryParams(ctx, req, request, nil); err != nil {
+	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
 	}
 

@@ -1108,6 +1108,7 @@ GET http://localhost:8080/v2/{ledger}/accounts HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -1125,6 +1126,7 @@ List accounts from a ledger, sorted by address in descending order.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
@@ -1134,6 +1136,10 @@ List accounts from a ledger, sorted by address in descending order.
 |body|body|object|true|none|
 
 #### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 **pageSize**: The maximum number of results to return per page.
 
@@ -1218,6 +1224,7 @@ Authorization ( Scopes: ledger:read )
 GET http://localhost:8080/v2/{ledger}/accounts/{address} HTTP/1.1
 Host: localhost:8080
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -1227,12 +1234,17 @@ Accept: application/json
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |address|path|string|true|Exact address of the account. It must match the following regular expressions pattern:|
 |expand|query|string|false|none|
 |pit|query|string(date-time)|false|none|
 
 #### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 **address**: Exact address of the account. It must match the following regular expressions pattern:
 ```
@@ -1546,6 +1558,7 @@ GET http://localhost:8080/v2/{ledger}/transactions HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -1563,6 +1576,7 @@ List transactions from a ledger, sorted by id in descending order.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
@@ -1574,6 +1588,10 @@ List transactions from a ledger, sorted by id in descending order.
 |body|body|object|true|none|
 
 #### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 **pageSize**: The maximum number of results to return per page.
 
@@ -1717,6 +1735,7 @@ POST http://localhost:8080/v2/{ledger}/transactions HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 Idempotency-Key: string
 
 ```
@@ -1764,6 +1783,7 @@ Idempotency-Key: string
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |dryRun|query|boolean|false|Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 |Idempotency-Key|header|string|false|Use an idempotency key|
@@ -1772,6 +1792,10 @@ Idempotency-Key: string
 |body|body|[V2PostTransaction](#schemav2posttransaction)|true|The request body must contain at least one of the following objects:|
 
 #### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 **body**: The request body must contain at least one of the following objects:
   - `postings`: suitable for simple transactions
@@ -1899,6 +1923,7 @@ Authorization ( Scopes: ledger:write )
 GET http://localhost:8080/v2/{ledger}/transactions/{id} HTTP/1.1
 Host: localhost:8080
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -1908,10 +1933,17 @@ Accept: application/json
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |id|path|integer(bigint)|true|Transaction ID.|
 |expand|query|string|false|none|
 |pit|query|string(date-time)|false|none|
+
+#### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 > Example responses
 
@@ -2098,6 +2130,7 @@ POST http://localhost:8080/v2/{ledger}/transactions/{id}/revert HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 Idempotency-Key: string
 
 ```
@@ -2119,6 +2152,7 @@ Idempotency-Key: string
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |id|path|integer(bigint)|true|Transaction ID.|
 |force|query|boolean|false|Force revert|
@@ -2127,6 +2161,12 @@ Idempotency-Key: string
 |schemaVersion|query|string|false|Schema version to use for validation|
 |Idempotency-Key|header|string|false|Use an idempotency key|
 |body|body|[V2RevertTransactionRequest](#schemav2reverttransactionrequest)|false|none|
+
+#### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 > Example responses
 
@@ -2251,6 +2291,7 @@ GET http://localhost:8080/v2/{ledger}/aggregate/balances HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -2266,10 +2307,17 @@ Accept: application/json
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |pit|query|string(date-time)|false|none|
 |useInsertionDate|query|boolean|false|Use insertion date instead of effective date|
 |body|body|object|true|none|
+
+#### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 > Example responses
 
@@ -2307,6 +2355,7 @@ GET http://localhost:8080/v2/{ledger}/volumes HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -2322,6 +2371,7 @@ Accept: application/json
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |ledger|path|string|true|Name of the ledger.|
@@ -2333,6 +2383,10 @@ Accept: application/json
 |body|body|object|true|none|
 
 #### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 **pageSize**: The maximum number of results to return per page.
 
@@ -2392,6 +2446,7 @@ GET http://localhost:8080/v2/{ledger}/logs HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -2409,6 +2464,7 @@ List the logs from a ledger, sorted by ID in descending order.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
@@ -2417,6 +2473,10 @@ List the logs from a ledger, sorted by ID in descending order.
 |body|body|object|true|none|
 
 #### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 **pageSize**: The maximum number of results to return per page.
 
@@ -2564,14 +2624,24 @@ Accept: application/octet-stream
 
 > Example responses
 
+> 200 Response
+
 > default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
 
 <h3 id="export-logs-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Import OK|None|
-|default|Default|Error|string|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Export OK|string|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -2589,6 +2659,7 @@ POST http://localhost:8080/v2/{ledger}/queries/{id}/run?schemaVersion=v1.0.0 HTT
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -2620,6 +2691,7 @@ Run a query template on a ledger
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |schemaVersion|query|string|true|Schema version to use for validation|
 |id|path|string|true|Query template ID.|
@@ -2632,11 +2704,11 @@ Run a query template on a ledger
 |sort|query|string|false|Sort results using a field name and order (ascending or descending).|
 |body|body|object|true|none|
 |» cursor|body|string|false|none|
-|» params|body|[V2QueryParams](#schemav2queryparams)|false|none|
+|» params|body|[V2QueryParams](#schemav2queryparams)|false|Parameters applied when running a query template|
 |»» pageSize|body|integer(int64)|false|The maximum number of results to return per page.|
 |»» cursor|body|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
-|»» expand|body|string|false|none|
-|»» pit|body|string(date-time)|false|none|
+|»» expand|body|string|false|Additional data to include in the response, such as volumes|
+|»» pit|body|string(date-time)|false|Point-in-time. Returns the state as it existed at this timestamp|
 |»» sort|body|string|false|Sort results using a field name and order (ascending or descending).|
 |»» *anonymous*|body|object|false|none|
 |»»» resource|body|string|true|none|
@@ -2652,6 +2724,10 @@ Run a query template on a ledger
 |»» **additionalProperties**|body|string|false|none|
 
 #### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 **pageSize**: The maximum number of results to return per page.
 
@@ -2941,8 +3017,8 @@ Status Code **201**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |»» *anonymous*|[V2ExporterConfiguration](#schemav2exporterconfiguration)|false|none|none|
-|»»» driver|string|true|none|none|
-|»»» config|object|true|none|none|
+|»»» driver|string|true|none|Name of the exporter driver to use|
+|»»» config|object|true|none|Driver-specific configuration for the exporter|
 
 *and*
 
@@ -3012,8 +3088,8 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |»» *anonymous*|[V2ExporterConfiguration](#schemav2exporterconfiguration)|false|none|none|
-|»»» driver|string|true|none|none|
-|»»» config|object|true|none|none|
+|»»» driver|string|true|none|Name of the exporter driver to use|
+|»»» config|object|true|none|Driver-specific configuration for the exporter|
 
 *and*
 
@@ -3344,8 +3420,8 @@ Status Code **201**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |»» *anonymous*|object|false|none|none|
-|»»» ledger|string|true|none|none|
-|»»» exporterID|string|true|none|none|
+|»»» ledger|string|true|none|Name of the ledger the pipeline reads from|
+|»»» exporterID|string|true|none|Identifier of the exporter the pipeline feeds|
 
 *and*
 
@@ -3418,8 +3494,8 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |»» *anonymous*|object|false|none|none|
-|»»» ledger|string|true|none|none|
-|»»» exporterID|string|true|none|none|
+|»»» ledger|string|true|none|Name of the ledger the pipeline reads from|
+|»»» exporterID|string|true|none|Identifier of the exporter the pipeline feeds|
 
 *and*
 
@@ -3648,7 +3724,7 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|cursor|object|true|none|none|
+|cursor|object|true|none|Paginated cursor wrapping the list of exporters|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
@@ -3686,7 +3762,7 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|cursor|object|true|none|none|
+|cursor|object|true|none|Paginated cursor wrapping the list of pipelines|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
@@ -3752,13 +3828,13 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|resource|string|false|none|none|
-|cursor|object|true|none|none|
+|resource|string|false|none|The resource type carried by this cursor|
+|cursor|object|true|none|Paginated cursor wrapping the list of accounts|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
-|» data|[[V2Account](#schemav2account)]|true|none|none|
+|» data|[[V2Account](#schemav2account)]|true|none|[An account in the ledger, identified by its address and carrying its metadata and volumes]|
 
 #### Enumerated Values
 
@@ -3877,13 +3953,13 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|resource|string|false|none|none|
-|cursor|object|true|none|none|
+|resource|string|false|none|The resource type carried by this cursor|
+|cursor|object|true|none|Paginated cursor wrapping the list of transactions|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
-|» data|[[V2Transaction](#schemav2transaction)]|true|none|none|
+|» data|[[V2Transaction](#schemav2transaction)]|true|none|[A transaction recorded in the ledger, carrying its postings, metadata and both bi-temporal timestamps]|
 
 #### Enumerated Values
 
@@ -3946,8 +4022,8 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|resource|string|false|none|none|
-|cursor|object|true|none|none|
+|resource|string|false|none|The resource type carried by this cursor|
+|cursor|object|true|none|Paginated cursor wrapping the list of logs|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
@@ -4010,7 +4086,7 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|data|[V2Account](#schemav2account)|true|none|none|
+|data|[V2Account](#schemav2account)|true|none|An account in the ledger, identified by its address and carrying its metadata and volumes|
 
 <h2 id="tocS_V2AggregateBalancesResponse">V2AggregateBalancesResponse</h2>
 <!-- backwards compatibility -->
@@ -4033,7 +4109,7 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|data|[V2AssetsBalances](#schemav2assetsbalances)|true|none|none|
+|data|[V2AssetsBalances](#schemav2assetsbalances)|true|none|Balances keyed by asset|
 
 <h2 id="tocS_V2VolumesWithBalanceCursorResponse">V2VolumesWithBalanceCursorResponse</h2>
 <!-- backwards compatibility -->
@@ -4068,8 +4144,8 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|resource|string|false|none|none|
-|cursor|object|true|none|none|
+|resource|string|false|none|The resource type carried by this cursor|
+|cursor|object|true|none|Paginated cursor wrapping the list of volumes|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
@@ -4104,11 +4180,11 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|account|string|true|none|none|
-|asset|string|true|none|none|
-|input|integer(bigint)|true|none|none|
-|output|integer(bigint)|true|none|none|
-|balance|integer(bigint)|true|none|none|
+|account|string|true|none|The account address these volumes belong to|
+|asset|string|true|none|The asset these volumes are denominated in|
+|input|integer(bigint)|true|none|Total amount credited to the account for this asset|
+|output|integer(bigint)|true|none|Total amount debited from the account for this asset|
+|balance|integer(bigint)|true|none|Net balance for this asset, equal to input minus output|
 
 <h2 id="tocS_V2Metadata">V2Metadata</h2>
 <!-- backwards compatibility -->
@@ -4123,6 +4199,8 @@ This operation does not require authentication
 }
 
 ```
+
+Arbitrary key/value pairs attached to the resource
 
 ### Properties
 
@@ -4152,9 +4230,9 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|server|string|true|none|none|
-|version|string|true|none|none|
-|experimentalFeatures|[string]|false|none|none|
+|server|string|true|none|Name of the server serving the API|
+|version|string|true|none|Version of the ledger service|
+|experimentalFeatures|[string]|false|none|Experimental feature flags enabled on this deployment|
 
 <h2 id="tocS_V2Account">V2Account</h2>
 <!-- backwards compatibility -->
@@ -4200,18 +4278,20 @@ This operation does not require authentication
 
 ```
 
+An account in the ledger, identified by its address and carrying its metadata and volumes
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|address|string|true|none|none|
-|metadata|object|true|none|none|
+|address|string|true|none|The account address, a colon-separated segmented path such as users:001|
+|metadata|object|true|none|Arbitrary key/value pairs attached to the account. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time|
 |» **additionalProperties**|string|false|none|none|
-|insertionDate|string(date-time)|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-|firstUsage|string(date-time)|false|none|none|
-|volumes|[V2Volumes](#schemav2volumes)|false|none|none|
-|effectiveVolumes|[V2Volumes](#schemav2volumes)|false|none|none|
+|insertionDate|string(date-time)|false|none|When the account was first written to the ledger, on the request-time axis|
+|updatedAt|string(date-time)|false|none|When the account was last modified, for example by a metadata change|
+|firstUsage|string(date-time)|false|none|Transaction time of the earliest transaction touching this account. Inserting a backdated transaction can move it earlier|
+|volumes|[V2Volumes](#schemav2volumes)|false|none|Volumes per asset for a single account|
+|effectiveVolumes|[V2Volumes](#schemav2volumes)|false|none|Volumes per asset for a single account|
 
 <h2 id="tocS_V2AssetsBalances">V2AssetsBalances</h2>
 <!-- backwards compatibility -->
@@ -4227,6 +4307,8 @@ This operation does not require authentication
 }
 
 ```
+
+Balances keyed by asset
 
 ### Properties
 
@@ -4255,10 +4337,10 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|amount|integer(bigint)|true|none|none|
-|asset|string|true|none|none|
-|destination|string|true|none|none|
-|source|string|true|none|none|
+|amount|integer(bigint)|true|none|Amount to move, as an arbitrary-precision integer expressed in the asset's smallest unit|
+|asset|string|true|none|The asset being moved, optionally carrying a scale suffix such as USD/2|
+|destination|string|true|none|Address of the account credited by this posting|
+|source|string|true|none|Address of the account debited by this posting|
 
 <h2 id="tocS_V2Transaction">V2Transaction</h2>
 <!-- backwards compatibility -->
@@ -4356,24 +4438,26 @@ This operation does not require authentication
 
 ```
 
+A transaction recorded in the ledger, carrying its postings, metadata and both bi-temporal timestamps
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|insertedAt|string(date-time)|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-|timestamp|string(date-time)|true|none|none|
-|postings|[[V2Posting](#schemav2posting)]|true|none|none|
-|reference|string|false|none|none|
-|metadata|[V2Metadata](#schemav2metadata)|true|none|none|
-|id|integer(bigint)|true|none|none|
-|reverted|boolean|true|none|none|
-|revertedAt|string(date-time)|false|none|none|
-|preCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
-|postCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
-|preCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
-|postCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
-|template|string|false|none|none|
+|insertedAt|string(date-time)|false|none|The request time: when the transaction was actually written to the ledger. Set by the ledger, not the caller. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)|
+|updatedAt|string(date-time)|false|none|When the transaction row was last modified, for example by a metadata change or a revert|
+|timestamp|string(date-time)|true|none|The transaction time: when the transaction is considered to have occurred, also called the effective or booking date. This is the axis the ledger uses to compute balances and resolve point-in-time queries. Settable at creation, defaulting to current machine time if omitted, and immutable once written. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)|
+|postings|[[V2Posting](#schemav2posting)]|true|none|The fund movements making up the transaction|
+|reference|string|false|none|Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions|
+|metadata|[V2Metadata](#schemav2metadata)|true|none|Arbitrary key/value pairs attached to the transaction. Transaction metadata is bi-temporal, so a point-in-time query returns it as it stood at that time|
+|id|integer(bigint)|true|none|Unique sequential identifier for this transaction within the ledger|
+|reverted|boolean|true|none|Indicates if the transaction has been reverted|
+|revertedAt|string(date-time)|false|none|When the transaction was reverted, on the request-time axis. Absent if the transaction has not been reverted|
+|preCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|Volumes aggregated per account and per asset|
+|postCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|Volumes aggregated per account and per asset|
+|preCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|Volumes aggregated per account and per asset|
+|postCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|Volumes aggregated per account and per asset|
+|template|string|false|none|Name of the transaction template this transaction was created from, if any|
 
 <h2 id="tocS_V2PostTransaction">V2PostTransaction</h2>
 <!-- backwards compatibility -->
@@ -4422,19 +4506,19 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|timestamp|string(date-time)|false|none|none|
-|postings|[[V2Posting](#schemav2posting)]|false|none|none|
-|script|object|false|none|none|
+|timestamp|string(date-time)|false|none|The transaction time to record, letting you backdate or postdate the transaction. Defaults to current machine time if omitted. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)|
+|postings|[[V2Posting](#schemav2posting)]|false|none|Fund movements to apply. Mutually exclusive with script and template|
+|script|object|false|none|A Numscript program executed to produce the postings. Mutually exclusive with postings|
 |» template|string|false|none|none|
 |» plain|string|false|none|none|
 |» vars|object|false|none|none|
 |»» **additionalProperties**|string|false|none|none|
 |runtime|[Runtime](#schemaruntime)|false|none|The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.|
-|reference|string|false|none|none|
-|metadata|[V2Metadata](#schemav2metadata)|true|none|none|
-|accountMetadata|object|false|none|none|
-|» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|none|
-|force|boolean|false|none|none|
+|reference|string|false|none|Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions|
+|metadata|[V2Metadata](#schemav2metadata)|true|none|Arbitrary key/value pairs attached to the resource|
+|accountMetadata|object|false|none|Metadata to set on the accounts involved in the transaction, keyed by account address|
+|» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource|
+|force|boolean|false|none|When true, lets source accounts overdraft without bound, bypassing the balance check. Applies to the postings form only|
 
 <h2 id="tocS_V2Stats">V2Stats</h2>
 <!-- backwards compatibility -->
@@ -4451,12 +4535,14 @@ This operation does not require authentication
 
 ```
 
+Aggregate counts for a ledger
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|accounts|integer(int64)|true|none|none|
-|transactions|integer(bigint)|true|none|none|
+|accounts|integer(int64)|true|none|Total number of accounts in the ledger|
+|transactions|integer(bigint)|true|none|Total number of transactions in the ledger|
 
 <h2 id="tocS_V2Log">V2Log</h2>
 <!-- backwards compatibility -->
@@ -4660,20 +4746,20 @@ Transaction structure as it appears in log payloads
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|integer(bigint)|true|none|none|
-|postings|[[V2Posting](#schemav2posting)]|true|none|none|
-|metadata|[V2Metadata](#schemav2metadata)|true|none|none|
-|timestamp|string(date-time)|true|none|none|
-|reference|string|false|none|none|
-|insertedAt|string(date-time)|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-|revertedAt|string(date-time)|false|none|none|
+|id|integer(bigint)|true|none|Unique sequential identifier for this transaction within the ledger|
+|postings|[[V2Posting](#schemav2posting)]|true|none|The fund movements making up the transaction|
+|metadata|[V2Metadata](#schemav2metadata)|true|none|Arbitrary key/value pairs attached to the resource|
+|timestamp|string(date-time)|true|none|The transaction time: when the transaction is considered to have occurred. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)|
+|reference|string|false|none|Optional caller-supplied identifier, unique within the ledger|
+|insertedAt|string(date-time)|false|none|The request time: when the transaction was actually written to the ledger. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)|
+|updatedAt|string(date-time)|false|none|When the transaction row was last modified|
+|revertedAt|string(date-time)|false|none|When the transaction was reverted, on the request-time axis|
 |reverted|boolean|true|none|Indicates if the transaction has been reverted|
 |template|string|false|none|Transaction template used|
-|postCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
-|postCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
-|preCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
-|preCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
+|postCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|Volumes aggregated per account and per asset|
+|postCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|Volumes aggregated per account and per asset|
+|preCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|Volumes aggregated per account and per asset|
+|preCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|Volumes aggregated per account and per asset|
 
 <h2 id="tocS_V2LogDataNewTransaction">V2LogDataNewTransaction</h2>
 <!-- backwards compatibility -->
@@ -4716,7 +4802,7 @@ Payload for NEW_TRANSACTION log entries. Contains the created transaction and an
 |---|---|---|---|---|
 |transaction|[V2LogTransaction](#schemav2logtransaction)|true|none|Transaction structure as it appears in log payloads|
 |accountMetadata|object|true|none|Metadata applied to accounts involved in the transaction|
-|» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|none|
+|» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource|
 
 <h2 id="tocS_V2LogDataSetMetadata">V2LogDataSetMetadata</h2>
 <!-- backwards compatibility -->
@@ -4744,7 +4830,7 @@ Payload for SET_METADATA log entries. Contains the target entity and the metadat
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |targetType|string|true|none|Type of the target entity|
-|targetId|any|true|none|none|
+|targetId|any|true|none|Identifier of the entity the metadata was set on, either an account address or a transaction ID|
 
 oneOf
 
@@ -4762,7 +4848,7 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|metadata|[V2Metadata](#schemav2metadata)|true|none|none|
+|metadata|[V2Metadata](#schemav2metadata)|true|none|Arbitrary key/value pairs attached to the resource|
 
 #### Enumerated Values
 
@@ -4846,7 +4932,7 @@ Payload for DELETE_METADATA log entries. Contains the target entity and the meta
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |targetType|string|true|none|Type of the target entity|
-|targetId|any|true|none|none|
+|targetId|any|true|none|Identifier of the entity the metadata was deleted from, either an account address or a transaction ID|
 
 oneOf
 
@@ -5067,7 +5153,7 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|data|[V2Transaction](#schemav2transaction)|true|none|none|
+|data|[V2Transaction](#schemav2transaction)|true|none|A transaction recorded in the ledger, carrying its postings, metadata and both bi-temporal timestamps|
 
 <h2 id="tocS_V2RevertTransactionResponse">V2RevertTransactionResponse</h2>
 <!-- backwards compatibility -->
@@ -5273,7 +5359,7 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|data|[V2Transaction](#schemav2transaction)|true|none|none|
+|data|[V2Transaction](#schemav2transaction)|true|none|A transaction recorded in the ledger, carrying its postings, metadata and both bi-temporal timestamps|
 
 <h2 id="tocS_V2StatsResponse">V2StatsResponse</h2>
 <!-- backwards compatibility -->
@@ -5296,7 +5382,7 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|data|[V2Stats](#schemav2stats)|true|none|none|
+|data|[V2Stats](#schemav2stats)|true|none|Aggregate counts for a ledger|
 
 <h2 id="tocS_V2ConfigInfoResponse">V2ConfigInfoResponse</h2>
 <!-- backwards compatibility -->
@@ -5340,9 +5426,9 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|input|integer(bigint)|true|none|none|
-|output|integer(bigint)|true|none|none|
-|balance|integer(bigint)|false|none|none|
+|input|integer(bigint)|true|none|Total amount credited for this asset|
+|output|integer(bigint)|true|none|Total amount debited for this asset|
+|balance|integer(bigint)|false|none|Net balance, equal to input minus output|
 
 <h2 id="tocS_V2Volumes">V2Volumes</h2>
 <!-- backwards compatibility -->
@@ -5366,6 +5452,8 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
 }
 
 ```
+
+Volumes per asset for a single account
 
 ### Properties
 
@@ -5400,11 +5488,13 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
 
 ```
 
+Volumes aggregated per account and per asset
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|**additionalProperties**|[V2Volumes](#schemav2volumes)|false|none|none|
+|**additionalProperties**|[V2Volumes](#schemav2volumes)|false|none|Volumes per asset for a single account|
 
 <h2 id="tocS_V2ErrorResponse">V2ErrorResponse</h2>
 <!-- backwards compatibility -->
@@ -5426,9 +5516,9 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|errorCode|[V2ErrorsEnum](#schemav2errorsenum)|true|none|none|
-|errorMessage|string|true|none|none|
-|details|string|false|none|none|
+|errorCode|[V2ErrorsEnum](#schemav2errorsenum)|true|none|Machine-readable error code identifying the failure|
+|errorMessage|string|true|none|Human-readable description of the error|
+|details|string|false|none|Optional link carrying additional context about the error, such as a Numscript playground URL reproducing it|
 
 <h2 id="tocS_V2ErrorsEnum">V2ErrorsEnum</h2>
 <!-- backwards compatibility -->
@@ -5442,11 +5532,13 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
 
 ```
 
+Machine-readable error code identifying the failure
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|string|false|none|none|
+|*anonymous*|string|false|none|Machine-readable error code identifying the failure|
 
 #### Enumerated Values
 
@@ -5503,7 +5595,7 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|data|[V2LedgerInfo](#schemav2ledgerinfo)|false|none|none|
+|data|[V2LedgerInfo](#schemav2ledgerinfo)|false|none|Runtime information about a ledger, including the state of its storage migrations|
 
 <h2 id="tocS_V2LedgerInfo">V2LedgerInfo</h2>
 <!-- backwards compatibility -->
@@ -5529,12 +5621,14 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
 
 ```
 
+Runtime information about a ledger, including the state of its storage migrations
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|false|none|none|
-|storage|object|false|none|none|
+|name|string|false|none|Name of the ledger|
+|storage|object|false|none|Storage backend information, including the migrations applied to the ledger's bucket|
 |» migrations|[[V2MigrationInfo](#schemav2migrationinfo)]|false|none|none|
 
 <h2 id="tocS_V2MigrationInfo">V2MigrationInfo</h2>
@@ -5558,10 +5652,10 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|version|string|false|none|none|
-|name|string|false|none|none|
-|date|string(date-time)|false|none|none|
-|state|string|false|none|none|
+|version|string|false|none|Sequence number of the migration|
+|name|string|false|none|Name of the migration|
+|date|string(date-time)|false|none|When the migration was applied|
+|state|string|false|none|Current state of the migration|
 
 #### Enumerated Values
 
@@ -5645,8 +5739,8 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|action|string|true|none|none|
-|ik|string|false|none|none|
+|action|string|true|none|The bulk action this element performs|
+|ik|string|false|none|Idempotency key scoped to this element, making it safe to retry the bulk request|
 
 <h2 id="tocS_V2BulkElement">V2BulkElement</h2>
 <!-- backwards compatibility -->
@@ -5916,7 +6010,7 @@ and
 |»» id|integer(bigint)|true|none|none|
 |»» force|boolean|false|none|none|
 |»» atEffectiveDate|boolean|false|none|none|
-|»» metadata|[V2Metadata](#schemav2metadata)|false|none|none|
+|»» metadata|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource|
 
 <h2 id="tocS_V2BulkElementDeleteMetadata">V2BulkElementDeleteMetadata</h2>
 <!-- backwards compatibility -->
@@ -6066,9 +6160,9 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|data|[[V2BulkElementResult](#schemav2bulkelementresult)]|false|none|none|
-|errorCode|[V2ErrorsEnum](#schemav2errorsenum)|false|none|none|
-|errorMessage|string|false|none|none|
+|data|[[V2BulkElementResult](#schemav2bulkelementresult)]|false|none|Result of each element of the bulk request, in submission order|
+|errorCode|[V2ErrorsEnum](#schemav2errorsenum)|false|none|Machine-readable error code identifying the failure|
+|errorMessage|string|false|none|Human-readable description of the error|
 
 <h2 id="tocS_V2BulkElementResult">V2BulkElementResult</h2>
 <!-- backwards compatibility -->
@@ -6221,8 +6315,8 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|responseType|string|true|none|none|
-|logID|integer|true|none|none|
+|responseType|string|true|none|The action this result corresponds to|
+|logID|integer|true|none|Identifier of the log entry produced by this element|
 
 <h2 id="tocS_V2BulkElementResultCreateTransaction">V2BulkElementResultCreateTransaction</h2>
 <!-- backwards compatibility -->
@@ -6337,7 +6431,7 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» data|[V2Transaction](#schemav2transaction)|true|none|none|
+|» data|[V2Transaction](#schemav2transaction)|true|none|A transaction recorded in the ledger, carrying its postings, metadata and both bi-temporal timestamps|
 
 <h2 id="tocS_V2BulkElementResultAddMetadata">V2BulkElementResultAddMetadata</h2>
 <!-- backwards compatibility -->
@@ -6471,7 +6565,7 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» data|[V2Transaction](#schemav2transaction)|true|none|none|
+|» data|[V2Transaction](#schemav2transaction)|true|none|A transaction recorded in the ledger, carrying its postings, metadata and both bi-temporal timestamps|
 
 <h2 id="tocS_V2BulkElementResultDeleteMetadata">V2BulkElementResultDeleteMetadata</h2>
 <!-- backwards compatibility -->
@@ -6539,6 +6633,8 @@ and
 
 ```
 
+Rules applied to accounts matching a chart-of-accounts segment
+
 ### Properties
 
 *None*
@@ -6561,7 +6657,7 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|default|string|false|none|none|
+|default|string|false|none|Value applied to this metadata key when an account matching the segment is created|
 
 <h2 id="tocS_V2ChartSegment">V2ChartSegment</h2>
 <!-- backwards compatibility -->
@@ -6588,10 +6684,10 @@ Segment within a chart of accounts
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of accounts|
-|.self|object|false|none|none|
-|.pattern|string|false|none|none|
-|.rules|[V2ChartAccountRules](#schemav2chartaccountrules)|false|none|none|
-|.metadata|object|false|none|none|
+|.self|object|false|none|Rules and metadata applied to the segment's own account, as opposed to its children|
+|.pattern|string|false|none|Regular expression every child segment name must match|
+|.rules|[V2ChartAccountRules](#schemav2chartaccountrules)|false|none|Rules applied to accounts matching a chart-of-accounts segment|
+|.metadata|object|false|none|Metadata applied to accounts matching this segment, keyed by metadata key|
 |» **additionalProperties**|[V2ChartAccountMetadata](#schemav2chartaccountmetadata)|false|none|none|
 
 <h2 id="tocS_V2ChartOfAccounts">V2ChartOfAccounts</h2>
@@ -6667,8 +6763,8 @@ The numscript runtime used to execute the script. Uses "machine" by default, unl
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|description|string|false|none|none|
-|script|string|true|none|none|
+|description|string|false|none|Human-readable description of what the template does|
+|script|string|true|none|The Numscript program the template executes|
 |runtime|[Runtime](#schemaruntime)|false|none|The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.|
 
 <h2 id="tocS_V2TransactionTemplates">V2TransactionTemplates</h2>
@@ -6721,8 +6817,8 @@ Transaction templates
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|type|string|true|none|none|
-|default|any|false|none|none|
+|type|string|true|none|Type of the variable|
+|default|any|false|none|Value used when the variable is not supplied at query time|
 
 <h2 id="tocS_V2QueryResource">V2QueryResource</h2>
 <!-- backwards compatibility -->
@@ -6736,11 +6832,13 @@ Transaction templates
 
 ```
 
+The resource a query template targets
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|string|false|none|none|
+|*anonymous*|string|false|none|The resource a query template targets|
 
 #### Enumerated Values
 
@@ -6770,14 +6868,16 @@ Transaction templates
 
 ```
 
+Parameters applied when running a query template
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
 |cursor|string|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
-|expand|string|false|none|none|
-|pit|string(date-time)|false|none|none|
+|expand|string|false|none|Additional data to include in the response, such as volumes|
+|pit|string(date-time)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
 |sort|string|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
 
 oneOf
@@ -6857,12 +6957,12 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|description|string|false|none|none|
-|resource|[V2QueryResource](#schemav2queryresource)|false|none|none|
-|params|[V2QueryParams](#schemav2queryparams)|false|none|none|
-|vars|object|false|none|none|
+|description|string|false|none|Human-readable description of what the query returns|
+|resource|[V2QueryResource](#schemav2queryresource)|false|none|The resource a query template targets|
+|params|[V2QueryParams](#schemav2queryparams)|false|none|Parameters applied when running a query template|
+|vars|object|false|none|Variables the query accepts, keyed by variable name|
 |» **additionalProperties**|[V2QueryTemplateVar](#schemav2querytemplatevar)|false|none|none|
-|body|object|false|none|none|
+|body|object|false|none|The filter expression the query evaluates|
 
 <h2 id="tocS_V2QueryTemplates">V2QueryTemplates</h2>
 <!-- backwards compatibility -->
@@ -7307,7 +7407,7 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|cursor|[V2SchemasCursor](#schemav2schemascursor)|true|none|none|
+|cursor|[V2SchemasCursor](#schemav2schemascursor)|true|none|Paginated cursor over the ledger's schemas|
 
 <h2 id="tocS_V2SchemasCursor">V2SchemasCursor</h2>
 <!-- backwards compatibility -->
@@ -7399,15 +7499,17 @@ and
 
 ```
 
+Paginated cursor over the ledger's schemas
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|data|[[V2Schema](#schemav2schema)]|true|none|[Complete schema structure with metadata]|
-|hasMore|boolean|true|none|none|
-|previous|string|false|none|none|
-|next|string|false|none|none|
-|pageSize|integer|true|none|none|
+|data|[[V2Schema](#schemav2schema)]|true|none|The schemas on this page|
+|hasMore|boolean|true|none|Whether further pages are available|
+|previous|string|false|none|Cursor for the previous page, absent on the first page|
+|next|string|false|none|Cursor for the next page, absent on the last page|
+|pageSize|integer|true|none|Number of items requested per page|
 
 <h2 id="tocS_V2CreateLedgerRequest">V2CreateLedgerRequest</h2>
 <!-- backwards compatibility -->
@@ -7434,9 +7536,9 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|bucket|string|false|none|none|
-|metadata|[V2Metadata](#schemav2metadata)|false|none|none|
-|features|object|false|none|none|
+|bucket|string|false|none|Name of the storage bucket backing the ledger. Ledgers sharing a bucket share a database schema|
+|metadata|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource|
+|features|object|false|none|Feature flags to enable on the ledger, keyed by feature name|
 |» **additionalProperties**|string|false|none|none|
 
 <h2 id="tocS_V2Ledger">V2Ledger</h2>
@@ -7464,18 +7566,20 @@ and
 
 ```
 
+A ledger and its configuration
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
-|addedAt|string(date-time)|true|none|none|
-|bucket|string|true|none|none|
-|deletedAt|string(date-time)¦null|false|none|none|
-|metadata|[V2Metadata](#schemav2metadata)|false|none|none|
-|features|object|false|none|none|
+|name|string|true|none|Name of the ledger|
+|addedAt|string(date-time)|true|none|When the ledger was created|
+|bucket|string|true|none|Name of the storage bucket backing the ledger|
+|deletedAt|string(date-time)¦null|false|none|When the ledger was deleted, absent for active ledgers|
+|metadata|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource|
+|features|object|false|none|Feature flags enabled on the ledger, keyed by feature name|
 |» **additionalProperties**|string|false|none|none|
-|id|integer|false|none|none|
+|id|integer|false|none|Unique sequential identifier for the ledger|
 
 <h2 id="tocS_V2LedgerListResponse">V2LedgerListResponse</h2>
 <!-- backwards compatibility -->
@@ -7516,12 +7620,12 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|cursor|object|true|none|none|
+|cursor|object|true|none|Paginated cursor wrapping the list of ledgers|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
-|» data|[[V2Ledger](#schemav2ledger)]|true|none|none|
+|» data|[[V2Ledger](#schemav2ledger)]|true|none|[A ledger and its configuration]|
 
 <h2 id="tocS_V2UpdateLedgerMetadataRequest">V2UpdateLedgerMetadataRequest</h2>
 <!-- backwards compatibility -->
@@ -7572,7 +7676,7 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|data|[V2Ledger](#schemav2ledger)|true|none|none|
+|data|[V2Ledger](#schemav2ledger)|true|none|A ledger and its configuration|
 
 <h2 id="tocS_V2ImportLogsRequest">V2ImportLogsRequest</h2>
 <!-- backwards compatibility -->
@@ -7592,7 +7696,7 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|file|string(binary)|true|none|none|
+|file|string(binary)|true|none|The log export to import, as produced by the export endpoint|
 
 <h2 id="tocS_V2RevertTransactionRequest">V2RevertTransactionRequest</h2>
 <!-- backwards compatibility -->
@@ -7615,7 +7719,7 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|metadata|object|false|none|none|
+|metadata|object|false|none|Metadata to attach to the compensating transaction created by the revert|
 |» **additionalProperties**|string|false|none|none|
 
 <h2 id="tocS_V2CreatePipelineRequest">V2CreatePipelineRequest</h2>
@@ -7636,7 +7740,7 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|exporterID|string|true|none|none|
+|exporterID|string|true|none|Identifier of the exporter this pipeline feeds|
 
 <h2 id="tocS_V2CreateExporterRequest">V2CreateExporterRequest</h2>
 <!-- backwards compatibility -->
@@ -7695,8 +7799,8 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|ledger|string|true|none|none|
-|exporterID|string|true|none|none|
+|ledger|string|true|none|Name of the ledger the pipeline reads from|
+|exporterID|string|true|none|Identifier of the exporter the pipeline feeds|
 
 <h2 id="tocS_V2ExporterConfiguration">V2ExporterConfiguration</h2>
 <!-- backwards compatibility -->
@@ -7717,8 +7821,8 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|driver|string|true|none|none|
-|config|object|true|none|none|
+|driver|string|true|none|Name of the exporter driver to use|
+|config|object|true|none|Driver-specific configuration for the exporter|
 
 <h2 id="tocS_V2Exporter">V2Exporter</h2>
 <!-- backwards compatibility -->

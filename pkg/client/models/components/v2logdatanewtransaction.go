@@ -2,6 +2,10 @@
 
 package components
 
+import (
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
+)
+
 // V2LogDataNewTransaction - Payload for NEW_TRANSACTION log entries. Contains the created transaction and any account metadata set during creation.
 type V2LogDataNewTransaction struct {
 	// Transaction structure as it appears in log payloads
@@ -10,16 +14,30 @@ type V2LogDataNewTransaction struct {
 	AccountMetadata map[string]map[string]string `json:"accountMetadata"`
 }
 
-func (o *V2LogDataNewTransaction) GetTransaction() V2LogTransaction {
-	if o == nil {
-		return V2LogTransaction{}
-	}
-	return o.Transaction
+func (v V2LogDataNewTransaction) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
 }
 
-func (o *V2LogDataNewTransaction) GetAccountMetadata() map[string]map[string]string {
-	if o == nil {
+func (v *V2LogDataNewTransaction) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"transaction", "accountMetadata"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2LogDataNewTransaction) GetTransaction() V2LogTransaction {
+	if v == nil {
+		return V2LogTransaction{}
+	}
+	return v.Transaction
+}
+
+func (v *V2LogDataNewTransaction) GetAccountMetadata() map[string]map[string]string {
+	if v == nil {
 		return map[string]map[string]string{}
 	}
-	return o.AccountMetadata
+	return v.AccountMetadata
 }
+
+// #region class-body-v2logdatanewtransaction
+// #endregion class-body-v2logdatanewtransaction

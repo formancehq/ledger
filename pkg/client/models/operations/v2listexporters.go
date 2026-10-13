@@ -12,16 +12,19 @@ type V2ListExportersResponse struct {
 	V2ExportersCursorResponse *components.V2ExportersCursorResponse
 }
 
-func (o *V2ListExportersResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2ListExportersResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2ListExportersResponse) GetV2ExportersCursorResponse() *components.V2ExportersCursorResponse {
-	if o == nil {
+func (v *V2ListExportersResponse) GetV2ExportersCursorResponse() *components.V2ExportersCursorResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2ExportersCursorResponse
+	return v.V2ExportersCursorResponse
 }
+
+// #region class-body-v2listexportersresponse
+// #endregion class-body-v2listexportersresponse

@@ -28,69 +28,75 @@ func (v V2AddMetadataOnTransactionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2AddMetadataOnTransactionRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2AddMetadataOnTransactionRequest) GetLedger() string {
-	if o == nil {
+func (v *V2AddMetadataOnTransactionRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2AddMetadataOnTransactionRequest) GetID() *big.Int {
-	if o == nil {
+func (v *V2AddMetadataOnTransactionRequest) GetID() *big.Int {
+	if v == nil {
 		return big.NewInt(0)
 	}
-	return o.ID
+	return v.ID
 }
 
-func (o *V2AddMetadataOnTransactionRequest) GetDryRun() *bool {
-	if o == nil {
+func (v *V2AddMetadataOnTransactionRequest) GetDryRun() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.DryRun
+	return v.DryRun
 }
 
-func (o *V2AddMetadataOnTransactionRequest) GetIdempotencyKey() *string {
-	if o == nil {
+func (v *V2AddMetadataOnTransactionRequest) GetIdempotencyKey() *string {
+	if v == nil {
 		return nil
 	}
-	return o.IdempotencyKey
+	return v.IdempotencyKey
 }
 
-func (o *V2AddMetadataOnTransactionRequest) GetSchemaVersion() *string {
-	if o == nil {
+func (v *V2AddMetadataOnTransactionRequest) GetSchemaVersion() *string {
+	if v == nil {
 		return nil
 	}
-	return o.SchemaVersion
+	return v.SchemaVersion
 }
 
-func (o *V2AddMetadataOnTransactionRequest) GetRequestBody() map[string]string {
-	if o == nil {
+func (v *V2AddMetadataOnTransactionRequest) GetRequestBody() map[string]string {
+	if v == nil {
 		return map[string]string{}
 	}
-	return o.RequestBody
+	return v.RequestBody
 }
+
+// #region class-body-v2addmetadataontransactionrequest
+// #endregion class-body-v2addmetadataontransactionrequest
 
 type V2AddMetadataOnTransactionResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	Headers  map[string][]string
 }
 
-func (o *V2AddMetadataOnTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2AddMetadataOnTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2AddMetadataOnTransactionResponse) GetHeaders() map[string][]string {
-	if o == nil {
+func (v *V2AddMetadataOnTransactionResponse) GetHeaders() map[string][]string {
+	if v == nil {
 		return map[string][]string{}
 	}
-	return o.Headers
+	return v.Headers
 }
+
+// #region class-body-v2addmetadataontransactionresponse
+// #endregion class-body-v2addmetadataontransactionresponse

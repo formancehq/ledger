@@ -2,6 +2,7 @@
 
 package components
 
+// V2PipelinesCursorResponseCursor - Paginated cursor wrapping the list of pipelines
 type V2PipelinesCursorResponseCursor struct {
 	PageSize int64        `json:"pageSize"`
 	HasMore  bool         `json:"hasMore"`
@@ -10,49 +11,56 @@ type V2PipelinesCursorResponseCursor struct {
 	Data     []V2Pipeline `json:"data"`
 }
 
-func (o *V2PipelinesCursorResponseCursor) GetPageSize() int64 {
-	if o == nil {
+func (v *V2PipelinesCursorResponseCursor) GetPageSize() int64 {
+	if v == nil {
 		return 0
 	}
-	return o.PageSize
+	return v.PageSize
 }
 
-func (o *V2PipelinesCursorResponseCursor) GetHasMore() bool {
-	if o == nil {
+func (v *V2PipelinesCursorResponseCursor) GetHasMore() bool {
+	if v == nil {
 		return false
 	}
-	return o.HasMore
+	return v.HasMore
 }
 
-func (o *V2PipelinesCursorResponseCursor) GetPrevious() *string {
-	if o == nil {
+func (v *V2PipelinesCursorResponseCursor) GetPrevious() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Previous
+	return v.Previous
 }
 
-func (o *V2PipelinesCursorResponseCursor) GetNext() *string {
-	if o == nil {
+func (v *V2PipelinesCursorResponseCursor) GetNext() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Next
+	return v.Next
 }
 
-func (o *V2PipelinesCursorResponseCursor) GetData() []V2Pipeline {
-	if o == nil {
+func (v *V2PipelinesCursorResponseCursor) GetData() []V2Pipeline {
+	if v == nil {
 		return []V2Pipeline{}
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2pipelinescursorresponsecursor
+// #endregion class-body-v2pipelinescursorresponsecursor
 
 // V2PipelinesCursorResponse - Pipelines list
 type V2PipelinesCursorResponse struct {
+	// Paginated cursor wrapping the list of pipelines
 	Cursor V2PipelinesCursorResponseCursor `json:"cursor"`
 }
 
-func (o *V2PipelinesCursorResponse) GetCursor() V2PipelinesCursorResponseCursor {
-	if o == nil {
+func (v *V2PipelinesCursorResponse) GetCursor() V2PipelinesCursorResponseCursor {
+	if v == nil {
 		return V2PipelinesCursorResponseCursor{}
 	}
-	return o.Cursor
+	return v.Cursor
 }
+
+// #region class-body-v2pipelinescursorresponse
+// #endregion class-body-v2pipelinescursorresponse

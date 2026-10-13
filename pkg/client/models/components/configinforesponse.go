@@ -3,12 +3,13 @@
 package components
 
 type ConfigInfoResponse struct {
+	// Configuration and version information for the ledger server
 	Data ConfigInfo `json:"data"`
 }
 
-func (o *ConfigInfoResponse) GetData() ConfigInfo {
-	if o == nil {
+func (c *ConfigInfoResponse) GetData() ConfigInfo {
+	if c == nil {
 		return ConfigInfo{}
 	}
-	return o.Data
+	return c.Data
 }

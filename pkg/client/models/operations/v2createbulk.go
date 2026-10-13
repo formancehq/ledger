@@ -20,47 +20,50 @@ type V2CreateBulkRequest struct {
 	RequestBody   []components.V2BulkElement `request:"mediaType=application/json"`
 }
 
-func (o *V2CreateBulkRequest) GetLedger() string {
-	if o == nil {
+func (v *V2CreateBulkRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2CreateBulkRequest) GetContinueOnFailure() *bool {
-	if o == nil {
+func (v *V2CreateBulkRequest) GetContinueOnFailure() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.ContinueOnFailure
+	return v.ContinueOnFailure
 }
 
-func (o *V2CreateBulkRequest) GetAtomic() *bool {
-	if o == nil {
+func (v *V2CreateBulkRequest) GetAtomic() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.Atomic
+	return v.Atomic
 }
 
-func (o *V2CreateBulkRequest) GetParallel() *bool {
-	if o == nil {
+func (v *V2CreateBulkRequest) GetParallel() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.Parallel
+	return v.Parallel
 }
 
-func (o *V2CreateBulkRequest) GetSchemaVersion() *string {
-	if o == nil {
+func (v *V2CreateBulkRequest) GetSchemaVersion() *string {
+	if v == nil {
 		return nil
 	}
-	return o.SchemaVersion
+	return v.SchemaVersion
 }
 
-func (o *V2CreateBulkRequest) GetRequestBody() []components.V2BulkElement {
-	if o == nil {
+func (v *V2CreateBulkRequest) GetRequestBody() []components.V2BulkElement {
+	if v == nil {
 		return []components.V2BulkElement{}
 	}
-	return o.RequestBody
+	return v.RequestBody
 }
+
+// #region class-body-v2createbulkrequest
+// #endregion class-body-v2createbulkrequest
 
 type V2CreateBulkResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -68,16 +71,19 @@ type V2CreateBulkResponse struct {
 	V2BulkResponse *components.V2BulkResponse
 }
 
-func (o *V2CreateBulkResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2CreateBulkResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2CreateBulkResponse) GetV2BulkResponse() *components.V2BulkResponse {
-	if o == nil {
+func (v *V2CreateBulkResponse) GetV2BulkResponse() *components.V2BulkResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2BulkResponse
+	return v.V2BulkResponse
 }
+
+// #region class-body-v2createbulkresponse
+// #endregion class-body-v2createbulkresponse

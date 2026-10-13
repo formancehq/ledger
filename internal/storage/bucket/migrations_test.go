@@ -13,7 +13,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/extra/bundebug"
+	debug "github.com/uptrace/bun/extra/bundebug"
 	"go.opentelemetry.io/otel/trace/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -105,7 +105,7 @@ func TestMigrations(t *testing.T) {
 
 	require.NoError(t, system.Migrate(ctx, db))
 	if testing.Verbose() {
-		db.AddQueryHook(bundebug.NewQueryHook())
+		db.AddQueryHook(debug.NewQueryHook())
 	}
 
 	bucketName := uuid.NewString()[:8]

@@ -2,13 +2,15 @@
 
 package components
 
+// Mapping - Contracts constraining the balances a ledger's accounts may hold
 type Mapping struct {
+	// Constraints enforced on the ledger's accounts
 	Contracts []Contract `json:"contracts"`
 }
 
-func (o *Mapping) GetContracts() []Contract {
-	if o == nil {
+func (m *Mapping) GetContracts() []Contract {
+	if m == nil {
 		return []Contract{}
 	}
-	return o.Contracts
+	return m.Contracts
 }

@@ -2,21 +2,24 @@
 
 package components
 
+// LedgerStorage - Storage backend the ledgers are held in
 type LedgerStorage struct {
-	Driver  string   `json:"driver"`
+	// Name of the storage driver backing the ledgers
+	Driver string `json:"driver"`
+	// Names of the ledgers held in this storage backend
 	Ledgers []string `json:"ledgers"`
 }
 
-func (o *LedgerStorage) GetDriver() string {
-	if o == nil {
+func (l *LedgerStorage) GetDriver() string {
+	if l == nil {
 		return ""
 	}
-	return o.Driver
+	return l.Driver
 }
 
-func (o *LedgerStorage) GetLedgers() []string {
-	if o == nil {
+func (l *LedgerStorage) GetLedgers() []string {
+	if l == nil {
 		return []string{}
 	}
-	return o.Ledgers
+	return l.Ledgers
 }

@@ -1,5 +1,7 @@
 # V2LedgerInfoStorage
 
+Storage backend information, including the migrations applied to the ledger's bucket
+
 
 ## Fields
 

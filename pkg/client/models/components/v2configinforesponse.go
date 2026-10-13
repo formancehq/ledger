@@ -3,28 +3,34 @@
 package components
 
 type V2ConfigInfoResponse struct {
-	Server               string   `json:"server"`
-	Version              string   `json:"version"`
+	// Name of the server serving the API
+	Server string `json:"server"`
+	// Version of the ledger service
+	Version string `json:"version"`
+	// Experimental feature flags enabled on this deployment
 	ExperimentalFeatures []string `json:"experimentalFeatures,omitempty"`
 }
 
-func (o *V2ConfigInfoResponse) GetServer() string {
-	if o == nil {
+func (v *V2ConfigInfoResponse) GetServer() string {
+	if v == nil {
 		return ""
 	}
-	return o.Server
+	return v.Server
 }
 
-func (o *V2ConfigInfoResponse) GetVersion() string {
-	if o == nil {
+func (v *V2ConfigInfoResponse) GetVersion() string {
+	if v == nil {
 		return ""
 	}
-	return o.Version
+	return v.Version
 }
 
-func (o *V2ConfigInfoResponse) GetExperimentalFeatures() []string {
-	if o == nil {
+func (v *V2ConfigInfoResponse) GetExperimentalFeatures() []string {
+	if v == nil {
 		return nil
 	}
-	return o.ExperimentalFeatures
+	return v.ExperimentalFeatures
 }
+
+// #region class-body-v2configinforesponse
+// #endregion class-body-v2configinforesponse
