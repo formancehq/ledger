@@ -259,7 +259,7 @@ func (s *protoSnapshotSlot[V]) RestoreEntry(genIndex int) func(u128 attributes.U
 
 		// The flag byte at offset 8 distinguishes tombstones from live entries.
 		// Tombstones are kept in cache to shadow any live row in gen1 (see
-		// AttributeCache.Del's lazy fabrication). A live entry whose proto
+		// KeyStore.Tombstone). A live entry whose proto
 		// marshals to zero bytes is valid and must round-trip as live
 		// (EN-1377).
 		if deleted {
@@ -394,9 +394,8 @@ func (s *CacheSnapshotter) ValidatePreload(attrID *raftcmdpb.AttributeID, attrCo
 
 // persistLeanProtoEntries writes all entries from a KV store to 0xFF in lean format.
 // Tombstones (entry.Deleted) are written as a 9-byte row with the flag byte
-// set; their pre-delete entry.Data is intentionally not marshaled (it would
-// resurrect on restore — AttributeCache.Del only flips Deleted and keeps the
-// payload around).
+// set and no payload: entry.Data is never marshaled, so a tombstone cannot
+// resurrect a value on restore.
 func persistLeanProtoEntries[V interface {
 	MarshalVT() ([]byte, error)
 }](batch *dal.WriteSession, genByte, cacheType byte, store kv.KV[attributes.U128, attributes.Entry[V]]) error {

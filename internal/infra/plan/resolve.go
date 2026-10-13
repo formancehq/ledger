@@ -30,7 +30,7 @@ const resolveParallelism = 16
 // pure declarations: they contribute to coverage_bits (invariant #9) so
 // the scope admits their key in the FSM apply path, but they do NOT
 // mutate the cache — AttributeCache.Get's gen0→gen1 fallback and
-// AttributeCache.Del's lazy gen1→gen0 tombstone fabrication cover the
+// KeyStore.Tombstone's gen1→gen0 tombstone write cover the
 // read and delete cases without a preemptive promote pass.
 //
 // Idempotency keys live on the parallel idempotencyKeys slice — they are
@@ -121,8 +121,8 @@ func (s *entrySlab) appendSeed(id attributes.U128, tag uint64, attrCode byte, va
 //
 //   - CacheUnreachable → ErrCacheHorizonExceeded (admission rejection).
 //   - CacheHit → coverage-only (value nil); AttributeCache.Get's gen0→gen1
-//     fallback surfaces the entry on read, and AttributeCache.Del's lazy
-//     promote fabricates the gen0 tombstone if the handler deletes.
+//     fallback surfaces the entry on read, and KeyStore.Tombstone writes
+//     the gen0 tombstone if the handler deletes.
 //   - CacheMiss + bloom/Pebble-absent → coverage-only.
 //   - CacheMiss + Pebble-load-hit → seeded (value = the loaded payload;
 //     MirrorPreload writes gen0+gen1).
@@ -176,7 +176,7 @@ func resolveCoverage[T interface {
 			// reads it, so reject at admission and let the client retry
 			// against a fresher snapshot. Bounded to at most 1 rotation
 			// between admission and apply, which the gen0→gen1 read
-			// fallback and lazy Del promote handle correctly.
+			// fallback and lazy tombstone write handle correctly.
 			//
 			// Continue processing so wg.Wait() below drains any CacheMiss
 			// loader goroutine earlier iterations already launched.
@@ -201,7 +201,7 @@ func resolveCoverage[T interface {
 			// Cache has the key somewhere (gen0 or gen1). Emit a
 			// coverage-only entry — no cache mutation is needed at
 			// Preload: Get's gen0→gen1 fallback surfaces the value on
-			// read and Del's lazy promote fabricates a gen0 tombstone
+			// read and KeyStore.Tombstone writes a gen0 tombstone
 			// on delete. No Pebble read required.
 			mu.Lock()
 			plans = append(plans, slab.appendCoverage(id, tag, attrCode))
