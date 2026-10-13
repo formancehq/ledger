@@ -27,6 +27,9 @@ if [[ ${1:-} == "--exec" ]]; then
     shift
     metafiles="${GOCOVERDIR:-}/metafiles.txt"
     if [[ -n ${GOCOVERDIR:-} && -f $metafiles ]]; then
+        # Assign first so a jq failure (e.g. a changed cmd/go format) aborts
+        # under set -e instead of silently dropping the fragments.
+        fragments=$(jq -er '.MetaFileFragments[]' "$metafiles")
         while IFS= read -r fragment; do
             dst="$GO_TEST_COVERAGE_DIR/$(basename "$fragment")"
             if [[ ! -f $dst ]]; then
@@ -36,7 +39,7 @@ if [[ ${1:-} == "--exec" ]]; then
                 cp "$fragment" "$tmp"
                 mv -f "$tmp" "$dst"
             fi
-        done < <(jq -r '.MetaFileFragments[]' "$metafiles")
+        done <<< "$fragments"
     fi
     exec "$@"
 fi
