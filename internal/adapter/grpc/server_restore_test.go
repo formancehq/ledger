@@ -79,7 +79,8 @@ func TestInvalidCallerAttributionPreventsRestoreFinalization(t *testing.T) {
 		CallerSnapshot: &commonpb.CallerSnapshot{},
 		Outcome: &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{
 			Reason: commonpb.ErrorReason_ERROR_REASON_VALIDATION,
-			Code:   "VALIDATION",
+			Code:   "TARGET_REQUIRED",
+			Details: commonpb.MustFailureDetails("TARGET_REQUIRED", nil),
 		}},
 	}
 	header, err := state.BuildHashedHeaderPayload(entry)
@@ -97,8 +98,15 @@ func TestInvalidCallerAttributionPreventsRestoreFinalization(t *testing.T) {
 
 	stream := NewMockServerStreamingServer[restorepb.ValidateRestoreEvent](gomock.NewController(t))
 	stream.EXPECT().Context().Return(context.Background()).AnyTimes()
-	stream.EXPECT().Send(gomock.Any()).Return(nil).AnyTimes()
+	var validationMessages []string
+	stream.EXPECT().Send(gomock.Any()).DoAndReturn(func(event *restorepb.ValidateRestoreEvent) error {
+		if event.GetError() != nil {
+			validationMessages = append(validationMessages, event.GetError().GetMessage())
+		}
+		return nil
+	}).AnyTimes()
 	require.NoError(t, server.ValidateRestore(&restorepb.ValidateRestoreRequest{}, stream))
+	require.Contains(t, strings.Join(validationMessages, "\n"), "invalid caller attribution")
 
 	server.mu.Lock()
 	validated := server.validated
