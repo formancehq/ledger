@@ -848,16 +848,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// them via EXCLUSION_RECORD_MISMATCH for human review.
 	compareExclusionProjections(stored, excluded, callback)
 
-	// `excluded` was populated incrementally by the replay-time
-	// exclusionCollector. It is the audit-derived ground truth — the
-	// AppliedProposal.TransientVolumes and LedgerLog.PurgedVolumes proto
-	// records are intentionally NOT read here (they are not bound to the
-	// audit hash chain and would let a tampered store hide live mutations
-	// on otherwise-purged accounts).
-
-	// Comparison passes: expected = replayed state.
+	// Comparison passes: expected = replayed state. A cell SimulateEphemeralPurge
+	// deleted from the replay store must be absent from the live store too.
 	c.compareVolumes(ctx, snap, replay, excluded, callback)
-	c.compareMetadata(ctx, snap, replay, excluded, callback)
+	c.compareMetadata(ctx, snap, replay, callback)
 	c.compareTransactions(ctx, snap, replay, callback)
 
 	c.compareIndexes(compareIndexesScope{
@@ -1542,58 +1536,26 @@ func (c *Checker) compareNumscripts(
 	}
 }
 
-// excludedVolumesSet maps ledger name to a set of (account, asset) tuples
-// that legitimately diverge between the replay store and the live Pebble
-// store. The set is populated incrementally by the replay-time
-// exclusionCollector in Check() — i.e. derived from the audit log (the
-// only hash-chain-bound source). AppliedProposal.TransientVolumes and
-// LedgerLog.PurgedVolumes are NOT consulted: they are caches for the
+// excludedVolumesSet maps ledger name to the (account, asset, color) cells
+// SimulateEphemeralPurge deleted from the replay store. It is populated
+// incrementally by the replay-time exclusionCollector in Check() — i.e.
+// derived from the audit log (the only hash-chain-bound source) — and is
+// compared against the AppliedProposal.TransientVolumes and
+// LedgerLog.PurgedVolumes projections by compareExclusionProjections. Those
+// projections are never consulted as an oracle: they are caches for the
 // index builder and cannot be trusted by the integrity checker.
 type excludedVolumesSet map[string]map[domain.AccountAssetKey]struct{}
 
-func (e excludedVolumesSet) excludesCurrentVolume(key domain.VolumeKey, replayHasVolume, replayAccountIsActive bool) bool {
-	return !replayHasVolume && !replayAccountIsActive && e.contains(key.LedgerName, key.Account, key.Asset, key.Color)
-}
-
-func (e excludedVolumesSet) excludesCurrentMetadata(key domain.MetadataKey, replayAccountIsActive bool) bool {
-	return !replayAccountIsActive && e.containsAccount(key.LedgerName, key.Account)
-}
-
-func (e excludedVolumesSet) contains(ledgerName, account, asset, color string) bool {
-	if e == nil {
-		return false
-	}
-
-	keys, ok := e[ledgerName]
-	if !ok {
-		return false
-	}
-
-	_, has := keys[domain.AccountAssetKey{Account: account, Asset: asset, Color: color}]
+func (e excludedVolumesSet) contains(key domain.VolumeKey) bool {
+	_, has := e[key.LedgerName][domain.AccountAssetKey{Account: key.Account, Asset: key.Asset, Color: key.Color}]
 
 	return has
 }
 
-// containsAccount returns true when any asset of the given account is in
-// the exclusion set. Used by compareMetadata which is keyed per account,
-// not per (account, asset).
-func (e excludedVolumesSet) containsAccount(ledgerName, account string) bool {
-	if e == nil {
-		return false
-	}
-
-	for k := range e[ledgerName] {
-		if k.Account == account {
-			return true
-		}
-	}
-
-	return false
-}
-
-// compareVolumes compares the replayed volumes with the live rows.
-// `excluded` lists per-ledger accounts whose volumes legitimately diverge
-// (transient + purged ephemeral, sourced from the audit log).
+// compareVolumes compares the replayed volumes with the live rows. A key absent
+// on either side counts as zero, so values alone cannot tell an absent cell
+// from a persisted zero row; a cell in `excluded` with no replay delta was
+// purged and never re-funded, and any live row for it is reported.
 func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
@@ -1673,47 +1635,12 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 
 	// Collect all keys
 	allKeys := make(map[string]struct{})
-	replayActiveAccounts := make(map[domain.AccountKey]struct{})
 	for k := range liveVolumes {
 		allKeys[k] = struct{}{}
 	}
 
 	for k := range replayDeltas {
 		allKeys[k] = struct{}{}
-		var key domain.VolumeKey
-		if err := key.Unmarshal([]byte(k)); err == nil {
-			replayActiveAccounts[key.AccountKey] = struct{}{}
-		}
-	}
-	metadataIter, err := replay.newPrefixIter(replayPrefixMetadata)
-	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-			fmt.Sprintf("failed to scan replay metadata for active accounts: %v", err), 0, "", "", ""))
-
-		return 1
-	}
-	for metadataIter.First(); metadataIter.Valid(); metadataIter.Next() {
-		value, valueErr := metadataIter.ValueAndErr()
-		if valueErr != nil {
-			_ = metadataIter.Close()
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-				fmt.Sprintf("reading replay metadata for active accounts: %v", valueErr), 0, "", "", ""))
-
-			return 1
-		}
-		if len(value) == 0 || value[0] == metaFlagDeleted {
-			continue
-		}
-		var key domain.MetadataKey
-		if err := key.Unmarshal(metadataIter.Key()[1:]); err == nil {
-			replayActiveAccounts[key.AccountKey] = struct{}{}
-		}
-	}
-	if err := metadataIter.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-			fmt.Sprintf("closing replay metadata active-account scan: %v", err), 0, "", "", ""))
-
-		return 1
 	}
 
 	// Compare: expected = replayed state
@@ -1739,6 +1666,19 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 			continue
 		}
 
+		if replayDeltas[key] == nil && excluded.contains(vk) {
+			if actual := liveVolumes[key]; actual != nil {
+				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+					fmt.Sprintf("volume row survives replay purge for %s/%s: got %s/%s",
+						vk.Account, vk.Asset, actual.GetInput().ToBigInt().String(), actual.GetOutput().ToBigInt().String()),
+					0, vk.LedgerName, vk.Account, vk.Asset))
+
+				errorCount++
+			}
+
+			continue
+		}
+
 		// Compute expected input/output
 		expectedInput := big.NewInt(0)
 		expectedOutput := big.NewInt(0)
@@ -1755,22 +1695,6 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 		if actual := liveVolumes[key]; actual != nil {
 			actualInput = actual.GetInput().ToBigInt()
 			actualOutput = actual.GetOutput().ToBigInt()
-		}
-
-		// Skip volumes the replay-time ephemeral-purge collector recorded
-		// during this Check() run (see exclusionCollector at the top of
-		// Check). That set is derived from the hash-chain-bound audit
-		// trail — NOT from AppliedProposal.TransientVolumes or
-		// LedgerLog.PurgedVolumes, which are unhashed caches and must
-		// stay untrusted here. The exclusion key is
-		// (account, asset, color) so a multi-bucket account whose
-		// (USD, RED) was purged still has its (USD, BLUE) compared. Do
-		// not "align" this code to consult those proto records — it
-		// would reintroduce the tampering vector this design
-		// deliberately removes.
-		_, replayAccountIsActive := replayActiveAccounts[vk.AccountKey]
-		if excluded.excludesCurrentVolume(vk, replayDeltas[key] != nil, replayAccountIsActive) {
-			continue
 		}
 
 		if expectedInput.Cmp(actualInput) != 0 {
@@ -1827,10 +1751,7 @@ func metaValueDisplay(v *commonpb.MetadataValue) string {
 // FSM stores the order's MetadataValue verbatim, so a live row whose type
 // diverges from the log (bool false vs string "false") is a projection
 // mismatch even when the renderings agree.
-// `excluded` lists per-ledger accounts whose state legitimately diverges
-// (transient + purged ephemeral, sourced from the audit log) — metadata on
-// such accounts is skipped to avoid false positives.
-func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect live metadata
@@ -1870,26 +1791,6 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 	}
 
 	replayEntries := make(map[string]replayMeta)
-	activeAccounts := make(map[domain.AccountKey]struct{})
-	volumeIter, err := replay.newPrefixIter(replayPrefixVolume)
-	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-			fmt.Sprintf("failed to scan replay volumes for metadata exclusions: %v", err), 0, "", "", ""))
-
-		return 1
-	}
-	for volumeIter.First(); volumeIter.Valid(); volumeIter.Next() {
-		var key domain.VolumeKey
-		if err := key.Unmarshal(volumeIter.Key()[1:]); err == nil {
-			activeAccounts[key.AccountKey] = struct{}{}
-		}
-	}
-	if err := volumeIter.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-			fmt.Sprintf("closing replay-volume exclusion scan: %v", err), 0, "", "", ""))
-
-		return 1
-	}
 
 	replayIter, err := replay.newPrefixIter(replayPrefixMetadata)
 	if err != nil {
@@ -1931,15 +1832,6 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 
 			replayEntries[string(canonicalKey)] = replayMeta{value: mv}
 		}
-
-		// A deletion tombstone is evidence that this account was recreated
-		// after an earlier purge, even when it has no current volume or metadata.
-		// Keep it active so the historical purge exclusion cannot hide a live
-		// metadata row that should have been deleted in the new incarnation.
-		var key domain.MetadataKey
-		if err := key.Unmarshal(canonicalKey); err == nil {
-			activeAccounts[key.AccountKey] = struct{}{}
-		}
 	}
 
 	if err := replayIter.Close(); err != nil {
@@ -1968,14 +1860,6 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		var mk domain.MetadataKey
 
 		if err := mk.Unmarshal([]byte(key)); err != nil {
-			continue
-		}
-
-		// Metadata is keyed per account (no asset dimension). Skip when any
-		// asset of the account is in the exclusion set — conservative: if a
-		// single asset is transient/purged we assume the metadata diverges.
-		_, accountIsActive := activeAccounts[mk.AccountKey]
-		if excluded.excludesCurrentMetadata(mk, accountIsActive) {
 			continue
 		}
 
