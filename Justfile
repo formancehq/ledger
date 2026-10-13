@@ -3,7 +3,7 @@ set dotenv-load
 default:
   @just --list
 
-pre-commit: tidy generate generate-client lint export-docs-events openapi
+pre-commit: generate generate-client tidy lint export-docs-events openapi
 pc: pre-commit
 
 lint:

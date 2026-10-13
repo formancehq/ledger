@@ -8,9 +8,9 @@ runs:
   using: composite
   steps:
     - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
+      uses: docker/setup-qemu-action@v4
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      uses: docker/setup-buildx-action@v4
     - name: "Put back the git branch into git (Earthly uses it for tagging)"
       shell: bash
       run: |

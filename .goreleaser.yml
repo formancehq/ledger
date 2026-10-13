@@ -4,7 +4,7 @@ project_name: ledger
 
 includes:
   - from_url:
-      url: https://raw.githubusercontent.com/formancehq/earthly/refs/heads/main/.goreleaser.default.yaml
+      url: https://raw.githubusercontent.com/formancehq/earthly/refs/heads/main/.goreleaser.default-v2.yaml
 
 builds:
   - binary: ledger
@@ -51,17 +51,17 @@ release:
 
 archives:
   - id: "{{.ProjectName}}"
-    builds:
+    ids:
       - ledger
       - benchmarks
-    format: tar.gz
+    formats: [tar.gz]
     name_template: "{{.ProjectName}}_{{.Os}}-{{.Arch}}"
 
 nfpms:
   - id: ledger
     package_name: ledger
     file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    builds:
+    ids:
       - ledger
     homepage: https://formance.com
     maintainer: Maxence Maireaux <maxence@formance.com>
@@ -71,7 +71,7 @@ nfpms:
   - id: benchmarks
     package_name: ledger-benchmarks
     file_name_template: "{{ .ProjectName }}_benchmarks_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    builds:
+    ids:
       - benchmarks
     homepage: https://formance.com
     maintainer: Maxence Maireaux <maxence@formance.com>
