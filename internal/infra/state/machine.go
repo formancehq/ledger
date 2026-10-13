@@ -1177,7 +1177,7 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 //
 // Admission ships bits that don't match the AttributeCoverage slice →
 // *ErrCoverageMiss or *domain.ErrInvalidExecutionPlan. Both are
-// SerializableErrors with KindInternal, so they can be audited. Surfacing
+// SerializableErrors with KindInternal. Surfacing
 // them via ApplyResult.Error rejects the proposal as a business error instead
 // of wedging the FSM apply loop; the proposal is malformed, but the FSM state
 // is not (no cache mutation lands before Merge).
@@ -1477,6 +1477,15 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			logs = ordersResult.Logs
 		}
 	}
+	// A rejected internal proposal has no committed business verdict. Discard
+	// the staged WriteSet and let the caller retry after its producer is fixed.
+	// The error type owns this disposition; successes still take the normal
+	// audited path, including successful cluster-policy updates.
+	if _, uncommitted := err.(domain.UncommittedFailure); uncommitted {
+		result.Error = &domain.BusinessError{Err: err}
+
+		return result, nil
+	}
 
 	// Pre-marshal each order once. The same byte slices are (a) bound in
 	// the audit hash chain via buildPerItemPayload and (b) persisted to
@@ -1642,6 +1651,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	transientErr := buffer.ValidateTransientVolumes(validateScope)
 
 	if err := transientErr; err != nil {
+		if _, uncommitted := err.(domain.UncommittedFailure); uncommitted {
+			result.Error = &domain.BusinessError{Err: err}
+
+			return result, nil
+		}
 		transientFailureEntry := auditpb.AuditEntryFromVTPool()
 		transientFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}
 		appendErr := writeAuditEntry(transientFailureEntry, nil, "transient validation failure")

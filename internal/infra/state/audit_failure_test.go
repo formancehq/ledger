@@ -129,9 +129,9 @@ type auditFailureCase struct {
 	wantContext map[string]string
 }
 
-// auditFailureCases carries one row per Describable reachable from the FSM
-// failure path. TestBuildAuditFailureCoversEveryDescribable fails if a type is
-// missing, so this list cannot silently fall behind.
+// auditFailureCases carries one row per auditable Describable reachable from
+// the FSM failure path. UncommittedFailure producers are excluded because the
+// FSM returns them before the audit writer.
 func auditFailureCases() []auditFailureCase {
 	return []auditFailureCase{
 		// ErrInsufficientFunds gates the color key on the separate ColorKnown
@@ -240,18 +240,6 @@ func auditFailureCases() []auditFailureCase {
 			err:         &domain.ErrStaleClusterPolicy{ProposedRevision: 3, AppliedRevision: 5},
 			wantReason:  domain.ErrReasonStaleClusterPolicy,
 			wantContext: map[string]string{"proposedRevision": "3", "appliedRevision": "5"},
-		},
-		{
-			name:        "ClusterPolicyRevisionConflict",
-			err:         &domain.ErrClusterPolicyRevisionConflict{Revision: 7},
-			wantReason:  domain.ErrReasonClusterPolicyRevisionConflict,
-			wantContext: map[string]string{"revision": "7"},
-		},
-		{
-			name:        "ClusterPolicyInvalid",
-			err:         &domain.ErrClusterPolicyInvalid{Detail: "query_checkpoint_limit must be at least 1"},
-			wantReason:  domain.ErrReasonClusterPolicyInvalid,
-			wantContext: map[string]string{},
 		},
 		{
 			name:        "CheckpointLimitReached",
@@ -721,26 +709,6 @@ func auditFailureCases() []auditFailureCase {
 			wantReason:  domain.ErrReasonTransactionAlreadyReverted,
 			wantContext: map[string]string{"transactionId": "91"},
 		},
-		{
-			// The EN-1379 key set, pinned on the surface that matters most: an
-			// undeclared key is an admission bug, never a storage fault, and
-			// operator tooling greps these exact camelCase names out of the
-			// hash-chained facts.
-			name: "CoverageMiss",
-			err: &ErrCoverageMiss{
-				Attribute:    "volumes",
-				CanonicalHex: "deadbeef",
-				IDHex:        "0102",
-				RaftIndex:    42,
-			},
-			wantReason: domain.ErrReasonCoverageMiss,
-			wantContext: map[string]string{
-				"attribute":    "volumes",
-				"canonicalHex": "deadbeef",
-				"idHex":        "0102",
-				"raftIndex":    "42",
-			},
-		},
 	}
 }
 
@@ -833,6 +801,7 @@ func describableTypesIn(t *testing.T, dir string) map[string]bool {
 
 	hasReason := make(map[string]bool)
 	hasFacts := make(map[string]bool)
+	hasUncommitted := make(map[string]bool)
 
 	for _, path := range paths {
 		if strings.HasSuffix(path, "_test.go") {
@@ -860,6 +829,8 @@ func describableTypesIn(t *testing.T, dir string) map[string]bool {
 				hasReason[receiver] = true
 			case "FailureDetails":
 				hasFacts[receiver] = true
+			case "UncommittedFailure":
+				hasUncommitted[receiver] = true
 			}
 		}
 	}
@@ -867,7 +838,7 @@ func describableTypesIn(t *testing.T, dir string) map[string]bool {
 	out := make(map[string]bool)
 
 	for name := range hasReason {
-		if hasFacts[name] {
+		if hasFacts[name] && !hasUncommitted[name] {
 			out[name] = true
 		}
 	}
@@ -939,12 +910,9 @@ func sortedKeys(set map[describableTypeKey]bool) []string {
 	return out
 }
 
-// TestBuildAuditFailureDoesNotUnwrap is the negative control for the CoverageMiss
-// row in auditFailureCases: buildAuditFailure reads Reason()/FailureDetails() off the
-// OUTERMOST Describable and genuinely does NOT unwrap, so the no-wrap contract has
-// to be upheld by every FSM read site going through domain.StoreFailure. If someone
-// reintroduces a bare wrap, this is the shape the audit chain would record forever —
-// permanently STORAGE_OPERATION_FAILED with the identifying key stripped (EN-1379).
+// TestBuildAuditFailureDoesNotUnwrap pins the no-wrap contract of StoreFailure:
+// the FSM must receive a bare coverage miss to reject it before audit. A storage
+// wrapper would instead be recorded as STORAGE_OPERATION_FAILED.
 //
 // It is deliberately NOT a row in the table. It exercises two errors and asserts a
 // negative, and a row would register ErrStorageOperation in the coverage set on the
@@ -960,7 +928,7 @@ func TestBuildAuditFailureDoesNotUnwrap(t *testing.T) {
 	require.Empty(t, failure.GetFacts(),
 		"the wrap strips the identifying key — this is what EN-1379 prevents")
 
-	// And the supported path avoids exactly that.
+	// The supported path preserves the miss for the uncommitted rejection.
 	require.Equal(t, domain.ErrReasonCoverageMiss,
-		domain.ReasonString(buildAuditFailure(domain.StoreFailure("loading volume", miss)).GetReason()))
+		domain.StoreFailure("loading volume", miss).Reason())
 }

@@ -944,6 +944,6 @@ func TestValidateTransientVolumesLedgerCoverageMissPropagates(t *testing.T) {
 	miss, ok := describ.(*ErrCoverageMiss)
 	require.True(t, ok, "the ledger-load site must propagate the miss verbatim, got %T", describ)
 	require.Equal(t, domain.ErrReasonCoverageMiss, miss.Reason())
-	require.Equal(t, "ledgers", domain.FailureFactsOf(miss).Facts["attribute"],
-		"the identifying key must survive to the audit context")
+	require.Equal(t, "ledgers", miss.Attribute,
+		"the identifying key must survive for operator diagnostics")
 }

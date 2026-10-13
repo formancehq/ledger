@@ -21,6 +21,16 @@ func (*ErrInvalidCallerAttribution) PublicFailureFacts() FailureFacts {
 	return NewFailureFacts(ErrReasonInvalidCallerAttribution, ErrReasonInvalidCallerAttribution, nil)
 }
 
+func (*ErrClusterPolicyInvalid) PublicFailureFacts() FailureFacts {
+	return NewFailureFacts(ErrReasonClusterPolicyInvalid, ErrReasonClusterPolicyInvalid, nil)
+}
+
+func (e *ErrClusterPolicyRevisionConflict) PublicFailureFacts() FailureFacts {
+	return NewFailureFacts(ErrReasonClusterPolicyRevisionConflict, ErrReasonClusterPolicyRevisionConflict, map[string]string{
+		"revision": strconv.FormatUint(e.Revision, 10),
+	})
+}
+
 func (e *ErrExecutionPlanTooLarge) PublicFailureFacts() FailureFacts {
 	return NewFailureFacts(ErrReasonExecutionPlanTooLarge, ErrReasonExecutionPlanTooLarge, map[string]string{
 		"size":  strconv.FormatUint(uint64(e.Size), 10),

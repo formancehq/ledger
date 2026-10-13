@@ -459,13 +459,11 @@ func (e *ErrStaleClusterPolicy) FailureDetails() *commonpb.FailureDetails {
 }
 
 func (e *ErrClusterPolicyRevisionConflict) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_ClusterPolicyRevisionConflict{ClusterPolicyRevisionConflict: &commonpb.ClusterPolicyRevisionConflictDetails{
-		Revision: new(e.Revision),
-	}}}
+	return nil // This internal proposal rejection is never an audited outcome.
 }
 
 func (e *ErrClusterPolicyInvalid) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_ClusterPolicyInvalid{ClusterPolicyInvalid: &commonpb.ClusterPolicyInvalidDetails{}}}
+	return nil // This internal proposal rejection is never an audited outcome.
 }
 
 func (e *ErrInvalidApplyType) FailureDetails() *commonpb.FailureDetails {

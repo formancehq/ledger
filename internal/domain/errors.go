@@ -189,6 +189,15 @@ type SerializableError interface {
 	FailureDetails() *commonpb.FailureDetails
 }
 
+// UncommittedFailure marks a rejected internal proposal whose outcome is not
+// business truth. The FSM returns it to the caller without writing an audit
+// entry or freezing an idempotency key. The marker belongs to the producer so
+// the apply path does not maintain a list of concrete error types.
+type UncommittedFailure interface {
+	Describable
+	UncommittedFailure()
+}
+
 // PublicErrorDetails renders the structured public presentation owned by an
 // error type. Error() can carry transient diagnostics;
 // this helper is only for API responses, never persisted failure projections.
@@ -1404,7 +1413,8 @@ type ErrClusterPolicyRevisionConflict struct {
 func (e *ErrClusterPolicyRevisionConflict) Error() string {
 	return fmt.Sprintf("cluster policy revision conflict: revision %d carries a payload different from the applied policy", e.Revision)
 }
-func (*ErrClusterPolicyRevisionConflict) Kind() ErrorKind { return KindInternal }
+func (*ErrClusterPolicyRevisionConflict) Kind() ErrorKind     { return KindInternal }
+func (*ErrClusterPolicyRevisionConflict) UncommittedFailure() {}
 func (*ErrClusterPolicyRevisionConflict) Reason() string {
 	return ErrReasonClusterPolicyRevisionConflict
 }
@@ -1418,8 +1428,9 @@ type ErrClusterPolicyInvalid struct {
 func (e *ErrClusterPolicyInvalid) Error() string {
 	return "invalid cluster policy: " + e.Detail
 }
-func (*ErrClusterPolicyInvalid) Kind() ErrorKind { return KindValidation }
-func (*ErrClusterPolicyInvalid) Reason() string  { return ErrReasonClusterPolicyInvalid }
+func (*ErrClusterPolicyInvalid) Kind() ErrorKind     { return KindValidation }
+func (*ErrClusterPolicyInvalid) UncommittedFailure() {}
+func (*ErrClusterPolicyInvalid) Reason() string      { return ErrReasonClusterPolicyInvalid }
 
 // ErrIdempotencyCheckFailed — Pebble lookup for an idempotency key returned
 // an unexpected I/O error (the key not being present is not an error;

@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"35"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"36"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 35:
+leader. For example, with a schema implementing revision 36:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 35' \
+grpcurl -plaintext -H 'ledger-protocol-version: 36' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -533,3 +533,15 @@ own typed arms. The service revision changes to 35 because this shared protobuf 
 is exposed by gRPC. Existing revision-34 state must be discarded; clients and
 servers must use the same revision. Public `ErrorInfo` identifiers and metadata
 are unchanged.
+
+## Uncommitted internal proposal failures (revision 36)
+
+Revision 36 removes the `cluster_policy_invalid`,
+`cluster_policy_revision_conflict`, and `coverage_miss` arms from the audited
+`FailureDetails` oneof. These errors indicate an invalid internal policy
+proposal or an admission coverage contract violation. An affected proposal
+returns its typed error without an `AuditFailure` entry or frozen idempotency
+result; staged order writes are discarded. A corrected proposal can be retried.
+Successful cluster-policy updates still produce audited orders and the policy
+projection remains checker-verified. The removed arms are renumbered because
+v3 is unreleased. This shared gRPC change requires revision 36 on both sides.

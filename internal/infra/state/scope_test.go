@@ -39,10 +39,10 @@ func TestScope_DeclaredAccessAndRejectedAccess(t *testing.T) {
 	var miss *ErrCoverageMiss
 	require.ErrorAs(t, err, &miss)
 	require.Equal(t, domain.ErrReasonCoverageMiss, miss.Reason())
-	require.Equal(t, map[string]string{
-		"attribute": "ledgers", "canonicalHex": hex.EncodeToString(key.Bytes()),
-		"idHex": id.Hex(), "raftIndex": "42",
-	}, domain.FailureFactsOf(miss).Facts)
+	require.Equal(t, "ledgers", miss.Attribute)
+	require.Equal(t, hex.EncodeToString(key.Bytes()), miss.CanonicalHex)
+	require.Equal(t, id.Hex(), miss.IDHex)
+	require.Equal(t, uint64(42), miss.RaftIndex)
 	require.False(t, domain.IsFreezableFailure(miss.Kind()))
 
 	// The refused access did not delete or alter the staged value.
@@ -61,6 +61,7 @@ func TestScope_CoverageMissDoesNotFreezeIdempotency(t *testing.T) {
 	proposal := makeProposal(1, createLedgerOrder("coverage"))
 	proposal.Idempotency = &commonpb.Idempotency{Key: "retryable"}
 	proposal.ExecutionPlan.Attributes = nil // Deliberately omit the ledger read.
+	before := fsm.State.NextAuditSequenceID
 	result, err := fsm.ApplyEntries(context.Background(), store, makeEntry(t, 1, proposal))
 	require.NoError(t, err, "a coverage miss must not become a fatal apply failure")
 	var miss *ErrCoverageMiss
@@ -72,7 +73,8 @@ func TestScope_CoverageMissDoesNotFreezeIdempotency(t *testing.T) {
 	require.True(t, overridden)
 	require.Equal(t, "preload coverage miss", message)
 	require.Empty(t, metadata)
-	require.NotEmpty(t, buildAuditFailure(miss).GetFacts(), "audit retains the private coverage correlators")
+	require.False(t, result.Results[0].AuditEntryWritten)
+	require.Equal(t, before, fsm.State.NextAuditSequenceID)
 	_, frozen := fsm.Registry.Idempotency.Get("retryable")
 	require.False(t, frozen)
 
@@ -84,6 +86,7 @@ func TestScope_CoverageMissDoesNotFreezeIdempotency(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)
 	require.False(t, result.Results[0].Replayed)
+	require.Equal(t, before+1, fsm.State.NextAuditSequenceID)
 }
 
 // TestScope_TechnicalUpdate_CoverageMissShortCircuits pins that an

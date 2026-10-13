@@ -20,12 +20,6 @@ func TestPublicErrorAuditFactsExcludeDiagnosticText(t *testing.T) {
 		facts map[string]string
 	}{
 		{
-			name:  "coverage",
-			err:   &ErrCoverageMiss{Attribute: "volumes", CanonicalHex: "deadbeef", IDHex: "0102", RaftIndex: 42},
-			code:  "COVERAGE_MISS",
-			facts: map[string]string{"attribute": "volumes", "canonicalHex": "deadbeef", "idHex": "0102", "raftIndex": "42"},
-		},
-		{
 			name:  "index",
 			err:   &domain.ErrIndexInconsistent{Index: "private-index", Detail: "reading /private/pebble: secret failure"},
 			code:  "INDEX_INCONSISTENT",

@@ -2231,24 +2231,6 @@ func (m *FailureDetails_CheckpointNotReady) CloneVT() isFailureDetails_Kind {
 	return r
 }
 
-func (m *FailureDetails_ClusterPolicyInvalid) CloneVT() isFailureDetails_Kind {
-	if m == nil {
-		return (*FailureDetails_ClusterPolicyInvalid)(nil)
-	}
-	r := new(FailureDetails_ClusterPolicyInvalid)
-	r.ClusterPolicyInvalid = m.ClusterPolicyInvalid.CloneVT()
-	return r
-}
-
-func (m *FailureDetails_ClusterPolicyRevisionConflict) CloneVT() isFailureDetails_Kind {
-	if m == nil {
-		return (*FailureDetails_ClusterPolicyRevisionConflict)(nil)
-	}
-	r := new(FailureDetails_ClusterPolicyRevisionConflict)
-	r.ClusterPolicyRevisionConflict = m.ClusterPolicyRevisionConflict.CloneVT()
-	return r
-}
-
 func (m *FailureDetails_ColorInvalid) CloneVT() isFailureDetails_Kind {
 	if m == nil {
 		return (*FailureDetails_ColorInvalid)(nil)
@@ -2264,15 +2246,6 @@ func (m *FailureDetails_ColorTooLong) CloneVT() isFailureDetails_Kind {
 	}
 	r := new(FailureDetails_ColorTooLong)
 	r.ColorTooLong = m.ColorTooLong.CloneVT()
-	return r
-}
-
-func (m *FailureDetails_CoverageMiss) CloneVT() isFailureDetails_Kind {
-	if m == nil {
-		return (*FailureDetails_CoverageMiss)(nil)
-	}
-	r := new(FailureDetails_CoverageMiss)
-	r.CoverageMiss = m.CoverageMiss.CloneVT()
 	return r
 }
 
@@ -3974,42 +3947,6 @@ func (m *CheckpointNotReadyDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *ClusterPolicyInvalidDetails) CloneVT() *ClusterPolicyInvalidDetails {
-	if m == nil {
-		return (*ClusterPolicyInvalidDetails)(nil)
-	}
-	r := new(ClusterPolicyInvalidDetails)
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *ClusterPolicyInvalidDetails) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *ClusterPolicyRevisionConflictDetails) CloneVT() *ClusterPolicyRevisionConflictDetails {
-	if m == nil {
-		return (*ClusterPolicyRevisionConflictDetails)(nil)
-	}
-	r := new(ClusterPolicyRevisionConflictDetails)
-	if rhs := m.Revision; rhs != nil {
-		tmpVal := *rhs
-		r.Revision = &tmpVal
-	}
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *ClusterPolicyRevisionConflictDetails) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
 func (m *ColorInvalidDetails) CloneVT() *ColorInvalidDetails {
 	if m == nil {
 		return (*ColorInvalidDetails)(nil)
@@ -4039,38 +3976,6 @@ func (m *ColorTooLongDetails) CloneVT() *ColorTooLongDetails {
 }
 
 func (m *ColorTooLongDetails) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *CoverageMissDetails) CloneVT() *CoverageMissDetails {
-	if m == nil {
-		return (*CoverageMissDetails)(nil)
-	}
-	r := new(CoverageMissDetails)
-	if rhs := m.Attribute; rhs != nil {
-		tmpVal := *rhs
-		r.Attribute = &tmpVal
-	}
-	if rhs := m.CanonicalHex; rhs != nil {
-		tmpVal := *rhs
-		r.CanonicalHex = &tmpVal
-	}
-	if rhs := m.IdHex; rhs != nil {
-		tmpVal := *rhs
-		r.IdHex = &tmpVal
-	}
-	if rhs := m.RaftIndex; rhs != nil {
-		tmpVal := *rhs
-		r.RaftIndex = &tmpVal
-	}
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *CoverageMissDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -13560,56 +13465,6 @@ func (this *FailureDetails_CheckpointNotReady) EqualVT(thatIface isFailureDetail
 	return true
 }
 
-func (this *FailureDetails_ClusterPolicyInvalid) EqualVT(thatIface isFailureDetails_Kind) bool {
-	that, ok := thatIface.(*FailureDetails_ClusterPolicyInvalid)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.ClusterPolicyInvalid, that.ClusterPolicyInvalid; p != q {
-		if p == nil {
-			p = &ClusterPolicyInvalidDetails{}
-		}
-		if q == nil {
-			q = &ClusterPolicyInvalidDetails{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *FailureDetails_ClusterPolicyRevisionConflict) EqualVT(thatIface isFailureDetails_Kind) bool {
-	that, ok := thatIface.(*FailureDetails_ClusterPolicyRevisionConflict)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.ClusterPolicyRevisionConflict, that.ClusterPolicyRevisionConflict; p != q {
-		if p == nil {
-			p = &ClusterPolicyRevisionConflictDetails{}
-		}
-		if q == nil {
-			q = &ClusterPolicyRevisionConflictDetails{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
 func (this *FailureDetails_ColorInvalid) EqualVT(thatIface isFailureDetails_Kind) bool {
 	that, ok := thatIface.(*FailureDetails_ColorInvalid)
 	if !ok {
@@ -13652,31 +13507,6 @@ func (this *FailureDetails_ColorTooLong) EqualVT(thatIface isFailureDetails_Kind
 		}
 		if q == nil {
 			q = &ColorTooLongDetails{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *FailureDetails_CoverageMiss) EqualVT(thatIface isFailureDetails_Kind) bool {
-	that, ok := thatIface.(*FailureDetails_CoverageMiss)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.CoverageMiss, that.CoverageMiss; p != q {
-		if p == nil {
-			p = &CoverageMissDetails{}
-		}
-		if q == nil {
-			q = &CoverageMissDetails{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -17768,41 +17598,6 @@ func (this *CheckpointNotReadyDetails) EqualMessageVT(thatMsg proto.Message) boo
 	}
 	return this.EqualVT(that)
 }
-func (this *ClusterPolicyInvalidDetails) EqualVT(that *ClusterPolicyInvalidDetails) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *ClusterPolicyInvalidDetails) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ClusterPolicyInvalidDetails)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *ClusterPolicyRevisionConflictDetails) EqualVT(that *ClusterPolicyRevisionConflictDetails) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Revision, that.Revision; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *ClusterPolicyRevisionConflictDetails) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ClusterPolicyRevisionConflictDetails)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
 func (this *ColorInvalidDetails) EqualVT(that *ColorInvalidDetails) bool {
 	if this == that {
 		return true
@@ -17830,34 +17625,6 @@ func (this *ColorTooLongDetails) EqualVT(that *ColorTooLongDetails) bool {
 
 func (this *ColorTooLongDetails) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*ColorTooLongDetails)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *CoverageMissDetails) EqualVT(that *CoverageMissDetails) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if p, q := this.Attribute, that.Attribute; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.CanonicalHex, that.CanonicalHex; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.IdHex, that.IdHex; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.RaftIndex, that.RaftIndex; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *CoverageMissDetails) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*CoverageMissDetails)
 	if !ok {
 		return false
 	}
@@ -30507,48 +30274,6 @@ func (m *FailureDetails_CheckpointNotReady) MarshalToSizedBufferVT(dAtA []byte) 
 	}
 	return len(dAtA) - i, nil
 }
-func (m *FailureDetails_ClusterPolicyInvalid) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *FailureDetails_ClusterPolicyInvalid) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.ClusterPolicyInvalid != nil {
-		size, err := m.ClusterPolicyInvalid.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0x9a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *FailureDetails_ClusterPolicyRevisionConflict) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *FailureDetails_ClusterPolicyRevisionConflict) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.ClusterPolicyRevisionConflict != nil {
-		size, err := m.ClusterPolicyRevisionConflict.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xa2
-	}
-	return len(dAtA) - i, nil
-}
 func (m *FailureDetails_ColorInvalid) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -30566,7 +30291,7 @@ func (m *FailureDetails_ColorInvalid) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xaa
+		dAtA[i] = 0x9a
 	}
 	return len(dAtA) - i, nil
 }
@@ -30587,28 +30312,7 @@ func (m *FailureDetails_ColorTooLong) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xb2
-	}
-	return len(dAtA) - i, nil
-}
-func (m *FailureDetails_CoverageMiss) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *FailureDetails_CoverageMiss) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.CoverageMiss != nil {
-		size, err := m.CoverageMiss.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xba
+		dAtA[i] = 0xa2
 	}
 	return len(dAtA) - i, nil
 }
@@ -30629,7 +30333,7 @@ func (m *FailureDetails_EmptyTransaction) MarshalToSizedBufferVT(dAtA []byte) (i
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xc2
+		dAtA[i] = 0xaa
 	}
 	return len(dAtA) - i, nil
 }
@@ -30650,7 +30354,7 @@ func (m *FailureDetails_FilterCompilationError) MarshalToSizedBufferVT(dAtA []by
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xca
+		dAtA[i] = 0xb2
 	}
 	return len(dAtA) - i, nil
 }
@@ -30671,7 +30375,7 @@ func (m *FailureDetails_IdempotencyKeyConflict) MarshalToSizedBufferVT(dAtA []by
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xd2
+		dAtA[i] = 0xba
 	}
 	return len(dAtA) - i, nil
 }
@@ -30692,7 +30396,7 @@ func (m *FailureDetails_IdRequired) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xda
+		dAtA[i] = 0xc2
 	}
 	return len(dAtA) - i, nil
 }
@@ -30713,7 +30417,7 @@ func (m *FailureDetails_IndexAlreadyExists) MarshalToSizedBufferVT(dAtA []byte) 
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xe2
+		dAtA[i] = 0xca
 	}
 	return len(dAtA) - i, nil
 }
@@ -30734,7 +30438,7 @@ func (m *FailureDetails_IndexBuilding) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xea
+		dAtA[i] = 0xd2
 	}
 	return len(dAtA) - i, nil
 }
@@ -30755,7 +30459,7 @@ func (m *FailureDetails_IndexInconsistent) MarshalToSizedBufferVT(dAtA []byte) (
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xf2
+		dAtA[i] = 0xda
 	}
 	return len(dAtA) - i, nil
 }
@@ -30776,7 +30480,7 @@ func (m *FailureDetails_IndexNotFound) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xfa
+		dAtA[i] = 0xe2
 	}
 	return len(dAtA) - i, nil
 }
@@ -30795,9 +30499,9 @@ func (m *FailureDetails_IndexTargetUnsupported) MarshalToSizedBufferVT(dAtA []by
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2
+		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0xea
 	}
 	return len(dAtA) - i, nil
 }
@@ -30816,9 +30520,9 @@ func (m *FailureDetails_InsufficientFunds) MarshalToSizedBufferVT(dAtA []byte) (
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2
+		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0xf2
 	}
 	return len(dAtA) - i, nil
 }
@@ -30837,9 +30541,9 @@ func (m *FailureDetails_InvalidApplyType) MarshalToSizedBufferVT(dAtA []byte) (i
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2
+		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x92
+		dAtA[i] = 0xfa
 	}
 	return len(dAtA) - i, nil
 }
@@ -30860,7 +30564,7 @@ func (m *FailureDetails_InvalidCronExpression) MarshalToSizedBufferVT(dAtA []byt
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0x9a
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -30881,7 +30585,7 @@ func (m *FailureDetails_InvalidExecutionPlan) MarshalToSizedBufferVT(dAtA []byte
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0xa2
+		dAtA[i] = 0x8a
 	}
 	return len(dAtA) - i, nil
 }
@@ -30902,7 +30606,7 @@ func (m *FailureDetails_InvalidOrderType) MarshalToSizedBufferVT(dAtA []byte) (i
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0xaa
+		dAtA[i] = 0x92
 	}
 	return len(dAtA) - i, nil
 }
@@ -30923,7 +30627,7 @@ func (m *FailureDetails_InvalidPattern) MarshalToSizedBufferVT(dAtA []byte) (int
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0xb2
+		dAtA[i] = 0x9a
 	}
 	return len(dAtA) - i, nil
 }
@@ -30944,7 +30648,7 @@ func (m *FailureDetails_InvalidSkippableReason) MarshalToSizedBufferVT(dAtA []by
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0xba
+		dAtA[i] = 0xa2
 	}
 	return len(dAtA) - i, nil
 }
@@ -30965,7 +30669,7 @@ func (m *FailureDetails_LedgerAlreadyExists) MarshalToSizedBufferVT(dAtA []byte)
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0xc2
+		dAtA[i] = 0xaa
 	}
 	return len(dAtA) - i, nil
 }
@@ -30986,7 +30690,7 @@ func (m *FailureDetails_LedgerDeleted) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0xca
+		dAtA[i] = 0xb2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31007,7 +30711,7 @@ func (m *FailureDetails_LedgerInMirrorMode) MarshalToSizedBufferVT(dAtA []byte) 
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0xd2
+		dAtA[i] = 0xba
 	}
 	return len(dAtA) - i, nil
 }
@@ -31028,7 +30732,7 @@ func (m *FailureDetails_LedgerNameInvalidChar) MarshalToSizedBufferVT(dAtA []byt
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0xda
+		dAtA[i] = 0xc2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31049,7 +30753,7 @@ func (m *FailureDetails_LedgerNameRequired) MarshalToSizedBufferVT(dAtA []byte) 
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0xe2
+		dAtA[i] = 0xca
 	}
 	return len(dAtA) - i, nil
 }
@@ -31070,7 +30774,7 @@ func (m *FailureDetails_LedgerNameReservedPrefix) MarshalToSizedBufferVT(dAtA []
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0xea
+		dAtA[i] = 0xd2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31091,7 +30795,7 @@ func (m *FailureDetails_LedgerNameTooLong) MarshalToSizedBufferVT(dAtA []byte) (
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0xf2
+		dAtA[i] = 0xda
 	}
 	return len(dAtA) - i, nil
 }
@@ -31112,7 +30816,7 @@ func (m *FailureDetails_LedgerNotFound) MarshalToSizedBufferVT(dAtA []byte) (int
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0xfa
+		dAtA[i] = 0xe2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31131,9 +30835,9 @@ func (m *FailureDetails_LedgerNotInMirrorMode) MarshalToSizedBufferVT(dAtA []byt
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x3
+		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0xea
 	}
 	return len(dAtA) - i, nil
 }
@@ -31152,9 +30856,9 @@ func (m *FailureDetails_MetadataFieldNotInSchema) MarshalToSizedBufferVT(dAtA []
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x3
+		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0xf2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31173,9 +30877,9 @@ func (m *FailureDetails_MetadataKeyEmpty) MarshalToSizedBufferVT(dAtA []byte) (i
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x3
+		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0x92
+		dAtA[i] = 0xfa
 	}
 	return len(dAtA) - i, nil
 }
@@ -31196,7 +30900,7 @@ func (m *FailureDetails_MetadataKeyInvalidChar) MarshalToSizedBufferVT(dAtA []by
 		i--
 		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0x9a
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -31217,7 +30921,7 @@ func (m *FailureDetails_MetadataKeyRequired) MarshalToSizedBufferVT(dAtA []byte)
 		i--
 		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0xa2
+		dAtA[i] = 0x8a
 	}
 	return len(dAtA) - i, nil
 }
@@ -31238,7 +30942,7 @@ func (m *FailureDetails_MetadataLimitsUnconfigured) MarshalToSizedBufferVT(dAtA 
 		i--
 		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0xaa
+		dAtA[i] = 0x92
 	}
 	return len(dAtA) - i, nil
 }
@@ -31259,7 +30963,7 @@ func (m *FailureDetails_MetadataLimitExceeded) MarshalToSizedBufferVT(dAtA []byt
 		i--
 		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0xb2
+		dAtA[i] = 0x9a
 	}
 	return len(dAtA) - i, nil
 }
@@ -31280,7 +30984,7 @@ func (m *FailureDetails_MetadataNotFound) MarshalToSizedBufferVT(dAtA []byte) (i
 		i--
 		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0xba
+		dAtA[i] = 0xa2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31301,7 +31005,7 @@ func (m *FailureDetails_MetadataValueContainsNullByte) MarshalToSizedBufferVT(dA
 		i--
 		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0xc2
+		dAtA[i] = 0xaa
 	}
 	return len(dAtA) - i, nil
 }
@@ -31322,7 +31026,7 @@ func (m *FailureDetails_MirrorHttpUrlInvalid) MarshalToSizedBufferVT(dAtA []byte
 		i--
 		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0xca
+		dAtA[i] = 0xb2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31343,7 +31047,7 @@ func (m *FailureDetails_MirrorIamRegionRequired) MarshalToSizedBufferVT(dAtA []b
 		i--
 		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0xd2
+		dAtA[i] = 0xba
 	}
 	return len(dAtA) - i, nil
 }
@@ -31364,7 +31068,7 @@ func (m *FailureDetails_MirrorIamRequiresTls) MarshalToSizedBufferVT(dAtA []byte
 		i--
 		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0xda
+		dAtA[i] = 0xc2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31385,7 +31089,7 @@ func (m *FailureDetails_MirrorRewriteRuleInvalid) MarshalToSizedBufferVT(dAtA []
 		i--
 		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0xe2
+		dAtA[i] = 0xca
 	}
 	return len(dAtA) - i, nil
 }
@@ -31406,7 +31110,7 @@ func (m *FailureDetails_MirrorV2LogIdGap) MarshalToSizedBufferVT(dAtA []byte) (i
 		i--
 		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0xea
+		dAtA[i] = 0xd2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31427,7 +31131,7 @@ func (m *FailureDetails_MirrorV2LogIdInvalid) MarshalToSizedBufferVT(dAtA []byte
 		i--
 		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0xf2
+		dAtA[i] = 0xda
 	}
 	return len(dAtA) - i, nil
 }
@@ -31448,7 +31152,7 @@ func (m *FailureDetails_NumscriptAssetMismatch) MarshalToSizedBufferVT(dAtA []by
 		i--
 		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0xfa
+		dAtA[i] = 0xe2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31467,9 +31171,9 @@ func (m *FailureDetails_NumscriptBadArity) MarshalToSizedBufferVT(dAtA []byte) (
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x4
+		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0xea
 	}
 	return len(dAtA) - i, nil
 }
@@ -31488,9 +31192,9 @@ func (m *FailureDetails_NumscriptBadMetaValue) MarshalToSizedBufferVT(dAtA []byt
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x4
+		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0xf2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31509,9 +31213,9 @@ func (m *FailureDetails_NumscriptBadPortion) MarshalToSizedBufferVT(dAtA []byte)
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x4
+		dAtA[i] = 0x3
 		i--
-		dAtA[i] = 0x92
+		dAtA[i] = 0xfa
 	}
 	return len(dAtA) - i, nil
 }
@@ -31532,7 +31236,7 @@ func (m *FailureDetails_NumscriptCannotCastScopedAccount) MarshalToSizedBufferVT
 		i--
 		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0x9a
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -31553,7 +31257,7 @@ func (m *FailureDetails_NumscriptCannotCastToString) MarshalToSizedBufferVT(dAtA
 		i--
 		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0xa2
+		dAtA[i] = 0x8a
 	}
 	return len(dAtA) - i, nil
 }
@@ -31574,7 +31278,7 @@ func (m *FailureDetails_NumscriptCannotStoreScopedAccount) MarshalToSizedBufferV
 		i--
 		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0xaa
+		dAtA[i] = 0x92
 	}
 	return len(dAtA) - i, nil
 }
@@ -31595,7 +31299,7 @@ func (m *FailureDetails_NumscriptCompileBadArity) MarshalToSizedBufferVT(dAtA []
 		i--
 		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0xb2
+		dAtA[i] = 0x9a
 	}
 	return len(dAtA) - i, nil
 }
@@ -31616,7 +31320,7 @@ func (m *FailureDetails_NumscriptCompileCannotCastToString) MarshalToSizedBuffer
 		i--
 		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0xba
+		dAtA[i] = 0xa2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31637,7 +31341,7 @@ func (m *FailureDetails_NumscriptCompileCannotStoreScopedAccount) MarshalToSized
 		i--
 		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0xc2
+		dAtA[i] = 0xaa
 	}
 	return len(dAtA) - i, nil
 }
@@ -31658,7 +31362,7 @@ func (m *FailureDetails_NumscriptCompileDuplicateRemaining) MarshalToSizedBuffer
 		i--
 		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0xca
+		dAtA[i] = 0xb2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31679,7 +31383,7 @@ func (m *FailureDetails_NumscriptCompileDuplicateVariable) MarshalToSizedBufferV
 		i--
 		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0xd2
+		dAtA[i] = 0xba
 	}
 	return len(dAtA) - i, nil
 }
@@ -31700,7 +31404,7 @@ func (m *FailureDetails_NumscriptCompileError) MarshalToSizedBufferVT(dAtA []byt
 		i--
 		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0xda
+		dAtA[i] = 0xc2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31721,7 +31425,7 @@ func (m *FailureDetails_NumscriptCompileExperimentalFeature) MarshalToSizedBuffe
 		i--
 		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0xe2
+		dAtA[i] = 0xca
 	}
 	return len(dAtA) - i, nil
 }
@@ -31742,7 +31446,7 @@ func (m *FailureDetails_NumscriptCompileInvalidFeature) MarshalToSizedBufferVT(d
 		i--
 		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0xea
+		dAtA[i] = 0xd2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31763,7 +31467,7 @@ func (m *FailureDetails_NumscriptCompileInvalidMetaPosition) MarshalToSizedBuffe
 		i--
 		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0xf2
+		dAtA[i] = 0xda
 	}
 	return len(dAtA) - i, nil
 }
@@ -31784,7 +31488,7 @@ func (m *FailureDetails_NumscriptCompileInvalidType) MarshalToSizedBufferVT(dAtA
 		i--
 		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0xfa
+		dAtA[i] = 0xe2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31803,9 +31507,9 @@ func (m *FailureDetails_NumscriptCompileInvalidUncappedSource) MarshalToSizedBuf
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x5
+		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0xea
 	}
 	return len(dAtA) - i, nil
 }
@@ -31824,9 +31528,9 @@ func (m *FailureDetails_NumscriptCompileInvalidVariableValue) MarshalToSizedBuff
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x5
+		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0xf2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31845,9 +31549,9 @@ func (m *FailureDetails_NumscriptCompileMissingVariable) MarshalToSizedBufferVT(
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x5
+		dAtA[i] = 0x4
 		i--
-		dAtA[i] = 0x92
+		dAtA[i] = 0xfa
 	}
 	return len(dAtA) - i, nil
 }
@@ -31868,7 +31572,7 @@ func (m *FailureDetails_NumscriptCompileTypeMismatch) MarshalToSizedBufferVT(dAt
 		i--
 		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0x9a
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -31889,7 +31593,7 @@ func (m *FailureDetails_NumscriptCompileUnboundVariable) MarshalToSizedBufferVT(
 		i--
 		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0xa2
+		dAtA[i] = 0x8a
 	}
 	return len(dAtA) - i, nil
 }
@@ -31910,7 +31614,7 @@ func (m *FailureDetails_NumscriptCompileUnknownFunction) MarshalToSizedBufferVT(
 		i--
 		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0xaa
+		dAtA[i] = 0x92
 	}
 	return len(dAtA) - i, nil
 }
@@ -31931,7 +31635,7 @@ func (m *FailureDetails_NumscriptContentRequired) MarshalToSizedBufferVT(dAtA []
 		i--
 		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0xb2
+		dAtA[i] = 0x9a
 	}
 	return len(dAtA) - i, nil
 }
@@ -31952,7 +31656,7 @@ func (m *FailureDetails_NumscriptCurrencyMismatch) MarshalToSizedBufferVT(dAtA [
 		i--
 		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0xba
+		dAtA[i] = 0xa2
 	}
 	return len(dAtA) - i, nil
 }
@@ -31973,7 +31677,7 @@ func (m *FailureDetails_NumscriptDivideByZero) MarshalToSizedBufferVT(dAtA []byt
 		i--
 		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0xc2
+		dAtA[i] = 0xaa
 	}
 	return len(dAtA) - i, nil
 }
@@ -31994,7 +31698,7 @@ func (m *FailureDetails_NumscriptExecutionError) MarshalToSizedBufferVT(dAtA []b
 		i--
 		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0xca
+		dAtA[i] = 0xb2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32015,7 +31719,7 @@ func (m *FailureDetails_NumscriptExperimentalFeature) MarshalToSizedBufferVT(dAt
 		i--
 		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0xd2
+		dAtA[i] = 0xba
 	}
 	return len(dAtA) - i, nil
 }
@@ -32036,7 +31740,7 @@ func (m *FailureDetails_NumscriptInvalidAccountName) MarshalToSizedBufferVT(dAtA
 		i--
 		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0xda
+		dAtA[i] = 0xc2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32057,7 +31761,7 @@ func (m *FailureDetails_NumscriptInvalidAllotmentInSendAll) MarshalToSizedBuffer
 		i--
 		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0xe2
+		dAtA[i] = 0xca
 	}
 	return len(dAtA) - i, nil
 }
@@ -32078,7 +31782,7 @@ func (m *FailureDetails_NumscriptInvalidAllotmentSum) MarshalToSizedBufferVT(dAt
 		i--
 		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0xea
+		dAtA[i] = 0xd2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32099,7 +31803,7 @@ func (m *FailureDetails_NumscriptInvalidAsset) MarshalToSizedBufferVT(dAtA []byt
 		i--
 		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0xf2
+		dAtA[i] = 0xda
 	}
 	return len(dAtA) - i, nil
 }
@@ -32120,7 +31824,7 @@ func (m *FailureDetails_NumscriptInvalidColor) MarshalToSizedBufferVT(dAtA []byt
 		i--
 		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0xfa
+		dAtA[i] = 0xe2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32139,9 +31843,9 @@ func (m *FailureDetails_NumscriptInvalidFeature) MarshalToSizedBufferVT(dAtA []b
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x6
+		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0xea
 	}
 	return len(dAtA) - i, nil
 }
@@ -32160,9 +31864,9 @@ func (m *FailureDetails_NumscriptInvalidMonetaryLiteral) MarshalToSizedBufferVT(
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x6
+		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0xf2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32181,9 +31885,9 @@ func (m *FailureDetails_NumscriptInvalidNestedMeta) MarshalToSizedBufferVT(dAtA 
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x6
+		dAtA[i] = 0x5
 		i--
-		dAtA[i] = 0x92
+		dAtA[i] = 0xfa
 	}
 	return len(dAtA) - i, nil
 }
@@ -32204,7 +31908,7 @@ func (m *FailureDetails_NumscriptInvalidNumberLiteral) MarshalToSizedBufferVT(dA
 		i--
 		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0x9a
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -32225,7 +31929,7 @@ func (m *FailureDetails_NumscriptInvalidRemainingAllotment) MarshalToSizedBuffer
 		i--
 		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0xa2
+		dAtA[i] = 0x8a
 	}
 	return len(dAtA) - i, nil
 }
@@ -32246,7 +31950,7 @@ func (m *FailureDetails_NumscriptInvalidScope) MarshalToSizedBufferVT(dAtA []byt
 		i--
 		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0xaa
+		dAtA[i] = 0x92
 	}
 	return len(dAtA) - i, nil
 }
@@ -32267,7 +31971,7 @@ func (m *FailureDetails_NumscriptInvalidType) MarshalToSizedBufferVT(dAtA []byte
 		i--
 		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0xb2
+		dAtA[i] = 0x9a
 	}
 	return len(dAtA) - i, nil
 }
@@ -32288,7 +31992,7 @@ func (m *FailureDetails_NumscriptInvalidUnboundedScalingAddress) MarshalToSizedB
 		i--
 		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0xba
+		dAtA[i] = 0xa2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32309,7 +32013,7 @@ func (m *FailureDetails_NumscriptInvalidUnboundedSendAll) MarshalToSizedBufferVT
 		i--
 		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0xc2
+		dAtA[i] = 0xaa
 	}
 	return len(dAtA) - i, nil
 }
@@ -32330,7 +32034,7 @@ func (m *FailureDetails_NumscriptInvalidUncappedSource) MarshalToSizedBufferVT(d
 		i--
 		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0xca
+		dAtA[i] = 0xb2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32351,7 +32055,7 @@ func (m *FailureDetails_NumscriptInvalidVersion) MarshalToSizedBufferVT(dAtA []b
 		i--
 		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0xd2
+		dAtA[i] = 0xba
 	}
 	return len(dAtA) - i, nil
 }
@@ -32372,7 +32076,7 @@ func (m *FailureDetails_NumscriptMetadataNotFound) MarshalToSizedBufferVT(dAtA [
 		i--
 		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0xda
+		dAtA[i] = 0xc2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32393,7 +32097,7 @@ func (m *FailureDetails_NumscriptMissingFunds) MarshalToSizedBufferVT(dAtA []byt
 		i--
 		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0xe2
+		dAtA[i] = 0xca
 	}
 	return len(dAtA) - i, nil
 }
@@ -32414,7 +32118,7 @@ func (m *FailureDetails_NumscriptMissingVariable) MarshalToSizedBufferVT(dAtA []
 		i--
 		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0xea
+		dAtA[i] = 0xd2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32435,7 +32139,7 @@ func (m *FailureDetails_NumscriptNameInvalidChar) MarshalToSizedBufferVT(dAtA []
 		i--
 		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0xf2
+		dAtA[i] = 0xda
 	}
 	return len(dAtA) - i, nil
 }
@@ -32456,7 +32160,7 @@ func (m *FailureDetails_NumscriptNameRequired) MarshalToSizedBufferVT(dAtA []byt
 		i--
 		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0xfa
+		dAtA[i] = 0xe2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32475,9 +32179,9 @@ func (m *FailureDetails_NumscriptNameTooLong) MarshalToSizedBufferVT(dAtA []byte
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x7
+		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0xea
 	}
 	return len(dAtA) - i, nil
 }
@@ -32496,9 +32200,9 @@ func (m *FailureDetails_NumscriptNegativeAmount) MarshalToSizedBufferVT(dAtA []b
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x7
+		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0xf2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32517,9 +32221,9 @@ func (m *FailureDetails_NumscriptNegativeBalance) MarshalToSizedBufferVT(dAtA []
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x7
+		dAtA[i] = 0x6
 		i--
-		dAtA[i] = 0x92
+		dAtA[i] = 0xfa
 	}
 	return len(dAtA) - i, nil
 }
@@ -32540,7 +32244,7 @@ func (m *FailureDetails_NumscriptNegativePortion) MarshalToSizedBufferVT(dAtA []
 		i--
 		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0x9a
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -32561,7 +32265,7 @@ func (m *FailureDetails_NumscriptNotFound) MarshalToSizedBufferVT(dAtA []byte) (
 		i--
 		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0xa2
+		dAtA[i] = 0x8a
 	}
 	return len(dAtA) - i, nil
 }
@@ -32582,7 +32286,7 @@ func (m *FailureDetails_NumscriptParseError) MarshalToSizedBufferVT(dAtA []byte)
 		i--
 		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0xaa
+		dAtA[i] = 0x92
 	}
 	return len(dAtA) - i, nil
 }
@@ -32603,7 +32307,7 @@ func (m *FailureDetails_NumscriptPostingAmountOverflow) MarshalToSizedBufferVT(d
 		i--
 		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0xb2
+		dAtA[i] = 0x9a
 	}
 	return len(dAtA) - i, nil
 }
@@ -32624,7 +32328,7 @@ func (m *FailureDetails_NumscriptPostingNegativeAmount) MarshalToSizedBufferVT(d
 		i--
 		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0xba
+		dAtA[i] = 0xa2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32645,7 +32349,7 @@ func (m *FailureDetails_NumscriptRuntime) MarshalToSizedBufferVT(dAtA []byte) (i
 		i--
 		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0xc2
+		dAtA[i] = 0xaa
 	}
 	return len(dAtA) - i, nil
 }
@@ -32666,7 +32370,7 @@ func (m *FailureDetails_NumscriptScalingUnsupported) MarshalToSizedBufferVT(dAtA
 		i--
 		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0xca
+		dAtA[i] = 0xb2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32687,7 +32391,7 @@ func (m *FailureDetails_NumscriptTypeError) MarshalToSizedBufferVT(dAtA []byte) 
 		i--
 		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0xd2
+		dAtA[i] = 0xba
 	}
 	return len(dAtA) - i, nil
 }
@@ -32708,7 +32412,7 @@ func (m *FailureDetails_NumscriptUnboundFunction) MarshalToSizedBufferVT(dAtA []
 		i--
 		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0xda
+		dAtA[i] = 0xc2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32729,7 +32433,7 @@ func (m *FailureDetails_NumscriptUnboundVariable) MarshalToSizedBufferVT(dAtA []
 		i--
 		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0xe2
+		dAtA[i] = 0xca
 	}
 	return len(dAtA) - i, nil
 }
@@ -32750,7 +32454,7 @@ func (m *FailureDetails_NumscriptVersionAlreadyExists) MarshalToSizedBufferVT(dA
 		i--
 		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0xea
+		dAtA[i] = 0xd2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32771,7 +32475,7 @@ func (m *FailureDetails_PostingsAndScriptConflict) MarshalToSizedBufferVT(dAtA [
 		i--
 		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0xf2
+		dAtA[i] = 0xda
 	}
 	return len(dAtA) - i, nil
 }
@@ -32792,7 +32496,7 @@ func (m *FailureDetails_PreparedQueryAlreadyExists) MarshalToSizedBufferVT(dAtA 
 		i--
 		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0xfa
+		dAtA[i] = 0xe2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32811,9 +32515,9 @@ func (m *FailureDetails_PreparedQueryNameInvalidChar) MarshalToSizedBufferVT(dAt
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0xea
 	}
 	return len(dAtA) - i, nil
 }
@@ -32832,9 +32536,9 @@ func (m *FailureDetails_PreparedQueryNameRequired) MarshalToSizedBufferVT(dAtA [
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0xf2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32853,9 +32557,9 @@ func (m *FailureDetails_PreparedQueryNameTooLong) MarshalToSizedBufferVT(dAtA []
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x7
 		i--
-		dAtA[i] = 0x92
+		dAtA[i] = 0xfa
 	}
 	return len(dAtA) - i, nil
 }
@@ -32876,7 +32580,7 @@ func (m *FailureDetails_PreparedQueryNotFound) MarshalToSizedBufferVT(dAtA []byt
 		i--
 		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0x9a
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -32897,7 +32601,7 @@ func (m *FailureDetails_PreparedQueryRequired) MarshalToSizedBufferVT(dAtA []byt
 		i--
 		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0xa2
+		dAtA[i] = 0x8a
 	}
 	return len(dAtA) - i, nil
 }
@@ -32918,7 +32622,7 @@ func (m *FailureDetails_PreparedQueryTargetUnsupported) MarshalToSizedBufferVT(d
 		i--
 		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0xaa
+		dAtA[i] = 0x92
 	}
 	return len(dAtA) - i, nil
 }
@@ -32939,7 +32643,7 @@ func (m *FailureDetails_RevertTargetCreatedInBatch) MarshalToSizedBufferVT(dAtA 
 		i--
 		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0xb2
+		dAtA[i] = 0x9a
 	}
 	return len(dAtA) - i, nil
 }
@@ -32960,7 +32664,7 @@ func (m *FailureDetails_ScopedBalanceUnsupported) MarshalToSizedBufferVT(dAtA []
 		i--
 		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0xba
+		dAtA[i] = 0xa2
 	}
 	return len(dAtA) - i, nil
 }
@@ -32981,7 +32685,7 @@ func (m *FailureDetails_ScriptAndReferenceConflict) MarshalToSizedBufferVT(dAtA 
 		i--
 		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0xc2
+		dAtA[i] = 0xaa
 	}
 	return len(dAtA) - i, nil
 }
@@ -33002,7 +32706,7 @@ func (m *FailureDetails_ScriptRequired) MarshalToSizedBufferVT(dAtA []byte) (int
 		i--
 		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0xca
+		dAtA[i] = 0xb2
 	}
 	return len(dAtA) - i, nil
 }
@@ -33023,7 +32727,7 @@ func (m *FailureDetails_SequenceExhausted) MarshalToSizedBufferVT(dAtA []byte) (
 		i--
 		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0xd2
+		dAtA[i] = 0xba
 	}
 	return len(dAtA) - i, nil
 }
@@ -33044,7 +32748,7 @@ func (m *FailureDetails_SigningKeyIdInvalidChar) MarshalToSizedBufferVT(dAtA []b
 		i--
 		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0xda
+		dAtA[i] = 0xc2
 	}
 	return len(dAtA) - i, nil
 }
@@ -33065,7 +32769,7 @@ func (m *FailureDetails_SigningKeyIdRequired) MarshalToSizedBufferVT(dAtA []byte
 		i--
 		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0xe2
+		dAtA[i] = 0xca
 	}
 	return len(dAtA) - i, nil
 }
@@ -33086,7 +32790,7 @@ func (m *FailureDetails_SigningKeyIdTooLong) MarshalToSizedBufferVT(dAtA []byte)
 		i--
 		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0xea
+		dAtA[i] = 0xd2
 	}
 	return len(dAtA) - i, nil
 }
@@ -33107,7 +32811,7 @@ func (m *FailureDetails_SigningKeyInvalidLength) MarshalToSizedBufferVT(dAtA []b
 		i--
 		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0xf2
+		dAtA[i] = 0xda
 	}
 	return len(dAtA) - i, nil
 }
@@ -33128,7 +32832,7 @@ func (m *FailureDetails_SinkAlreadyExists) MarshalToSizedBufferVT(dAtA []byte) (
 		i--
 		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0xfa
+		dAtA[i] = 0xe2
 	}
 	return len(dAtA) - i, nil
 }
@@ -33147,9 +32851,9 @@ func (m *FailureDetails_SinkBatchSizeTooLarge) MarshalToSizedBufferVT(dAtA []byt
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x9
+		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0xea
 	}
 	return len(dAtA) - i, nil
 }
@@ -33168,9 +32872,9 @@ func (m *FailureDetails_SinkControllerMismatch) MarshalToSizedBufferVT(dAtA []by
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x9
+		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0xf2
 	}
 	return len(dAtA) - i, nil
 }
@@ -33189,9 +32893,9 @@ func (m *FailureDetails_SinkNotFound) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x9
+		dAtA[i] = 0x8
 		i--
-		dAtA[i] = 0x92
+		dAtA[i] = 0xfa
 	}
 	return len(dAtA) - i, nil
 }
@@ -33212,7 +32916,7 @@ func (m *FailureDetails_StaleClusterPolicy) MarshalToSizedBufferVT(dAtA []byte) 
 		i--
 		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0x9a
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -33233,7 +32937,7 @@ func (m *FailureDetails_StaleInputsResolution) MarshalToSizedBufferVT(dAtA []byt
 		i--
 		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0xa2
+		dAtA[i] = 0x8a
 	}
 	return len(dAtA) - i, nil
 }
@@ -33254,7 +32958,7 @@ func (m *FailureDetails_StaleProposal) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i--
 		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0xaa
+		dAtA[i] = 0x92
 	}
 	return len(dAtA) - i, nil
 }
@@ -33275,7 +32979,7 @@ func (m *FailureDetails_StorageOperationFailed) MarshalToSizedBufferVT(dAtA []by
 		i--
 		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0xb2
+		dAtA[i] = 0x9a
 	}
 	return len(dAtA) - i, nil
 }
@@ -33296,7 +33000,7 @@ func (m *FailureDetails_TargetRequired) MarshalToSizedBufferVT(dAtA []byte) (int
 		i--
 		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0xba
+		dAtA[i] = 0xa2
 	}
 	return len(dAtA) - i, nil
 }
@@ -33317,7 +33021,7 @@ func (m *FailureDetails_TransactionAlreadyReverted) MarshalToSizedBufferVT(dAtA 
 		i--
 		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0xc2
+		dAtA[i] = 0xaa
 	}
 	return len(dAtA) - i, nil
 }
@@ -33338,7 +33042,7 @@ func (m *FailureDetails_TransactionNotFound) MarshalToSizedBufferVT(dAtA []byte)
 		i--
 		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0xca
+		dAtA[i] = 0xb2
 	}
 	return len(dAtA) - i, nil
 }
@@ -33359,7 +33063,7 @@ func (m *FailureDetails_TransactionReferenceConflict) MarshalToSizedBufferVT(dAt
 		i--
 		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0xd2
+		dAtA[i] = 0xba
 	}
 	return len(dAtA) - i, nil
 }
@@ -33380,7 +33084,7 @@ func (m *FailureDetails_TransactionReferenceNotFound) MarshalToSizedBufferVT(dAt
 		i--
 		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0xda
+		dAtA[i] = 0xc2
 	}
 	return len(dAtA) - i, nil
 }
@@ -33401,7 +33105,7 @@ func (m *FailureDetails_TransactionReferenceTooLong) MarshalToSizedBufferVT(dAtA
 		i--
 		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0xe2
+		dAtA[i] = 0xca
 	}
 	return len(dAtA) - i, nil
 }
@@ -33422,7 +33126,7 @@ func (m *FailureDetails_TransactionStateInconsistent) MarshalToSizedBufferVT(dAt
 		i--
 		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0xea
+		dAtA[i] = 0xd2
 	}
 	return len(dAtA) - i, nil
 }
@@ -33443,7 +33147,7 @@ func (m *FailureDetails_TransactionTargetMissing) MarshalToSizedBufferVT(dAtA []
 		i--
 		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0xf2
+		dAtA[i] = 0xda
 	}
 	return len(dAtA) - i, nil
 }
@@ -33464,7 +33168,7 @@ func (m *FailureDetails_TransientAccountNonZero) MarshalToSizedBufferVT(dAtA []b
 		i--
 		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0xfa
+		dAtA[i] = 0xe2
 	}
 	return len(dAtA) - i, nil
 }
@@ -33483,9 +33187,9 @@ func (m *FailureDetails_VolumeNotMaterialized) MarshalToSizedBufferVT(dAtA []byt
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0xa
+		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0xea
 	}
 	return len(dAtA) - i, nil
 }
@@ -33504,9 +33208,9 @@ func (m *FailureDetails_VolumeOverflow) MarshalToSizedBufferVT(dAtA []byte) (int
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0xa
+		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0xf2
 	}
 	return len(dAtA) - i, nil
 }
@@ -33525,9 +33229,9 @@ func (m *FailureDetails_AccountMetadataKeyEmpty) MarshalToSizedBufferVT(dAtA []b
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0xa
+		dAtA[i] = 0x9
 		i--
-		dAtA[i] = 0x92
+		dAtA[i] = 0xfa
 	}
 	return len(dAtA) - i, nil
 }
@@ -33548,7 +33252,7 @@ func (m *FailureDetails_AccountMetadataKeyInvalidChar) MarshalToSizedBufferVT(dA
 		i--
 		dAtA[i] = 0xa
 		i--
-		dAtA[i] = 0x9a
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -33569,7 +33273,7 @@ func (m *FailureDetails_AccountMetadataValueContainsNullByte) MarshalToSizedBuff
 		i--
 		dAtA[i] = 0xa
 		i--
-		dAtA[i] = 0xa2
+		dAtA[i] = 0x8a
 	}
 	return len(dAtA) - i, nil
 }
@@ -33590,7 +33294,7 @@ func (m *FailureDetails_AccountMetadataLimitsUnconfigured) MarshalToSizedBufferV
 		i--
 		dAtA[i] = 0xa
 		i--
-		dAtA[i] = 0xaa
+		dAtA[i] = 0x92
 	}
 	return len(dAtA) - i, nil
 }
@@ -33611,7 +33315,7 @@ func (m *FailureDetails_AccountMetadataLimitExceeded) MarshalToSizedBufferVT(dAt
 		i--
 		dAtA[i] = 0xa
 		i--
-		dAtA[i] = 0xb2
+		dAtA[i] = 0x9a
 	}
 	return len(dAtA) - i, nil
 }
@@ -33632,7 +33336,7 @@ func (m *FailureDetails_MetadataKeyLimitExceeded) MarshalToSizedBufferVT(dAtA []
 		i--
 		dAtA[i] = 0xa
 		i--
-		dAtA[i] = 0xba
+		dAtA[i] = 0xa2
 	}
 	return len(dAtA) - i, nil
 }
@@ -33653,7 +33357,7 @@ func (m *FailureDetails_AccountMetadataKeyLimitExceeded) MarshalToSizedBufferVT(
 		i--
 		dAtA[i] = 0xa
 		i--
-		dAtA[i] = 0xc2
+		dAtA[i] = 0xaa
 	}
 	return len(dAtA) - i, nil
 }
@@ -33674,7 +33378,7 @@ func (m *FailureDetails_NumscriptInsufficientFunds) MarshalToSizedBufferVT(dAtA 
 		i--
 		dAtA[i] = 0xa
 		i--
-		dAtA[i] = 0xca
+		dAtA[i] = 0xb2
 	}
 	return len(dAtA) - i, nil
 }
@@ -33695,7 +33399,7 @@ func (m *FailureDetails_NumscriptDivideByZeroWithNumerator) MarshalToSizedBuffer
 		i--
 		dAtA[i] = 0xa
 		i--
-		dAtA[i] = 0xd2
+		dAtA[i] = 0xba
 	}
 	return len(dAtA) - i, nil
 }
@@ -33716,7 +33420,7 @@ func (m *FailureDetails_NumscriptScopedMetadataNotFound) MarshalToSizedBufferVT(
 		i--
 		dAtA[i] = 0xa
 		i--
-		dAtA[i] = 0xda
+		dAtA[i] = 0xc2
 	}
 	return len(dAtA) - i, nil
 }
@@ -33737,7 +33441,7 @@ func (m *FailureDetails_NumscriptScopedNegativeBalance) MarshalToSizedBufferVT(d
 		i--
 		dAtA[i] = 0xa
 		i--
-		dAtA[i] = 0xe2
+		dAtA[i] = 0xca
 	}
 	return len(dAtA) - i, nil
 }
@@ -33758,7 +33462,7 @@ func (m *FailureDetails_NumscriptVersionNotFound) MarshalToSizedBufferVT(dAtA []
 		i--
 		dAtA[i] = 0xa
 		i--
-		dAtA[i] = 0xea
+		dAtA[i] = 0xd2
 	}
 	return len(dAtA) - i, nil
 }
@@ -34455,77 +34159,6 @@ func (m *CheckpointNotReadyDetails) MarshalToSizedBufferVT(dAtA []byte) (int, er
 	return len(dAtA) - i, nil
 }
 
-func (m *ClusterPolicyInvalidDetails) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *ClusterPolicyInvalidDetails) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *ClusterPolicyInvalidDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *ClusterPolicyRevisionConflictDetails) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *ClusterPolicyRevisionConflictDetails) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *ClusterPolicyRevisionConflictDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Revision != nil {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Revision))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *ColorInvalidDetails) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -34588,65 +34221,6 @@ func (m *ColorTooLongDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *CoverageMissDetails) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *CoverageMissDetails) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *CoverageMissDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.RaftIndex != nil {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.RaftIndex))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.IdHex != nil {
-		i -= len(*m.IdHex)
-		copy(dAtA[i:], *m.IdHex)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.IdHex)))
-		i--
-		dAtA[i] = 0x1a
-	}
-	if m.CanonicalHex != nil {
-		i -= len(*m.CanonicalHex)
-		copy(dAtA[i:], *m.CanonicalHex)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.CanonicalHex)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Attribute != nil {
-		i -= len(*m.Attribute)
-		copy(dAtA[i:], *m.Attribute)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Attribute)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -49129,30 +48703,6 @@ func (m *FailureDetails_CheckpointNotReady) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *FailureDetails_ClusterPolicyInvalid) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.ClusterPolicyInvalid != nil {
-		l = m.ClusterPolicyInvalid.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *FailureDetails_ClusterPolicyRevisionConflict) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.ClusterPolicyRevisionConflict != nil {
-		l = m.ClusterPolicyRevisionConflict.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
 func (m *FailureDetails_ColorInvalid) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -49173,18 +48723,6 @@ func (m *FailureDetails_ColorTooLong) SizeVT() (n int) {
 	_ = l
 	if m.ColorTooLong != nil {
 		l = m.ColorTooLong.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *FailureDetails_CoverageMiss) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.CoverageMiss != nil {
-		l = m.CoverageMiss.SizeVT()
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -51226,29 +50764,6 @@ func (m *CheckpointNotReadyDetails) SizeVT() (n int) {
 	return n
 }
 
-func (m *ClusterPolicyInvalidDetails) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *ClusterPolicyRevisionConflictDetails) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Revision != nil {
-		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Revision))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
 func (m *ColorInvalidDetails) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -51265,31 +50780,6 @@ func (m *ColorTooLongDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *CoverageMissDetails) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Attribute != nil {
-		l = len(*m.Attribute)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.CanonicalHex != nil {
-		l = len(*m.CanonicalHex)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.IdHex != nil {
-		l = len(*m.IdHex)
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.RaftIndex != nil {
-		n += 1 + protohelpers.SizeOfVarint(uint64(*m.RaftIndex))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -69052,88 +68542,6 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 19:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ClusterPolicyInvalid", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Kind.(*FailureDetails_ClusterPolicyInvalid); ok {
-				if err := oneof.ClusterPolicyInvalid.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &ClusterPolicyInvalidDetails{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Kind = &FailureDetails_ClusterPolicyInvalid{ClusterPolicyInvalid: v}
-			}
-			iNdEx = postIndex
-		case 20:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ClusterPolicyRevisionConflict", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Kind.(*FailureDetails_ClusterPolicyRevisionConflict); ok {
-				if err := oneof.ClusterPolicyRevisionConflict.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &ClusterPolicyRevisionConflictDetails{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Kind = &FailureDetails_ClusterPolicyRevisionConflict{ClusterPolicyRevisionConflict: v}
-			}
-			iNdEx = postIndex
-		case 21:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ColorInvalid", wireType)
 			}
 			var msglen int
@@ -69173,7 +68581,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_ColorInvalid{ColorInvalid: v}
 			}
 			iNdEx = postIndex
-		case 22:
+		case 20:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ColorTooLong", wireType)
 			}
@@ -69214,48 +68622,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_ColorTooLong{ColorTooLong: v}
 			}
 			iNdEx = postIndex
-		case 23:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CoverageMiss", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Kind.(*FailureDetails_CoverageMiss); ok {
-				if err := oneof.CoverageMiss.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &CoverageMissDetails{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Kind = &FailureDetails_CoverageMiss{CoverageMiss: v}
-			}
-			iNdEx = postIndex
-		case 24:
+		case 21:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field EmptyTransaction", wireType)
 			}
@@ -69296,7 +68663,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_EmptyTransaction{EmptyTransaction: v}
 			}
 			iNdEx = postIndex
-		case 25:
+		case 22:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field FilterCompilationError", wireType)
 			}
@@ -69337,7 +68704,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_FilterCompilationError{FilterCompilationError: v}
 			}
 			iNdEx = postIndex
-		case 26:
+		case 23:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field IdempotencyKeyConflict", wireType)
 			}
@@ -69378,7 +68745,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_IdempotencyKeyConflict{IdempotencyKeyConflict: v}
 			}
 			iNdEx = postIndex
-		case 27:
+		case 24:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field IdRequired", wireType)
 			}
@@ -69419,7 +68786,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_IdRequired{IdRequired: v}
 			}
 			iNdEx = postIndex
-		case 28:
+		case 25:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field IndexAlreadyExists", wireType)
 			}
@@ -69460,7 +68827,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_IndexAlreadyExists{IndexAlreadyExists: v}
 			}
 			iNdEx = postIndex
-		case 29:
+		case 26:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field IndexBuilding", wireType)
 			}
@@ -69501,7 +68868,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_IndexBuilding{IndexBuilding: v}
 			}
 			iNdEx = postIndex
-		case 30:
+		case 27:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field IndexInconsistent", wireType)
 			}
@@ -69542,7 +68909,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_IndexInconsistent{IndexInconsistent: v}
 			}
 			iNdEx = postIndex
-		case 31:
+		case 28:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field IndexNotFound", wireType)
 			}
@@ -69583,7 +68950,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_IndexNotFound{IndexNotFound: v}
 			}
 			iNdEx = postIndex
-		case 32:
+		case 29:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field IndexTargetUnsupported", wireType)
 			}
@@ -69624,7 +68991,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_IndexTargetUnsupported{IndexTargetUnsupported: v}
 			}
 			iNdEx = postIndex
-		case 33:
+		case 30:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field InsufficientFunds", wireType)
 			}
@@ -69665,7 +69032,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_InsufficientFunds{InsufficientFunds: v}
 			}
 			iNdEx = postIndex
-		case 34:
+		case 31:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field InvalidApplyType", wireType)
 			}
@@ -69706,7 +69073,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_InvalidApplyType{InvalidApplyType: v}
 			}
 			iNdEx = postIndex
-		case 35:
+		case 32:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field InvalidCronExpression", wireType)
 			}
@@ -69747,7 +69114,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_InvalidCronExpression{InvalidCronExpression: v}
 			}
 			iNdEx = postIndex
-		case 36:
+		case 33:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field InvalidExecutionPlan", wireType)
 			}
@@ -69788,7 +69155,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_InvalidExecutionPlan{InvalidExecutionPlan: v}
 			}
 			iNdEx = postIndex
-		case 37:
+		case 34:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field InvalidOrderType", wireType)
 			}
@@ -69829,7 +69196,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_InvalidOrderType{InvalidOrderType: v}
 			}
 			iNdEx = postIndex
-		case 38:
+		case 35:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field InvalidPattern", wireType)
 			}
@@ -69870,7 +69237,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_InvalidPattern{InvalidPattern: v}
 			}
 			iNdEx = postIndex
-		case 39:
+		case 36:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field InvalidSkippableReason", wireType)
 			}
@@ -69911,7 +69278,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_InvalidSkippableReason{InvalidSkippableReason: v}
 			}
 			iNdEx = postIndex
-		case 40:
+		case 37:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LedgerAlreadyExists", wireType)
 			}
@@ -69952,7 +69319,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_LedgerAlreadyExists{LedgerAlreadyExists: v}
 			}
 			iNdEx = postIndex
-		case 41:
+		case 38:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LedgerDeleted", wireType)
 			}
@@ -69993,7 +69360,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_LedgerDeleted{LedgerDeleted: v}
 			}
 			iNdEx = postIndex
-		case 42:
+		case 39:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LedgerInMirrorMode", wireType)
 			}
@@ -70034,7 +69401,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_LedgerInMirrorMode{LedgerInMirrorMode: v}
 			}
 			iNdEx = postIndex
-		case 43:
+		case 40:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LedgerNameInvalidChar", wireType)
 			}
@@ -70075,7 +69442,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_LedgerNameInvalidChar{LedgerNameInvalidChar: v}
 			}
 			iNdEx = postIndex
-		case 44:
+		case 41:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LedgerNameRequired", wireType)
 			}
@@ -70116,7 +69483,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_LedgerNameRequired{LedgerNameRequired: v}
 			}
 			iNdEx = postIndex
-		case 45:
+		case 42:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LedgerNameReservedPrefix", wireType)
 			}
@@ -70157,7 +69524,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_LedgerNameReservedPrefix{LedgerNameReservedPrefix: v}
 			}
 			iNdEx = postIndex
-		case 46:
+		case 43:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LedgerNameTooLong", wireType)
 			}
@@ -70198,7 +69565,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_LedgerNameTooLong{LedgerNameTooLong: v}
 			}
 			iNdEx = postIndex
-		case 47:
+		case 44:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LedgerNotFound", wireType)
 			}
@@ -70239,7 +69606,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_LedgerNotFound{LedgerNotFound: v}
 			}
 			iNdEx = postIndex
-		case 48:
+		case 45:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LedgerNotInMirrorMode", wireType)
 			}
@@ -70280,7 +69647,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_LedgerNotInMirrorMode{LedgerNotInMirrorMode: v}
 			}
 			iNdEx = postIndex
-		case 49:
+		case 46:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MetadataFieldNotInSchema", wireType)
 			}
@@ -70321,7 +69688,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MetadataFieldNotInSchema{MetadataFieldNotInSchema: v}
 			}
 			iNdEx = postIndex
-		case 50:
+		case 47:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MetadataKeyEmpty", wireType)
 			}
@@ -70362,7 +69729,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MetadataKeyEmpty{MetadataKeyEmpty: v}
 			}
 			iNdEx = postIndex
-		case 51:
+		case 48:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MetadataKeyInvalidChar", wireType)
 			}
@@ -70403,7 +69770,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MetadataKeyInvalidChar{MetadataKeyInvalidChar: v}
 			}
 			iNdEx = postIndex
-		case 52:
+		case 49:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MetadataKeyRequired", wireType)
 			}
@@ -70444,7 +69811,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MetadataKeyRequired{MetadataKeyRequired: v}
 			}
 			iNdEx = postIndex
-		case 53:
+		case 50:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MetadataLimitsUnconfigured", wireType)
 			}
@@ -70485,7 +69852,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MetadataLimitsUnconfigured{MetadataLimitsUnconfigured: v}
 			}
 			iNdEx = postIndex
-		case 54:
+		case 51:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MetadataLimitExceeded", wireType)
 			}
@@ -70526,7 +69893,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MetadataLimitExceeded{MetadataLimitExceeded: v}
 			}
 			iNdEx = postIndex
-		case 55:
+		case 52:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MetadataNotFound", wireType)
 			}
@@ -70567,7 +69934,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MetadataNotFound{MetadataNotFound: v}
 			}
 			iNdEx = postIndex
-		case 56:
+		case 53:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MetadataValueContainsNullByte", wireType)
 			}
@@ -70608,7 +69975,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MetadataValueContainsNullByte{MetadataValueContainsNullByte: v}
 			}
 			iNdEx = postIndex
-		case 57:
+		case 54:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MirrorHttpUrlInvalid", wireType)
 			}
@@ -70649,7 +70016,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MirrorHttpUrlInvalid{MirrorHttpUrlInvalid: v}
 			}
 			iNdEx = postIndex
-		case 58:
+		case 55:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MirrorIamRegionRequired", wireType)
 			}
@@ -70690,7 +70057,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MirrorIamRegionRequired{MirrorIamRegionRequired: v}
 			}
 			iNdEx = postIndex
-		case 59:
+		case 56:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MirrorIamRequiresTls", wireType)
 			}
@@ -70731,7 +70098,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MirrorIamRequiresTls{MirrorIamRequiresTls: v}
 			}
 			iNdEx = postIndex
-		case 60:
+		case 57:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MirrorRewriteRuleInvalid", wireType)
 			}
@@ -70772,7 +70139,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MirrorRewriteRuleInvalid{MirrorRewriteRuleInvalid: v}
 			}
 			iNdEx = postIndex
-		case 61:
+		case 58:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MirrorV2LogIdGap", wireType)
 			}
@@ -70813,7 +70180,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MirrorV2LogIdGap{MirrorV2LogIdGap: v}
 			}
 			iNdEx = postIndex
-		case 62:
+		case 59:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MirrorV2LogIdInvalid", wireType)
 			}
@@ -70854,7 +70221,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MirrorV2LogIdInvalid{MirrorV2LogIdInvalid: v}
 			}
 			iNdEx = postIndex
-		case 63:
+		case 60:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptAssetMismatch", wireType)
 			}
@@ -70895,7 +70262,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptAssetMismatch{NumscriptAssetMismatch: v}
 			}
 			iNdEx = postIndex
-		case 64:
+		case 61:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptBadArity", wireType)
 			}
@@ -70936,7 +70303,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptBadArity{NumscriptBadArity: v}
 			}
 			iNdEx = postIndex
-		case 65:
+		case 62:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptBadMetaValue", wireType)
 			}
@@ -70977,7 +70344,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptBadMetaValue{NumscriptBadMetaValue: v}
 			}
 			iNdEx = postIndex
-		case 66:
+		case 63:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptBadPortion", wireType)
 			}
@@ -71018,7 +70385,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptBadPortion{NumscriptBadPortion: v}
 			}
 			iNdEx = postIndex
-		case 67:
+		case 64:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCannotCastScopedAccount", wireType)
 			}
@@ -71059,7 +70426,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCannotCastScopedAccount{NumscriptCannotCastScopedAccount: v}
 			}
 			iNdEx = postIndex
-		case 68:
+		case 65:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCannotCastToString", wireType)
 			}
@@ -71100,7 +70467,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCannotCastToString{NumscriptCannotCastToString: v}
 			}
 			iNdEx = postIndex
-		case 69:
+		case 66:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCannotStoreScopedAccount", wireType)
 			}
@@ -71141,7 +70508,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCannotStoreScopedAccount{NumscriptCannotStoreScopedAccount: v}
 			}
 			iNdEx = postIndex
-		case 70:
+		case 67:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileBadArity", wireType)
 			}
@@ -71182,7 +70549,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileBadArity{NumscriptCompileBadArity: v}
 			}
 			iNdEx = postIndex
-		case 71:
+		case 68:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileCannotCastToString", wireType)
 			}
@@ -71223,7 +70590,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileCannotCastToString{NumscriptCompileCannotCastToString: v}
 			}
 			iNdEx = postIndex
-		case 72:
+		case 69:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileCannotStoreScopedAccount", wireType)
 			}
@@ -71264,7 +70631,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileCannotStoreScopedAccount{NumscriptCompileCannotStoreScopedAccount: v}
 			}
 			iNdEx = postIndex
-		case 73:
+		case 70:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileDuplicateRemaining", wireType)
 			}
@@ -71305,7 +70672,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileDuplicateRemaining{NumscriptCompileDuplicateRemaining: v}
 			}
 			iNdEx = postIndex
-		case 74:
+		case 71:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileDuplicateVariable", wireType)
 			}
@@ -71346,7 +70713,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileDuplicateVariable{NumscriptCompileDuplicateVariable: v}
 			}
 			iNdEx = postIndex
-		case 75:
+		case 72:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileError", wireType)
 			}
@@ -71387,7 +70754,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileError{NumscriptCompileError: v}
 			}
 			iNdEx = postIndex
-		case 76:
+		case 73:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileExperimentalFeature", wireType)
 			}
@@ -71428,7 +70795,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileExperimentalFeature{NumscriptCompileExperimentalFeature: v}
 			}
 			iNdEx = postIndex
-		case 77:
+		case 74:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileInvalidFeature", wireType)
 			}
@@ -71469,7 +70836,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileInvalidFeature{NumscriptCompileInvalidFeature: v}
 			}
 			iNdEx = postIndex
-		case 78:
+		case 75:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileInvalidMetaPosition", wireType)
 			}
@@ -71510,7 +70877,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileInvalidMetaPosition{NumscriptCompileInvalidMetaPosition: v}
 			}
 			iNdEx = postIndex
-		case 79:
+		case 76:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileInvalidType", wireType)
 			}
@@ -71551,7 +70918,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileInvalidType{NumscriptCompileInvalidType: v}
 			}
 			iNdEx = postIndex
-		case 80:
+		case 77:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileInvalidUncappedSource", wireType)
 			}
@@ -71592,7 +70959,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileInvalidUncappedSource{NumscriptCompileInvalidUncappedSource: v}
 			}
 			iNdEx = postIndex
-		case 81:
+		case 78:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileInvalidVariableValue", wireType)
 			}
@@ -71633,7 +71000,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileInvalidVariableValue{NumscriptCompileInvalidVariableValue: v}
 			}
 			iNdEx = postIndex
-		case 82:
+		case 79:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileMissingVariable", wireType)
 			}
@@ -71674,7 +71041,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileMissingVariable{NumscriptCompileMissingVariable: v}
 			}
 			iNdEx = postIndex
-		case 83:
+		case 80:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileTypeMismatch", wireType)
 			}
@@ -71715,7 +71082,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileTypeMismatch{NumscriptCompileTypeMismatch: v}
 			}
 			iNdEx = postIndex
-		case 84:
+		case 81:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileUnboundVariable", wireType)
 			}
@@ -71756,7 +71123,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileUnboundVariable{NumscriptCompileUnboundVariable: v}
 			}
 			iNdEx = postIndex
-		case 85:
+		case 82:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCompileUnknownFunction", wireType)
 			}
@@ -71797,7 +71164,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCompileUnknownFunction{NumscriptCompileUnknownFunction: v}
 			}
 			iNdEx = postIndex
-		case 86:
+		case 83:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptContentRequired", wireType)
 			}
@@ -71838,7 +71205,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptContentRequired{NumscriptContentRequired: v}
 			}
 			iNdEx = postIndex
-		case 87:
+		case 84:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptCurrencyMismatch", wireType)
 			}
@@ -71879,7 +71246,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptCurrencyMismatch{NumscriptCurrencyMismatch: v}
 			}
 			iNdEx = postIndex
-		case 88:
+		case 85:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptDivideByZero", wireType)
 			}
@@ -71920,7 +71287,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptDivideByZero{NumscriptDivideByZero: v}
 			}
 			iNdEx = postIndex
-		case 89:
+		case 86:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptExecutionError", wireType)
 			}
@@ -71961,7 +71328,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptExecutionError{NumscriptExecutionError: v}
 			}
 			iNdEx = postIndex
-		case 90:
+		case 87:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptExperimentalFeature", wireType)
 			}
@@ -72002,7 +71369,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptExperimentalFeature{NumscriptExperimentalFeature: v}
 			}
 			iNdEx = postIndex
-		case 91:
+		case 88:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidAccountName", wireType)
 			}
@@ -72043,7 +71410,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidAccountName{NumscriptInvalidAccountName: v}
 			}
 			iNdEx = postIndex
-		case 92:
+		case 89:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidAllotmentInSendAll", wireType)
 			}
@@ -72084,7 +71451,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidAllotmentInSendAll{NumscriptInvalidAllotmentInSendAll: v}
 			}
 			iNdEx = postIndex
-		case 93:
+		case 90:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidAllotmentSum", wireType)
 			}
@@ -72125,7 +71492,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidAllotmentSum{NumscriptInvalidAllotmentSum: v}
 			}
 			iNdEx = postIndex
-		case 94:
+		case 91:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidAsset", wireType)
 			}
@@ -72166,7 +71533,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidAsset{NumscriptInvalidAsset: v}
 			}
 			iNdEx = postIndex
-		case 95:
+		case 92:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidColor", wireType)
 			}
@@ -72207,7 +71574,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidColor{NumscriptInvalidColor: v}
 			}
 			iNdEx = postIndex
-		case 96:
+		case 93:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidFeature", wireType)
 			}
@@ -72248,7 +71615,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidFeature{NumscriptInvalidFeature: v}
 			}
 			iNdEx = postIndex
-		case 97:
+		case 94:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidMonetaryLiteral", wireType)
 			}
@@ -72289,7 +71656,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidMonetaryLiteral{NumscriptInvalidMonetaryLiteral: v}
 			}
 			iNdEx = postIndex
-		case 98:
+		case 95:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidNestedMeta", wireType)
 			}
@@ -72330,7 +71697,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidNestedMeta{NumscriptInvalidNestedMeta: v}
 			}
 			iNdEx = postIndex
-		case 99:
+		case 96:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidNumberLiteral", wireType)
 			}
@@ -72371,7 +71738,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidNumberLiteral{NumscriptInvalidNumberLiteral: v}
 			}
 			iNdEx = postIndex
-		case 100:
+		case 97:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidRemainingAllotment", wireType)
 			}
@@ -72412,7 +71779,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidRemainingAllotment{NumscriptInvalidRemainingAllotment: v}
 			}
 			iNdEx = postIndex
-		case 101:
+		case 98:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidScope", wireType)
 			}
@@ -72453,7 +71820,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidScope{NumscriptInvalidScope: v}
 			}
 			iNdEx = postIndex
-		case 102:
+		case 99:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidType", wireType)
 			}
@@ -72494,7 +71861,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidType{NumscriptInvalidType: v}
 			}
 			iNdEx = postIndex
-		case 103:
+		case 100:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidUnboundedScalingAddress", wireType)
 			}
@@ -72535,7 +71902,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidUnboundedScalingAddress{NumscriptInvalidUnboundedScalingAddress: v}
 			}
 			iNdEx = postIndex
-		case 104:
+		case 101:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidUnboundedSendAll", wireType)
 			}
@@ -72576,7 +71943,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidUnboundedSendAll{NumscriptInvalidUnboundedSendAll: v}
 			}
 			iNdEx = postIndex
-		case 105:
+		case 102:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidUncappedSource", wireType)
 			}
@@ -72617,7 +71984,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidUncappedSource{NumscriptInvalidUncappedSource: v}
 			}
 			iNdEx = postIndex
-		case 106:
+		case 103:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInvalidVersion", wireType)
 			}
@@ -72658,7 +72025,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInvalidVersion{NumscriptInvalidVersion: v}
 			}
 			iNdEx = postIndex
-		case 107:
+		case 104:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptMetadataNotFound", wireType)
 			}
@@ -72699,7 +72066,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptMetadataNotFound{NumscriptMetadataNotFound: v}
 			}
 			iNdEx = postIndex
-		case 108:
+		case 105:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptMissingFunds", wireType)
 			}
@@ -72740,7 +72107,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptMissingFunds{NumscriptMissingFunds: v}
 			}
 			iNdEx = postIndex
-		case 109:
+		case 106:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptMissingVariable", wireType)
 			}
@@ -72781,7 +72148,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptMissingVariable{NumscriptMissingVariable: v}
 			}
 			iNdEx = postIndex
-		case 110:
+		case 107:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptNameInvalidChar", wireType)
 			}
@@ -72822,7 +72189,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptNameInvalidChar{NumscriptNameInvalidChar: v}
 			}
 			iNdEx = postIndex
-		case 111:
+		case 108:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptNameRequired", wireType)
 			}
@@ -72863,7 +72230,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptNameRequired{NumscriptNameRequired: v}
 			}
 			iNdEx = postIndex
-		case 112:
+		case 109:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptNameTooLong", wireType)
 			}
@@ -72904,7 +72271,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptNameTooLong{NumscriptNameTooLong: v}
 			}
 			iNdEx = postIndex
-		case 113:
+		case 110:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptNegativeAmount", wireType)
 			}
@@ -72945,7 +72312,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptNegativeAmount{NumscriptNegativeAmount: v}
 			}
 			iNdEx = postIndex
-		case 114:
+		case 111:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptNegativeBalance", wireType)
 			}
@@ -72986,7 +72353,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptNegativeBalance{NumscriptNegativeBalance: v}
 			}
 			iNdEx = postIndex
-		case 115:
+		case 112:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptNegativePortion", wireType)
 			}
@@ -73027,7 +72394,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptNegativePortion{NumscriptNegativePortion: v}
 			}
 			iNdEx = postIndex
-		case 116:
+		case 113:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptNotFound", wireType)
 			}
@@ -73068,7 +72435,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptNotFound{NumscriptNotFound: v}
 			}
 			iNdEx = postIndex
-		case 117:
+		case 114:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptParseError", wireType)
 			}
@@ -73109,7 +72476,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptParseError{NumscriptParseError: v}
 			}
 			iNdEx = postIndex
-		case 118:
+		case 115:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptPostingAmountOverflow", wireType)
 			}
@@ -73150,7 +72517,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptPostingAmountOverflow{NumscriptPostingAmountOverflow: v}
 			}
 			iNdEx = postIndex
-		case 119:
+		case 116:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptPostingNegativeAmount", wireType)
 			}
@@ -73191,7 +72558,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptPostingNegativeAmount{NumscriptPostingNegativeAmount: v}
 			}
 			iNdEx = postIndex
-		case 120:
+		case 117:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptRuntime", wireType)
 			}
@@ -73232,7 +72599,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptRuntime{NumscriptRuntime: v}
 			}
 			iNdEx = postIndex
-		case 121:
+		case 118:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptScalingUnsupported", wireType)
 			}
@@ -73273,7 +72640,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptScalingUnsupported{NumscriptScalingUnsupported: v}
 			}
 			iNdEx = postIndex
-		case 122:
+		case 119:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptTypeError", wireType)
 			}
@@ -73314,7 +72681,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptTypeError{NumscriptTypeError: v}
 			}
 			iNdEx = postIndex
-		case 123:
+		case 120:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptUnboundFunction", wireType)
 			}
@@ -73355,7 +72722,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptUnboundFunction{NumscriptUnboundFunction: v}
 			}
 			iNdEx = postIndex
-		case 124:
+		case 121:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptUnboundVariable", wireType)
 			}
@@ -73396,7 +72763,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptUnboundVariable{NumscriptUnboundVariable: v}
 			}
 			iNdEx = postIndex
-		case 125:
+		case 122:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptVersionAlreadyExists", wireType)
 			}
@@ -73437,7 +72804,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptVersionAlreadyExists{NumscriptVersionAlreadyExists: v}
 			}
 			iNdEx = postIndex
-		case 126:
+		case 123:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PostingsAndScriptConflict", wireType)
 			}
@@ -73478,7 +72845,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_PostingsAndScriptConflict{PostingsAndScriptConflict: v}
 			}
 			iNdEx = postIndex
-		case 127:
+		case 124:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PreparedQueryAlreadyExists", wireType)
 			}
@@ -73519,7 +72886,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_PreparedQueryAlreadyExists{PreparedQueryAlreadyExists: v}
 			}
 			iNdEx = postIndex
-		case 128:
+		case 125:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PreparedQueryNameInvalidChar", wireType)
 			}
@@ -73560,7 +72927,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_PreparedQueryNameInvalidChar{PreparedQueryNameInvalidChar: v}
 			}
 			iNdEx = postIndex
-		case 129:
+		case 126:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PreparedQueryNameRequired", wireType)
 			}
@@ -73601,7 +72968,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_PreparedQueryNameRequired{PreparedQueryNameRequired: v}
 			}
 			iNdEx = postIndex
-		case 130:
+		case 127:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PreparedQueryNameTooLong", wireType)
 			}
@@ -73642,7 +73009,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_PreparedQueryNameTooLong{PreparedQueryNameTooLong: v}
 			}
 			iNdEx = postIndex
-		case 131:
+		case 128:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PreparedQueryNotFound", wireType)
 			}
@@ -73683,7 +73050,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_PreparedQueryNotFound{PreparedQueryNotFound: v}
 			}
 			iNdEx = postIndex
-		case 132:
+		case 129:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PreparedQueryRequired", wireType)
 			}
@@ -73724,7 +73091,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_PreparedQueryRequired{PreparedQueryRequired: v}
 			}
 			iNdEx = postIndex
-		case 133:
+		case 130:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PreparedQueryTargetUnsupported", wireType)
 			}
@@ -73765,7 +73132,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_PreparedQueryTargetUnsupported{PreparedQueryTargetUnsupported: v}
 			}
 			iNdEx = postIndex
-		case 134:
+		case 131:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RevertTargetCreatedInBatch", wireType)
 			}
@@ -73806,7 +73173,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_RevertTargetCreatedInBatch{RevertTargetCreatedInBatch: v}
 			}
 			iNdEx = postIndex
-		case 135:
+		case 132:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ScopedBalanceUnsupported", wireType)
 			}
@@ -73847,7 +73214,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_ScopedBalanceUnsupported{ScopedBalanceUnsupported: v}
 			}
 			iNdEx = postIndex
-		case 136:
+		case 133:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ScriptAndReferenceConflict", wireType)
 			}
@@ -73888,7 +73255,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_ScriptAndReferenceConflict{ScriptAndReferenceConflict: v}
 			}
 			iNdEx = postIndex
-		case 137:
+		case 134:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ScriptRequired", wireType)
 			}
@@ -73929,7 +73296,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_ScriptRequired{ScriptRequired: v}
 			}
 			iNdEx = postIndex
-		case 138:
+		case 135:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SequenceExhausted", wireType)
 			}
@@ -73970,7 +73337,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_SequenceExhausted{SequenceExhausted: v}
 			}
 			iNdEx = postIndex
-		case 139:
+		case 136:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SigningKeyIdInvalidChar", wireType)
 			}
@@ -74011,7 +73378,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_SigningKeyIdInvalidChar{SigningKeyIdInvalidChar: v}
 			}
 			iNdEx = postIndex
-		case 140:
+		case 137:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SigningKeyIdRequired", wireType)
 			}
@@ -74052,7 +73419,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_SigningKeyIdRequired{SigningKeyIdRequired: v}
 			}
 			iNdEx = postIndex
-		case 141:
+		case 138:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SigningKeyIdTooLong", wireType)
 			}
@@ -74093,7 +73460,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_SigningKeyIdTooLong{SigningKeyIdTooLong: v}
 			}
 			iNdEx = postIndex
-		case 142:
+		case 139:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SigningKeyInvalidLength", wireType)
 			}
@@ -74134,7 +73501,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_SigningKeyInvalidLength{SigningKeyInvalidLength: v}
 			}
 			iNdEx = postIndex
-		case 143:
+		case 140:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SinkAlreadyExists", wireType)
 			}
@@ -74175,7 +73542,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_SinkAlreadyExists{SinkAlreadyExists: v}
 			}
 			iNdEx = postIndex
-		case 144:
+		case 141:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SinkBatchSizeTooLarge", wireType)
 			}
@@ -74216,7 +73583,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_SinkBatchSizeTooLarge{SinkBatchSizeTooLarge: v}
 			}
 			iNdEx = postIndex
-		case 145:
+		case 142:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SinkControllerMismatch", wireType)
 			}
@@ -74257,7 +73624,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_SinkControllerMismatch{SinkControllerMismatch: v}
 			}
 			iNdEx = postIndex
-		case 146:
+		case 143:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SinkNotFound", wireType)
 			}
@@ -74298,7 +73665,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_SinkNotFound{SinkNotFound: v}
 			}
 			iNdEx = postIndex
-		case 147:
+		case 144:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field StaleClusterPolicy", wireType)
 			}
@@ -74339,7 +73706,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_StaleClusterPolicy{StaleClusterPolicy: v}
 			}
 			iNdEx = postIndex
-		case 148:
+		case 145:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field StaleInputsResolution", wireType)
 			}
@@ -74380,7 +73747,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_StaleInputsResolution{StaleInputsResolution: v}
 			}
 			iNdEx = postIndex
-		case 149:
+		case 146:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field StaleProposal", wireType)
 			}
@@ -74421,7 +73788,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_StaleProposal{StaleProposal: v}
 			}
 			iNdEx = postIndex
-		case 150:
+		case 147:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field StorageOperationFailed", wireType)
 			}
@@ -74462,7 +73829,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_StorageOperationFailed{StorageOperationFailed: v}
 			}
 			iNdEx = postIndex
-		case 151:
+		case 148:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TargetRequired", wireType)
 			}
@@ -74503,7 +73870,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_TargetRequired{TargetRequired: v}
 			}
 			iNdEx = postIndex
-		case 152:
+		case 149:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransactionAlreadyReverted", wireType)
 			}
@@ -74544,7 +73911,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_TransactionAlreadyReverted{TransactionAlreadyReverted: v}
 			}
 			iNdEx = postIndex
-		case 153:
+		case 150:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransactionNotFound", wireType)
 			}
@@ -74585,7 +73952,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_TransactionNotFound{TransactionNotFound: v}
 			}
 			iNdEx = postIndex
-		case 154:
+		case 151:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransactionReferenceConflict", wireType)
 			}
@@ -74626,7 +73993,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_TransactionReferenceConflict{TransactionReferenceConflict: v}
 			}
 			iNdEx = postIndex
-		case 155:
+		case 152:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransactionReferenceNotFound", wireType)
 			}
@@ -74667,7 +74034,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_TransactionReferenceNotFound{TransactionReferenceNotFound: v}
 			}
 			iNdEx = postIndex
-		case 156:
+		case 153:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransactionReferenceTooLong", wireType)
 			}
@@ -74708,7 +74075,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_TransactionReferenceTooLong{TransactionReferenceTooLong: v}
 			}
 			iNdEx = postIndex
-		case 157:
+		case 154:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransactionStateInconsistent", wireType)
 			}
@@ -74749,7 +74116,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_TransactionStateInconsistent{TransactionStateInconsistent: v}
 			}
 			iNdEx = postIndex
-		case 158:
+		case 155:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransactionTargetMissing", wireType)
 			}
@@ -74790,7 +74157,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_TransactionTargetMissing{TransactionTargetMissing: v}
 			}
 			iNdEx = postIndex
-		case 159:
+		case 156:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransientAccountNonZero", wireType)
 			}
@@ -74831,7 +74198,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_TransientAccountNonZero{TransientAccountNonZero: v}
 			}
 			iNdEx = postIndex
-		case 160:
+		case 157:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field VolumeNotMaterialized", wireType)
 			}
@@ -74872,7 +74239,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_VolumeNotMaterialized{VolumeNotMaterialized: v}
 			}
 			iNdEx = postIndex
-		case 161:
+		case 158:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field VolumeOverflow", wireType)
 			}
@@ -74913,7 +74280,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_VolumeOverflow{VolumeOverflow: v}
 			}
 			iNdEx = postIndex
-		case 162:
+		case 159:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AccountMetadataKeyEmpty", wireType)
 			}
@@ -74954,7 +74321,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_AccountMetadataKeyEmpty{AccountMetadataKeyEmpty: v}
 			}
 			iNdEx = postIndex
-		case 163:
+		case 160:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AccountMetadataKeyInvalidChar", wireType)
 			}
@@ -74995,7 +74362,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_AccountMetadataKeyInvalidChar{AccountMetadataKeyInvalidChar: v}
 			}
 			iNdEx = postIndex
-		case 164:
+		case 161:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AccountMetadataValueContainsNullByte", wireType)
 			}
@@ -75036,7 +74403,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_AccountMetadataValueContainsNullByte{AccountMetadataValueContainsNullByte: v}
 			}
 			iNdEx = postIndex
-		case 165:
+		case 162:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AccountMetadataLimitsUnconfigured", wireType)
 			}
@@ -75077,7 +74444,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_AccountMetadataLimitsUnconfigured{AccountMetadataLimitsUnconfigured: v}
 			}
 			iNdEx = postIndex
-		case 166:
+		case 163:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AccountMetadataLimitExceeded", wireType)
 			}
@@ -75118,7 +74485,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_AccountMetadataLimitExceeded{AccountMetadataLimitExceeded: v}
 			}
 			iNdEx = postIndex
-		case 167:
+		case 164:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MetadataKeyLimitExceeded", wireType)
 			}
@@ -75159,7 +74526,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MetadataKeyLimitExceeded{MetadataKeyLimitExceeded: v}
 			}
 			iNdEx = postIndex
-		case 168:
+		case 165:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AccountMetadataKeyLimitExceeded", wireType)
 			}
@@ -75200,7 +74567,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_AccountMetadataKeyLimitExceeded{AccountMetadataKeyLimitExceeded: v}
 			}
 			iNdEx = postIndex
-		case 169:
+		case 166:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptInsufficientFunds", wireType)
 			}
@@ -75241,7 +74608,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptInsufficientFunds{NumscriptInsufficientFunds: v}
 			}
 			iNdEx = postIndex
-		case 170:
+		case 167:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptDivideByZeroWithNumerator", wireType)
 			}
@@ -75282,7 +74649,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptDivideByZeroWithNumerator{NumscriptDivideByZeroWithNumerator: v}
 			}
 			iNdEx = postIndex
-		case 171:
+		case 168:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptScopedMetadataNotFound", wireType)
 			}
@@ -75323,7 +74690,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptScopedMetadataNotFound{NumscriptScopedMetadataNotFound: v}
 			}
 			iNdEx = postIndex
-		case 172:
+		case 169:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptScopedNegativeBalance", wireType)
 			}
@@ -75364,7 +74731,7 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptScopedNegativeBalance{NumscriptScopedNegativeBalance: v}
 			}
 			iNdEx = postIndex
-		case 173:
+		case 170:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptVersionNotFound", wireType)
 			}
@@ -76801,128 +76168,6 @@ func (m *CheckpointNotReadyDetails) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ClusterPolicyInvalidDetails) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: ClusterPolicyInvalidDetails: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ClusterPolicyInvalidDetails: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *ClusterPolicyRevisionConflictDetails) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: ClusterPolicyRevisionConflictDetails: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ClusterPolicyRevisionConflictDetails: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Revision", wireType)
-			}
-			var v uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Revision = &v
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
 func (m *ColorInvalidDetails) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -77003,176 +76248,6 @@ func (m *ColorTooLongDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: ColorTooLongDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *CoverageMissDetails) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: CoverageMissDetails: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CoverageMissDetails: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Attribute", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.Attribute = &s
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CanonicalHex", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.CanonicalHex = &s
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IdHex", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(dAtA[iNdEx:postIndex])
-			m.IdHex = &s
-			iNdEx = postIndex
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RaftIndex", wireType)
-			}
-			var v uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.RaftIndex = &v
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
