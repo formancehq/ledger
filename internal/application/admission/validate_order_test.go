@@ -76,6 +76,26 @@ func TestValidateOrderRejectsInvalidUTF8BeforeProposal(t *testing.T) {
 	require.Error(t, validateOrder(order), "map keys must also be validated")
 }
 
+func TestValidateOrderUTF8BoundsNestedMessages(t *testing.T) {
+	t.Parallel()
+	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
+		LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
+	}}
+	for range maxOrderProtoDepth + 1 {
+		filter = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{
+			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{filter}},
+		}}
+	}
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{Filter: filter}},
+		},
+	}}}
+	var business *domain.BusinessError
+	require.ErrorAs(t, validateOrder(order), &business)
+	require.IsType(t, orderNestingTooDeep{}, business.Err)
+}
+
 func TestValidateOrder_TransactionReferenceFactBound(t *testing.T) {
 	t.Parallel()
 	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{

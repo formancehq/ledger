@@ -25,8 +25,8 @@ func validateOrder(order *raftcmdpb.Order) error {
 	// VT unmarshalling does not guarantee valid UTF-8 for protobuf strings.
 	// Reject malformed input before it can become an audited failure fact:
 	// replay and the checker validate the persisted protobuf strings.
-	if !validOrderUTF8(order.ProtoReflect()) {
-		return &domain.BusinessError{Err: invalidUTF8Order{}}
+	if err := validateOrderUTF8(order.ProtoReflect(), 0); err != nil {
+		return &domain.BusinessError{Err: err}
 	}
 
 	if err := validateOrderLedgerName(order); err != nil {
@@ -82,49 +82,64 @@ func (invalidUTF8Order) PublicDetails() (string, map[string]string, bool) {
 	return "request contains invalid UTF-8", nil, true
 }
 
-func validOrderUTF8(message protoreflect.Message) bool {
-	valid := true
+// Limit reflection traversal independently of filter validation: arbitrary
+// protobuf nesting must not exhaust the admission goroutine's stack.
+const maxOrderProtoDepth = 128
+
+type orderNestingTooDeep struct{}
+
+func (orderNestingTooDeep) Error() string          { return "request is nested too deeply" }
+func (orderNestingTooDeep) Kind() domain.ErrorKind { return domain.KindValidation }
+func (orderNestingTooDeep) Reason() string         { return domain.ErrReasonValidation }
+func (orderNestingTooDeep) PublicDetails() (string, map[string]string, bool) {
+	return "request is nested too deeply", nil, true
+}
+
+func validateOrderUTF8(message protoreflect.Message, depth int) domain.Describable {
+	if depth >= maxOrderProtoDepth {
+		return orderNestingTooDeep{}
+	}
+	var validationErr domain.Describable
 	message.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
-		check := func(value protoreflect.Value) bool {
+		check := func(value protoreflect.Value) domain.Describable {
 			switch field.Kind() {
 			case protoreflect.StringKind:
-				return utf8.ValidString(value.String())
+				if !utf8.ValidString(value.String()) {
+					return invalidUTF8Order{}
+				}
 			case protoreflect.MessageKind:
-				return validOrderUTF8(value.Message())
-			default:
-				return true
+				return validateOrderUTF8(value.Message(), depth+1)
 			}
+			return nil
 		}
 		switch {
 		case field.IsMap():
 			value.Map().Range(func(key protoreflect.MapKey, item protoreflect.Value) bool {
 				if field.MapKey().Kind() == protoreflect.StringKind && !utf8.ValidString(key.String()) {
-					valid = false
-
+					validationErr = invalidUTF8Order{}
 					return false
 				}
 				switch field.MapValue().Kind() {
 				case protoreflect.StringKind:
-					valid = utf8.ValidString(item.String())
+					if !utf8.ValidString(item.String()) {
+						validationErr = invalidUTF8Order{}
+					}
 				case protoreflect.MessageKind:
-					valid = validOrderUTF8(item.Message())
+					validationErr = validateOrderUTF8(item.Message(), depth+1)
 				}
-
-				return valid
+				return validationErr == nil
 			})
 		case field.IsList():
 			list := value.List()
-			for i := 0; i < list.Len() && valid; i++ {
-				valid = check(list.Get(i))
+			for i := 0; i < list.Len() && validationErr == nil; i++ {
+				validationErr = check(list.Get(i))
 			}
 		default:
-			valid = check(value)
+			validationErr = check(value)
 		}
-
-		return valid
+		return validationErr == nil
 	})
-
-	return valid
+	return validationErr
 }
 
 // validateOrderAccountType rejects identifiers that could later become
