@@ -103,6 +103,7 @@ func TestInvalidCallerAttributionPreventsRestoreFinalization(t *testing.T) {
 		if event.GetError() != nil {
 			validationMessages = append(validationMessages, event.GetError().GetMessage())
 		}
+
 		return nil
 	}).AnyTimes()
 	require.NoError(t, server.ValidateRestore(&restorepb.ValidateRestoreRequest{}, stream))
