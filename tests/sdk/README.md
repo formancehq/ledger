@@ -24,7 +24,7 @@ Export real router responses with the pinned Ledger development environment:
 LEDGER_BULK_SDK_FIXTURE_DIR="$PWD/build/bulk-sdk-fixtures" \
   bash scripts/agent-validation-env --ephemeral nix develop --command \
   go test ./internal/adapter/http -run '^TestHandleBulk_.*Contract$' -count=1
-nix develop --command node tests/sdk/bulk-contract.mjs \
+nix develop .#sdk --command node tests/sdk/bulk-contract.mjs \
   build/bulk-sdk build/bulk-sdk-fixtures
 ```
 
@@ -43,7 +43,7 @@ regenerated consumer SDK is a separate delivery step.
 
 ## Monetary amount SDK contract tests
 
-Run `nix develop --command just test-sdk-bigint` with Speakeasy authentication
+Run `nix develop .#sdk --command just test-sdk-bigint` with Speakeasy authentication
 (`SPEAKEASY_API_KEY` or an existing CLI login).
 The explicit target pins Speakeasy CLI 1.762.0 (generator 2.882.0), matching the
 generator metadata in the committed standalone Ledger SDK at

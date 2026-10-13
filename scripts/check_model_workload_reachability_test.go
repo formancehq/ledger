@@ -21,7 +21,7 @@ func TestModelWorkloadTestReachabilityRejectsMissingRaceTest(t *testing.T) {
 	source := strings.ReplaceAll(
 		string(validModelWorkflow()),
 		modelUnitTestCommand,
-		"nix develop --command go -C tests/antithesis/workload test ./...",
+		"nix develop .#ci --command go -C tests/antithesis/workload test ./...",
 	)
 
 	findings, err := checkModelWorkloadTestReachability(defaultCIWorkflowPath, []byte(source))
@@ -30,13 +30,43 @@ func TestModelWorkloadTestReachabilityRejectsMissingRaceTest(t *testing.T) {
 	require.Contains(t, findings[0].message, "MODEL_WORKLOAD_TESTS_UNREACHABLE")
 }
 
+func TestModelWorkloadTestReachabilityRejectsDefaultDevShell(t *testing.T) {
+	t.Parallel()
+
+	source := strings.ReplaceAll(
+		string(validModelWorkflow()),
+		modelUnitTestCommand,
+		"nix develop --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./...",
+	)
+
+	findings, err := checkModelWorkloadTestReachability(defaultCIWorkflowPath, []byte(source))
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	require.Contains(t, findings[0].message, "MODEL_WORKLOAD_TESTS_UNREACHABLE")
+}
+
+func TestModelCampaignReachabilityRejectsDefaultDevShell(t *testing.T) {
+	t.Parallel()
+
+	source := strings.ReplaceAll(
+		string(validModelWorkflow()),
+		modelCampaignCommand,
+		"nix develop --command just test-model-cluster 180",
+	)
+
+	findings, err := checkModelWorkloadTestReachability(defaultCIWorkflowPath, []byte(source))
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	require.Contains(t, findings[0].message, "MODEL_CAMPAIGN_UNREACHABLE")
+}
+
 func TestModelWorkloadTestReachabilityRejectsUnarmedWorkloadTests(t *testing.T) {
 	t.Parallel()
 
 	source := strings.ReplaceAll(
 		string(validModelWorkflow()),
 		modelUnitTestCommand,
-		"nix develop --command go -C tests/antithesis/workload test -race ./...",
+		"nix develop .#ci --command go -C tests/antithesis/workload test -race ./...",
 	)
 
 	findings, err := checkModelWorkloadTestReachability(defaultCIWorkflowPath, []byte(source))
@@ -53,19 +83,19 @@ func TestModelWorkloadTestReachabilityRejectsNonMandatoryRaceJob(t *testing.T) {
   Tests-Antithesis-Workload:
     if: false
     steps:
-      - run: nix develop --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./...
+      - run: nix develop .#ci --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./...
 `),
 		"conditional step": []byte(`jobs:
   Tests-Antithesis-Workload:
     steps:
       - if: false
-        run: nix develop --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./...
+        run: nix develop .#ci --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./...
 `),
 		"ignored failure": []byte(`jobs:
   Tests-Antithesis-Workload:
     steps:
       - continue-on-error: true
-        run: nix develop --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./...
+        run: nix develop .#ci --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./...
 `),
 	}
 
@@ -119,10 +149,10 @@ func TestModelWorkloadTestReachabilityRejectsTestInAnotherJob(t *testing.T) {
       - run: echo no workload tests here
   Tests-Model:
     steps:
-      - run: nix develop --command just test-model-cluster 180
+      - run: nix develop .#ci --command just test-model-cluster 180
   Other:
     steps:
-      - run: nix develop --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./...
+      - run: nix develop .#ci --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./...
 `)
 
 	findings, err := checkModelWorkloadTestReachability(defaultCIWorkflowPath, source)
@@ -137,7 +167,7 @@ func TestModelWorkloadTestReachabilityRejectsMissingRuntimeCampaign(t *testing.T
 	source := strings.ReplaceAll(
 		string(validModelWorkflow()),
 		modelCampaignCommand,
-		"nix develop --command just test-model 180",
+		"nix develop .#ci --command just test-model 180",
 	)
 
 	findings, err := checkModelWorkloadTestReachability(defaultCIWorkflowPath, []byte(source))
@@ -152,8 +182,8 @@ func TestModelWorkloadTestReachabilityRejectsCombinedModelJob(t *testing.T) {
 	source := []byte(`jobs:
   Tests-Model:
     steps:
-      - run: nix develop --command just test-model-cluster 180
-      - run: nix develop --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./...
+      - run: nix develop .#ci --command just test-model-cluster 180
+      - run: nix develop .#ci --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./...
 `)
 
 	findings, err := checkModelWorkloadTestReachability(defaultCIWorkflowPath, source)
@@ -166,9 +196,9 @@ func validModelWorkflow() []byte {
 	return []byte(`jobs:
   Tests-Antithesis-Workload:
     steps:
-      - run: nix develop --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./...
+      - run: nix develop .#ci --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./...
   Tests-Model:
     steps:
-      - run: nix develop --command just test-model-cluster 180
+      - run: nix develop .#ci --command just test-model-cluster 180
 `)
 }

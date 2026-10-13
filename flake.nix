@@ -78,47 +78,67 @@
         let
           # Mock generation must understand the root module Go version.
           buildGoModule = pkgs.buildGoModule.override { go = pkgs.go_1_27; };
-          stablePackages = with pkgs; [
-            acli
+
+          # Tools invoked by CI jobs. Every CI job downloads this closure on a
+          # cold Nix cache, so a tool belongs here only if a workflow step,
+          # or a recipe/script a workflow step runs, executes it.
+          ciPackages = (with pkgs; [
             go_1_27
-            ffmpeg
-            ginkgo
-            gomarkdoc
             go-jsonnet
             jsonnet-bundler
-            grpcurl
-            jdk11
             jq
-            k6
             kubernetes-helm
-            nodejs_22
             python314
-            trufflehog
-            uv
-            vhs
-            yq-go
-          ];
-          unstablePackages = with pkgs-unstable; [
-            go-tools
+          ]) ++ (with pkgs-unstable; [
             protobuf_34
-            goperf
-            gotools
             (mockgen.override { inherit buildGoModule; })
             protoc-gen-go
             protoc-gen-go-grpc
             protoc-gen-go-vtproto
             golangci-lint
-            setup-envtest
             just
-          ];
-          otherPackages = [
-            self.packages.${system}.speakeasy
+          ]) ++ [
             pkgs.nur.repos.goreleaser.goreleaser-pro
           ];
+
+          # Everyday local tooling on top of the CI set: pre-commit hooks
+          # (.envrc), the Ginkgo CLI, grpcurl, Jira publication and operator
+          # envtest.
+          localPackages = (with pkgs; [
+            acli
+            ginkgo
+            grpcurl
+            trufflehog
+            uv
+          ]) ++ (with pkgs-unstable; [
+            setup-envtest
+          ]);
+
+          # Heavy or rarely used tools get their own shell so the default and
+          # CI shells do not download them on every cold start.
+          mkTaskShell = packages: pkgs.mkShell {
+            packages = ciPackages ++ packages;
+          };
         in
         {
+          ci = pkgs.mkShell {
+            packages = ciPackages;
+          };
+
+          # `just generate-demo`: vhs wraps ffmpeg, ttyd and, on Linux, chromium.
+          demo = mkTaskShell (with pkgs; [ grpcurl vhs ]);
+
+          # `just test-sdk-bigint` and tests/sdk contract probes.
+          sdk = mkTaskShell [
+            pkgs.nodejs_22
+            self.packages.${system}.speakeasy
+          ];
+
+          # tests/perf k6 load tests and benchstat comparisons.
+          perf = mkTaskShell [ pkgs.k6 pkgs-unstable.goperf ];
+
           default = pkgs.mkShell {
-            packages = stablePackages ++ unstablePackages ++ otherPackages;
+            packages = ciPackages ++ localPackages;
 
             shellHook = ''
               # Auto-configure envtest assets for operator integration tests.

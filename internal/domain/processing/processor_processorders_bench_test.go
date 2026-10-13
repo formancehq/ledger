@@ -31,9 +31,9 @@ import (
 //
 //	go test ./internal/domain/processing -run '^$' -bench 'BenchmarkProcessOrders' -benchmem -count 5
 //
-// and compare the two runs with benchstat. The benchmark only depends on the
-// stable RequestProcessor/Scope test surface, so it compiles unchanged on the
-// base revision.
+// and compare the two runs with benchstat (from `nix develop .#perf`). The
+// benchmark only depends on the stable RequestProcessor/Scope test surface, so
+// it compiles unchanged on the base revision.
 //
 // Benchmarks over the same scope instance must reset the mutable state between
 // iterations because ProcessOrders consumes and advances it (log/transaction

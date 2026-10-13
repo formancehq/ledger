@@ -9,7 +9,7 @@ runs:
   using: composite
   steps:
     # Restore the Nix store from the Namespace cache volume BEFORE installing
-    # Nix, so `nix develop` reuses the dev-shell closure instead of re-fetching
+    # Nix, so `nix develop .#ci` reuses the CI dev-shell closure instead of re-fetching
     # it from cache.nixos.org on every run. Must run before Install Nix.
     - name: Set up Nix store cache
       uses: namespacelabs/nscloud-cache-action@58bf6e08898e88803c098e2b522668541cd3b2e3 # v1.6.0
@@ -21,7 +21,7 @@ runs:
       id: go-env
       shell: bash
       run: |
-        nix develop --command bash -c "go env | sed -E \"s/^([^=]+)='(.*)'\$/\1=\2/\"" >> "$GITHUB_OUTPUT"
+        nix develop .#ci --command bash -c "go env | sed -E \"s/^([^=]+)='(.*)'\$/\1=\2/\"" >> "$GITHUB_OUTPUT"
     # Dirty uses the linter's default cache directory; keep it aligned with this path.
     - uses: namespacelabs/nscloud-cache-action@58bf6e08898e88803c098e2b522668541cd3b2e3 # v1.6.0
       with:

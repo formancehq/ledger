@@ -4,29 +4,12 @@ This directory contains VHS tape files for generating animated GIF demos of the 
 
 ## Prerequisites
 
-### Install VHS
+### VHS
 
-VHS is a CLI tool from Charmbracelet that generates terminal GIFs from tape files.
-
-```bash
-# macOS (Homebrew)
-brew install vhs
-
-# Linux (with Go installed)
-go install github.com/charmbracelet/vhs@latest
-
-# Or download from releases
-# https://github.com/charmbracelet/vhs/releases
-```
-
-VHS also requires `ffmpeg`:
+VHS is a CLI tool from Charmbracelet that generates terminal GIFs from tape files. Its Nix package wraps ffmpeg, ttyd and, on Linux, chromium, so it lives in the dedicated `demo` Nix shell instead of the default one. On macOS, VHS uses a local Chrome or downloads a browser on first run:
 
 ```bash
-# macOS
-brew install ffmpeg
-
-# Ubuntu/Debian
-sudo apt install ffmpeg
+nix develop .#demo
 ```
 
 ### Build the CLI
@@ -59,13 +42,13 @@ Each demo is self-contained: it creates its own ledger, runs the scenario, and c
 ### Generate all demos
 
 ```bash
-just generate-demo
+nix develop .#demo --command just generate-demo
 ```
 
 ### Generate a single demo
 
 ```bash
-just generate-demo-only demo_numscript
+nix develop .#demo --command just generate-demo-only demo_numscript
 ```
 
 This will:

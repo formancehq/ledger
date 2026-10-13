@@ -219,7 +219,7 @@ const response = await sdk.transactions.createTransaction({
 // Do not pass it through Number(). Set the header on each affected operation.
 ```
 
-Run `just test-sdk-bigint` for regenerated SDK integration against the real HTTP
+Run `nix develop .#sdk --command just test-sdk-bigint` for regenerated SDK integration against the real HTTP
 router; see `tests/sdk/README.md`. Generation requires Speakeasy authentication.
 
 #### Success

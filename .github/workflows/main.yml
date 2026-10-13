@@ -42,7 +42,7 @@ jobs:
       - name: Setup Env
         uses: ./.github/actions/default
       - run: >
-          nix develop --command just pre-commit
+          nix develop .#ci --command just pre-commit
       - name: Get changed files
         id: changed-files
         shell: bash
@@ -68,13 +68,13 @@ jobs:
         uses: ./.github/actions/default
       - name: Run unit tests with coverage
         run: >
-          nix develop --command just test-coverage
+          nix develop .#ci --command just test-coverage
       - name: Run internal tests with optional features and coverage
         run: >
-          nix develop --command just test-internal-coverage
+          nix develop .#ci --command just test-internal-coverage
       - name: Run Antithesis assertion-emission contract tests
         run: >
-          nix develop --command just test-antithesis-assertions
+          nix develop .#ci --command just test-antithesis-assertions
       - name: Upload coverage profile
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -100,7 +100,7 @@ jobs:
         uses: ./.github/actions/default
       - name: Run operator unit tests
         run: >
-          nix develop --command bash -c "unset GOROOT;
+          nix develop .#ci --command bash -c "unset GOROOT;
           cd misc/operator && go test ./..."
 
   Tests-E2E-Business:
@@ -116,7 +116,7 @@ jobs:
         uses: ./.github/actions/default
       - name: Run Business E2E tests with coverage
         run: >
-          nix develop --command just test-e2e-coverage './tests/e2e/business/...' e2e-business.out
+          nix develop .#ci --command just test-e2e-coverage './tests/e2e/business/...' e2e-business.out
       - name: Upload Business coverage profile
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -139,7 +139,7 @@ jobs:
         uses: ./.github/actions/default
       - name: Run Cluster E2E tests with coverage
         run: >
-          nix develop --command just test-e2e-coverage './tests/e2e/cluster/...' e2e-cluster.out
+          nix develop .#ci --command just test-e2e-coverage './tests/e2e/cluster/...' e2e-cluster.out
       - name: Upload Cluster coverage profile
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -162,7 +162,7 @@ jobs:
         uses: ./.github/actions/default
       - name: Run scenario tests with coverage
         run: >
-          nix develop --command just test-scenarios-coverage
+          nix develop .#ci --command just test-scenarios-coverage
       - name: Upload coverage profile
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -185,7 +185,7 @@ jobs:
         uses: ./.github/actions/default
       - name: Run deterministic model workload tests with race detection
         run: >
-          nix develop --command go -C tests/antithesis/workload test -race
+          nix develop .#ci --command go -C tests/antithesis/workload test -race
           -tags enable_antithesis_sdk ./...
 
   Tests-Model:
@@ -201,7 +201,7 @@ jobs:
         uses: ./.github/actions/default
       - name: Run in-memory model checker (3-node cluster, rolling restarts)
         run: >
-          nix develop --command just test-model-cluster 180
+          nix develop .#ci --command just test-model-cluster 180
 
   Coverage:
     if: always()
@@ -224,7 +224,7 @@ jobs:
           path: build/coverage
       - name: Merge coverage profiles
         run: |
-          nix develop --command bash -c '
+          nix develop .#ci --command bash -c '
             cd build/coverage
             required_profiles=(internal.out e2e-business.out e2e-cluster.out)
             for f in "${required_profiles[@]}"; do
@@ -270,15 +270,15 @@ jobs:
       - name: Setup Env
         uses: ./.github/actions/default
       - run: >
-          nix develop --command go build ./...
+          nix develop .#ci --command go build ./...
       - name: Cross-compile ledgerctl for Windows
         run: >
-          nix develop --command bash -c "mkdir -p build &&
+          nix develop .#ci --command bash -c "mkdir -p build &&
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o build/ledgerctl-windows-amd64.exe ./cmd/ledgerctl &&
           CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -o build/ledgerctl-windows-arm64.exe ./cmd/ledgerctl"
       - name: Build operator
         run: >
-          nix develop --command bash -c "cd misc/operator && go build ./..."
+          nix develop .#ci --command bash -c "cd misc/operator && go build ./..."
 
   Tests-Schemathesis:
     runs-on: namespace-profile-linux-amd64-4vcpu
@@ -293,7 +293,7 @@ jobs:
         uses: ./.github/actions/default
       - name: Run Schemathesis API conformity tests
         run: >
-          nix develop --command bash -c "MAX_EXAMPLES=10 SCHEMATHESIS_WORKERS=1 just test-schemathesis"
+          nix develop .#ci --command bash -c "MAX_EXAMPLES=10 SCHEMATHESIS_WORKERS=1 just test-schemathesis"
       - name: Upload Schemathesis results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -343,16 +343,16 @@ jobs:
           password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Release nightly
         run: >
-          nix develop --command just release-ci
+          nix develop .#ci --command just release-ci
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
       - name: Build and push operator image
         run: >
-          nix develop --command just operator-docker-build
+          nix develop .#ci --command just operator-docker-build
       - name: Publish operator Helm charts
         run: >
-          nix develop --command just operator-helm-publish '' nightly
+          nix develop .#ci --command just operator-helm-publish '' nightly
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
 
@@ -423,10 +423,10 @@ jobs:
           echo "operator_image=${operator_image}" >> "$GITHUB_OUTPUT"
       - name: Build and push Ledger PR image
         run: >
-          nix develop --command just docker-build-pr '${{ steps.tag.outputs.image }}'
+          nix develop .#ci --command just docker-build-pr '${{ steps.tag.outputs.image }}'
       - name: Build and push Ledger Operator PR image
         run: >
-          nix develop --command just operator-docker-build-pr '${{ steps.tag.outputs.operator_image }}'
+          nix develop .#ci --command just operator-docker-build-pr '${{ steps.tag.outputs.operator_image }}'
       - name: Summarize image digests
         if: always()
         run: |

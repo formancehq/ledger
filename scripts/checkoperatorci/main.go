@@ -11,7 +11,7 @@ import (
 const (
 	operatorTestsWorkflowPath = ".github/workflows/main.yml"
 	operatorTestsJobID        = "Tests-Operator"
-	operatorTestsCommand      = `nix develop --command bash -c "unset GOROOT; cd misc/operator && go test ./..."`
+	operatorTestsCommand      = `nix develop .#ci --command bash -c "unset GOROOT; cd misc/operator && go test ./..."`
 )
 
 func main() {

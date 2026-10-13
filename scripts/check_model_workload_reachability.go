@@ -14,8 +14,8 @@ const (
 	// The tag is part of the invariant, not a detail: the workload's
 	// SDK-emission tests skip themselves in an unarmed build, so dropping it
 	// turns the job green while testing nothing.
-	modelUnitTestCommand = "nix develop --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./..."
-	modelCampaignCommand = "nix develop --command just test-model-cluster 180"
+	modelUnitTestCommand = "nix develop .#ci --command go -C tests/antithesis/workload test -race -tags enable_antithesis_sdk ./..."
+	modelCampaignCommand = "nix develop .#ci --command just test-model-cluster 180"
 )
 
 type workflowReachability struct {
