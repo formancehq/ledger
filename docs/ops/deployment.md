@@ -182,23 +182,23 @@ kind: Cluster
 metadata:
   name: jdxmvkvwlyiy-cukg
 spec:
-  resourceName: payments
+  resourceName: ledger-v3
 ```
 
-| Object | Default | With `resourceName: payments` |
+| Object | Default | With `resourceName: ledger-v3` |
 |--------|---------|-------------------------------|
-| StatefulSet, ClusterIP Service, Ingress, NetworkPolicy | `ledger-jdxmvkvwlyiy-cukg` | `payments` |
-| Pods | `ledger-jdxmvkvwlyiy-cukg-<n>` | `payments-<n>` |
-| Headless Service | `ledger-jdxmvkvwlyiy-cukg-headless` | `payments-headless` |
-| gRPC Service and Ingress | `ledger-jdxmvkvwlyiy-cukg-grpc` | `payments-grpc` |
-| Auth-keys ConfigMap | `ledger-jdxmvkvwlyiy-cukg-auth-keys` | `payments-auth-keys` |
-| Cluster Secret | `ledger-jdxmvkvwlyiy-cukg-cluster-secret` | `payments-cluster-secret` |
-| DNSEndpoint for entry `<e>` | `ledger-jdxmvkvwlyiy-cukg-<e>` | `payments-<e>` |
-| Default ServiceAccount | `ledger-jdxmvkvwlyiy-cukg` | `payments` |
-| PVCs | `<wal\|data>-ledger-jdxmvkvwlyiy-cukg-<n>` | `<wal\|data>-payments-<n>` |
+| StatefulSet, ClusterIP Service, Ingress, NetworkPolicy | `ledger-jdxmvkvwlyiy-cukg` | `ledger-v3` |
+| Pods | `ledger-jdxmvkvwlyiy-cukg-<n>` | `ledger-v3-<n>` |
+| Headless Service | `ledger-jdxmvkvwlyiy-cukg-headless` | `ledger-v3-headless` |
+| gRPC Service and Ingress | `ledger-jdxmvkvwlyiy-cukg-grpc` | `ledger-v3-grpc` |
+| Auth-keys ConfigMap | `ledger-jdxmvkvwlyiy-cukg-auth-keys` | `ledger-v3-auth-keys` |
+| Cluster Secret | `ledger-jdxmvkvwlyiy-cukg-cluster-secret` | `ledger-v3-cluster-secret` |
+| DNSEndpoint for entry `<e>` | `ledger-jdxmvkvwlyiy-cukg-<e>` | `ledger-v3-<e>` |
+| Default ServiceAccount | `ledger-jdxmvkvwlyiy-cukg` | `ledger-v3` |
+| PVCs | `<wal\|data>-ledger-jdxmvkvwlyiy-cukg-<n>` | `<wal\|data>-ledger-v3-<n>` |
 
 Raft peer, bootstrap and `ledgerctl` addresses, backup Jobs, the status
-endpoints (`payments.<namespace>.svc.cluster.local`) and the `kubectl ledger`
+endpoints (`ledger-v3.<namespace>.svc.cluster.local`) and the `kubectl ledger`
 plugin follow the same base name. `spec.serviceAccount.name` still overrides
 the ServiceAccount name. Labels (`app.kubernetes.io/instance`) keep the CR name.
 
@@ -218,6 +218,10 @@ Rules:
   existing Cluster, or removing it, because that would orphan the StatefulSet
   and its PVCs and change every Raft peer address. To rename, create a new
   Cluster (restore from backup if the data must move).
+- Keep the `ledger-` prefix when the namespace is shared with other services.
+  On a Formance stack, other modules and the stack gateway already own Service
+  names such as `ledger` and `ledger-grpc`, so a bare `ledger` base name
+  conflicts with them.
 - The base name must be unique in the namespace. The operator never adopts an
   existing object it did not create: any object under a derived name that this
   Cluster will create or update and does not control — another Cluster's object
