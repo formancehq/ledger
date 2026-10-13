@@ -82,8 +82,8 @@ func FailureDetailsAllowsReason(details *FailureDetails, reason ErrorReason) boo
 	return slices.Contains(proto.GetExtension(options, E_FailureReasons).([]ErrorReason), reason)
 }
 
-// ValidateRequiredFailureFacts enforces presence declared by the selected
-// variant's field options. It deliberately checks presence rather than value:
+// ValidateRequiredFailureFacts enforces presence of every scalar fact in the
+// selected variant. It deliberately checks presence rather than value:
 // an explicitly supplied zero or empty string is different from an absent fact.
 func ValidateRequiredFailureFacts(details *FailureDetails) error {
 	if details == nil {
@@ -98,11 +98,7 @@ func ValidateRequiredFailureFacts(details *FailureDetails) error {
 	fields := message.Descriptor().Fields()
 	for i := range fields.Len() {
 		field := fields.Get(i)
-		options, ok := field.Options().(*descriptorpb.FieldOptions)
-		if !ok || !proto.HasExtension(options, E_FailureFactRequired) {
-			continue
-		}
-		if proto.GetExtension(options, E_FailureFactRequired).(bool) && !message.Has(field) {
+		if !message.Has(field) {
 			return fmt.Errorf("failure detail %s is missing required fact %s", arm.Name(), field.JSONName())
 		}
 	}

@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/descriptorpb"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -32,7 +30,7 @@ func TestTypedFailureDetailsCoverEveryStableCode(t *testing.T) {
 	}
 }
 
-func TestFailureDetailsHaveNoConditionalFacts(t *testing.T) {
+func TestFailureDetailsTrackEveryScalarFactPresence(t *testing.T) {
 	t.Parallel()
 	arms := (&commonpb.FailureDetails{}).ProtoReflect().Descriptor().Oneofs().ByName("kind").Fields()
 	for i := range arms.Len() {
@@ -40,9 +38,7 @@ func TestFailureDetailsHaveNoConditionalFacts(t *testing.T) {
 		fields := arm.Message().Fields()
 		for j := range fields.Len() {
 			field := fields.Get(j)
-			options := field.Options().(*descriptorpb.FieldOptions)
-			require.True(t, proto.HasExtension(options, commonpb.E_FailureFactRequired), "%s.%s must declare required presence", arm.Name(), field.Name())
-			require.True(t, proto.GetExtension(options, commonpb.E_FailureFactRequired).(bool), "%s.%s cannot be conditional", arm.Name(), field.Name())
+			require.True(t, field.HasPresence(), "%s.%s must track presence", arm.Name(), field.Name())
 		}
 	}
 }
@@ -88,8 +84,8 @@ func TestFailureFactPresenceFollowsSchema(t *testing.T) {
 	})
 	require.NoError(t, commonpb.ValidateRequiredFailureFacts(withZero))
 
-	withoutConditional := commonpb.MustFailureDetails("NUMSCRIPT_DIVIDE_BY_ZERO", nil)
-	require.NoError(t, commonpb.ValidateRequiredFailureFacts(withoutConditional))
+	withoutFacts := commonpb.MustFailureDetails("NUMSCRIPT_DIVIDE_BY_ZERO", nil)
+	require.NoError(t, commonpb.ValidateRequiredFailureFacts(withoutFacts))
 }
 
 func TestFailureFactsPreserveValues(t *testing.T) {

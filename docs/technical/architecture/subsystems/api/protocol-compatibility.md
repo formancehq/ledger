@@ -461,11 +461,8 @@ Revision 32 replaces the persisted and service-visible `facts` string maps in
 `AuditFailure`, `IdempotencyFailure`, and `OrderSkippedLog` with one shared
 `FailureDetails` protobuf oneof. Each arm names a concrete stable failure code
 and carries presence-tracked fields with explicit protobuf types; numeric
-correlators are `uint64` instead of decimal text. The `failure_fact_required`
-field option marks facts that every producer of that arm supplies. Bare
-validation sentinels may gain `key` or `account` context from wrappers, while
-some Numscript facts vary between interpreter and VM errors; those fields remain
-conditional. The containing reason must be one of the arm's `failure_reasons`
+correlators are `uint64` instead of decimal text. The containing reason must
+be one of the arm's `failure_reasons`
 annotations, and the code must name that arm. Ledger rejects missing arms,
 mismatched codes, absent required facts, unknown fields, and malformed values
 when reading audited failures. HTTP and public
@@ -500,7 +497,10 @@ Revision 34 removes all conditionally present fields from `FailureDetails`.
 Every scalar fact in a selected variant is required, including empty strings
 and zero IDs when those are the actual values. `proto3 optional` remains on
 these required fields solely to distinguish an explicitly supplied zero value
-from an absent field during validation.
+from an absent field during validation. The validator requires presence of
+every scalar in the selected variant; no per-field required annotation is
+needed. Removing `optional` would make a missing fact indistinguishable from
+an explicit zero or empty value in proto3.
 
 Distinct variants now represent account-scoped metadata failures, metadata
 limits with a known key, direct posting versus Numscript insufficient funds,
