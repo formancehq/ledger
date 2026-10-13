@@ -204,6 +204,11 @@ func PublicErrorDetails(d Describable) (message string, metadata map[string]stri
 	}); ok {
 		return public.PublicDetails()
 	}
+	if public, ok := d.(interface{ PublicFailureFacts() FailureFacts }); ok {
+		message, facts := RenderFailureFacts(public.PublicFailureFacts())
+
+		return message, facts, true
+	}
 
 	if structured, ok := d.(SerializableError); ok {
 		failure := FailureFactsOf(structured)
@@ -473,7 +478,7 @@ func (errMaintenanceMode) Error() string {
 func (errMaintenanceMode) Kind() ErrorKind { return KindUnavailable }
 func (errMaintenanceMode) Reason() string  { return ErrReasonMaintenanceMode }
 
-var ErrMaintenanceMode SerializableError = errMaintenanceMode{}
+var ErrMaintenanceMode Describable = errMaintenanceMode{}
 
 // ErrStaleProposal — proposal rejected: predicted index mismatch after leadership transition.
 type errStaleProposal struct{}
@@ -513,9 +518,10 @@ var ErrStaleInputsResolution SerializableError = errStaleInputsResolution{}
 // (e.g. Numscript dependency discovery failed against current state). When the
 // batch carries an idempotency key, admission forwards the order to the FSM
 // (marked OrderTechnical.preload_unavailable) rather than failing fast, so the
-// FSM can replay a frozen outcome. If none exists the FSM emits this error.
-// Retryable (Kind=Unavailable) and deliberately NOT freezable: it is a
-// preparation gap, not an authoritative business verdict — freezing it could let
+// FSM can replay a frozen outcome. If none exists it returns this technical
+// interruption without an audit entry. Retryable (Kind=Unavailable) and
+// deliberately NOT freezable: it is a preparation gap, not an authoritative
+// business verdict — freezing it could let
 // a preload-unavailable retry shadow the real outcome of a concurrent same-key
 // proposal. A retry re-admits (and re-resolves) or replays the now-frozen
 // outcome. See EN-1406.
@@ -527,7 +533,7 @@ func (errPreloadUnavailable) Error() string {
 func (errPreloadUnavailable) Kind() ErrorKind { return KindUnavailable }
 func (errPreloadUnavailable) Reason() string  { return ErrReasonPreloadUnavailable }
 
-var ErrPreloadUnavailable SerializableError = errPreloadUnavailable{}
+var ErrPreloadUnavailable Describable = errPreloadUnavailable{}
 
 // ErrWritesBlockedDiskFull is returned by the write gate when disk usage is at
 // or above the configured block threshold. Maps to gRPC ResourceExhausted / HTTP 429.

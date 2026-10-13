@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"34"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"35"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 34:
+leader. For example, with a schema implementing revision 35:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 34' \
+grpcurl -plaintext -H 'ledger-protocol-version: 35' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -511,3 +511,23 @@ unconfigured metadata policy has no key context because validation stops
 before selecting an entry. Transaction reference conflicts always include
 `existingTransactionId`, even when its value is zero. The changed detail arms
 and field numbering require fresh state and a uniform revision 34 cluster.
+
+## Audited versus public failures (revision 35)
+
+Revision 35 removes detail variants for failures that cannot be written to an
+audited order outcome. Read aggregation overflow, admission dependency discovery,
+execution-plan size, idempotency lookup, write health gates, and audit availability
+remain public errors with their existing reason, code, status and fact presentation.
+A malformed caller attribution and a maintenance gate can also reject a committed
+proposal in the FSM, but both return before the order-audit path; they are not
+`AuditFailure` records. `PRELOAD_UNAVAILABLE` also returns before order
+processing when no earlier idempotency outcome exists: it is a retryable
+preparation interruption with no audit entry or frozen result.
+`STALE_PROPOSAL` and `INVALID_EXECUTION_PLAN` remain typed audited outcomes.
+
+The `FailureDetails` oneof now contains only variants eligible for the audited
+projection. Removed arms are renumbered sequentially because Ledger v3 is
+unreleased. The service revision changes to 35 because this shared protobuf type
+is exposed by gRPC. Existing revision-34 state must be discarded; clients and
+servers must use the same revision. Public `ErrorInfo` identifiers and metadata
+are unchanged.

@@ -449,15 +449,19 @@ so a layer commits only to what it can actually honour (EN-2081):
 |---|---|---|---|
 | `Classifiable` | `Kind() ErrorKind` | anything that names no business outcome — the gRPC envelope guard, the admission idempotency-key and checkpoint-order guards, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one |
 | `Describable` | `Reason() string` | every domain business error | adds the `ErrorInfo` / `errorCode` clients pattern-match on |
-| `SerializableError` | `FailureDetails()` | every error the FSM can emit | supplies typed failure details; the selected oneof arm determines the code and its fields determine the stable facts written into the audit chain and idempotency projection |
+| `SerializableError` | `FailureDetails()` | errors eligible for an audited order outcome | supplies typed failure details; the selected oneof arm determines the code and its fields determine the stable facts written into the audit chain and idempotency projection |
 
 The tiers are enforced by the type system rather than by convention. The FSM
-apply path (`internal/domain/processing`, `internal/infra/state`) types its
-error returns as `SerializableError`, and `buildAuditFailure` accepts nothing
-else, so an error that cannot serialise its context cannot reach the audit
-chain. Conversely, an error raised before a proposal exists — the write gate's
-`WRITES_BLOCKED_*` sentinels, `AUDIT_DISABLED`, the gRPC envelope guard — sheds
-`FailureDetails()` and stops being admissible there at all.
+audited order path (`internal/domain/processing`, `internal/infra/state`) types
+its error returns as `SerializableError`, and `buildAuditFailure` accepts
+nothing else. A separate `PublicFailureFacts()` implementation may provide a
+public code and facts without admitting the error to the audit chain. This is
+used for admission and read failures such as plan-size and aggregate overflow.
+The FSM can also reject a committed proposal before audit capture for
+maintenance mode or malformed caller attribution; those errors remain public
+but do not implement `SerializableError`. The write gate's
+`WRITES_BLOCKED_*` sentinels and `AUDIT_DISABLED` likewise have no audited
+details.
 
 A `Reason` is a versioned wire contract: once shipped, clients match on it and
 it can never be renamed. `Classifiable` exists so a layer can classify a

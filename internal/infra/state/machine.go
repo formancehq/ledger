@@ -1448,6 +1448,21 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return result, nil
 	}
 
+	// Admission forwards a keyed proposal with an unavailable preload only so
+	// the dedup gate above can replay an earlier committed outcome. Without one,
+	// preparation never completed: no order was executed and there is no
+	// business verdict to commit to the audit chain or idempotency registry.
+	// Check the entire batch before processing any order.
+	if err == nil {
+		for _, order := range orders {
+			if order.GetTechnical().GetPreloadUnavailable() {
+				result.Error = &domain.BusinessError{Err: domain.ErrPreloadUnavailable}
+
+				return result, nil
+			}
+		}
+	}
+
 	// Process the proposal unless the dedup gate rejected it as a conflict
 	// (err set). Handlers see the gated Scope facade for state reads/writes;
 	// cross-order signals (schedule, sink config, cleanup, ...) are derived

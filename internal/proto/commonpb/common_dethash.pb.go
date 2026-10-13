@@ -1935,29 +1935,7 @@ func (m *AccountTypePatternTooLongDetails) MarshalDeterministicVT(dAtA []byte) [
 	return append(dAtA, b...)
 }
 
-func (m *AggregateOverflowDetails) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
 func (m *AssetInvalidDetails) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *AuditDisabledDetails) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -2056,17 +2034,6 @@ func (m *ClusterPolicyRevisionConflictDetails) MarshalDeterministicVT(dAtA []byt
 	return append(dAtA, b...)
 }
 
-func (m *ClusterUnhealthyDetails) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
 func (m *ColorInvalidDetails) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
@@ -2100,17 +2067,6 @@ func (m *CoverageMissDetails) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *DependencyDiscoveryFailedDetails) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
 func (m *EmptyTransactionDetails) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
@@ -2122,29 +2078,7 @@ func (m *EmptyTransactionDetails) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *ExecutionPlanTooLargeDetails) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
 func (m *FilterCompilationErrorDetails) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *IdempotencyCheckFailedDetails) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -2255,17 +2189,6 @@ func (m *NumscriptInsufficientFundsDetails) MarshalDeterministicVT(dAtA []byte) 
 }
 
 func (m *InvalidApplyTypeDetails) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *InvalidCallerAttributionDetails) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -2420,17 +2343,6 @@ func (m *LedgerNotFoundDetails) MarshalDeterministicVT(dAtA []byte) []byte {
 }
 
 func (m *LedgerNotInMirrorModeDetails) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *MaintenanceModeDetails) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -3420,17 +3332,6 @@ func (m *PostingsAndScriptConflictDetails) MarshalDeterministicVT(dAtA []byte) [
 	return append(dAtA, b...)
 }
 
-func (m *PreloadUnavailableDetails) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
 func (m *PreparedQueryAlreadyExistsDetails) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
@@ -3817,28 +3718,6 @@ func (m *VolumeNotMaterializedDetails) MarshalDeterministicVT(dAtA []byte) []byt
 }
 
 func (m *VolumeOverflowDetails) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *WritesBlockedClockSkewDetails) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *WritesBlockedDiskFullDetails) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

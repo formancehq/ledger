@@ -32,6 +32,45 @@ func idempotencyTestPolicy(revision, ttlMicros uint64) *commonpb.ClusterPolicy {
 	}
 }
 
+func TestApplyProposal_PreloadUnavailableIsNotAuditedOrFrozen(t *testing.T) {
+	t.Parallel()
+	machine, dataStore, _ := newTestMachine(t)
+	ctx := context.Background()
+	keyed := func(id uint64, unavailable bool) *raftcmdpb.Proposal {
+		order := createLedgerOrder("preload-probe")
+		if unavailable {
+			order.Technical = &raftcmdpb.OrderTechnical{PreloadUnavailable: true}
+		}
+		proposal := makeProposal(id, order)
+		proposal.Idempotency = &commonpb.Idempotency{Key: "preload-key"}
+
+		return proposal
+	}
+
+	before := machine.State.NextAuditSequenceID
+	result, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, keyed(1, true)))
+	require.NoError(t, err)
+	require.ErrorIs(t, result.Results[0].Error, domain.ErrPreloadUnavailable)
+	require.False(t, result.Results[0].AuditEntryWritten)
+	require.Equal(t, before, machine.State.NextAuditSequenceID)
+	_, frozen := machine.Registry.Idempotency.Get("preload-key")
+	require.False(t, frozen)
+
+	result, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, keyed(2, false)))
+	require.NoError(t, err)
+	require.NoError(t, result.Results[0].Error)
+	require.True(t, result.Results[0].AuditEntryWritten)
+	require.False(t, result.Results[0].Replayed)
+	require.Equal(t, before+1, machine.State.NextAuditSequenceID)
+
+	result, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 3, keyed(3, true)))
+	require.NoError(t, err)
+	require.NoError(t, result.Results[0].Error)
+	require.True(t, result.Results[0].Replayed)
+	require.False(t, result.Results[0].AuditEntryWritten)
+	require.Equal(t, before+1, machine.State.NextAuditSequenceID)
+}
+
 // TestApplyProposal_PerProposalIdempotency exercises the per-proposal
 // idempotency the FSM applies in applyProposal: a duplicate proposal (same key,
 // same ordered orders) replays the first outcome instead of re-executing, a

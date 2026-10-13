@@ -149,49 +149,6 @@ func TestMarshalOrderBusinessIntent_ExcludesTechnical(t *testing.T) {
 	require.True(t, withTechnical.GetTechnical().GetPreloadUnavailable())
 }
 
-// TestProcessOrder_PreloadUnavailableRejected pins the FSM guard: an order that
-// admission forwarded with preload_unavailable (idempotency key present, preload
-// could not be built) is rejected deterministically with the retryable,
-// non-frozen ErrPreloadUnavailable BEFORE any execution — never applied. Replays
-// never reach here (the per-proposal dedup short-circuits before ProcessOrders).
-func TestProcessOrder_PreloadUnavailableRejected(t *testing.T) {
-	t.Parallel()
-
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	// No scope method is expected: the guard returns before any read.
-	scope := NewMockScope(ctrl)
-
-	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_LedgerScoped{
-			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-				Ledger: "L",
-				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Script: &commonpb.Script{Plain: "send [USD/2 1] (source = @a destination = @b)"},
-							},
-						},
-					},
-				},
-			},
-		},
-		Technical: &raftcmdpb.OrderTechnical{PreloadUnavailable: true},
-	}
-
-	payload, derr := processor.ProcessOrder(order, scope)
-	require.Nil(t, payload)
-	require.NotNil(t, derr)
-	require.ErrorIs(t, derr, domain.ErrPreloadUnavailable)
-	require.Equal(t, domain.ErrReasonPreloadUnavailable, derr.Reason())
-	require.Equal(t, domain.KindUnavailable, derr.Kind(),
-		"preload_unavailable is retryable and must never be frozen")
-}
-
 // TestHashOrders_MatchesHashProposal pins the equivalence the integrity checker
 // relies on: re-deriving a proposal's frozen hash via HashOrders (from the
 // audit orders) must be byte-identical to the hot-path HashProposal.

@@ -48,6 +48,34 @@ func TestValidateOrder_AccountTypeFactBounds(t *testing.T) {
 	require.ErrorIs(t, validateOrder(create), domain.ErrAccountTypePatternTooLong)
 }
 
+func TestValidateOrderRejectsInvalidUTF8BeforeProposal(t *testing.T) {
+	t.Parallel()
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_RemoveAccountType{RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{Name: string([]byte{0xff})}},
+		}},
+	}}}
+	wire, err := order.MarshalVT()
+	require.NoError(t, err)
+	var decoded raftcmdpb.Order
+	require.NoError(t, decoded.UnmarshalVT(wire), "the VT codec accepts malformed strings")
+	err = validateOrder(&decoded)
+	require.Error(t, err)
+	var business *domain.BusinessError
+	require.ErrorAs(t, err, &business)
+	require.Equal(t, domain.ErrReasonValidation, business.Reason())
+	message, facts, overridden := business.PublicDetails()
+	require.True(t, overridden)
+	require.Equal(t, "request contains invalid UTF-8", message)
+	require.Empty(t, facts)
+
+	order.GetLedgerScoped().GetApply().Data = nil
+	order.GetLedgerScoped().Payload = &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{
+		AccountTypes: map[string]*commonpb.AccountType{string([]byte{0xff}): {Pattern: "wallet:{id}"}},
+	}}
+	require.Error(t, validateOrder(order), "map keys must also be validated")
+}
+
 func TestValidateOrder_TransactionReferenceFactBound(t *testing.T) {
 	t.Parallel()
 	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{

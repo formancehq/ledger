@@ -82,9 +82,9 @@ func FailureDetailsAllowsReason(details *FailureDetails, reason ErrorReason) boo
 	return slices.Contains(proto.GetExtension(options, E_FailureReasons).([]ErrorReason), reason)
 }
 
-// ValidateRequiredFailureFacts enforces presence of every scalar fact in the
-// selected variant. It deliberately checks presence rather than value:
-// an explicitly supplied zero or empty string is different from an absent fact.
+// ValidateRequiredFailureFacts enforces presence and protobuf string validity
+// for every scalar fact in the selected variant. An explicitly supplied zero or
+// empty string is different from an absent fact.
 func ValidateRequiredFailureFacts(details *FailureDetails) error {
 	if details == nil {
 		return errors.New("failure details are missing")
@@ -100,6 +100,9 @@ func ValidateRequiredFailureFacts(details *FailureDetails) error {
 		field := fields.Get(i)
 		if !message.Has(field) {
 			return fmt.Errorf("failure detail %s is missing required fact %s", arm.Name(), field.JSONName())
+		}
+		if field.Kind() == protoreflect.StringKind && !utf8.ValidString(message.Get(field).String()) {
+			return fmt.Errorf("failure detail %s has invalid UTF-8 in fact %s", arm.Name(), field.JSONName())
 		}
 	}
 

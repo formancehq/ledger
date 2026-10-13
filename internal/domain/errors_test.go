@@ -76,16 +76,17 @@ func TestErrDependencyDiscoveryFailed_ReasonPreservesDescribableCause(t *testing
 	}
 
 	require.Equal(t, ErrReasonNumscriptParseError, err.Reason())
-	reason, code, details := TypedFailureOf(err)
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_PARSE_ERROR, reason)
-	require.Equal(t, "NUMSCRIPT_PARSE_ERROR", code)
-	require.NotNil(t, details.GetNumscriptParseError())
+	message, facts, overridden := PublicErrorDetails(err)
+	require.True(t, overridden)
+	require.Equal(t, "numscript parse error", message)
+	require.Empty(t, facts)
 
 	wrapped := &ErrDependencyDiscoveryFailed{Cause: fmt.Errorf("dependency lookup: %w", err.Cause)}
 	require.Equal(t, ErrReasonNumscriptParseError, wrapped.Reason())
-	_, wrappedCode, wrappedDetails := TypedFailureOf(wrapped)
-	require.Equal(t, code, wrappedCode)
-	require.NotNil(t, wrappedDetails.GetNumscriptParseError())
+	wrappedMessage, wrappedFacts, overridden := PublicErrorDetails(wrapped)
+	require.True(t, overridden)
+	require.Equal(t, message, wrappedMessage)
+	require.Equal(t, facts, wrappedFacts)
 }
 
 func TestErrorTypes(t *testing.T) {

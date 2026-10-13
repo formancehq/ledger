@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -52,6 +53,35 @@ func TestPublicErrorDetails(t *testing.T) {
 				}
 				require.Equal(t, tc.wantMetadata, metadata)
 			}
+		})
+	}
+}
+
+func TestNonAuditedErrorsKeepPublicFacts(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		err     Describable
+		message string
+		facts   map[string]string
+	}{
+		{"maintenance", ErrMaintenanceMode, "maintenance mode", map[string]string{}},
+		{"idempotency lookup", &ErrIdempotencyCheckFailed{Cause: errors.New("private path")}, "idempotency check failed", map[string]string{}},
+		{"caller attribution", &ErrInvalidCallerAttribution{Detail: "private detail"}, "invalid caller attribution", map[string]string{}},
+		{"plan too large", &ErrExecutionPlanTooLarge{Size: 4096, Limit: 1024}, "execution plan too large: limit=\"1024\", size=\"4096\"", map[string]string{"size": "4096", "limit": "1024"}},
+		{"discovery opaque", &ErrDependencyDiscoveryFailed{Cause: errors.New("private cause")}, "dependency discovery failed", map[string]string{}},
+		{"discovery typed cause", &ErrDependencyDiscoveryFailed{Cause: &ErrLedgerNotFound{Name: "ledger"}}, "ledger not found: name=\"ledger\"", map[string]string{"name": "ledger"}},
+		{"discovery public-only cause", &ErrDependencyDiscoveryFailed{Cause: ErrMaintenanceMode}, "maintenance mode", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, serialized := tc.err.(SerializableError)
+			require.False(t, serialized)
+			message, facts, overridden := PublicErrorDetails(tc.err)
+			require.True(t, overridden)
+			require.Equal(t, tc.message, message)
+			require.Equal(t, tc.facts, facts)
 		})
 	}
 }

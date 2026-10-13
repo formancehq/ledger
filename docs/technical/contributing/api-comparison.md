@@ -63,7 +63,7 @@ audit reads render messages from the stored fields. HTTP clients do not send
 the gRPC revision.
 
 The v3 gRPC service requires one `ledger-protocol-version` metadata value per
-business RPC, equal to `pkg/grpcprotocol.Version` (currently `"32"`). Revision 29
+business RPC, equal to `pkg/grpcprotocol.Version` (currently `"35"`). Revision 29
 requires the target's 16-byte `instance_id` on administrative `AddLearner`
 requests; revision 28 clients that omit it are incompatible. Missing,
 invalid, duplicate, or different revisions fail with `FailedPrecondition` before

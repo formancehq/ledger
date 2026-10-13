@@ -236,12 +236,6 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"name": "normal-ledger"},
 		},
 		{
-			name:        "MaintenanceMode",
-			err:         domain.ErrMaintenanceMode,
-			wantReason:  domain.ErrReasonMaintenanceMode,
-			wantContext: map[string]string{},
-		},
-		{
 			name:        "StaleClusterPolicy",
 			err:         &domain.ErrStaleClusterPolicy{ProposedRevision: 3, AppliedRevision: 5},
 			wantReason:  domain.ErrReasonStaleClusterPolicy,
@@ -611,28 +605,6 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"pattern": "user:["},
 		},
 		{
-			// Reason() delegates to the Cause when it is a Describable
-			// (errors.go:1218-1225) and falls back to VALIDATION otherwise, so
-			// each of the three Cause shapes gets a row. Only a structured
-			// cause contributes facts; diagnostic Error() text is excluded.
-			name:        "DependencyDiscoveryFailedNilCause",
-			err:         &domain.ErrDependencyDiscoveryFailed{},
-			wantReason:  domain.ErrReasonValidation,
-			wantContext: map[string]string{},
-		},
-		{
-			name:        "DependencyDiscoveryFailedOpaqueCause",
-			err:         &domain.ErrDependencyDiscoveryFailed{Cause: errors.New("resolver timed out")},
-			wantReason:  domain.ErrReasonValidation,
-			wantContext: map[string]string{},
-		},
-		{
-			name:        "DependencyDiscoveryFailedDescribableCause",
-			err:         &domain.ErrDependencyDiscoveryFailed{Cause: &domain.ErrLedgerNotFound{Name: "absent-ledger"}},
-			wantReason:  domain.ErrReasonLedgerNotFound,
-			wantContext: map[string]string{"name": "absent-ledger"},
-		},
-		{
 			name:        "FilterCompilation",
 			err:         &domain.ErrFilterCompilation{Detail: "cannot parse 'x' as int64"},
 			wantReason:  domain.ErrReasonFilterCompilation,
@@ -651,31 +623,10 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{},
 		},
 		{
-			// The Go field is Reason_ (the name Reason() is taken by the
-			// interface); the audited key is "reason" (errors.go:1531).
+			// Reason_ is diagnostic text; no free-form text enters audited facts.
 			name:        "InvalidExecutionPlan",
 			err:         &domain.ErrInvalidExecutionPlan{Reason_: "coverage bit 9 past the attribute slice"},
 			wantReason:  domain.ErrReasonInvalidExecutionPlan,
-			wantContext: map[string]string{},
-		},
-		{
-			name:        "InvalidCallerAttribution",
-			err:         &domain.ErrInvalidCallerAttribution{Detail: "missing principal"},
-			wantReason:  domain.ErrReasonInvalidCallerAttribution,
-			wantContext: map[string]string{},
-		},
-		{
-			name:        "ExecutionPlanTooLarge",
-			err:         &domain.ErrExecutionPlanTooLarge{Size: 4096, Limit: 1024},
-			wantReason:  domain.ErrReasonExecutionPlanTooLarge,
-			wantContext: map[string]string{"size": "4096", "limit": "1024"},
-		},
-		{
-			// FailureDetails() returns nil and Error() is a constant: the Cause is
-			// deliberately kept off the wire (#326).
-			name:        "IdempotencyCheckFailed",
-			err:         &domain.ErrIdempotencyCheckFailed{Cause: errors.New("pebble: /var/lib/ledger: io error")},
-			wantReason:  domain.ErrReasonIdempotencyCheckFailed,
 			wantContext: map[string]string{},
 		},
 		{
@@ -685,9 +636,8 @@ func auditFailureCases() []auditFailureCase {
 			wantReason:  domain.ErrReasonStorageOperation,
 			wantContext: map[string]string{},
 		},
-		// The stateless sentinels below all return nil from FailureDetails(), so their
-		// projected fact map is the empty-but-non-nil map buildAuditFailure
-		// allocates. They are reached through their exported SerializableError
+		// The stateless sentinels below select a zero-field detail variant.
+		// They are reached through their exported SerializableError
 		// var — the concrete type is unexported, and that var IS the identity
 		// every call site compares against with errors.Is.
 		{
@@ -703,21 +653,14 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{},
 		},
 		{
-			name:        "PreloadUnavailable",
-			err:         domain.ErrPreloadUnavailable,
-			wantReason:  domain.ErrReasonPreloadUnavailable,
-			wantContext: map[string]string{},
-		},
-		{
 			name:        "CheckpointIDRequired",
 			err:         domain.ErrCheckpointIDRequired,
 			wantReason:  domain.ErrReasonCheckpointIDRequired,
 			wantContext: map[string]string{},
 		},
 		{
-			// errValidation wraps a github.com/formancehq/invariants primitive so
-			// it satisfies Describable; FailureDetails() is nil, so the
-			// invariants message does not enter the chain.
+			// errValidation wraps a github.com/formancehq/invariants primitive.
+			// Its diagnostic message does not enter the typed audit chain.
 			name:        "ValidationWrappedInvariant",
 			err:         domain.ErrLedgerNameRequired,
 			wantReason:  domain.ErrReasonValidation,

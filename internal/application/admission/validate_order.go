@@ -6,8 +6,10 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -20,6 +22,13 @@ import (
 // before it enters the Raft pipeline. This is the single validation gate for all
 // write paths (gRPC, HTTP, bulk).
 func validateOrder(order *raftcmdpb.Order) error {
+	// VT unmarshalling does not guarantee valid UTF-8 for protobuf strings.
+	// Reject malformed input before it can become an audited failure fact:
+	// replay and the checker validate the persisted protobuf strings.
+	if !validOrderUTF8(order.ProtoReflect()) {
+		return &domain.BusinessError{Err: invalidUTF8Order{}}
+	}
+
 	if err := validateOrderLedgerName(order); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
@@ -60,6 +69,62 @@ func validateOrder(order *raftcmdpb.Order) error {
 	}
 
 	return nil
+}
+
+// invalidUTF8Order is an admission-only validation error. It never enters the
+// FSM audit schema, and it does not echo malformed bytes to an API client.
+type invalidUTF8Order struct{}
+
+func (invalidUTF8Order) Error() string          { return "request contains invalid UTF-8" }
+func (invalidUTF8Order) Kind() domain.ErrorKind { return domain.KindValidation }
+func (invalidUTF8Order) Reason() string         { return domain.ErrReasonValidation }
+func (invalidUTF8Order) PublicDetails() (string, map[string]string, bool) {
+	return "request contains invalid UTF-8", nil, true
+}
+
+func validOrderUTF8(message protoreflect.Message) bool {
+	valid := true
+	message.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
+		check := func(value protoreflect.Value) bool {
+			switch field.Kind() {
+			case protoreflect.StringKind:
+				return utf8.ValidString(value.String())
+			case protoreflect.MessageKind:
+				return validOrderUTF8(value.Message())
+			default:
+				return true
+			}
+		}
+		switch {
+		case field.IsMap():
+			value.Map().Range(func(key protoreflect.MapKey, item protoreflect.Value) bool {
+				if field.MapKey().Kind() == protoreflect.StringKind && !utf8.ValidString(key.String()) {
+					valid = false
+
+					return false
+				}
+				switch field.MapValue().Kind() {
+				case protoreflect.StringKind:
+					valid = utf8.ValidString(item.String())
+				case protoreflect.MessageKind:
+					valid = validOrderUTF8(item.Message())
+				}
+
+				return valid
+			})
+		case field.IsList():
+			list := value.List()
+			for i := 0; i < list.Len() && valid; i++ {
+				valid = check(list.Get(i))
+			}
+		default:
+			valid = check(value)
+		}
+
+		return valid
+	})
+
+	return valid
 }
 
 // validateOrderAccountType rejects identifiers that could later become

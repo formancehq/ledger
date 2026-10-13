@@ -11,8 +11,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// FailureFacts is the stable business outcome recorded by audit and
-// idempotency. Human-readable text is deliberately absent.
+// FailureFacts is a stable reason, code, and fact view used at public API
+// boundaries. Audited errors also persist this outcome in typed form;
+// public-only errors never enter the audit or idempotency projections.
+// Human-readable diagnostic text is deliberately absent.
 type FailureFacts struct {
 	Reason commonpb.ErrorReason
 	Code   string
@@ -46,8 +48,8 @@ func TypedFailureOf(d SerializableError) (commonpb.ErrorReason, string, *commonp
 	return reason, code, details
 }
 
-// NewFailureFacts copies the values supplied by an error into its audited
-// projection. Producers must validate their values before constructing it.
+// NewFailureFacts copies the values supplied by an error for public rendering.
+// Audited producers use the typed FailureDetails representation instead.
 func NewFailureFacts(reason, code string, values map[string]string) FailureFacts {
 	facts := make(map[string]string, len(values))
 	maps.Copy(facts, values)

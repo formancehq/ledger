@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"errors"
 	"fmt"
 
 	"google.golang.org/protobuf/proto"
@@ -132,16 +131,6 @@ func (e *ErrAccountValidation) FailureDetails() *commonpb.FailureDetails {
 	}
 }
 
-func (e *ErrDependencyDiscoveryFailed) FailureDetails() *commonpb.FailureDetails {
-	if cause, ok := errors.AsType[SerializableError](e.Cause); ok {
-		return proto.Clone(cause.FailureDetails()).(*commonpb.FailureDetails)
-	}
-
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_DependencyDiscoveryFailed{
-		DependencyDiscoveryFailed: &commonpb.DependencyDiscoveryFailedDetails{},
-	}}
-}
-
 func (e *ReplayedFailure) FailureDetails() *commonpb.FailureDetails {
 	if e.Details == nil {
 		return nil
@@ -188,20 +177,12 @@ func (e *ErrSequenceExhausted) FailureDetails() *commonpb.FailureDetails {
 	}}}
 }
 
-func (errMaintenanceMode) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MaintenanceMode{MaintenanceMode: &commonpb.MaintenanceModeDetails{}}}
-}
-
 func (errStaleProposal) FailureDetails() *commonpb.FailureDetails {
 	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_StaleProposal{StaleProposal: &commonpb.StaleProposalDetails{}}}
 }
 
 func (errStaleInputsResolution) FailureDetails() *commonpb.FailureDetails {
 	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_StaleInputsResolution{StaleInputsResolution: &commonpb.StaleInputsResolutionDetails{}}}
-}
-
-func (errPreloadUnavailable) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_PreloadUnavailable{PreloadUnavailable: &commonpb.PreloadUnavailableDetails{}}}
 }
 
 func (e *ErrLedgerAlreadyExists) FailureDetails() *commonpb.FailureDetails {
@@ -487,10 +468,6 @@ func (e *ErrClusterPolicyInvalid) FailureDetails() *commonpb.FailureDetails {
 	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_ClusterPolicyInvalid{ClusterPolicyInvalid: &commonpb.ClusterPolicyInvalidDetails{}}}
 }
 
-func (*ErrIdempotencyCheckFailed) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_IdempotencyCheckFailed{IdempotencyCheckFailed: &commonpb.IdempotencyCheckFailedDetails{}}}
-}
-
 func (e *ErrInvalidApplyType) FailureDetails() *commonpb.FailureDetails {
 	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_InvalidApplyType{InvalidApplyType: &commonpb.InvalidApplyTypeDetails{}}}
 }
@@ -536,15 +513,4 @@ func (e *ErrVolumeNotMaterialized) FailureDetails() *commonpb.FailureDetails {
 
 func (e *ErrInvalidExecutionPlan) FailureDetails() *commonpb.FailureDetails {
 	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_InvalidExecutionPlan{InvalidExecutionPlan: &commonpb.InvalidExecutionPlanDetails{}}}
-}
-
-func (e *ErrInvalidCallerAttribution) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_InvalidCallerAttribution{InvalidCallerAttribution: &commonpb.InvalidCallerAttributionDetails{}}}
-}
-
-func (e *ErrExecutionPlanTooLarge) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_ExecutionPlanTooLarge{ExecutionPlanTooLarge: &commonpb.ExecutionPlanTooLargeDetails{
-		Size:  new(uint64(e.Size)),
-		Limit: new(uint64(e.Limit)),
-	}}}
 }
