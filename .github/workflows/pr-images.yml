@@ -1,7 +1,7 @@
 name: PR Images
 on:
   pull_request:
-    types: [assigned, opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: read
