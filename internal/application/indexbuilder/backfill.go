@@ -647,8 +647,6 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 		return true, nil
 	}
 
-	kb := dal.NewKeyBuilder()
-
 	// If a prior batch already exhausted the rmap scan, nothing left to
 	// rewrite — only the atomic switch stands between us and the new
 	// keyspace. Skip the scan setup (snap + fsmHandle + iter) entirely
@@ -659,11 +657,24 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 		return b.tryCommitScanCompleteSwitch(task, canonical, currentVersion, pendingVersion)
 	}
 
-	done := false
+	return b.scanSchemaRewrite(task, canonical, ns, currentVersion, pendingVersion, maxEntries, stop, deadline)
+}
 
-	rmapPrefix := readstore.ReverseMapVersionPrefix(kb, task.ledger, ns, task.key, currentVersion)
-	upper := readstore.IncrementBytes(rmapPrefix)
+// schemaRewriteSnapshots pair a read-store view with the canonical FSM view.
+type schemaRewriteSnapshots struct {
+	read   *pebble.Snapshot
+	fsm    *dal.ReadHandle
+	fsmSeq uint64
+}
 
+func (s *schemaRewriteSnapshots) close() {
+	_ = s.fsm.Close()
+	_ = s.read.Close()
+}
+
+// openSchemaRewriteSnapshots samples the FSM watermark from the same handle
+// used to fetch canonical values during this scan slice.
+func (b *Builder) openSchemaRewriteSnapshots() (*schemaRewriteSnapshots, error) {
 	// Pair two Pebble snapshots: one on the read store (rmap, forward
 	// index) and one on the FSM Pebble store (canonical stored values).
 	// Both are taken inside processBackgroundTasks, which only runs after
@@ -675,14 +686,13 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	// SetMetadataFieldType is therefore safe: re-running with a new toType
 	// always produces the same result for the same stored value.
 	snap := b.readStore.NewSnapshot()
-	defer func() { _ = snap.Close() }()
 
 	fsmHandle, err := b.pebbleStore.NewReadHandle()
 	if err != nil {
-		return false, fmt.Errorf("opening FSM snapshot for schema rewrite: %w", err)
-	}
+		_ = snap.Close()
 
-	defer func() { _ = fsmHandle.Close() }()
+		return nil, fmt.Errorf("opening FSM snapshot for schema rewrite: %w", err)
+	}
 
 	// Sample the highest FSM log sequence this batch could read from.
 	// fetchStoredMetadataValue below returns FSM-latest values, so the
@@ -698,8 +708,34 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	// observed.
 	fsmSeq, sampleErr := query.ReadLastSequence(fsmHandle)
 	if sampleErr != nil {
-		return false, fmt.Errorf("sampling FSM log sequence for schema-rewrite gate: %w", sampleErr)
+		_ = fsmHandle.Close()
+		_ = snap.Close()
+
+		return nil, fmt.Errorf("sampling FSM log sequence for schema-rewrite gate: %w", sampleErr)
 	}
+
+	return &schemaRewriteSnapshots{read: snap, fsm: fsmHandle, fsmSeq: fsmSeq}, nil
+}
+
+// scanSchemaRewrite owns the two snapshots and the write batch for one
+// cursor-bounded slice. The cursor is committed with the pending-version rows.
+func (b *Builder) scanSchemaRewrite(
+	task *schemaRewriteTask, canonical, ns string, currentVersion, pendingVersion uint32,
+	maxEntries int, stop <-chan struct{}, deadline time.Time,
+) (bool, error) {
+	kb := dal.NewKeyBuilder()
+	done := false
+
+	rmapPrefix := readstore.ReverseMapVersionPrefix(kb, task.ledger, ns, task.key, currentVersion)
+	upper := readstore.IncrementBytes(rmapPrefix)
+
+	snapshots, err := b.openSchemaRewriteSnapshots()
+	if err != nil {
+		return false, err
+	}
+	defer snapshots.close()
+
+	fsmSeq := snapshots.fsmSeq
 
 	if fsmSeq > task.requiredIndexedSeq {
 		task.requiredIndexedSeq = fsmSeq
@@ -712,7 +748,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 		lowerBound = rmapPrefix
 	}
 
-	iter, err := snap.NewIter(&pebble.IterOptions{
+	iter, err := snapshots.read.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upper,
 	})
@@ -792,75 +828,9 @@ scan:
 		lastScannedKey = cloneBytes(k)
 		scanned++
 
-		rk, err := parseScopedReverseMapKey(k, task.ledger, ns)
-		if err != nil {
-			return false, fmt.Errorf("schema rewrite: %w", err)
+		if err := b.rewriteSchemaEntry(task, kb, snapshots.fsm, ns, currentVersion, pendingVersion, k); err != nil {
+			return false, err
 		}
-
-		entityID, entryVersion := rk.EntityID, rk.Version
-
-		// The iterator is bounded to exactly (field, v_current). A mismatch
-		// means either the stored key or the key-range contract is corrupt;
-		// silently skipping would allow an incomplete rewrite to switch.
-		if rk.MetadataKey != task.key || entryVersion != currentVersion {
-			return false, fmt.Errorf(
-				"invariant: schema rewrite range for field %q v=%d yielded field %q v=%d",
-				task.key, currentVersion, rk.MetadataKey, entryVersion,
-			)
-		}
-
-		rawValue, lookupErr := b.fetchStoredMetadataValue(fsmHandle, task.ledger, task.targetType, task.key, entityID)
-		if lookupErr != nil {
-			return false, fmt.Errorf("reading stored metadata from FSM at key %x: %w", k, lookupErr)
-		}
-
-		// The v_pending rmap may already hold an entry for this entity
-		// (live dual-write touched it between retype and the rewrite).
-		// Look that up so we delete the matching forward / eidx rows
-		// before writing the rewrite's value — otherwise leftover live
-		// entries shadow the rewrite under a stale encoding.
-		pendingRmapKey := metadataReverseMapKeyV(kb, task.ledger, task.targetType, entityID, task.key, pendingVersion)
-
-		pendingOldEncoded, lookupErr := b.reverseMapValue(pendingRmapKey)
-		if lookupErr != nil {
-			return false, fmt.Errorf("reading pending-version reverse map: %w", lookupErr)
-		}
-
-		// If the FSM has nothing for this entity (deleted between writes
-		// and rewrite), drop the v_pending entry (if any). v_current is
-		// left intact — queries that still read v_current keep working
-		// against the existing snapshot, and v_current's GC happens
-		// when the atomic switch fires.
-		if rawValue == nil {
-			if pendingOldEncoded != nil {
-				if derr := b.wb.DeleteMetadataEntryWithPreviousV(
-					kb, pendingRmapKey,
-					task.ledger, ns, task.key, pendingVersion,
-					pendingOldEncoded, entityID,
-				); derr != nil {
-					return false, fmt.Errorf("deleting v_pending entry for missing FSM value: %w", derr)
-				}
-			}
-
-			rewritten++
-
-			continue
-		}
-
-		newMV := commonpb.ConvertMetadataValue(rawValue, task.toType)
-		newEncoded := readstore.EncodeMetadataValue(nil, newMV)
-
-		// ReplaceMetadataIndexV at v_pending deletes the old v_pending
-		// forward/eidx (if any), writes the new ones, and updates the
-		// v_pending rmap row. v_current is untouched.
-		if err := b.wb.ReplaceMetadataIndexV(
-			kb, pendingRmapKey,
-			task.ledger, ns, task.key, pendingVersion,
-			newEncoded, pendingOldEncoded, entityID,
-		); err != nil {
-			return false, fmt.Errorf("writing v_pending metadata entry: %w", err)
-		}
-
 		rewritten++
 	}
 
@@ -884,6 +854,20 @@ scan:
 		}
 	}
 
+	done, err = b.commitSchemaRewriteScan(task, batch, canonical, currentVersion, pendingVersion, done, &committed)
+	if err != nil {
+		return false, err
+	}
+
+	return done, nil
+}
+
+// commitSchemaRewriteScan commits pending rows and cursor, promoting in the same
+// batch only when the scan and both activation gates have completed.
+func (b *Builder) commitSchemaRewriteScan(
+	task *schemaRewriteTask, batch *dal.WriteSession, canonical string,
+	currentVersion, pendingVersion uint32, done bool, committed *bool,
+) (bool, error) {
 	// Atomic switch: when the rewrite has just finished its last entry,
 	// promote v_pending to local_current_version. v_old stays on disk,
 	// named by the state as the retained previous version, so a read the
@@ -945,8 +929,7 @@ scan:
 	if commitErr != nil {
 		return false, fmt.Errorf("committing schema rewrite batch: %w", commitErr)
 	}
-
-	committed = true
+	*committed = true
 
 	if didSwitch {
 		b.finishPromotion(task.ledger, canonical, newState)
@@ -962,6 +945,81 @@ scan:
 	}
 
 	return done, nil
+}
+
+// rewriteSchemaEntry replaces one pending-version row from canonical FSM state.
+func (b *Builder) rewriteSchemaEntry(
+	task *schemaRewriteTask, kb *dal.KeyBuilder, fsmHandle dal.PebbleReader, ns string,
+	currentVersion, pendingVersion uint32, k []byte,
+) error {
+	rk, err := parseScopedReverseMapKey(k, task.ledger, ns)
+	if err != nil {
+		return fmt.Errorf("schema rewrite: %w", err)
+	}
+
+	entityID, entryVersion := rk.EntityID, rk.Version
+
+	// The iterator is bounded to exactly (field, v_current). A mismatch
+	// means either the stored key or the key-range contract is corrupt;
+	// silently skipping would allow an incomplete rewrite to switch.
+	if rk.MetadataKey != task.key || entryVersion != currentVersion {
+		return fmt.Errorf(
+			"invariant: schema rewrite range for field %q v=%d yielded field %q v=%d",
+			task.key, currentVersion, rk.MetadataKey, entryVersion,
+		)
+	}
+
+	rawValue, lookupErr := b.fetchStoredMetadataValue(fsmHandle, task.ledger, task.targetType, task.key, entityID)
+	if lookupErr != nil {
+		return fmt.Errorf("reading stored metadata from FSM at key %x: %w", k, lookupErr)
+	}
+
+	// The v_pending rmap may already hold an entry for this entity
+	// (live dual-write touched it between retype and the rewrite).
+	// Look that up so we delete the matching forward / eidx rows
+	// before writing the rewrite's value — otherwise leftover live
+	// entries shadow the rewrite under a stale encoding.
+	pendingRmapKey := metadataReverseMapKeyV(kb, task.ledger, task.targetType, entityID, task.key, pendingVersion)
+
+	pendingOldEncoded, lookupErr := b.reverseMapValue(pendingRmapKey)
+	if lookupErr != nil {
+		return fmt.Errorf("reading pending-version reverse map: %w", lookupErr)
+	}
+
+	// If the FSM has nothing for this entity (deleted between writes
+	// and rewrite), drop the v_pending entry (if any). v_current is
+	// left intact — queries that still read v_current keep working
+	// against the existing snapshot, and v_current's GC happens
+	// when the atomic switch fires.
+	if rawValue == nil {
+		if pendingOldEncoded != nil {
+			if derr := b.wb.DeleteMetadataEntryWithPreviousV(
+				kb, pendingRmapKey,
+				task.ledger, ns, task.key, pendingVersion,
+				pendingOldEncoded, entityID,
+			); derr != nil {
+				return fmt.Errorf("deleting v_pending entry for missing FSM value: %w", derr)
+			}
+		}
+
+		return nil
+	}
+
+	newMV := commonpb.ConvertMetadataValue(rawValue, task.toType)
+	newEncoded := readstore.EncodeMetadataValue(nil, newMV)
+
+	// ReplaceMetadataIndexV at v_pending deletes the old v_pending
+	// forward/eidx (if any), writes the new ones, and updates the
+	// v_pending rmap row. v_current is untouched.
+	if err := b.wb.ReplaceMetadataIndexV(
+		kb, pendingRmapKey,
+		task.ledger, ns, task.key, pendingVersion,
+		newEncoded, pendingOldEncoded, entityID,
+	); err != nil {
+		return fmt.Errorf("writing v_pending metadata entry: %w", err)
+	}
+
+	return nil
 }
 
 // tryCommitScanCompleteSwitch handles the second half of a rewrite
