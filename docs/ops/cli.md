@@ -849,7 +849,7 @@ ledgerctl indexes drop [flags]
 
 **Behavior:**
 - Queries using the dropped index will be rejected after the drop
-- Dropping a non-existent index returns an error
+- Dropping an index that does not exist (never created, or already dropped) succeeds and still records a `DROP_INDEX` log entry; only an unknown ledger returns an error. Run `ledgerctl indexes list` first to check a mistyped index.
 - `--target` and `--key` are only valid with `--type metadata`; passing them with any other type is rejected.
 
 **Example:**
