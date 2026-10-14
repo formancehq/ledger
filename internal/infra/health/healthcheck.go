@@ -29,8 +29,9 @@ import (
 const healthCheckCallTimeout = 5 * time.Second
 
 // WriteGate reports whether writes are currently permitted. A nil return means
-// writes are allowed; a non-nil return is a domain.Describable error
+// writes are allowed. A measured block returns a domain.Describable error
 // (ErrWritesBlockedDiskFull or ErrWritesBlockedClockSkew) identifying why.
+// Before a leader has a fresh verdict, it returns a retryable Unavailable error.
 //
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source healthcheck.go -destination healthcheck_generated.go -package health . WriteGate
 type WriteGate interface {
@@ -46,6 +47,15 @@ type gateState struct {
 	skewBlocked     bool
 	leadershipEpoch uint64
 }
+
+// An unknown verdict must fail closed without claiming that a disk is full.
+// Admission checks the gate before proposing an order, so retrying is safe.
+type errWriteGateNotReady struct{}
+
+func (errWriteGateNotReady) Error() string          { return "write gate has no current leadership verdict" }
+func (errWriteGateNotReady) Kind() domain.ErrorKind { return domain.KindUnavailable }
+
+var errGateNotReady domain.Classifiable = errWriteGateNotReady{}
 
 // HealthChecker periodically samples disk usage and clock skew across cluster
 // nodes and maintains the write-gate state (gateState). It runs on every node
@@ -107,7 +117,7 @@ func NewHealthChecker(
 	)
 
 	// The gate pointer defaults to nil, which CheckWritesAllowed treats as an
-	// unknown disk verdict. Writes fail closed until the leader publishes its
+	// unknown verdict. Writes fail closed until the leader publishes its
 	// first current-epoch evaluation from fresh local evidence.
 	return hc
 }
@@ -143,7 +153,7 @@ func (hc *HealthChecker) Stop() {
 func (hc *HealthChecker) CheckWritesAllowed() error {
 	s := hc.gate.Load()
 	if s == nil || s.leadershipEpoch != hc.leadershipEpoch.Load() {
-		return domain.ErrWritesBlockedDiskFull
+		return errGateNotReady
 	}
 
 	return writeGateErrorForState(s.diskBlocked, s.skewBlocked)

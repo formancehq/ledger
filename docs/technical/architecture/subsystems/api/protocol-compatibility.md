@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"39"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"40"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 39:
+leader. For example, with a schema implementing revision 40:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 39' \
+grpcurl -plaintext -H 'ledger-protocol-version: 40' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -595,3 +595,14 @@ facts; gRPC clients reading `OrderSkippedLog` derive its reason from `details`.
 The removed and renumbered protobuf fields change the service wire format.
 Ledger v3 is unreleased, so deployments start with fresh state and use revision
 39 clients and servers together.
+
+## Retry writes while the health verdict is unknown (revision 40)
+
+After a leadership transition, the write gate has no current-term verdict until
+the first health poll completes. Revision 40 returns gRPC `Unavailable` without
+an `ErrorInfo.reason` during that interval. Clients using the standard retry
+policy retry the request. A measured disk block still returns
+`ResourceExhausted` with `WRITES_BLOCKED_DISK_FULL`, and a measured clock-skew
+block retains its existing response. Admission checks the gate before proposing
+an order, so a retry after `Unavailable` cannot duplicate a committed write.
+This status change requires revision 40 clients and servers together.

@@ -70,12 +70,13 @@ func TestHealthChecker_LeadershipChangeInvalidatesWriteGate(t *testing.T) {
 
 	hc.OnLeadershipChange(false)
 	require.Nil(t, hc.gate.Load())
-	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
+	require.ErrorIs(t, hc.CheckWritesAllowed(), errGateNotReady)
+	require.Equal(t, domain.KindUnavailable, errGateNotReady.Kind())
 	require.Empty(t, hc.checkNow)
 
 	hc.OnLeadershipChange(true)
 	require.Nil(t, hc.gate.Load())
-	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
+	require.ErrorIs(t, hc.CheckWritesAllowed(), errGateNotReady)
 	require.Empty(t, hc.checkNow)
 
 	hc.OnLeaderReady()
@@ -126,7 +127,7 @@ func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
 	}
 
 	hc.OnLeadershipChange(true)
-	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
+	require.ErrorIs(t, hc.CheckWritesAllowed(), errGateNotReady)
 	hc.check(make(chan struct{}))
 
 	require.Equal(t, int64(1), handler.calls.Load())
@@ -165,7 +166,7 @@ func TestHealthChecker_NewLeaderCanOpenWithUnavailablePeer(t *testing.T) {
 	}
 
 	hc.OnLeadershipChange(true)
-	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
+	require.ErrorIs(t, hc.CheckWritesAllowed(), errGateNotReady)
 	hc.check(make(chan struct{}))
 
 	require.NotNil(t, hc.gate.Load())
@@ -198,7 +199,7 @@ func TestHealthChecker_NewLeaderRequiresFreshLocalSample(t *testing.T) {
 	hc.check(make(chan struct{}))
 
 	require.Nil(t, hc.gate.Load())
-	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
+	require.ErrorIs(t, hc.CheckWritesAllowed(), errGateNotReady)
 }
 
 func TestHealthChecker_OldLeadershipEpochCannotPublish(t *testing.T) {
@@ -212,7 +213,7 @@ func TestHealthChecker_OldLeadershipEpochCannotPublish(t *testing.T) {
 	// Simulate a slow check from the previous term completing after the two
 	// synchronous transition callbacks.
 	hc.gate.Store(&gateState{leadershipEpoch: oldEpoch})
-	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
+	require.ErrorIs(t, hc.CheckWritesAllowed(), errGateNotReady)
 }
 
 func TestHealthChecker_MissingCommittedPeerCannotClearDiskGate(t *testing.T) {
