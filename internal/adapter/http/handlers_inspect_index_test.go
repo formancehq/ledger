@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,9 +10,116 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
+
+func TestHandleInspectIndex_InvalidModeRouting(t *testing.T) {
+	t.Parallel()
+
+	for _, mode := range []string{"bogus", "", "SUMMARY"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+
+			backend := NewMockBackend(gomock.NewController(t))
+			handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodGet, "/v3/ledger1/indexes/metadata:TARGET_TYPE_ACCOUNT:color/inspect?mode="+mode, nil)
+
+			handler.ServeHTTP(w, r)
+
+			require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+			var body struct {
+				ErrorCode string `json:"errorCode"`
+			}
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+			require.Equal(t, "INVALID_REQUEST", body.ErrorCode)
+		})
+	}
+}
+
+func TestHandleInspectIndex_InvalidPageSizeRouting(t *testing.T) {
+	t.Parallel()
+
+	for _, mode := range []string{"summary", "distinctValues", "facets"} {
+		for _, size := range []string{"0", "10001", "", "-1", "abc", "4294967296"} {
+			t.Run(mode+"/"+size, func(t *testing.T) {
+				t.Parallel()
+
+				backend := NewMockBackend(gomock.NewController(t))
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest(http.MethodGet, "/v3/ledger1/indexes/metadata:TARGET_TYPE_ACCOUNT:color/inspect?mode="+mode+"&pageSize="+size, nil)
+
+				handler.ServeHTTP(w, r)
+
+				require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+				var body struct {
+					ErrorCode string `json:"errorCode"`
+				}
+				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+				require.Equal(t, "INVALID_PAGE_SIZE", body.ErrorCode)
+			})
+		}
+	}
+}
+
+func TestHandleInspectIndex_QueryOptionsRouting(t *testing.T) {
+	t.Parallel()
+
+	modes := []struct {
+		query string
+		want  servicepb.InspectIndexMode
+	}{
+		{"", servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY},
+		{"mode=summary&", servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY},
+		{"mode=distinctValues&", servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES},
+		{"mode=distinct-values&", servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES},
+		{"mode=facets&", servicepb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS},
+	}
+	sizes := []struct {
+		query string
+		want  uint32
+	}{
+		{"", 0},
+		{"pageSize=1&", 1},
+		{"pageSize=10000&", 10000},
+	}
+	for _, mode := range modes {
+		for _, size := range sizes {
+			t.Run(mode.query+size.query, func(t *testing.T) {
+				t.Parallel()
+
+				backend := NewMockBackend(gomock.NewController(t))
+				backend.EXPECT().InspectIndex(gomock.Any(), gomock.Any()).DoAndReturn(
+					func(_ context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
+						require.Equal(t, "ledger1", req.GetLedger())
+						require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, req.GetTargetType())
+						require.Equal(t, "color", req.GetMetadataKey())
+						require.Equal(t, mode.want, req.GetMode())
+						require.Equal(t, size.want, req.GetPageSize())
+						require.Equal(t, "page-token", req.GetCursor())
+
+						return &servicepb.InspectIndexResponse{
+							Result: &servicepb.InspectIndexResponse_Summary{Summary: &servicepb.InspectSummary{}},
+						}, nil
+					})
+				backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&commonpb.LedgerInfo{Name: "ledger1"}, nil)
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest(http.MethodGet, "/v3/ledger1/indexes/metadata:TARGET_TYPE_ACCOUNT:color/inspect?"+mode.query+size.query+"cursor=page-token", nil)
+
+				handler.ServeHTTP(w, r)
+
+				require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			})
+		}
+	}
+}
 
 func TestHandleInspectIndex_Success(t *testing.T) {
 	t.Parallel()

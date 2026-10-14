@@ -13,6 +13,10 @@ Client-facing transport layers (`internal/adapter/grpc`, `internal/adapter/http`
 | [auth.md](auth.md) | Client JWT authentication (OIDC + Ed25519), scope-based authorization, and the Raft inter-node cluster-secret auth layer. |
 | [sensitive-projection.md](sensitive-projection.md) | Detached, descriptor-driven secret projection and its ownership boundary. |
 
+The [HTTP index inspection contract](http-api.md#inspect-a-metadata-index)
+defines accepted modes, the `distinct-values` alias, omission defaults, and
+validation of supplied page sizes before backend invocation (EN-2905).
+
 Decoded leader errors retain their exact gRPC status through routing wrappers
 and streaming cursors. See [forwarding and cancellation](http-api.md#forwarded-writes-and-the-transport-seam)
 for the distinction between a decoded rejection and raw transport cancellation.

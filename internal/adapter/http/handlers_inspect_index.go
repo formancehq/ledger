@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -100,21 +101,41 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 	targetType := metaID.GetTarget()
 	metadataKey := metaID.GetKey()
 
+	query := r.URL.Query()
 	var mode servicepb.InspectIndexMode
-	switch r.URL.Query().Get("mode") {
+	switch suppliedMode := query.Get("mode"); suppliedMode {
 	case "distinctValues", "distinct-values":
 		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES
 	case "facets":
 		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS
-	default:
+	case "summary":
 		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY
+	case "":
+		if query.Has("mode") {
+			writeBadRequest(w, "INVALID_REQUEST", errors.New("mode must be summary, distinctValues, distinct-values, or facets"))
+
+			return
+		}
+
+		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY
+	default:
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("unsupported inspection mode %q", suppliedMode))
+
+		return
 	}
 
 	var pageSize uint32
-	if ps := r.URL.Query().Get("pageSize"); ps != "" {
+	if query.Has("pageSize") {
+		ps := query.Get("pageSize")
 		v, err := strconv.ParseUint(ps, 10, 32)
 		if err != nil {
 			writeBadRequest(w, "INVALID_PAGE_SIZE", err)
+
+			return
+		}
+
+		if v < 1 || v > 10000 {
+			writeBadRequest(w, "INVALID_PAGE_SIZE", errors.New("pageSize must be between 1 and 10000"))
 
 			return
 		}
@@ -128,7 +149,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 		MetadataKey: metadataKey,
 		Mode:        mode,
 		PageSize:    pageSize,
-		Cursor:      r.URL.Query().Get("cursor"),
+		Cursor:      query.Get("cursor"),
 	})
 	if err != nil {
 		handleError(w, r, err)
