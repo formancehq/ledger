@@ -21,7 +21,7 @@ import (
 func TestHandleInspectIndex_InvalidModeRouting(t *testing.T) {
 	t.Parallel()
 
-	for _, mode := range []string{"bogus", "", "SUMMARY", "distinct-values"} {
+	for _, mode := range []string{"bogus", "", "SUMMARY"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Parallel()
 
@@ -45,8 +45,8 @@ func TestHandleInspectIndex_InvalidModeRouting(t *testing.T) {
 func TestHandleInspectIndex_InvalidPageSizeRouting(t *testing.T) {
 	t.Parallel()
 
-	for _, mode := range []string{"summary", "distinctValues", "facets"} {
-		for _, size := range []string{"0", "1001", "10000", "10001", "", "-1", "abc", "4294967296"} {
+	for _, mode := range []string{"summary", "distinctValues", "distinct-values", "facets"} {
+		for _, size := range []string{"0", "10001", "", "-1", "abc", "4294967296"} {
 			t.Run(mode+"/"+size, func(t *testing.T) {
 				t.Parallel()
 
@@ -78,6 +78,7 @@ func TestHandleInspectIndex_QueryOptionsRouting(t *testing.T) {
 		{"", servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY},
 		{"mode=summary&", servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY},
 		{"mode=distinctValues&", servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES},
+		{"mode=distinct-values&", servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES},
 		{"mode=facets&", servicepb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS},
 	}
 	sizes := []struct {
@@ -87,6 +88,8 @@ func TestHandleInspectIndex_QueryOptionsRouting(t *testing.T) {
 		{"", 0},
 		{"pageSize=1&", 1},
 		{"pageSize=1000&", 1000},
+		{"pageSize=1001&", 1001},
+		{"pageSize=10000&", 10000},
 	}
 	for _, mode := range modes {
 		for _, size := range sizes {

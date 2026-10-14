@@ -13,6 +13,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
+// maxInspectPageSize preserves the published inspection limit independently of list pagination.
+const maxInspectPageSize = 10000
+
 type inspectDistinctValuesJSON struct {
 	Values         []any  `json:"values"`
 	HasMore        bool   `json:"hasMore"`
@@ -104,7 +107,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	var mode servicepb.InspectIndexMode
 	switch suppliedMode := query.Get("mode"); suppliedMode {
-	case "distinctValues":
+	case "distinctValues", "distinct-values":
 		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES
 	case "facets":
 		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS
@@ -112,7 +115,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY
 	case "":
 		if query.Has("mode") {
-			writeBadRequest(w, "INVALID_REQUEST", errors.New("mode must be summary, distinctValues, or facets"))
+			writeBadRequest(w, "INVALID_REQUEST", errors.New("mode must be summary, distinctValues, distinct-values, or facets"))
 
 			return
 		}
@@ -134,8 +137,8 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if v < 1 || v > uint64(maxPageSize) {
-			writeBadRequest(w, "INVALID_PAGE_SIZE", fmt.Errorf("pageSize must be between 1 and %d", maxPageSize))
+		if v < 1 || v > uint64(maxInspectPageSize) {
+			writeBadRequest(w, "INVALID_PAGE_SIZE", fmt.Errorf("pageSize must be between 1 and %d", maxInspectPageSize))
 
 			return
 		}

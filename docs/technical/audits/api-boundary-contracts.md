@@ -106,9 +106,9 @@ a number/string schema union alone cannot prove the selected mode.
 
 For index inspection (EN-2905), HTTP omission selects summary and preserves
 the backend's page-size default of 100 for paginated modes. Accept `summary`,
-`distinctValues`, and `facets`. Reject explicitly
+`distinctValues`, its `distinct-values` alias, and `facets`. Reject explicitly
 empty or unsupported modes with `400`/`INVALID_REQUEST`; reject supplied page
-sizes outside 1..1000, empty/malformed values and uint32 overflow with
+sizes outside 1..10000, empty/malformed values and uint32 overflow with
 `400`/`INVALID_PAGE_SIZE`, including for summary. The routed
 `TestHandleInspectIndex_InvalidModeRouting`, `InvalidPageSizeRouting`, and
 `QueryOptionsRouting` cases use a valid metadata canonical, prove rejection
