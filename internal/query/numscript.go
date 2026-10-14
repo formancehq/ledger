@@ -32,7 +32,9 @@ func ReadNumscriptLatestVersion(attr *attributes.Attribute[*commonpb.NumscriptVe
 //   - "1.0.0"       → direct Get on the exact version
 //   - "1" / "1.2"   → highest matching semver (read-only partial selector)
 //
-// Returns nil if the numscript or version does not exist.
+// Returns nil if the numscript or version does not exist, and
+// *domain.ErrNumscriptInvalidVersion if the selector is not one of the forms
+// above — a malformed selector says nothing about whether the script exists.
 func ReadNumscript(
 	versionAttr *attributes.Attribute[*commonpb.NumscriptVersionValue],
 	contentAttr *attributes.Attribute[*commonpb.NumscriptInfo],
@@ -55,7 +57,7 @@ func ReadNumscript(
 
 	major, minor, patch, depth, err := semver.ParsePartial(version)
 	if err != nil {
-		return nil, nil
+		return nil, &domain.ErrNumscriptInvalidVersion{Version: version}
 	}
 
 	if depth == 3 {

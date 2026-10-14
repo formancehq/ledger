@@ -1705,7 +1705,9 @@ paths:
           schema:
             type: string
           description: |
-            Semver version to retrieve (e.g. "1.0.0"). If omitted or empty, the latest version is returned.
+            Version selector: an exact semver (e.g. "1.0.0"), a partial semver ("1" or "1.2", resolved to the
+            highest matching stored version), or "latest". If omitted or empty, the latest version is returned.
+            Any other value is rejected with 400 `NUMSCRIPT_INVALID_VERSION`.
       responses:
         '200':
           description: Numscript retrieved successfully

@@ -28,7 +28,7 @@ The read-only APIs (`GetNumscript`) resolve the `version` selector as follows:
 | `"1.0"` (major.minor) | Range scan `[1.0.0, 1.1.0)`, take the **highest** | Highest `1.0.x` patch |
 | `"1"` (major only) | Range scan `[1.0.0, 2.0.0)`, take the **highest** | Highest `1.x.y` minor+patch |
 
-Empty and partial (`"1"`, `"1.0"`) selectors are a **read-only** convenience, the partial ones parsed by `semver.ParsePartial()` (`internal/pkg/semver/`). They resolve outside the FSM, where a Pebble scan is allowed, and always return a concrete version. Save rejects them: only a full semver is storable.
+Empty and partial (`"1"`, `"1.0"`) selectors are a **read-only** convenience, the partial ones parsed by `semver.ParsePartial()` (`internal/pkg/semver/`). They resolve outside the FSM, where a Pebble scan is allowed, and always return a concrete version. Any other selector (`"abc"`, `"1.x"`, `"1.0.0.0"`) is rejected with `NUMSCRIPT_INVALID_VERSION` before any lookup, so a malformed selector is never reported as a missing script. Save rejects them: only a full semver is storable.
 
 An **executable** `ScriptReference` in a transaction is stricter — `version` is required and accepts only the literal `"latest"` or an exact full semver; empty and partial selectors are rejected at admission with `NUMSCRIPT_INVALID_VERSION`. The selector is state-independent, so this is a structural gate (`validateOrderContent`) that runs on every accepted order — including one the FSM goes on to skip for a reference conflict, whose script is never resolved. The two forms are rejected for different reasons:
 
@@ -125,7 +125,7 @@ ledgerctl numscripts versions payment-with-fees --ledger my-ledger
 | Name required | — | 400 | INVALID_ARGUMENT | Empty name |
 | Content required | — | 400 | INVALID_ARGUMENT | Empty content |
 | Parse error | `NUMSCRIPT_PARSE_ERROR` | 400 | INVALID_ARGUMENT | Invalid Numscript syntax |
-| Invalid version | `NUMSCRIPT_INVALID_VERSION` | 400 | INVALID_ARGUMENT | Save version is not a full semver |
+| Invalid version | `NUMSCRIPT_INVALID_VERSION` | 400 | INVALID_ARGUMENT | Save version is not a full semver, or a `GetNumscript` selector is not `latest`, empty, or a full/partial semver |
 | Version exists | `NUMSCRIPT_VERSION_ALREADY_EXISTS` | 409 | ALREADY_EXISTS | The `(name, version)` is already stored (immutable) |
 | Not found | `NUMSCRIPT_NOT_FOUND` | 404 | NOT_FOUND | Get a non-existent numscript or version |
 | Not runnable on the VM | `NUMSCRIPT_COMPILE_ERROR` | 400 | INVALID_ARGUMENT | A typed compiler rejection has structured facts and can be audited. An unclassified compiler diagnostic keeps this public reason but exits without an audited verdict or frozen idempotency key. |
