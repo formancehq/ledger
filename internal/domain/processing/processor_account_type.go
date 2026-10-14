@@ -177,6 +177,30 @@ func validateAccountAgainstAccountTypes(
 	return nil
 }
 
+// validateAccountMetadataAddresses checks every account that a transaction
+// writes metadata on: the address syntax, then the account types under
+// defaultMode, exactly as processAddMetadata checks a direct save. Addresses
+// are visited in sorted order so the reported failure does not depend on Go
+// map iteration order: this runs inside FSM apply, where a per-node choice of
+// error would diverge the audit chain (invariant #2).
+func validateAccountMetadataAddresses(
+	accountMetadata map[string]*commonpb.MetadataMap,
+	compiled []accounttype.CompiledType,
+	defaultMode commonpb.ChartEnforcementMode,
+) domain.SerializableError {
+	for _, address := range slices.Sorted(maps.Keys(accountMetadata)) {
+		if err := domain.ValidateAccountAddress(address); err != nil {
+			return err
+		}
+
+		if typeErr := validateAccountAgainstAccountTypes(address, compiled, defaultMode); typeErr != nil {
+			return typeErr
+		}
+	}
+
+	return nil
+}
+
 // processUpdateDefaultEnforcementMode updates the ledger's default enforcement mode.
 func processUpdateDefaultEnforcementMode(ledger string, order *raftcmdpb.UpdateDefaultEnforcementModeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	info, loadErr := loadLedger(ctx.Scope, ledger)

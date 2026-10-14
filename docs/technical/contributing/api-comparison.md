@@ -554,6 +554,7 @@ The v2 schemaVersion/parallel options are not added to v3 by this correction.
 - ✅ Pattern-based account address validation (e.g., `users:{id}:checking`)
 - ✅ Variable segments with optional regex constraints (e.g., `{iban:^[A-Z]{2}[0-9]{14}$}`)
 - ✅ Ledger-level default enforcement mode: STRICT (reject) or AUDIT (warnings)
+- ✅ Enforcement covers every account a transaction writes: posting sources and destinations, and the accounts that receive account metadata (request `accountMetadata` or Numscript `set_account_meta`)
 - ✅ Longest-match / highest-specificity resolution when multiple types match
 - ✅ `world` account always passes validation
 - ✅ Account types can be set at ledger creation time or added later

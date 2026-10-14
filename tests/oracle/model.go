@@ -1542,11 +1542,16 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 		return OrderResult{Reason: domain.ErrReasonAccountNotMatchingType}
 	}
 
-	// Account metadata attached to the transaction is applied verbatim, last-
-	// writer-wins. The server applies it without chart enforcement (unlike a
-	// standalone AddMetadata — processor_transaction.go); the generator only
-	// attaches it to the transaction's own accounts, which already passed the
-	// posting chart check above, so no enforcement branch is needed.
+	// Account metadata attached to the transaction obeys the chart like a
+	// standalone AddMetadata (processor_transaction.go): under STRICT, an
+	// address that matches no type rejects the whole transaction.
+	for account := range ct.GetAccountMetadata() {
+		if s.chartRejectsAddress(account) {
+			return OrderResult{Reason: domain.ErrReasonAccountNotMatchingType}
+		}
+	}
+
+	// Account metadata is then applied verbatim, last-writer-wins.
 	for account, mm := range ct.GetAccountMetadata() {
 		for key, val := range mm.GetValues() {
 			s.metadata = s.metadata.Set(MetaKey{Address: account, Key: key}, val)
@@ -1701,6 +1706,17 @@ func (s *LedgerState) chartRejects(postings []*commonpb.Posting) bool {
 	}
 
 	return false
+}
+
+// chartRejectsAddress reports whether STRICT enforcement refuses a single
+// account address, with the same rules as chartRejects.
+func (s *LedgerState) chartRejectsAddress(addr string) bool {
+	if s.defaultEnforcementMode != commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT || addr == "world" {
+		return false
+	}
+	compiled := s.compiled()
+
+	return len(compiled) > 0 && s.match(addr, compiled) == nil
 }
 
 // applyPostings accumulates postings into volumes (source.output += amount,
@@ -1874,8 +1890,7 @@ func (s *LedgerState) applyAddMetadata(cmd *commonpb.SaveMetadataCommand) OrderR
 // applyAddAccountMetadata sets account metadata last-writer-wins, under STRICT
 // chart enforcement on the address when the ledger default is STRICT.
 func (s *LedgerState) applyAddAccountMetadata(addr string, md map[string]*commonpb.MetadataValue) OrderResult {
-	compiled := s.compiled()
-	if s.defaultEnforcementMode == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT && len(compiled) > 0 && addr != "world" && s.match(addr, compiled) == nil {
+	if s.chartRejectsAddress(addr) {
 		return OrderResult{Reason: domain.ErrReasonAccountNotMatchingType}
 	}
 

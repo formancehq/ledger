@@ -4182,6 +4182,9 @@ components:
           description: >-
             Metadata for accounts involved in the transaction (supports typed
             values). Each account's map is bounded independently. Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
+            Each account address is checked against the ledger's account types like
+            a posting address: under STRICT, an address that matches no account type
+            rejects the transaction with ACCOUNT_NOT_MATCHING_TYPE.
         timestamp:
           type: string
           format: date-time

@@ -157,8 +157,9 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	}
 
 	// Validate postings against account types.
-	if compiled := compiledTypesFor(ctx.CompiledTypes, ledger, info); len(compiled) > 0 {
-		if typeErr := validatePostingsAgainstAccountTypes(result.Postings, compiled, info.GetDefaultEnforcementMode()); typeErr != nil {
+	compiledTypes := compiledTypesFor(ctx.CompiledTypes, ledger, info)
+	if len(compiledTypes) > 0 {
+		if typeErr := validatePostingsAgainstAccountTypes(result.Postings, compiledTypes, info.GetDefaultEnforcementMode()); typeErr != nil {
 			return nil, typeErr
 		}
 	}
@@ -229,6 +230,12 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		return nil, metaErr
 	}
 
+	// Account metadata writes an account just as a posting does, so its
+	// addresses obey the same chart as a direct SaveMetadata on the account.
+	if addrErr := validateAccountMetadataAddresses(accountMetadata, compiledTypes, info.GetDefaultEnforcementMode()); addrErr != nil {
+		return nil, addrErr
+	}
+
 	// Admission can only count caller input. Replace this transaction's input
 	// contribution with its merged output in the proposal-wide budget, retaining
 	// every other order's input and the output of earlier scripts.
@@ -252,10 +259,6 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// longer captures previous values into the log. The indexer resolves
 	// the old encoded value via the reverse map on overwrite.
 	for account, mm := range accountMetadata {
-		if err := domain.ValidateAccountAddress(account); err != nil {
-			return nil, err
-		}
-
 		for key, value := range mm.GetValues() {
 			metaKey := domain.MetadataKey{
 				AccountKey: domain.AccountKey{LedgerName: ledger, Account: account},
