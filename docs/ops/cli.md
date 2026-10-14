@@ -702,6 +702,10 @@ ledgerctl ledgers remove-metadata-type [flags]
 - Always O(1): the declared type is removed from the schema atomically;
   stored values are left as-is and subsequent reads return them in their
   original type.
+- Idempotent: removing a key that has no declared type for the target
+  succeeds, leaves the schema unchanged, and still appends a
+  `REMOVED_METADATA_FIELD_TYPE` log. Check the key and target with
+  `ledgers get` before removing.
 
 **Example:**
 

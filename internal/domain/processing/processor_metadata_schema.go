@@ -97,7 +97,8 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 // processRemoveMetadataFieldType drops the declared type for a metadata field.
 // O(1) on the apply path: the field is removed from the schema and any index
 // attached to it is dropped. Existing stored values are untouched (they remain
-// in their original type; reads no longer coerce them).
+// in their original type; reads no longer coerce them). Idempotent: an
+// undeclared key leaves the schema unchanged and is still logged.
 func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetadataFieldTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	s := ctx.Scope
 

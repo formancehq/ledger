@@ -1601,6 +1601,10 @@ paths:
       description: |
         Removes the type declaration for a metadata key on a ledger.
         Existing metadata values remain unchanged and any attached index is dropped. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+
+        The removal is idempotent. If the key has no declared type for the target type, the request
+        still succeeds with `204`, the schema is unchanged, and a `REMOVED_METADATA_FIELD_TYPE` log is
+        appended. Read the metadata schema first to detect a mistyped key or target type.
       operationId: removeMetadataFieldType
       tags:
         - Metadata Schema
@@ -1613,7 +1617,7 @@ paths:
         - $ref: '#/components/parameters/MetadataKey'
       responses:
         '204':
-          description: Metadata field type removed successfully
+          description: Metadata field type removed, or no type was declared for the key
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1621,7 +1625,11 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: The ledger does not exist. An undeclared metadata key does not return `404`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           $ref: '#/components/responses/Conflict'
         '429':

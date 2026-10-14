@@ -317,6 +317,71 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 	require.Equal(t, "amount", removeLog.GetKey())
 }
 
+// Removing the type of a key that has no declared type is idempotent: the
+// order succeeds, the schema is unchanged, and the removal is still logged.
+// openapi.yml documents this contract for removeMetadataFieldType.
+func TestProcessRemoveMetadataFieldType_UndeclaredKeyIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	ledgerInfo := &commonpb.LedgerInfo{
+		Name: "test-ledger",
+		Id:   1,
+		MetadataSchema: &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+			},
+		},
+	}
+
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+		require.Len(t, info.GetMetadataSchema().GetAccountFields(), 1)
+		_, exists := info.GetMetadataSchema().GetAccountFields()["amount"]
+		require.True(t, exists, "declared fields must be untouched")
+	})
+	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "test-ledger",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
+						RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "never-declared",
+						},
+					},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(order, mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	removeLog := result.GetApply().GetLog().GetData().GetRemovedMetadataFieldType()
+	require.NotNil(t, removeLog)
+	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, removeLog.GetTargetType())
+	require.Equal(t, "never-declared", removeLog.GetKey())
+	require.Nil(t, removeLog.GetDroppedIndex())
+}
+
 func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 	t.Parallel()
 
