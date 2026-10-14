@@ -107,3 +107,39 @@ func TestResolveBounds_ImpossibleSideStillValidatesParams(t *testing.T) {
 		require.True(t, b.empty)
 	})
 }
+
+// Parameter bounds take precedence over literal bounds on each side, and
+// exclusivity is applied after the parameter has been resolved.
+func TestResolveBounds_ParameterPrecedenceAndExclusivity(t *testing.T) {
+	t.Parallel()
+
+	t.Run("int64", func(t *testing.T) {
+		t.Parallel()
+		literalMin, literalMax := int64(100), int64(200)
+		b, err := resolveIntBounds(&commonpb.IntCondition{
+			Min: &literalMin, Max: &literalMax, ParamMin: "lo", ParamMax: "hi",
+			MinExclusive: true, MaxExclusive: false,
+		}, map[string]*commonpb.ParameterValue{
+			"lo": {Value: &commonpb.ParameterValue_Int64Value{Int64Value: 24}},
+			"hi": {Value: &commonpb.ParameterValue_Int64Value{Int64Value: 25}},
+		})
+		require.NoError(t, err)
+		require.Equal(t, resolvedIntBounds{min: 25, max: 26, hasMin: true, hasMax: true}, b)
+		require.True(t, b.isEquality())
+	})
+
+	t.Run("uint64", func(t *testing.T) {
+		t.Parallel()
+		literalMin, literalMax := uint64(100), uint64(200)
+		b, err := resolveUintBounds(&commonpb.UintCondition{
+			Min: &literalMin, Max: &literalMax, ParamMin: "lo", ParamMax: "hi",
+			MinExclusive: true, MaxExclusive: true,
+		}, map[string]*commonpb.ParameterValue{
+			"lo": {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 24}},
+			"hi": {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 26}},
+		})
+		require.NoError(t, err)
+		require.Equal(t, resolvedUintBounds{min: 25, max: 26, hasMin: true, hasMax: true}, b)
+		require.True(t, b.isEquality())
+	})
+}
