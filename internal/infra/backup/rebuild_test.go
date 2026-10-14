@@ -1356,12 +1356,24 @@ func keyedAuditSuccess(seq uint64, key string, tsMicros, minLog, maxLog uint64) 
 }
 
 func keyedAuditFailure(seq uint64, key string, tsMicros uint64, reason commonpb.ErrorReason) *auditpb.AuditEntry {
+	var details *commonpb.FailureDetails
+	switch reason {
+	case commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT:
+		details = commonpb.MustFailureDetails("IDEMPOTENCY_KEY_CONFLICT", map[string]string{"key": key})
+	case commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS:
+		details = commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "1", "balance": "0", "color": ""})
+	case commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR:
+		details = commonpb.MustFailureDetails("NUMSCRIPT_DIVIDE_BY_ZERO", nil)
+	default:
+		panic("unsupported keyed audit failure reason")
+	}
+
 	return &auditpb.AuditEntry{
 		Sequence:    seq,
 		Timestamp:   &commonpb.Timestamp{Data: tsMicros},
 		Idempotency: &commonpb.Idempotency{Key: key},
 		Outcome: &auditpb.AuditEntry_Failure{
-			Failure: &auditpb.AuditFailure{Reason: reason},
+			Failure: &auditpb.AuditFailure{Details: details},
 		},
 	}
 }
@@ -1568,50 +1580,35 @@ func TestRebuildDelta_IdempotencyFreshFailureOverwrites(t *testing.T) {
 	require.NotNil(t, v.GetFailure(), "a fresh non-conflict failure overwrites the earlier outcome")
 }
 
-// A keyed Numscript execution failure is frozen at apply, so the restore must
-// re-freeze it from the audit chain; the internal NUMSCRIPT_RUNTIME never froze
-// anything, so the rebuild must not invent an outcome for it.
+// A keyed Numscript execution failure is frozen at apply, so restore must
+// re-freeze it from the audit chain using the reason derived from its details.
 func TestRebuildDelta_IdempotencyNumscriptFailures(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		reason commonpb.ErrorReason
-		frozen bool
-	}{
-		{reason: commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR, frozen: true},
-		{reason: commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_RUNTIME, frozen: false},
-	} {
-		t.Run(tc.reason.String(), func(t *testing.T) {
-			t.Parallel()
+	t.Run("definitive execution failure", func(t *testing.T) {
+		t.Parallel()
 
-			store := newRebuildTestStore(t)
+		store := newRebuildTestStore(t)
 
-			const key = "idem-key"
+		const key = "idem-key"
 
-			batch := store.OpenWriteSession()
-			require.NoError(t, batch.SetProto(coldAuditKey(1), keyedAuditFailure(1, key, 1_000_000, tc.reason)))
-			require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 0, fillGapOrder("l", 1))))
-			require.NoError(t, batch.Commit())
+		batch := store.OpenWriteSession()
+		require.NoError(t, batch.SetProto(coldAuditKey(1), keyedAuditFailure(1, key, 1_000_000, commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR)))
+		require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 0, fillGapOrder("l", 1))))
+		require.NoError(t, batch.Commit())
 
-			require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+		require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
 
-			handle, err := store.NewDirectReadHandle()
-			require.NoError(t, err)
-			defer func() { _ = handle.Close() }()
+		handle, err := store.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
 
-			v, err := state.LoadIdempotencyKey(handle, key)
-			require.NoError(t, err)
+		v, err := state.LoadIdempotencyKey(handle, key)
+		require.NoError(t, err)
 
-			if !tc.frozen {
-				require.Nil(t, v)
-
-				return
-			}
-
-			require.NotNil(t, v)
-			require.Equal(t, tc.reason, v.GetFailure().GetReason())
-		})
-	}
+		require.NotNil(t, v)
+		require.Equal(t, commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR, v.GetFailure().GetReason())
+	})
 }
 
 func registerSigningKeyLog(seq uint64, keyID string, pub []byte, parentKeyID string) *commonpb.Log {

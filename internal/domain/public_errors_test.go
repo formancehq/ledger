@@ -1,9 +1,12 @@
 package domain
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestPublicErrorDetails(t *testing.T) {
@@ -26,45 +29,104 @@ func TestPublicErrorDetails(t *testing.T) {
 		{"private", private, true, nil},
 		{"business private", &BusinessError{Err: private}, true, nil},
 		{"nested business private", &BusinessError{Err: &BusinessError{Err: private}}, true, nil},
-		{"ordinary", ordinary, false, map[string]string{"name": "caller-ledger"}},
-		{"business ordinary", &BusinessError{Err: ordinary}, false, map[string]string{"name": "caller-ledger"}},
-		{"distinct outer reason", outer, false, map[string]string{"operation": "loading index"}},
+		{"ordinary", ordinary, true, map[string]string{"name": "caller-ledger"}},
+		{"business ordinary", &BusinessError{Err: ordinary}, true, map[string]string{"name": "caller-ledger"}},
+		{"distinct outer reason", outer, true, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			message, metadata, overridden := PublicErrorDetails(tc.err)
 			require.Equal(t, tc.overridden, overridden)
-			if overridden {
+			if tc.err.Reason() == ErrReasonIndexInconsistent {
 				require.Equal(t, "index is inconsistent", message)
 				require.Empty(t, metadata)
 				require.Equal(t, "index private-index is inconsistent: private storage detail", tc.err.Error())
-				// The diagnostic identity the override withholds lives on the
-				// error itself, not on the BusinessError carrying it — a
-				// carrier exposes no Metadata of its own.
-				require.Equal(t, map[string]string{"index": "private-index", "detail": "private storage detail"}, MetadataOf(private))
+				// Diagnostic identity remains available through the typed error.
+				require.Equal(t, "private-index", private.Index)
+				require.Equal(t, "private storage detail", private.Detail)
 			} else {
-				require.Equal(t, tc.err.Error(), message)
+				require.True(t, overridden)
+				if tc.err.Reason() == ErrReasonLedgerNotFound {
+					require.Equal(t, "ledger not found: name=\"caller-ledger\"", message)
+				} else {
+					require.Equal(t, "storage operation failed", message)
+				}
 				require.Equal(t, tc.wantMetadata, metadata)
 			}
 		})
 	}
 }
 
-// TestMetadataOfDoesNotWalkTheChain pins the selection rule MetadataOf exists
-// to enforce: it reads the context of the error it is handed and nothing
-// deeper. Walking the chain would let a wrapped internal cause substitute its
-// diagnostic context for the outer reason's, which is exactly the leak #326 and
-// EN-1379 close — ErrStorageOperation publishes only the operation it names,
-// never the Pebble-level detail it carries.
-func TestMetadataOfDoesNotWalkTheChain(t *testing.T) {
+func TestNonAuditedErrorsKeepPublicFacts(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		err     Describable
+		message string
+		facts   map[string]string
+	}{
+		{"maintenance", ErrMaintenanceMode, "maintenance mode", map[string]string{}},
+		{"idempotency lookup", &ErrIdempotencyCheckFailed{Cause: errors.New("private path")}, "idempotency check failed", map[string]string{}},
+		{"caller attribution", &ErrInvalidCallerAttribution{Detail: "private detail"}, "invalid caller attribution", map[string]string{}},
+		{"plan too large", &ErrExecutionPlanTooLarge{Size: 4096, Limit: 1024}, "execution plan too large: limit=\"1024\", size=\"4096\"", map[string]string{"size": "4096", "limit": "1024"}},
+		{"discovery opaque", &ErrDependencyDiscoveryFailed{Cause: errors.New("private cause")}, "dependency discovery failed", map[string]string{}},
+		{"discovery typed cause", &ErrDependencyDiscoveryFailed{Cause: &ErrLedgerNotFound{Name: "ledger"}}, "ledger not found: name=\"ledger\"", map[string]string{"name": "ledger"}},
+		{"discovery public-only cause", &ErrDependencyDiscoveryFailed{Cause: ErrMaintenanceMode}, "maintenance mode", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, serialized := tc.err.(SerializableError)
+			require.False(t, serialized)
+			message, facts, overridden := PublicErrorDetails(tc.err)
+			require.True(t, overridden)
+			require.Equal(t, tc.message, message)
+			require.Equal(t, tc.facts, facts)
+		})
+	}
+}
+
+func TestBusinessErrorStructuredPublicFailureRetainsCause(t *testing.T) {
+	t.Parallel()
+
+	cause := &ErrLedgerNotFound{Name: "caller-ledger"}
+	facts := FailureFactsOf(cause)
+	business := &BusinessError{Err: cause, PublicFailure: &facts}
+	message, metadata, overridden := PublicErrorDetails(business)
+	wantMessage, wantMetadata := RenderFailureFacts(facts)
+	require.True(t, overridden)
+	require.Equal(t, wantMessage, message)
+	require.Equal(t, wantMetadata, metadata)
+	require.ErrorIs(t, business, cause)
+}
+
+func TestPublicErrorDetailsRejectMalformedFacts(t *testing.T) {
+	t.Parallel()
+
+	invalid := &ErrNumscriptExecution{
+		Detail:  "private diagnostic",
+		Details: commonpb.MustFailureDetails("NUMSCRIPT_COMPILE_INVALID_UNCAPPED_SOURCE", nil),
+	}
+	message, metadata, overridden := PublicErrorDetails(invalid)
+	require.True(t, overridden)
+	require.Equal(t, "numscript execution error", message)
+	require.Empty(t, metadata)
+
+	facts := FailureFactsOf(invalid)
+	message, metadata, overridden = PublicErrorDetails(&BusinessError{Err: invalid, PublicFailure: &facts})
+	require.True(t, overridden)
+	require.Equal(t, "numscript execution error", message)
+	require.Empty(t, metadata)
+}
+
+// TestPublicErrorDetailsDoesNotWalkTheChain pins the selection rule: an outer
+// storage error cannot publish facts or diagnostic text from its inner cause.
+func TestPublicErrorDetailsDoesNotWalkTheChain(t *testing.T) {
 	t.Parallel()
 
 	inner := &ErrIndexInconsistent{Index: "private-index", Detail: "private storage detail"}
-
-	require.Equal(t, map[string]string{"operation": "loading index"},
-		MetadataOf(&ErrStorageOperation{Operation: "loading index", Cause: inner}))
-
-	// A carrier declares no Metadata of its own, and MetadataOf must not
-	// substitute the carried error's.
-	require.Nil(t, MetadataOf(&BusinessError{Err: inner}))
+	message, facts, overridden := PublicErrorDetails(&ErrStorageOperation{Operation: "loading index", Cause: inner})
+	require.True(t, overridden)
+	require.Equal(t, "storage operation failed", message)
+	require.Empty(t, facts)
 }

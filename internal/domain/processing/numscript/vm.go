@@ -8,6 +8,7 @@ import (
 	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // CompiledScript is admission's locally compiled program and bound vars.
@@ -22,10 +23,9 @@ type CompiledScript struct {
 // path. The script-dependent compile is computed once per cached script
 // (lruEntry.compileParsed) and shared by every order carrying it; binding
 // the vars runs per order. A script the VM
-// cannot run is an admission rejection: ErrNumscriptCompile when the compiler
-// rejects the script or a var value does not bind to its layout (both
-// deterministic, freezable validation failures), a panicError (IsPanic) when
-// the library panics.
+// cannot run is an admission rejection: typed compiler errors produce
+// ErrNumscriptCompile; an unclassified compiler error remains uncommitted.
+// A library panic produces panicError (IsPanic).
 func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript, err domain.SerializableError) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
@@ -41,7 +41,7 @@ func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript
 
 	encodedVars, encErr := compiled.varsEncoder.Encode(vars)
 	if encErr != nil {
-		return nil, &domain.ErrNumscriptCompile{Detail: encErr.Error()}
+		return nil, mapCompilerError(encErr)
 	}
 
 	return &CompiledScript{
@@ -186,37 +186,59 @@ func convertVMError(err error) domain.SerializableError {
 		}
 	}
 
-	if isScriptExecutionError(err) {
-		return &domain.ErrNumscriptExecution{Detail: err.Error()}
-	}
-
 	if d, ok := errors.AsType[domain.SerializableError](err); ok {
 		return d
+	}
+	if mapped := mapVMError(err); mapped != nil {
+		return mapped
 	}
 
 	return &domain.ErrNumscriptRuntime{Detail: err.Error()}
 }
 
-// isScriptExecutionError reports whether err is a VM failure caused by the
-// script, its vars, or the balances and metadata it read.
-func isScriptExecutionError(err error) bool {
-	return isErrorType[numscriptlib.VmNegativeAmountError](err) ||
-		isErrorType[numscriptlib.VmNegativeBalanceError](err) ||
-		isErrorType[numscriptlib.VmAssetMismatchError](err) ||
-		isErrorType[numscriptlib.VmInvalidAllotmentSum](err) ||
-		isErrorType[numscriptlib.VmNegativePortionError](err) ||
-		isErrorType[numscriptlib.VmDivideByZeroError](err) ||
-		isErrorType[numscriptlib.VmInvalidAccountName](err) ||
-		isErrorType[numscriptlib.VmInvalidColor](err) ||
-		isErrorType[numscriptlib.VmInvalidScope](err) ||
-		isErrorType[numscriptlib.VmCannotCastScopedAccountToString](err) ||
-		isErrorType[numscriptlib.VmInvalidUncappedSource](err) ||
-		isErrorType[numscriptlib.VmMetadataNotFoundError](err) ||
-		isErrorType[numscriptlib.VmBadMetaValueError](err)
-}
+func mapVMError(err error) domain.SerializableError {
+	makeError := func(details *commonpb.FailureDetails) domain.SerializableError {
+		return domain.NewNumscriptExecution(err.Error(), details)
+	}
+	if e, ok := errors.AsType[numscriptlib.VmNegativeAmountError](err); ok {
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptNegativeAmount{NumscriptNegativeAmount: &commonpb.NumscriptNegativeAmountDetails{Amount: new(e.Amount.String())}}})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmNegativeBalanceError](err); ok {
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptNegativeBalance{NumscriptNegativeBalance: &commonpb.NumscriptNegativeBalanceDetails{Account: new(e.Account), Amount: new(e.Amount.String())}}})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmAssetMismatchError](err); ok {
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptAssetMismatch{NumscriptAssetMismatch: &commonpb.NumscriptAssetMismatchDetails{Expected: new(e.Expected), Got: new(e.Got)}}})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmInvalidAllotmentSum](err); ok {
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidAllotmentSum{NumscriptInvalidAllotmentSum: &commonpb.NumscriptInvalidAllotmentSumDetails{ActualSum: new(e.ActualSum.String())}}})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmNegativePortionError](err); ok {
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptNegativePortion{NumscriptNegativePortion: &commonpb.NumscriptNegativePortionDetails{Portion: new(e.Portion.String())}}})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmDivideByZeroError](err); ok {
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptDivideByZeroWithNumerator{NumscriptDivideByZeroWithNumerator: &commonpb.NumscriptDivideByZeroWithNumeratorDetails{Numerator: new(e.Numerator.String())}}})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmInvalidAccountName](err); ok {
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidAccountName{NumscriptInvalidAccountName: &commonpb.NumscriptInvalidAccountNameDetails{Name: new(e.Name)}}})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmInvalidColor](err); ok {
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidColor{NumscriptInvalidColor: &commonpb.NumscriptInvalidColorDetails{Color: new(e.Color)}}})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmInvalidScope](err); ok {
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidScope{NumscriptInvalidScope: &commonpb.NumscriptInvalidScopeDetails{Scope: new(e.Scope)}}})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmCannotCastScopedAccountToString](err); ok {
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCannotCastScopedAccount{NumscriptCannotCastScopedAccount: &commonpb.NumscriptCannotCastScopedAccountDetails{Account: new(e.Account), Scope: new(e.Scope)}}})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmInvalidUncappedSource](err); ok {
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidUncappedSource{NumscriptInvalidUncappedSource: &commonpb.NumscriptInvalidUncappedSourceDetails{Account: new(e.Account)}}})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmMetadataNotFoundError](err); ok {
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptMetadataNotFound{NumscriptMetadataNotFound: &commonpb.NumscriptMetadataNotFoundDetails{Account: new(e.Account), Key: new(e.Key)}}})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmBadMetaValueError](err); ok {
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptBadMetaValue{NumscriptBadMetaValue: &commonpb.NumscriptBadMetaValueDetails{Account: new(e.Account), Key: new(e.Key)}}})
+	}
 
-func isErrorType[T error](err error) bool {
-	_, ok := errors.AsType[T](err)
-
-	return ok
+	return nil
 }

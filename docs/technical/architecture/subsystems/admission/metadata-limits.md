@@ -246,7 +246,8 @@ A violation returns the typed `domain.ErrMetadataLimitExceeded`:
 - `ErrorInfo.reason` = `METADATA_LIMIT_EXCEEDED`;
 - `ErrorInfo.metadata` carries `dimension` (`entries`, `key`, `value`, `entity`
   or `command`), `limit` and `actual`, so a client can tell "too many entries"
-  from "one value too large" without parsing the message.
+  from "one value too large" without parsing the message. It also carries
+  `account` or `key` when validation wraps the failure with that context.
 
 `Validation` — not `ResourceExhausted` — because the caller must send less: the
 rejection is permanent, and a retryable code would make client retry policies

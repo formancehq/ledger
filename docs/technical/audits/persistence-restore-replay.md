@@ -14,6 +14,13 @@ operation being tested. This domain adds scope and evidence requirements to the
 native audit workflow; it does not run an audit, add a restore guarantee, or
 authorize code changes, Jira publication, or live-store mutation.
 
+An `UncommittedFailure` after a checkpoint contributes no audit, item, log or
+frozen idempotency row to the delta and does not advance the last applied HLC.
+Do not require an export segment for that attempt. Pair it with a later
+definitive proposal so the delta is non-empty, then compare live and restored
+business state, HLC and the next retry outcome. This distinguishes a valid
+empty technical attempt from a missing export of an audited outcome.
+
 ## Reachability and proof
 
 For every candidate, establish all of the following at the audited SHA:

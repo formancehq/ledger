@@ -3,7 +3,6 @@ package processing
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -56,18 +55,10 @@ func matchOrderSkip(order *raftcmdpb.Order, err domain.SerializableError) (*comm
 		return nil, false
 	}
 
-	// Surface the matched error's structured metadata as the
-	// OrderSkippedLog.context so clients can correlate (existing tx id,
-	// reference, …) without an out-of-band lookup. Sub-processors are free
-	// to expose additional fields by enriching their Metadata().
-	var ctx map[string]string
-	if md := err.Metadata(); len(md) > 0 {
-		ctx = maps.Clone(md)
-	}
+	details := domain.TypedFailureOf(err)
 
 	skipPayload := &commonpb.OrderSkippedLog{
-		Reason:  target,
-		Context: ctx,
+		Details: details,
 	}
 
 	return wrapSkippedPayloadForOrder(order, skipPayload), true

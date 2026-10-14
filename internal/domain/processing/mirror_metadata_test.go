@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -60,6 +61,8 @@ func TestProcessOrdersMirrorMetadataRejectsBeforeMutation(t *testing.T) {
 			require.NotNil(t, processErr)
 			if tc.unconfigured {
 				require.ErrorIs(t, processErr, domain.ErrMetadataLimitsUnconfigured)
+				_, uncommitted := errors.AsType[domain.UncommittedFailure](processErr)
+				require.True(t, uncommitted, "an invalid committed policy must bypass audit and idempotency")
 			}
 			if tc.name == "value shape" {
 				require.ErrorIs(t, processErr, domain.ErrMetadataValueContainsNullByte)

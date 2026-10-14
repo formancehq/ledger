@@ -28,6 +28,14 @@ defaults, process identity, cache residency, Bloom readiness, loader timing, and
 map insertion order may differ. A finding must identify how one such difference
 reaches a branch, ordering decision, read result, mutation, or encoding in `T`.
 
+Include the `UncommittedFailure` branch in this oracle. Preload unavailability,
+coverage or plan faults, and rejected cluster-policy updates return without a
+business verdict. Compare the error classification, absence of audit/items,
+logs, frozen idempotency and business writes, and restoration of the prior HLC
+on every replica. A later corrected proposal must reach the same next business
+outcome. An empty audit delta is expected for the interrupted attempt; it is
+not evidence that the Raft proposal was never applied.
+
 Compare semantic durable batches when storage iteration or physical encoding is
 documented as irrelevant. Otherwise compare exact bytes, especially for audit
 preimages and ordered protobuf output. A log statement or metric may differ

@@ -60,8 +60,8 @@ func TestOpenAPI_WriteResourceExhaustion(t *testing.T) {
 		name, reason, message string
 		failure               error
 	}{
-		{"disk gate", "WRITES_BLOCKED_DISK_FULL", "writes blocked: disk usage exceeds threshold", domain.ErrWritesBlockedDiskFull},
-		{"sequence allocator", "SEQUENCE_EXHAUSTED", "logSequence exhausted: cannot allocate another identifier", &domain.ErrSequenceExhausted{Counter: domain.SequenceCounterLog}},
+		{"disk gate", "WRITES_BLOCKED_DISK_FULL", "writes blocked disk full", domain.ErrWritesBlockedDiskFull},
+		{"sequence allocator", "SEQUENCE_EXHAUSTED", "sequence exhausted: counter=\"logSequence\"", &domain.ErrSequenceExhausted{Counter: domain.SequenceCounterLog}},
 	}
 	for _, operation := range operations {
 		t.Run(operation.method+" "+operation.path, func(t *testing.T) {

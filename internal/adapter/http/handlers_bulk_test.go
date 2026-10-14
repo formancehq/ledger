@@ -85,7 +85,7 @@ func TestHandleBulk_SizeLimitExceeded(t *testing.T) {
 //     captures the request and asserts the list arrives untruncated.
 //   - Response side: when the FSM matched a whitelisted business failure
 //     and returned an OrderSkipped log, the bulk result's `data` carries
-//     a structured OrderSkippedResponse (skipped/reason/context) — not
+//     a structured OrderSkippedResponse (skipped/reason/code/facts) — not
 //     the legacy null that dropped the correlator.
 func TestHandleBulk_OrderSkippedSurfacesInResponse(t *testing.T) {
 	t.Parallel()
@@ -107,11 +107,11 @@ func TestHandleBulk_OrderSkippedSurfacesInResponse(t *testing.T) {
 									Data: &commonpb.LedgerLogPayload{
 										Payload: &commonpb.LedgerLogPayload_OrderSkipped{
 											OrderSkipped: &commonpb.OrderSkippedLog{
-												Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-												Context: map[string]string{
+
+												Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
 													"reference":             "dup",
 													"existingTransactionId": "42",
-												},
+												}),
 											},
 										},
 									},
@@ -156,13 +156,14 @@ func TestHandleBulk_OrderSkippedSurfacesInResponse(t *testing.T) {
 	require.True(t, ok, "Data must be the structured OrderSkippedResponse shape (got %T)", resp.Data[0].Data)
 	require.Equal(t, true, skip["skipped"])
 	require.Equal(t, "TRANSACTION_REFERENCE_CONFLICT", skip["reason"])
+	require.Equal(t, "TRANSACTION_REFERENCE_CONFLICT", skip["code"])
 
 	// Reason-specific correlator must round-trip through the bulk writer
 	// so clients can act on the existing tx id without a follow-up GET.
-	ctx, ok := skip["context"].(map[string]any)
-	require.True(t, ok, "context must round-trip as a nested object (got %T)", skip["context"])
-	require.Equal(t, "dup", ctx["reference"])
-	require.Equal(t, "42", ctx["existingTransactionId"])
+	facts, ok := skip["facts"].(map[string]any)
+	require.True(t, ok, "facts must round-trip as a nested object (got %T)", skip["facts"])
+	require.Equal(t, "dup", facts["reference"])
+	require.Equal(t, "42", facts["existingTransactionId"])
 }
 
 func TestHandleBulk_EmptyArray(t *testing.T) {

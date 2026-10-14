@@ -216,10 +216,11 @@ func TestBusinessErrorToGRPCStatus_InsufficientFunds(t *testing.T) {
 	t.Parallel()
 
 	bizErr := &domain.BusinessError{Err: &domain.ErrInsufficientFunds{
-		Account: "user:001",
-		Asset:   "USD",
-		Amount:  "1000",
-		Balance: "500",
+		Account:    "user:001",
+		Asset:      "USD",
+		Amount:     "1000",
+		Balance:    "500",
+		ColorKnown: true,
 	}}
 	st := businessErrorToGRPCStatus(bizErr)
 
@@ -262,7 +263,7 @@ func TestBusinessErrorToGRPCStatus_NumscriptParseError(t *testing.T) {
 
 	info := extractErrorInfo(t, st)
 	require.Equal(t, domain.ErrReasonNumscriptParseError, info.GetReason())
-	require.Equal(t, "unexpected token at line 3", info.GetMetadata()["details"])
+	require.Empty(t, info.GetMetadata())
 }
 
 // A metadata-limit violation must reach the client as InvalidArgument, never as
@@ -336,12 +337,12 @@ func TestBusinessErrorToGRPCStatus_FilterCompilationError(t *testing.T) {
 			st := businessErrorToGRPCStatus(bizErr)
 
 			require.Equal(t, codes.InvalidArgument, st.Code())
-			require.Contains(t, st.Message(), tt.detail)
+			require.Equal(t, "filter compilation error", st.Message())
 
 			info := extractErrorInfo(t, st)
 			require.Equal(t, domain.ErrReasonFilterCompilation, info.GetReason())
 			require.Equal(t, errorDomain, info.GetDomain())
-			require.Equal(t, tt.detail, info.GetMetadata()["detail"])
+			require.NotContains(t, info.GetMetadata(), "detail")
 		})
 	}
 }
@@ -388,8 +389,8 @@ func TestBusinessErrorToGRPCStatus_NumscriptDependencyDiscoveryFailed(t *testing
 
 	info := extractErrorInfo(t, st)
 	require.Equal(t, domain.ErrReasonValidation, info.GetReason())
-	require.Contains(t, info.GetMetadata()["details"], "numscript dependency discovery failed")
-	require.Contains(t, info.GetMetadata()["details"], "non-deterministic script")
+	require.NotContains(t, info.GetMetadata(), "details")
+	require.Equal(t, "dependency discovery failed", st.Message())
 }
 
 func TestBusinessErrorToGRPCStatus_NumscriptDependencyDiscoveryFailedWithParseCause(t *testing.T) {
@@ -404,8 +405,8 @@ func TestBusinessErrorToGRPCStatus_NumscriptDependencyDiscoveryFailedWithParseCa
 
 	info := extractErrorInfo(t, st)
 	require.Equal(t, domain.ErrReasonNumscriptParseError, info.GetReason())
-	require.Contains(t, info.GetMetadata()["details"], "numscript dependency discovery failed")
-	require.Contains(t, info.GetMetadata()["details"], "numscript parse error")
+	require.NotContains(t, info.GetMetadata(), "details")
+	require.Equal(t, "numscript parse error", st.Message())
 }
 
 func TestBusinessErrorToGRPCStatus_SinkAlreadyExists(t *testing.T) {
@@ -506,7 +507,7 @@ func TestBusinessErrorToGRPCStatus_InvalidCronExpression(t *testing.T) {
 	info := extractErrorInfo(t, st)
 	require.Equal(t, domain.ErrReasonInvalidCronExpression, info.GetReason())
 	require.Equal(t, "* * * *", info.GetMetadata()["expression"])
-	require.Equal(t, "expected 5 fields", info.GetMetadata()["details"])
+	require.NotContains(t, info.GetMetadata(), "details")
 }
 
 func TestBusinessErrorToGRPCStatus_AccountNotMatchingType(t *testing.T) {
@@ -608,7 +609,7 @@ func TestErrorConversionInterceptorsRecordCorrelatedDiagnostics(t *testing.T) {
 				require.True(t, ok)
 				require.Equal(t, tt.wantCode, st.Code())
 				if tt.wantCode == codes.Internal {
-					require.Equal(t, tt.err.Error(), st.Message(), "KindInternal response contracts stay unchanged")
+					require.Equal(t, "invalid execution plan", st.Message())
 				}
 
 				require.Contains(t, logs.String(), tt.err.Error())
@@ -696,7 +697,13 @@ func TestConvertToGRPCError_BareValidationSentinels(t *testing.T) {
 			st, ok := status.FromError(grpcErr)
 			require.True(t, ok)
 			require.Equal(t, codes.InvalidArgument, st.Code())
-			require.Equal(t, tt.err.Error(), st.Message())
+			message, _, _ := domain.PublicErrorDetails(func() domain.Describable {
+				var target domain.Describable
+				_ = errors.As(tt.err, &target)
+
+				return target
+			}())
+			require.Equal(t, message, st.Message())
 
 			info := extractErrorInfo(t, st)
 			require.Equal(t, domain.ErrReasonValidation, info.GetReason())
@@ -716,7 +723,7 @@ func TestConvertToGRPCError_TransportGuardHasNoReason(t *testing.T) {
 	st, ok := status.FromError(convertToGRPCError(errEnvelopesRequired, testLogger()))
 	require.True(t, ok)
 	require.Equal(t, codes.InvalidArgument, st.Code())
-	require.Equal(t, "at least one envelope is required", st.Message())
+	require.Equal(t, "invalid request", st.Message())
 	require.Empty(t, st.Details(), "a Classifiable ships no ErrorInfo")
 
 	_, describable := any(errEnvelopesRequired).(domain.Describable)

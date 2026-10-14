@@ -191,8 +191,8 @@ func validateMetadataShape(metadata map[string]*commonpb.MetadataValue) Serializ
 		if err := ValidateMetadataKey(key); err != nil {
 			return err
 		}
-		if err := ValidateMetadataValue(metadata[key]); err != nil {
-			return &ErrMetadataKeyValidation{Key: key, Cause: err}
+		if err := ValidateMetadataValue(key, metadata[key]); err != nil {
+			return err
 		}
 	}
 

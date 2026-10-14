@@ -1551,7 +1551,7 @@ func (m *Proposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error)
 		dAtA[i] = 0x29
 	}
 	if m.ExecutionPlan != nil {
-		size, _ := m.ExecutionPlan.MarshalToSizedBufferDeterministicVT(dAtA[:i])
+		size, _ := m.ExecutionPlan.MarshalToSizedBufferVT(dAtA[:i])
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
@@ -1788,52 +1788,11 @@ func (m *ExecutionPlan) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
-	sz := m.SizeVT()
-	buf := make([]byte, sz)
-	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
-	return append(dAtA, buf[sz-n:]...)
-}
-
-func (m *ExecutionPlan) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
 	}
-	i := len(dAtA)
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if len(m.IdempotencyKeys) > 0 {
-		for iNdEx := len(m.IdempotencyKeys) - 1; iNdEx >= 0; iNdEx-- {
-			size, _ := m.IdempotencyKeys[iNdEx].MarshalToSizedBufferDeterministicVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x22
-		}
-	}
-	if len(m.Attributes) > 0 {
-		for iNdEx := len(m.Attributes) - 1; iNdEx >= 0; iNdEx-- {
-			size, _ := m.Attributes[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1a
-		}
-	}
-	if m.CacheEpoch != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CacheEpoch))
-		i--
-		dAtA[i] = 0x11
-	}
-	if m.LastPersistedIndex != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastPersistedIndex))
-		i--
-		dAtA[i] = 0x9
-	}
-	return len(dAtA) - i, nil
+	return append(dAtA, b...)
 }
 
 func (m *AttributeCoverage) MarshalDeterministicVT(dAtA []byte) []byte {
@@ -1862,36 +1821,11 @@ func (m *ReloadIdempotencyKey) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
-	sz := m.SizeVT()
-	buf := make([]byte, sz)
-	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
-	return append(dAtA, buf[sz-n:]...)
-}
-
-func (m *ReloadIdempotencyKey) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
 	}
-	i := len(dAtA)
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Value != nil {
-		size, _ := m.Value.MarshalToSizedBufferDeterministicVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Key) > 0 {
-		i -= len(m.Key)
-		copy(dAtA[i:], m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
+	return append(dAtA, b...)
 }
 
 func (m *CacheGenerationMeta) MarshalDeterministicVT(dAtA []byte) []byte {

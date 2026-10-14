@@ -16,12 +16,9 @@ import (
 // This is a query-only outcome — it is produced by the read-side aggregator
 // (aggregate.go), never emitted by the FSM apply path — so it lives in the
 // query layer, not in internal/domain (which is reserved for FSM-generated
-// business outcomes). It implements the full domain.SerializableError contract
-// anyway: the reason is a shipped wire identifier clients match on, and the
-// stage/side metadata is client-facing context the gRPC ErrorInfo carries. It
-// reuses the domain-level wire constant domain.ErrReasonAggregateOverflow (the
-// client-facing reason string and its KindForReason classification are the
-// shared wire contract and stay in domain).
+// business outcomes). The reason is a shipped wire identifier clients match
+// on, and stage/side are client-facing context in gRPC ErrorInfo. They have no
+// audited FailureDetails representation.
 type ErrAggregateOverflow struct {
 	Stage string // "accumulate", "collapse-colors", "max-precision-merge" or "max-precision-rescale"
 	Side  string // "input" or "output"
@@ -32,14 +29,15 @@ func (e *ErrAggregateOverflow) Error() string {
 }
 func (*ErrAggregateOverflow) Kind() domain.ErrorKind { return domain.KindPrecondition }
 func (*ErrAggregateOverflow) Reason() string         { return domain.ErrReasonAggregateOverflow }
-func (e *ErrAggregateOverflow) Metadata() map[string]string {
-	return map[string]string{"stage": e.Stage, "side": e.Side}
+func (e *ErrAggregateOverflow) PublicFailureFacts() domain.FailureFacts {
+	return domain.NewFailureFacts(domain.ErrReasonAggregateOverflow, domain.ErrReasonAggregateOverflow,
+		map[string]string{"stage": e.Stage, "side": e.Side})
 }
 
 // Compile-time assertion that ErrAggregateOverflow keeps the full contract, so
 // it goes on flowing through the shared error edge (gRPC/HTTP mapping) with its
 // reason and structured context intact.
-var _ domain.SerializableError = (*ErrAggregateOverflow)(nil)
+var _ domain.Describable = (*ErrAggregateOverflow)(nil)
 
 // The two errors below reject a malformed ExecutePreparedQuery request. They
 // implement domain.Classifiable and nothing more, which is the whole point:

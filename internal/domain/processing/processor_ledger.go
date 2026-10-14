@@ -52,6 +52,15 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	}
 	for _, name := range slices.Sorted(maps.Keys(order.GetAccountTypes())) {
 		at := order.GetAccountTypes()[name]
+		if len(name) > domain.MaxAccountTypeNameLength {
+			return nil, domain.ErrAccountTypeNameTooLong
+		}
+		if name == "" {
+			return nil, &domain.ErrInvalidPattern{Pattern: "", Details: "account type name is required"}
+		}
+		if len(at.GetPattern()) > domain.MaxAccountTypePatternLength {
+			return nil, domain.ErrAccountTypePatternTooLong
+		}
 		if err := accounttype.ValidatePattern(at.GetPattern()); err != nil {
 			return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 		}

@@ -162,12 +162,12 @@ func (x *AuditSuccess) MarshalJSON() ([]byte, error) {
 // opaque integer.
 func (x *AuditFailure) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Reason  string            `json:"reason,omitempty"`
-		Message string            `json:"message,omitempty"`
-		Context map[string]string `json:"context,omitempty"`
+		Reason string            `json:"reason,omitempty"`
+		Code   string            `json:"code,omitempty"`
+		Facts  map[string]string `json:"facts,omitempty"`
 	}{
-		Reason:  x.GetReason().String(),
-		Message: x.GetMessage(),
-		Context: x.GetContext(),
+		Reason: x.GetReason().String(),
+		Code:   x.GetCode(),
+		Facts:  x.GetFacts(),
 	})
 }

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // stubDescribable is a minimal Describable used to build error chains without
@@ -18,8 +20,10 @@ type stubDescribable struct {
 func (s *stubDescribable) Error() string   { return s.msg }
 func (s *stubDescribable) Kind() ErrorKind { return KindForReason(ReasonCode(s.reason)) }
 func (s *stubDescribable) Reason() string  { return s.reason }
-func (s *stubDescribable) Metadata() map[string]string {
-	return map[string]string{"stub": s.reason}
+func (s *stubDescribable) FailureDetails() *commonpb.FailureDetails {
+	details, _ := commonpb.NewFailureDetails(s.reason, nil)
+
+	return details
 }
 
 func TestCoverageContractViolation(t *testing.T) {
@@ -132,7 +136,7 @@ func TestStoreFailure(t *testing.T) {
 
 		require.Same(t, miss, got)
 		require.Equal(t, ErrReasonCoverageMiss, got.Reason())
-		require.Equal(t, map[string]string{"stub": ErrReasonCoverageMiss}, got.Metadata())
+		require.Empty(t, FailureFactsOf(got).Facts)
 	})
 
 	t.Run("propagates a wrapped coverage miss verbatim", func(t *testing.T) {
@@ -163,7 +167,8 @@ func TestStoreFailure(t *testing.T) {
 		got := StoreFailure("loading ledger", cause)
 
 		require.Equal(t, ErrReasonStorageOperation, got.Reason())
-		require.Equal(t, map[string]string{"operation": "loading ledger"}, got.Metadata())
+		require.Empty(t, FailureFactsOf(got).Facts)
+		require.Contains(t, got.Error(), "loading ledger")
 		require.ErrorIs(t, got, cause)
 	})
 }

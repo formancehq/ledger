@@ -1177,7 +1177,7 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 //
 // Admission ships bits that don't match the AttributeCoverage slice →
 // *ErrCoverageMiss or *domain.ErrInvalidExecutionPlan. Both are
-// SerializableErrors with KindInternal, so they can be audited. Surfacing
+// SerializableErrors with KindInternal. Surfacing
 // them via ApplyResult.Error rejects the proposal as a business error instead
 // of wedging the FSM apply loop; the proposal is malformed, but the FSM state
 // is not (no cache mutation lands before Merge).
@@ -1343,7 +1343,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return result, nil
 	}
 
-	// Compute the effective date using the HLC to guarantee monotonicity
+	// Compute the effective date using the HLC to guarantee monotonicity.
+	// Keep the previous value: a proposal that returns without an audit entry
+	// must not advance the durable clock, because incremental restore rebuilds
+	// post-checkpoint HLC progress from audited timestamps alone.
+	previousTimestamp := fsm.State.LastAppliedTimestamp
 	effectiveDate := &commonpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.GetDate().GetData())}
 
 	// Freeze the retention window for any idempotency outcome this apply stores,
@@ -1408,10 +1412,15 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			case stored.GetFailure() != nil:
 				replayed = true
 				fr := stored.GetFailure()
+				failure, validationErr := domain.FailureFactsFromDetails(fr.GetDetails())
+				if validationErr != nil {
+					return nil, fmt.Errorf("invalid stored idempotency failure: %w", validationErr)
+				}
+				message, _ := domain.RenderFailureFacts(failure)
 				err = &domain.ReplayedFailure{
 					ErrReason: domain.ReasonString(fr.GetReason()),
-					Msg:       fr.GetMessage(),
-					Meta:      fr.GetMetadata(),
+					Msg:       message,
+					Details:   fr.GetDetails(),
 				}
 			default:
 				replayed = true
@@ -1433,6 +1442,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// duplicate the order bytes on every retry. A conflict (same key, different
 	// orders) is a fresh rejection, not a replay, so it still audits below.
 	if replayed {
+		fsm.State.LastAppliedTimestamp = previousTimestamp
 		result.Replayed = true
 		if err != nil {
 			result.Error = &domain.BusinessError{Err: err}
@@ -1441,6 +1451,22 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 
 		return result, nil
+	}
+
+	// Admission forwards a keyed proposal with an unavailable preload only so
+	// the dedup gate above can replay an earlier committed outcome. Without one,
+	// preparation never completed: no order was executed and there is no
+	// business verdict to commit to the audit chain or idempotency registry.
+	// Check the entire batch before processing any order.
+	if err == nil {
+		for _, order := range orders {
+			if order.GetTechnical().GetPreloadUnavailable() {
+				fsm.State.LastAppliedTimestamp = previousTimestamp
+				result.Error = &domain.BusinessError{Err: domain.ErrPreloadUnavailable}
+
+				return result, nil
+			}
+		}
 	}
 
 	// Process the proposal unless the dedup gate rejected it as a conflict
@@ -1456,6 +1482,16 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		if ordersResult != nil {
 			logs = ordersResult.Logs
 		}
+	}
+	// A rejected internal proposal has no committed business verdict. Discard
+	// the staged WriteSet and let the caller retry after its producer is fixed.
+	// The error type owns this disposition; successes still take the normal
+	// audited path, including successful cluster-policy updates.
+	if _, uncommitted := errors.AsType[domain.UncommittedFailure](err); uncommitted {
+		fsm.State.LastAppliedTimestamp = previousTimestamp
+		result.Error = &domain.BusinessError{Err: err}
+
+		return result, nil
 	}
 
 	// Pre-marshal each order once. The same byte slices are (a) bound in
@@ -1622,6 +1658,12 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	transientErr := buffer.ValidateTransientVolumes(validateScope)
 
 	if err := transientErr; err != nil {
+		if _, uncommitted := errors.AsType[domain.UncommittedFailure](err); uncommitted {
+			fsm.State.LastAppliedTimestamp = previousTimestamp
+			result.Error = &domain.BusinessError{Err: err}
+
+			return result, nil
+		}
 		transientFailureEntry := auditpb.AuditEntryFromVTPool()
 		transientFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}
 		appendErr := writeAuditEntry(transientFailureEntry, nil, "transient validation failure")
@@ -1810,16 +1852,14 @@ func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string
 		return nil
 	}
 
-	reason, message := describeFailure(d)
+	details := domain.TypedFailureOf(d)
 
 	value := &commonpb.IdempotencyKeyValue{
 		Hash:      proposalHash,
 		CreatedAt: createdAt,
 		ExpiresAt: expiresAt,
 		Failure: &commonpb.IdempotencyFailure{
-			Reason:   reason,
-			Message:  message,
-			Metadata: d.Metadata(),
+			Details: details,
 		},
 	}
 

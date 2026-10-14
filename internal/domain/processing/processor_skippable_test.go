@@ -28,8 +28,8 @@ func TestMatchOrderSkip_RequiresNonEmptyWhitelist(t *testing.T) {
 
 // TestMatchOrderSkip_AllowsListedReason validates the success path: a reason
 // the order explicitly authorised converts the failure into an
-// OrderSkippedLog carrying the error's Metadata() on its `context` field
-// (clients correlate via the existing tx id without an extra lookup).
+// OrderSkippedLog carrying the validated reason, code, and typed details
+// from FailureFactsOf(err). Clients can correlate through its rendered facts.
 func TestMatchOrderSkip_AllowsListedReason(t *testing.T) {
 	t.Parallel()
 
@@ -59,7 +59,7 @@ func TestMatchOrderSkip_AllowsListedReason(t *testing.T) {
 	require.NotNil(t, skipped)
 	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
 
-	ctx := skipped.GetContext()
+	ctx := skipped.GetFacts()
 	require.Equal(t, "L", ctx["ledger"])
 	require.Equal(t, "ref-1", ctx["reference"])
 	require.Equal(t, "42", ctx["existingTransactionId"])
@@ -147,8 +147,8 @@ func (unknownReasonErr) Error() string { return "unknown" }
 func (unknownReasonErr) Kind() domain.ErrorKind {
 	return domain.KindForReason(domain.ReasonCode("THIS_IS_NOT_A_KNOWN_REASON"))
 }
-func (unknownReasonErr) Reason() string              { return "THIS_IS_NOT_A_KNOWN_REASON" }
-func (unknownReasonErr) Metadata() map[string]string { return nil }
+func (unknownReasonErr) Reason() string                           { return "THIS_IS_NOT_A_KNOWN_REASON" }
+func (unknownReasonErr) FailureDetails() *commonpb.FailureDetails { return nil }
 
 var _ domain.SerializableError = unknownReasonErr{}
 
@@ -179,7 +179,9 @@ func TestAssignSkipLogIDAndDate_AllocatesLogIDAndDateOnParent(t *testing.T) {
 		},
 	}
 	payload := wrapSkippedPayloadForOrder(order, &commonpb.OrderSkippedLog{
-		Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
+			"ledger": "L", "reference": "ref", "existingTransactionId": "1",
+		}),
 	})
 
 	require.Nil(t, assignSkipLogIDAndDate(parent, order, payload))

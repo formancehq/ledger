@@ -50,10 +50,12 @@ func TestApplyProposalRejectsLogSequenceExhaustionWithoutPublishingBusinessWrite
 	nextLedgerBefore := machine.State.NextLedgerID
 
 	for i := uint64(1); i <= 2; i++ {
+		proposal := makeProposal(i, createLedgerOrder("never-created"))
+		proposal.Idempotency = &commonpb.Idempotency{Key: "exhausted-allocator"}
 		result, err := machine.ApplyEntries(
 			context.Background(),
 			dataStore,
-			makeEntry(t, i, makeProposal(i, createLedgerOrder("never-created"))),
+			makeEntry(t, i, proposal),
 		)
 		require.NoError(t, err)
 		require.Len(t, result.Results, 1)
@@ -62,6 +64,9 @@ func TestApplyProposalRejectsLogSequenceExhaustionWithoutPublishingBusinessWrite
 		require.Equal(t, domain.SequenceCounterLog, exhausted.Counter)
 		require.Equal(t, uint64(math.MaxUint64), machine.State.NextSequenceID)
 		require.Equal(t, nextLedgerBefore, machine.State.NextLedgerID)
+		require.False(t, result.Results[0].AuditEntryWritten)
+		_, frozen := machine.Registry.Idempotency.Get("exhausted-allocator")
+		require.False(t, frozen, "a technical failure must leave the key retryable")
 	}
 
 	handle, err := dataStore.NewDirectReadHandle()
@@ -71,11 +76,7 @@ func TestApplyProposalRejectsLogSequenceExhaustionWithoutPublishingBusinessWrite
 	require.NoError(t, err)
 	require.Nil(t, lastLog, "an exhausted allocator must not publish a zero or reused log key")
 	entries := listAuditEntries(t, dataStore, 0)
-	require.Len(t, entries, 2)
-	for _, entry := range entries {
-		require.Equal(t, commonpb.ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED, entry.GetFailure().GetReason())
-		require.Equal(t, "logSequence", entry.GetFailure().GetContext()["counter"])
-	}
+	require.Empty(t, entries, "allocator exhaustion is a technical failure, not an audited business rejection")
 }
 
 // listAuditEntries collects all audit entries from the store into a slice.
@@ -204,9 +205,9 @@ func TestAuditLogOnFailure(t *testing.T) {
 	require.NotNil(t, failEntry.GetFailure(), "should be failure")
 	// The error is INSUFFICIENT_FUNDS because nil Input is treated as zero balance
 	require.Equal(t, domain.ErrReasonInsufficientFunds, domain.ReasonString(failEntry.GetFailure().GetReason()))
-	require.NotEmpty(t, failEntry.GetFailure().GetMessage())
-	require.Contains(t, failEntry.GetFailure().GetContext(), "account")
-	require.Contains(t, failEntry.GetFailure().GetContext(), "asset")
+	require.NotEmpty(t, failEntry.GetFailure().GetCode())
+	require.Contains(t, failEntry.GetFailure().GetFacts(), "account")
+	require.Contains(t, failEntry.GetFailure().GetFacts(), "asset")
 }
 
 func TestAuditLogSequenceMonotonic(t *testing.T) {

@@ -3,7 +3,6 @@ package state
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,10 +13,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// TestErrCoverageMiss_Describable pins the Describable contract: the
-// runtime wires *ErrCoverageMiss into a domain.BusinessError, so its
-// Kind / Reason / Metadata must surface stable values consumed by
-// adapters at the API edge.
+// TestErrCoverageMiss_Describable pins its stable Kind, Reason, and
+// operator diagnostics. PublicDetails redacts the identifiers at the API.
 func TestErrCoverageMiss_Describable(t *testing.T) {
 	t.Parallel()
 
@@ -31,11 +28,10 @@ func TestErrCoverageMiss_Describable(t *testing.T) {
 	require.Equal(t, domain.KindInternal, miss.Kind())
 	require.Equal(t, domain.ErrReasonCoverageMiss, miss.Reason())
 
-	md := miss.Metadata()
-	require.Equal(t, "ledgers", md["attribute"])
-	require.Equal(t, "deadbeef", md["canonicalHex"])
-	require.Equal(t, "0102", md["idHex"])
-	require.Equal(t, strconv.FormatUint(42, 10), md["raftIndex"])
+	require.Equal(t, "ledgers", miss.Attribute)
+	require.Equal(t, "deadbeef", miss.CanonicalHex)
+	require.Equal(t, "0102", miss.IDHex)
+	require.Equal(t, uint64(42), miss.RaftIndex)
 
 	require.Contains(t, miss.Error(), "ledgers")
 	require.Contains(t, miss.Error(), "0102")
@@ -48,10 +44,8 @@ func TestErrCoverageMiss_Describable(t *testing.T) {
 // — import cycle), so this is the test that proves the string contract and the
 // concrete type actually agree.
 //
-// It matters because buildAuditFailure reads Reason()/Metadata() off the
-// OUTERMOST Describable and never unwraps: if StoreFailure wrapped the miss,
-// the hash-chained audit entry would permanently record
-// STORAGE_OPERATION_FAILED with the identifying key stripped.
+// It matters because the FSM recognises UncommittedFailure on the outermost
+// error. If StoreFailure wrapped the miss, it would audit a storage fault.
 func TestErrCoverageMissSurvivesStoreFailure(t *testing.T) {
 	t.Parallel()
 
@@ -84,11 +78,10 @@ func TestErrCoverageMissSurvivesStoreFailure(t *testing.T) {
 			require.Same(t, miss, got)
 			require.Equal(t, domain.ErrReasonCoverageMiss, got.Reason())
 
-			md := got.Metadata()
-			require.Equal(t, "volumes", md["attribute"])
-			require.Equal(t, "deadbeef", md["canonicalHex"])
-			require.Equal(t, "0102", md["idHex"])
-			require.Equal(t, "42", md["raftIndex"])
+			require.Equal(t, "volumes", miss.Attribute)
+			require.Equal(t, "deadbeef", miss.CanonicalHex)
+			require.Equal(t, "0102", miss.IDHex)
+			require.Equal(t, uint64(42), miss.RaftIndex)
 		})
 	}
 }

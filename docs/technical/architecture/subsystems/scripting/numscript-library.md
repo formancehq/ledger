@@ -128,7 +128,7 @@ ledgerctl numscripts versions payment-with-fees --ledger my-ledger
 | Invalid version | `NUMSCRIPT_INVALID_VERSION` | 400 | INVALID_ARGUMENT | Save version is not a full semver |
 | Version exists | `NUMSCRIPT_VERSION_ALREADY_EXISTS` | 409 | ALREADY_EXISTS | The `(name, version)` is already stored (immutable) |
 | Not found | `NUMSCRIPT_NOT_FOUND` | 404 | NOT_FOUND | Get a non-existent numscript or version |
-| Not runnable on the VM | `NUMSCRIPT_COMPILE_ERROR` | 400 | INVALID_ARGUMENT | A transaction's script parses and resolves but does not compile (static-semantics error caught by the compiler's typechecker, feature used without its flag, unsupported construct, VM capacity exceeded, var value that does not bind) — `ErrNumscriptCompile` |
+| Not runnable on the VM | `NUMSCRIPT_COMPILE_ERROR` | 400 | INVALID_ARGUMENT | A typed compiler rejection has structured facts and can be audited. An unclassified compiler diagnostic keeps this public reason but exits without an audited verdict or frozen idempotency key. |
 | Failed during resolution or execution | `NUMSCRIPT_EXECUTION_ERROR` | 400 | FAILED_PRECONDITION | A transaction's script fails on its own terms, during dependency resolution or on the VM: invalid account name, missing or mistyped var, mismatched currencies, bad portion, division by zero, missing or malformed metadata, negative balance read, negative amount, allotment not summing to 1, send-all from an unbounded source, posting amount wider than 256 bits. Values can come from `balance()` or `meta()`, so the outcome can depend on state — `ErrNumscriptExecution` |
 
 ## Script References in Transactions
@@ -207,8 +207,9 @@ Admission parses and compiles the resolved script with its own
 to validate the request and predict effects for later orders in the same
 atomic batch. The script-dependent compile runs once per parsed cache entry;
 variable binding is per order. A script the VM cannot compile is rejected at
-admission with `ErrNumscriptCompile` (`NUMSCRIPT_COMPILE_ERROR`,
-`KindValidation`). Dependency-resolution errors retain their own reasons,
+admission with `NUMSCRIPT_COMPILE_ERROR` (`KindValidation`). A typed compiler
+rejection supplies an auditable `ErrNumscriptCompile`; an unclassified compiler
+diagnostic is returned without a committed business verdict. Dependency-resolution errors retain their own reasons,
 and a compiler panic surfaces as `ErrNumscriptRuntime`.
 
 At apply, each replica compiles the resolved text and variables with its

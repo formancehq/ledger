@@ -11,8 +11,8 @@ import (
 // lookupPreparedQuery centralises the (nil, ErrNotFound) vs (nil, otherErr)
 // discrimination on the Accessor contract: a tombstone / absent-key returns
 // (nil, nil) so callers see "doesn't exist"; an admission-contract violation
-// (notably *state.ErrCoverageMiss) propagates verbatim so the audit chain
-// records COVERAGE_MISS rather than a storage fault (EN-1379); any other
+// (notably *state.ErrCoverageMiss) propagates verbatim so the FSM rejects it
+// without auditing a storage fault (EN-1379); any other
 // error wraps into ErrStorageOperation. Mirrors the loadLedger pattern.
 func lookupPreparedQuery(s Scope, ledger, name string) (commonpb.PreparedQueryReader, domain.SerializableError) {
 	pq, err := s.PreparedQueries().Get(domain.PreparedQueryKey{LedgerName: ledger, Name: name})

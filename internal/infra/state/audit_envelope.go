@@ -183,9 +183,16 @@ func buildAuditFailurePayload(f *auditpb.AuditFailure) []byte {
 	buf := make([]byte, 0, 64)
 
 	buf = appendU32(buf, uint32(f.GetReason()))
-	buf = appendLenString(buf, f.GetMessage())
+	var armNumber uint32
+	if details := f.GetDetails(); details != nil {
+		message := details.ProtoReflect()
+		if arm := message.WhichOneof(message.Descriptor().Oneofs().ByName("kind")); arm != nil {
+			armNumber = uint32(arm.Number())
+		}
+	}
+	buf = appendU32(buf, armNumber)
 
-	ctx := f.GetContext()
+	ctx := f.GetFacts()
 	keys := make([]string, 0, len(ctx))
 
 	for k := range ctx {
@@ -198,6 +205,18 @@ func buildAuditFailurePayload(f *auditpb.AuditFailure) []byte {
 	for _, k := range keys {
 		buf = appendLenString(buf, k)
 		buf = appendLenString(buf, ctx[k])
+	}
+	if details := f.GetDetails(); details != nil {
+		message := details.ProtoReflect()
+		buf = appendLenBytes(buf, message.GetUnknown())
+		if arm := message.WhichOneof(message.Descriptor().Oneofs().ByName("kind")); arm != nil {
+			buf = appendLenBytes(buf, message.Get(arm).Message().GetUnknown())
+		} else {
+			buf = appendLenBytes(buf, nil)
+		}
+	} else {
+		buf = appendLenBytes(buf, nil)
+		buf = appendLenBytes(buf, nil)
 	}
 
 	return buf

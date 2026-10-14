@@ -270,7 +270,7 @@ func TestMetadataLimitsValidateMapBoundaries(t *testing.T) {
 			require.Equal(t, ErrReasonMetadataLimitExceeded, err.Reason())
 			require.Equal(t, KindValidation, err.Kind())
 
-			meta := err.Metadata()
+			meta := FailureFactsOf(err).Facts
 			require.Equal(t, tc.wantDimension, meta["dimension"])
 			require.Equal(t, uint64ToString(tc.wantLimit), meta["limit"])
 			require.Equal(t, uint64ToString(tc.wantActual), meta["actual"])
@@ -297,8 +297,8 @@ func TestMetadataLimitsValidateMapNamesOffendingKey(t *testing.T) {
 	})
 
 	require.NotNil(t, err)
-	require.Equal(t, "bad", err.Metadata()["key"])
-	require.Equal(t, MetadataLimitDimensionValue, err.Metadata()["dimension"])
+	require.Equal(t, "bad", FailureFactsOf(err).Facts["key"])
+	require.Equal(t, MetadataLimitDimensionValue, FailureFactsOf(err).Facts["dimension"])
 }
 
 // The FSM validates merged metadata during apply, so the same input must produce
@@ -329,11 +329,11 @@ func TestMetadataLimitsValidateMapIsDeterministic(t *testing.T) {
 		again := limits.ValidateMap(metadata)
 		require.NotNil(t, again)
 		require.Equal(t, first.Error(), again.Error())
-		require.Equal(t, first.Metadata(), again.Metadata())
+		require.Equal(t, FailureFactsOf(first).Facts, FailureFactsOf(again).Facts)
 	}
 
 	// The lexicographically smallest offending key, not an arbitrary one.
-	require.Equal(t, "aa-too-long-value", first.Metadata()["key"])
+	require.Equal(t, "aa-too-long-value", FailureFactsOf(first).Facts["key"])
 }
 
 // An entry breaking both the key and the value ceiling reports the key: the
@@ -346,7 +346,8 @@ func TestMetadataLimitsValidateEntryPrefersKeyOverValue(t *testing.T) {
 	})
 
 	require.NotNil(t, err)
-	require.Equal(t, MetadataLimitDimensionKey, err.Metadata()["dimension"])
+	require.Equal(t, MetadataLimitDimensionKey, FailureFactsOf(err).Facts["dimension"])
+	require.Equal(t, strings.Repeat("k", 9), FailureFactsOf(err).Facts["key"])
 }
 
 func TestMetadataLimitsValidateCommandBytes(t *testing.T) {
@@ -359,9 +360,9 @@ func TestMetadataLimitsValidateCommandBytes(t *testing.T) {
 
 	err := limits.ValidateCommandBytes(101)
 	require.NotNil(t, err)
-	require.Equal(t, MetadataLimitDimensionCommand, err.Metadata()["dimension"])
-	require.Equal(t, "100", err.Metadata()["limit"])
-	require.Equal(t, "101", err.Metadata()["actual"])
+	require.Equal(t, MetadataLimitDimensionCommand, FailureFactsOf(err).Facts["dimension"])
+	require.Equal(t, "100", FailureFactsOf(err).Facts["limit"])
+	require.Equal(t, "101", FailureFactsOf(err).Facts["actual"])
 	require.Equal(t, KindValidation, err.Kind())
 }
 
@@ -374,7 +375,8 @@ func TestMetadataLimitsValidateKey(t *testing.T) {
 
 	err := limits.ValidateKey(strings.Repeat("k", 9))
 	require.NotNil(t, err)
-	require.Equal(t, MetadataLimitDimensionKey, err.Metadata()["dimension"])
+	require.Equal(t, MetadataLimitDimensionKey, FailureFactsOf(err).Facts["dimension"])
+	require.Equal(t, strings.Repeat("k", 9), FailureFactsOf(err).Facts["key"])
 }
 
 // An unconfigured contract must reject rather than admit unbounded metadata:
@@ -400,5 +402,5 @@ func TestMetadataLimitsUnconfiguredRejects(t *testing.T) {
 // uint64ToString keeps the boundary table readable without importing strconv
 // into every case.
 func uint64ToString(v uint64) string {
-	return (&ErrMetadataLimitExceeded{Limit: v}).Metadata()["limit"]
+	return FailureFactsOf(&ErrMetadataLimitExceeded{Limit: v}).Facts["limit"]
 }

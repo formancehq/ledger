@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"errors"
 	"math"
 	"testing"
 
@@ -1169,9 +1170,12 @@ func TestProcessCreateTransaction_Numscript_CompetingMetadataErrors(t *testing.T
 		}}}
 		_, err = processor.ProcessOrder(requestToOrder(t, request), mockStore)
 		require.ErrorIs(t, err, domain.ErrMetadataValueContainsNullByte)
-		var keyErr *domain.ErrMetadataKeyValidation
-		require.ErrorAs(t, err, &keyErr)
-		require.Equal(t, "a", keyErr.Key)
+		require.Equal(t, "a", domain.FailureFactsOf(func() domain.SerializableError {
+			var target domain.SerializableError
+			_ = errors.As(err, &target)
+
+			return target
+		}()).Facts["key"])
 		ctrl.Finish()
 	}
 }

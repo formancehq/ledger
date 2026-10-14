@@ -34,12 +34,12 @@ func TestExecutePreparedQueryErrorClassification(t *testing.T) {
 		{
 			name:    "aggregate on a non-accounts target",
 			err:     &query.ErrPreparedQueryAggregateTarget{Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
-			message: "AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries, this query targets transactions",
+			message: "invalid request",
 		},
 		{
 			name:    "unsupported query mode",
 			err:     &query.ErrQueryModeUnsupported{Mode: commonpb.QueryMode(99)},
-			message: "unsupported query mode: 99",
+			message: "invalid request",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

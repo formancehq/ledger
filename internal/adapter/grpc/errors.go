@@ -46,7 +46,7 @@ func classifiableToGRPCStatus(c domain.Classifiable) *status.Status {
 
 	d, ok := c.(domain.Describable)
 	if !ok {
-		return status.New(code, c.Error())
+		return status.New(code, domain.PublicKindMessage(c.Kind()))
 	}
 
 	return describableToGRPCStatus(code, d)

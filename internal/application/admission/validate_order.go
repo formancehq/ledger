@@ -2,10 +2,14 @@ package admission
 
 import (
 	"crypto/ed25519"
+	"maps"
 	"net/url"
+	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -18,6 +22,13 @@ import (
 // before it enters the Raft pipeline. This is the single validation gate for all
 // write paths (gRPC, HTTP, bulk).
 func validateOrder(order *raftcmdpb.Order) error {
+	// VT unmarshalling does not guarantee valid UTF-8 for protobuf strings.
+	// Reject malformed input before it can become an audited failure fact:
+	// replay and the checker validate the persisted protobuf strings.
+	if !validOrderUTF8(order.ProtoReflect()) {
+		return &domain.BusinessError{Err: invalidUTF8Order{}}
+	}
+
 	if err := validateOrderLedgerName(order); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
@@ -37,6 +48,9 @@ func validateOrder(order *raftcmdpb.Order) error {
 	if err := validateOrderPreparedQuery(order); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
+	if err := validateOrderAccountType(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
 
 	if err := validateOrderCreateIndex(order); err != nil {
 		return &domain.BusinessError{Err: err}
@@ -52,6 +66,116 @@ func validateOrder(order *raftcmdpb.Order) error {
 
 	if err := validateOrderSigningKey(order); err != nil {
 		return &domain.BusinessError{Err: err}
+	}
+
+	return nil
+}
+
+// invalidUTF8Order is an admission-only validation error. It never enters the
+// FSM audit schema, and it does not echo malformed bytes to an API client.
+type invalidUTF8Order struct{}
+
+func (invalidUTF8Order) Error() string          { return "request contains invalid UTF-8" }
+func (invalidUTF8Order) Kind() domain.ErrorKind { return domain.KindValidation }
+func (invalidUTF8Order) Reason() string         { return domain.ErrReasonValidation }
+func (invalidUTF8Order) PublicDetails() (string, map[string]string, bool) {
+	return "request contains invalid UTF-8", nil, true
+}
+
+// Walk the protobuf graph iteratively. Some valid orders carry deeply nested
+// values; a recursive string scan would impose an unrelated depth limit or
+// exhaust the admission goroutine's stack before domain validation runs.
+func validOrderUTF8(root protoreflect.Message) bool {
+	stack := []protoreflect.Message{root}
+	for len(stack) > 0 {
+		message := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		valid := true
+		message.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
+			check := func(value protoreflect.Value) bool {
+				switch field.Kind() {
+				case protoreflect.StringKind:
+					return utf8.ValidString(value.String())
+				case protoreflect.MessageKind:
+					stack = append(stack, value.Message())
+				}
+
+				return true
+			}
+			switch {
+			case field.IsMap():
+				value.Map().Range(func(key protoreflect.MapKey, item protoreflect.Value) bool {
+					if field.MapKey().Kind() == protoreflect.StringKind && !utf8.ValidString(key.String()) {
+						valid = false
+
+						return false
+					}
+					switch field.MapValue().Kind() {
+					case protoreflect.StringKind:
+						valid = utf8.ValidString(item.String())
+					case protoreflect.MessageKind:
+						stack = append(stack, item.Message())
+					}
+
+					return valid
+				})
+			case field.IsList():
+				list := value.List()
+				for i := 0; i < list.Len() && valid; i++ {
+					valid = check(list.Get(i))
+				}
+			default:
+				valid = check(value)
+			}
+
+			return valid
+		})
+		if !valid {
+			return false
+		}
+	}
+
+	return true
+}
+
+// validateOrderAccountType rejects identifiers that could later become
+// oversized audited failure facts. The same bounds run in the FSM for orders
+// received directly from Raft or replayed by the checker.
+func validateOrderAccountType(order *raftcmdpb.Order) domain.Describable {
+	ledgerScoped := order.GetLedgerScoped()
+	if create, ok := ledgerScoped.GetPayload().(*raftcmdpb.LedgerScopedOrder_CreateLedger); ok {
+		for _, name := range slices.Sorted(maps.Keys(create.CreateLedger.GetAccountTypes())) {
+			if len(name) > domain.MaxAccountTypeNameLength {
+				return domain.ErrAccountTypeNameTooLong
+			}
+			if name == "" {
+				return &domain.ErrInvalidPattern{Pattern: "", Details: "account type name is required"}
+			}
+			if len(create.CreateLedger.GetAccountTypes()[name].GetPattern()) > domain.MaxAccountTypePatternLength {
+				return domain.ErrAccountTypePatternTooLong
+			}
+		}
+
+		return nil
+	}
+
+	apply, ok := ledgerScoped.GetPayload().(*raftcmdpb.LedgerScopedOrder_Apply)
+	if !ok {
+		return nil
+	}
+	switch d := apply.Apply.GetData().(type) {
+	case *raftcmdpb.LedgerApplyOrder_AddAccountType:
+		at := d.AddAccountType.GetAccountType()
+		if len(at.GetName()) > domain.MaxAccountTypeNameLength {
+			return domain.ErrAccountTypeNameTooLong
+		}
+		if len(at.GetPattern()) > domain.MaxAccountTypePatternLength {
+			return domain.ErrAccountTypePatternTooLong
+		}
+	case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
+		if len(d.RemoveAccountType.GetName()) > domain.MaxAccountTypeNameLength {
+			return domain.ErrAccountTypeNameTooLong
+		}
 	}
 
 	return nil
@@ -167,6 +291,9 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	o := ct.CreateTransaction
+	if len(o.GetReference()) > domain.MaxTransactionReferenceLength {
+		return domain.ErrTransactionReferenceTooLong
+	}
 	hasPostings := len(o.GetPostings()) > 0
 	hasInlineScript := o.GetScript() != nil && o.GetScript().GetPlain() != ""
 	// Two booleans on the reference because the two gates have different needs:

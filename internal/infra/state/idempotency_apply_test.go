@@ -32,6 +32,49 @@ func idempotencyTestPolicy(revision, ttlMicros uint64) *commonpb.ClusterPolicy {
 	}
 }
 
+func TestApplyProposal_PreloadUnavailableIsNotAuditedOrFrozen(t *testing.T) {
+	t.Parallel()
+	machine, dataStore, _ := newTestMachine(t)
+	ctx := context.Background()
+	keyed := func(id uint64, unavailable bool) *raftcmdpb.Proposal {
+		order := createLedgerOrder("preload-probe")
+		if unavailable {
+			order.Technical = &raftcmdpb.OrderTechnical{PreloadUnavailable: true}
+		}
+		proposal := makeProposal(id, order)
+		proposal.Idempotency = &commonpb.Idempotency{Key: "preload-key"}
+
+		return proposal
+	}
+
+	before := machine.State.NextAuditSequenceID
+	beforeTimestamp := machine.State.LastAppliedTimestamp
+	result, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, keyed(1, true)))
+	require.NoError(t, err)
+	require.ErrorIs(t, result.Results[0].Error, domain.ErrPreloadUnavailable)
+	require.False(t, result.Results[0].AuditEntryWritten)
+	require.Equal(t, before, machine.State.NextAuditSequenceID)
+	require.Equal(t, beforeTimestamp, machine.State.LastAppliedTimestamp)
+	_, frozen := machine.Registry.Idempotency.Get("preload-key")
+	require.False(t, frozen)
+
+	result, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, keyed(2, false)))
+	require.NoError(t, err)
+	require.NoError(t, result.Results[0].Error)
+	require.True(t, result.Results[0].AuditEntryWritten)
+	require.False(t, result.Results[0].Replayed)
+	require.Equal(t, before+1, machine.State.NextAuditSequenceID)
+	auditedTimestamp := machine.State.LastAppliedTimestamp
+
+	result, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 3, keyed(3, true)))
+	require.NoError(t, err)
+	require.NoError(t, result.Results[0].Error)
+	require.True(t, result.Results[0].Replayed)
+	require.False(t, result.Results[0].AuditEntryWritten)
+	require.Equal(t, before+1, machine.State.NextAuditSequenceID)
+	require.Equal(t, auditedTimestamp, machine.State.LastAppliedTimestamp)
+}
+
 // TestApplyProposal_PerProposalIdempotency exercises the per-proposal
 // idempotency the FSM applies in applyProposal: a duplicate proposal (same key,
 // same ordered orders) replays the first outcome instead of re-executing, a
@@ -105,7 +148,11 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	require.NoError(t, err)
 	require.Error(t, r.Results[0].Error)
 	require.False(t, r.Results[0].Replayed)
-	frozenMsg := r.Results[0].Error.Error()
+	initialError, ok := errors.AsType[domain.Describable](r.Results[0].Error)
+	require.True(t, ok)
+	var initial domain.SerializableError
+	require.ErrorAs(t, r.Results[0].Error, &initial)
+	frozenFacts := domain.FailureFactsOf(initial)
 
 	// ...so a duplicate replays the SAME error instead of re-executing.
 	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 6, withKey(6, "k2", badRevert())))
@@ -114,7 +161,27 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	require.True(t, r.Results[0].Replayed)
 	var replayed *domain.ReplayedFailure
 	require.ErrorAs(t, r.Results[0].Error, &replayed, "frozen failure is replayed")
-	require.Equal(t, frozenMsg, r.Results[0].Error.Error(), "replayed failure matches the original")
+	require.Equal(t, frozenFacts, domain.FailureFactsOf(replayed), "replayed failure keeps the original facts")
+
+	// The same audited rejection without a key has the same public response as
+	// both the first keyed attempt and its replay.
+	firstMessage, firstMetadata, firstOverride := domain.PublicErrorDetails(initialError)
+	replayError, ok := errors.AsType[domain.Describable](r.Results[0].Error)
+	require.True(t, ok)
+	replayMessage, replayMetadata, _ := domain.PublicErrorDetails(replayError)
+	require.True(t, firstOverride)
+	require.Equal(t, firstMessage, replayMessage)
+	require.Equal(t, firstMetadata, replayMetadata)
+
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 7, makeProposal(7, badRevert())))
+	require.NoError(t, err)
+	require.Error(t, r.Results[0].Error)
+	unkeyedError, ok := errors.AsType[domain.Describable](r.Results[0].Error)
+	require.True(t, ok)
+	unkeyedMessage, unkeyedMetadata, unkeyedOverride := domain.PublicErrorDetails(unkeyedError)
+	require.True(t, unkeyedOverride)
+	require.Equal(t, firstMessage, unkeyedMessage)
+	require.Equal(t, firstMetadata, unkeyedMetadata)
 }
 
 // TestApplyProposal_AuditEntryCarriesIdentity asserts the FSM records the batch

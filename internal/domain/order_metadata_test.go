@@ -46,9 +46,7 @@ func TestValidateOrderMetadataDeterministicAccountAndKey(t *testing.T) {
 		var account *ErrAccountValidation
 		require.ErrorAs(t, err, &account)
 		require.Equal(t, "a", account.Account)
-		var key *ErrMetadataKeyValidation
-		require.ErrorAs(t, err, &key)
-		require.Equal(t, "a", key.Key)
+		require.Equal(t, "a", FailureFactsOf(err).Facts["key"])
 	}
 }
 

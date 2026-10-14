@@ -2,6 +2,7 @@ package processing
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,6 +13,27 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
+
+func TestProcessCreateLedger_AccountTypeFactBounds(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name         string
+		accountTypes map[string]*commonpb.AccountType
+		wantErr      error
+	}{
+		{"name", map[string]*commonpb.AccountType{strings.Repeat("a", 257): {Pattern: "wallet:{id}"}}, domain.ErrAccountTypeNameTooLong},
+		{"pattern", map[string]*commonpb.AccountType{"wallet": {Pattern: strings.Repeat("a", 4097)}}, domain.ErrAccountTypePatternTooLong},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mockStore := NewMockScope(gomock.NewController(t))
+			expectGetLedger(mockStore, domain.LedgerKey{Name: "l"}, nil, domain.ErrNotFound)
+			_, err := processCreateLedger("l", &raftcmdpb.CreateLedgerOrder{AccountTypes: tc.accountTypes}, &Context{Scope: mockStore})
+			require.ErrorIs(t, err, tc.wantErr)
+		})
+	}
+}
 
 func TestProcessCreateLedger(t *testing.T) {
 	t.Parallel()

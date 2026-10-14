@@ -26,6 +26,13 @@ const maxPreparedQueryNameLength = 256
 // the numscript-name bound above.
 const maxSigningKeyIDLength = 256
 
+// Account type identifiers can be included verbatim in audited failure facts.
+const (
+	MaxAccountTypeNameLength      = 256
+	MaxAccountTypePatternLength   = 4096
+	MaxTransactionReferenceLength = 4096
+)
+
 // MaxFilterDepth bounds the recursion depth of any walk over a QueryFilter
 // proto tree. A hostile client can hand-craft a deeply-nested filter (e.g. 100k
 // repetitions of and/or/not) and submit it via gRPC; without a depth cap a
@@ -62,18 +69,20 @@ var ErrFilterTooDeep SerializableError = &ErrFilterCompilation{
 // errValidation wraps a primitive validation error from
 // github.com/formancehq/invariants so it satisfies the local
 // SerializableError contract (Kind=KindValidation, Reason=ErrReasonValidation)
-// without duplicating message strings. Each sentinel below is
-// pre-instantiated once, so errors.Is comparisons on the exported variables
-// remain stable.
+// without duplicating message strings. Stateless sentinels are
+// pre-instantiated once, so errors.Is comparisons remain stable.
 type errValidation struct {
-	err error
+	code string
+	err  error
 }
 
-func (e *errValidation) Error() string             { return e.err.Error() }
-func (e *errValidation) Unwrap() error             { return e.err }
-func (*errValidation) Kind() ErrorKind             { return KindValidation }
-func (*errValidation) Reason() string              { return ErrReasonValidation }
-func (*errValidation) Metadata() map[string]string { return nil }
+func (e *errValidation) Error() string { return e.err.Error() }
+func (e *errValidation) Unwrap() error { return e.err }
+func (*errValidation) Kind() ErrorKind { return KindValidation }
+func (*errValidation) Reason() string  { return ErrReasonValidation }
+func (e *errValidation) FailureDetails() *commonpb.FailureDetails {
+	return mustFailureDetails(e.code, nil)
+}
 
 // maxColorLength caps the optional Color tag on a Posting. Color is a small
 // dimension label (e.g. "GRANTS", "OPS") not a free-form string; 32 bytes is
@@ -81,26 +90,24 @@ func (*errValidation) Metadata() map[string]string { return nil }
 // inside every volume key.
 const maxColorLength = 32
 
-// Storage-safety validation sentinels. All are SerializableError so they flow
-// through BusinessError. Each one wraps the matching primitive sentinel from
-// github.com/formancehq/invariants; the wrapping preserves
-// errors.Is identity against the primitive (via Unwrap) and against the
-// local sentinel (via pointer identity in wrapValidationErr).
+// Storage-safety validation sentinels. Invalid metadata keys and values need
+// the offending key before serialization. An empty key is fully described by
+// its code, so its sentinel can be serialized directly.
 var (
-	ErrLedgerNameRequired    SerializableError = &errValidation{err: invariants.ErrLedgerNameRequired}
-	ErrLedgerNameInvalidChar SerializableError = &errValidation{err: invariants.ErrLedgerNameInvalidChar}
-	ErrLedgerNameTooLong     SerializableError = &errValidation{err: invariants.ErrLedgerNameTooLong}
+	ErrLedgerNameRequired    SerializableError = &errValidation{code: "LEDGER_NAME_REQUIRED", err: invariants.ErrLedgerNameRequired}
+	ErrLedgerNameInvalidChar SerializableError = &errValidation{code: "LEDGER_NAME_INVALID_CHAR", err: invariants.ErrLedgerNameInvalidChar}
+	ErrLedgerNameTooLong     SerializableError = &errValidation{code: "LEDGER_NAME_TOO_LONG", err: invariants.ErrLedgerNameTooLong}
 
-	ErrMetadataKeyEmpty              SerializableError = &errValidation{err: invariants.ErrMetadataKeyEmpty}
-	ErrMetadataKeyInvalidChar        SerializableError = &errValidation{err: invariants.ErrMetadataKeyInvalidChar}
-	ErrMetadataValueContainsNullByte SerializableError = &errValidation{err: invariants.ErrMetadataValueContainsNullByte}
+	ErrMetadataKeyEmpty              SerializableError = &errValidation{code: "METADATA_KEY_EMPTY", err: invariants.ErrMetadataKeyEmpty}
+	ErrMetadataKeyInvalidChar        error             = invariants.ErrMetadataKeyInvalidChar
+	ErrMetadataValueContainsNullByte error             = invariants.ErrMetadataValueContainsNullByte
 
-	ErrAccountAddressEmpty        SerializableError = &errValidation{err: invariants.ErrLedgerAccountAddressEmpty}
-	ErrAccountAddressInvalidChar  SerializableError = &errValidation{err: invariants.ErrLedgerAccountAddressInvalidChar}
-	ErrAccountAddressEmptySegment SerializableError = &errValidation{err: invariants.ErrLedgerAccountAddressEmptySegment}
-	ErrAccountAddressTooLong      SerializableError = &errValidation{err: invariants.ErrLedgerAccountAddressTooLong}
+	ErrAccountAddressEmpty        SerializableError = &errValidation{code: "ACCOUNT_ADDRESS_EMPTY", err: invariants.ErrLedgerAccountAddressEmpty}
+	ErrAccountAddressInvalidChar  SerializableError = &errValidation{code: "ACCOUNT_ADDRESS_INVALID_CHAR", err: invariants.ErrLedgerAccountAddressInvalidChar}
+	ErrAccountAddressEmptySegment SerializableError = &errValidation{code: "ACCOUNT_ADDRESS_EMPTY_SEGMENT", err: invariants.ErrLedgerAccountAddressEmptySegment}
+	ErrAccountAddressTooLong      SerializableError = &errValidation{code: "ACCOUNT_ADDRESS_TOO_LONG", err: invariants.ErrLedgerAccountAddressTooLong}
 
-	ErrAssetInvalid SerializableError = &errValidation{err: invariants.ErrAssetInvalid}
+	ErrAssetInvalid SerializableError = &errValidation{code: "ASSET_INVALID", err: invariants.ErrAssetInvalid}
 )
 
 // wrapValidationErr maps a primitive validation error returned by
@@ -120,13 +127,6 @@ func wrapValidationErr(err error) SerializableError {
 		return ErrLedgerNameInvalidChar
 	case errors.Is(err, invariants.ErrLedgerNameTooLong):
 		return ErrLedgerNameTooLong
-
-	case errors.Is(err, invariants.ErrMetadataKeyEmpty):
-		return ErrMetadataKeyEmpty
-	case errors.Is(err, invariants.ErrMetadataKeyInvalidChar):
-		return ErrMetadataKeyInvalidChar
-	case errors.Is(err, invariants.ErrMetadataValueContainsNullByte):
-		return ErrMetadataValueContainsNullByte
 
 	case errors.Is(err, invariants.ErrLedgerAccountAddressEmpty):
 		return ErrAccountAddressEmpty
@@ -424,33 +424,74 @@ func ValidateAccountAddress(address string) SerializableError {
 	return wrapValidationErr(invariants.ValidateLedgerAccountAddress(address))
 }
 
-// ValidateMetadataKey delegates to invariants and maps the primitive sentinel
-// back to the local SerializableError counterpart.
-func ValidateMetadataKey(key string) SerializableError {
-	return wrapValidationErr(invariants.ValidateMetadataKey(key))
+// metadataFactFailure carries the offending key for errors where its value
+// identifies the invalid entry. The primitive cause retains errors.Is
+// compatibility without being independently serializable.
+type metadataFactFailure struct {
+	key   string
+	cause error
 }
 
-// ValidateMetadataString validates a string-bearing metadata payload (e.g. a
-// numscript-emitted string value before it is wrapped in a MetadataValue).
-// It delegates to invariants and maps the primitive sentinel back to the
-// local SerializableError counterpart.
-func ValidateMetadataString(value string) SerializableError {
-	return wrapValidationErr(invariants.ValidateMetadataString(value))
+func (e *metadataFactFailure) Error() string { return e.cause.Error() }
+func (e *metadataFactFailure) Unwrap() error { return e.cause }
+func (e *metadataFactFailure) Is(target error) bool {
+	other, ok := target.(*metadataFactFailure)
+
+	return ok && e.key == other.key && errors.Is(e.cause, other.cause)
+}
+func (*metadataFactFailure) Kind() ErrorKind { return KindValidation }
+func (*metadataFactFailure) Reason() string  { return ErrReasonValidation }
+func (e *metadataFactFailure) FailureDetails() *commonpb.FailureDetails {
+	switch {
+	case errors.Is(e.cause, ErrMetadataKeyInvalidChar):
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataKeyInvalidChar{
+			MetadataKeyInvalidChar: &commonpb.MetadataKeyInvalidCharDetails{Key: new(e.key)},
+		}}
+	case errors.Is(e.cause, ErrMetadataValueContainsNullByte):
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataValueContainsNullByte{
+			MetadataValueContainsNullByte: &commonpb.MetadataValueContainsNullByteDetails{Key: new(e.key)},
+		}}
+	default:
+		panic(fmt.Errorf("unsupported metadata validation error: %w", e.cause))
+	}
+}
+
+// ValidateMetadataKey retains the offending key when its value adds context.
+func ValidateMetadataKey(key string) SerializableError {
+	if err := invariants.ValidateMetadataKey(key); err != nil {
+		if errors.Is(err, invariants.ErrMetadataKeyEmpty) {
+			return ErrMetadataKeyEmpty
+		}
+
+		return &metadataFactFailure{key: key, cause: err}
+	}
+
+	return nil
+}
+
+// ValidateMetadataString validates a string-bearing metadata payload and
+// carries its key into an audited failure.
+func ValidateMetadataString(key, value string) SerializableError {
+	if err := invariants.ValidateMetadataString(value); err != nil {
+		return &metadataFactFailure{key: key, cause: err}
+	}
+
+	return nil
 }
 
 // ValidateMetadataValue inspects the proto MetadataValue and validates the
 // string-bearing variants against the same null-byte rule as keys. Non-string
 // variants are accepted unchanged.
-func ValidateMetadataValue(value *commonpb.MetadataValue) SerializableError {
+func ValidateMetadataValue(key string, value *commonpb.MetadataValue) SerializableError {
 	switch v := value.GetType().(type) {
 	case *commonpb.MetadataValue_StringValue:
-		return wrapValidationErr(invariants.ValidateMetadataString(v.StringValue))
+		return ValidateMetadataString(key, v.StringValue)
 	case *commonpb.MetadataValue_NullValue:
 		if v.NullValue == nil {
 			return nil
 		}
 
-		return wrapValidationErr(invariants.ValidateMetadataString(v.NullValue.GetOriginal()))
+		return ValidateMetadataString(key, v.NullValue.GetOriginal())
 	default:
 		return nil
 	}

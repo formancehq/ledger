@@ -3,8 +3,6 @@ package domain
 import (
 	"errors"
 	"fmt"
-	"maps"
-	"strconv"
 	"strings"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -108,6 +106,31 @@ func (k ErrorKind) String() string {
 	}
 }
 
+// PublicKindMessage is the generic presentation for classified errors that
+// do not declare a stable reason or facts. Their Error() text is diagnostic.
+func PublicKindMessage(k ErrorKind) string {
+	switch k { //exhaustive:enforce
+	case KindValidation, KindPrecondition:
+		return "invalid request"
+	case KindNotFound:
+		return "not found"
+	case KindAlreadyExists, KindConflict:
+		return "conflict"
+	case KindUnavailable:
+		return "unavailable"
+	case KindUnauthenticated:
+		return "unauthenticated"
+	case KindPermissionDenied:
+		return "permission denied"
+	case KindInternal:
+		return "internal error"
+	case KindResourceExhausted:
+		return "resource exhausted"
+	}
+
+	return "internal error"
+}
+
 // Classifiable is the least an error must expose for an adapter to answer it:
 // the semantic kind that selects a transport status code. It carries no public
 // wire contract, so a layer can raise a correctly classified failure without
@@ -149,34 +172,59 @@ type Describable interface {
 	Reason() string
 }
 
-// SerializableError adds structured per-occurrence context. Two consumers read
-// it: the FSM projections — Metadata() is copied into the hash-chained
-// AuditFailure, frozen into the idempotency projection and replayed to every
-// duplicate of the key — and the API edge, which publishes it as the
-// ErrorInfo/response payload.
+// SerializableError is the return contract for FSM order processing. Audited
+// business rejections supply typed details; UncommittedFailure returns nil
+// because it exits before the audit and idempotency writers. Error() retains
+// diagnostic text for logs.
 //
 // Every error the FSM can emit must satisfy it, which is why the apply path
-// types its returns as SerializableError: an error that cannot serialise its
-// context cannot reach the audit chain. An error raised outside the FSM adopts
-// the tier only when it actually has context to publish.
+// types its returns as SerializableError. The apply path tests the producer's
+// UncommittedFailure marker before asking for FailureDetails, so technical
+// failures cannot reach the audit chain.
 //
 // API adapters read the presentation through PublicErrorDetails, so a type with
-// sensitive diagnostic context can publish a separate view; audit projections
-// always consume Error() and Metadata() directly.
+// sensitive diagnostic context can publish a separate view. Audited failures
+// use a stable reason and protobuf variant supplied by FailureDetails().
 type SerializableError interface {
 	Describable
-
-	// Metadata returns structured per-occurrence context. It is also the
-	// default public context unless PublicDetails overrides the
-	// presentation. Return nil when there is none.
-	Metadata() map[string]string
+	// FailureDetails is the typed persisted outcome for an auditable error.
+	FailureDetails() *commonpb.FailureDetails
 }
 
-// PublicErrorDetails selects the optional public presentation owned by an
-// error type. Error() and Metadata() remain the diagnostic and audit identity;
+// UncommittedFailure marks a rejected internal proposal whose outcome is not
+// business truth. The FSM returns it to the caller without writing an audit
+// entry or freezing an idempotency key. The marker belongs to the producer so
+// the apply path does not maintain a list of concrete error types.
+type UncommittedFailure interface {
+	Describable
+	UncommittedFailure()
+}
+
+// These failures describe preparation, infrastructure, or invariant failures.
+// Retrying or repairing the producer can change their outcome, so the FSM must
+// not persist them as a rejected business command or freeze an idempotency key.
+func (errMetadataLimitsUnconfigured) UncommittedFailure()    {}
+func (*ErrBalanceNotPreloaded) UncommittedFailure()          {}
+func (*ErrFilterCompilation) UncommittedFailure()            {}
+func (*ErrInvalidApplyType) UncommittedFailure()             {}
+func (*ErrInvalidExecutionPlan) UncommittedFailure()         {}
+func (*ErrInvalidOrderType) UncommittedFailure()             {}
+func (*ErrMirrorV2LogIDGap) UncommittedFailure()             {}
+func (*ErrMirrorV2LogIDInvalid) UncommittedFailure()         {}
+func (*ErrNumscriptRuntime) UncommittedFailure()             {}
+func (*ErrSequenceExhausted) UncommittedFailure()            {}
+func (*ErrStaleClusterPolicy) UncommittedFailure()           {}
+func (errStaleInputsResolution) UncommittedFailure()         {}
+func (errStaleProposal) UncommittedFailure()                 {}
+func (*ErrStorageOperation) UncommittedFailure()             {}
+func (*ErrTransactionStateInconsistent) UncommittedFailure() {}
+func (*ErrVolumeNotMaterialized) UncommittedFailure()        {}
+
+// PublicErrorDetails renders the structured public presentation owned by an
+// error type. Error() can carry transient diagnostics;
 // this helper is only for API responses, never persisted failure projections.
-// The override flag lets adapters preserve their existing outer error text
-// when the type has not opted into a separate public presentation.
+// The override flag tells adapters to use this presentation even when the
+// error is wrapped by another layer.
 //
 // Only the selected Describable is consulted: a nested cause must not replace
 // the presentation of an unrelated outer reason. Transparent BusinessError
@@ -187,22 +235,23 @@ func PublicErrorDetails(d Describable) (message string, metadata map[string]stri
 	}); ok {
 		return public.PublicDetails()
 	}
+	if public, ok := d.(interface{ PublicFailureFacts() FailureFacts }); ok {
+		message, facts := RenderFailureFacts(public.PublicFailureFacts())
 
-	return d.Error(), MetadataOf(d), false
-}
-
-// MetadataOf returns the structured context err carries when it is a
-// SerializableError, and nil otherwise. It asserts on err itself rather than
-// walking the chain: the caller already selected the error whose presentation
-// it is rendering, and a nested cause must not substitute its context for an
-// unrelated outer reason.
-func MetadataOf(err error) map[string]string {
-	//nolint:errorlint // deliberate: assert on err itself, never walk the chain.
-	if s, ok := err.(SerializableError); ok {
-		return s.Metadata()
+		return message, facts, true
 	}
 
-	return nil
+	if structured, ok := d.(SerializableError); ok {
+		failure := FailureFactsOf(structured)
+		if err := ValidateFailureFacts(failure); err != nil {
+			return strings.ToLower(strings.ReplaceAll(d.Reason(), "_", " ")), nil, true
+		}
+		message, facts := RenderFailureFacts(failure)
+
+		return message, facts, true
+	}
+
+	return strings.ToLower(strings.ReplaceAll(d.Reason(), "_", " ")), nil, true
 }
 
 // ReplayedFailure is a SerializableError reconstructed from a stored
@@ -216,13 +265,12 @@ func MetadataOf(err error) map[string]string {
 type ReplayedFailure struct {
 	ErrReason string
 	Msg       string
-	Meta      map[string]string
+	Details   *commonpb.FailureDetails
 }
 
-func (e *ReplayedFailure) Error() string               { return e.Msg }
-func (e *ReplayedFailure) Kind() ErrorKind             { return KindForReason(ReasonCode(e.ErrReason)) }
-func (e *ReplayedFailure) Reason() string              { return e.ErrReason }
-func (e *ReplayedFailure) Metadata() map[string]string { return e.Meta }
+func (e *ReplayedFailure) Error() string   { return e.Msg }
+func (e *ReplayedFailure) Kind() ErrorKind { return KindForReason(ReasonCode(e.ErrReason)) }
+func (e *ReplayedFailure) Reason() string  { return e.ErrReason }
 
 // IsFreezableFailure reports whether a rejection is a definitive, deterministic
 // business outcome safe to freeze against an idempotency key. Retryable /
@@ -343,9 +391,6 @@ func (e *ErrSequenceExhausted) Error() string {
 }
 func (*ErrSequenceExhausted) Kind() ErrorKind { return KindResourceExhausted }
 func (*ErrSequenceExhausted) Reason() string  { return ErrReasonSequenceExhausted }
-func (e *ErrSequenceExhausted) Metadata() map[string]string {
-	return map[string]string{"counter": string(e.Counter)}
-}
 
 // BusinessError wraps a domain failure so it can flow through code paths that
 // only understand the standard `error` interface (futures, admission,
@@ -357,14 +402,13 @@ func (e *ErrSequenceExhausted) Metadata() map[string]string {
 // SerializableError — admission rejects most of what it wraps before the order
 // ever reaches Raft, and those rejections have no audit context to serialise.
 //
-// For the same reason BusinessError does not re-export Metadata(): a carrier
-// must not promise context the error it holds may not have. That keeps the
-// stronger contract unforgeable — an FSM path typed SerializableError cannot
-// satisfy itself by wrapping a metadata-less error here. Unwrap() still reaches
-// the inner error, and PublicDetails() below forwards its full presentation
-// (metadata included) to the API edge.
+// BusinessError does not implement FailureDetails(): admission
+// can wrap errors that cannot be serialized into the audit chain. Unwrap()
+// still reaches the inner error, and PublicDetails() below forwards its
+// public presentation to the API edge.
 type BusinessError struct {
-	Err Describable
+	Err           Describable
+	PublicFailure *FailureFacts
 }
 
 func (e *BusinessError) Error() string   { return e.Err.Error() }
@@ -373,6 +417,15 @@ func (e *BusinessError) Kind() ErrorKind { return e.Err.Kind() }
 func (e *BusinessError) Reason() string  { return e.Err.Reason() }
 
 func (e *BusinessError) PublicDetails() (string, map[string]string, bool) {
+	if e.PublicFailure != nil {
+		if err := ValidateFailureFacts(*e.PublicFailure); err != nil {
+			return strings.ToLower(strings.ReplaceAll(e.Reason(), "_", " ")), nil, true
+		}
+		message, metadata := RenderFailureFacts(*e.PublicFailure)
+
+		return message, metadata, true
+	}
+
 	return PublicErrorDetails(e.Err)
 }
 
@@ -407,21 +460,20 @@ func NewFilterCompilationError(format string, args ...any) error {
 // instance per failure mode (so errors.Is compares pointer identity) but no
 // per-occurrence metadata.
 type validationSentinel struct {
-	msg string
+	code string
+	msg  string
 }
 
 func (e *validationSentinel) Error() string { return e.msg }
 func (*validationSentinel) Kind() ErrorKind { return KindValidation }
 func (*validationSentinel) Reason() string  { return ErrReasonValidation }
 
-// Metadata is always nil — the message is the whole context — but the method
-// is required: a validation sentinel is reachable from the FSM. Numscript
+// The fact set is empty: a validation sentinel has no occurrence-specific
+// context. Its structured projection is required because Numscript
 // execution converts the library's scaling rejection into the freezable
 // ErrNumscriptScalingUnsupported sentinel during apply (see
 // processing/numscript.convertNumscriptError), so the sentinel lands in the
 // audit chain and the idempotency projection like any other business outcome.
-func (*validationSentinel) Metadata() map[string]string { return nil }
-
 // NewValidationSentinel constructs a stateless validation sentinel. Use only
 // at package init time; the returned pointer is the identity used by
 // errors.Is at every call site.
@@ -429,8 +481,8 @@ func (*validationSentinel) Metadata() map[string]string { return nil }
 // Exported so packages outside internal/domain (e.g. integration-config
 // validators in the application layer) can build their own sentinels without
 // piling integration-specific errors into the domain package.
-func NewValidationSentinel(msg string) SerializableError {
-	return &validationSentinel{msg: msg}
+func NewValidationSentinel(code, msg string) SerializableError {
+	return &validationSentinel{code: code, msg: msg}
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -454,11 +506,10 @@ type errMaintenanceMode struct{}
 func (errMaintenanceMode) Error() string {
 	return "cluster is in maintenance mode: write operations are blocked"
 }
-func (errMaintenanceMode) Kind() ErrorKind             { return KindUnavailable }
-func (errMaintenanceMode) Reason() string              { return ErrReasonMaintenanceMode }
-func (errMaintenanceMode) Metadata() map[string]string { return nil }
+func (errMaintenanceMode) Kind() ErrorKind { return KindUnavailable }
+func (errMaintenanceMode) Reason() string  { return ErrReasonMaintenanceMode }
 
-var ErrMaintenanceMode SerializableError = errMaintenanceMode{}
+var ErrMaintenanceMode Describable = errMaintenanceMode{}
 
 // ErrStaleProposal — proposal rejected: predicted index mismatch after leadership transition.
 type errStaleProposal struct{}
@@ -466,9 +517,8 @@ type errStaleProposal struct{}
 func (errStaleProposal) Error() string {
 	return "proposal rejected: predicted index mismatch (stale tracker after leadership transition)"
 }
-func (errStaleProposal) Kind() ErrorKind             { return KindUnavailable }
-func (errStaleProposal) Reason() string              { return ErrReasonStaleProposal }
-func (errStaleProposal) Metadata() map[string]string { return nil }
+func (errStaleProposal) Kind() ErrorKind { return KindUnavailable }
+func (errStaleProposal) Reason() string  { return ErrReasonStaleProposal }
 
 var ErrStaleProposal SerializableError = errStaleProposal{}
 
@@ -490,9 +540,8 @@ type errStaleInputsResolution struct{}
 func (errStaleInputsResolution) Error() string {
 	return "inputs resolution is stale: the state admission resolved changed between admission and apply; retry"
 }
-func (errStaleInputsResolution) Kind() ErrorKind             { return KindUnavailable }
-func (errStaleInputsResolution) Reason() string              { return ErrReasonStaleInputsResolution }
-func (errStaleInputsResolution) Metadata() map[string]string { return nil }
+func (errStaleInputsResolution) Kind() ErrorKind { return KindUnavailable }
+func (errStaleInputsResolution) Reason() string  { return ErrReasonStaleInputsResolution }
 
 var ErrStaleInputsResolution SerializableError = errStaleInputsResolution{}
 
@@ -500,9 +549,10 @@ var ErrStaleInputsResolution SerializableError = errStaleInputsResolution{}
 // (e.g. Numscript dependency discovery failed against current state). When the
 // batch carries an idempotency key, admission forwards the order to the FSM
 // (marked OrderTechnical.preload_unavailable) rather than failing fast, so the
-// FSM can replay a frozen outcome. If none exists the FSM emits this error.
-// Retryable (Kind=Unavailable) and deliberately NOT freezable: it is a
-// preparation gap, not an authoritative business verdict — freezing it could let
+// FSM can replay a frozen outcome. If none exists it returns this technical
+// interruption without an audit entry. Retryable (Kind=Unavailable) and
+// deliberately NOT freezable: it is a preparation gap, not an authoritative
+// business verdict — freezing it could let
 // a preload-unavailable retry shadow the real outcome of a concurrent same-key
 // proposal. A retry re-admits (and re-resolves) or replays the now-frozen
 // outcome. See EN-1406.
@@ -511,11 +561,10 @@ type errPreloadUnavailable struct{}
 func (errPreloadUnavailable) Error() string {
 	return "preload unavailable: admission could not build the preload for this order; retry"
 }
-func (errPreloadUnavailable) Kind() ErrorKind             { return KindUnavailable }
-func (errPreloadUnavailable) Reason() string              { return ErrReasonPreloadUnavailable }
-func (errPreloadUnavailable) Metadata() map[string]string { return nil }
+func (errPreloadUnavailable) Kind() ErrorKind { return KindUnavailable }
+func (errPreloadUnavailable) Reason() string  { return ErrReasonPreloadUnavailable }
 
-var ErrPreloadUnavailable SerializableError = errPreloadUnavailable{}
+var ErrPreloadUnavailable Describable = errPreloadUnavailable{}
 
 // ErrWritesBlockedDiskFull is returned by the write gate when disk usage is at
 // or above the configured block threshold. Maps to gRPC ResourceExhausted / HTTP 429.
@@ -547,19 +596,20 @@ var ErrWritesBlockedClockSkew Describable = errWritesBlockedClockSkew{}
 // the comparison is stable). No per-occurrence metadata — the message is
 // the same every time and the Reason() is shared (ErrReasonValidation).
 var (
-	ErrTargetRequired             = NewValidationSentinel("target is required")
-	ErrMetadataKeyRequired        = NewValidationSentinel("key is required")
-	ErrNumscriptContentRequired   = NewValidationSentinel("numscript content is required")
-	ErrScriptAndReferenceConflict = NewValidationSentinel("cannot specify both script and scriptReference")
-	ErrEmptyTransaction           = NewValidationSentinel("transaction must produce at least one posting")
-	ErrPostingsAndScriptConflict  = NewValidationSentinel("postings cannot be combined with script or scriptReference")
-	ErrScriptRequired             = NewValidationSentinel("numscript: script is required")
+	ErrTargetRequired              = NewValidationSentinel("TARGET_REQUIRED", "target is required")
+	ErrMetadataKeyRequired         = NewValidationSentinel("METADATA_KEY_REQUIRED", "key is required")
+	ErrNumscriptContentRequired    = NewValidationSentinel("NUMSCRIPT_CONTENT_REQUIRED", "numscript content is required")
+	ErrScriptAndReferenceConflict  = NewValidationSentinel("SCRIPT_AND_REFERENCE_CONFLICT", "cannot specify both script and scriptReference")
+	ErrEmptyTransaction            = NewValidationSentinel("EMPTY_TRANSACTION", "transaction must produce at least one posting")
+	ErrPostingsAndScriptConflict   = NewValidationSentinel("POSTINGS_AND_SCRIPT_CONFLICT", "postings cannot be combined with script or scriptReference")
+	ErrTransactionReferenceTooLong = NewValidationSentinel("TRANSACTION_REFERENCE_TOO_LONG", "transaction reference exceeds maximum length of 4096 bytes")
+	ErrScriptRequired              = NewValidationSentinel("SCRIPT_REQUIRED", "numscript: script is required")
 	// Numscript identifier sentinels stay local: numscript is a
 	// ledger-internal DSL, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.
-	ErrNumscriptNameRequired    = NewValidationSentinel("numscript name is required")
-	ErrNumscriptNameInvalidChar = NewValidationSentinel("numscript name must contain only printable ASCII (0x20–0x7E)")
-	ErrNumscriptNameTooLong     = NewValidationSentinel("numscript name exceeds maximum length of 256 bytes")
+	ErrNumscriptNameRequired    = NewValidationSentinel("NUMSCRIPT_NAME_REQUIRED", "numscript name is required")
+	ErrNumscriptNameInvalidChar = NewValidationSentinel("NUMSCRIPT_NAME_INVALID_CHAR", "numscript name must contain only printable ASCII (0x20–0x7E)")
+	ErrNumscriptNameTooLong     = NewValidationSentinel("NUMSCRIPT_NAME_TOO_LONG", "numscript name exceeds maximum length of 256 bytes")
 	// ErrScopedBalanceUnsupported rejects a Numscript that reads or writes a
 	// scope-qualified balance or metadata. Color IS modelled — Ledger volumes are
 	// keyed by (ledger, account, asset, color), so colored reads/writes resolve
@@ -569,7 +619,7 @@ var (
 	// would let a script spend the same funds once per scope (double-spend).
 	// Rejecting keeps the balance a script sees consistent with the volume the FSM
 	// will mutate.
-	ErrScopedBalanceUnsupported = NewValidationSentinel("numscript: scope-qualified balances/metadata are not supported (ledger models color but not scope)")
+	ErrScopedBalanceUnsupported = NewValidationSentinel("SCOPED_BALANCE_UNSUPPORTED", "numscript: scope-qualified balances/metadata are not supported (ledger models color but not scope)")
 	// ErrNumscriptScalingUnsupported rejects a Numscript whose dependency
 	// resolution hits an asset-scaling source (`… with scaling through …`),
 	// which the resolver does not support. Unlike most resolver failures this is
@@ -580,26 +630,28 @@ var (
 	// instead of forwarding it as a PRELOAD_UNAVAILABLE that no retry could ever
 	// satisfy, even when a prior successful balance()/meta() read set the
 	// read-attempt provenance flag (EN-1557).
-	ErrNumscriptScalingUnsupported = NewValidationSentinel("numscript: asset scaling is not supported")
+	ErrNumscriptScalingUnsupported = NewValidationSentinel("NUMSCRIPT_SCALING_UNSUPPORTED", "numscript: asset scaling is not supported")
 	// Prepared-query identifier sentinels stay local: prepared queries are
 	// a ledger-internal feature (CQRS read-side), not part of the
 	// Formance-wide invariants in github.com/formancehq/invariants.
-	ErrPreparedQueryRequired          = NewValidationSentinel("prepared query payload is required")
-	ErrPreparedQueryNameRequired      = NewValidationSentinel("prepared query name is required")
-	ErrPreparedQueryNameInvalidChar   = NewValidationSentinel("prepared query name must contain only printable ASCII (0x20–0x7E)")
-	ErrPreparedQueryNameTooLong       = NewValidationSentinel("prepared query name exceeds maximum length of 256 bytes")
-	ErrPreparedQueryTargetUnsupported = NewValidationSentinel("prepared query target is not supported (use ACCOUNTS, TRANSACTIONS or LOGS)")
+	ErrPreparedQueryRequired          = NewValidationSentinel("PREPARED_QUERY_REQUIRED", "prepared query payload is required")
+	ErrPreparedQueryNameRequired      = NewValidationSentinel("PREPARED_QUERY_NAME_REQUIRED", "prepared query name is required")
+	ErrPreparedQueryNameInvalidChar   = NewValidationSentinel("PREPARED_QUERY_NAME_INVALID_CHAR", "prepared query name must contain only printable ASCII (0x20–0x7E)")
+	ErrPreparedQueryNameTooLong       = NewValidationSentinel("PREPARED_QUERY_NAME_TOO_LONG", "prepared query name exceeds maximum length of 256 bytes")
+	ErrPreparedQueryTargetUnsupported = NewValidationSentinel("PREPARED_QUERY_TARGET_UNSUPPORTED", "prepared query target is not supported (use ACCOUNTS, TRANSACTIONS or LOGS)")
 	// Signing-key identifier sentinels stay local: request signing is a
 	// ledger-internal feature, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.
-	ErrSigningKeyIDRequired    = NewValidationSentinel("signing key id is required")
-	ErrSigningKeyIDInvalidChar = NewValidationSentinel("signing key id must contain only printable ASCII (0x20–0x7E)")
-	ErrSigningKeyIDTooLong     = NewValidationSentinel("signing key id exceeds maximum length of 256 bytes")
+	ErrSigningKeyIDRequired    = NewValidationSentinel("SIGNING_KEY_ID_REQUIRED", "signing key id is required")
+	ErrSigningKeyIDInvalidChar = NewValidationSentinel("SIGNING_KEY_ID_INVALID_CHAR", "signing key id must contain only printable ASCII (0x20–0x7E)")
+	ErrSigningKeyIDTooLong     = NewValidationSentinel("SIGNING_KEY_ID_TOO_LONG", "signing key id exceeds maximum length of 256 bytes")
 	// Color sentinels stay local: color is a ledger-internal posting
 	// dimension label, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants. See ValidateColor in validation.go.
-	ErrColorInvalid = NewValidationSentinel("color must match ^[A-Z]*$ (uppercase letters only)")
-	ErrColorTooLong = NewValidationSentinel("color exceeds maximum length of 32 bytes")
+	ErrColorInvalid              = NewValidationSentinel("COLOR_INVALID", "color must match ^[A-Z]*$ (uppercase letters only)")
+	ErrColorTooLong              = NewValidationSentinel("COLOR_TOO_LONG", "color exceeds maximum length of 32 bytes")
+	ErrAccountTypeNameTooLong    = NewValidationSentinel("ACCOUNT_TYPE_NAME_TOO_LONG", "account type name exceeds maximum length of 256 bytes")
+	ErrAccountTypePatternTooLong = NewValidationSentinel("ACCOUNT_TYPE_PATTERN_TOO_LONG", "account type pattern exceeds maximum length of 4096 bytes")
 	// ErrLedgerNameRequired moved to validation.go; it wraps the
 	// github.com/formancehq/invariants sentinel.
 )
@@ -617,29 +669,24 @@ type ErrLedgerAlreadyExists struct {
 func (e *ErrLedgerAlreadyExists) Error() string { return "ledger already exists: " + e.Name }
 func (*ErrLedgerAlreadyExists) Kind() ErrorKind { return KindAlreadyExists }
 func (*ErrLedgerAlreadyExists) Reason() string  { return ErrReasonLedgerAlreadyExists }
-func (e *ErrLedgerAlreadyExists) Metadata() map[string]string {
-	return map[string]string{"name": e.Name}
-}
 
 // ErrLedgerNotFound — referenced ledger does not exist.
 type ErrLedgerNotFound struct {
 	Name string
 }
 
-func (e *ErrLedgerNotFound) Error() string               { return "ledger does not exist: " + e.Name }
-func (*ErrLedgerNotFound) Kind() ErrorKind               { return KindNotFound }
-func (*ErrLedgerNotFound) Reason() string                { return ErrReasonLedgerNotFound }
-func (e *ErrLedgerNotFound) Metadata() map[string]string { return map[string]string{"name": e.Name} }
+func (e *ErrLedgerNotFound) Error() string { return "ledger does not exist: " + e.Name }
+func (*ErrLedgerNotFound) Kind() ErrorKind { return KindNotFound }
+func (*ErrLedgerNotFound) Reason() string  { return ErrReasonLedgerNotFound }
 
 // ErrLedgerDeleted — write targets a soft-deleted ledger.
 type ErrLedgerDeleted struct {
 	Name string
 }
 
-func (e *ErrLedgerDeleted) Error() string               { return "ledger has been deleted: " + e.Name }
-func (*ErrLedgerDeleted) Kind() ErrorKind               { return KindConflict }
-func (*ErrLedgerDeleted) Reason() string                { return ErrReasonLedgerDeleted }
-func (e *ErrLedgerDeleted) Metadata() map[string]string { return map[string]string{"name": e.Name} }
+func (e *ErrLedgerDeleted) Error() string { return "ledger has been deleted: " + e.Name }
+func (*ErrLedgerDeleted) Kind() ErrorKind { return KindConflict }
+func (*ErrLedgerDeleted) Reason() string  { return ErrReasonLedgerDeleted }
 
 // ErrIdempotencyKeyConflict — idempotency key reused with different content.
 type ErrIdempotencyKeyConflict struct {
@@ -651,9 +698,6 @@ func (e *ErrIdempotencyKeyConflict) Error() string {
 }
 func (*ErrIdempotencyKeyConflict) Kind() ErrorKind { return KindAlreadyExists }
 func (*ErrIdempotencyKeyConflict) Reason() string  { return ErrReasonIdempotencyKeyConflict }
-func (e *ErrIdempotencyKeyConflict) Metadata() map[string]string {
-	return map[string]string{"key": e.Key}
-}
 
 // ErrTransactionReferenceConflict — reference already exists in the same ledger.
 type ErrTransactionReferenceConflict struct {
@@ -661,7 +705,7 @@ type ErrTransactionReferenceConflict struct {
 	Reference string
 	// ExistingTransactionID is the id of the transaction that already owned
 	// the reference. Populated whenever the FSM detects the collision so
-	// downstream consumers (Metadata(), and through it the OrderSkippedLog
+	// downstream consumers (FailureDetails(), and through it the OrderSkippedLog
 	// context when the reason is whitelisted) can surface the existing tx
 	// id to clients without an extra lookup. Optional for backwards-
 	// compatible construction sites.
@@ -673,14 +717,6 @@ func (e *ErrTransactionReferenceConflict) Error() string {
 }
 func (*ErrTransactionReferenceConflict) Kind() ErrorKind { return KindAlreadyExists }
 func (*ErrTransactionReferenceConflict) Reason() string  { return ErrReasonTransactionReferenceConflict }
-func (e *ErrTransactionReferenceConflict) Metadata() map[string]string {
-	md := map[string]string{"ledger": e.Ledger, "reference": e.Reference}
-	if e.ExistingTransactionID != 0 {
-		md["existingTransactionId"] = strconv.FormatUint(e.ExistingTransactionID, 10)
-	}
-
-	return md
-}
 
 // ErrInvalidSkippableReason — the caller listed an ErrorReason in
 // `skippable_reasons` that is not in the public business whitelist for the
@@ -702,9 +738,6 @@ func (e *ErrInvalidSkippableReason) Error() string {
 }
 func (*ErrInvalidSkippableReason) Kind() ErrorKind { return KindValidation }
 func (*ErrInvalidSkippableReason) Reason() string  { return ErrReasonValidation }
-func (e *ErrInvalidSkippableReason) Metadata() map[string]string {
-	return map[string]string{"reason": ReasonString(e.Provided)}
-}
 
 // ErrTransactionNotFound — transaction ID is beyond the known range.
 type ErrTransactionNotFound struct {
@@ -716,9 +749,6 @@ func (e *ErrTransactionNotFound) Error() string {
 }
 func (*ErrTransactionNotFound) Kind() ErrorKind { return KindNotFound }
 func (*ErrTransactionNotFound) Reason() string  { return ErrReasonTransactionNotFound }
-func (e *ErrTransactionNotFound) Metadata() map[string]string {
-	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
-}
 
 // ErrTransactionReferenceNotFound is returned when a transaction reference does not
 // resolve to an existing transaction in the visible state (cache or current batch).
@@ -731,13 +761,10 @@ func (e *ErrTransactionReferenceNotFound) Error() string {
 }
 func (*ErrTransactionReferenceNotFound) Kind() ErrorKind { return KindNotFound }
 func (*ErrTransactionReferenceNotFound) Reason() string  { return ErrReasonTransactionReferenceNotFound }
-func (e *ErrTransactionReferenceNotFound) Metadata() map[string]string {
-	return map[string]string{"reference": e.Reference}
-}
 
 // ErrTransactionTargetMissing is returned when a TargetTransaction is empty
 // (neither id nor reference set).
-var ErrTransactionTargetMissing = NewValidationSentinel("transaction target requires either id or reference")
+var ErrTransactionTargetMissing = NewValidationSentinel("TRANSACTION_TARGET_MISSING", "transaction target requires either id or reference")
 
 // ErrTransactionAlreadyReverted — attempting to revert an already-reverted transaction.
 type ErrTransactionAlreadyReverted struct {
@@ -749,9 +776,6 @@ func (e *ErrTransactionAlreadyReverted) Error() string {
 }
 func (*ErrTransactionAlreadyReverted) Kind() ErrorKind { return KindConflict }
 func (*ErrTransactionAlreadyReverted) Reason() string  { return ErrReasonTransactionAlreadyReverted }
-func (e *ErrTransactionAlreadyReverted) Metadata() map[string]string {
-	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
-}
 
 // ErrRevertTargetCreatedInBatch — a revert targeted a transaction created by an
 // earlier order in the same atomic batch.
@@ -774,9 +798,6 @@ func (e *ErrRevertTargetCreatedInBatch) Error() string {
 }
 func (*ErrRevertTargetCreatedInBatch) Kind() ErrorKind { return KindValidation }
 func (*ErrRevertTargetCreatedInBatch) Reason() string  { return ErrReasonRevertTargetCreatedInBatch }
-func (e *ErrRevertTargetCreatedInBatch) Metadata() map[string]string {
-	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
-}
 
 // ErrInsufficientFunds is returned when a source account does not have enough
 // balance in the requested (asset, color) bucket. The empty color is the
@@ -789,11 +810,9 @@ func (e *ErrRevertTargetCreatedInBatch) Metadata() map[string]string {
 // the VM's numscriptlib.VmMissingFundsError carries only {Asset, Needed, Got}
 // and never the resolved (account, color), so a colored spend surfaces here
 // with an empty Color that means "unknown", not "uncolored" (ColorKnown=false).
-// Metadata() therefore omits the color key entirely when the color is unknown,
+// FailureDetails() selects a distinct Numscript variant when the color is unknown,
 // so a client never mistakes an unresolved Numscript failure for a definite
-// hit on the uncolored bucket. When a future numscript bump attaches the
-// resolved bucket to VmMissingFundsError, the conversion path can set the real
-// Color with ColorKnown=true and this ambiguity disappears.
+// hit on the uncolored bucket.
 type ErrInsufficientFunds struct {
 	Account    string
 	Asset      string
@@ -825,23 +844,6 @@ func (e *ErrInsufficientFunds) Error() string {
 }
 func (*ErrInsufficientFunds) Kind() ErrorKind { return KindPrecondition }
 func (*ErrInsufficientFunds) Reason() string  { return ErrReasonInsufficientFunds }
-func (e *ErrInsufficientFunds) Metadata() map[string]string {
-	m := map[string]string{
-		"account": e.Account,
-		"asset":   e.Asset,
-		"amount":  e.Amount,
-		"balance": e.Balance,
-	}
-	// Only publish color when the failing bucket is actually resolved. On the
-	// Numscript path Color is unknown (see the type doc) — emitting an empty
-	// string there would be read as a definite hit on the uncolored bucket, so
-	// we omit the key entirely and let clients treat its absence as "unknown".
-	if e.ColorKnown {
-		m["color"] = e.Color
-	}
-
-	return m
-}
 
 // ErrVolumeOverflow — a posting would push an account's volume past 2^256.
 // Posting amounts are unbounded 256-bit values supplied by the API and the
@@ -866,16 +868,6 @@ func (e *ErrVolumeOverflow) Error() string {
 }
 func (*ErrVolumeOverflow) Kind() ErrorKind { return KindPrecondition }
 func (*ErrVolumeOverflow) Reason() string  { return ErrReasonVolumeOverflow }
-func (e *ErrVolumeOverflow) Metadata() map[string]string {
-	return map[string]string{
-		"account": e.Account,
-		"asset":   e.Asset,
-		"color":   e.Color,
-		"side":    e.Side,
-		"amount":  e.Amount,
-		"current": e.Current,
-	}
-}
 
 // ErrBalanceNotFound — balance for a source account cannot be determined.
 type ErrBalanceNotFound struct {
@@ -888,19 +880,15 @@ func (e *ErrBalanceNotFound) Error() string {
 }
 func (*ErrBalanceNotFound) Kind() ErrorKind { return KindPrecondition }
 func (*ErrBalanceNotFound) Reason() string  { return ErrReasonBalanceNotFound }
-func (e *ErrBalanceNotFound) Metadata() map[string]string {
-	return map[string]string{"account": e.Account, "asset": e.Asset}
-}
 
 // ErrSinkAlreadyExists — adding a sink that already exists.
 type ErrSinkAlreadyExists struct {
 	Name string
 }
 
-func (e *ErrSinkAlreadyExists) Error() string               { return "event sink already exists: " + e.Name }
-func (*ErrSinkAlreadyExists) Kind() ErrorKind               { return KindAlreadyExists }
-func (*ErrSinkAlreadyExists) Reason() string                { return ErrReasonSinkAlreadyExists }
-func (e *ErrSinkAlreadyExists) Metadata() map[string]string { return map[string]string{"name": e.Name} }
+func (e *ErrSinkAlreadyExists) Error() string { return "event sink already exists: " + e.Name }
+func (*ErrSinkAlreadyExists) Kind() ErrorKind { return KindAlreadyExists }
+func (*ErrSinkAlreadyExists) Reason() string  { return ErrReasonSinkAlreadyExists }
 
 // MaxSinkBatchSize is the server-side cap on SinkConfig.BatchSize. The
 // emitter uses BatchSize as the capacity of a per-flush slice; without a
@@ -923,13 +911,6 @@ func (e *ErrSinkBatchSizeTooLarge) Error() string {
 }
 func (*ErrSinkBatchSizeTooLarge) Kind() ErrorKind { return KindValidation }
 func (*ErrSinkBatchSizeTooLarge) Reason() string  { return ErrReasonSinkBatchSizeTooLarge }
-func (e *ErrSinkBatchSizeTooLarge) Metadata() map[string]string {
-	return map[string]string{
-		"name":      e.Name,
-		"batchSize": strconv.Itoa(int(e.BatchSize)),
-		"max":       strconv.Itoa(int(e.Max)),
-	}
-}
 
 // ErrMetadataNotFound — deleting a metadata key that does not exist.
 type ErrMetadataNotFound struct {
@@ -942,19 +923,15 @@ func (e *ErrMetadataNotFound) Error() string {
 }
 func (*ErrMetadataNotFound) Kind() ErrorKind { return KindNotFound }
 func (*ErrMetadataNotFound) Reason() string  { return ErrReasonMetadataNotFound }
-func (e *ErrMetadataNotFound) Metadata() map[string]string {
-	return map[string]string{"target": e.Target, "key": e.Key}
-}
 
 // ErrSinkNotFound — removing a sink that does not exist.
 type ErrSinkNotFound struct {
 	Name string
 }
 
-func (e *ErrSinkNotFound) Error() string               { return "event sink not found: " + e.Name }
-func (*ErrSinkNotFound) Kind() ErrorKind               { return KindNotFound }
-func (*ErrSinkNotFound) Reason() string                { return ErrReasonSinkNotFound }
-func (e *ErrSinkNotFound) Metadata() map[string]string { return map[string]string{"name": e.Name} }
+func (e *ErrSinkNotFound) Error() string { return "event sink not found: " + e.Name }
+func (*ErrSinkNotFound) Kind() ErrorKind { return KindNotFound }
+func (*ErrSinkNotFound) Reason() string  { return ErrReasonSinkNotFound }
 
 // ErrSinkControllerMismatch rejects a conditional removal whose controller
 // does not own the currently applied sink. The current owner is not disclosed.
@@ -968,9 +945,6 @@ func (e *ErrSinkControllerMismatch) Error() string {
 }
 func (*ErrSinkControllerMismatch) Kind() ErrorKind { return KindConflict }
 func (*ErrSinkControllerMismatch) Reason() string  { return ErrReasonSinkControllerMismatch }
-func (e *ErrSinkControllerMismatch) Metadata() map[string]string {
-	return map[string]string{"name": e.Name, "controllerId": e.ControllerID}
-}
 
 // ErrInvalidCronExpression — cron expression is invalid.
 type ErrInvalidCronExpression struct {
@@ -983,9 +957,6 @@ func (e *ErrInvalidCronExpression) Error() string {
 }
 func (*ErrInvalidCronExpression) Kind() ErrorKind { return KindValidation }
 func (*ErrInvalidCronExpression) Reason() string  { return ErrReasonInvalidCronExpression }
-func (e *ErrInvalidCronExpression) Metadata() map[string]string {
-	return map[string]string{"expression": e.Expression, "details": e.Details}
-}
 
 // ErrLedgerInMirrorMode — write attempted on a mirror-mode ledger.
 type ErrLedgerInMirrorMode struct {
@@ -997,9 +968,6 @@ func (e *ErrLedgerInMirrorMode) Error() string {
 }
 func (*ErrLedgerInMirrorMode) Kind() ErrorKind { return KindConflict }
 func (*ErrLedgerInMirrorMode) Reason() string  { return ErrReasonLedgerInMirrorMode }
-func (e *ErrLedgerInMirrorMode) Metadata() map[string]string {
-	return map[string]string{"name": e.Name}
-}
 
 // ErrLedgerNotInMirrorMode — mirror-only operation attempted on a normal-mode ledger.
 type ErrLedgerNotInMirrorMode struct {
@@ -1011,9 +979,6 @@ func (e *ErrLedgerNotInMirrorMode) Error() string {
 }
 func (*ErrLedgerNotInMirrorMode) Kind() ErrorKind { return KindPrecondition }
 func (*ErrLedgerNotInMirrorMode) Reason() string  { return ErrReasonLedgerNotInMirrorMode }
-func (e *ErrLedgerNotInMirrorMode) Metadata() map[string]string {
-	return map[string]string{"name": e.Name}
-}
 
 // ErrMirrorV2LogIDGap — a mirror ingest arrived with a v2LogId beyond the next
 // contiguous slot (Expected) after the applied prefix (LastMirrorV2LogId is
@@ -1035,13 +1000,6 @@ func (e *ErrMirrorV2LogIDGap) Error() string {
 }
 func (*ErrMirrorV2LogIDGap) Kind() ErrorKind { return KindInternal }
 func (*ErrMirrorV2LogIDGap) Reason() string  { return ErrReasonMirrorV2LogIDGap }
-func (e *ErrMirrorV2LogIDGap) Metadata() map[string]string {
-	return map[string]string{
-		"name":     e.Name,
-		"got":      strconv.FormatUint(e.Got, 10),
-		"expected": strconv.FormatUint(e.Expected, 10),
-	}
-}
 
 // ErrMirrorV2LogIDInvalid — a mirror ingest carried a v2LogId of 0. Source v2
 // log ids are 1-based, so 0 is malformed/tampered. The FSM rejects it before any
@@ -1058,9 +1016,6 @@ func (e *ErrMirrorV2LogIDInvalid) Error() string {
 }
 func (*ErrMirrorV2LogIDInvalid) Kind() ErrorKind { return KindInternal }
 func (*ErrMirrorV2LogIDInvalid) Reason() string  { return ErrReasonMirrorV2LogIDInvalid }
-func (e *ErrMirrorV2LogIDInvalid) Metadata() map[string]string {
-	return map[string]string{"name": e.Name}
-}
 
 // ErrPreparedQueryAlreadyExists — creating a prepared query that already exists.
 type ErrPreparedQueryAlreadyExists struct {
@@ -1073,9 +1028,6 @@ func (e *ErrPreparedQueryAlreadyExists) Error() string {
 }
 func (*ErrPreparedQueryAlreadyExists) Kind() ErrorKind { return KindAlreadyExists }
 func (*ErrPreparedQueryAlreadyExists) Reason() string  { return ErrReasonPreparedQueryAlreadyExists }
-func (e *ErrPreparedQueryAlreadyExists) Metadata() map[string]string {
-	return map[string]string{"ledger": e.Ledger, "name": e.Name}
-}
 
 // ErrPreparedQueryNotFound — prepared query does not exist.
 type ErrPreparedQueryNotFound struct {
@@ -1088,9 +1040,6 @@ func (e *ErrPreparedQueryNotFound) Error() string {
 }
 func (*ErrPreparedQueryNotFound) Kind() ErrorKind { return KindNotFound }
 func (*ErrPreparedQueryNotFound) Reason() string  { return ErrReasonPreparedQueryNotFound }
-func (e *ErrPreparedQueryNotFound) Metadata() map[string]string {
-	return map[string]string{"ledger": e.Ledger, "name": e.Name}
-}
 
 // ErrIndexAlreadyExists — a fresh creation targets an existing index.
 type ErrIndexAlreadyExists struct {
@@ -1100,19 +1049,15 @@ type ErrIndexAlreadyExists struct {
 func (e *ErrIndexAlreadyExists) Error() string { return "index already exists: " + e.Index }
 func (*ErrIndexAlreadyExists) Kind() ErrorKind { return KindAlreadyExists }
 func (*ErrIndexAlreadyExists) Reason() string  { return ErrReasonIndexAlreadyExists }
-func (e *ErrIndexAlreadyExists) Metadata() map[string]string {
-	return map[string]string{"index": e.Index}
-}
 
 // ErrIndexNotFound — query references an index that does not exist.
 type ErrIndexNotFound struct {
 	Index string
 }
 
-func (e *ErrIndexNotFound) Error() string               { return "index not found: " + e.Index }
-func (*ErrIndexNotFound) Kind() ErrorKind               { return KindPrecondition }
-func (*ErrIndexNotFound) Reason() string                { return ErrReasonIndexNotFound }
-func (e *ErrIndexNotFound) Metadata() map[string]string { return map[string]string{"index": e.Index} }
+func (e *ErrIndexNotFound) Error() string { return "index not found: " + e.Index }
+func (*ErrIndexNotFound) Kind() ErrorKind { return KindPrecondition }
+func (*ErrIndexNotFound) Reason() string  { return ErrReasonIndexNotFound }
 
 // ErrMetadataFieldNotInSchema — CreateIndex targets a metadata key that
 // has not been declared via SetMetadataFieldType first.
@@ -1126,9 +1071,6 @@ func (e *ErrMetadataFieldNotInSchema) Error() string {
 }
 func (*ErrMetadataFieldNotInSchema) Kind() ErrorKind { return KindPrecondition }
 func (*ErrMetadataFieldNotInSchema) Reason() string  { return ErrReasonMetadataFieldNotInSchema }
-func (e *ErrMetadataFieldNotInSchema) Metadata() map[string]string {
-	return map[string]string{"target": e.Target, "key": e.Key}
-}
 
 // ErrIndexBuilding — query references an index that is still being built.
 // Transient: the caller should retry once the build completes.
@@ -1136,10 +1078,9 @@ type ErrIndexBuilding struct {
 	Index string
 }
 
-func (e *ErrIndexBuilding) Error() string               { return "index is still building: " + e.Index }
-func (*ErrIndexBuilding) Kind() ErrorKind               { return KindUnavailable }
-func (*ErrIndexBuilding) Reason() string                { return ErrReasonIndexBuilding }
-func (e *ErrIndexBuilding) Metadata() map[string]string { return map[string]string{"index": e.Index} }
+func (e *ErrIndexBuilding) Error() string { return "index is still building: " + e.Index }
+func (*ErrIndexBuilding) Kind() ErrorKind { return KindUnavailable }
+func (*ErrIndexBuilding) Reason() string  { return ErrReasonIndexBuilding }
 
 // ErrCheckpointNotReady — a read targets a query checkpoint of which either
 // half has not been materialized on this replica yet. A checkpoint has two
@@ -1167,9 +1108,6 @@ func (e *ErrCheckpointNotReady) Error() string {
 }
 func (*ErrCheckpointNotReady) Kind() ErrorKind { return KindUnavailable }
 func (*ErrCheckpointNotReady) Reason() string  { return ErrReasonCheckpointNotReady }
-func (e *ErrCheckpointNotReady) Metadata() map[string]string {
-	return map[string]string{"checkpointId": strconv.FormatUint(e.CheckpointID, 10)}
-}
 
 // ErrIndexInconsistent — read path detects a structural inconsistency between
 // the filter index and the per-ledger log index (e.g. logID present in the
@@ -1187,12 +1125,9 @@ func (e *ErrIndexInconsistent) Error() string {
 }
 func (*ErrIndexInconsistent) Kind() ErrorKind { return KindInternal }
 func (*ErrIndexInconsistent) Reason() string  { return ErrReasonIndexInconsistent }
-func (e *ErrIndexInconsistent) Metadata() map[string]string {
-	return map[string]string{"index": e.Index, "detail": e.Detail}
-}
 
 // PublicDetails omits the index identity and raw storage diagnostics while
-// retaining Error() and Metadata() for operator diagnostics.
+// retaining Error() for operator diagnostics.
 func (*ErrIndexInconsistent) PublicDetails() (string, map[string]string, bool) {
 	return "index is inconsistent", nil, true
 }
@@ -1214,14 +1149,6 @@ func (e *ErrNumscriptNotFound) Error() string {
 }
 func (*ErrNumscriptNotFound) Kind() ErrorKind { return KindNotFound }
 func (*ErrNumscriptNotFound) Reason() string  { return ErrReasonNumscriptNotFound }
-func (e *ErrNumscriptNotFound) Metadata() map[string]string {
-	m := map[string]string{"name": e.Name}
-	if e.Version != "" {
-		m["version"] = e.Version
-	}
-
-	return m
-}
 
 // ErrNumscriptVersionAlreadyExists — saving a semver version that already
 // exists on a live numscript. The immutable content cannot be overwritten.
@@ -1237,9 +1164,6 @@ func (*ErrNumscriptVersionAlreadyExists) Kind() ErrorKind { return KindAlreadyEx
 func (*ErrNumscriptVersionAlreadyExists) Reason() string {
 	return ErrReasonNumscriptVersionAlreadyExists
 }
-func (e *ErrNumscriptVersionAlreadyExists) Metadata() map[string]string {
-	return map[string]string{"name": e.Name, "version": e.Version}
-}
 
 // ErrNumscriptInvalidVersion — version string is not valid semver.
 type ErrNumscriptInvalidVersion struct {
@@ -1251,9 +1175,6 @@ func (e *ErrNumscriptInvalidVersion) Error() string {
 }
 func (*ErrNumscriptInvalidVersion) Kind() ErrorKind { return KindValidation }
 func (*ErrNumscriptInvalidVersion) Reason() string  { return ErrReasonNumscriptInvalidVersion }
-func (e *ErrNumscriptInvalidVersion) Metadata() map[string]string {
-	return map[string]string{"version": e.Version}
-}
 
 // ErrAccountNotMatchingType — account address doesn't match any active account type pattern.
 type ErrAccountNotMatchingType struct {
@@ -1265,9 +1186,6 @@ func (e *ErrAccountNotMatchingType) Error() string {
 }
 func (*ErrAccountNotMatchingType) Kind() ErrorKind { return KindPrecondition }
 func (*ErrAccountNotMatchingType) Reason() string  { return ErrReasonAccountNotMatchingType }
-func (e *ErrAccountNotMatchingType) Metadata() map[string]string {
-	return map[string]string{"address": e.Address}
-}
 
 // ErrAccountTypeNotFound — referenced account type does not exist.
 type ErrAccountTypeNotFound struct {
@@ -1277,9 +1195,6 @@ type ErrAccountTypeNotFound struct {
 func (e *ErrAccountTypeNotFound) Error() string { return "account type not found: " + e.Name }
 func (*ErrAccountTypeNotFound) Kind() ErrorKind { return KindNotFound }
 func (*ErrAccountTypeNotFound) Reason() string  { return ErrReasonAccountTypeNotFound }
-func (e *ErrAccountTypeNotFound) Metadata() map[string]string {
-	return map[string]string{"name": e.Name}
-}
 
 // ErrAccountTypeAlreadyExists — creating an account type with a name that already exists.
 type ErrAccountTypeAlreadyExists struct {
@@ -1289,9 +1204,6 @@ type ErrAccountTypeAlreadyExists struct {
 func (e *ErrAccountTypeAlreadyExists) Error() string { return "account type already exists: " + e.Name }
 func (*ErrAccountTypeAlreadyExists) Kind() ErrorKind { return KindAlreadyExists }
 func (*ErrAccountTypeAlreadyExists) Reason() string  { return ErrReasonAccountTypeAlreadyExists }
-func (e *ErrAccountTypeAlreadyExists) Metadata() map[string]string {
-	return map[string]string{"name": e.Name}
-}
 
 // ErrAccountTypeConflict — new account type pattern conflicts with an
 // existing pattern (same specificity and overlapping match space).
@@ -1307,9 +1219,6 @@ func (e *ErrAccountTypeConflict) Error() string {
 }
 func (*ErrAccountTypeConflict) Kind() ErrorKind { return KindConflict }
 func (*ErrAccountTypeConflict) Reason() string  { return ErrReasonAccountTypeConflict }
-func (e *ErrAccountTypeConflict) Metadata() map[string]string {
-	return map[string]string{"pattern": e.NewPattern, "existingName": e.ExistingName, "existingPattern": e.ExistingPattern}
-}
 
 // ErrInvalidPattern — account type pattern is syntactically invalid.
 type ErrInvalidPattern struct {
@@ -1322,9 +1231,6 @@ func (e *ErrInvalidPattern) Error() string {
 }
 func (*ErrInvalidPattern) Kind() ErrorKind { return KindValidation }
 func (*ErrInvalidPattern) Reason() string  { return ErrReasonInvalidPattern }
-func (e *ErrInvalidPattern) Metadata() map[string]string {
-	return map[string]string{"pattern": e.Pattern, "details": e.Details}
-}
 
 // ErrAccountTypeHasAccounts — removing an account type that still has matching accounts.
 type ErrAccountTypeHasAccounts struct {
@@ -1336,9 +1242,6 @@ func (e *ErrAccountTypeHasAccounts) Error() string {
 }
 func (*ErrAccountTypeHasAccounts) Kind() ErrorKind { return KindConflict }
 func (*ErrAccountTypeHasAccounts) Reason() string  { return ErrReasonAccountTypeHasAccounts }
-func (e *ErrAccountTypeHasAccounts) Metadata() map[string]string {
-	return map[string]string{"name": e.Name}
-}
 
 // ErrNumscriptParse — Numscript program has syntax errors.
 type ErrNumscriptParse struct {
@@ -1348,9 +1251,6 @@ type ErrNumscriptParse struct {
 func (e *ErrNumscriptParse) Error() string { return "numscript parse error: " + e.Details }
 func (*ErrNumscriptParse) Kind() ErrorKind { return KindValidation }
 func (*ErrNumscriptParse) Reason() string  { return ErrReasonNumscriptParseError }
-func (e *ErrNumscriptParse) Metadata() map[string]string {
-	return map[string]string{"details": e.Details}
-}
 
 // ErrNumscriptCompile — a script that parsed and resolved cannot run on the
 // Numscript VM, the only execution engine: a static-semantics error caught by
@@ -1363,15 +1263,28 @@ func (e *ErrNumscriptParse) Metadata() map[string]string {
 // client can tell a bad script from any other validation failure without
 // matching the message.
 type ErrNumscriptCompile struct {
-	Detail string
+	Detail  string
+	Details *commonpb.FailureDetails
 }
 
 func (e *ErrNumscriptCompile) Error() string { return "numscript compile error: " + e.Detail }
 func (*ErrNumscriptCompile) Kind() ErrorKind { return KindValidation }
 func (*ErrNumscriptCompile) Reason() string  { return ErrReasonNumscriptCompileError }
-func (e *ErrNumscriptCompile) Metadata() map[string]string {
-	return map[string]string{"details": e.Detail}
+
+// An unrecognised compiler error may be a library defect. It keeps the public
+// compile reason but cannot be committed as a deterministic script rejection.
+type unclassifiedNumscriptCompile struct{ detail string }
+
+func NewUnclassifiedNumscriptCompile(detail string) SerializableError {
+	return &unclassifiedNumscriptCompile{detail: detail}
 }
+
+func (e *unclassifiedNumscriptCompile) Error() string {
+	return "numscript compile error: " + e.detail
+}
+func (*unclassifiedNumscriptCompile) Kind() ErrorKind     { return KindValidation }
+func (*unclassifiedNumscriptCompile) Reason() string      { return ErrReasonNumscriptCompileError }
+func (*unclassifiedNumscriptCompile) UncommittedFailure() {}
 
 // ErrNumscriptExecution — the script failed on its own terms, during dependency
 // resolution or on the VM: an invalid account name, a missing or mistyped var,
@@ -1381,15 +1294,21 @@ func (e *ErrNumscriptCompile) Metadata() map[string]string {
 // same script and vars may succeed against other state — the same class as
 // ErrInsufficientFunds.
 type ErrNumscriptExecution struct {
-	Detail string
+	Detail  string
+	Details *commonpb.FailureDetails
+}
+
+func NewNumscriptExecution(detail string, details *commonpb.FailureDetails) *ErrNumscriptExecution {
+	if details == nil {
+		panic("numscript execution requires classified failure details")
+	}
+
+	return &ErrNumscriptExecution{Detail: detail, Details: details}
 }
 
 func (e *ErrNumscriptExecution) Error() string { return "numscript execution error: " + e.Detail }
 func (*ErrNumscriptExecution) Kind() ErrorKind { return KindPrecondition }
 func (*ErrNumscriptExecution) Reason() string  { return ErrReasonNumscriptExecutionError }
-func (e *ErrNumscriptExecution) Metadata() map[string]string {
-	return map[string]string{"detail": e.Detail}
-}
 
 // ErrDependencyDiscoveryFailed is returned when admission cannot discover all
 // dependencies needed to preload a Numscript transaction before proposal.
@@ -1427,9 +1346,6 @@ func (e *ErrDependencyDiscoveryFailed) Reason() string {
 
 	return ErrReasonValidation
 }
-func (e *ErrDependencyDiscoveryFailed) Metadata() map[string]string {
-	return map[string]string{"details": e.Error()}
-}
 
 // ErrBalanceNotPreloaded — a balance the script reads (account, asset, color)
 // was not preloaded into the cache by admission. A transient server-side gap
@@ -1451,14 +1367,11 @@ func (e *ErrBalanceNotPreloaded) Error() string {
 }
 func (*ErrBalanceNotPreloaded) Kind() ErrorKind { return KindUnavailable }
 func (*ErrBalanceNotPreloaded) Reason() string  { return ErrReasonBalanceNotPreloaded }
-func (e *ErrBalanceNotPreloaded) Metadata() map[string]string {
-	return map[string]string{"account": e.Account, "asset": e.Asset, "color": e.Color}
-}
 
 // ErrTransientAccountNonZero — one or more transient accounts held a non-zero
 // balance at end of batch. Accounts lists every offender; the producer
 // (state.ValidateTransientVolumes) sorts it by (Account, Asset) and dedups
-// cross-ledger repeats, so Error()/Metadata() render byte-identically across
+// cross-ledger repeats, so Error()/FailureDetails() render byte-identically across
 // nodes. That identity is hashed into the AuditFailure, so a nondeterministic
 // order would fork the audit hash chain (invariant #2 / #8, EN-1423).
 type ErrTransientAccountNonZero struct {
@@ -1470,9 +1383,6 @@ func (e *ErrTransientAccountNonZero) Error() string {
 }
 func (*ErrTransientAccountNonZero) Kind() ErrorKind { return KindPrecondition }
 func (*ErrTransientAccountNonZero) Reason() string  { return ErrReasonTransientAccountNonZero }
-func (e *ErrTransientAccountNonZero) Metadata() map[string]string {
-	return map[string]string{"accounts": e.joinedAccounts()}
-}
 
 // joinedAccounts renders the offenders as a deterministic, comma-separated
 // list. Each entry is "account/asset" for the uncolored bucket and
@@ -1503,9 +1413,6 @@ type ErrFilterCompilation struct {
 func (e *ErrFilterCompilation) Error() string { return "compiling filter: " + e.Detail }
 func (*ErrFilterCompilation) Kind() ErrorKind { return KindValidation }
 func (*ErrFilterCompilation) Reason() string  { return ErrReasonFilterCompilation }
-func (e *ErrFilterCompilation) Metadata() map[string]string {
-	return map[string]string{"detail": e.Detail}
-}
 
 // ErrInvalidOrderType — the FSM received an Order with an unknown proto type.
 // Reachable only via a protocol-version mismatch (a peer or client crafted
@@ -1522,9 +1429,6 @@ func (e *ErrInvalidOrderType) Error() string {
 }
 func (*ErrInvalidOrderType) Kind() ErrorKind { return KindInternal }
 func (*ErrInvalidOrderType) Reason() string  { return ErrReasonInvalidOrderType }
-func (e *ErrInvalidOrderType) Metadata() map[string]string {
-	return map[string]string{"typeName": e.TypeName}
-}
 
 // ErrStaleClusterPolicy — a cluster-policy update carried a revision lower than
 // the applied one. The FSM rejects it deterministically on every node; the
@@ -1539,12 +1443,6 @@ func (e *ErrStaleClusterPolicy) Error() string {
 }
 func (*ErrStaleClusterPolicy) Kind() ErrorKind { return KindConflict }
 func (*ErrStaleClusterPolicy) Reason() string  { return ErrReasonStaleClusterPolicy }
-func (e *ErrStaleClusterPolicy) Metadata() map[string]string {
-	return map[string]string{
-		"proposedRevision": strconv.FormatUint(e.ProposedRevision, 10),
-		"appliedRevision":  strconv.FormatUint(e.AppliedRevision, 10),
-	}
-}
 
 // ErrClusterPolicyRevisionConflict — two cluster-policy updates carried the same
 // revision with different payloads. The control plane must assign a fresh
@@ -1556,12 +1454,10 @@ type ErrClusterPolicyRevisionConflict struct {
 func (e *ErrClusterPolicyRevisionConflict) Error() string {
 	return fmt.Sprintf("cluster policy revision conflict: revision %d carries a payload different from the applied policy", e.Revision)
 }
-func (*ErrClusterPolicyRevisionConflict) Kind() ErrorKind { return KindInternal }
+func (*ErrClusterPolicyRevisionConflict) Kind() ErrorKind     { return KindInternal }
+func (*ErrClusterPolicyRevisionConflict) UncommittedFailure() {}
 func (*ErrClusterPolicyRevisionConflict) Reason() string {
 	return ErrReasonClusterPolicyRevisionConflict
-}
-func (e *ErrClusterPolicyRevisionConflict) Metadata() map[string]string {
-	return map[string]string{"revision": strconv.FormatUint(e.Revision, 10)}
 }
 
 // ErrClusterPolicyInvalid — a cluster-policy update carried a structurally
@@ -1573,11 +1469,9 @@ type ErrClusterPolicyInvalid struct {
 func (e *ErrClusterPolicyInvalid) Error() string {
 	return "invalid cluster policy: " + e.Detail
 }
-func (*ErrClusterPolicyInvalid) Kind() ErrorKind { return KindValidation }
-func (*ErrClusterPolicyInvalid) Reason() string  { return ErrReasonClusterPolicyInvalid }
-func (e *ErrClusterPolicyInvalid) Metadata() map[string]string {
-	return map[string]string{"detail": e.Detail}
-}
+func (*ErrClusterPolicyInvalid) Kind() ErrorKind     { return KindValidation }
+func (*ErrClusterPolicyInvalid) UncommittedFailure() {}
+func (*ErrClusterPolicyInvalid) Reason() string      { return ErrReasonClusterPolicyInvalid }
 
 // ErrIdempotencyCheckFailed — Pebble lookup for an idempotency key returned
 // an unexpected I/O error (the key not being present is not an error;
@@ -1598,8 +1492,6 @@ func (*ErrIdempotencyCheckFailed) Reason() string  { return ErrReasonIdempotency
 // Metadata is nil: the sanitised Error() is the whole public context and the
 // Pebble cause never reaches the wire. The method is still required — the FSM
 // idempotency gate raises this during apply, so it lands in the audit chain.
-func (*ErrIdempotencyCheckFailed) Metadata() map[string]string { return nil }
-
 // ErrInvalidApplyType — the FSM received a LedgerApplyOrder with an unknown
 // inner proto type. Reachable only via a protocol-version mismatch on the
 // Apply sub-types. Distinct from ErrInvalidOrderType which covers the outer
@@ -1611,9 +1503,6 @@ type ErrInvalidApplyType struct {
 func (e *ErrInvalidApplyType) Error() string { return "invalid apply type: " + e.TypeName }
 func (*ErrInvalidApplyType) Kind() ErrorKind { return KindInternal }
 func (*ErrInvalidApplyType) Reason() string  { return ErrReasonInvalidApplyType }
-func (e *ErrInvalidApplyType) Metadata() map[string]string {
-	return map[string]string{"typeName": e.TypeName}
-}
 
 // ErrStorageOperation wraps a Pebble (or other store) IO failure that
 // surfaces during order processing. Kind is Internal: the caller cannot
@@ -1631,9 +1520,6 @@ func (e *ErrStorageOperation) Error() string { return "storage operation failed:
 func (e *ErrStorageOperation) Unwrap() error { return e.Cause }
 func (*ErrStorageOperation) Kind() ErrorKind { return KindInternal }
 func (*ErrStorageOperation) Reason() string  { return ErrReasonStorageOperation }
-func (e *ErrStorageOperation) Metadata() map[string]string {
-	return map[string]string{"operation": e.Operation}
-}
 
 // ErrTransactionStateInconsistent — an invariant of the transaction
 // state-tracker is violated (e.g. a transaction is in the index but its
@@ -1649,21 +1535,14 @@ func (e *ErrTransactionStateInconsistent) Error() string {
 }
 func (*ErrTransactionStateInconsistent) Kind() ErrorKind { return KindInternal }
 func (*ErrTransactionStateInconsistent) Reason() string  { return ErrReasonTransactionStateInconsistent }
-func (e *ErrTransactionStateInconsistent) Metadata() map[string]string {
-	return map[string]string{
-		"transactionId": strconv.FormatUint(e.TransactionID, 10),
-		"operation":     e.Operation,
-	}
-}
 
 // ErrCheckpointIDRequired — the caller asked for a query checkpoint
 // operation but did not pass an ID. KindValidation.
 type errCheckpointIDRequired struct{}
 
-func (errCheckpointIDRequired) Error() string               { return "checkpoint_id must be non-zero" }
-func (errCheckpointIDRequired) Kind() ErrorKind             { return KindValidation }
-func (errCheckpointIDRequired) Reason() string              { return ErrReasonCheckpointIDRequired }
-func (errCheckpointIDRequired) Metadata() map[string]string { return nil }
+func (errCheckpointIDRequired) Error() string   { return "checkpoint_id must be non-zero" }
+func (errCheckpointIDRequired) Kind() ErrorKind { return KindValidation }
+func (errCheckpointIDRequired) Reason() string  { return ErrReasonCheckpointIDRequired }
 
 var ErrCheckpointIDRequired SerializableError = errCheckpointIDRequired{}
 
@@ -1683,9 +1562,6 @@ func (e *ErrCheckpointLimitReached) Error() string {
 }
 func (*ErrCheckpointLimitReached) Kind() ErrorKind { return KindPrecondition }
 func (*ErrCheckpointLimitReached) Reason() string  { return ErrReasonCheckpointLimitReached }
-func (e *ErrCheckpointLimitReached) Metadata() map[string]string {
-	return map[string]string{"limit": strconv.FormatUint(e.Limit, 10)}
-}
 
 // ErrMetadataLimitExceeded — metadata carried by a command, or produced by a
 // Numscript program, exceeded a ceiling of the canonical metadata size contract
@@ -1715,13 +1591,6 @@ func (e *ErrMetadataLimitExceeded) Error() string {
 }
 func (*ErrMetadataLimitExceeded) Kind() ErrorKind { return KindValidation }
 func (*ErrMetadataLimitExceeded) Reason() string  { return ErrReasonMetadataLimitExceeded }
-func (e *ErrMetadataLimitExceeded) Metadata() map[string]string {
-	return map[string]string{
-		"dimension": e.Dimension,
-		"limit":     strconv.FormatUint(e.Limit, 10),
-		"actual":    strconv.FormatUint(e.Actual, 10),
-	}
-}
 
 // ErrMetadataLimitsUnconfigured — a metadata size check ran against a committed
 // cluster policy that carries no metadata ceilings. Zero is the absence of
@@ -1741,9 +1610,6 @@ func (errMetadataLimitsUnconfigured) Error() string {
 }
 func (errMetadataLimitsUnconfigured) Kind() ErrorKind { return KindValidation }
 func (errMetadataLimitsUnconfigured) Reason() string  { return ErrReasonClusterPolicyInvalid }
-func (errMetadataLimitsUnconfigured) Metadata() map[string]string {
-	return nil
-}
 
 var ErrMetadataLimitsUnconfigured SerializableError = errMetadataLimitsUnconfigured{}
 
@@ -1758,9 +1624,6 @@ func (e *ErrCheckpointNotFound) Error() string {
 }
 func (*ErrCheckpointNotFound) Kind() ErrorKind { return KindNotFound }
 func (*ErrCheckpointNotFound) Reason() string  { return ErrReasonCheckpointNotFound }
-func (e *ErrCheckpointNotFound) Metadata() map[string]string {
-	return map[string]string{"checkpointId": strconv.FormatUint(e.CheckpointID, 10)}
-}
 
 // ErrNumscriptRuntime — a Numscript failure the client cannot fix: a
 // recovered library panic, a corrupt or unreadable compiled artifact, a VM
@@ -1773,9 +1636,6 @@ type ErrNumscriptRuntime struct {
 func (e *ErrNumscriptRuntime) Error() string { return "numscript runtime error: " + e.Detail }
 func (*ErrNumscriptRuntime) Kind() ErrorKind { return KindInternal }
 func (*ErrNumscriptRuntime) Reason() string  { return ErrReasonNumscriptRuntime }
-func (e *ErrNumscriptRuntime) Metadata() map[string]string {
-	return map[string]string{"detail": e.Detail}
-}
 
 // ErrVolumeNotMaterialized — a posting references an (Account, Asset, Color)
 // tuple whose Input/Output volumes have not been fully fetched into the FSM's
@@ -1793,19 +1653,13 @@ func (e *ErrVolumeNotMaterialized) Error() string {
 }
 func (*ErrVolumeNotMaterialized) Kind() ErrorKind { return KindInternal }
 func (*ErrVolumeNotMaterialized) Reason() string  { return ErrReasonVolumeNotMaterialized }
-func (e *ErrVolumeNotMaterialized) Metadata() map[string]string {
-	return map[string]string{"account": e.Account, "asset": e.Asset, "color": e.Color, "side": e.Side}
-}
 
-// ErrMetadataKeyValidation wraps another Describable to add the metadata-key
-// name that caused a value-level validation failure. Same shape as
-// ErrAccountValidation but for the metadata-map iteration in
-// validateMetadataMap / numscript-produced metadata. Lets operator logs and
-// the client identify which specific key violated which sentinel rule
-// instead of just naming the rule.
+// ErrMetadataKeyValidation attaches the offending key to a metadata limit
+// error found while walking a map. Key and value shape errors already carry
+// the key in their concrete metadataFactFailure producer.
 type ErrMetadataKeyValidation struct {
 	Key   string
-	Cause Describable
+	Cause SerializableError
 }
 
 func (e *ErrMetadataKeyValidation) Error() string {
@@ -1814,22 +1668,15 @@ func (e *ErrMetadataKeyValidation) Error() string {
 func (e *ErrMetadataKeyValidation) Unwrap() error   { return e.Cause }
 func (e *ErrMetadataKeyValidation) Kind() ErrorKind { return e.Cause.Kind() }
 func (e *ErrMetadataKeyValidation) Reason() string  { return e.Cause.Reason() }
-func (e *ErrMetadataKeyValidation) Metadata() map[string]string {
-	out := map[string]string{"key": e.Key}
 
-	maps.Copy(out, MetadataOf(e.Cause))
-
-	return out
-}
-
-// ErrAccountValidation wraps another Describable to add the account-name
+// ErrAccountValidation wraps another SerializableError to add the account-name
 // context produced when iterating per-account metadata maps in admission.
-// The inner Cause carries the original Kind/Reason; Metadata is the inner
-// metadata merged with {"account": Account} so the client can format
-// per-account validation messages without parsing the wrapped string.
+// The inner Cause carries the original Kind/Reason/Code and stable facts;
+// Account is added as a fact for client-facing presentation. Metadata keeps
+// diagnostic context separate.
 type ErrAccountValidation struct {
 	Account string
-	Cause   Describable
+	Cause   SerializableError
 }
 
 func (e *ErrAccountValidation) Error() string {
@@ -1838,13 +1685,6 @@ func (e *ErrAccountValidation) Error() string {
 func (e *ErrAccountValidation) Unwrap() error   { return e.Cause }
 func (e *ErrAccountValidation) Kind() ErrorKind { return e.Cause.Kind() }
 func (e *ErrAccountValidation) Reason() string  { return e.Cause.Reason() }
-func (e *ErrAccountValidation) Metadata() map[string]string {
-	out := map[string]string{"account": e.Account}
-
-	maps.Copy(out, MetadataOf(e.Cause))
-
-	return out
-}
 
 // ErrInvalidExecutionPlan signals that the ExecutionPlan shipped by
 // admission is structurally inconsistent with itself — a coverage_bits
@@ -1864,9 +1704,6 @@ type ErrInvalidExecutionPlan struct {
 func (e *ErrInvalidExecutionPlan) Error() string { return "invalid execution plan: " + e.Reason_ }
 func (*ErrInvalidExecutionPlan) Kind() ErrorKind { return KindInternal }
 func (*ErrInvalidExecutionPlan) Reason() string  { return ErrReasonInvalidExecutionPlan }
-func (e *ErrInvalidExecutionPlan) Metadata() map[string]string {
-	return map[string]string{"reason": e.Reason_}
-}
 
 // ErrInvalidCallerAttribution means a write reached admission or the FSM
 // without a complete, canonical caller principal. This is a server-side trust
@@ -1880,9 +1717,6 @@ func (e *ErrInvalidCallerAttribution) Error() string {
 }
 func (*ErrInvalidCallerAttribution) Kind() ErrorKind { return KindInternal }
 func (*ErrInvalidCallerAttribution) Reason() string  { return ErrReasonInvalidCallerAttribution }
-func (e *ErrInvalidCallerAttribution) Metadata() map[string]string {
-	return map[string]string{"detail": e.Detail}
-}
 
 // ErrExecutionPlanTooLarge is raised by plan.Builder.Build when the
 // aggregated ExecutionPlan exceeds the configured cap. The cap is a
@@ -1902,9 +1736,3 @@ func (e *ErrExecutionPlanTooLarge) Error() string {
 }
 func (*ErrExecutionPlanTooLarge) Kind() ErrorKind { return KindValidation }
 func (*ErrExecutionPlanTooLarge) Reason() string  { return ErrReasonExecutionPlanTooLarge }
-func (e *ErrExecutionPlanTooLarge) Metadata() map[string]string {
-	return map[string]string{
-		"size":  strconv.Itoa(e.Size),
-		"limit": strconv.Itoa(e.Limit),
-	}
-}

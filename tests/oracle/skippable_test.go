@@ -1,14 +1,30 @@
 package oracle
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
+
+func TestPredictSkippedLogPreservesAccountTypeName(t *testing.T) {
+	t.Parallel()
+	name := strings.Repeat("a", 256)
+	req := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		Ledger: "L",
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{
+			RemoveAccountType: &servicepb.RemoveAccountTypeRequest{Name: name},
+		}},
+	}}}
+	got := predictSkippedLog(NewLedgerState(), req, domain.ErrReasonAccountTypeNotFound)
+	require.Equal(t, name, got.GetFacts()["name"])
+	require.Equal(t, name, req.GetApply().GetAction().GetRemoveAccountType().GetName(), "model lookup keeps the raw identifier")
+}
 
 func skipRequest(req *servicepb.Request, reason commonpb.ErrorReason) *servicepb.Request {
 	req.GetApply().SkippableReasons = []commonpb.ErrorReason{reason}
@@ -84,13 +100,15 @@ func TestSkippedLogPayloadPinsReasonAndCorrelators(t *testing.T) {
 	require.True(t, result.OK)
 	expected := result.State.Ledger("L").LogRows()[1]
 	served := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{
-		Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-		Context: map[string]string{"ledger": "L", "reference": "ref", "existingTransactionId": "1"},
+
+		Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L", "reference": "ref", "existingTransactionId": "1"}),
 	}}}
 	require.Equal(t, expected.Payload, CanonicalServedLogPayload(served))
-	served.GetOrderSkipped().Context["existingTransactionId"] = "2"
+	otherID := uint64(2)
+	served.GetOrderSkipped().GetDetails().GetTransactionReferenceConflict().ExistingTransactionId = &otherID
 	require.NotEqual(t, expected.Payload, CanonicalServedLogPayload(served))
-	served.GetOrderSkipped().Context["existingTransactionId"] = "1"
-	served.GetOrderSkipped().Reason = commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	originalID := uint64(1)
+	served.GetOrderSkipped().GetDetails().GetTransactionReferenceConflict().ExistingTransactionId = &originalID
+	served.GetOrderSkipped().Details = commonpb.MustFailureDetails("TRANSACTION_ALREADY_REVERTED", map[string]string{"transactionId": "1"})
 	require.NotEqual(t, expected.Payload, CanonicalServedLogPayload(served))
 }

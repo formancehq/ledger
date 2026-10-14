@@ -2363,6 +2363,10 @@ func (c *Checker) verifyAuditHashChain(
 		}
 
 		headerPayload, headerErr := state.BuildHashedHeaderPayload(entry)
+		if headerErr == nil && entry.GetFailure() != nil {
+			failure := entry.GetFailure()
+			_, headerErr = domain.FailureFactsFromDetails(failure.GetDetails())
+		}
 		if headerErr != nil {
 			// A persisted entry that fails to rebuild its own header
 			// is either tampered (e.g. outcome wiped) or pre-dated a
@@ -3515,7 +3519,7 @@ func appendAccountTypeMutation(
 }
 
 // formatTargetForSkipContext mirrors the string ErrMetadataNotFound stamps
-// into its Metadata()["target"] — account targets carry the raw address,
+// into its FailureDetails() fields["target"] — account targets carry the raw address,
 // transaction targets carry the id as a decimal string. Kept in lockstep
 // with the sub-processor's formatting so the checker's context-tampering
 // check compares apples-to-apples.
@@ -3669,6 +3673,16 @@ func verifySkippedOrder(
 	}
 
 	reason := skipped.OrderSkipped.GetReason()
+	_, detailsErr := domain.FailureFactsFromDetails(skipped.OrderSkipped.GetDetails())
+	if detailsErr != nil {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			fmt.Sprintf("log %d records invalid structured skip failure on ledger %q: %v", seq, ledger, detailsErr),
+			seq, ledger, "", "",
+		))
+
+		return
+	}
 
 	if reason == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
 		callback(errorEvent(
@@ -3764,7 +3778,7 @@ func verifySkippedOrder(
 		// Check() with no other tripwire — the LedgerLog projection is
 		// not hash-bound.
 		//
-		// ErrTransactionReferenceConflict.Metadata() ALWAYS writes both
+		// ErrTransactionReferenceConflict.FailureDetails() always writes both
 		// `ledger` and `reference`; when the FSM detected the collision it
 		// also writes `existingTransactionId`. All three are re-derivable
 		// from audit-bound data (existingTransactionId via the owning tx id
@@ -3773,7 +3787,7 @@ func verifySkippedOrder(
 		// or mismatched values are tampering — the LedgerLog projection is
 		// not hash-bound, so the checker is the only guard for these
 		// client-facing fields (invariant #8).
-		ctx := skipped.OrderSkipped.GetContext()
+		ctx := skipped.OrderSkipped.GetFacts()
 
 		if got := ctx["reference"]; got != expected.reference {
 			callback(errorEvent(
@@ -3873,7 +3887,7 @@ func verifySkippedOrder(
 			return
 		}
 
-		ctx := skipped.OrderSkipped.GetContext()
+		ctx := skipped.OrderSkipped.GetFacts()
 		want := strconv.FormatUint(expected.transactionID, 10)
 		if got := ctx["transactionId"]; got != want {
 			callback(errorEvent(
@@ -3923,7 +3937,7 @@ func verifySkippedOrder(
 			return
 		}
 
-		ctx := skipped.OrderSkipped.GetContext()
+		ctx := skipped.OrderSkipped.GetFacts()
 		if got := ctx["key"]; got != expected.metadataKey {
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
@@ -3996,7 +4010,7 @@ func verifySkippedOrder(
 			return
 		}
 
-		ctx := skipped.OrderSkipped.GetContext()
+		ctx := skipped.OrderSkipped.GetFacts()
 		if got := ctx["name"]; got != expected.accountTypeName {
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
@@ -4209,8 +4223,8 @@ type expectedIdempotency struct {
 	expiresAt    uint64
 	failure      bool
 	reason       commonpb.ErrorReason
-	message      string
-	metadata     map[string]string
+	code         string
+	facts        map[string]string
 	firstLog     uint64
 	logCount     uint32
 }
@@ -4238,8 +4252,8 @@ func expectedIdempotencyOutcome(entry *auditpb.AuditEntry, items []*auditpb.Audi
 	if f := value.GetFailure(); f != nil {
 		exp.failure = true
 		exp.reason = f.GetReason()
-		exp.message = f.GetMessage()
-		exp.metadata = f.GetMetadata()
+		exp.code = f.GetCode()
+		exp.facts = f.GetFacts()
 	}
 
 	return exp, true
@@ -4342,15 +4356,20 @@ func idempotencyMismatch(stored *commonpb.IdempotencyKeyValue, exp expectedIdemp
 
 	if exp.failure {
 		f := stored.GetFailure()
+		if f != nil {
+			if _, err := domain.FailureFactsFromDetails(f.GetDetails()); err != nil {
+				return fmt.Sprintf("stored invalid typed failure details: %v", err)
+			}
+		}
 		switch {
 		case f == nil:
 			return "stored a success outcome where the audit recorded a failure"
 		case f.GetReason() != exp.reason:
 			return fmt.Sprintf("failure reason %s does not match audit %s", f.GetReason(), exp.reason)
-		case f.GetMessage() != exp.message:
-			return "failure message does not match the audit"
-		case !metadataEqual(f.GetMetadata(), exp.metadata):
-			return "failure metadata does not match the audit"
+		case f.GetCode() != exp.code:
+			return "failure code does not match the audit"
+		case !metadataEqual(f.GetFacts(), exp.facts):
+			return "failure facts do not match the audit"
 		default:
 			return ""
 		}
@@ -4367,9 +4386,8 @@ func idempotencyMismatch(stored *commonpb.IdempotencyKeyValue, exp expectedIdemp
 	}
 }
 
-// metadataEqual compares two metadata maps treating nil and empty as equal:
-// buildAuditFailure stores an empty (non-nil) context map while
-// recordIdempotencyFailure may store a nil metadata map for the same error.
+// metadataEqual compares two fact maps treating nil and empty as equal.
+// Protobuf can decode an empty map as nil in either failure projection.
 func metadataEqual(a, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false

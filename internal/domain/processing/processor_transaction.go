@@ -12,6 +12,9 @@ import (
 )
 
 func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+	if len(order.GetReference()) > domain.MaxTransactionReferenceLength {
+		return nil, domain.ErrTransactionReferenceTooLong
+	}
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 	info := ctx.LedgerInfo

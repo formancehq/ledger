@@ -11,8 +11,8 @@ import (
 // loadLedgerReader reads a ledger through the Scope and translates Scope-level
 // errors into business errors handlers can return directly. ErrNotFound
 // becomes ErrLedgerNotFound; an admission-contract violation (notably
-// *state.ErrCoverageMiss) propagates verbatim so the audit chain records
-// COVERAGE_MISS rather than a storage fault (EN-1379); any other error is
+// *state.ErrCoverageMiss) propagates verbatim so the FSM rejects it without
+// auditing a storage fault (EN-1379); any other error is
 // wrapped in ErrStorageOperation so the FSM emits a failure audit entry.
 //
 // It returns the immutable reader view without cloning — the hot read-only

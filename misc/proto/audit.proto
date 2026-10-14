@@ -12,7 +12,8 @@ import "signature.proto";
 // ============================================================================
 
 // AuditEntry represents a single audit trail entry for a proposal.
-// Each proposal (success or failure) generates exactly one audit entry.
+// Each proposal with a committed business outcome generates exactly one audit
+// entry. Retryable technical interruptions have no audit entry.
 // Per-order details are stored as separate AuditItem entries in Pebble
 // (zone 0x04, sub 0x03) and populated on GetAuditEntry responses.
 message AuditEntry {
@@ -97,12 +98,8 @@ message AuditSuccess {
   fixed64 max_log_sequence = 2;
 }
 
-// AuditFailure records the reason and context for a failed proposal. reason is
-// the typed, hash-chain-bound identifier; the numeric error kind is re-derived
-// from it (domain.KindForReason) rather than stored, so it cannot drift from
-// the reason and the idempotency failure projection is verifiable against it.
+// AuditFailure records the typed details of a failed proposal. The details arm
+// determines its reason, stable subcode, and structured facts at read time.
 message AuditFailure {
-  common.ErrorReason reason = 1;
-  string message = 2;
-  map<string, string> context = 3;
+  common.FailureDetails details = 1;
 }

@@ -213,5 +213,5 @@ func TestHandleCreateIndex_AlreadyExists(t *testing.T) {
 	srv.handleCreateIndex(w, r)
 
 	require.Equal(t, http.StatusConflict, w.Code)
-	require.JSONEq(t, `{"errorCode":"INDEX_ALREADY_EXISTS","errorMessage":"index already exists: tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP"}`, w.Body.String())
+	require.JSONEq(t, `{"errorCode":"INDEX_ALREADY_EXISTS","errorMessage":"index already exists: index=\"tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP\""}`, w.Body.String())
 }

@@ -249,7 +249,7 @@ func TestHandleErrorKindInternalRecordsCorrelatedDiagnostics(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 	resp := decodeResponse[ErrorResponse](t, w)
 	require.Equal(t, domain.ErrReasonInvalidExecutionPlan, resp.ErrorCode)
-	require.Equal(t, err.Error(), resp.ErrorMessage, "KindInternal response contracts stay unchanged")
+	require.Equal(t, "invalid execution plan", resp.ErrorMessage)
 	assert.Contains(t, logs.String(), err.Error())
 	assert.Contains(t, logs.String(), "corr-internal")
 	assert.Contains(t, logs.String(), span.SpanContext().TraceID().String())

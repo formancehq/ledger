@@ -26,9 +26,8 @@
 // no package under internal/domain, internal/infra/state or internal/admission
 // may import it, which scripts/check-repo-invariants enforces. A network-
 // decoded failure must never be raised by admission, the FSM or order
-// processing, never be persisted, frozen, audited or hashed: the audit chain
-// hashes an error's Error() string, and a message that varies with a peer's
-// build would break it.
+// processing, never be persisted, frozen or audited: the audit chain hashes
+// only the locally generated reason, code and stable facts.
 package apierr
 
 import (
@@ -50,18 +49,15 @@ type Descriptor struct {
 	// Reason is the stable, client-facing UPPER_SNAKE_CASE identifier.
 	Reason string
 
-	// Message is the client-safe human-readable message: the public
-	// presentation the error type owns when it has one (domain.PublicDetails),
-	// otherwise its Error(). Never the diagnostic identity of a type that
-	// separates the two.
+	// Message is the client-safe human-readable message rendered from stable
+	// facts for local errors, or supplied by the sending ledger for remote ones.
 	Message string
 
-	// Metadata is the client-safe structured per-occurrence context, or nil.
-	// Same selection as Message.
-	Metadata map[string]string
+	// Facts is the client-safe stable fact set, or nil.
+	Facts map[string]string
 
 	// PublicOverride reports that the error type owns a public presentation
-	// distinct from its diagnostic identity, so Message and Metadata are that
+	// distinct from its diagnostic identity, so Message and Facts are that
 	// redacted view. A consumer that would otherwise render the whole error
 	// chain — outer wrapping text included — must render Message instead:
 	// the wrapping was built from Error(), which is what the override exists
@@ -101,10 +97,9 @@ type Remote struct {
 
 var _ domain.Describable = (*Remote)(nil)
 
-func (e *Remote) Error() string               { return e.Msg }
-func (e *Remote) Kind() domain.ErrorKind      { return e.KindValue }
-func (e *Remote) Reason() string              { return e.ReasonValue }
-func (e *Remote) Metadata() map[string]string { return e.Meta }
+func (e *Remote) Error() string          { return e.Msg }
+func (e *Remote) Kind() domain.ErrorKind { return e.KindValue }
+func (e *Remote) Reason() string         { return e.ReasonValue }
 
 // InvalidWireError reports a decoded failure whose reason and transport code
 // contradict each other: a reason this build knows, carried under a code that
@@ -175,10 +170,10 @@ func InvalidWire(err error) (*InvalidWireError, bool) {
 func Describe(err error) (Descriptor, bool) {
 	if remote, ok := errors.AsType[*Remote](err); ok {
 		return Descriptor{
-			Kind:     remote.KindValue,
-			Reason:   remote.ReasonValue,
-			Message:  remote.Msg,
-			Metadata: remote.Meta,
+			Kind:    remote.KindValue,
+			Reason:  remote.ReasonValue,
+			Message: remote.Msg,
+			Facts:   remote.Meta,
 		}, true
 	}
 
@@ -189,7 +184,7 @@ func Describe(err error) (Descriptor, bool) {
 			Kind:           d.Kind(),
 			Reason:         d.Reason(),
 			Message:        message,
-			Metadata:       metadata,
+			Facts:          metadata,
 			PublicOverride: overridden,
 		}, true
 	}

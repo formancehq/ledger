@@ -30,8 +30,9 @@ export may be skipped, and no restored row may be dropped afterwards.
 
 The last applied HLC timestamp starts at the checkpoint value and folds the
 maximum effective timestamp from every exported post-checkpoint audit entry.
-Successful and failed business proposals both advance that clock. Technical-only
-proposals do not. `RebuildDelta` stores the folded value before staging is
+Successful and audited failed business proposals both advance that clock.
+Uncommitted rejections and idempotency replays restore the previous HLC value;
+technical-only proposals do not advance it. `RebuildDelta` stores the folded value before staging is
 activated, so the first destination proposal cannot acquire a timestamp older
 than a restored audit entry.
 

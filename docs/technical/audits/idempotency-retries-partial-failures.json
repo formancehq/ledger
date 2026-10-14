@@ -24,6 +24,7 @@
   ],
   "related_docs": ["docs/technical/audits/idempotency-retries-partial-failures.md", "AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/admission/", "docs/technical/architecture/subsystems/api/", "docs/technical/architecture/subsystems/backup/incremental-restore-contract.md", "docs/technical/architecture/subsystems/consensus/", "docs/technical/architecture/subsystems/fsm/", "docs/technical/contributing/ai-audit.md", "docs/ops/cli.md", "docs/ops/deployment.md", "docs/technical/architecture/subsystems/api/atomic-ledger-creation.md"],
   "invariants": [
+    "A first keyed attempt interrupted by UncommittedFailure writes no frozen outcome or audit entry and may be retried after repair; a previously frozen outcome is replayed before that technical branch and must not execute again.",
     "Retrying one logical mutation must not create duplicate committed business effects when the API promises or relies on idempotence.",
     "A timeout or cancelled response must not be interpreted internally as proof that the mutation did not commit.",
     "Bulk or compound operations must satisfy their documented atomicity boundary under failures.",
@@ -36,6 +37,7 @@
     "Initial metadata shares the CreateLedger operation identity and proposal atomicity. A keyed replay returns the original creation result without an additional audit record, metadata save or ledger allocation."
   ],
   "adversarial_questions": [
+    "After a keyed technical interruption, can a retry wrongly replay a nonexistent failure, lose the key, or duplicate a later definitive outcome? Can an earlier frozen outcome be bypassed by a new preload or policy fault?",
     "Where can a request commit and then lose its response?",
     "What does a client retry after timeout, cancellation, connection reset, or leader change do?",
     "Does the current client factory preserve a possibly committed operation when an exact bare forwarded peer-close status is followed by maintenance? The maintenance gate precedes the FSM's idempotency replay, so a refusal there does not establish non-commit and must not end a retry-forever client's retry; that retry rides the window out and recovers under the original key and payload, while every other client takes the refusal as definitive. Pin the producer/consumer contract using the actual forwarded close error; post-invocation local shutdown does not prove status origin when an identical peer-authored status races closure.",
@@ -47,5 +49,5 @@
     "Can shutdown race with a retry worker and execute work after ownership has ended?",
     "After a keyed creation carrying metadata, does replay preserve the original metadata and audit sequence? Does an invalid metadata map leave neither a ledger nor metadata rows or a consumed ledger ID?"
   ],
-  "dynamic_checks_to_consider": ["fault injection after commit before response", "Run tests/antithesis/workload/internal/client_transport_test.go and client_transport_controls_test.go against the actual NewGRPCConn factory as well as the retained native retry control; verify that a maintenance rejection after a close is retried rather than reported, gate-disable recovery, stable identity, a single durable effect, and non-retry of caller/server terminal statuses", "same-key same-content frozen success/failure replay and same-key different-content conflict property tests across TTL and eviction races", "leader change during retry", "connection reset during bulk", "storage transient-error injection", "restart between effect and dedupe persistence"]
+  "dynamic_checks_to_consider": ["Use one key through technical interruption, repair, definitive commit and replay; assert no initial audit/idempotency row, exactly one final frozen outcome and no duplicate effect. Separately fault a retry whose original outcome is already frozen.", "fault injection after commit before response", "Run tests/antithesis/workload/internal/client_transport_test.go and client_transport_controls_test.go against the actual NewGRPCConn factory as well as the retained native retry control; verify that a maintenance rejection after a close is retried rather than reported, gate-disable recovery, stable identity, a single durable effect, and non-retry of caller/server terminal statuses", "same-key same-content frozen success/failure replay and same-key different-content conflict property tests across TTL and eviction races", "leader change during retry", "connection reset during bulk", "storage transient-error injection", "restart between effect and dedupe persistence"]
 }

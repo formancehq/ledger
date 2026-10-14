@@ -27,13 +27,12 @@ func TestBusinessError(t *testing.T) {
 	require.Equal(t, inner, bErr.Unwrap())
 	require.Equal(t, KindNotFound, bErr.Kind())
 	require.Equal(t, ErrReasonLedgerNotFound, bErr.Reason())
-	// BusinessError is a carrier, not a SerializableError: it exposes no
-	// Metadata() of its own. The inner context still reaches the API edge
+	// BusinessError is a carrier. The inner facts still reach the API edge
 	// through the presentation helper, and errors.As reaches the inner type.
-	require.Equal(t, map[string]string{"name": "missing"}, MetadataOf(inner))
+	require.Equal(t, map[string]string{"name": "missing"}, FailureFactsOf(inner).Facts)
 
 	message, metadata, _ := PublicErrorDetails(bErr)
-	require.Equal(t, "ledger does not exist: missing", message)
+	require.Equal(t, "ledger not found: name=\"missing\"", message)
 	require.Equal(t, map[string]string{"name": "missing"}, metadata)
 }
 
@@ -77,6 +76,17 @@ func TestErrDependencyDiscoveryFailed_ReasonPreservesDescribableCause(t *testing
 	}
 
 	require.Equal(t, ErrReasonNumscriptParseError, err.Reason())
+	message, facts, overridden := PublicErrorDetails(err)
+	require.True(t, overridden)
+	require.Equal(t, "numscript parse error", message)
+	require.Empty(t, facts)
+
+	wrapped := &ErrDependencyDiscoveryFailed{Cause: fmt.Errorf("dependency lookup: %w", err.Cause)}
+	require.Equal(t, ErrReasonNumscriptParseError, wrapped.Reason())
+	wrappedMessage, wrappedFacts, overridden := PublicErrorDetails(wrapped)
+	require.True(t, overridden)
+	require.Equal(t, message, wrappedMessage)
+	require.Equal(t, facts, wrappedFacts)
 }
 
 func TestErrorTypes(t *testing.T) {
@@ -195,11 +205,11 @@ func TestErrTransientAccountNonZeroMetadata(t *testing.T) {
 		{Account: "staging:a", Asset: "USD"},
 		{Account: "staging:b", Asset: "EUR"},
 	}}
-	require.Equal(t, map[string]string{"accounts": "staging:a/USD, staging:b/EUR"}, err.Metadata())
+	require.Equal(t, map[string]string{"accounts": "staging:a/USD, staging:b/EUR"}, FailureFactsOf(err).Facts)
 
 	// Zero value (nil slice) must render an empty list, never panic.
 	empty := &ErrTransientAccountNonZero{}
-	require.Equal(t, map[string]string{"accounts": ""}, empty.Metadata())
+	require.Equal(t, map[string]string{"accounts": ""}, FailureFactsOf(empty).Facts)
 	require.Equal(t, "transient accounts with non-zero balance at end of batch (input != output): ", empty.Error())
 
 	// Colored offenders render as account/asset/color so two color buckets of
@@ -209,7 +219,7 @@ func TestErrTransientAccountNonZeroMetadata(t *testing.T) {
 		{Account: "staging:a", Asset: "USD"},
 		{Account: "staging:a", Asset: "USD", Color: "RED"},
 	}}
-	require.Equal(t, map[string]string{"accounts": "staging:a/USD, staging:a/USD/RED"}, colored.Metadata())
+	require.Equal(t, map[string]string{"accounts": "staging:a/USD, staging:a/USD/RED"}, FailureFactsOf(colored).Facts)
 }
 
 // TestErrInsufficientFundsColorMetadata pins the wire disambiguation of the
@@ -223,19 +233,30 @@ func TestErrInsufficientFundsColorMetadata(t *testing.T) {
 
 	// Resolved uncolored bucket: color published as "".
 	uncolored := &ErrInsufficientFunds{Account: "a", Asset: "USD", ColorKnown: true, Amount: "100", Balance: "40"}
-	require.Equal(t, "", uncolored.Metadata()["color"])
-	_, present := uncolored.Metadata()["color"]
+	require.Equal(t, "", FailureFactsOf(uncolored).Facts["color"])
+	_, present := FailureFactsOf(uncolored).Facts["color"]
 	require.True(t, present, "resolved bucket must always publish the color key")
 
 	// Resolved colored bucket: color published verbatim.
 	red := &ErrInsufficientFunds{Account: "a", Asset: "USD", Color: "RED", ColorKnown: true, Amount: "100", Balance: "40"}
-	require.Equal(t, "RED", red.Metadata()["color"])
+	require.Equal(t, "RED", FailureFactsOf(red).Facts["color"])
 
 	// Numscript path: color unresolved, key omitted so "" is not mistaken for
 	// the uncolored bucket.
 	unknown := &ErrInsufficientFunds{Asset: "COIN", Amount: "100", Balance: "40"}
-	_, present = unknown.Metadata()["color"]
+	_, present = FailureFactsOf(unknown).Facts["color"]
 	require.False(t, present, "unresolved color must be absent from metadata, not empty")
+}
+
+func TestNumscriptExecutionPublicDetailsExcludeDiagnostic(t *testing.T) {
+	first := &ErrNumscriptExecution{Detail: "wording one", Details: commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})}
+	second := &ErrNumscriptExecution{Detail: "wording two", Details: commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})}
+	firstMessage, firstFacts, _ := PublicErrorDetails(first)
+	secondMessage, secondFacts, _ := PublicErrorDetails(second)
+	require.Equal(t, firstMessage, secondMessage)
+	require.Equal(t, firstFacts, secondFacts)
+	require.NotContains(t, firstMessage, "wording")
+	require.Equal(t, FailureFactsOf(first), FailureFactsOf(second))
 }
 
 func TestWrapCompileError(t *testing.T) {
@@ -469,7 +490,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 
 		require.True(t,
 			reflect.TypeOf(inst).Implements(describableType),
-			"type %s in internal/domain does not implement Describable — every domain error type must declare Kind(), Reason(), and Metadata() so the gRPC and HTTP adapters can route it",
+			"type %s in internal/domain does not implement Describable — every domain error type must declare Kind() and Reason() so the gRPC and HTTP adapters can route it",
 			name)
 
 		// Every domain reason must resolve to an ErrorReason enum value —
@@ -491,6 +512,14 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 			"%s declares Kind() = %s but its reason %q classifies as %s in KindForReason — "+
 				"a frozen failure replays from the reason alone, so the two must agree",
 			name, d.Kind(), d.Reason(), KindForReason(ReasonCode(d.Reason())))
+		_, uncommitted := inst.(UncommittedFailure)
+		if serializable, ok := inst.(SerializableError); ok && !uncommitted && name != "validationSentinel" && name != "errValidation" && name != "ErrNumscriptCompile" && name != "ErrNumscriptExecution" {
+			details := TypedFailureOf(serializable)
+			require.Equal(t, ReasonCode(serializable.Reason()), commonpb.FailureDetailsReason(details), name)
+			decoded, err := FailureFactsFromDetails(details)
+			require.NoError(t, err, name)
+			require.Equal(t, FailureFactsOf(serializable), decoded, name)
+		}
 	}
 
 	// And conversely: every entry in instances must correspond to a

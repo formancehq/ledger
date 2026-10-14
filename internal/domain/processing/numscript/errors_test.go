@@ -25,6 +25,32 @@ const balanceReadingScript = `
 	send $amt (source = @wallet destination = @out)
 `
 
+func TestCompilerFailureFactsExcludeDiagnosticText(t *testing.T) {
+	first := mapCompilerError(numscriptlib.CompilerTypeError{
+		Kind: numscriptlib.TypecheckTypeMismatch{Expected: "account", Got: "asset"},
+	})
+	second := mapCompilerError(numscriptlib.CompilerTypeError{
+		Kind: numscriptlib.TypecheckTypeMismatch{Expected: "account", Got: "asset"},
+	})
+	second.(*domain.ErrNumscriptCompile).Detail = "reworded compiler diagnostic"
+
+	firstFacts := domain.FailureFactsOf(first)
+	secondFacts := domain.FailureFactsOf(second)
+	require.Equal(t, firstFacts, secondFacts)
+	require.Equal(t, "NUMSCRIPT_COMPILE_TYPE_MISMATCH", firstFacts.Code)
+	require.Equal(t, map[string]string{"expected": "account", "got": "asset"}, firstFacts.Facts)
+	require.NoError(t, domain.ValidateFailureFacts(firstFacts))
+}
+
+func TestUnclassifiedCompilerFailureIsUncommitted(t *testing.T) {
+	t.Parallel()
+	err := mapCompilerError(errors.New("unknown compiler failure"))
+	require.Equal(t, domain.ErrReasonNumscriptCompileError, err.Reason())
+	require.Nil(t, err.FailureDetails())
+	_, uncommitted := err.(domain.UncommittedFailure)
+	require.True(t, uncommitted)
+}
+
 // TestSafeResolveDependencies_DescribableSurvivesLibrary verifies that a typed
 // domain.SerializableError returned by the store is NOT stringified/lost passing
 // through numscriptlib.ResolveDependencies: errors.As reaches the concrete type
@@ -170,7 +196,7 @@ send [COIN 100] (
 	// as a definite hit on the uncolored bucket. The wire metadata therefore
 	// omits the color key entirely.
 	require.False(t, insufficientFunds.ColorKnown)
-	_, colorPresent := insufficientFunds.Metadata()["color"]
+	_, colorPresent := domain.FailureFactsOf(insufficientFunds).Facts["color"]
 	require.False(t, colorPresent, "colored Numscript failure must not publish an empty color as the uncolored bucket")
 }
 

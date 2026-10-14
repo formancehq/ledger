@@ -7,7 +7,7 @@ import (
 )
 
 // Metadata limit dimension names. They are carried in
-// ErrMetadataLimitExceeded.Metadata()["dimension"] and reach the client through
+// ErrMetadataLimitExceeded.FailureDetails() and reach the client through
 // the gRPC ErrorInfo, so a caller can tell "too many entries" from "one value
 // too large" without parsing the message. Stable wire identifiers: renaming one
 // is a client-visible change.
@@ -232,6 +232,10 @@ func (l MetadataLimits) ValidateMap(m map[string]*commonpb.MetadataValue) Serial
 	}
 
 	if worstErr != nil {
+		if _, keyed := worstErr.(*ErrMetadataKeyValidation); keyed {
+			return worstErr
+		}
+
 		return &ErrMetadataKeyValidation{Key: worstKey, Cause: worstErr}
 	}
 
@@ -249,11 +253,11 @@ func (l MetadataLimits) ValidateKey(key string) SerializableError {
 	}
 
 	if keyBytes := uint64(len(key)); keyBytes > l.MaxKeyBytes {
-		return &ErrMetadataLimitExceeded{
+		return &ErrMetadataKeyValidation{Key: key, Cause: &ErrMetadataLimitExceeded{
 			Dimension: MetadataLimitDimensionKey,
 			Limit:     l.MaxKeyBytes,
 			Actual:    keyBytes,
-		}
+		}}
 	}
 
 	return nil

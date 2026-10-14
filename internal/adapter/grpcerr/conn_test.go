@@ -326,7 +326,7 @@ func TestConn_UnknownReasonKeepsItsExactCodeOverTheWire(t *testing.T) {
 	require.Equal(t, domain.KindInternal, d.Kind)
 	require.Equal(t, "SOME_REASON_FROM_A_NEWER_SERVER", d.Reason,
 		"the sender's reason is preserved verbatim")
-	require.Equal(t, map[string]string{"k": "v"}, d.Metadata)
+	require.Equal(t, map[string]string{"k": "v"}, d.Facts)
 }
 
 // TestConn_InvalidWirePairIsRejectedOverTheWire: a contradicting reason/code

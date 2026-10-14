@@ -510,9 +510,9 @@ Stale-inputs detection handles the case where discovery *succeeds* but the value
 So discovery failure is treated as a **preparation gap, not a verdict**:
 
 - **Admission** — if the batch carries an idempotency key, admission does *not* fail fast. It marks the order `OrderTechnical.preload_unavailable = true` and forwards it (empty coverage, no `inputs_resolution_hash`). Without a key there is no replay to preserve, so it keeps the cheap fail-fast (`DEPENDENCY_DISCOVERY_FAILED`).
-- **FSM** — the per-proposal idempotency dedup runs *before* `ProcessOrders`, so a **replay short-circuits to the frozen outcome** and never reaches the order handler. Only a **non-replay** reaches the `processOrder` guard, which — seeing `preload_unavailable` and no preload — rejects **before any execution** with `ErrPreloadUnavailable` (`ERROR_REASON_PRELOAD_UNAVAILABLE`, `Kind=Unavailable`).
+- **FSM** — the per-proposal idempotency dedup runs *before* `ProcessOrders`, so a **replay short-circuits to the frozen outcome**. A non-replay with `preload_unavailable` returns `ErrPreloadUnavailable` (`ERROR_REASON_PRELOAD_UNAVAILABLE`, `Kind=Unavailable`) before processing any order.
 
-That reason is **retryable and deliberately NOT freezable**: a preparation gap is never an authoritative business outcome, and freezing it could let a `preload_unavailable` retry shadow the real outcome of a concurrent same-key proposal (whichever applies first freezes). A non-replay preload-unavailable therefore writes an audit failure (auditable) but is never frozen; the client retries and eventually re-admits successfully or replays the now-frozen outcome. `preload_unavailable` rides in `OrderTechnical`, so it is excluded from the idempotency hash — a forwarded retry hashes identically to the original, which is what lets the FSM dedup match and replay.
+That reason is **retryable and deliberately neither auditable nor freezable**: a preparation gap is not an executed business outcome. A non-replay preload-unavailable writes no audit entry or idempotency result; the client retries and eventually re-admits successfully or replays an outcome frozen by another proposal. `preload_unavailable` rides in `OrderTechnical`, so it is excluded from the idempotency hash — a forwarded retry hashes identically to the original, which lets the FSM dedup match and replay.
 
 ### Notes
 

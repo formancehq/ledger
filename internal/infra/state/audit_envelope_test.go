@@ -221,16 +221,15 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 		Ledgers:     []string{"ledger-a"},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-				Message: "balance too low",
-				// Intentionally unsorted: zebra, apple, mango force the
-				// builder to actually sort.
-				Context: map[string]string{
-					"zebra":  "z-value",
-					"apple":  "a-value",
-					"mango":  "m-value",
-					"banana": "b-value",
-				},
+
+				// Intentionally unsorted: the builder must sort the field keys.
+				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{
+					"balance": "9",
+					"account": "bank",
+					"amount":  "10",
+					"asset":   "USD",
+					"color":   "",
+				}),
 			},
 		},
 	}
@@ -303,13 +302,14 @@ func TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns(t *testing.T) {
 		Ledgers:     []string{"ledger-a"},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_VALIDATION,
-				Message: "y",
-				Context: map[string]string{
-					"k3": "v3",
-					"k1": "v1",
-					"k2": "v2",
-				},
+
+				Details: commonpb.MustFailureDetails("ACCOUNT_METADATA_KEY_LIMIT_EXCEEDED", map[string]string{
+					"dimension": "value",
+					"limit":     "16",
+					"actual":    "17",
+					"key":       "k1",
+					"account":   "bank",
+				}),
 			},
 		},
 	}
@@ -396,10 +396,17 @@ func goldenBuildSuccess(s *auditpb.AuditSuccess) []byte {
 func goldenBuildFailure(f *auditpb.AuditFailure) []byte {
 	var buf []byte
 	buf = goldenU32(buf, uint32(f.GetReason()))
-	buf = goldenLenString(buf, f.GetMessage())
+	var armNumber uint32
+	if details := f.GetDetails(); details != nil {
+		message := details.ProtoReflect()
+		if arm := message.WhichOneof(message.Descriptor().Oneofs().ByName("kind")); arm != nil {
+			armNumber = uint32(arm.Number())
+		}
+	}
+	buf = goldenU32(buf, armNumber)
 
-	keys := make([]string, 0, len(f.GetContext()))
-	for k := range f.GetContext() {
+	keys := make([]string, 0, len(f.GetFacts()))
+	for k := range f.GetFacts() {
 		keys = append(keys, k)
 	}
 
@@ -408,7 +415,19 @@ func goldenBuildFailure(f *auditpb.AuditFailure) []byte {
 
 	for _, k := range keys {
 		buf = goldenLenString(buf, k)
-		buf = goldenLenString(buf, f.GetContext()[k])
+		buf = goldenLenString(buf, f.GetFacts()[k])
+	}
+	if details := f.GetDetails(); details != nil {
+		message := details.ProtoReflect()
+		buf = goldenLenBytes(buf, message.GetUnknown())
+		if arm := message.WhichOneof(message.Descriptor().Oneofs().ByName("kind")); arm != nil {
+			buf = goldenLenBytes(buf, message.Get(arm).Message().GetUnknown())
+		} else {
+			buf = goldenLenBytes(buf, nil)
+		}
+	} else {
+		buf = goldenLenBytes(buf, nil)
+		buf = goldenLenBytes(buf, nil)
 	}
 
 	return buf

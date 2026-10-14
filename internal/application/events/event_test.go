@@ -180,8 +180,8 @@ func TestLogToEvent(t *testing.T) {
 								Data: &commonpb.LedgerLogPayload{
 									Payload: &commonpb.LedgerLogPayload_OrderSkipped{
 										OrderSkipped: &commonpb.OrderSkippedLog{
-											Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-											Context: map[string]string{"reference": "ref-1"},
+
+											Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"reference": "ref-1"}),
 										},
 									},
 								},

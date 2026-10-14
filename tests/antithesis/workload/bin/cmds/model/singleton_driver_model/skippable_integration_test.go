@@ -75,7 +75,7 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 		)
 		rejectCorruption(t, func(resp *servicepb.ApplyResponse) {
-			resp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Reason = commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED
+			resp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Details = nil
 		}, duplicate, oracletest.TxReq("world", "typed:1", "USD", 1))
 
 		mode := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
@@ -139,7 +139,8 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 		require.True(t, proto.Equal(first, replay), "replay must preserve original logs and sequences")
 		require.Equal(t, fingerprint, checker.modelState.Fingerprint())
 		corrupted := proto.Clone(replay).(*servicepb.ApplyResponse)
-		corrupted.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Context["reference"] = "wrong"
+		wrong := "wrong"
+		corrupted.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().GetDetails().GetTransactionReferenceConflict().Reference = &wrong
 		require.False(t, replayOrdersMatch(bulk, expected.Orders, corrupted.GetLogs()))
 	})
 	t.Run("later fatal order rolls back skipped log and earlier success", func(t *testing.T) {
@@ -174,7 +175,7 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 				continue
 			}
 			found = true
-			skipped.Context["unexpected"] = "corrupted"
+			skipped.Details = nil
 			require.False(t, logWindowMatches(checker.modelState.Ledger("L"), "L", nil, 0, false, 100, serverLogRows(logs), ""))
 
 			break

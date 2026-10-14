@@ -81,17 +81,17 @@ func TestReferenceConflictSkipLostResponse(t *testing.T) {
 					require.NotNil(t, skipped)
 					require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
 					firstID := applyPayload(t, attempts["first"][0].response).GetCreatedTransaction().GetTransaction().GetId()
-					require.Equal(t, strconv.FormatUint(firstID, 10), skipped.GetContext()["existingTransactionId"])
-					require.Equal(t, ledger, skipped.GetContext()["ledger"])
-					require.Equal(t, calls[0].request.GetUnsigned().GetRequests()[0].GetApply().GetAction().GetCreateTransaction().GetReference(), skipped.GetContext()["reference"])
+					require.Equal(t, strconv.FormatUint(firstID, 10), skipped.GetFacts()["existingTransactionId"])
+					require.Equal(t, ledger, skipped.GetFacts()["ledger"])
+					require.Equal(t, calls[0].request.GetUnsigned().GetRequests()[0].GetApply().GetAction().GetCreateTransaction().GetReference(), skipped.GetFacts()["reference"])
 				} else {
 					require.NotNil(t, applyPayload(t, original).GetCreatedTransaction(), "fault must follow a committed creation")
 					if skipped := applyPayload(t, delivered).GetOrderSkipped(); skipped != nil {
 						created := applyPayload(t, original).GetCreatedTransaction().GetTransaction()
 						require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
-						require.Equal(t, created.GetReference(), skipped.GetContext()["reference"])
-						require.Equal(t, ledger, skipped.GetContext()["ledger"])
-						require.Equal(t, strconv.FormatUint(created.GetId(), 10), skipped.GetContext()["existingTransactionId"], "retry skipped its own committed transaction")
+						require.Equal(t, created.GetReference(), skipped.GetFacts()["reference"])
+						require.Equal(t, ledger, skipped.GetFacts()["ledger"])
+						require.Equal(t, strconv.FormatUint(created.GetId(), 10), skipped.GetFacts()["existingTransactionId"], "retry skipped its own committed transaction")
 					}
 					require.NotNil(t, applyPayload(t, delivered).GetCreatedTransaction(), "skip-tolerant first-claim on a fresh reference must NOT fire the skip: step=%s, response=%v", step, delivered)
 				}
@@ -124,7 +124,7 @@ func TestReferenceConflictSkipUnkeyedControl(t *testing.T) {
 				require.False(t, event.Assertion.Condition)
 				require.Equal(t, "ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT", event.Assertion.Details["skipReason"])
 				require.NotEmpty(t, event.Assertion.Details["idempotencyKey"])
-				require.NotEmpty(t, event.Assertion.Details["skipContext"])
+				require.NotEmpty(t, event.Assertion.Details["skipFacts"])
 				require.NotEmpty(t, event.Assertion.Details["logSequence"])
 			}
 		}
@@ -155,9 +155,9 @@ func TestReferenceConflictSkipUnkeyedControl(t *testing.T) {
 	skipped := applyPayload(t, calls[1].response).GetOrderSkipped()
 	require.NotNil(t, skipped)
 	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
-	require.Equal(t, created.GetReference(), skipped.GetContext()["reference"])
-	require.Equal(t, ledger, skipped.GetContext()["ledger"])
-	require.Equal(t, strconv.FormatUint(created.GetId(), 10), skipped.GetContext()["existingTransactionId"])
+	require.Equal(t, created.GetReference(), skipped.GetFacts()["reference"])
+	require.Equal(t, ledger, skipped.GetFacts()["ledger"])
+	require.Equal(t, strconv.FormatUint(created.GetId(), 10), skipped.GetFacts()["existingTransactionId"])
 	require.Greater(t, calls[1].response.GetLogs()[0].GetSequence(), calls[0].response.GetLogs()[0].GetSequence())
 	assertTransactions(t, ctx, backend, ledger, attempts)
 	assertLogCount(t, ctx, backend, ledger, 4)

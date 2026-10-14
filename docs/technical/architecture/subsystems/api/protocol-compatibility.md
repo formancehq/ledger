@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"29"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"39"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -58,8 +58,8 @@ clients and servers; apply semantics must agree across every replica.
 Revision 5 (EN-1623) removes internal index/coverage details from public
 error messages and ErrorInfo metadata while retaining their reasons and status
 codes. Internal read failures in restore validation retain `Internal` with a
-sanitized correlation message. AuditFailure records retain their original
-diagnostic message and context.
+sanitized correlation message. AuditFailure records retained their diagnostic
+message and context until revision 30.
 
 Revision 8 (EN-1771) removes `CreatedIndexLog.initial` and renumbers the
 remaining exposed fields. Clients and servers built against revision 7 would
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 29:
+leader. For example, with a schema implementing revision 39:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 29' \
+grpcurl -plaintext -H 'ledger-protocol-version: 39' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -432,3 +432,166 @@ present in one bucket — either side silently selects the wrong chain.
 Ledger v3 is unreleased and no backup written under the old layout is
 supported, so there is no migration: operators re-run a full backup under the
 new layout.
+
+## Structured audited failures (revision 30)
+
+Revision 30 replaces the persisted `AuditFailure.message/context`,
+`IdempotencyFailure.message/metadata`, and `OrderSkippedLog.context` fields
+with a stable `reason`, `code`, and `facts` tuple. Audit hashing and
+idempotency comparison use that tuple. Read and API paths render presentation
+text from it; Numscript execution and compiler diagnostics are not persisted
+as failure messages or copied into their public error details. A skipped order
+exposes its code and facts in gRPC, HTTP bulk, and
+event payloads. This changes exposed log and audit responses, so service
+clients and servers must use the same revision.
+
+## Stable public failure details (revision 31)
+
+Revision 31 renders local business error messages and `ErrorInfo.metadata` from
+the same explicit stable facts used by the audit chain. Diagnostic `Error()`
+text does not enter the public response. Errors
+that have no declared reason receive a generic message for their error kind.
+The status code and broad reason remain stable. Clients that parsed former
+free-form text must switch to the reason and stable fact keys. No persisted
+failure format changes between revisions 30 and 31.
+
+## Typed audited failure details (revision 32)
+
+Revision 32 replaces the persisted and service-visible `facts` string maps in
+`AuditFailure`, `IdempotencyFailure`, and `OrderSkippedLog` with one shared
+`FailureDetails` protobuf oneof. Each arm names a concrete stable failure code
+and carries presence-tracked fields with explicit protobuf types; numeric
+correlators are `uint64` instead of decimal text. At revision 32, the
+containing reason had to match an arm annotation and the code had to name that
+arm. Ledger rejects missing arms,
+absent required facts, unknown fields, and malformed values
+when reading audited failures. HTTP and public
+`ErrorInfo.metadata` still render the named facts as strings at their API
+boundaries.
+
+The audit hash pre-image now binds the selected arm number alongside the
+sorted rendered fact keys and values. Persisted failures from revision 31
+cannot be read or verified under revision 32. Ledger v3 is unreleased, so
+deployments must start with fresh state; mixed revisions cannot share a
+cluster or service connection.
+
+## Contextual metadata validation failures (revision 33)
+
+Revision 33 requires the `key` fact for `METADATA_KEY_INVALID_CHAR` and
+`METADATA_VALUE_CONTAINS_NULL_BYTE`. `METADATA_KEY_EMPTY` is a distinct code
+whose key is necessarily empty, so it carries no redundant `key` fact. The
+validation producer retains the offending key for the other variants. Their
+primitive validation sentinels remain available for `errors.Is`, but cannot
+be serialized without the key. Account metadata failures also carry `account`;
+ledger and transaction metadata failures do not
+have an account. The public gRPC error metadata and audited failure details now
+include the key on paths that previously returned a bare sentinel. The schema
+also removes generic `key` and `account` fields from failure variants whose
+producers never supply metadata context. Remaining conditional fields reflect
+distinct producer paths. Previously persisted failures with the removed fields
+or without a now-required key cannot be read under revision 33.
+
+## Deterministic failure fact shapes (revision 34)
+
+Revision 34 removes all conditionally present fields from `FailureDetails`.
+Every scalar fact in a selected variant is required, including empty strings
+and zero IDs when those are the actual values. `proto3 optional` remains on
+these required fields solely to distinguish an explicitly supplied zero value
+from an absent field during validation. The validator requires presence of
+every scalar in the selected variant; no per-field required annotation is
+needed. Removing `optional` would make a missing fact indistinguishable from
+an explicit zero or empty value in proto3.
+
+Distinct variants now represent account-scoped metadata failures, metadata
+limits with a known key, direct posting versus Numscript insufficient funds,
+Numscript failures with a known numerator or scope, and an unknown script name
+versus an unknown exact version. The coarse `ErrorReason` stays the same for
+each pair; the stable detail code identifies its precise fact shape. An
+unconfigured metadata policy has no key context because validation stops
+before selecting an entry. Transaction reference conflicts always include
+`existingTransactionId`, even when its value is zero. The changed detail arms
+and field numbering require fresh state and a uniform revision 34 cluster.
+
+## Audited versus public failures (revision 35)
+
+Revision 35 removes detail variants for failures that cannot be written to an
+audited order outcome. Read aggregation overflow, admission dependency discovery,
+execution-plan size, idempotency lookup, write health gates, and audit availability
+remain public errors with their existing reason, code, status and fact presentation.
+A malformed caller attribution and a maintenance gate can also reject a committed
+proposal in the FSM, but both return before the order-audit path; they are not
+`AuditFailure` records. `PRELOAD_UNAVAILABLE` also returns before order
+processing when no earlier idempotency outcome exists: it is a retryable
+preparation interruption with no audit entry or frozen result.
+`STALE_PROPOSAL` and `INVALID_EXECUTION_PLAN` remain typed audited outcomes.
+
+The `FailureDetails` oneof now contains only variants eligible for the audited
+projection. Removed arms are renumbered sequentially because Ledger v3 is
+unreleased. This also removes the unreachable bare `validation` arm: it had no
+allowed failure reason or producer; concrete validation failures retain their
+own typed arms. The service revision changes to 35 because this shared protobuf type
+is exposed by gRPC. Existing revision-34 state must be discarded; clients and
+servers must use the same revision. Public `ErrorInfo` identifiers and metadata
+are unchanged.
+
+## Uncommitted internal proposal failures (revision 36)
+
+Revision 36 removes the `cluster_policy_invalid`,
+`cluster_policy_revision_conflict`, and `coverage_miss` arms from the audited
+`FailureDetails` oneof. These errors indicate an invalid internal policy
+proposal or an admission coverage contract violation. An affected proposal
+returns its typed error without an `AuditFailure` entry or frozen idempotency
+result; staged order writes are discarded. A corrected proposal can be retried.
+Successful cluster-policy updates still produce audited orders and the policy
+projection remains checker-verified. The removed arms are renumbered because
+v3 is unreleased. This shared gRPC change requires revision 36 on both sides.
+
+## Technical failures outside the audited outcome (revision 37)
+
+Revision 37 removes 22 technical, transient, invariant, and unclassified
+variants from the `FailureDetails` oneof. Storage failures, stale admission
+observations, missing preload coverage, sequence exhaustion, malformed internal
+plans, and inconsistent materialized state now return without an `AuditFailure`
+entry or frozen idempotency result. Mirror source sequence gaps are also
+retryable after correcting the source. Read-side index and checkpoint readiness
+errors retain their public reasons but have no audited detail variant.
+
+Known Numscript compiler and execution errors keep their specific audited
+variants. An unclassified compiler failure and an unknown Numscript runtime
+failure are not business verdicts. The generic compile and execution fallback
+variants are removed; public responses retain their coarse reasons. An
+unconfigured committed metadata policy is an internal failure, not a rejection
+attributed to the business command. Successful orders still produce audit
+entries. This shared protobuf change requires fresh v3 state and revision 37
+clients and servers.
+
+## Derive stored failure codes from typed details (revision 38)
+
+Revision 38 removes the redundant `code` field from persisted `AuditFailure`,
+`IdempotencyFailure`, and `OrderSkippedLog`. The selected `FailureDetails` oneof
+arm is the sole stored source of the stable subcode. Audit hashing binds the
+arm number, the explicit facts, and unknown field bytes; checker validation
+rejects missing or invalid arms. Public HTTP, bulk skip, audit JSON, and event
+responses still render the same `code` from the arm. gRPC `ErrorInfo` continues
+to expose the coarse reason and the facts as metadata.
+The fields are removed and renumbered because v3 is unreleased. This shared
+protobuf change requires fresh v3 state and revision 38 clients and servers.
+
+## Derive stored failure reasons from typed details (revision 39)
+
+Revision 39 removes the redundant `reason` field from `AuditFailure`,
+`IdempotencyFailure`, and `OrderSkippedLog`. Each `FailureDetails` oneof arm now
+declares exactly one `failure_reason` enum value; the selected arm is the sole
+stored identity for the failure. The FSM validates that a producer's `Reason()`
+matches the arm before persistence. Audit hashing still binds the derived reason,
+arm number, and facts. The checker rejects missing or invalid details and
+compares idempotency projections against the hash-bound audit outcome.
+
+The request's `skippable_reasons` whitelist remains a list of coarse reasons.
+FSM order processing checks the producer's reason against that whitelist, then
+validates that it matches the typed details before emitting an `OrderSkippedLog`.
+Public HTTP and JSON responses continue to render the same reason, code, and
+facts; gRPC clients reading `OrderSkippedLog` derive its reason from `details`.
+The removed and renumbered protobuf fields change the service wire format.
+Ledger v3 is unreleased, so deployments start with fresh state and use revision
+39 clients and servers together.

@@ -296,24 +296,18 @@ func NewAuditSuccessListReader(s []*AuditSuccess) AuditSuccessListReader {
 // AuditFailureReader provides read-only access to AuditFailure.
 // Call Mutate() to obtain a mutable clone.
 type AuditFailureReader interface {
-	GetReason() commonpb.ErrorReason
-	GetMessage() string
-	GetContext() AuditFailure_ContextMapReader
+	GetDetails() commonpb.FailureDetailsReader
 	Mutate() *AuditFailure
 }
 
 type auditFailureReadonly AuditFailure
 
-func (r *auditFailureReadonly) GetReason() commonpb.ErrorReason {
-	return (*AuditFailure)(r).GetReason()
-}
-
-func (r *auditFailureReadonly) GetMessage() string {
-	return (*AuditFailure)(r).GetMessage()
-}
-
-func (r *auditFailureReadonly) GetContext() AuditFailure_ContextMapReader {
-	return auditFailure_contextMapReadonly((*AuditFailure)(r).GetContext())
+func (r *auditFailureReadonly) GetDetails() commonpb.FailureDetailsReader {
+	v := (*AuditFailure)(r).GetDetails()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *auditFailureReadonly) Mutate() *AuditFailure {
@@ -368,28 +362,4 @@ func (l auditFailureListReadonly) Range(yield func(int, AuditFailureReader) bool
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewAuditFailureListReader(s []*AuditFailure) AuditFailureListReader {
 	return auditFailureListReadonly(s)
-}
-
-// AuditFailure_ContextMapReader provides read-only access to AuditFailure.Context.
-type AuditFailure_ContextMapReader interface {
-	Len() int
-	Get(k string) (string, bool)
-	Range(yield func(string, string) bool)
-}
-
-type auditFailure_contextMapReadonly map[string]string
-
-func (m auditFailure_contextMapReadonly) Len() int { return len(m) }
-
-func (m auditFailure_contextMapReadonly) Get(k string) (string, bool) {
-	v, ok := m[k]
-	return v, ok
-}
-
-func (m auditFailure_contextMapReadonly) Range(yield func(string, string) bool) {
-	for k, v := range m {
-		if !yield(k, v) {
-			return
-		}
-	}
 }

@@ -40,7 +40,8 @@ import (
 // the new state and commit — a different outcome for the same key. If it
 // over-froze, a retryable failure would be pinned forever.
 //
-// Three keyed failures sit in the delta:
+// Two frozen keyed failures sit in the delta; a third, retryable interruption
+// has no audited outcome:
 //   - frozenKey fails INSUFFICIENT_FUNDS (KindPrecondition, freezable). Its
 //     source is funded afterwards, so only the frozen outcome keeps the retry
 //     failing.
@@ -76,11 +77,11 @@ var _ = Describe("Restore frozen idempotency failures", Ordered, func() {
 		restoreDataDir string
 		minioEndpoint  string
 
-		// The live rejections, which every replay must reproduce.
-		frozenMessage  string
+		// The live structured rejections, which every replay must reproduce.
 		frozenMetadata map[string]string
-		execMessage    string
 		execMetadata   map[string]string
+		frozenMessage  string
+		execMessage    string
 	)
 
 	frozenTx := func() *servicepb.ApplyRequest {
@@ -121,18 +122,17 @@ send [USD 10] (
 		)
 	}
 
-	// expectReplay asserts a keyed request replays its original rejection
-	// byte-for-byte, and that its sink was never credited.
-	expectReplay := func(client servicepb.BucketServiceClient, phase string, tx *servicepb.ApplyRequest, reason, message string, metadata map[string]string, sink string) {
+	// expectReplay asserts a keyed request replays its original structured
+	// rejection, and that its sink was never credited.
+	expectReplay := func(client servicepb.BucketServiceClient, phase string, tx *servicepb.ApplyRequest, reason string, metadata map[string]string, message string, sink string) {
 		_, err := client.Apply(ctx, tx)
 		Expect(err).To(HaveOccurred(), "%s: a frozen failure must replay, not re-execute against the funded source", phase)
 		Expect(status.Code(err)).To(Equal(codes.FailedPrecondition), "%s", phase)
-		Expect(status.Convert(err).Message()).To(Equal(message), "%s: replayed message", phase)
-
 		info := actions.ExtractGRPCErrorInfo(err)
 		Expect(info).NotTo(BeNil(), "%s", phase)
 		Expect(info.Reason).To(Equal(reason), "%s: replayed reason", phase)
 		Expect(info.Metadata).To(Equal(metadata), "%s: replayed metadata", phase)
+		Expect(status.Convert(err).Message()).To(Equal(message), "%s: replayed message", phase)
 
 		acct, err := actions.GetAccount(ctx, client, ledgerName, sink)
 		if status.Code(err) == codes.NotFound {
@@ -143,11 +143,11 @@ send [USD 10] (
 	}
 
 	expectFrozenReplay := func(client servicepb.BucketServiceClient, phase string) {
-		expectReplay(client, phase, frozenTx(), domain.ErrReasonInsufficientFunds, frozenMessage, frozenMetadata, frozenSink)
+		expectReplay(client, phase, frozenTx(), domain.ErrReasonInsufficientFunds, frozenMetadata, frozenMessage, frozenSink)
 	}
 
 	expectExecReplay := func(client servicepb.BucketServiceClient, phase string) {
-		expectReplay(client, phase, execTx(), domain.ErrReasonNumscriptExecutionError, execMessage, execMetadata, execSink)
+		expectReplay(client, phase, execTx(), domain.ErrReasonNumscriptExecutionError, execMetadata, execMessage, execSink)
 	}
 
 	storage := func() *commonpb.BackupStorage {
@@ -262,8 +262,8 @@ send [USD 10] (
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonInsufficientFunds))
 
-			frozenMessage = status.Convert(err).Message()
 			frozenMetadata = info.Metadata
+			frozenMessage = status.Convert(err).Message()
 		})
 
 		It("rejects execKey with NUMSCRIPT_EXECUTION_ERROR", func() {
@@ -275,8 +275,8 @@ send [USD 10] (
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptExecutionError))
 
-			execMessage = status.Convert(err).Message()
 			execMetadata = info.Metadata
+			execMessage = status.Convert(err).Message()
 		})
 
 		It("rejects retryableKey with PRELOAD_UNAVAILABLE", func() {
@@ -289,9 +289,10 @@ send [USD 10] (
 			Expect(info.Reason).To(Equal(domain.ErrReasonPreloadUnavailable))
 		})
 
-		It("audits every failure", func() {
-			// Premise guard: a failure rejected before the FSM leaves no audit
-			// entry, so the restore would have nothing to rebuild or skip.
+		It("audits frozen failures but not the retryable preload interruption", func() {
+			// The two definitive failures are restored from audit entries.
+			// PRELOAD_UNAVAILABLE returns before the audit path and must remain
+			// retryable under the same idempotency key.
 			entries, err := actions.ListAuditEntries(ctx, client, true)
 			Expect(err).To(Succeed())
 
@@ -301,7 +302,7 @@ send [USD 10] (
 			}
 			Expect(reasons).To(HaveKeyWithValue(frozenKey, commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS))
 			Expect(reasons).To(HaveKeyWithValue(execKey, commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR))
-			Expect(reasons).To(HaveKeyWithValue(retryableKey, commonpb.ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE))
+			Expect(reasons).NotTo(HaveKey(retryableKey))
 		})
 
 		It("replays the frozen keys on the live node after funding their sources", func() {

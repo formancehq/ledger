@@ -47,7 +47,7 @@ func TestHandleError_ClassifiableWithoutReason(t *testing.T) {
 			var body ErrorResponse
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 			require.Equal(t, "INVALID_REQUEST", body.ErrorCode)
-			require.Equal(t, tc.err.Error(), body.ErrorMessage)
+			require.Equal(t, "invalid request", body.ErrorMessage)
 		})
 	}
 }

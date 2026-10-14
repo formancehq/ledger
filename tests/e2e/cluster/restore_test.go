@@ -362,6 +362,27 @@ var _ = Describe("Restore", Ordered, func() {
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeAction(chartLedger, "wallet", "wallet:{id}")))
 			Expect(err).To(Succeed())
 
+			// Restore and CheckStore must compare the skipped failure fact
+			// with the original name from the audited order.
+			missingTypeName := "missing-type"
+			skipResponse, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+					Ledger: chartLedger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{
+						RemoveAccountType: &servicepb.RemoveAccountTypeRequest{Name: missingTypeName},
+					}},
+					SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND},
+				}},
+			}))
+			Expect(err).To(Succeed())
+			Expect(skipResponse.GetLogs()).To(HaveLen(1))
+			skipped := skipResponse.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped()
+			Expect(skipped).NotTo(BeNil())
+			Expect(skipped.GetFacts()).To(HaveKeyWithValue("name", missingTypeName))
+			sourceCheck, err := actions.CollectCheckStoreEvents(ctx, client)
+			Expect(err).To(Succeed())
+			Expect(sourceCheck.Errors).To(BeEmpty(), "the source checker must accept the exact skip fact")
+
 			// A ledger created AFTER the full checkpoint lives only in the
 			// incremental exports. Its LedgerInfo + LedgerBoundaries must be
 			// rebuilt into the 0xF1 attribute zone the apply-path preload reads,
@@ -951,7 +972,7 @@ var _ = Describe("Restore", Ordered, func() {
 
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", dup))
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("already exists"))
+			Expect(err.Error()).To(ContainSubstring("transaction reference conflict"))
 		})
 
 		It("should accept transactions on a ledger created after the checkpoint", func() {

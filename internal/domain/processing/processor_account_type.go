@@ -18,6 +18,12 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 	}
 
 	at := order.GetAccountType()
+	if len(at.GetName()) > domain.MaxAccountTypeNameLength {
+		return nil, domain.ErrAccountTypeNameTooLong
+	}
+	if len(at.GetPattern()) > domain.MaxAccountTypePatternLength {
+		return nil, domain.ErrAccountTypePatternTooLong
+	}
 	if at == nil || at.GetName() == "" {
 		return nil, &domain.ErrInvalidPattern{Pattern: "", Details: "account type name is required"}
 	}
@@ -78,6 +84,9 @@ func processRemoveAccountType(ledger string, order *raftcmdpb.RemoveAccountTypeO
 	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
+	}
+	if len(order.GetName()) > domain.MaxAccountTypeNameLength {
+		return nil, domain.ErrAccountTypeNameTooLong
 	}
 
 	// An empty name is not a valid account type (processAddAccountType

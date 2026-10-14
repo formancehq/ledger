@@ -9,7 +9,7 @@
 The FSM apply path holds two hard invariants:
 
 1. **No Pebble reads on the hot path.** Every read during apply must come from the in-memory cache or from the proposal payload itself. This is compiler-enforced: the FSM only holds `*dal.WriteSession`, a type that exposes no `Get`/`NewIter`.
-2. **Reads are scoped by what the proposer declared.** A read of a key the proposer never declared surfaces as `*ErrCoverageMiss`, propagated to the order handler as a normal error and turned into a business-level rejection (failure audit entry + `BusinessError` on `ApplyResult`). The cache stays in lockstep with Pebble because the `gatedScope` decorator refuses to forward the read before any mutation lands.
+2. **Reads are scoped by what the proposer declared.** A read of a key the proposer never declared surfaces as `*ErrCoverageMiss`, propagated to the order handler as a normal error and returned as an uncommitted `BusinessError` on `ApplyResult`, without an audit entry or frozen idempotency result. The cache stays in lockstep with Pebble because the `gatedScope` decorator refuses to forward the read before any mutation lands.
 
 These invariants are upheld by a layered stack between the order processor and the in-memory cache.
 

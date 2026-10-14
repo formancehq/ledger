@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"slices"
-	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"go.opentelemetry.io/otel/attribute"
@@ -24,13 +23,13 @@ import (
 // ErrCoverageMiss is returned by gatedScope when the FSM reads a key the
 // proposer did not declare in this scope's coverage_bits / production_bits.
 // It indicates a malformed execution plan — admission failed to flag a key
-// the FSM then reads — so the right outcome is a business-level rejection
-// that surfaces the gap to the proposer. It is NOT an FSM invariant
+// the FSM then reads — so the proposal is rejected without a committed
+// business outcome. It is NOT an FSM invariant
 // violation; the cache stays in lockstep with Pebble because gatedScope
 // refuses to forward the read before any mutation lands.
 //
-// Implements domain.SerializableError (KindInternal) so applyProposal can wrap
-// it in a domain.BusinessError and surface it via ApplyResult.Error
+// Implements domain.UncommittedFailure so applyProposal can wrap it in a
+// domain.BusinessError and surface it via ApplyResult.Error
 // without killing the FSM apply loop.
 type ErrCoverageMiss struct {
 	Attribute    string // sub-attribute name ("ledgers", "boundaries", …)
@@ -46,46 +45,17 @@ func (e *ErrCoverageMiss) Error() string {
 
 func (*ErrCoverageMiss) Kind() domain.ErrorKind { return domain.KindInternal }
 func (*ErrCoverageMiss) Reason() string         { return domain.ErrReasonCoverageMiss }
+func (*ErrCoverageMiss) UncommittedFailure()    {}
 
-// Metadata keys are camelCase, matching every other Describable and the
-// repo-wide wire convention (CLAUDE.md). This map was NOT unreachable before
-// EN-1379: two paths already surfaced the bare miss, so the EN-1379 rename from
-// snake_case is a deliberate breaking change, not an incidental cleanup —
-//
-//   - numscript re-resolution returns the bare miss (convertNumscriptError
-//     flattens the chain via errors.As), and a ProcessOrders failure feeds
-//     buildAuditFailure, which copies Metadata() into the hash-chained
-//     AuditFailure.Context. The snake_case keys were already in the audit.
-//   - planInvariantFailure returns the bare miss to applyProposal, which
-//     surfaces it wrapped in a domain.BusinessError. The carrier declares no
-//     Metadata() of its own, so the context is read off the miss itself through
-//     domain.PublicErrorDetails. That metadata used to reach the gRPC ErrorInfo;
-//     API error responses now use PublicDetails while the audit identity stays
-//     intact.
-//
-// So operator tooling keyed on canonical_hex / id_hex / raft_index stops
-// matching at this deploy, and audit entries for this failure class carry
-// different key names either side of it. That cost is paid once, deliberately:
-// this was the last snake_case Describable in the repo, and leaving the only
-// outlier on the error that most needs to be greppable would just defer the
-// same seam. Error() above uses the same raftIndex spelling so a single audit
-// record does not carry both (kind= / id= are prose labels, not payload keys).
-// See docs/technical/architecture/subsystems/fsm/coverage-gate.md.
-//
-// The structured log emitted by coverageMiss keeps its own snake_case field
-// names — that is a log, not a wire payload.
-func (e *ErrCoverageMiss) Metadata() map[string]string {
-	return map[string]string{
-		"attribute":    e.Attribute,
-		"canonicalHex": e.CanonicalHex,
-		"idHex":        e.IDHex,
-		"raftIndex":    strconv.FormatUint(e.RaftIndex, 10),
-	}
+// Processing still requires SerializableError for errors propagated through
+// its handlers. This method exists for that interface only: the FSM observes
+// UncommittedFailure before attempting to build an AuditFailure.
+func (e *ErrCoverageMiss) FailureDetails() *commonpb.FailureDetails {
+	return nil // Admission contract violations are never audited outcomes.
 }
 
 // PublicDetails hides cache keys and Raft position from API error responses.
-// Error() and Metadata() must retain their diagnostic values: both are copied
-// into the authoritative, hash-chained AuditFailure by buildAuditFailure.
+// Error() retains diagnostic values for operator logs.
 func (*ErrCoverageMiss) PublicDetails() (string, map[string]string, bool) {
 	return "preload coverage miss", nil, true
 }

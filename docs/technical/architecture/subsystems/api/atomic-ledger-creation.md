@@ -10,7 +10,10 @@ metadata must not leave an observable ledger or partially stored values.
 `POST /v3/{ledgerName}` accepts optional `metadata` alongside the existing
 creation fields. The service `CreateLedgerRequest.metadata` carries the same
 typed values. The Go `actions.CreateLedgerAction` helper also forwards its
-existing string metadata argument. `ledger:LedgerWrite` authorizes the complete creation operation,
+existing string metadata argument. Initial account-type map keys and patterns
+obey the same 256-byte name and 4096-byte pattern bounds as later account-type
+operations, both at admission and during FSM replay. `ledger:LedgerWrite`
+authorizes the complete creation operation,
 including initial metadata, schema and account types. Subsequent metadata saves
 still require `ledger:MetadataWrite`. HTTP, gRPC and unsigned bulk use the same
 creation scope decision.

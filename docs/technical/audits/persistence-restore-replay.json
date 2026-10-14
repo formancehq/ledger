@@ -41,6 +41,7 @@
     "docs/technical/architecture/subsystems/api/atomic-ledger-creation.md"
   ],
   "invariants": [
+    "An UncommittedFailure after a checkpoint produces no audit/item/log or frozen idempotency delta and does not advance the last applied HLC; restore parity must preserve this absence and the next retry behavior without inventing an export segment.",
     "For every committed effect intended to survive cross-cluster restore, live(prefix + delta) and restore(checkpoint(prefix), delta) must produce the same logical persisted state and the same next admission/apply behavior. The delta must be non-empty and contain the operation under examination; byte equality is required only where the storage contract requires it.",
     "Every primary-store value that can differ after the checkpoint must have one evidenced lifecycle classification: preserved because the delta cannot change it, rebuilt deterministically from identified exported evidence with the checkpoint value as seed, or deliberately discarded as cluster-local/cache-like state with a documented reseed path. Checkpoint presence alone does not justify preservation.",
     "Incremental export must cover every permanent log, audit entry, audit item, and applied-proposal row after the recorded checkpoint boundaries exactly once and in a form that ApplyExports validates before use. Restored history residency must match the source logically; gaps, duplicate or overlapping ranges, malformed keys, corruption, truncation, reordered segments, or inconsistent manifest boundaries must fail closed rather than certify a partial restore.",
@@ -58,6 +59,7 @@
     "CreatedLedgerLog carries initial metadata so post-checkpoint creation reconstructs canonical metadata during ApplyExportsAndRebuild. Persisted LedgerInfo does not duplicate the canonical metadata projection."
   ],
   "adversarial_questions": [
+    "Does a post-checkpoint technical interruption spuriously advance the exported audit bound or restored HLC, create a frozen result, or hide a later definitive outcome from the delta?",
     "For every current FSM/live-apply write into the primary store, can its value change after a full checkpoint? Which preserved/rebuilt/discarded class owns it, which exported record supplies the facts, and which independent comparison proves the restored value and next consuming decision?",
     "Can a successful post-checkpoint order write no ledger log, share old logs through idempotency, emit multiple logs, or place essential facts only in AuditItem or AppliedProposal? Do checkpoint and proposal-boundary folds still select exactly the new committed effects?",
     "Can an incremental manifest omit the first or last sequence, accept a gap/overlap/duplicate, mix segment types or ranges, apply a valid prefix then fail, or publish before every referenced object is durable? What remains in the destination and staging store after each interruption?",
@@ -75,6 +77,7 @@
     "Does a restore with nonempty checkpoint files and a nonempty post-checkpoint creation delta reproduce typed initial metadata for normal and mirror ledgers, including explicit protobuf null and a schema type mismatch?"
   ],
   "dynamic_checks_to_consider": [
+    "After a full checkpoint, apply an UncommittedFailure and then a definitive proposal so the delta is nonempty. Restore it and compare audit bounds, HLC, absent technical rows, definitive rows and a subsequent keyed retry against live state.",
     "During a separately authorized read-only audit, first inventory current live primary-store mutations, export record variants, RebuildDelta cases, PrepareForBackup resets, checker passes and restore fixtures at the exact audited SHA. Record commands, selected tests, build tags, skipped infrastructure and assertion limits. This manifest-only change does not authorize running the product audit.",
     "Use a disposable production-path fixture to create nontrivial prefix state, take a full checkpoint, commit the target create/update/delete/cascade after it, take one or more incremental backups, assert non-empty segments and exact sequence coverage, then restore with ApplyExportsAndRebuild or the real restore service. Compare source and restored logical rows and externally visible behavior, run CheckStore, and exercise the next admission/apply decision.",
     "Build a table-driven classification matrix from all current primary-store writers and replay branches. For each rebuilt value test checkpoint seeding plus at least two delta mutations, including relevant delete/reset/recreate ordering. For each discarded value prove removal and successful deterministic reseeding; for each preserved value demonstrate that no admitted delta operation can change it.",

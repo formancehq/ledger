@@ -56,8 +56,9 @@ type sinkEventData struct {
 	SinkName *string `json:"sinkName,omitempty"`
 
 	// SKIPPED_ORDER
-	SkippedReason  *string           `json:"skippedReason,omitempty"`
-	SkippedContext map[string]string `json:"skippedContext,omitempty"`
+	SkippedReason *string           `json:"skippedReason,omitempty"`
+	SkippedCode   *string           `json:"skippedCode,omitempty"`
+	SkippedFacts  map[string]string `json:"skippedFacts,omitempty"`
 }
 
 type sinkTransaction struct {
@@ -168,7 +169,9 @@ func sinkPopulateApply(data *sinkEventData, apply *commonpb.ApplyLedgerLog) {
 		// that the REST/bulk response and OrderSkippedLog JSON already expose.
 		reason := domain.ReasonString(lp.OrderSkipped.GetReason())
 		data.SkippedReason = &reason
-		data.SkippedContext = lp.OrderSkipped.GetContext()
+		code := lp.OrderSkipped.GetCode()
+		data.SkippedCode = &code
+		data.SkippedFacts = lp.OrderSkipped.GetFacts()
 	}
 }
 

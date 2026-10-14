@@ -3,6 +3,7 @@ package admission
 import (
 	"bytes"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,6 +13,121 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+func TestValidateOrder_AccountTypeFactBounds(t *testing.T) {
+	t.Parallel()
+	order := func() *raftcmdpb.Order {
+		return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{}},
+		}}}
+	}
+	add := order()
+	add.GetLedgerScoped().GetApply().Data = &raftcmdpb.LedgerApplyOrder_AddAccountType{AddAccountType: &raftcmdpb.AddAccountTypeOrder{
+		AccountType: &commonpb.AccountType{Name: strings.Repeat("a", 257), Pattern: "wallet:{id}"},
+	}}
+	require.ErrorIs(t, validateOrder(add), domain.ErrAccountTypeNameTooLong)
+
+	add.GetLedgerScoped().GetApply().GetAddAccountType().AccountType.Name = "wallet"
+	add.GetLedgerScoped().GetApply().GetAddAccountType().AccountType.Pattern = strings.Repeat("a", 4097)
+	require.ErrorIs(t, validateOrder(add), domain.ErrAccountTypePatternTooLong)
+
+	remove := order()
+	remove.GetLedgerScoped().GetApply().Data = &raftcmdpb.LedgerApplyOrder_RemoveAccountType{RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{Name: strings.Repeat("a", 257)}}
+	require.ErrorIs(t, validateOrder(remove), domain.ErrAccountTypeNameTooLong)
+
+	create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{
+			AccountTypes: map[string]*commonpb.AccountType{strings.Repeat("a", 257): {Pattern: "wallet:{id}"}},
+		}},
+	}}}
+	require.ErrorIs(t, validateOrder(create), domain.ErrAccountTypeNameTooLong)
+
+	create.GetLedgerScoped().GetCreateLedger().AccountTypes = map[string]*commonpb.AccountType{
+		"wallet": {Pattern: strings.Repeat("a", 4097)},
+	}
+	require.ErrorIs(t, validateOrder(create), domain.ErrAccountTypePatternTooLong)
+}
+
+func TestValidateOrderRejectsInvalidUTF8BeforeProposal(t *testing.T) {
+	t.Parallel()
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_RemoveAccountType{RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{Name: string([]byte{0xff})}},
+		}},
+	}}}
+	wire, err := order.MarshalVT()
+	require.NoError(t, err)
+	var decoded raftcmdpb.Order
+	require.NoError(t, decoded.UnmarshalVT(wire), "the VT codec accepts malformed strings")
+	err = validateOrder(&decoded)
+	require.Error(t, err)
+	var business *domain.BusinessError
+	require.ErrorAs(t, err, &business)
+	require.Equal(t, domain.ErrReasonValidation, business.Reason())
+	message, facts, overridden := business.PublicDetails()
+	require.True(t, overridden)
+	require.Equal(t, "request contains invalid UTF-8", message)
+	require.Empty(t, facts)
+
+	order.GetLedgerScoped().GetApply().Data = nil
+	order.GetLedgerScoped().Payload = &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{
+		AccountTypes: map[string]*commonpb.AccountType{string([]byte{0xff}): {Pattern: "wallet:{id}"}},
+	}}
+	require.Error(t, validateOrder(order), "map keys must also be validated")
+}
+
+func TestValidateOrderUTF8HandlesDeeplyNestedMessages(t *testing.T) {
+	t.Parallel()
+	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
+		LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
+	}}
+	for range 1000 {
+		filter = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{
+			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{filter}},
+		}}
+	}
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
+				Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
+			}},
+		},
+	}}}
+	require.True(t, validOrderUTF8(order.ProtoReflect()))
+	require.ErrorIs(t, validateOrder(order), domain.ErrFilterTooDeep)
+}
+
+func TestValidateOrderUTF8PreservesSupportedFilterDepth(t *testing.T) {
+	t.Parallel()
+	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
+		LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
+	}}
+	for range domain.MaxFilterDepth - 1 {
+		filter = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{
+			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{filter}},
+		}}
+	}
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
+				Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
+			}},
+		},
+	}}}
+	require.NoError(t, validateOrder(order))
+}
+
+func TestValidateOrder_TransactionReferenceFactBound(t *testing.T) {
+	t.Parallel()
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+				Reference: strings.Repeat("r", domain.MaxTransactionReferenceLength+1),
+			}},
+		}},
+	}}}
+	require.ErrorIs(t, validateOrder(order), domain.ErrTransactionReferenceTooLong)
+}
 
 func TestValidateOrder_LedgerName(t *testing.T) {
 	t.Parallel()

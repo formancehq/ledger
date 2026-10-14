@@ -42,7 +42,7 @@ func assertRemote(t *testing.T, decoded error, reason string, meta map[string]st
 	require.Equal(t, reason, remote.Reason())
 
 	for k, v := range meta {
-		require.Equal(t, v, remote.Metadata()[k], "metadata key %q", k)
+		require.Equal(t, v, remote.Meta[k], "metadata key %q", k)
 	}
 }
 
@@ -412,7 +412,7 @@ func TestFromStatusError_BusinessErrorBecomesDescribable(t *testing.T) {
 	require.True(t, ok, "the reconstructed error must satisfy the contract handleError dispatches on")
 	require.Equal(t, domain.ErrReasonMetadataFieldNotInSchema, d.Reason())
 	require.Equal(t, domain.KindPrecondition, d.Kind())
-	require.Equal(t, "type", domain.MetadataOf(d)["field"])
+	require.Equal(t, "type", d.(*apierr.Remote).Meta["field"])
 
 	// The message must be the leader's, with no transport wrapper in front of
 	// it: it becomes the client-visible errorMessage.
@@ -878,5 +878,5 @@ func TestFromStatusError_UnknownReasonPreservesExactCode(t *testing.T) {
 	require.Equal(t, domain.KindInternal, d.Kind)
 	require.Equal(t, unknownReason, d.Reason, "the sender's reason is preserved verbatim")
 	require.Equal(t, "aborted upstream", d.Message)
-	require.Equal(t, map[string]string{"k": "v"}, d.Metadata)
+	require.Equal(t, map[string]string{"k": "v"}, d.Facts)
 }

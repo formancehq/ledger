@@ -57,7 +57,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 
 		// Outcome flips — same `hash` field, different outcome semantics.
 		{"outcome_flip_success_to_failure", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.Outcome = &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_VALIDATION, Message: "fake"}}
+			e.Outcome = &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{Details: commonpb.MustFailureDetails("TARGET_REQUIRED", nil)}}
 		}},
 		{"outcome_flip_failure_to_success", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			e.Outcome = &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{MinLogSequence: 1, MaxLogSequence: 1}}
@@ -67,15 +67,16 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		{"success_min_log_sequence", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetSuccess().MinLogSequence++ }},
 		{"success_max_log_sequence", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetSuccess().MaxLogSequence++ }},
 		// AuditFailure sub-fields.
-		{"failure_reason", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.GetFailure().Reason = commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
+		{"failure_details", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
+			e.GetFailure().Details = commonpb.MustFailureDetails("LEDGER_NOT_FOUND", map[string]string{"name": "L"})
 		}},
-		{"failure_message", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetFailure().Message = "tampered" }},
 		{"failure_context_add", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.GetFailure().GetContext()["new-key"] = "new-value"
+			color := "red"
+			e.GetFailure().GetDetails().GetInsufficientFunds().Color = &color
 		}},
 		{"failure_context_value", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.GetFailure().GetContext()["original-key"] = "changed"
+			account := "changed"
+			e.GetFailure().GetDetails().GetInsufficientFunds().Account = &account
 		}},
 
 		// CallerSnapshot sub-fields.
@@ -261,12 +262,8 @@ func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.Audi
 	case "failure":
 		entry.Outcome = &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-				Message: "balance too low",
-				Context: map[string]string{
-					"original-key": "original-value",
-					"ledger":       "ledger-a",
-				},
+
+				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
 			},
 		}
 	default:
@@ -417,9 +414,8 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		Idempotency: &commonpb.Idempotency{Key: idemKey},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-				Message: "balance too low",
-				Context: map[string]string{"account": "bank"},
+
+				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
 			},
 		},
 	}
@@ -430,9 +426,8 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		CreatedAt: createdAt,
 		Hash:      proposalHash,
 		Failure: &commonpb.IdempotencyFailure{
-			Reason:   commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-			Message:  "balance too low",
-			Metadata: map[string]string{"account": "bank"},
+
+			Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
 		},
 	}
 
@@ -441,13 +436,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		"a frozen outcome matching its audit entry must not be flagged")
 
 	tampered := faithful.CloneVT()
-	tampered.Failure.Message = "you have plenty of money"
-	writeIdempotencyEntry(t, store, idemKey, tampered)
-	require.NotEmpty(t, collectIdempotencyMismatches(store),
-		"a tampered frozen failure message must be flagged")
-
-	tampered = faithful.CloneVT()
-	tampered.Failure.Reason = commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
+	tampered.Failure.Details = commonpb.MustFailureDetails("LEDGER_NOT_FOUND", map[string]string{"name": "L"})
 	writeIdempotencyEntry(t, store, idemKey, tampered)
 	require.NotEmpty(t, collectIdempotencyMismatches(store),
 		"a tampered frozen failure reason must be flagged")

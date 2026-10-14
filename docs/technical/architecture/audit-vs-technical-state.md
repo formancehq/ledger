@@ -110,6 +110,22 @@ idempotency hash (`processor.hashOrder`), so the two can never diverge. Audit en
 persisted before EN-1558 embed `OrderTechnical` in `serialized_order` and remain
 verifiable: the verifier hashes the stored bytes verbatim, requiring no migration.
 
+A keyed order whose preload could not be built is forwarded only to let the FSM
+check for an earlier idempotency outcome. When there is no outcome to replay,
+the FSM returns `PRELOAD_UNAVAILABLE` before processing any order. This is a
+technical preparation interruption: it changes no business projection, creates
+no audit entry, and stores no idempotency result. The retry can re-resolve its
+dependencies, while a concurrent proposal with the same business-intent hash
+can still establish the authoritative outcome.
+
+The same disposition applies when order processing discovers a technical
+failure: storage IO, a stale admission observation, missing preload coverage,
+an invalid execution plan, or an internal state invariant. The error type marks
+itself `UncommittedFailure`; the FSM discards staged writes and returns before
+the audit and idempotency writers. A corrected or repaired attempt may then
+establish the business outcome. Typed `FailureDetails` variants are reserved
+for definitive business and governance rejections.
+
 ## TechnicalUpdate Gate
 
 `Proposal.technical_updates` bypasses the order/log path, so a new

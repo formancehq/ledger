@@ -79,18 +79,23 @@ func predictSkippedLog(s LedgerState, req *servicepb.Request, reason string) *co
 		panic("model: unmodeled skipped reason " + reason)
 	}
 
-	return &commonpb.OrderSkippedLog{Reason: domain.ReasonCode(reason), Context: context}
+	details, err := commonpb.NewFailureDetails(reason, context)
+	if err != nil {
+		panic("model: invalid predicted skip details: " + err.Error())
+	}
+
+	return &commonpb.OrderSkippedLog{Details: details}
 }
 
 func canonicalSkippedLog(log *commonpb.OrderSkippedLog) string {
-	keys := make([]string, 0, len(log.GetContext()))
-	for key := range log.GetContext() {
+	keys := make([]string, 0, len(log.GetFacts()))
+	for key := range log.GetFacts() {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	parts := []string{strconv.Itoa(int(log.GetReason()))}
+	parts := []string{strconv.Itoa(int(log.GetReason())), log.GetCode()}
 	for _, key := range keys {
-		parts = append(parts, strconv.Quote(key)+"="+strconv.Quote(log.GetContext()[key]))
+		parts = append(parts, strconv.Quote(key)+"="+strconv.Quote(log.GetFacts()[key]))
 	}
 
 	return strings.Join(parts, "|")

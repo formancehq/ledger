@@ -217,8 +217,9 @@ func (c *NumscriptCache) getOrParseEntryHashed(hash [16]byte, script string) *lr
 // compileParsed compiles the entry's script at most once and shares the result
 // with every later caller. A compile failure is as stable a property of the
 // text as a parse error and is cached the same way, so an uncompilable script
-// does not re-run the compiler on every order: ErrNumscriptCompile when the
-// compiler rejects the script, a panicError (IsPanic) when it panics. Callers
+// does not re-run the compiler on every order: typed rejections are
+// ErrNumscriptCompile, unclassified diagnostics remain uncommitted, and a
+// panic produces panicError (IsPanic). Callers
 // only reach here for a script that parsed. Only the script-dependent half is
 // computed here; binding an order's vars (VarsEncoder.Encode) is per-order and
 // stays with the caller. The compile runs outside the cache locks; concurrent
@@ -234,7 +235,7 @@ func (e *lruEntry) compileParsed() (program *compiledProgram, err domain.Seriali
 
 		varsEncoder, program, err := e.script.program.Compile()
 		if err != nil {
-			e.compileErr = &domain.ErrNumscriptCompile{Detail: err.Error()}
+			e.compileErr = mapCompilerError(err)
 
 			return
 		}

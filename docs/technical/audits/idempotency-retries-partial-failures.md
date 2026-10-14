@@ -6,6 +6,13 @@ window. Unkeyed attempts and expired keys remain outside the single-effect
 guarantee. Error presentation at API boundaries is owned by
 `api-boundary-contracts`; a transport code alone never establishes non-commit.
 
+`UncommittedFailure` is a retryable technical interruption, not a frozen
+failure. A keyed first attempt on this branch writes no audit entry or
+idempotency result. An existing frozen outcome may still be replayed before
+the branch is reached. Evidence must distinguish those cases and show that a
+same-key retry after repair can establish one definitive outcome, while a
+same-key retry of an earlier committed outcome does not execute it again.
+
 ## Peer closure followed by maintenance (EN-2212)
 
 The Antithesis `NewGRPCConn` factory retries in interceptors after EN-1627; a
