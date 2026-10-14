@@ -571,7 +571,8 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	// Removing an already-absent node is a stable membership postcondition,
 	// not an internal server failure. Operators can treat NotFound as
 	// idempotent success, while callers that need certainty can confirm via
-	// GetClusterState.
+	// GetClusterState. A node-targeted request (nodeForwarder.resolve) for an
+	// ID outside the committed configuration reports the same NotFound.
 	if errors.Is(err, node.ErrNodeNotInCluster) {
 		st := status.New(codes.NotFound, err.Error())
 
@@ -600,9 +601,9 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	// ErrTransferLeaderTimeout: leadership transfer did not complete in time.
 	// ErrNoLeader: target peer doesn't know who the leader is yet (election
 	// still in progress, or it just joined and hasn't received the heartbeat).
-	// ErrNodeNotReachable: forwarder lost its conn-pool entry for the target
-	// peer (network partition / pod restart in flight). Recovers as soon as
-	// the pool re-converges.
+	// ErrNodeNotReachable: forwarder lost its conn-pool entry for a target
+	// peer that is a cluster member (network partition / pod restart in
+	// flight). Recovers as soon as the pool re-converges.
 	if errors.Is(err, raft.ErrProposalDropped) ||
 		errors.Is(err, node.ErrLeadershipLost) ||
 		errors.Is(err, node.ErrNotLeader) ||

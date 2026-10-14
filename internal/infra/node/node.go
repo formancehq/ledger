@@ -83,7 +83,8 @@ var (
 	// ErrCannotRemoveSelf is returned when trying to remove the leader node itself.
 	ErrCannotRemoveSelf = errors.New("cannot remove the leader node; transfer leadership first")
 
-	// ErrNodeNotInCluster is returned when trying to remove a node that is not a cluster member.
+	// ErrNodeNotInCluster is returned when a removal or a node-targeted request
+	// names a node that is not a cluster member.
 	ErrNodeNotInCluster = errors.New("node is not a member of the cluster")
 
 	// ErrNodeRemoved is returned by AddLearner / JoinAsLearner when the

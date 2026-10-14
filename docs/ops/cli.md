@@ -2003,7 +2003,7 @@ ledgerctl store primary metrics [flags]
 |------|---------|-------------|
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
-| `--node-id` | `0` | Target node ID (0 = local node) |
+| `--node-id` | `0` | Target node ID (0 = local node). An ID outside the cluster returns `NotFound`; a member that is not reachable returns `Unavailable` |
 
 **Example:**
 
@@ -2032,7 +2032,7 @@ ledgerctl store secondary metrics [flags]
 |------|---------|-------------|
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
-| `--node-id` | `0` | Target node ID (0 = local node) |
+| `--node-id` | `0` | Target node ID (0 = local node). An ID outside the cluster returns `NotFound`; a member that is not reachable returns `Unavailable` |
 
 **Example:**
 
@@ -2679,6 +2679,7 @@ ledgerctl cluster status [flags]
 **Behavior:**
 - By default (`--node-id=0`), the request is automatically routed to the cluster leader
 - Specify `--node-id` to query a specific node's state
+- A `--node-id` that is not a cluster member fails with `NotFound` (reason `RAFT_NODE_NOT_IN_CLUSTER`). A member whose service connection is missing fails with `Unavailable`, which clients retry
 - Displays cluster overview, Raft status, node list, and replication progress (if leader)
 
 **Example:**
