@@ -404,8 +404,7 @@ the workflow stops. The once-per-transaction rule prevents a second revert of th
 same target, but does not prevent an application from repeatedly reverting each
 new compensation.
 
-The [transaction reversal discussion](https://numary.slack.com/archives/C0ADSUB6WJU/p1791888231241709)
-records the rationale for retaining this behavior. The current implementation is
+The current implementation is
 [`processRevertTransaction`](../../../internal/domain/processing/processor_revert_transaction.go).
 
 ### 3. Metadata Management
