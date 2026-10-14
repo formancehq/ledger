@@ -147,3 +147,34 @@ func TestQueryCheckpointSchedulerNonLeaderDoesNotPropose(t *testing.T) {
 
 	s.Stop()
 }
+
+// TestQueryCheckpointSchedulerNeverFiringCron is a regression test for a cron
+// that parses but names a date that never exists (31 February). The cron
+// library returns the zero time for its next fire; the scheduler must disarm
+// instead of arming a zero-delay timer that proposes CreateQueryCheckpoint in
+// a tight loop.
+func TestQueryCheckpointSchedulerNeverFiringCron(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	var called atomic.Int32
+
+	s := NewQueryCheckpointScheduler(
+		logger,
+		func() bool { return true },
+		func() string { return "0 0 31 2 *" },
+		func() error {
+			called.Add(1)
+
+			return nil
+		},
+		signal.New(),
+	)
+	s.Start()
+
+	require.Never(t, func() bool { return called.Load() > 0 }, 200*time.Millisecond, 10*time.Millisecond, "a cron with no next fire time should never fire")
+
+	s.Stop()
+}

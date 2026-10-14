@@ -86,6 +86,19 @@ func (s *QueryCheckpointScheduler) loop(stop <-chan struct{}) {
 		}
 
 		nextFire := schedule.Next(time.Now())
+		// The cron library returns the zero time when the schedule has no next
+		// fire (for example 31 February). A zero-delay timer would propose
+		// CreateQueryCheckpoint in a tight loop, so disarm instead. Admission
+		// rejects such a cron; this guard covers a schedule already stored.
+		if nextFire.IsZero() {
+			s.logger.WithFields(map[string]any{
+				"cron": cronExpr,
+			}).Errorf("Query checkpoint schedule cron expression never fires, disabling scheduler")
+
+			timer = nil
+
+			return nil
+		}
 
 		delay := max(time.Until(nextFire), 0)
 

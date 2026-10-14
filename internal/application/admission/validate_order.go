@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -66,6 +68,39 @@ func validateOrder(order *raftcmdpb.Order) error {
 
 	if err := validateOrderSigningKey(order); err != nil {
 		return &domain.BusinessError{Err: err}
+	}
+
+	if err := validateOrderQueryCheckpointSchedule(order, time.Now()); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
+	return nil
+}
+
+// validateOrderQueryCheckpointSchedule rejects a cron that parses but has no
+// next fire time, such as "0 0 31 2 *" (31 February). The cron library returns
+// the zero time for such a schedule, and the QueryCheckpointScheduler cannot
+// arm it. The check reads the wall clock, so it belongs to admission: the FSM
+// apply path must stay clock-independent and only checks the syntax. A cron
+// that does not parse is left to the FSM, which records the audited failure.
+func validateOrderQueryCheckpointSchedule(order *raftcmdpb.Order, now time.Time) domain.Describable {
+	p, ok := order.GetSystemScoped().GetPayload().(*raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule)
+	if !ok {
+		return nil
+	}
+
+	cronExpr := p.SetQueryCheckpointSchedule.GetCron()
+
+	schedule, err := processing.CronParser.Parse(cronExpr)
+	if err != nil {
+		return nil
+	}
+
+	if schedule.Next(now).IsZero() {
+		return &domain.ErrInvalidCronExpression{
+			Expression: cronExpr,
+			Details:    "schedule never fires",
+		}
 	}
 
 	return nil

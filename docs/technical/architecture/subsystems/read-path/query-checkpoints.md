@@ -207,6 +207,13 @@ ledgerctl query-checkpoint get-schedule
 
 The cron expression uses the standard 5-field format (`minute hour day-of-month month day-of-week`) or the extended 6-field format with an optional leading seconds field (`second minute hour day-of-month month day-of-week`).
 
+The ledger validates the expression in two places:
+
+- Admission rejects a cron that parses but never fires, such as `0 0 31 2 *` (31 February), with `ErrInvalidCronExpression` (`schedule never fires`). This check reads the wall clock, so it runs at admission and not in the FSM.
+- The FSM rejects a cron that does not parse. This check does not depend on the clock, and the failure is recorded in the audit chain.
+
+The scheduler also refuses to arm a stored schedule that has no next fire time: it logs an error and stays disabled until the schedule changes.
+
 ### How It Works
 
 The `QueryCheckpointScheduler` runs on every node but only triggers checkpoint creation on the **Raft leader**. When the cron fires, the leader proposes a `CreateQueryCheckpoint` order through the admission layer directly, as a leader-internal system actor. That is not a gRPC handler, so it is outside the Apply-only rule; `ledgerctl query-checkpoint create` reaches the same order through `Apply`.

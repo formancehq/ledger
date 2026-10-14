@@ -1428,3 +1428,46 @@ func TestValidateOrderSigningKey(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateOrder_QueryCheckpointScheduleNeverFires(t *testing.T) {
+	t.Parallel()
+
+	order := func(cron string) *raftcmdpb.Order {
+		return &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule{
+				SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{Cron: cron},
+			},
+		}}}
+	}
+
+	tests := []struct {
+		name    string
+		cron    string
+		wantErr bool
+	}{
+		{name: "31 February never fires", cron: "0 0 31 2 *", wantErr: true},
+		{name: "30 February with seconds never fires", cron: "0 0 0 30 2 *", wantErr: true},
+		{name: "daily schedule fires", cron: "0 0 * * *"},
+		{name: "29 February fires in leap years", cron: "0 0 29 2 *"},
+		// Unparseable crons stay an FSM failure, recorded in the audit chain.
+		{name: "unparseable cron is left to the FSM", cron: "not-a-cron"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateOrder(order(tt.cron))
+			if !tt.wantErr {
+				require.NoError(t, err)
+
+				return
+			}
+
+			var cronErr *domain.ErrInvalidCronExpression
+			require.ErrorAs(t, err, &cronErr)
+			require.Equal(t, tt.cron, cronErr.Expression)
+			require.Equal(t, "schedule never fires", cronErr.Details)
+		})
+	}
+}

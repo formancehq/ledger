@@ -5269,6 +5269,8 @@ ledgerctl query-checkpoint set-schedule <cron-expression>
 
 The cron expression uses the standard 5-field format (`minute hour day-of-month month day-of-week`) or the extended 6-field format with an optional leading seconds field (`second minute hour day-of-month month day-of-week`).
 
+The command fails with `invalid cron expression` if the expression does not parse or never fires, for example `0 0 31 2 *` (31 February).
+
 **Examples:**
 
 ```bash
