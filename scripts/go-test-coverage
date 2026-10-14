@@ -27,10 +27,21 @@ if [[ ${1:-} == "--exec" ]]; then
     shift
     metafiles="${GOCOVERDIR:-}/metafiles.txt"
     if [[ -n ${GOCOVERDIR:-} && -f $metafiles ]]; then
-        # Assign first so a jq failure (e.g. a changed cmd/go format) aborts
-        # under set -e instead of silently dropping the fragments.
-        fragments=$(jq -er '.MetaFileFragments[]' "$metafiles")
+        # cmd/go marshals a nil slice, so MetaFileFragments is null when no
+        # tested package matches -coverpkg (e.g. ./tests/e2e/... against
+        # ./internal/...): that means zero fragments. Anything other than
+        # null or a list of strings is a changed cmd/go format and must fail.
+        # Assign first so a jq failure aborts under set -e instead of
+        # silently dropping the fragments.
+        fragments=$(jq -r '
+            if type == "object" and has("MetaFileFragments")
+                and (.MetaFileFragments == null
+                    or (.MetaFileFragments | type == "array" and all(.[]; type == "string")))
+            then (.MetaFileFragments // [])[]
+            else error("unexpected metafiles.txt format: \(.)")
+            end' "$metafiles")
         while IFS= read -r fragment; do
+            [[ -n $fragment ]] || continue
             dst="$GO_TEST_COVERAGE_DIR/$(basename "$fragment")"
             if [[ ! -f $dst ]]; then
                 # Test binaries run in parallel: copy then rename so a
