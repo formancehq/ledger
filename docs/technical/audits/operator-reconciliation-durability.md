@@ -68,8 +68,8 @@ share a base name (see
 A name match is never proof of ownership. A finding here must show a reachable
 path that creates, adopts, mutates, deletes, reports or execs into an object
 under a derived name without first establishing that the Cluster's UID controls
-it, or that derives the name from a CR name string instead of the Cluster
-object. A same-name replacement waiting for garbage collection, or a refused
+it, that deletes it by name without pinning the delete to the inspected UID, or
+that derives the name from a CR name string instead of the Cluster object. A same-name replacement waiting for garbage collection, or a refused
 orphaned object, is the documented `ResourceNamesAvailable=False` behaviour,
 not a defect by itself.
 

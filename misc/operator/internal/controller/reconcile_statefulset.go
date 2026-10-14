@@ -139,10 +139,9 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		}
 		if volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
 			logger.Info("VolumeClaimTemplates changed, recreating StatefulSet with orphan propagation")
-			orphan := metav1.DeletePropagationOrphan
-			if err := r.Delete(ctx, existing, &client.DeleteOptions{
-				PropagationPolicy: &orphan,
-			}); err != nil {
+			// Pinned to the inspected UID: a StatefulSet replaced under the name
+			// since the ownership check above is never deleted.
+			if err := deleteInspected(ctx, r.Client, existing, client.PropagationPolicy(metav1.DeletePropagationOrphan)); err != nil {
 				return ctrl.Result{}, fmt.Errorf("deleting StatefulSet for VolumeClaimTemplate change: %w", err)
 			}
 			// Returning here requeues via the owned-StatefulSet delete event — the next

@@ -14,7 +14,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -555,18 +554,6 @@ func resolveEndpoints(ledger *ledgerv1alpha1.Cluster) *ledgerv1alpha1.EndpointsS
 		HTTP:     httpEndpoint,
 		External: external,
 	}
-}
-
-func (r *ClusterReconciler) deleteUnstructuredIfExists(ctx context.Context, obj *unstructured.Unstructured) error {
-	err := r.Get(ctx, types.NamespacedName{
-		Namespace: obj.GetNamespace(),
-		Name:      obj.GetName(),
-	}, obj)
-	if err != nil {
-		return ignoreNotFound(err)
-	}
-
-	return r.Delete(ctx, obj)
 }
 
 // ignoreNotFound returns nil on NotFound and NoKindMatch errors.

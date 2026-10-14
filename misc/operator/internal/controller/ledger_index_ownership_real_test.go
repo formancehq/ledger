@@ -235,7 +235,7 @@ func newRealIndexHarness(t *testing.T) *realIndexHarness {
 	name := "ownership-" + uuid.NewString()
 	h := &realIndexHarness{t: t, endpoint: endpoint, cli: cli, scheme: scheme, ledger: &ledgerv1alpha1.Ledger{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "test", UID: types.UID(uuid.NewString()), Finalizers: []string{ledgerFinalizer}},
-		Spec:       ledgerv1alpha1.LedgerCRDSpec{ClusterRef: "test-cluster", Name: name, Indexes: &ledgerv1alpha1.LedgerIndexesSpec{Transaction: []string{"reference"}}},
+		Spec:       ledgerv1alpha1.LedgerCRDSpec{ClusterRef: realIndexClusterName, Name: name, Indexes: &ledgerv1alpha1.LedgerIndexesSpec{Transaction: []string{"reference"}}},
 		Status:     ledgerv1alpha1.LedgerCRDStatus{Phase: ledgerv1alpha1.LedgerPhaseReady},
 	}}
 	_, err := h.run("ledgers", "create", name)
@@ -244,14 +244,30 @@ func newRealIndexHarness(t *testing.T) *realIndexHarness {
 	return h
 }
 
+const (
+	realIndexClusterName = "test-cluster"
+	realIndexClusterUID  = "test-cluster-uid"
+)
+
+// client seeds the referenced Cluster's own StatefulSet: every ledgerctl exec
+// is gated on the Cluster controlling a StatefulSet under its base name
+// (fetchTLSMode), so without it no exec would ever reach the real ledgerctl.
 func (h *realIndexHarness) client(funcs interceptor.Funcs) client.Client {
-	return fake.NewClientBuilder().WithScheme(h.scheme).WithObjects(h.ledger).WithStatusSubresource(h.ledger).WithInterceptorFuncs(funcs).Build()
+	sts := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
+		Name: clusterBaseName(clusterNamed(realIndexClusterName)), Namespace: "test",
+		OwnerReferences: []metav1.OwnerReference{{
+			APIVersion: ledgerv1alpha1.GroupVersion.String(), Kind: "Cluster",
+			Name: realIndexClusterName, UID: realIndexClusterUID, Controller: new(true),
+		}},
+	}}
+
+	return fake.NewClientBuilder().WithScheme(h.scheme).WithObjects(h.ledger, sts).WithStatusSubresource(h.ledger).WithInterceptorFuncs(funcs).Build()
 }
 
 func (h *realIndexHarness) controller(c client.Client) *LedgerReconciler {
 	cluster := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "ledger.formance.com/v1alpha1", "kind": "Cluster",
-		"metadata": map[string]any{"name": "test-cluster", "namespace": "test"},
+		"metadata": map[string]any{"name": realIndexClusterName, "namespace": "test", "uid": realIndexClusterUID},
 		"status":   map[string]any{"phase": "Running"},
 	}}
 

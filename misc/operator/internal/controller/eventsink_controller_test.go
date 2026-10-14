@@ -64,6 +64,12 @@ func TestEventSinkDeletionWaitsForOrphanedStatefulSet(t *testing.T) {
 		// Labels only prove the instance label, which spec.additionalLabels can
 		// set on any Cluster's StatefulSet: not enough to hold the finalizer.
 		{"resourceName override, orphaned with operator labels only", labelled(named("payments"), "cluster"), false},
+		// Once Cluster "cluster" is gone, another Cluster can own a StatefulSet
+		// under the default name "ledger-cluster" through spec.resourceName and
+		// stamp the deleted Cluster's instance label on it through
+		// spec.additionalLabels: its foreign controller reference rules out the
+		// orphan fallback, so the finalizer is released.
+		{"default name and operator labels, controlled by another Cluster", labelled(ownedBy(named(clusterBaseName(clusterNamed("cluster"))), "other"), "cluster"), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

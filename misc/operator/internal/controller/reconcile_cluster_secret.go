@@ -10,7 +10,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -78,11 +77,7 @@ func (r *ClusterReconciler) deleteClusterSecret(ctx context.Context, ledger *led
 		return nil
 	}
 
-	if err := r.Delete(ctx, secret, &client.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-		return err
-	}
-
-	return nil
+	return deleteInspected(ctx, r.Client, secret)
 }
 
 // reconcileClusterSecretForTLSState converges the cluster-secret with the TLS
