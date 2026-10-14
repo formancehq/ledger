@@ -420,7 +420,7 @@ Transactions can be batched to improve throughput:
 
 ## Audit Log
 
-The system records an audit trail of every proposal (success and failure) processed by the FSM. Audit logging is always enabled and cannot be disabled.
+The system records an audit trail of every committed business outcome (success or definitive failure) processed by the FSM. Retryable technical interruptions return before the audit writer and leave no entry. Audit logging for business outcomes is always enabled and cannot be disabled.
 
 ### Audit Entry Structure
 

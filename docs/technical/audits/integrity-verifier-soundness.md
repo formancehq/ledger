@@ -27,6 +27,14 @@ both truth and projection. The ClusterID-derived hash key is not an independent
 secret or external anchor. Do not invent detection guarantees for coordinated
 history truncation or complete history replacement without retained evidence.
 
+The audit chain covers committed business outcomes, including definitive
+failures. `UncommittedFailure` leaves no audit entry, item, log or frozen
+idempotency outcome and restores the prior HLC. A checker cannot infer an
+omitted technical attempt from an audit-sequence gap because no sequence was
+allocated. For missing-row probes, first establish that the healthy production
+path actually committed an audited outcome and retained an independent witness;
+do not report an expected unaudited interruption as missing history.
+
 P0/P1/P2 require the concrete failure path and impact prescribed by the native
 [audit contract](../contributing/ai-audit.md). Each candidate remains a hypothesis
 until the independent [challenge](../contributing/ai-audit-challenge.md) at the

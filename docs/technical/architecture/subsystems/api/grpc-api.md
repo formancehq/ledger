@@ -662,9 +662,9 @@ All business errors carry an `ErrorInfo` detail with a machine-readable reason. 
 | Insufficient funds | `FAILED_PRECONDITION` | `INSUFFICIENT_FUNDS` | `account`, `asset`, `amount`, `balance` |
 | Balance not found | `FAILED_PRECONDITION` | `BALANCE_NOT_FOUND` | `account`, `asset` |
 | Balance not preloaded | `UNAVAILABLE` | `BALANCE_NOT_PRELOADED` | `account`, `asset`, `color` (public context; no audited facts) |
-| Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
-| Numscript compile error | `INVALID_ARGUMENT` | `NUMSCRIPT_COMPILE_ERROR` | `details` |
-| Numscript execution error | `FAILED_PRECONDITION` | `NUMSCRIPT_EXECUTION_ERROR` | `detail` |
+| Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | *(none; use the rendered status message)* |
+| Numscript compile error | `INVALID_ARGUMENT` | `NUMSCRIPT_COMPILE_ERROR` | Variant-specific structured facts, when available; no diagnostic `details` field |
+| Numscript execution error | `FAILED_PRECONDITION` | `NUMSCRIPT_EXECUTION_ERROR` | Variant-specific structured facts, when available; no diagnostic `detail` field |
 | Validation error | `INVALID_ARGUMENT` | `VALIDATION` | *(none)* |
 
 ### Error Handling Example (with ErrorInfo)
@@ -698,7 +698,7 @@ if err != nil {
             case "TRANSACTION_ALREADY_REVERTED":
                 fmt.Printf("Transaction %s is already reverted\n", info.Metadata["transactionId"])
             case "NUMSCRIPT_PARSE_ERROR":
-                fmt.Printf("Script error: %s\n", info.Metadata["details"])
+                fmt.Printf("Script error: %s\n", st.Message())
             default:
                 fmt.Printf("Business error [%s]: %s\n", info.Reason, st.Message())
             }

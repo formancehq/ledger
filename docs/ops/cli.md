@@ -2401,7 +2401,7 @@ ledgerctl store rebuild-audit-index --data-dir ./data --read-index-dir ./custom-
 
 ### audit
 
-View the replicated audit log. The audit log captures every proposal (success and failure) that goes through Raft consensus, providing a complete audit trail.
+View the replicated audit log. It captures committed business outcomes (successes and definitive failures) processed by the FSM. Retryable technical interruptions produce no audit entry.
 
 **Aliases:** `a`
 

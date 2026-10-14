@@ -24,7 +24,8 @@ const (
 )
 
 // AuditEntry represents a single audit trail entry for a proposal.
-// Each proposal (success or failure) generates exactly one audit entry.
+// Each proposal with a committed business outcome generates exactly one audit
+// entry. Retryable technical interruptions have no audit entry.
 // Per-order details are stored as separate AuditItem entries in Pebble
 // (zone 0x04, sub 0x03) and populated on GetAuditEntry responses.
 type AuditEntry struct {
