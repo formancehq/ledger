@@ -6049,6 +6049,7 @@ components:
         uniqueValues:
           type: integer
           format: int64
+          description: Number of distinct values observed at this segment position.
         examples:
           type: array
           items:
