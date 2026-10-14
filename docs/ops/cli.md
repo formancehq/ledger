@@ -4527,9 +4527,32 @@ the value configured on the existing cluster nodes
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--cluster-secret` | string | `""` | Shared secret for inter-node gRPC authentication (required when auth is enabled) |
+| `--cluster-secret` | string | `""` | Shared secret for inter-node gRPC authentication. Requires TLS (`--tls-mode` other than `disabled`). Multi-node deployments must set it |
 
-When authentication is enabled, all inter-node gRPC calls use this shared secret as a bearer token. Must be the same on all nodes in the cluster.
+When `--cluster-secret` is set, every inter-node gRPC call (Raft transport,
+snapshot transfer, cluster bootstrap, and follower-to-leader forwarding on the
+service API) carries this shared secret as a bearer token. The value must be
+the same on all nodes in the cluster.
+
+The cluster secret and `--auth-enabled` are separate mechanisms:
+
+- `--auth-enabled` authenticates external clients on the service API with
+  JWT or Ed25519 tokens.
+- `--cluster-secret` authenticates nodes to each other. The server does not
+  require it when `--auth-enabled` is set, and `--auth-enabled` does not
+  protect the Raft port.
+
+The two flags interact in one place. When `--auth-enabled` is set, a follower
+forwards writes to the leader with the original caller's identity. The leader
+accepts that identity only from a peer that presents the cluster secret on the
+service API. In a multi-node cluster with `--auth-enabled` and no cluster
+secret, writes sent to a follower fail with `PermissionDenied`.
+
+The server does not check at startup that a multi-node cluster has a secret.
+The Kubernetes operator creates a random secret and injects `CLUSTER_SECRET`
+into every pod whenever TLS is active (`optional` or `required`), whether
+authentication is enabled or not. Manual deployments must set the flag
+themselves.
 
 **TLS is required when `--cluster-secret` is set.** The server refuses to start
 if a cluster secret is configured without TLS (`--tls-cert-file` and
@@ -4542,7 +4565,12 @@ server-side interceptor that rejects any call whose `authorization: Bearer …`
 metadata does not match the configured secret with `codes.Unauthenticated`.
 The comparison is constant-time. Leaving `--cluster-secret` empty preserves the
 historical unauthenticated behavior for single-node setups; multi-node
-deployments **MUST** set it.
+deployments **MUST** set it. Without a secret, the Raft port has no
+authentication. The `ClusterBootstrapService` checks only the `--cluster-id`
+metadata, which is not a secret, so any client that can reach the port can
+call `GetPeers` and `JoinAsLearner` and change cluster membership. This holds even when `--auth-enabled` is set.
+Keep `--bind-addr` (default `0.0.0.0:7777`) off untrusted networks, or set a
+secret.
 
 Peer discovery also fails immediately when a discovered member has a missing or malformed 16-byte `instance_id`; retrying cannot repair this invalid cluster identity. Transient discovery failures still use exponential backoff.
 

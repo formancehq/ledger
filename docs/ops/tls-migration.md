@@ -70,8 +70,10 @@ moves to `disabled` and deletes the `cluster-secret` Secret.
 ### Cluster secret coupling
 
 The cluster secret is a static bearer token used for inter-node
-authentication when `--auth-enabled` is set. The operator creates it only
-when TLS is at least partially active (`mode != disabled`). Sending a
+authentication. It is independent of `--auth-enabled`: when set, it protects
+the Raft port on every node. When `--auth-enabled` is also set, followers use
+it to forward writes to the leader. The operator creates it only when TLS is
+at least partially active (`mode != disabled`). Sending a
 static token over plaintext is an anti-pattern, so the secret only exists
 when the wire is encrypted.
 
