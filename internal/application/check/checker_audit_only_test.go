@@ -221,6 +221,32 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedAuditHash(t *testing.T) {
 	}
 }
 
+// The phase boundary is observable through the callback: an audit finding
+// precedes replay progress, and projection findings follow it even with no logs.
+func TestCheck_FailureOnlyHistory_PhaseEventOrder(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	entries, items := persistFailureOnlyHistory(t, store, 1, 1)
+	entries[0].Hash = []byte("forged-chain-hash")
+	rewriteAuditEntry(t, store, entries[0], items[0])
+	writeQueryCheckpointRow(t, store, 1)
+
+	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.Check(t.Context(), func(event *servicepb.CheckStoreEvent) {
+		events = append(events, event)
+	}))
+
+	require.GreaterOrEqual(t, len(events), 3)
+	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
+		events[0].GetError().GetErrorType())
+	require.Equal(t, uint64(0), events[1].GetProgress().GetLogsChecked())
+	require.Equal(t, uint64(0), events[1].GetProgress().GetTotalLogs())
+	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH,
+		events[len(events)-1].GetError().GetErrorType())
+}
+
 // TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome covers the
 // second projection the chain walk feeds: a rejected keyed proposal freezes its
 // outcome under SubIdempKeys, and the expectation is re-derived from the
