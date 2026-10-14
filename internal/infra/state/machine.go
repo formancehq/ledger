@@ -1194,6 +1194,7 @@ func planInvariantFailure(err error) domain.SerializableError {
 }
 
 func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.WriteSession, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
+	// Validate the committed command before any mutable preload or HLC advance.
 	// FSM-level safety net mirroring the admission check: a checkpoint trigger
 	// (CreateQueryCheckpoint) must be the last order. The
 	// applier relies on this so it can place a Pebble-batch boundary at this
@@ -1235,6 +1236,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// returned anyway.
 	result := &ApplyResult{ProposalID: proposal.GetId()}
 
+	// Preload the declared read horizon before technical updates inspect it.
 	// checkStaleProposal is a no-op when PredictedIndex and CacheEpoch
 	// are both unset, so legacy technical-only proposals (none today
 	// set them) are unaffected.
@@ -1261,6 +1263,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, fmt.Errorf("raftIndex=%d: %w", raftIndex, err)
 	}
 
+	// Stage technical state in the proposal overlay. The technical-only path
+	// merges it without creating a business audit entry.
 	// Reset the reusable WriteSet up-front with proposal.GetDate() so the
 	// technical-update phase queues its writes through the same overlay
 	// the order phase will eventually drain via Merge. The Date will be
@@ -1381,11 +1385,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		})
 	}
 
-	// Per-proposal idempotency: the whole atomic batch dedups under one key
-	// (proposal.Idempotency), computed over the ordered orders so a retry of the
-	// SAME batch replays while a differently-composed batch re-executes. A
-	// duplicate replays the first outcome — reference logs for a success, the
-	// original error for a frozen failure — instead of re-processing.
+	// Classify a prior outcome before running business handlers. A replay
+	// returns immediately; a key conflict continues to the failure audit path.
 	idempotencyKey := proposal.GetIdempotency().GetKey()
 
 	var (
@@ -1469,6 +1470,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 	}
 
+	// Execute business orders unless the idempotency gate found a conflict.
 	// Process the proposal unless the dedup gate rejected it as a conflict
 	// (err set). Handlers see the gated Scope facade for state reads/writes;
 	// cross-order signals (schedule, sink config, cleanup, ...) are derived
@@ -1494,6 +1496,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return result, nil
 	}
 
+	// Audit every fresh business outcome, including a conflict or validation
+	// failure. A replay returned above and cannot extend the chain.
 	// Pre-marshal each order once. The same byte slices are (a) bound in
 	// the audit hash chain via buildPerItemPayload and (b) persisted to
 	// AuditItem.SerializedOrder, so verifiers re-hash the exact bytes
@@ -1502,107 +1506,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Order proto schema.
 	serializedOrders := marshalOrdersForAudit(orders)
 
-	// Helper to build, hash and write the audit entry (shared by success
-	// and failure paths). The caller passes an AuditEntry with `Outcome`
-	// already set; every other field is filled here BEFORE the hash is
-	// computed, because BuildHashedHeaderPayload binds them all into the
-	// chain. Tampering with any AuditEntry or AuditItem field on disk
-	// after this commit is detected by checker.verifyAuditHashChain.
-	//
-	// IMPORTANT — write failure convention: `appendAuditEntries`,
-	// `appendAuditItems`, and `appendAppliedProposal` (called by the
-	// success path right after this) write into the Pebble batch. If
-	// any of them returns an error AFTER `State.AppendAuditEntry` has
-	// advanced the in-memory audit state, the in-memory state is ahead
-	// of what will land on disk (the caller cancels the batch). The
-	// project convention is: any such error MUST propagate out of
-	// `Applier.Run()` and crash the process — a restart reloads
-	// `LastAppliedIndex` from Pebble and Raft redelivers the missing
-	// entries (cf. the lastPersistedIndex comment above). Properly-
-	// configured nodes have no realistic way to fail here (the writes
-	// go to an in-memory memtable), so we accept this in lieu of a
-	// transactional stage/commit rework. Tracked in EN-1330.
+	// Hash and persist the same serialized order bytes for both outcomes.
 	writeAuditEntry := func(entry *auditpb.AuditEntry, logs []*raftcmdpb.CreatedLogOrReference, label string) error {
-		// Sequence must be set BEFORE the header payload is built —
-		// BuildHashedHeaderPayload binds entry.Sequence, and the
-		// verifier rebuilds the payload from the persisted (non-zero)
-		// sequence. Peek NextAuditSequenceID without mutating state;
-		// the actual advance happens in AppendAuditEntry below, after
-		// the hash is computed, so a partial failure in this closure
-		// does not leak a phantom sequence into FSMState.
-		entry.Sequence = fsm.State.NextAuditSequenceID
-		entry.Timestamp = effectiveDate
-		entry.ProposalId = proposal.GetId()
-		entry.OrderCount = uint32(len(orders))
-		entry.Ledgers = extractLedgers(orders)
-		entry.HashVersion = uint32(fsm.State.HashGenerator.Algorithm())
-		entry.CallerSnapshot = proposal.GetCallerSnapshot()
-		// Batch identity, bound into the hash chain. For a keyed batch a fresh
-		// Idempotency carries the client key plus the server-derived expires_at
-		// (the outcome's retention window), so restore and the checker read the
-		// expiry back from the chain without a node-local TTL. Signature stays
-		// shared (ResetVT only nils it).
-		if idem := proposal.GetIdempotency(); idem.GetKey() != "" {
-			entry.Idempotency = &commonpb.Idempotency{Key: idem.GetKey(), ExpiresAt: idempotencyExpiresAt}
-		}
-		entry.Signature = proposal.GetSignature()
-
-		items := buildAuditItems(serializedOrders, logs)
-
-		// Hash pre-image: [header_payload || per_item_0 || ... ||
-		// per_item_N-1] hashed alongside lastAuditHash. The verifier
-		// rebuilds the same slices from the stored AuditEntry +
-		// AuditItem fields via the same builders — never marshalling
-		// anything, and never relying on a separately-persisted blob
-		// (so a tampered typed field is structurally detectable).
-		headerPayload, headerErr := BuildHashedHeaderPayload(entry)
-		if headerErr != nil {
-			return fmt.Errorf("building hashed header for %s: %w", label, headerErr)
-		}
-
-		hashSlices := make([][]byte, 0, 1+len(items))
-		hashSlices = append(hashSlices, headerPayload)
-
-		for _, item := range items {
-			hashSlices = append(hashSlices, BuildPerItemPayload(item))
-		}
-
-		var auditHash []byte
-		fsm.auditHashBuf, auditHash = fsm.State.HashGenerator.Compute(fsm.auditHashBuf, fsm.State.LastAuditHash, hashSlices)
-		entry.Hash = auditHash
-
-		// AppendAuditEntry validates that the peeked sequence matches
-		// the actual next one (no concurrent mutation) and advances
-		// LastAuditHash for the next entry.
-		committedSeq, exhausted := fsm.State.AppendAuditEntry(auditHash)
-		if exhausted != nil {
-			return exhausted
-		}
-
-		if committedSeq != entry.GetSequence() {
-			return fmt.Errorf("audit sequence race for %s: peeked %d, got %d", label, entry.GetSequence(), committedSeq)
-		}
-
-		// Items live under their own Pebble keys (SubHistoryAuditItem). The
-		// AuditEntry value must never carry an embedded items list: the
-		// chain does not hash entry.Items (each item is hashed via its
-		// per-item payload from the separate keys), so a non-empty
-		// embedded list would be a smuggling vector for content
-		// returned through ListAuditEntries / GetAuditEntry without
-		// being bound by the chain. Force it nil before persistence;
-		// the checker also flags any non-empty value on read as a
-		// defence-in-depth backstop.
-		entry.Items = nil
-
-		if appendErr := appendAuditEntries(batch, entry); appendErr != nil {
-			return fmt.Errorf("appending audit entry for %s: %w", label, appendErr)
-		}
-
-		if appendErr := appendAuditItems(batch, entry.GetSequence(), items...); appendErr != nil {
-			return fmt.Errorf("appending audit items for %s: %w", label, appendErr)
-		}
-
-		return nil
+		return fsm.writeProposalAuditEntry(batch, proposal, effectiveDate, idempotencyExpiresAt, serializedOrders, entry, logs, label)
 	}
 
 	if err != nil {
@@ -1682,6 +1588,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return result, nil
 	}
 
+	// Commit the successful overlay to the cache and Pebble batch, then
+	// append the audit and AppliedProposal records in key order.
 	sinkConfigChanged := buffer.SinkConfigChanged()
 	mirrorConfigChanged := buffer.MirrorConfigChanged()
 
@@ -1815,6 +1723,93 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		createdTransactions: ordersResult.CreatedTransactions,
 		revertedTransaction: ordersResult.RevertedTransaction,
 	}, nil
+}
+
+// writeProposalAuditEntry appends the hash-chain entry and its items to the
+// current Pebble batch. Callers must propagate write failures: the in-memory
+// audit state may already have advanced and recovery must replay the entry.
+func (fsm *Machine) writeProposalAuditEntry(batch *dal.WriteSession, proposal *raftcmdpb.Proposal, effectiveDate *commonpb.Timestamp, idempotencyExpiresAt uint64, serializedOrders [][]byte, entry *auditpb.AuditEntry, logs []*raftcmdpb.CreatedLogOrReference, label string) error {
+	orders := proposal.GetOrders()
+	// Sequence must be set BEFORE the header payload is built —
+	// BuildHashedHeaderPayload binds entry.Sequence, and the
+	// verifier rebuilds the payload from the persisted (non-zero)
+	// sequence. Peek NextAuditSequenceID without mutating state;
+	// the actual advance happens in AppendAuditEntry below, after
+	// the hash is computed, so a partial failure while building the entry
+	// does not leak a phantom sequence into FSMState.
+	entry.Sequence = fsm.State.NextAuditSequenceID
+	entry.Timestamp = effectiveDate
+	entry.ProposalId = proposal.GetId()
+	entry.OrderCount = uint32(len(orders))
+	entry.Ledgers = extractLedgers(orders)
+	entry.HashVersion = uint32(fsm.State.HashGenerator.Algorithm())
+	entry.CallerSnapshot = proposal.GetCallerSnapshot()
+	// Batch identity, bound into the hash chain. For a keyed batch a fresh
+	// Idempotency carries the client key plus the server-derived expires_at
+	// (the outcome's retention window), so restore and the checker read the
+	// expiry back from the chain without a node-local TTL. Signature stays
+	// shared (ResetVT only nils it).
+	if idem := proposal.GetIdempotency(); idem.GetKey() != "" {
+		entry.Idempotency = &commonpb.Idempotency{Key: idem.GetKey(), ExpiresAt: idempotencyExpiresAt}
+	}
+	entry.Signature = proposal.GetSignature()
+
+	items := buildAuditItems(serializedOrders, logs)
+
+	// Hash pre-image: [header_payload || per_item_0 || ... ||
+	// per_item_N-1] hashed alongside lastAuditHash. The verifier
+	// rebuilds the same slices from the stored AuditEntry +
+	// AuditItem fields via the same builders — never marshalling
+	// anything, and never relying on a separately-persisted blob
+	// (so a tampered typed field is structurally detectable).
+	headerPayload, headerErr := BuildHashedHeaderPayload(entry)
+	if headerErr != nil {
+		return fmt.Errorf("building hashed header for %s: %w", label, headerErr)
+	}
+
+	hashSlices := make([][]byte, 0, 1+len(items))
+	hashSlices = append(hashSlices, headerPayload)
+
+	for _, item := range items {
+		hashSlices = append(hashSlices, BuildPerItemPayload(item))
+	}
+
+	var auditHash []byte
+	fsm.auditHashBuf, auditHash = fsm.State.HashGenerator.Compute(fsm.auditHashBuf, fsm.State.LastAuditHash, hashSlices)
+	entry.Hash = auditHash
+
+	// AppendAuditEntry validates that the peeked sequence matches
+	// the actual next one (no concurrent mutation) and advances
+	// LastAuditHash for the next entry.
+	committedSeq, exhausted := fsm.State.AppendAuditEntry(auditHash)
+	if exhausted != nil {
+		return exhausted
+	}
+
+	if committedSeq != entry.GetSequence() {
+		return fmt.Errorf("audit sequence race for %s: peeked %d, got %d", label, entry.GetSequence(), committedSeq)
+	}
+
+	// Items live under their own Pebble keys (SubHistoryAuditItem). The
+	// AuditEntry value must never carry an embedded items list: the
+	// chain does not hash entry.Items (each item is hashed via its
+	// per-item payload from the separate keys), so a non-empty
+	// embedded list would be a smuggling vector for content
+	// returned through ListAuditEntries / GetAuditEntry without
+	// being bound by the chain. Force it nil before persistence;
+	// the checker also flags any non-empty value on read as a
+	// defence-in-depth backstop.
+	entry.Items = nil
+
+	if appendErr := appendAuditEntries(batch, entry); appendErr != nil {
+		return fmt.Errorf("appending audit entry for %s: %w", label, appendErr)
+	}
+
+	if appendErr := appendAuditItems(batch, entry.GetSequence(), items...); appendErr != nil {
+		return fmt.Errorf("appending audit items for %s: %w", label, appendErr)
+	}
+
+	return nil
 }
 
 // recordIdempotencyFailure freezes a definitive business rejection against the
