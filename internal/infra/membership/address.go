@@ -24,7 +24,9 @@ func ValidatePeerAddress(field, addr string) error {
 		return fmt.Errorf("%s %q must be host:port: %w", field, addr, err)
 	}
 
-	if host == "" || strings.IndexFunc(host, unicode.IsSpace) >= 0 {
+	// An empty host (":7777") is dialable as the local host and is used by
+	// single-machine clusters, so only reject hosts that cannot resolve.
+	if strings.IndexFunc(host, unicode.IsSpace) >= 0 {
 		return fmt.Errorf("%s %q must be host:port: invalid host", field, addr)
 	}
 

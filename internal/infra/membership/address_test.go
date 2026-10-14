@@ -14,6 +14,7 @@ func TestValidatePeerAddress(t *testing.T) {
 		"ledger-1.ledger.svc.cluster.local:8888",
 		"[::1]:7777",
 		"node-2:65535",
+		":7777",
 	} {
 		t.Run("valid "+addr, func(t *testing.T) {
 			t.Parallel()
@@ -28,7 +29,6 @@ func TestValidatePeerAddress(t *testing.T) {
 		{addr: "", want: "raft_address is required"},
 		{addr: "not an address", want: "must be host:port"},
 		{addr: "node-2", want: "must be host:port"},
-		{addr: ":7777", want: "invalid host"},
 		{addr: "not an:7777", want: "invalid host"},
 		{addr: "node-2:", want: "port must be a number between 1 and 65535"},
 		{addr: "node-2:0", want: "port must be a number between 1 and 65535"},

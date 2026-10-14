@@ -611,9 +611,9 @@ This status change requires revision 40 clients and servers together.
 
 Revision 41 rejects `ClusterService.AddLearner` and
 `ClusterBootstrapService.JoinAsLearner` with `InvalidArgument` when
-`raft_address` or `service_address` is not a dialable `host:port`: a non-empty
-host without whitespace and a numeric port from 1 to 65535. A revision-40 leader
-proposed and committed such a learner, which left a member that no peer could
-reach. Rejection happens before forwarding or proposal, so committed membership
-is unchanged. Peers on the same revision must agree on which registrations are
-rejected.
+`raft_address` or `service_address` is not a dialable `host:port`: a host
+without whitespace (empty means the local host) and a numeric port from 1 to
+65535. A revision-40 leader proposed and committed such a learner, which
+left a member that no peer could reach. Rejection happens before forwarding or
+proposal, so committed membership is unchanged. Peers on the same revision must
+agree on which registrations are rejected.
