@@ -21,7 +21,7 @@ frozen and the published gRPC wire contract must remain compatible.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"40"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"41"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -49,6 +49,13 @@ and HTTP `GET /_info`'s `protocolVersion` report the server revision.
 Restore mode does not register Discovery: its service gate provides the
 compatibility error without requiring a preliminary Discovery call, while
 health and reflection remain exempt.
+
+Revision 41 (EN-2906) enforces the existing prepared-query `LIST` page-size
+policy on every entry point: zero defaults to 100 and values above 1,000 are
+clamped before pagination and enrichment. Oversized service requests previously
+returned larger pages and reported the requested size, so this observable
+semantic correction requires matching service clients and servers.
+`AGGREGATE_VOLUMES` remains independent of the `LIST` page-size limit.
 
 Revision 6 (EN-2009) makes fresh `CreateIndex` requests strict: an existing
 ledger/canonical index identity returns `INDEX_ALREADY_EXISTS` (`AlreadyExists`)
@@ -78,10 +85,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 40:
+leader. For example, with a schema implementing revision 41:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 40' \
+grpcurl -plaintext -H 'ledger-protocol-version: 41' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
