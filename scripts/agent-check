@@ -21,7 +21,10 @@ echo "==> agent-check: mechanical repository invariants"
 bash "$SCRIPT_DIR/check-repo-invariants"
 
 echo "==> agent-check: compile all root-module packages"
-go build ./...
+# `go list -export` compiles and type-checks every package through GOCACHE but
+# skips linking. `go build ./...` re-links every main package on each run
+# because links are never cached; CI's Build job still links the binaries.
+go list -export ./... >/dev/null
 
 echo "==> agent-check: verify tracked/staged diff whitespace"
 git diff --check HEAD --

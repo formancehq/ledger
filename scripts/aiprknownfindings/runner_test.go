@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -208,10 +207,12 @@ func (fixture fixture) run(t *testing.T, mode string, moveHead bool) (string, er
 
 func sourcePath(t *testing.T) string {
 	t.Helper()
-	_, filename, _, ok := runtime.Caller(0)
-	require.True(t, ok)
+	// go test runs in the package directory; runtime.Caller paths are
+	// module-relative under -trimpath.
+	packageDir, err := os.Getwd()
+	require.NoError(t, err)
 
-	return filepath.Clean(filepath.Join(filepath.Dir(filename), "..", "ai-pr-known-findings"))
+	return filepath.Clean(filepath.Join(packageDir, "..", "ai-pr-known-findings"))
 }
 
 func writeFile(t *testing.T, path, contents string, mode os.FileMode) {
