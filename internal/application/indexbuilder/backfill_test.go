@@ -2038,6 +2038,47 @@ func TestSchemaRewrite_SeqGate_SameBatchSwitchWhenGateMet(t *testing.T) {
 	assert.Equal(t, uint32(0), pending)
 }
 
+// An exhausted scan must commit its pending work and keep the sampled FSM
+// watermark until the read-store cursor permits a later standalone switch.
+func TestSchemaRewrite_EmptyScanDefersThenPromotes(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	const ledger = "test"
+	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"))
+	b.putVersionState(ledger, canonical, readstore.IndexVersionState{CurrentVersion: 1, PendingVersion: 2})
+	task := &schemaRewriteTask{
+		ledger: ledger, targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		key: "status", toType: commonpb.MetadataType_METADATA_TYPE_INT64,
+		bbKey:              schemaRewriteBBKey(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
+		requiredIndexedSeq: 100,
+	}
+	progress := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteProgress(progress, 50))
+	require.NoError(t, progress.Commit())
+
+	stop := make(chan struct{})
+	done, err := b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	require.False(t, done)
+	require.True(t, task.scanComplete)
+	require.Equal(t, uint64(100), task.requiredIndexedSeq)
+	current, pending := b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(1), current)
+	require.Equal(t, uint32(2), pending)
+
+	progress = b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteProgress(progress, 100))
+	require.NoError(t, progress.Commit())
+	done, err = b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	require.True(t, done)
+	require.Equal(t, uint64(100), task.requiredIndexedSeq)
+	current, pending = b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(2), current)
+	require.Zero(t, pending)
+}
+
 // writeLogToFSM persists a marshaled Log under [ZoneHistory][SubHistoryLog][seq] so
 // the backfill iterator (query.ReadLogsSinceRaw) can read it back.
 func writeLogToFSM(t *testing.T, b *Builder, log *commonpb.Log) {
