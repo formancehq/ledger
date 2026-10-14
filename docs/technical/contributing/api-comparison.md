@@ -381,6 +381,42 @@ always available (served from the reversion bitset, no index); `revertedAt` requ
 the `reverted-at` builtin index. `revertedByTransactionId`/`revertsTransactionId` are
 navigable in the representation but not queryable (v3-only, no parity baseline).
 
+#### A compensating transaction can itself be reverted
+
+Ledger v3 allows a transaction that reverts another transaction to be reverted
+once. The same rule applies to every transaction: a successful revert creates a
+new compensating transaction, and the target cannot be reverted again. Reverting
+the compensation does not clear the original transaction's reverted status.
+The usual balance checks and other revert validations still apply.
+
+For example, transaction `648` reverts `645`, and transaction `649` reverts `648`.
+After both operations, the relationship fields are:
+
+| Transaction ID | `reverted` | `revertsTransactionId` | `revertedByTransactionId` |
+| --- | --- | --- | --- |
+| `645` | `true` | absent | `648` |
+| `648` | `true` | `645` | `649` |
+| `649` | `false` | `648` | absent |
+
+Requests to revert `645` or `648` again fail with
+`TRANSACTION_ALREADY_REVERTED`. Transaction `649` can itself be reverted, creating
+another transaction. A transaction can therefore both revert an earlier
+transaction and be reverted by a later one.
+
+This behavior is retained for payment flows such as chargebacks. When a dispute
+reverses an initial booking, winning the dispute can require reversing that
+compensation. Further presentments and dispute outcomes can extend the chain.
+Rejecting all reverts of compensating transactions would prevent this workflow.
+Ledger records each compensation and preserves the links between transactions.
+
+Applications and agents must tie each revert to a business event and define when
+the workflow stops. The once-per-transaction rule prevents a second revert of the
+same target, but does not prevent an application from repeatedly reverting each
+new compensation.
+
+The current implementation is
+[`processRevertTransaction`](../../../internal/domain/processing/processor_revert_transaction.go).
+
 ### 3. Metadata Management
 
 **Endpoints:**
