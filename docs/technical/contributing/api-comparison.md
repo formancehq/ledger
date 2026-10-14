@@ -1263,8 +1263,15 @@ is not a valid position for the endpoint, is `InvalidArgument` over gRPC and
 |---------|---------|----------|
 | HTTP lists: `GET /v3/` (ledgers), `/v3/{ledgerName}/accounts`, `/transactions`, `/logs`, `/numscripts`, `/v3/_/audit-entries`, `/v3/_/signing-keys` | `pageSize` (default 100, clamped to 1000), `cursor`, `reverse=true` | `{"data": [...], "next": "<token>", "previous": "<token>", "hasMore": <bool>}`; `next` and `previous` omitted when there is no such page, `hasMore` set iff `next` is |
 | gRPC paged list RPCs: `ListLedgers`, `ListAccounts`, `ListTransactions`, `ListLogs`, `ListNumscripts`, `ListAuditEntries`, `ListSigningKeys` | `ListOptions.page_size`, `cursor`, `reverse` | `x-next-cursor` and `x-previous-cursor` trailers |
-| Prepared-query execution (`LIST` mode), both transports | `pageSize`, `cursor`, `reverse` | `cursor.next`, `cursor.previous`, `cursor.hasMore` |
+| Prepared-query execution (`LIST` mode), both transports | `pageSize` (zero/absent defaults to 100, clamped to 1000), `cursor`, `reverse`; a supplied HTTP `pageSize` query parameter overrides the body, including empty/zero | `cursor.pageSize` reports the effective size; `cursor.next`, `cursor.previous`, `cursor.hasMore` |
 | Index inspection (`distinctValues` / `facets`), both transports | `pageSize`, `cursor` | `nextCursor` / `previousCursor` (gRPC `next_cursor` / `previous_cursor`), `hasMore` |
+
+Prepared-query LIST limits apply before ID collection and enrichment, for both
+HTTP and service gRPC. Input values retain the uint32 range: values above 1000
+are clamped, while negative, fractional or overflowing inputs are invalid.
+`AGGREGATE_VOLUMES` ignores page size and includes every matching account.
+Prepared queries have no v2 endpoint equivalent; the LIST policy follows the
+existing v3 paged-list default/cap rather than introducing a rejection limit.
 
 A page token is relative to the requested order, so every page of a walk
 repeats the same `reverse` and filter.

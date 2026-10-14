@@ -1024,6 +1024,11 @@ func (impl *BucketServiceServerImpl) ListPreparedQueries(ctx context.Context, re
 }
 
 func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	if req != nil && req.GetMode() == commonpb.QueryMode_QUERY_MODE_LIST {
+		req = proto.Clone(req).(*servicepb.ExecutePreparedQueryRequest)
+		req.PageSize = ctrl.ClampPageSize(req.GetPageSize())
+	}
+
 	ctx, profile := withTransportQueryProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 

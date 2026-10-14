@@ -1226,6 +1226,9 @@ message ExecutePreparedQueryRequest {
   string ledger = 1;
   string query_name = 2;
   map<string, common.ParameterValue> parameters = 3;
+  // LIST defaults zero to 100 and clamps values above 1000 to 1000 before
+  // collecting or enriching results. The cursor reports the effective size.
+  // AGGREGATE_VOLUMES ignores page_size and aggregates all matching accounts.
   uint32 page_size = 4;
   string cursor = 5;
   common.QueryMode mode = 6;
