@@ -137,7 +137,8 @@ dockers_v2:
   - linux/arm64
   sbom: false
   flags:
-  - --provenance=false
+  # PR image builds enable provenance; retain the existing release default.
+  - '--provenance={{ envOrDefault "IMAGE_PROVENANCE" "false" }}'
   labels:
     org.opencontainers.image.title: ledger
     org.opencontainers.image.description: ledger

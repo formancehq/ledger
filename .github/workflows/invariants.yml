@@ -3,7 +3,7 @@ name: Repository Invariants
 on:
   merge_group:
   pull_request:
-    types: [assigned, opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened]
   push:
     branches:
       - main

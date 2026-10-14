@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+---
+# PR image publication for the operator, used by `just operator-docker-build-pr`
+# from the repository root (the recipe runs goreleaser inside misc/operator).
+#
+# The operator is its own Go module and has no canonical GoReleaser release
+# (nightly and tagged operator images are still built by
+# `just operator-docker-build`). This file only covers PR images, and mirrors
+# misc/operator/Dockerfile: a static CGO_ENABLED=0 build of ./cmd/operator for
+# linux/amd64 and linux/arm64.
+#
+# Always run with `--nightly`: the only tag pushed is nightly.version_template.
+version: 2
+dist: build/pr-images
+project_name: ledger-operator
+
+# OPERATOR_IMAGE_REPOSITORY controls where the image is pushed. The recipe sets
+# it from the image reference it receives.
+env:
+- OPERATOR_IMAGE_REPOSITORY={{ envOrDefault "OPERATOR_IMAGE_REPOSITORY" "ghcr.io/formancehq/ledger-operator" }}
+
+builds:
+- id: operator
+  binary: operator
+  main: ./cmd/operator
+  env:
+  - CGO_ENABLED=0
+  goos:
+  - linux
+  goarch:
+  - amd64
+  - arm64
+
+# No GitHub release, no `nightly` tag, no release notes for a PR image.
+release:
+  disable: true
+changelog:
+  disable: true
+
+nightly:
+  publish_release: false
+  # The image tag, e.g. pr-2229-1a2b3c4. The build fails when the variable is
+  # unset instead of falling back to another tag.
+  version_template: "{{ .Env.PR_IMAGE_TAG }}"
+
+dockers_v2:
+- ids:
+  - operator
+  dockerfile: build.Dockerfile
+  images:
+  - "{{ .Env.OPERATOR_IMAGE_REPOSITORY }}"
+  tags:
+  - "{{ .Version }}"
+  platforms:
+  - linux/amd64
+  - linux/arm64
+  sbom: false
+  flags:
+  - --provenance=mode=min
+  labels:
+    org.opencontainers.image.title: ledger-operator
+    org.opencontainers.image.description: ledger-operator
+    org.opencontainers.image.url: https://github.com/formancehq/ledger
+    org.opencontainers.image.source: https://github.com/formancehq/ledger
+    org.opencontainers.image.version: "{{ .Version }}"
+    org.opencontainers.image.created: "{{ time \"2006-01-02T15:04:05Z07:00\" }}"
+    org.opencontainers.image.revision: "{{ .FullCommit }}"
+    org.opencontainers.image.licenses: MIT

@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+---
+# PR image publication, used by `just docker-build-pr`.
+#
+# It includes the canonical .goreleaser.yml, so a PR image is built from the
+# exact same builds (binaries, build tags, ldflags) and the same dockers_v2
+# entry (build.Dockerfile, platforms, labels) as a nightly or tagged release.
+#
+# Always run with `--nightly` (see the recipe). In nightly mode the canonical
+# docker tags resolve to "{{ .Version }}" with no `v` prefix and no `latest`,
+# so the only tag pushed is the one set below through nightly.version_template.
+#
+# The includes merge appends lists and never overrides a non-zero value with a
+# zero value. Consequences for this file:
+# - `builds` and `dockers_v2` cannot be overridden here, only inherited.
+# - `nightly.publish_release: true` and `keep_single_release: true` from the
+#   canonical file cannot be reset to false. `release.disable` turns the whole
+#   GitHub release pipe off instead, and the recipe also removes GITHUB_TOKEN
+#   so that a release attempt fails closed.
+version: 2
+dist: build/pr-images
+project_name: ledger
+
+includes:
+- from_file:
+    path: .goreleaser.yml
+
+# No GitHub release, no `nightly` tag, no release notes for a PR image.
+release:
+  disable: true
+changelog:
+  disable: true
+
+nightly:
+  # The image tag, e.g. pr-2229-1a2b3c4. The build fails when the variable is
+  # unset instead of falling back to another tag.
+  version_template: "{{ .Env.PR_IMAGE_TAG }}"
