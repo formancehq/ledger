@@ -1403,7 +1403,7 @@ ledgerctl accounts analyze [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | *(required)* | Name of the ledger |
-| `--threshold` | `0` | Variable threshold (0 = default 10): max distinct children before classifying as variable |
+| `--threshold` | `0` | Variable threshold (0 = default 10, max 1000; larger values are clamped): max distinct children before classifying as variable |
 | `--json` | `false` | Output full response as JSON |
 | `--timeout` | `10s` | Request timeout |
 
@@ -1753,7 +1753,7 @@ ledgerctl transactions analyze [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | *(required)* | Name of the ledger |
-| `--threshold` | `0` | Variable threshold (0 = default 10): max distinct children before classifying as variable |
+| `--threshold` | `0` | Variable threshold (0 = default 10, max 1000; larger values are clamped): max distinct children before classifying as variable |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 

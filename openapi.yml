@@ -1477,7 +1477,7 @@ paths:
         - $ref: '#/components/parameters/LedgerName'
         - name: variableThreshold
           in: query
-          description: Max distinct children before classifying as variable (0 = default 10)
+          description: Max distinct children before classifying as variable (0 = default 10). Values above 1000 are clamped to 1000.
           required: false
           schema:
             type: integer
@@ -1524,7 +1524,7 @@ paths:
         - $ref: '#/components/parameters/LedgerName'
         - name: variableThreshold
           in: query
-          description: Max distinct children before classifying as variable (0 = default 10)
+          description: Max distinct children before classifying as variable (0 = default 10). Values above 1000 are clamped to 1000.
           required: false
           schema:
             type: integer

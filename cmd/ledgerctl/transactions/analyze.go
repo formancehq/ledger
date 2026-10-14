@@ -35,7 +35,7 @@ Examples:
 	}
 
 	cmdutil.AddLedgerFlag(cmd)
-	cmd.Flags().Uint32("threshold", 0, "Variable threshold (0 = default 10): max distinct children before classifying as variable")
+	cmd.Flags().Uint32("threshold", 0, "Variable threshold (0 = default 10, max 1000; larger values are clamped): max distinct children before classifying as variable")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 

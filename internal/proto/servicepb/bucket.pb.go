@@ -5890,7 +5890,7 @@ type AnalyzeAccountsRequest struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	// variable_threshold is the max distinct children before a trie node is classified
-	// as variable. 0 uses the default (10).
+	// as variable. 0 uses the default (10). Values above 1000 are clamped to 1000.
 	VariableThreshold uint32 `protobuf:"varint,2,opt,name=variable_threshold,json=variableThreshold,proto3" json:"variable_threshold,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -6393,7 +6393,7 @@ type AnalyzeTransactionsRequest struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	// variable_threshold is the max distinct children before a trie node is classified
-	// as variable. 0 uses the default (10).
+	// as variable. 0 uses the default (10). Values above 1000 are clamped to 1000.
 	VariableThreshold uint32 `protobuf:"varint,2,opt,name=variable_threshold,json=variableThreshold,proto3" json:"variable_threshold,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache

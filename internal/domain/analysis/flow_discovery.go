@@ -180,9 +180,7 @@ func AnalyzeTransactionsFromIterators(
 	variableThreshold uint32,
 	onProgress func(processed, total uint64),
 ) (*servicepb.AnalyzeTransactionsResponse, error) {
-	if variableThreshold == 0 {
-		variableThreshold = DefaultVariableThreshold
-	}
+	variableThreshold = effectiveVariableThreshold(variableThreshold)
 
 	// Pass 1: Build address trie + count totals
 	root := newTrieNode()

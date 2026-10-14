@@ -3,6 +3,7 @@ package analysis
 import (
 	"fmt"
 	"io"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -319,4 +320,36 @@ func TestAnalyze_OverflowMemoryBounded(t *testing.T) {
 	require.Len(t, resp.GetPatterns(), 1)
 	assert.Equal(t, "users:{number}", resp.GetPatterns()[0].GetPattern())
 	assert.Equal(t, uint64(numAccounts), resp.GetPatterns()[0].GetAccountCount())
+}
+
+// Regression for Heal s2-analyze-accounts-patterns-uncapped-1 (EN-2929): a
+// threshold above MaxVariableThreshold must not keep every account as a fixed
+// pattern. 1,100 distinct children exceed the clamped threshold, so the
+// segment collapses exactly as it does with MaxVariableThreshold itself.
+func TestAnalyze_ThresholdClampedToMax(t *testing.T) {
+	t.Parallel()
+
+	accounts := []CompactAccount{makeCompactAccount("world")}
+	for i := range MaxVariableThreshold + 100 {
+		accounts = append(accounts, makeCompactAccount(fmt.Sprintf("users:%d", 10000+i)))
+	}
+
+	for _, threshold := range []uint32{MaxVariableThreshold, MaxVariableThreshold + 1, math.MaxUint32} {
+		resp := analyze(accounts, threshold)
+
+		require.Len(t, resp.GetPatterns(), 2, "threshold=%d", threshold)
+		assert.Equal(t, "users:{number}", resp.GetPatterns()[0].GetPattern())
+		assert.Equal(t, uint64(MaxVariableThreshold+100), resp.GetPatterns()[0].GetAccountCount())
+		assert.Equal(t, "world", resp.GetPatterns()[1].GetPattern())
+	}
+}
+
+func TestEffectiveVariableThreshold(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, uint32(DefaultVariableThreshold), effectiveVariableThreshold(0))
+	assert.Equal(t, uint32(25), effectiveVariableThreshold(25))
+	assert.Equal(t, uint32(MaxVariableThreshold), effectiveVariableThreshold(MaxVariableThreshold))
+	assert.Equal(t, uint32(MaxVariableThreshold), effectiveVariableThreshold(MaxVariableThreshold+1))
+	assert.Equal(t, uint32(MaxVariableThreshold), effectiveVariableThreshold(math.MaxUint32))
 }

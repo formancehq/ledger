@@ -18,10 +18,13 @@ helpers to construct the oracle.
 
 Exercise repeated addresses, one and several postings, differing colors,
 reordered postings, thresholds at boundaries, reverted transactions and skipped
-logs. Distinguish the collision-safe internal grouping key from the public
-display signature. For error cases, inject a failure in each pass after a
-positive witness, then observe the controller and streaming caller's final
-result or terminal error. Progress messages are not completion evidence.
+logs. The effective threshold maps a requested `0` to
+`analysis.DefaultVariableThreshold` and clamps values above
+`analysis.MaxVariableThreshold`; include both boundaries. Distinguish the
+collision-safe internal grouping key from the public display signature. For
+error cases, inject a failure in each pass after a positive witness, then
+observe the controller and streaming caller's final result or terminal error.
+Progress messages are not completion evidence.
 
 ## Ownership boundaries
 

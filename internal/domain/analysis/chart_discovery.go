@@ -15,6 +15,26 @@ import (
 // node before the node is classified as a variable segment.
 const DefaultVariableThreshold = 10
 
+// MaxVariableThreshold is the largest variable threshold the analysis honours.
+// Larger requested values are clamped to it. Without this bound a huge threshold
+// prevents every trie node from collapsing, so the trie keeps every address
+// segment and the response carries one pattern per account. The value matches
+// the server's maximum list page size (ctrl.MaxPageSize).
+const MaxVariableThreshold = 1000
+
+// effectiveVariableThreshold resolves a requested threshold: 0 selects
+// DefaultVariableThreshold and values above MaxVariableThreshold are clamped.
+func effectiveVariableThreshold(requested uint32) uint32 {
+	switch {
+	case requested == 0:
+		return DefaultVariableThreshold
+	case requested > MaxVariableThreshold:
+		return MaxVariableThreshold
+	default:
+		return requested
+	}
+}
+
 // maxExamples is the maximum number of example values included per pattern segment.
 const maxExamples = 5
 
@@ -102,9 +122,7 @@ const progressReportInterval = 500
 // instead of O(N accounts).
 // If onProgress is non-nil, it is called periodically with (processed, total) counts.
 func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
-	if variableThreshold == 0 {
-		variableThreshold = DefaultVariableThreshold
-	}
+	variableThreshold = effectiveVariableThreshold(variableThreshold)
 
 	// Cap children per node: once reached, new unseen segments spill into mergedChild.
 	childCap := int(variableThreshold) * 2

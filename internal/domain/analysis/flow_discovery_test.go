@@ -3,6 +3,7 @@ package analysis
 import (
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"testing"
 
@@ -397,4 +398,25 @@ func TestAnalyzeTransactions_PublicSignatureIsHumanReadable(t *testing.T) {
 	sig := resp.GetFlowPatterns()[0].GetSignature()
 	require.Equal(t, "world->bank:main[USD]", sig)
 	require.NotContains(t, sig, "\x00")
+}
+
+// Regression for Heal s2-analyze-accounts-patterns-uncapped-1 (EN-2929): the
+// transaction analysis clamps the threshold like the account analysis, so a
+// huge threshold still normalizes many distinct destinations into one flow.
+func TestAnalyzeTransactions_ThresholdClampedToMax(t *testing.T) {
+	t.Parallel()
+
+	txns := make([]CompactTransaction, 0, MaxVariableThreshold+100)
+	for i := range MaxVariableThreshold + 100 {
+		txns = append(txns, makeCompactTransaction(uint64(i), []CompactPosting{
+			makeCompactPosting("world", fmt.Sprintf("users:%d", 10000+i), "USD", 1),
+		}))
+	}
+
+	for _, threshold := range []uint32{MaxVariableThreshold, math.MaxUint32} {
+		resp := analyzeTransactions(txns, threshold)
+
+		require.Len(t, resp.GetFlowPatterns(), 1, "threshold=%d", threshold)
+		assert.Equal(t, uint64(MaxVariableThreshold+100), resp.GetFlowPatterns()[0].GetTransactionCount())
+	}
 }

@@ -1065,7 +1065,7 @@ message MetadataFieldStatus {
 message AnalyzeAccountsRequest {
   string ledger = 1;
   // variable_threshold is the max distinct children before a trie node is classified
-  // as variable. 0 uses the default (10).
+  // as variable. 0 uses the default (10). Values above 1000 are clamped to 1000.
   uint32 variable_threshold = 2;
 }
 
@@ -1129,7 +1129,7 @@ enum PatternSegmentType {
 message AnalyzeTransactionsRequest {
   string ledger = 1;
   // variable_threshold is the max distinct children before a trie node is classified
-  // as variable. 0 uses the default (10).
+  // as variable. 0 uses the default (10). Values above 1000 are clamped to 1000.
   uint32 variable_threshold = 2;
 }
 
