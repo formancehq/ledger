@@ -257,12 +257,13 @@ if [[ -n "${VALIDATION_RUN_DIR:-}" ]]; then
         echo "SHARED_CACHE_GATE=FAIL (GOCACHE is not a managed generation)" >&2
         exit 1
     }
-    run_root=$(cd "$VALIDATION_RUN_DIR" 2>/dev/null && pwd -P) || {
+    [[ -d "$VALIDATION_RUN_DIR" ]] || {
         echo "SHARED_CACHE_GATE=FAIL (invalid VALIDATION_RUN_DIR)" >&2
         exit 1
     }
-    [[ "${TMPDIR:-}" == "$run_root/tmp" ]] || {
-        echo "SHARED_CACHE_GATE=FAIL (TMPDIR is not run-local)" >&2
+    candidate_root=$(cd "$(git rev-parse --show-toplevel)" && pwd -P)
+    validation_tmpdir_valid "${TMPDIR:-}" "$candidate_root" || {
+        echo "SHARED_CACHE_GATE=FAIL (TMPDIR is not an absolute directory outside the candidate worktree)" >&2
         exit 1
     }
     echo "SHARED_CACHE_GATE=PASS root=$cache_root tmp=$TMPDIR" >&2
