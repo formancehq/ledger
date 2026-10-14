@@ -699,7 +699,9 @@ config:
 
 Before opening the WAL, startup validates the persisted `INSTANCE_ID`. If any durable WAL marker exists but `INSTANCE_ID` is missing, startup fails rather than generating a replacement identity. This check is not bypassed by `--unsafe-skip-config-validation`; see [membership recovery](../technical/architecture/subsystems/consensus/removed-member-registry.md).
 
-The server persists critical configuration parameters in Pebble under the Global zone (key `{0x06, 0x0C}`) on first boot and validates them on every subsequent boot. This prevents silent data corruption from accidentally changing critical parameters between restarts.
+The server persists critical configuration parameters in Pebble under `ZoneClusterPersistent` at key `{0x08, 0x0C}` (`ZoneClusterPersistent`, `SubGlobPersistedConfig`; see the [storage key definitions](../../internal/storage/dal/store.go)) on first boot and validates them on every subsequent boot. This prevents silent data corruption from accidentally changing critical parameters between restarts.
+
+The old Global-zone anchor at `{0x06, 0x0C}` belongs to a prior storage layout. Startup checks for it before reading the current anchor and rejects that layout before persisting first-boot configuration, even with `--unsafe-skip-config-validation`. It is not treated as a missing current configuration.
 
 #### Persisted Parameters
 
@@ -724,7 +726,7 @@ the audit key. Its rotation is not an implicit configuration change.
 
 - **First boot**: No persisted config exists -- current config is saved (no error)
 - **Restore flow**: Validation is skipped in restore mode (`--restore`)
-- **Existing deployments upgrading**: Treated as first boot (no persisted config key yet)
+- **Prior-layout persisted config**: The old `{0x06, 0x0C}` anchor is always rejected; upgrading such a store is not treated as first boot
 - **Schema version mismatch**: Always fatal regardless of `--unsafe-skip-config-validation`, because data corruption is certain
 - **Cluster policy without metadata limits**: The committed policy carries the metadata size ceilings the server enforces on every write path. A leader's reconciler proposes a new policy only when `--cluster-policy-revision` exceeds the applied revision, so a policy committed without the ceilings cannot be repaired at the same revision. The node refuses to start and names the remedy — raise `--cluster-policy-revision`. Zero is never treated as "unlimited". See the [metadata size limits contract](../technical/architecture/subsystems/admission/metadata-limits.md)
 
