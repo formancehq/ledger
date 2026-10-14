@@ -241,6 +241,7 @@ func TestCheck_FailureOnlyHistory_PhaseEventOrder(t *testing.T) {
 	require.GreaterOrEqual(t, len(events), 3)
 	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
 		events[0].GetError().GetErrorType())
+	require.NotNil(t, events[1].GetProgress(), "the middle event must be replay progress")
 	require.Equal(t, uint64(0), events[1].GetProgress().GetLogsChecked())
 	require.Equal(t, uint64(0), events[1].GetProgress().GetTotalLogs())
 	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH,
