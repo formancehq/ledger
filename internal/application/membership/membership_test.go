@@ -33,6 +33,8 @@ func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 		{"missing node_id", 0, "r:1", "s:1", []byte("0123456789abcdef"), "node_id"},
 		{"missing raft_address", 1, "", "s:1", []byte("0123456789abcdef"), "raft_address"},
 		{"missing service_address", 1, "r:1", "", []byte("0123456789abcdef"), "service_address"},
+		{"malformed raft_address", 1, "not an address", "s:1", []byte("0123456789abcdef"), "raft_address \"not an address\" must be host:port"},
+		{"malformed service_address", 1, "r:1", "also bad", []byte("0123456789abcdef"), "service_address \"also bad\" must be host:port"},
 		{"missing instance_id", 1, "r:1", "s:1", nil, "instance_id"},
 		{"short instance_id", 1, "r:1", "s:1", []byte("short"), "instance_id"},
 	}

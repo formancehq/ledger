@@ -302,6 +302,14 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	if err := raftmembership.ValidatePeerAddress("raft_address", req.GetRaftAddress()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	if err := raftmembership.ValidatePeerAddress("service_address", req.GetServiceAddress()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	impl.logger.WithFields(map[string]any{
 		"requestedNodeID":      req.GetNodeId(),
 		"requestedRaftAddress": req.GetRaftAddress(),

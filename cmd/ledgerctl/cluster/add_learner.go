@@ -19,7 +19,7 @@ func NewAddLearnerCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "add-learner <node-id> <raft-address> <service-address> <instance-id>",
 		Short:             "Add a non-voting learner node to the cluster",
-		Long:              "Add a learner (non-voting) node to the Raft cluster. instance-id is the 32-character hexadecimal encoding of the target's persisted INSTANCE_ID file. The request is forwarded to the leader.",
+		Long:              "Add a learner (non-voting) node to the Raft cluster. raft-address and service-address must be host:port. instance-id is the 32-character hexadecimal encoding of the target's persisted INSTANCE_ID file. The request is forwarded to the leader.",
 		Args:              cobra.ExactArgs(4),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runAddLearner,
@@ -41,7 +41,15 @@ func runAddLearner(cmd *cobra.Command, args []string) error {
 	}
 
 	raftAddress := args[1]
+	if err := membership.ValidatePeerAddress("raft address", raftAddress); err != nil {
+		return err
+	}
+
 	serviceAddress := args[2]
+	if err := membership.ValidatePeerAddress("service address", serviceAddress); err != nil {
+		return err
+	}
+
 	instanceID, err := hex.DecodeString(args[3])
 	if err != nil {
 		return fmt.Errorf("invalid instance ID %q: expected hexadecimal: %w", args[3], err)

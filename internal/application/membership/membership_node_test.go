@@ -171,6 +171,40 @@ func TestService_LearnerRegistrationCommitsAndPreservesCallerIntent(t *testing.T
 	}
 }
 
+// A malformed address must be rejected before any ConfChange is proposed;
+// otherwise a member nobody can reach is committed to the cluster.
+func TestService_LearnerRegistrationRejectsMalformedAddresses(t *testing.T) {
+	t.Parallel()
+
+	for _, bootJoin := range []bool{false, true} {
+		name := "administrative"
+		if bootJoin {
+			name = "boot join"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s := newMembershipServiceNode(t)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			register := s.AddLearner
+			if bootJoin {
+				register = s.JoinAsLearner
+			}
+			before := s.infraMembership.PeerAddresses()
+
+			err := register(ctx, 646358, "not an address", "also bad", []byte("peer-instance-id"))
+			require.ErrorContains(t, err, "raft_address \"not an address\" must be host:port")
+
+			peers, err := s.ListPeers(ctx)
+			require.NoError(t, err)
+			for _, peer := range peers {
+				require.NotEqual(t, uint64(646358), peer.ID, "malformed learner must not be committed")
+			}
+			require.Equal(t, before, s.infraMembership.PeerAddresses())
+		})
+	}
+}
+
 func TestService_ListPeersReturnsCompleteIndependentSnapshot(t *testing.T) {
 	t.Parallel()
 

@@ -196,6 +196,14 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 		return nil, status.Errorf(codes.InvalidArgument, "instance_id must be 16 bytes, got %d", len(req.GetInstanceId()))
 	}
 
+	if err := membership.ValidatePeerAddress("raft_address", req.GetRaftAddress()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	if err := membership.ValidatePeerAddress("service_address", req.GetServiceAddress()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	// Refuse a peer whose (nodeID, instance_id) has been blacklisted.
 	// Errors reading the store surface as Internal so an operator sees
 	// the anomaly and can investigate.

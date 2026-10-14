@@ -41,6 +41,12 @@ import (
 // surface enforces the same wire identity length.
 const InstanceIDLen = membership.InstanceIDLen
 
+// ValidatePeerAddress is re-exported for transport adapters so learner
+// registrations reject the same malformed host:port addresses everywhere.
+func ValidatePeerAddress(field, addr string) error {
+	return membership.ValidatePeerAddress(field, addr)
+}
+
 // Peer is the minimal view of a cluster member as returned by ListPeers.
 // It is intentionally proto-free so the application layer does not leak
 // gRPC types up the dependency graph; adapters convert to their own
@@ -210,12 +216,12 @@ func validatePeer(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte
 		return errors.New("node_id must be non-zero")
 	}
 
-	if raftAddr == "" {
-		return errors.New("raft_address is required")
+	if err := membership.ValidatePeerAddress("raft_address", raftAddr); err != nil {
+		return err
 	}
 
-	if serviceAddr == "" {
-		return errors.New("service_address is required")
+	if err := membership.ValidatePeerAddress("service_address", serviceAddr); err != nil {
+		return err
 	}
 
 	if err := membership.ValidateInstanceID(instanceID); err != nil {
