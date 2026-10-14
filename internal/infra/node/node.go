@@ -2476,7 +2476,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 			}
 
 			nodeInfo := &clusterpb.NodeInfo{
-				Id:       uint32(id),
+				Id:       id,
 				Suffrage: suffrage,
 			}
 
@@ -2534,9 +2534,9 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 
 	clusterState := &clusterpb.ClusterState{
 		State:      stateStr,
-		Leader:     uint32(leaderID),
+		Leader:     leaderID,
 		Nodes:      nodes,
-		LocalNode:  uint32(node.config.NodeID),
+		LocalNode:  node.config.NodeID,
 		RaftStatus: raftStatus,
 	}
 

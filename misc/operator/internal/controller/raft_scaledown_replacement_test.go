@@ -84,7 +84,7 @@ func TestRaftScaleDownReplacementMembership(t *testing.T) {
 						var nodes []string
 						for id := 1; id <= 3; id++ {
 							if members[id] {
-								nodes = append(nodes, fmt.Sprintf(`{"id":%d}`, id))
+								nodes = append(nodes, fmt.Sprintf(`{"id":"%d"}`, id))
 							}
 						}
 

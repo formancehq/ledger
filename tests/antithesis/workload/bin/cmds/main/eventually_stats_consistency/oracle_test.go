@@ -32,10 +32,10 @@ type oracleLifecycleFixture struct {
 	barriers         int
 	targetLogs       int
 	witnesses        map[string]oracleLifecycleWitness
-	members          map[string]uint32
+	members          map[string]uint64
 	unavailable      map[string]bool
 	replaceMember    bool
-	readinessNodeIDs []uint32
+	readinessNodeIDs []uint64
 	changesRemaining int // -1 changes every final fence.
 	incorrectUsage   bool
 	staleTargetReads atomic.Uint32
@@ -52,7 +52,7 @@ type oracleLifecycleWitness struct {
 func newOracleLifecycleFixture(changesRemaining int, incorrectUsage bool) *oracleLifecycleFixture {
 	return &oracleLifecycleFixture{
 		index: 100, targetLogs: 1, witnesses: make(map[string]oracleLifecycleWitness),
-		members: map[string]uint32{"replica-1": 1}, unavailable: make(map[string]bool),
+		members: map[string]uint64{"replica-1": 1}, unavailable: make(map[string]bool),
 		changesRemaining: changesRemaining, incorrectUsage: incorrectUsage,
 	}
 }
@@ -411,7 +411,7 @@ func TestRunOracleCancellationPreservesReplicaEvidenceWithoutFinalFence(t *testi
 func TestRunOracleRequiresOnlyCurrentMembersFromSevenCandidates(t *testing.T) {
 	t.Parallel()
 	fixture := newOracleLifecycleFixture(0, false)
-	fixture.members = map[string]uint32{"replica-1": 1, "replica-2": 2, "replica-3": 3}
+	fixture.members = map[string]uint64{"replica-1": 1, "replica-2": 2, "replica-3": 3}
 	_, candidates := newOracleLifecycleFleet(t, fixture, 7)
 	// Interleave absent slots so result identities cannot accidentally come
 	// from the original candidate slice's positions.
@@ -427,7 +427,7 @@ func TestRunOracleRequiresOnlyCurrentMembersFromSevenCandidates(t *testing.T) {
 	require.Len(t, report.Observations, 3, "four unused pod slots must not become failing replicas")
 	for i, got := range report.Observations {
 		require.True(t, got.Converged, "%+v", got)
-		require.Equal(t, uint32(i+1), got.NodeID)
+		require.Equal(t, uint64(i+1), got.NodeID)
 		require.Equal(t, fmt.Sprintf("replica-%d", i+1), got.Node)
 	}
 	require.Equal(t, uint32(1), fixture.membershipReads.Load())
@@ -439,10 +439,45 @@ func TestRunOracleRequiresOnlyCurrentMembersFromSevenCandidates(t *testing.T) {
 	}
 }
 
+func TestRunOraclePreservesHighMemberIDsWithCollidingLowBits(t *testing.T) {
+	t.Parallel()
+	fixture := newOracleLifecycleFixture(0, false)
+	fixture.members = map[string]uint64{"replica-1": 1, "replica-2": 1 + 1<<32, "replica-3": 1 + 1<<33}
+	_, candidates := newOracleLifecycleFleet(t, fixture, 7)
+	// Interleave absent slots so result identities cannot accidentally come
+	// from the original candidate slice's positions.
+	candidates = internal.PerNodeConns{candidates[0], candidates[6], candidates[5], candidates[2], candidates[4], candidates[1], candidates[3]}
+	reports := runOracle(sourceTestContext(t), candidates, oracleConfig{
+		Attempts: 3, ConvergenceWindow: time.Minute,
+		Wait: func(context.Context) error { return context.DeadlineExceeded },
+	})
+	require.Len(t, reports, 1)
+	report := reports[0]
+	require.True(t, report.Qualified)
+	require.Empty(t, report.Error)
+	require.Len(t, report.Observations, 3, "four unused pod slots must not become failing replicas")
+	for i, got := range report.Observations {
+		require.True(t, got.Converged, "%+v", got)
+		require.Equal(t, []uint64{1, 1 + 1<<32, 1 + 1<<33}[i], got.NodeID)
+		require.Equal(t, fmt.Sprintf("replica-%d", i+1), got.Node)
+	}
+	require.Equal(t, uint32(1), fixture.membershipReads.Load())
+	require.Equal(t, uint32(3), fixture.readinessReads.Load())
+	require.Equal(t, uint32(3), fixture.staleTargetReads.Load())
+	require.Zero(t, fixture.inactiveRequests.Load(), "do not poll absent pod slots")
+	fixture.mu.Lock()
+	readIDs := append([]uint64(nil), fixture.readinessNodeIDs...)
+	fixture.mu.Unlock()
+	require.ElementsMatch(t, []uint64{1, 1 + 1<<32, 1 + 1<<33}, readIDs, "readiness RPCs must target each full member identity")
+	for _, candidate := range candidates {
+		require.Zero(t, candidate.NodeID, "membership resolution must not mutate the reusable candidates")
+	}
+}
+
 func TestRunOracleRetainsUnavailableActiveMember(t *testing.T) {
 	t.Parallel()
 	fixture := newOracleLifecycleFixture(0, false)
-	fixture.members = map[string]uint32{"replica-1": 1, "replica-2": 2, "replica-3": 3}
+	fixture.members = map[string]uint64{"replica-1": 1, "replica-2": 2, "replica-3": 3}
 	fixture.unavailable["replica-3"] = true
 	_, candidates := newOracleLifecycleFleet(t, fixture, 7)
 	reports := runOracle(sourceTestContext(t), candidates, oracleConfig{
@@ -461,7 +496,7 @@ func TestRunOracleRetainsUnavailableActiveMember(t *testing.T) {
 			continue
 		}
 		failed++
-		require.Equal(t, uint32(3), got.NodeID)
+		require.Equal(t, uint64(3), got.NodeID)
 		require.Equal(t, "replica-3", got.Node)
 		require.Contains(t, got.Error, "replica did not reach source horizon")
 		require.Contains(t, got.Error, "active replica is unreachable")
@@ -486,19 +521,19 @@ func TestRunOracleRefreshesMemberIDsAfterSourceInvalidation(t *testing.T) {
 	require.True(t, reports[1].Qualified)
 	require.Len(t, reports[1].Observations, 1)
 	require.True(t, reports[1].Observations[0].Converged, "second observation must use replacement member ID 9")
-	require.Equal(t, uint32(9), reports[1].Observations[0].NodeID)
+	require.Equal(t, uint64(9), reports[1].Observations[0].NodeID)
 	require.Equal(t, uint32(2), fixture.membershipReads.Load())
 	fixture.mu.Lock()
-	readIDs := append([]uint32(nil), fixture.readinessNodeIDs...)
+	readIDs := append([]uint64(nil), fixture.readinessNodeIDs...)
 	fixture.mu.Unlock()
-	require.Equal(t, []uint32{1, 9}, readIDs)
-	require.Equal(t, uint32(1), candidates[0].NodeID, "fresh IDs belong to the qualified attempt, not stale candidate state")
+	require.Equal(t, []uint64{1, 9}, readIDs)
+	require.Equal(t, uint64(1), candidates[0].NodeID, "fresh IDs belong to the qualified attempt, not stale candidate state")
 }
 
 func TestRunOracleSelectsReachableSourceAfterAbsentFirstCandidate(t *testing.T) {
 	t.Parallel()
 	fixture := newOracleLifecycleFixture(0, false)
-	fixture.members = map[string]uint32{"replica-1": 1, "replica-2": 2, "replica-3": 3}
+	fixture.members = map[string]uint64{"replica-1": 1, "replica-2": 2, "replica-3": 3}
 	_, candidates := newOracleLifecycleFleet(t, fixture, 7)
 	// Slot 7 does not exist in the actual three-member cluster. Its Bucket
 	// Barrier and Cluster calls fail over the wire, rather than merely leaving
@@ -516,7 +551,7 @@ func TestRunOracleSelectsReachableSourceAfterAbsentFirstCandidate(t *testing.T) 
 	require.Len(t, report.Observations, 3)
 	for i, got := range report.Observations {
 		require.True(t, got.Converged, "%+v", got)
-		require.Equal(t, uint32(i+1), got.NodeID)
+		require.Equal(t, uint64(i+1), got.NodeID)
 		require.Equal(t, fmt.Sprintf("replica-%d", i+1), got.Node)
 	}
 	require.Equal(t, uint32(1), fixture.inactiveRequests.Load(), "only the failed selection probe should contact the absent candidate")

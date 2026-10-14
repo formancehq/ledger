@@ -25,7 +25,7 @@ func TestRemoveNodeSkipsRemoveWhenMembershipPostconditionAlreadyHolds(t *testing
 		calls++
 		require.Contains(t, command[2], "'cluster' 'status' '--json'")
 
-		return &execResult{Stdout: `{"state":"Leader","nodes":[{"id":1}]}`}, nil
+		return &execResult{Stdout: `{"state":"Leader","nodes":[{"id":"1"}]}`}, nil
 	})
 
 	err := removeNodeWithExec(
@@ -55,7 +55,7 @@ func TestForceRemoveNodeUsesLeaderLocalMembershipCheck(t *testing.T) {
 		case 1:
 			require.Contains(t, shellCommand, "'cluster' 'status' '--node-id' '1' '--json'")
 
-			return &execResult{Stdout: `{"state":"Leader","nodes":[{"id":1},{"id":3}]}`}, nil
+			return &execResult{Stdout: `{"state":"Leader","nodes":[{"id":"1"},{"id":"3"}]}`}, nil
 		case 2:
 			require.Contains(t, shellCommand, "'cluster' 'remove-node' '3' '--force'")
 
@@ -97,7 +97,7 @@ func TestRemoveNodeAcceptsAbsentPostconditionAfterOpaqueError(t *testing.T) {
 		case 1:
 			require.Contains(t, shellCommand, "'cluster' 'status' '--json'")
 
-			return &execResult{Stdout: `{"state":"Leader","nodes":[{"id":1},{"id":3}]}`}, nil
+			return &execResult{Stdout: `{"state":"Leader","nodes":[{"id":"1"},{"id":"3"}]}`}, nil
 		case 2:
 			require.Contains(t, shellCommand, "'cluster' 'remove-node' '3'")
 			removeCalls++
@@ -106,7 +106,7 @@ func TestRemoveNodeAcceptsAbsentPostconditionAfterOpaqueError(t *testing.T) {
 		case 3:
 			require.Contains(t, shellCommand, "'cluster' 'status' '--json'")
 
-			return &execResult{Stdout: `{"state":"Leader","nodes":[{"id":1}]}`}, nil
+			return &execResult{Stdout: `{"state":"Leader","nodes":[{"id":"1"}]}`}, nil
 		default:
 			t.Fatalf("unexpected ledgerctl call %d: %s", calls, shellCommand)
 
@@ -140,7 +140,7 @@ func TestRemoveNodeReturnsOpaqueErrorWhenNodeIsStillPresent(t *testing.T) {
 			return &execResult{Stderr: "unknown server error"}, errors.New("opaque removal failure")
 		}
 
-		return &execResult{Stdout: `{"state":"Leader","nodes":[{"id":1},{"id":3}]}`}, nil
+		return &execResult{Stdout: `{"state":"Leader","nodes":[{"id":"1"},{"id":"3"}]}`}, nil
 	})
 
 	err := removeNodeWithExec(
@@ -172,4 +172,66 @@ func TestRaftNodePresentRejectsNonLeaderStatus(t *testing.T) {
 	)
 	require.False(t, present)
 	require.ErrorContains(t, err, "non-leader")
+}
+
+func TestRemoveNodePreservesStatusIdentity(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name       string
+		status     string
+		wantRemove bool
+	}{
+		{name: "small member present", status: `{"state":"Leader","nodes":[{"id":"1"},{"id":"3"}]}`, wantRemove: true},
+		{name: "distinct colliding members", status: `{"state":"Leader","nodes":[{"id":"1"},{"id":"3"},{"id":"4294967297"},{"id":"4294967299"}]}`, wantRemove: true},
+		{name: "high member does not alias target", status: `{"state":"Leader","nodes":[{"id":"1"},{"id":"4294967299"}]}`},
+		{name: "high bit only and maximum members", status: `{"state":"Leader","nodes":[{"id":"1"},{"id":"4294967296"},{"id":"18446744073709551615"}]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var calls []string
+			exec := ledgerctlExec(func(_ context.Context, _ *rest.Config, _ kubernetes.Interface,
+				_, _, _ string, command []string,
+			) (*execResult, error) {
+				calls = append(calls, command[2])
+				if len(calls) == 1 {
+					require.Contains(t, command[2], "'cluster' 'status' '--json'")
+
+					return &execResult{Stdout: tc.status}, nil
+				}
+				require.Contains(t, command[2], "'cluster' 'remove-node' '3'")
+
+				return &execResult{}, nil
+			})
+			err := removeNodeWithExec(context.Background(), nil, nil,
+				"ns", "ledger-0", "ledger", "ledger-0:3068", "disabled", 3, false, exec)
+			require.NoError(t, err)
+			if tc.wantRemove {
+				require.Len(t, calls, 2)
+			} else {
+				require.Len(t, calls, 1, "another full-width member must not trigger removal of node 3")
+			}
+		})
+	}
+}
+
+func TestRemoveNodeRejectsInvalidStatusIdentity(t *testing.T) {
+	t.Parallel()
+	for _, id := range []string{`3`, `"18446744073709551616"`, `"-1"`, `"invalid"`} {
+		t.Run(id, func(t *testing.T) {
+			t.Parallel()
+			var calls int
+			exec := ledgerctlExec(func(_ context.Context, _ *rest.Config, _ kubernetes.Interface,
+				_, _, _ string, command []string,
+			) (*execResult, error) {
+				calls++
+				require.Contains(t, command[2], "'cluster' 'status' '--json'")
+
+				return &execResult{Stdout: `{"state":"Leader","nodes":[{"id":"1"},{"id":` + id + `}]}`}, nil
+			})
+			err := removeNodeWithExec(context.Background(), nil, nil,
+				"ns", "ledger-0", "ledger", "ledger-0:3068", "disabled", 3, false, exec)
+			require.ErrorContains(t, err, "decoding ledgerctl cluster status JSON")
+			require.Equal(t, 1, calls, "invalid status must stop before removing a node")
+		})
+	}
 }

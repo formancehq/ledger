@@ -31,7 +31,7 @@ func NewTransferLeaderCommand() *cobra.Command {
 
 func runTransferLeader(cmd *cobra.Command, args []string) error {
 	// Parse target node ID
-	nodeID, err := strconv.ParseUint(args[0], 10, 32)
+	nodeID, err := strconv.ParseUint(args[0], 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid node ID %q: %w", args[0], err)
 	}
@@ -54,13 +54,13 @@ func runTransferLeader(cmd *cobra.Command, args []string) error {
 
 	// Transfer leadership
 	resp, err := client.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-		Transferee: uint32(nodeID),
+		Transferee: nodeID,
 	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to transfer leadership", err)
 	}
 
-	pterm.Success.Printfln("Leadership transferred to node %s", pterm.Green(strconv.FormatUint(uint64(resp.GetNewLeader()), 10)))
+	pterm.Success.Printfln("Leadership transferred to node %s", pterm.Green(strconv.FormatUint(resp.GetNewLeader(), 10)))
 
 	return nil
 }

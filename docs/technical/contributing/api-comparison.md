@@ -66,7 +66,7 @@ audit reads render messages from the stored fields. HTTP clients do not send
 the gRPC revision.
 
 The v3 gRPC service requires one `ledger-protocol-version` metadata value per
-business RPC, equal to `pkg/grpcprotocol.Version` (currently `"39"`). Revision 29
+business RPC, equal to `pkg/grpcprotocol.Version` (currently `"41"`). Revision 29
 requires the target's 16-byte `instance_id` on administrative `AddLearner`
 requests; revision 28 clients that omit it are incompatible. Missing,
 invalid, duplicate, or different revisions fail with `FailedPrecondition` before
@@ -1600,3 +1600,14 @@ Admission rejects the exact names `_` (system API routes) and `_system`
 (system events) on every ledger-scoped write, before proposing to Raft.
 This applies equally to HTTP and gRPC. Other underscore-prefixed names,
 including `_systemx` and `_System`, remain valid.
+
+### Cluster management identities (EN-2904)
+
+The v3 ClusterService and `ledgerctl cluster status/watch/transfer-leader`
+preserve unsigned 64-bit Raft node IDs. Status uses zero for leader routing;
+transfer requires a nonzero target. Revision 41 prevents older clients from
+truncating the widened response fields. Structured CLI status IDs are decimal
+strings under protobuf JSON, including small IDs; the operator membership reader
+consumes that exact representation. These Raft administration RPCs have no
+v2 ledger HTTP endpoint counterpart; HTTP routes and envelopes are unchanged.
+BucketService metrics selectors retain their existing uint32 contract.

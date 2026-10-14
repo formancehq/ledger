@@ -121,6 +121,22 @@ When `valid` is false, `used_bytes`, `total_bytes`, and `observed_at_us` may be
 the last successful values. Health and operator control loops reject invalid or
 older-than-one-minute samples.
 
+## Cluster node identities
+
+ClusterService status and leadership-transfer identities are `uint64`, matching
+server configuration, membership and Raft. `GetClusterStateRequest.node_id = 0`
+routes to the current leader; a nonzero value selects that exact node. The
+response preserves full-width `NodeInfo.id`, `ClusterState.leader/local_node`
+and nested Raft identities. Peer addresses, progress and version are attributed
+by that same identity, so nodes 1 and 4294967297 remain distinct. A transfer
+request requires a nonzero `transferee` and returns the full `new_leader`.
+`ledgerctl cluster status --json` uses protobuf JSON: the widened identity
+fields are decimal strings, including small IDs. The operator membership
+reader parses this exact uint64 string representation before scale-down.
+
+BucketService primary/secondary metrics selectors retain their separate
+`uint32` contract; widening them is outside EN-2904.
+
 ## Read Operations
 
 ### Ledger configuration confidentiality

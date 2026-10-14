@@ -155,7 +155,7 @@ var _ = Describe("Simple cluster", func() {
 				for i, server := range servers {
 					diagnosticCtx, cancel := context.WithTimeout(ctx, time.Second)
 					state, err := server.ClusterClient.GetClusterState(diagnosticCtx, &clusterpb.GetClusterStateRequest{
-						NodeId: uint32(i + 1),
+						NodeId: uint64(i + 1),
 					})
 					cancel()
 					AddReportEntry(fmt.Sprintf("follower catch-up: node %d", i+1),
@@ -200,12 +200,12 @@ var _ = Describe("Simple cluster", func() {
 			var followerLastIndex uint64
 			Eventually(func(g Gomega) {
 				leaderState, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-					NodeId: uint32(lid),
+					NodeId: uint64(lid),
 				})
 				g.Expect(err).To(Succeed())
 
 				followerState, err := servers[followerID-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-					NodeId: uint32(followerID),
+					NodeId: uint64(followerID),
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(followerState.GetState()).To(Equal("Follower"))
@@ -230,7 +230,7 @@ var _ = Describe("Simple cluster", func() {
 			var targetIndex uint64
 			Eventually(func(g Gomega) {
 				leaderState, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-					NodeId: uint32(lid),
+					NodeId: uint64(lid),
 				})
 				g.Expect(err).To(Succeed())
 
@@ -288,7 +288,7 @@ var _ = Describe("Simple cluster", func() {
 			By("Waiting for the follower's applied and durable indexes to pass the installed snapshot")
 			Eventually(func(g Gomega) {
 				followerState, err := servers[followerID-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-					NodeId: uint32(followerID),
+					NodeId: uint64(followerID),
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(followerState.GetState()).To(Equal("Follower"))
