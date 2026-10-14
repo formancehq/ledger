@@ -31,10 +31,13 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	}
 
 	// Validate initial account types if provided, then build a canonical map
-	// for derived state. Iterate names in sorted order so the first invalid
-	// pattern reported (chain-bound ErrInvalidPattern → AuditFailure) is
-	// identical on every replica — a raw map range could surface a different
-	// offending pattern per node (invariant #2). See EN-1521.
+	// for derived state. Each type passes the same validateAccountTypeForChart
+	// check as AddAccountType, against the types accepted before it, so the
+	// initial chart is exactly a chart that successive adds could build.
+	// Iterate names in sorted order so the first failure reported (chain-bound
+	// ErrInvalidPattern / ErrAccountTypeConflict → AuditFailure) is identical on
+	// every replica — a raw map range could surface a different offending type
+	// per node (invariant #2). See EN-1521.
 	//
 	// The canonical map holds CLONES of the order-owned messages with each
 	// clone's Name set to the authoritative map key. We MUST NOT mutate the
@@ -43,12 +46,16 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	// an embedded Name here would make the audited order diverge from what
 	// was accepted — and, with an idempotency key, make the pre-processing
 	// frozen outcome hash disagree with the checker's hash re-derived from
-	// the audited order (EN-1533). A nil map value has GetPattern()=="" and
-	// is rejected by ValidatePattern ("pattern must not be empty") before the
-	// clone, so every entry cloned below is guaranteed non-nil.
-	var canonicalAccountTypes map[string]*commonpb.AccountType
+	// the audited order (EN-1533). Validation runs on the clone, so the
+	// compiled chart never aliases an order-owned message; a nil map value
+	// clones to nil and is rejected by validateAccountTypeForChart.
+	var (
+		canonicalAccountTypes map[string]*commonpb.AccountType
+		chart                 []accounttype.CompiledType
+	)
 	if src := order.GetAccountTypes(); len(src) > 0 {
 		canonicalAccountTypes = make(map[string]*commonpb.AccountType, len(src))
+		chart = make([]accounttype.CompiledType, 0, len(src))
 	}
 	for _, name := range slices.Sorted(maps.Keys(order.GetAccountTypes())) {
 		at := order.GetAccountTypes()[name]
@@ -61,11 +68,17 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		if len(at.GetPattern()) > domain.MaxAccountTypePatternLength {
 			return nil, domain.ErrAccountTypePatternTooLong
 		}
-		if err := accounttype.ValidatePattern(at.GetPattern()); err != nil {
-			return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
-		}
 		clone := at.CloneVT()
-		clone.Name = name
+		if clone != nil {
+			clone.Name = name
+		}
+		// Names are visited in sorted order, so chart stays name-sorted as
+		// validateAccountTypeForChart and FindConflict require.
+		compiled, err := validateAccountTypeForChart(name, clone, chart)
+		if err != nil {
+			return nil, err
+		}
+		chart = append(chart, compiled)
 		canonicalAccountTypes[name] = clone
 	}
 

@@ -85,10 +85,95 @@ func TestCompileTypesSorted(t *testing.T) {
 		},
 	}
 
-	compiled := CompileTypes(types)
+	compiled, err := CompileTypes(types)
+	require.NoError(t, err)
 	require.Len(t, compiled, 3)
 
 	assert.Equal(t, "alpha", compiled[0].Original.GetName())
 	assert.Equal(t, "middle", compiled[1].Original.GetName())
 	assert.Equal(t, "zebra", compiled[2].Original.GetName())
+}
+
+// TestCompileTypesFailsOnInvalidType pins invariant #7 for the compiled chart:
+// a stored type that does not compile is an error, never a silently dropped
+// entry. Dropping it would leave a STRICT ledger with a partial (or empty)
+// chart and disable enforcement for the addresses the type covers.
+func TestCompileTypesFailsOnInvalidType(t *testing.T) {
+	t.Parallel()
+
+	valid := &commonpb.AccountType{Name: "alpha", Pattern: "alpha:{id}"}
+
+	tests := []struct {
+		name    string
+		invalid *commonpb.AccountType
+		errText string
+	}{
+		{
+			name: "unknown segment type variable",
+			invalid: &commonpb.AccountType{Name: "users", Pattern: "users:{id}", SegmentTypes: map[string]*commonpb.SegmentType{
+				"nope": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+			}},
+			errText: `segment_types references unknown variable "nope"`,
+		},
+		{
+			name: "invalid segment regex",
+			invalid: &commonpb.AccountType{Name: "users", Pattern: "users:{id}", SegmentTypes: map[string]*commonpb.SegmentType{
+				"id": {Constraint: &commonpb.SegmentType_Regex{Regex: "("}},
+			}},
+			errText: "invalid regex",
+		},
+		{
+			name:    "invalid pattern",
+			invalid: &commonpb.AccountType{Name: "users", Pattern: "users::x"},
+			errText: `account type "users"`,
+		},
+		{
+			name:    "nil definition",
+			invalid: nil,
+			errText: `account type "users" has no definition`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			types := map[string]*commonpb.AccountType{"alpha": valid, "users": tt.invalid}
+
+			compiled, err := CompileTypes(types)
+			require.ErrorContains(t, err, tt.errText)
+			require.Nil(t, compiled)
+
+			info := &commonpb.LedgerInfo{AccountTypes: types}
+			compiled, err = CompileTypesReader(info.AsReader().GetAccountTypes())
+			require.ErrorContains(t, err, tt.errText)
+			require.Nil(t, compiled)
+		})
+	}
+}
+
+// TestFindConflictSelectsFirstInChartOrder pins the deterministic conflict
+// selection the FSM reports in ACCOUNT_TYPE_CONFLICT (invariant #2).
+func TestFindConflictSelectsFirstInChartOrder(t *testing.T) {
+	t.Parallel()
+
+	chart, err := CompileTypes(map[string]*commonpb.AccountType{
+		"zzz":    {Name: "zzz", Pattern: "users:{y}"},
+		"aaa":    {Name: "aaa", Pattern: "users:{x}"},
+		"orders": {Name: "orders", Pattern: "orders:{id}"},
+	})
+	require.NoError(t, err)
+
+	segments, err := ParsePattern("users:{z}")
+	require.NoError(t, err)
+
+	existing, conflict := FindConflict(segments, chart)
+	require.True(t, conflict)
+	require.Equal(t, "aaa", existing.Name)
+
+	segments, err = ParsePattern("merchants:{id}")
+	require.NoError(t, err)
+
+	_, conflict = FindConflict(segments, chart)
+	require.False(t, conflict)
 }

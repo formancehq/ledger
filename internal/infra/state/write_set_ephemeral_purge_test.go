@@ -18,11 +18,15 @@ import (
 // gated Scope on the real apply path. Tests that drive partitionVolumes in
 // isolation must seed it — an unseeded ledger is an invariant violation, by
 // design (invariant #9).
-func gatedTypesFor(infos ...*commonpb.LedgerInfo) map[string]gatedLedgerType {
+func gatedTypesFor(t *testing.T, infos ...*commonpb.LedgerInfo) map[string]gatedLedgerType {
+	t.Helper()
+
 	types := make(map[string]gatedLedgerType, len(infos))
 	for _, info := range infos {
+		compiled, err := accounttype.CompileTypes(info.GetAccountTypes())
+		require.NoError(t, err)
 		types[info.GetName()] = gatedLedgerType{
-			compiled: accounttype.CompileTypes(info.GetAccountTypes()),
+			compiled: compiled,
 			found:    true,
 		}
 	}
@@ -135,7 +139,7 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 	buf := &WriteSet{
 		fsm:              machine,
 		Derived:          derived,
-		gatedLedgerTypes: gatedTypesFor(ledgerInfo),
+		gatedLedgerTypes: gatedTypesFor(t, ledgerInfo),
 	}
 
 	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
@@ -232,7 +236,7 @@ func TestPartitionVolumesTransient(t *testing.T) {
 	buf := &WriteSet{
 		fsm:              machine,
 		Derived:          derived,
-		gatedLedgerTypes: gatedTypesFor(ledgerInfo),
+		gatedLedgerTypes: gatedTypesFor(t, ledgerInfo),
 	}
 
 	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
@@ -310,7 +314,7 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 	buf := &WriteSet{
 		fsm:              machine,
 		Derived:          derived,
-		gatedLedgerTypes: gatedTypesFor(ledgerInfo),
+		gatedLedgerTypes: gatedTypesFor(t, ledgerInfo),
 	}
 
 	preExistingUnbalanced := &raftcmdpb.VolumePair{

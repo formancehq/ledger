@@ -12,10 +12,27 @@ creation fields. The service `CreateLedgerRequest.metadata` carries the same
 typed values. The Go `actions.CreateLedgerAction` helper also forwards its
 existing string metadata argument. Initial account-type map keys and patterns
 obey the same 256-byte name and 4096-byte pattern bounds as later account-type
-operations, both at admission and during FSM replay. `ledger:LedgerWrite`
-authorizes the complete creation operation,
-including initial metadata, schema and account types. Subsequent metadata saves
-still require `ledger:MetadataWrite`. HTTP, gRPC and unsigned bulk use the same
+operations, both at admission and during FSM replay. Each initial type then
+passes the same acceptance check as `AddAccountType`
+(`validateAccountTypeForChart`): the FSM visits names in sorted order and checks
+each type against the types accepted before it. A pattern that does not parse,
+or `segmentTypes` that name an unknown variable or carry an invalid constraint,
+fails the creation with `INVALID_PATTERN`. A pattern that can match the same
+address as an earlier type fails it with `ACCOUNT_TYPE_CONFLICT` and names that
+earlier type. The initial chart is therefore always a chart that successive
+`AddAccountType` calls could build.
+
+Because creation and `AddAccountType` share this check, every stored chart
+compiles. `accounttype.CompileTypes` therefore fails on a stored type that does
+not compile instead of dropping it: a dropped type would leave a `STRICT` ledger
+with a partial or empty chart and silently disable enforcement. On the apply
+path the order fails as an uncommitted `STORAGE_OPERATION_FAILED`. Every replica
+holds the same `LedgerInfo`, so every replica fails the same way. Replay, backup
+rebuild and the checker stop with an error.
+
+`ledger:LedgerWrite` authorizes the complete creation operation, including
+initial metadata, schema and account types. Subsequent metadata saves still
+require `ledger:MetadataWrite`. HTTP, gRPC and unsigned bulk use the same
 creation scope decision.
 
 Normal and mirror ledgers both accept initial ledger metadata. This is a

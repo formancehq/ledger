@@ -1,27 +1,33 @@
 package accounttype
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // CompiledType holds an account type with its pre-parsed pattern segments,
-// avoiding repeated ParsePattern calls in the hot path. Original is the
-// read-only account type view (never the cached mutable pointer), so a
-// compiled result cannot mutate the source ledger configuration through an
-// alias.
+// avoiding repeated ParsePattern calls in the hot path. Name is the
+// authoritative chart key. Original is the read-only account type view (never
+// the cached mutable pointer), so a compiled result cannot mutate the source
+// ledger configuration through an alias.
 type CompiledType struct {
+	Name        string
 	Segments    []PatternSegment
 	Specificity int
 	Original    commonpb.AccountTypeReader
 }
 
 // CompileTypes pre-parses all account types into CompiledType entries.
-// Types with invalid patterns are silently skipped.
 // Variable segments are annotated with constraints from the proto segment_types map.
 // The output is sorted by name for deterministic ordering across nodes.
-func CompileTypes(types map[string]*commonpb.AccountType) []CompiledType {
+//
+// The FSM accepts a type only when ParseType succeeds, so a type that does not
+// compile is an impossible state (invariant #7): CompileTypes returns an error
+// for the first such type in name order instead of dropping it, which would
+// silently disable enforcement for the addresses the type was meant to cover.
+func CompileTypes(types map[string]*commonpb.AccountType) ([]CompiledType, error) {
 	// Sort keys for deterministic iteration order.
 	names := make([]string, 0, len(types))
 	for name := range types {
@@ -43,9 +49,10 @@ func CompileTypes(types map[string]*commonpb.AccountType) []CompiledType {
 // CompileTypesReader pre-parses account types without cloning the owning
 // ledger. It consumes the immutable LedgerInfo account-types reader directly,
 // so read-only validation paths never materialise a mutable AccountTypes map.
-func CompileTypesReader(types commonpb.LedgerInfo_AccountTypesMapReader) []CompiledType {
+// It fails on an invalid stored type exactly like CompileTypes.
+func CompileTypesReader(types commonpb.LedgerInfo_AccountTypesMapReader) ([]CompiledType, error) {
 	if types == nil {
-		return nil
+		return nil, nil
 	}
 
 	names := make([]string, 0, types.Len())
@@ -60,32 +67,43 @@ func CompileTypesReader(types commonpb.LedgerInfo_AccountTypesMapReader) []Compi
 	return compileTypes(names, types.Get)
 }
 
-func compileTypes(names []string, get func(name string) (commonpb.AccountTypeReader, bool)) []CompiledType {
+func compileTypes(names []string, get func(name string) (commonpb.AccountTypeReader, bool)) ([]CompiledType, error) {
 	compiled := make([]CompiledType, 0, len(names))
 
 	for _, name := range names {
 		at, ok := get(name)
 		if !ok || at == nil {
-			continue
+			return nil, fmt.Errorf("account type %q has no definition", name)
 		}
 
-		segments, err := ParsePattern(at.GetPattern())
+		segments, err := ParseType(at)
 		if err != nil {
-			continue
-		}
-
-		if err := validateSegmentTypesReader(segments, at.GetSegmentTypes()); err != nil {
-			continue
+			return nil, fmt.Errorf("account type %q (pattern %q): %w", name, at.GetPattern(), err)
 		}
 
 		compiled = append(compiled, CompiledType{
+			Name:        name,
 			Segments:    segments,
 			Specificity: Specificity(segments),
 			Original:    at,
 		})
 	}
 
-	return compiled
+	return compiled, nil
+}
+
+// FindConflict returns the first entry of chart whose pattern conflicts with
+// segments (see PatternsConflict). chart is scanned in slice order; callers pass
+// a name-sorted chart (CompileTypes output) so the selected conflict is
+// identical on every replica (invariant #2).
+func FindConflict(segments []PatternSegment, chart []CompiledType) (CompiledType, bool) {
+	for _, existing := range chart {
+		if PatternsConflict(segments, existing.Segments) {
+			return existing, true
+		}
+	}
+
+	return CompiledType{}, false
 }
 
 // PatternsConflict returns true if two parsed patterns can match the same

@@ -235,3 +235,23 @@ func TestReplayLedgerLog_RemovedFieldTypeCascade(t *testing.T) {
 		},
 	}), boom)
 }
+
+// TestReplayLedgerLog_InvalidAccountTypeFails pins invariant #7 on replay: an
+// added type that does not compile fails the replay instead of being dropped
+// from the compiled chart that drives the ephemeral-purge simulation.
+func TestReplayLedgerLog_InvalidAccountTypeFails(t *testing.T) {
+	t.Parallel()
+
+	err := replayOne(t, &writerStub{}, &commonpb.Timestamp{Data: 1}, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_AddedAccountType{
+			AddedAccountType: &commonpb.AddedAccountTypeLog{AccountType: &commonpb.AccountType{
+				Name:    "users",
+				Pattern: "users:{id}",
+				SegmentTypes: map[string]*commonpb.SegmentType{
+					"nope": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+				},
+			}},
+		},
+	})
+	require.ErrorContains(t, err, `segment_types references unknown variable "nope"`)
+}

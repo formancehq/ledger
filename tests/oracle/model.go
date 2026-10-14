@@ -239,10 +239,35 @@ func (s *LedgerState) compiled() []accounttype.CompiledType {
 			pb[name] = &commonpb.AccountType{Name: t.Name, Pattern: t.Pattern}
 		}
 
-		s.compiledChart = accounttype.CompileTypes(pb)
+		compiled, err := accounttype.CompileTypes(pb)
+		if err != nil {
+			// The model admits a type only through admitAccountType, so its
+			// chart always compiles; anything else is a model bug.
+			panic(fmt.Sprintf("oracle: model chart does not compile: %v", err))
+		}
+		s.compiledChart = compiled
 	}
 
 	return s.compiledChart
+}
+
+// admitAccountType mirrors the FSM's single acceptance check for a type
+// joining a chart (processing.validateAccountTypeForChart): pattern and segment
+// types, then duplicate name, then the first conflicting type in name order.
+// It returns the rejection reason, or "" when the type is admitted.
+func admitAccountType(name string, at *commonpb.AccountType, chart []accounttype.CompiledType) string {
+	segments, err := accounttype.ParseType(at.AsReader())
+	if err != nil {
+		return domain.ErrReasonInvalidPattern
+	}
+	if slices.ContainsFunc(chart, func(existing accounttype.CompiledType) bool { return existing.Name == name }) {
+		return domain.ErrReasonAccountTypeAlreadyExists
+	}
+	if _, conflict := accounttype.FindConflict(segments, chart); conflict {
+		return domain.ErrReasonAccountTypeConflict
+	}
+
+	return ""
 }
 
 // match resolves addr to the type the server would pick (highest specificity,
@@ -1439,8 +1464,8 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 	case *servicepb.Request_AddAccountType:
 		at := r.AddAccountType.GetAccountType()
 		name := at.GetName()
-		if s.types.Has(name) {
-			return OrderResult{Reason: domain.ErrReasonAccountTypeAlreadyExists}
+		if reason := admitAccountType(name, at, s.compiled()); reason != "" {
+			return OrderResult{Reason: reason}
 		}
 
 		s.types = s.types.Set(name, TypeState{Name: name, Pattern: at.GetPattern(), Persistence: at.GetPersistence()})
@@ -2434,10 +2459,11 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 		ls.defaultEnforcementMode = r.CreateLedger.GetDefaultEnforcementMode()
 		for _, key := range slices.Sorted(maps.Keys(r.CreateLedger.GetAccountTypes())) {
 			at := r.CreateLedger.GetAccountTypes()[key]
-			if err := accounttype.ValidatePattern(at.GetPattern()); err != nil {
-				return OrderResult{Reason: domain.ErrReasonInvalidPattern}, true
+			if reason := admitAccountType(key, at, ls.compiled()); reason != "" {
+				return OrderResult{Reason: reason}, true
 			}
 			ls.types = ls.types.Set(key, TypeState{Name: key, Pattern: at.GetPattern(), Persistence: at.GetPersistence()})
+			ls.compiledChart = nil
 		}
 		for _, field := range r.CreateLedger.GetInitialSchema() {
 			ls.applySetMetadataFieldType(&servicepb.SetMetadataFieldTypeRequest{Ledger: name, TargetType: field.GetTargetType(), Key: field.GetKey(), Type: field.GetType()})

@@ -268,8 +268,14 @@ func rebuildDelta(
 			// ledgers).
 			if types := p.CreateLedger.GetAccountTypes(); len(types) > 0 {
 				cloned := maps.Clone(types)
+				compiled, err := accounttype.CompileTypes(cloned)
+				if err != nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("compiling initial account types at log %d: %w", seq, err)
+				}
 				rawLedgerTypes[info.GetName()] = cloned
-				ledgerAccountTypes[info.GetName()] = accounttype.CompileTypes(cloned)
+				ledgerAccountTypes[info.GetName()] = compiled
 			}
 
 			for key, value := range p.CreateLedger.GetMetadata() {
@@ -775,8 +781,12 @@ func seedLedgerContext(
 
 		if types := info.GetAccountTypes(); len(types) > 0 {
 			cloned := maps.Clone(types)
+			compiled, err := accounttype.CompileTypes(cloned)
+			if err != nil {
+				return fmt.Errorf("compiling account types of ledger %q: %w", name, err)
+			}
 			rawLedgerTypes[name] = cloned
-			ledgerAccountTypes[name] = accounttype.CompileTypes(cloned)
+			ledgerAccountTypes[name] = compiled
 		}
 	}
 

@@ -3991,7 +3991,12 @@ components:
             $ref: '#/components/schemas/MetadataFieldTypeCommand'
         accountTypes:
           type: object
-          description: Initial account types (name -> account type definition).
+          description: |
+            Initial account types (name -> account type definition). Each type is
+            validated exactly like `addAccountType`, in name order against the types
+            before it: an invalid pattern or segment type returns `400 INVALID_PATTERN`,
+            and two types that can match the same address return
+            `409 ACCOUNT_TYPE_CONFLICT`. A rejected creation creates no ledger.
           additionalProperties:
             $ref: '#/components/schemas/AddAccountTypeRequest'
           example:

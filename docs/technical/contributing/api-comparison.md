@@ -139,7 +139,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Bulk atomic | ✅ | ✅ | System-level atomicity (cross-ledger) |
 | Bulk continueOnFailure | ✅ | ✅ | |
 | **Ledger** |
-| Create ledger | ✅ | ✅ | HTTP + gRPC accept the full model: `initialSchema`, `accountTypes` (name/pattern/persistence/segmentTypes), `defaultEnforcementMode` |
+| Create ledger | ✅ | ✅ | HTTP + gRPC accept the full model: `initialSchema`, `accountTypes` (name/pattern/persistence/segmentTypes, validated like `addAccountType`), `defaultEnforcementMode` |
 | Create mirror ledger | ✅ | ❌ | HTTP or PostgreSQL source |
 | Promote mirror ledger | ✅ | ❌ | Mirror → Normal mode |
 | Delete ledger | ✅ | ✅ | |
@@ -537,7 +537,7 @@ The v2 schemaVersion/parallel options are not added to v3 by this correction.
 ### 5. Ledger Management
 
 **Endpoints:**
-- `POST /v3/{ledgerName}` - Create a ledger. Optional body fields: `metadata`, `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` (metadata field types), and `accountTypes` (full account-type model — name/pattern/persistence/segmentTypes). These mirror the gRPC `CreateLedgerRequest`. Initial typed metadata is atomic with creation in normal and mirror modes and requires only `ledger:LedgerWrite`; later saves require `ledger:MetadataWrite`. JSON null entries are omitted. Schema declarations do not enforce write-time value types. See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md).
+- `POST /v3/{ledgerName}` - Create a ledger. Optional body fields: `metadata`, `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` (metadata field types), and `accountTypes` (full account-type model — name/pattern/persistence/segmentTypes). Each initial type is validated exactly like `addAccountType`, in name order against the types before it: an invalid pattern or segment type returns `INVALID_PATTERN`, and two types that can match the same address return `ACCOUNT_TYPE_CONFLICT`. These mirror the gRPC `CreateLedgerRequest`. Initial typed metadata is atomic with creation in normal and mirror modes and requires only `ledger:LedgerWrite`; later saves require `ledger:MetadataWrite`. JSON null entries are omitted. Schema declarations do not enforce write-time value types. See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md).
 - `DELETE /v3/{ledgerName}` - Delete a ledger
 - `GET /v3/{ledgerName}` - Get ledger info (read)
 - `GET /v3/` - List all ledgers (read)

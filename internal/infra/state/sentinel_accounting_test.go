@@ -147,7 +147,7 @@ func TestSentinelMergePreservesLogicalPurgeDeltas(t *testing.T) {
 			buf, machine, store := newTestBuffer(t)
 			machine.sentinelMode = true
 			machine.sentinelTracer = NewSentinelTracer(machine.logger)
-			buf.gatedLedgerTypes = gatedTypesFor(&commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{"clearing": {Name: "clearing", Pattern: "clearing:{id}", Persistence: persistence}}})
+			buf.gatedLedgerTypes = gatedTypesFor(t, &commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{"clearing": {Name: "clearing", Pattern: "clearing:{id}", Persistence: persistence}}})
 			updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("world", "USD", "", 0, 0, 0, 10), sentinelVolume("clearing:1", "USD", "", 0, 0, 10, 10), sentinelVolume("destination", "USD", "", 0, 0, 10, 0)}
 			for _, update := range updates {
 				buf.Volumes().Put(update.Key, update.New)
@@ -178,7 +178,7 @@ func TestSentinelLaterPurgeWithinBatch(t *testing.T) {
 	buf, machine, store := newTestBuffer(t)
 	machine.sentinelMode = true
 	machine.sentinelTracer = NewSentinelTracer(machine.logger)
-	types := gatedTypesFor(&commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{"clearing": {Name: "clearing", Pattern: "clearing:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL}}})
+	types := gatedTypesFor(t, &commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{"clearing": {Name: "clearing", Pattern: "clearing:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL}}})
 	batch := store.OpenWriteSession()
 	var results []ApplyResult
 	for i, updates := range [][]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{

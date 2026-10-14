@@ -38,7 +38,11 @@ func ReplayLedgerLog(
 			}
 
 			types[at.GetName()] = at
-			ledgerAccountTypes[ledger] = accounttype.CompileTypes(types)
+			compiled, err := accounttype.CompileTypes(types)
+			if err != nil {
+				return fmt.Errorf("compiling account types after log %d: %w", seq, err)
+			}
+			ledgerAccountTypes[ledger] = compiled
 
 			if err := w.AddAccountType(ledger, at); err != nil {
 				return fmt.Errorf("replaying added account type: %w", err)
@@ -49,7 +53,11 @@ func ReplayLedgerLog(
 		if p.RemovedAccountType != nil {
 			if types := rawLedgerTypes[ledger]; types != nil {
 				delete(types, p.RemovedAccountType.GetName())
-				ledgerAccountTypes[ledger] = accounttype.CompileTypes(types)
+				compiled, err := accounttype.CompileTypes(types)
+				if err != nil {
+					return fmt.Errorf("compiling account types after log %d: %w", seq, err)
+				}
+				ledgerAccountTypes[ledger] = compiled
 			}
 
 			if err := w.RemoveAccountType(ledger, p.RemovedAccountType.GetName()); err != nil {

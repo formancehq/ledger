@@ -41,7 +41,11 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 
 	// Validate account address against account types.
 	if acct, isAcct := order.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct {
-		if compiled := compiledTypesFor(ctx.CompiledTypes, ledger, info); len(compiled) > 0 {
+		compiled, compileErr := compiledTypesFor(ctx.CompiledTypes, ledger, info)
+		if compileErr != nil {
+			return nil, compileErr
+		}
+		if len(compiled) > 0 {
 			if typeErr := validateAccountAgainstAccountTypes(acct.Account.GetAddr(), compiled, info.GetDefaultEnforcementMode()); typeErr != nil {
 				return nil, typeErr
 			}

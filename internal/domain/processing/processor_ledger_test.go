@@ -128,6 +128,112 @@ func TestProcessCreateLedger_InvalidPatternSelectionDeterministic(t *testing.T) 
 	}
 }
 
+// TestProcessCreateLedger_RejectsAccountTypesAddWouldRefuse pins Heal defect
+// s1-create-ledger-accepts-invalid-account-types-1: creating a ledger must
+// refuse an initial account type exactly as adding it to an existing ledger
+// does. Create previously checked only the pattern syntax, so it stored a type
+// with an unknown segment-type variable (which the compiler then dropped,
+// leaving a STRICT ledger with nothing to enforce) or two conflicting types.
+// Each case runs the add as the control, then asserts the create fails with the
+// same reason and facts and stages no write (the mock has no Put expectation).
+func TestProcessCreateLedger_RejectsAccountTypesAddWouldRefuse(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// existing types, already in the chart when the add runs; the create
+		// declares them together with added.
+		existing map[string]*commonpb.AccountType
+		added    *commonpb.AccountType
+		reason   string
+	}{
+		{
+			name: "unknown segment type variable",
+			added: &commonpb.AccountType{Name: "users", Pattern: "users:{id}", SegmentTypes: map[string]*commonpb.SegmentType{
+				"nope": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+			}},
+			reason: domain.ErrReasonInvalidPattern,
+		},
+		{
+			name: "invalid segment regex",
+			added: &commonpb.AccountType{Name: "users", Pattern: "users:{id}", SegmentTypes: map[string]*commonpb.SegmentType{
+				"id": {Constraint: &commonpb.SegmentType_Regex{Regex: "("}},
+			}},
+			reason: domain.ErrReasonInvalidPattern,
+		},
+		{
+			name:     "conflicting patterns",
+			existing: map[string]*commonpb.AccountType{"a": {Name: "a", Pattern: "users:{x}"}},
+			added:    &commonpb.AccountType{Name: "b", Pattern: "users:{y}"},
+			reason:   domain.ErrReasonAccountTypeConflict,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			addStore := NewMockScope(ctrl)
+			existing := &commonpb.LedgerInfo{Name: "l", Id: 1, AccountTypes: tt.existing}
+			expectGetLedger(addStore, domain.LedgerKey{Name: "l"}, existing.AsReader(), nil)
+
+			_, addErr := processAddAccountType("l", &raftcmdpb.AddAccountTypeOrder{AccountType: tt.added.CloneVT()}, &Context{Scope: addStore})
+			require.NotNil(t, addErr)
+			require.Equal(t, tt.reason, addErr.Reason())
+
+			initial := map[string]*commonpb.AccountType{tt.added.GetName(): tt.added.CloneVT()}
+			for name, at := range tt.existing {
+				initial[name] = at.CloneVT()
+			}
+
+			createStore := NewMockScope(ctrl)
+			expectGetLedger(createStore, domain.LedgerKey{Name: "l"}, nil, domain.ErrNotFound)
+
+			_, createErr := processCreateLedger("l", &raftcmdpb.CreateLedgerOrder{
+				AccountTypes:           initial,
+				DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
+			}, &Context{Scope: createStore})
+			require.NotNil(t, createErr, "create must refuse a type that add refuses")
+			require.Equal(t, tt.reason, createErr.Reason())
+			require.Equal(t, addErr.Error(), createErr.Error())
+		})
+	}
+}
+
+// TestProcessCreateLedger_AccountTypeConflictSelectionDeterministic pins the
+// conflict reported for initial types: names are checked in sorted order
+// against the types accepted before them, so the chain-bound
+// ErrAccountTypeConflict is identical on every replica (invariant #2).
+func TestProcessCreateLedger_AccountTypeConflictSelectionDeterministic(t *testing.T) {
+	t.Parallel()
+
+	const runs = 64
+	for range runs {
+		ctrl := gomock.NewController(t)
+		mockStore := NewMockScope(ctrl)
+		expectGetLedger(mockStore, domain.LedgerKey{Name: "l"}, nil, domain.ErrNotFound)
+
+		_, derr := processCreateLedger("l", &raftcmdpb.CreateLedgerOrder{
+			AccountTypes: map[string]*commonpb.AccountType{
+				"c":      {Pattern: "users:{z}"},
+				"a":      {Pattern: "users:{x}"},
+				"b":      {Pattern: "users:{y}"},
+				"orders": {Pattern: "orders:{id}"},
+			},
+		}, &Context{Scope: mockStore})
+		require.NotNil(t, derr)
+
+		var conflict *domain.ErrAccountTypeConflict
+		require.ErrorAs(t, derr, &conflict)
+		require.Equal(t, "users:{y}", conflict.NewPattern)
+		require.Equal(t, "a", conflict.ExistingName)
+		require.Equal(t, "users:{x}", conflict.ExistingPattern)
+
+		ctrl.Finish()
+	}
+}
+
 // TestProcessCreateLedger_DoesNotMutateOrderAccountTypes pins EN-1533: the
 // accepted order is captured verbatim for the audit chain, so processCreateLedger
 // MUST NOT mutate any AccountType message reachable from

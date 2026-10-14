@@ -53,7 +53,7 @@ func TestWriteSetMergeRejectsUnbalancedPersistedVolumeUpdate(t *testing.T) {
 	buf, machine, dataStore := newTestBuffer(t)
 	machine.sentinelMode = true
 	machine.sentinelTracer = NewSentinelTracer(machine.logger)
-	buf.gatedLedgerTypes = gatedTypesFor(&commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{"transient": {Name: "transient", Pattern: "transient:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT}}})
+	buf.gatedLedgerTypes = gatedTypesFor(t, &commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{"transient": {Name: "transient", Pattern: "transient:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT}}})
 	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("transient:source", "USD", "", 0, 0, 0, 10), sentinelVolume("destination", "USD", "", 0, 0, 10, 0)}
 	require.NoError(t, checkDoubleEntryInvariant(updates))
 	for _, update := range updates {

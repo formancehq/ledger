@@ -97,7 +97,7 @@ func TestSimulateEphemeralPurgeDeletesZeroBalance(t *testing.T) {
 
 	// Create an ephemeral account type matching "orders:*"
 	ledgerAccountTypes := map[string][]accounttype.CompiledType{
-		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
+		"ledger": mustCompileTypes(t, map[string]*commonpb.AccountType{
 			"orders": {
 				Name:        "orders",
 				Pattern:     "orders:{id}",
@@ -144,7 +144,7 @@ func TestSimulateEphemeralPurgeSkipsNonEphemeral(t *testing.T) {
 
 	// No ephemeral types
 	ledgerAccountTypes := map[string][]accounttype.CompiledType{
-		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
+		"ledger": mustCompileTypes(t, map[string]*commonpb.AccountType{
 			"users": {
 				Name:    "users",
 				Pattern: "users:{id}",
@@ -205,7 +205,7 @@ func TestSimulateEphemeralPurgeSkipsWorldAccount(t *testing.T) {
 	rs := newTestReplayStore(t)
 
 	ledgerAccountTypes := map[string][]accounttype.CompiledType{
-		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
+		"ledger": mustCompileTypes(t, map[string]*commonpb.AccountType{
 			"world-type": {
 				Name:        "world-type",
 				Pattern:     "world",
@@ -437,7 +437,7 @@ func TestSimulateEphemeralPurgeMultipleAssets(t *testing.T) {
 	rs := newTestReplayStore(t)
 
 	ledgerAccountTypes := map[string][]accounttype.CompiledType{
-		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
+		"ledger": mustCompileTypes(t, map[string]*commonpb.AccountType{
 			"orders": {
 				Name:        "orders",
 				Pattern:     "orders:{id}",
@@ -499,4 +499,13 @@ func TestApplyPostingsZeroAmount(t *testing.T) {
 	srcPair := readVolume(t, rs, srcKey.Bytes())
 	require.Equal(t, big.NewInt(0), srcPair.GetOutput().ToBigInt())
 	require.Equal(t, big.NewInt(0), srcPair.GetInput().ToBigInt())
+}
+
+func mustCompileTypes(t *testing.T, types map[string]*commonpb.AccountType) []accounttype.CompiledType {
+	t.Helper()
+
+	compiled, err := accounttype.CompileTypes(types)
+	require.NoError(t, err)
+
+	return compiled
 }

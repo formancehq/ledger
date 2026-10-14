@@ -1,7 +1,6 @@
 package processing
 
 import (
-	"maps"
 	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -28,42 +27,17 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 		return nil, &domain.ErrInvalidPattern{Pattern: "", Details: "account type name is required"}
 	}
 
-	newSegments, err := accounttype.ParsePattern(at.GetPattern())
-	if err != nil {
-		return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
+	chart, compileErr := accounttype.CompileTypes(info.GetAccountTypes())
+	if compileErr != nil {
+		return nil, domain.StoreFailure("compiling ledger account types", compileErr)
 	}
 
-	if err := accounttype.ValidateSegmentTypes(newSegments, at.GetSegmentTypes()); err != nil {
-		return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
+	if _, err := validateAccountTypeForChart(at.GetName(), at, chart); err != nil {
+		return nil, err
 	}
 
 	if info.AccountTypes == nil {
 		info.AccountTypes = make(map[string]*commonpb.AccountType)
-	}
-
-	if _, exists := info.GetAccountTypes()[at.GetName()]; exists {
-		return nil, &domain.ErrAccountTypeAlreadyExists{Name: at.GetName()}
-	}
-
-	// Check for conflicts with existing account types. Iterate names in sorted
-	// order so the selected conflict (surfaced in the chain-bound
-	// ErrAccountTypeConflict → AuditFailure) is identical on every replica —
-	// a raw map range could pick a different conflicting type per node
-	// (invariant #2). See EN-1521.
-	for _, existingName := range slices.Sorted(maps.Keys(info.GetAccountTypes())) {
-		existing := info.GetAccountTypes()[existingName]
-		existingSegments, parseErr := accounttype.ParsePattern(existing.GetPattern())
-		if parseErr != nil {
-			continue
-		}
-
-		if accounttype.PatternsConflict(newSegments, existingSegments) {
-			return nil, &domain.ErrAccountTypeConflict{
-				NewPattern:      at.GetPattern(),
-				ExistingName:    existingName,
-				ExistingPattern: existing.GetPattern(),
-			}
-		}
 	}
 
 	info.AccountTypes[at.GetName()] = at
@@ -76,6 +50,44 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 				AccountType: at,
 			},
 		},
+	}, nil
+}
+
+// validateAccountTypeForChart is the single acceptance check for an account
+// type joining a ledger chart. processAddAccountType and processCreateLedger
+// (for each initial type, in name order) both call it, so a ledger can never
+// hold a type that adding it later would refuse.
+//
+// chart is the name-sorted compiled chart the type joins. The checks run in a
+// fixed order — pattern and segment types (INVALID_PATTERN), duplicate name
+// (ACCOUNT_TYPE_ALREADY_EXISTS), then the first conflicting type in name order
+// (ACCOUNT_TYPE_CONFLICT) — so the reported failure is identical on every
+// replica (invariant #2, EN-1521). On success it returns the compiled entry. Its
+// Original reads at, so a caller that keeps the entry must pass the message it
+// stores.
+func validateAccountTypeForChart(name string, at *commonpb.AccountType, chart []accounttype.CompiledType) (accounttype.CompiledType, domain.SerializableError) {
+	segments, err := accounttype.ParseType(at.AsReader())
+	if err != nil {
+		return accounttype.CompiledType{}, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
+	}
+
+	if slices.ContainsFunc(chart, func(existing accounttype.CompiledType) bool { return existing.Name == name }) {
+		return accounttype.CompiledType{}, &domain.ErrAccountTypeAlreadyExists{Name: name}
+	}
+
+	if existing, conflict := accounttype.FindConflict(segments, chart); conflict {
+		return accounttype.CompiledType{}, &domain.ErrAccountTypeConflict{
+			NewPattern:      at.GetPattern(),
+			ExistingName:    existing.Name,
+			ExistingPattern: existing.Original.GetPattern(),
+		}
+	}
+
+	return accounttype.CompiledType{
+		Name:        name,
+		Segments:    segments,
+		Specificity: accounttype.Specificity(segments),
+		Original:    at.AsReader(),
 	}, nil
 }
 

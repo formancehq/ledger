@@ -115,7 +115,11 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	}
 
 	// Validate reversed postings against account types.
-	if compiled := compiledTypesFor(ctx.CompiledTypes, ledger, info); len(compiled) > 0 {
+	compiled, compileErr := compiledTypesFor(ctx.CompiledTypes, ledger, info)
+	if compileErr != nil {
+		return nil, compileErr
+	}
+	if len(compiled) > 0 {
 		if typeErr := validatePostingsAgainstAccountTypes(revertPostings, compiled, info.GetDefaultEnforcementMode()); typeErr != nil {
 			return nil, typeErr
 		}

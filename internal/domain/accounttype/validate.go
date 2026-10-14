@@ -1,6 +1,7 @@
 package accounttype
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"regexp"
@@ -15,6 +16,27 @@ func ValidatePattern(pattern string) error {
 	_, err := ParsePattern(pattern)
 
 	return err
+}
+
+// ParseType parses an account type's pattern and installs its segment-type
+// constraints. It is the complete validity check for one account type: the FSM
+// accepts a type only when ParseType succeeds, and compileTypes runs the same
+// check on stored types, so every accepted type compiles.
+func ParseType(at commonpb.AccountTypeReader) ([]PatternSegment, error) {
+	if at == nil {
+		return nil, errors.New("account type definition is required")
+	}
+
+	segments, err := ParsePattern(at.GetPattern())
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateSegmentTypesReader(segments, at.GetSegmentTypes()); err != nil {
+		return nil, err
+	}
+
+	return segments, nil
 }
 
 // ValidateSegmentTypes checks that segment_types references valid variable names

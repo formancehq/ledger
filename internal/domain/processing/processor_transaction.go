@@ -157,7 +157,11 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	}
 
 	// Validate postings against account types.
-	if compiled := compiledTypesFor(ctx.CompiledTypes, ledger, info); len(compiled) > 0 {
+	compiled, compileErr := compiledTypesFor(ctx.CompiledTypes, ledger, info)
+	if compileErr != nil {
+		return nil, compileErr
+	}
+	if len(compiled) > 0 {
 		if typeErr := validatePostingsAgainstAccountTypes(result.Postings, compiled, info.GetDefaultEnforcementMode()); typeErr != nil {
 			return nil, typeErr
 		}

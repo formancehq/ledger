@@ -1136,8 +1136,18 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Seria
 				continue
 			}
 
+			compiled, compileErr := accounttype.CompileTypes(info.Mutate().GetAccountTypes())
+			if compileErr != nil {
+				// The FSM never stores a type that does not compile, so this
+				// is a corrupt LedgerInfo: fail loudly instead of classifying
+				// the volume against a partial chart (invariant #7).
+				storageFaults = append(storageFaults, storageFault{key, domain.StoreFailure("compiling ledger account types for transient volume validation", compileErr)})
+
+				continue
+			}
+
 			entry = gatedLedgerType{
-				compiled: accounttype.CompileTypes(info.Mutate().GetAccountTypes()),
+				compiled: compiled,
 				found:    true,
 			}
 			b.gatedLedgerTypes[key.LedgerName] = entry

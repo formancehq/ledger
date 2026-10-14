@@ -122,19 +122,28 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 // across orders. The cache map is mutated in place. Free function (not
 // a method on RequestProcessor) so handlers reach for it via explicit
 // parameter — see the isolation goal of the processor refactor.
-func compiledTypesFor(cache map[string][]accounttype.CompiledType, ledger string, info commonpb.LedgerInfoReader) []accounttype.CompiledType {
+//
+// A stored type that does not compile is an impossible state: create and add
+// both accept only types that compile. It fails the order as a storage fault
+// (KindInternal, uncommitted) rather than dropping the type, which would let a
+// STRICT ledger accept addresses its chart should refuse (invariant #7). Every
+// replica holds the same LedgerInfo, so every replica fails the same way.
+func compiledTypesFor(cache map[string][]accounttype.CompiledType, ledger string, info commonpb.LedgerInfoReader) ([]accounttype.CompiledType, domain.SerializableError) {
 	if info == nil || info.GetAccountTypes().Len() == 0 {
-		return nil
+		return nil, nil
 	}
 
 	if cached, ok := cache[ledger]; ok {
-		return cached
+		return cached, nil
 	}
 
-	compiled := accounttype.CompileTypesReader(info.GetAccountTypes())
+	compiled, err := accounttype.CompileTypesReader(info.GetAccountTypes())
+	if err != nil {
+		return nil, domain.StoreFailure("compiling ledger account types", err)
+	}
 	cache[ledger] = compiled
 
-	return compiled
+	return compiled, nil
 }
 
 // invalidateCompiledTypes drops the cached entry for ledger so the next

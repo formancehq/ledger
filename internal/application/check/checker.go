@@ -584,7 +584,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					expectedSchemas[name] = payload.CreateLedger.GetMetadataSchema().CloneVT()
 					expectedEnforcementModes[name] = payload.CreateLedger.GetDefaultEnforcementMode()
 					expectedBoundaries[name] = &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-					seedAccountTypes(rawLedgerTypes, ledgerAccountTypes, name, payload.CreateLedger.GetAccountTypes())
+					if err := seedAccountTypes(rawLedgerTypes, ledgerAccountTypes, name, payload.CreateLedger.GetAccountTypes()); err != nil {
+						return fmt.Errorf("seeding account types of ledger %q at log %d: %w", name, seq, err)
+					}
 				}
 			case *commonpb.LogPayload_DeleteLedger:
 				if payload.DeleteLedger != nil {
@@ -4502,17 +4504,26 @@ func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, ex
 // map (verified against the stored LedgerInfo in compareAccountTypes) and the
 // compiled map (drives the ephemeral-purge simulation). The raw map is copied
 // so the replay's add/remove mutations don't touch the source. Serves the types
-// carried by CreateLedger.
-func seedAccountTypes(raw map[string]map[string]*commonpb.AccountType, compiled map[string][]accounttype.CompiledType, ledger string, types map[string]*commonpb.AccountType) {
+// carried by CreateLedger. A type that does not compile is an impossible state
+// (the FSM refuses it at creation), so it fails the check instead of silently
+// replaying against a partial chart.
+func seedAccountTypes(raw map[string]map[string]*commonpb.AccountType, compiled map[string][]accounttype.CompiledType, ledger string, types map[string]*commonpb.AccountType) error {
 	if len(types) == 0 {
-		return
+		return nil
 	}
 
 	cloned := make(map[string]*commonpb.AccountType, len(types))
 	maps.Copy(cloned, types)
 
+	chart, err := accounttype.CompileTypes(cloned)
+	if err != nil {
+		return err
+	}
+
 	raw[ledger] = cloned
-	compiled[ledger] = accounttype.CompileTypes(cloned)
+	compiled[ledger] = chart
+
+	return nil
 }
 
 // compareAccountTypes verifies each ledger's stored account types
