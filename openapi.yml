@@ -1927,7 +1927,8 @@ paths:
         The response status is decided in three tiers:
 
         1. **Request-level failures** (before per-element processing):
-           malformed body → `400`, missing/insufficient scope → `401` or
+           malformed body (including a `null` element) → `400`,
+           missing/insufficient scope → `401` or
            `403`, too many elements → `413`. Exceeding the byte limit while
            decoding the body currently returns `400`.
            Returned unconditionally, `continueOnFailure` does not apply.

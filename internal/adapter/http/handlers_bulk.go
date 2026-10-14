@@ -54,6 +54,18 @@ func (s *Server) serveBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A JSON null entry decodes to a nil pointer without reaching
+	// BulkElement.UnmarshalJSON, so it is rejected here as a malformed body
+	// before the scope loop and runBulk dereference it.
+	for i, elem := range elements {
+		if elem == nil {
+			writeBulkErrorResponse(w, http.StatusBadRequest, "VALIDATION",
+				fmt.Errorf("element %d is null", i))
+
+			return
+		}
+	}
+
 	if s.bulkMaxSize > 0 && len(elements) > s.bulkMaxSize {
 		writeBulkErrorResponse(w, http.StatusRequestEntityTooLarge, "BULK_SIZE_EXCEEDED",
 			fmt.Errorf("bulk size exceeded, max size is %d", s.bulkMaxSize))

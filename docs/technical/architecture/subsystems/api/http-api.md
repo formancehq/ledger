@@ -677,7 +677,7 @@ ordinary error that requires top-level errorCode/errorMessage.
 | Trigger | Overall status | Body |
 | --- | --- | --- |
 | Success, including an empty batch | 200 | BulkResponse; empty batches currently emit `{}` |
-| Malformed JSON, invalid ledger name, or byte-limit failure during decoding | 400 | Top-level errorCode/errorMessage, no element outcomes |
+| Malformed JSON (including a `null` array element), invalid ledger name, or byte-limit failure during decoding | 400 | Top-level errorCode/errorMessage, no element outcomes |
 | Missing credentials for a write element | 401 | JSON top-level errorCode/errorMessage |
 | Invalid JWT rejected by middleware | 401 | `text/plain`, starting with `invalid token:` |
 | Valid credentials missing an element's scope | 403 | JSON top-level errorCode/errorMessage |

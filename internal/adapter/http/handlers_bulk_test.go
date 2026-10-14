@@ -327,3 +327,52 @@ func TestHandleBulk_AuthDisabled_NoToken_Allowed(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 }
+
+// TestHandleBulk_NullElementRejected covers a bulk array carrying a JSON null
+// entry. Decoding into []*servicepb.BulkElement leaves a nil pointer that no
+// BulkElement.UnmarshalJSON validation sees, so the handler must refuse it with
+// 400 VALIDATION before any element is read — on both the auth-enabled path
+// (per-element scope loop) and the auth-disabled path (runBulk). The mock
+// backend has no Apply expectation: a valid element preceding the null one
+// must not be applied either.
+func TestHandleBulk_NullElementRejected(t *testing.T) {
+	t.Parallel()
+
+	const validElement = `{"action":"CREATE_TRANSACTION","data":{"postings":[{"source":"world","destination":"bank","amount":100,"asset":"USD/2"}]}}`
+
+	for _, tc := range []struct {
+		name        string
+		body        string
+		authEnabled bool
+		wantMessage string
+	}{
+		{name: "only null, auth disabled", body: `[null]`, wantMessage: "element 0 is null"},
+		{name: "valid then null, auth disabled", body: `[` + validElement + `,null]`, wantMessage: "element 1 is null"},
+		{name: "only null, auth enabled", body: `[null]`, authEnabled: true, wantMessage: "element 0 is null"},
+		{name: "valid then null, auth enabled", body: `[` + validElement + `,null]`, authEnabled: true, wantMessage: "element 1 is null"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			backend := NewMockBackend(gomock.NewController(t))
+			authCfg := internalauth.AuthConfig{}
+			if tc.authEnabled {
+				authCfg = internalauth.AuthConfig{
+					Enabled:      true,
+					ScopeMapping: internalauth.DefaultMapping("ledger"),
+				}
+			}
+			handler := NewHandler(logging.Testing(), backend, authCfg, version.Info{})
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPost, "/v3/ledger1/bulk", strings.NewReader(tc.body))
+
+			handler.ServeHTTP(w, r)
+
+			require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+			resp := decodeResponse[bulkResponse](t, w)
+			require.Equal(t, "VALIDATION", resp.ErrorCode)
+			require.Contains(t, resp.ErrorMessage, tc.wantMessage)
+		})
+	}
+}
