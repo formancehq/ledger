@@ -2,7 +2,6 @@ package readstore
 
 import (
 	"fmt"
-
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2"
