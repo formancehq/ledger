@@ -6395,7 +6395,6 @@ func (m *OrderSkippedLog) CloneVT() *OrderSkippedLog {
 	}
 	r := new(OrderSkippedLog)
 	r.Reason = m.Reason
-	r.Code = m.Code
 	r.Details = m.Details.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -7555,7 +7554,6 @@ func (m *IdempotencyFailure) CloneVT() *IdempotencyFailure {
 	}
 	r := new(IdempotencyFailure)
 	r.Reason = m.Reason
-	r.Code = m.Code
 	r.Details = m.Details.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -18931,9 +18929,6 @@ func (this *OrderSkippedLog) EqualVT(that *OrderSkippedLog) bool {
 	if this.Reason != that.Reason {
 		return false
 	}
-	if this.Code != that.Code {
-		return false
-	}
 	if !this.Details.EqualVT(that.Details) {
 		return false
 	}
@@ -20922,9 +20917,6 @@ func (this *IdempotencyFailure) EqualVT(that *IdempotencyFailure) bool {
 		return false
 	}
 	if this.Reason != that.Reason {
-		return false
-	}
-	if this.Code != that.Code {
 		return false
 	}
 	if !this.Details.EqualVT(that.Details) {
@@ -37386,13 +37378,6 @@ func (m *OrderSkippedLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1a
-	}
-	if len(m.Code) > 0 {
-		i -= len(m.Code)
-		copy(dAtA[i:], m.Code)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Code)))
-		i--
 		dAtA[i] = 0x12
 	}
 	if m.Reason != 0 {
@@ -40217,13 +40202,6 @@ func (m *IdempotencyFailure) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1a
-	}
-	if len(m.Code) > 0 {
-		i -= len(m.Code)
-		copy(dAtA[i:], m.Code)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Code)))
 		i--
 		dAtA[i] = 0x12
 	}
@@ -49458,10 +49436,6 @@ func (m *OrderSkippedLog) SizeVT() (n int) {
 	if m.Reason != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Reason))
 	}
-	l = len(m.Code)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if m.Details != nil {
 		l = m.Details.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -50681,10 +50655,6 @@ func (m *IdempotencyFailure) SizeVT() (n int) {
 	_ = l
 	if m.Reason != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Reason))
-	}
-	l = len(m.Code)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.Details != nil {
 		l = m.Details.SizeVT()
@@ -82897,38 +82867,6 @@ func (m *OrderSkippedLog) UnmarshalVT(dAtA []byte) error {
 			}
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Code", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Code = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Details", wireType)
 			}
 			var msglen int
@@ -89551,38 +89489,6 @@ func (m *IdempotencyFailure) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Code", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Code = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Details", wireType)
 			}

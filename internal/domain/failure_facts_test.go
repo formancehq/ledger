@@ -45,20 +45,18 @@ func TestFailureDetailsTrackEveryScalarFactPresence(t *testing.T) {
 
 func TestTypedFailureDetailsRoundTripAndRejectMismatches(t *testing.T) {
 	t.Parallel()
-	reason, code, details := TypedFailureOf(&ErrTransactionReferenceConflict{
+	reason, details := TypedFailureOf(&ErrTransactionReferenceConflict{
 		Ledger: "L", Reference: "ref", ExistingTransactionID: 42,
 	})
 	f := FailureFactsFromTyped(ErrReasonTransactionReferenceConflict, details)
-	actual, err := FailureFactsFromDetails(reason, code, details)
+	actual, err := FailureFactsFromDetails(reason, details)
 	require.NoError(t, err)
 	require.Equal(t, f, actual)
 	require.Equal(t, uint64(42), details.GetTransactionReferenceConflict().GetExistingTransactionId())
 
-	_, err = FailureFactsFromDetails(f.Reason, "TRANSACTION_NOT_FOUND", details)
-	require.ErrorContains(t, err, "does not match")
-	_, err = FailureFactsFromDetails(commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND, f.Code, details)
+	_, err = FailureFactsFromDetails(commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND, details)
 	require.ErrorContains(t, err, "not allowed")
-	_, err = FailureFactsFromDetails(f.Reason, f.Code, nil)
+	_, err = FailureFactsFromDetails(f.Reason, nil)
 	require.ErrorContains(t, err, "missing")
 	_, err = commonpb.NewFailureDetails(f.Code, map[string]string{"arbitrary": "text"})
 	require.ErrorContains(t, err, "not part of")
@@ -72,7 +70,7 @@ func TestFailureFactPresenceFollowsSchema(t *testing.T) {
 	missingAmount := commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", nil)
 	_, err := FailureFactsFromDetails(
 		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR,
-		"NUMSCRIPT_NEGATIVE_AMOUNT", missingAmount,
+		missingAmount,
 	)
 	require.ErrorContains(t, err, "missing required fact amount")
 	require.Panics(t, func() {

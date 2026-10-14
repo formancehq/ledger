@@ -79,7 +79,6 @@ func TestInvalidCallerAttributionPreventsRestoreFinalization(t *testing.T) {
 		CallerSnapshot: &commonpb.CallerSnapshot{},
 		Outcome: &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{
 			Reason:  commonpb.ErrorReason_ERROR_REASON_VALIDATION,
-			Code:    "TARGET_REQUIRED",
 			Details: commonpb.MustFailureDetails("TARGET_REQUIRED", nil),
 		}},
 	}

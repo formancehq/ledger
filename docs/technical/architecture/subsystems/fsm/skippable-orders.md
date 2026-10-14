@@ -58,8 +58,9 @@ For each order that opts in, `ProcessOrders` runs it against an
   — a new skippable action that writes an unbuffered kind fails loudly instead of
   leaking past rollback.
 
-On a matched skip the FSM emits an `OrderSkippedLog{reason, code, facts}` (the
-`facts` carry reason-specific correlators, e.g. `reference` /
+On a matched skip the FSM emits an `OrderSkippedLog{reason, details}`. The
+selected details arm determines the public code and facts; the facts carry
+reason-specific correlators, e.g. `reference` /
 `existingTransactionId` for a reference conflict).
 
 ## Observability

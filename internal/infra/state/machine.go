@@ -1412,7 +1412,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			case stored.GetFailure() != nil:
 				replayed = true
 				fr := stored.GetFailure()
-				failure, validationErr := domain.FailureFactsFromDetails(fr.GetReason(), fr.GetCode(), fr.GetDetails())
+				failure, validationErr := domain.FailureFactsFromDetails(fr.GetReason(), fr.GetDetails())
 				if validationErr != nil {
 					return nil, fmt.Errorf("invalid stored idempotency failure: %w", validationErr)
 				}
@@ -1852,7 +1852,7 @@ func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string
 		return nil
 	}
 
-	reason, code, details := domain.TypedFailureOf(d)
+	reason, details := domain.TypedFailureOf(d)
 
 	value := &commonpb.IdempotencyKeyValue{
 		Hash:      proposalHash,
@@ -1860,7 +1860,6 @@ func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string
 		ExpiresAt: expiresAt,
 		Failure: &commonpb.IdempotencyFailure{
 			Reason:  reason,
-			Code:    code,
 			Details: details,
 		},
 	}

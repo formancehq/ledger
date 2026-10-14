@@ -79,7 +79,7 @@ func TestIdempotencyCoverageExclusions(t *testing.T) {
 			}
 			if scenario == "frozen_failure" {
 				stored.Failure = &commonpb.IdempotencyFailure{
-					Reason: domain.ReasonCode(domain.ErrReasonTransactionNotFound), Code: domain.ErrReasonTransactionNotFound,
+					Reason:  domain.ReasonCode(domain.ErrReasonTransactionNotFound),
 					Details: commonpb.MustFailureDetails(domain.ErrReasonTransactionNotFound, map[string]string{"transactionId": "42"}),
 				}
 			} else {

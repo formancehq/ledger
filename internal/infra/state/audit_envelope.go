@@ -183,7 +183,6 @@ func buildAuditFailurePayload(f *auditpb.AuditFailure) []byte {
 	buf := make([]byte, 0, 64)
 
 	buf = appendU32(buf, uint32(f.GetReason()))
-	buf = appendLenString(buf, f.GetCode())
 	var armNumber uint32
 	if details := f.GetDetails(); details != nil {
 		message := details.ProtoReflect()

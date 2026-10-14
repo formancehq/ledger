@@ -258,7 +258,6 @@ func (x *OrderSkippedLog) UnmarshalJSON(data []byte) error {
 		x.Reason = ErrorReason(code)
 	}
 
-	x.Code = aux.Code
 	if aux.Code != "" {
 		details, err := NewFailureDetails(aux.Code, aux.Facts)
 		if err != nil {

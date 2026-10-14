@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 37:
+leader. For example, with a schema implementing revision 38:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 37' \
+grpcurl -plaintext -H 'ledger-protocol-version: 38' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -464,7 +464,7 @@ and carries presence-tracked fields with explicit protobuf types; numeric
 correlators are `uint64` instead of decimal text. The containing reason must
 be one of the arm's `failure_reasons`
 annotations, and the code must name that arm. Ledger rejects missing arms,
-mismatched codes, absent required facts, unknown fields, and malformed values
+absent required facts, unknown fields, and malformed values
 when reading audited failures. HTTP and public
 `ErrorInfo.metadata` still render the named facts as strings at their API
 boundaries.
@@ -564,3 +564,15 @@ unconfigured committed metadata policy is an internal failure, not a rejection
 attributed to the business command. Successful orders still produce audit
 entries. This shared protobuf change requires fresh v3 state and revision 37
 clients and servers.
+
+## Derive stored failure codes from typed details (revision 38)
+
+Revision 38 removes the redundant `code` field from persisted `AuditFailure`,
+`IdempotencyFailure`, and `OrderSkippedLog`. The selected `FailureDetails` oneof
+arm is the sole stored source of the stable subcode. Audit hashing binds the
+arm number, the explicit facts, and unknown field bytes; checker validation
+rejects missing or invalid arms. Public HTTP, bulk skip, audit JSON, and event
+responses still render the same `code` from the arm. gRPC `ErrorInfo` continues
+to expose the coarse reason and the facts as metadata.
+The fields are removed and renumbered because v3 is unreleased. This shared
+protobuf change requires fresh v3 state and revision 38 clients and servers.

@@ -101,7 +101,6 @@ func TestSkippedLogPayloadPinsReasonAndCorrelators(t *testing.T) {
 	expected := result.State.Ledger("L").LogRows()[1]
 	served := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{
 		Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-		Code:    "TRANSACTION_REFERENCE_CONFLICT",
 		Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L", "reference": "ref", "existingTransactionId": "1"}),
 	}}}
 	require.Equal(t, expected.Payload, CanonicalServedLogPayload(served))

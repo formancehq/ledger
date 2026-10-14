@@ -365,13 +365,12 @@ func (x *AuditSuccess) GetMaxLogSequence() uint64 {
 	return 0
 }
 
-// AuditFailure records the stable reason, subcode, and structured facts of a
-// failed proposal. Presentation text is rendered when the record is read.
+// AuditFailure records the stable reason and typed details of a failed proposal.
+// The details arm determines the subcode and structured facts at read time.
 type AuditFailure struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
 	Reason        commonpb.ErrorReason     `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"`
-	Code          string                   `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
-	Details       *commonpb.FailureDetails `protobuf:"bytes,3,opt,name=details,proto3" json:"details,omitempty"`
+	Details       *commonpb.FailureDetails `protobuf:"bytes,2,opt,name=details,proto3" json:"details,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -413,13 +412,6 @@ func (x *AuditFailure) GetReason() commonpb.ErrorReason {
 	return commonpb.ErrorReason(0)
 }
 
-func (x *AuditFailure) GetCode() string {
-	if x != nil {
-		return x.Code
-	}
-	return ""
-}
-
 func (x *AuditFailure) GetDetails() *commonpb.FailureDetails {
 	if x != nil {
 		return x.Details
@@ -458,11 +450,10 @@ const file_audit_proto_rawDesc = "" +
 	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequence\"b\n" +
 	"\fAuditSuccess\x12(\n" +
 	"\x10min_log_sequence\x18\x01 \x01(\x06R\x0eminLogSequence\x12(\n" +
-	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\"\x81\x01\n" +
+	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\"m\n" +
 	"\fAuditFailure\x12+\n" +
-	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12\x12\n" +
-	"\x04code\x18\x02 \x01(\tR\x04code\x120\n" +
-	"\adetails\x18\x03 \x01(\v2\x16.common.FailureDetailsR\adetailsB8Z6github.com/formancehq/ledger/v3/internal/proto/auditpbb\x06proto3"
+	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x120\n" +
+	"\adetails\x18\x02 \x01(\v2\x16.common.FailureDetailsR\adetailsB8Z6github.com/formancehq/ledger/v3/internal/proto/auditpbb\x06proto3"
 
 var (
 	file_audit_proto_rawDescOnce sync.Once

@@ -58,12 +58,13 @@ all granular-scope authorization behavior is unchanged.
 Revision 30 replaces failure messages stored in audit, idempotency, and
 skipped-order records with reason, subcode, and structured facts. Revision 32
 stores those facts in a `FailureDetails` protobuf `oneof` selected by the
-concrete code. Bulk skip responses still expose `reason`, `code`, and `facts`;
+concrete code. Revision 38 derives the code from that selected arm instead of
+storing it again. Bulk skip responses still expose `reason`, `code`, and `facts`;
 audit reads render messages from the stored fields. HTTP clients do not send
 the gRPC revision.
 
 The v3 gRPC service requires one `ledger-protocol-version` metadata value per
-business RPC, equal to `pkg/grpcprotocol.Version` (currently `"35"`). Revision 29
+business RPC, equal to `pkg/grpcprotocol.Version` (currently `"38"`). Revision 29
 requires the target's 16-byte `instance_id` on administrative `AddLearner`
 requests; revision 28 clients that omit it are incompatible. Missing,
 invalid, duplicate, or different revisions fail with `FailedPrecondition` before

@@ -97,10 +97,9 @@ message AuditSuccess {
   fixed64 max_log_sequence = 2;
 }
 
-// AuditFailure records the stable reason, subcode, and structured facts of a
-// failed proposal. Presentation text is rendered when the record is read.
+// AuditFailure records the stable reason and typed details of a failed proposal.
+// The details arm determines the subcode and structured facts at read time.
 message AuditFailure {
   common.ErrorReason reason = 1;
-  string code = 2;
-  common.FailureDetails details = 3;
+  common.FailureDetails details = 2;
 }

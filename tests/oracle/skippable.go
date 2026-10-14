@@ -84,7 +84,7 @@ func predictSkippedLog(s LedgerState, req *servicepb.Request, reason string) *co
 		panic("model: invalid predicted skip details: " + err.Error())
 	}
 
-	return &commonpb.OrderSkippedLog{Reason: domain.ReasonCode(reason), Code: reason, Details: details}
+	return &commonpb.OrderSkippedLog{Reason: domain.ReasonCode(reason), Details: details}
 }
 
 func canonicalSkippedLog(log *commonpb.OrderSkippedLog) string {

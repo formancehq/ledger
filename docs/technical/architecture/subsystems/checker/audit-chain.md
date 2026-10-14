@@ -135,16 +135,16 @@ Diagnostic `Error()` text never feeds this tuple; a producer must choose each
 fact deliberately instead of relying on a list of excluded metadata keys.
 `ValidateFailureFacts` rejects unknown codes, fact keys and malformed values
 before persistence. Each persisted failure carries one `FailureDetails` arm
-for its concrete code; the checker rejects a missing arm, mismatched code, or
-unknown protobuf fields. `buildAuditFailurePayload` hashes the reason, code,
+for its concrete code; the checker rejects a missing arm, invalid reason, or
+unknown protobuf fields. `buildAuditFailurePayload` hashes the reason,
 selected arm number, and facts in sorted key order, followed by the raw unknown
 field bytes of the parent and selected detail message. It does not hash `Error()`
 text or Numscript diagnostics.
 `RenderFailureFacts` creates presentation text when a caller reads or replays
 the failure. Audit and idempotency store the same tuple so the checker can
 compare the two outcomes without depending on wording.
-The broad `reason` is a protobuf enum; the finer `code` remains a stable public
-string and must match the selected typed detail arm. A new code requires a new
+The broad `reason` is a protobuf enum; the finer `code` is derived from the
+selected typed detail arm at read time. A new code requires a new
 arm and a service protocol revision.
 
 The log surface has **two levels**:

@@ -1583,8 +1583,7 @@ message VolumeOverflowDetails {
 // (defense against forged skip entries).
 message OrderSkippedLog {
   ErrorReason reason = 1;
-  string code = 2;
-  FailureDetails details = 3;
+  FailureDetails details = 2; // arm determines the subcode and facts
 }
 
 // CreatedIndexLog records the creation of an index.
@@ -2144,8 +2143,7 @@ enum ErrorReason {
 // verify this projection against the hash-chained AuditFailure.
 message IdempotencyFailure {
   ErrorReason reason = 1;             // typed reason; kind derived via domain.KindForReason
-  string code = 2;                    // stable subcode
-  FailureDetails details = 3;       // typed structured facts
+  FailureDetails details = 2;        // typed variant determines the stable subcode and facts
 }
 
 // TransactionReferenceValue stores the transaction ID associated with a unique reference within a ledger.

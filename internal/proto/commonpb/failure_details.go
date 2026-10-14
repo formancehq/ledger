@@ -166,5 +166,7 @@ func FailureDetailsFacts(details *FailureDetails) map[string]string {
 	return facts
 }
 
+func (x *OrderSkippedLog) GetCode() string                { return FailureDetailsCode(x.GetDetails()) }
+func (x *IdempotencyFailure) GetCode() string             { return FailureDetailsCode(x.GetDetails()) }
 func (x *OrderSkippedLog) GetFacts() map[string]string    { return FailureDetailsFacts(x.GetDetails()) }
 func (x *IdempotencyFailure) GetFacts() map[string]string { return FailureDetailsFacts(x.GetDetails()) }

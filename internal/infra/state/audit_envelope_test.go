@@ -222,7 +222,6 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
 				Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-				Code:   "INSUFFICIENT_FUNDS",
 				// Intentionally unsorted: the builder must sort the field keys.
 				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{
 					"balance": "9",
@@ -304,7 +303,6 @@ func TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns(t *testing.T) {
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
 				Reason: commonpb.ErrorReason_ERROR_REASON_METADATA_LIMIT_EXCEEDED,
-				Code:   "ACCOUNT_METADATA_KEY_LIMIT_EXCEEDED",
 				Details: commonpb.MustFailureDetails("ACCOUNT_METADATA_KEY_LIMIT_EXCEEDED", map[string]string{
 					"dimension": "value",
 					"limit":     "16",
@@ -398,7 +396,6 @@ func goldenBuildSuccess(s *auditpb.AuditSuccess) []byte {
 func goldenBuildFailure(f *auditpb.AuditFailure) []byte {
 	var buf []byte
 	buf = goldenU32(buf, uint32(f.GetReason()))
-	buf = goldenLenString(buf, f.GetCode())
 	var armNumber uint32
 	if details := f.GetDetails(); details != nil {
 		message := details.ProtoReflect()

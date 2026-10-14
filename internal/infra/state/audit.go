@@ -19,11 +19,10 @@ import (
 // invariant violation that must fail loudly at its origin, never be downgraded
 // to an unspecified business outcome in the authoritative chain.
 func buildAuditFailure(d domain.SerializableError) *auditpb.AuditFailure {
-	reason, code, details := domain.TypedFailureOf(d)
+	reason, details := domain.TypedFailureOf(d)
 
 	failure := &auditpb.AuditFailure{
 		Reason:  reason,
-		Code:    code,
 		Details: details,
 	}
 

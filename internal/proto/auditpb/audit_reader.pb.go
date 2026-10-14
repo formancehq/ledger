@@ -297,7 +297,6 @@ func NewAuditSuccessListReader(s []*AuditSuccess) AuditSuccessListReader {
 // Call Mutate() to obtain a mutable clone.
 type AuditFailureReader interface {
 	GetReason() commonpb.ErrorReason
-	GetCode() string
 	GetDetails() commonpb.FailureDetailsReader
 	Mutate() *AuditFailure
 }
@@ -306,10 +305,6 @@ type auditFailureReadonly AuditFailure
 
 func (r *auditFailureReadonly) GetReason() commonpb.ErrorReason {
 	return (*AuditFailure)(r).GetReason()
-}
-
-func (r *auditFailureReadonly) GetCode() string {
-	return (*AuditFailure)(r).GetCode()
 }
 
 func (r *auditFailureReadonly) GetDetails() commonpb.FailureDetailsReader {

@@ -15637,8 +15637,7 @@ func (x *VolumeOverflowDetails) GetCurrent() string {
 type OrderSkippedLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Reason        ErrorReason            `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"`
-	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
-	Details       *FailureDetails        `protobuf:"bytes,3,opt,name=details,proto3" json:"details,omitempty"`
+	Details       *FailureDetails        `protobuf:"bytes,2,opt,name=details,proto3" json:"details,omitempty"` // arm determines the subcode and facts
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -15678,13 +15677,6 @@ func (x *OrderSkippedLog) GetReason() ErrorReason {
 		return x.Reason
 	}
 	return ErrorReason_ERROR_REASON_UNSPECIFIED
-}
-
-func (x *OrderSkippedLog) GetCode() string {
-	if x != nil {
-		return x.Code
-	}
-	return ""
 }
 
 func (x *OrderSkippedLog) GetDetails() *FailureDetails {
@@ -18600,8 +18592,7 @@ func (x *IdempotencyKeyValue) GetExpiresAt() uint64 {
 type IdempotencyFailure struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Reason        ErrorReason            `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"` // typed reason; kind derived via domain.KindForReason
-	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`                              // stable subcode
-	Details       *FailureDetails        `protobuf:"bytes,3,opt,name=details,proto3" json:"details,omitempty"`                        // typed structured facts
+	Details       *FailureDetails        `protobuf:"bytes,2,opt,name=details,proto3" json:"details,omitempty"`                        // typed variant determines the stable subcode and facts
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -18641,13 +18632,6 @@ func (x *IdempotencyFailure) GetReason() ErrorReason {
 		return x.Reason
 	}
 	return ErrorReason_ERROR_REASON_UNSPECIFIED
-}
-
-func (x *IdempotencyFailure) GetCode() string {
-	if x != nil {
-		return x.Code
-	}
-	return ""
 }
 
 func (x *IdempotencyFailure) GetDetails() *FailureDetails {
@@ -23218,11 +23202,10 @@ const file_common_proto_rawDesc = "" +
 	"\x05_sideB\t\n" +
 	"\a_amountB\n" +
 	"\n" +
-	"\b_current\"\x84\x01\n" +
+	"\b_current\"p\n" +
 	"\x0fOrderSkippedLog\x12+\n" +
-	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12\x12\n" +
-	"\x04code\x18\x02 \x01(\tR\x04code\x120\n" +
-	"\adetails\x18\x03 \x01(\v2\x16.common.FailureDetailsR\adetails\"\x97\x01\n" +
+	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x120\n" +
+	"\adetails\x18\x02 \x01(\v2\x16.common.FailureDetailsR\adetails\"\x97\x01\n" +
 	"\x0fCreatedIndexLog\x12\x1f\n" +
 	"\x02id\x18\x01 \x01(\v2\x0f.common.IndexIDR\x02id\x123\n" +
 	"\n" +
@@ -23432,11 +23415,10 @@ const file_common_proto_rawDesc = "" +
 	"\afailure\x18\x05 \x01(\v2\x1a.common.IdempotencyFailureR\afailure\x12\x1b\n" +
 	"\tlog_count\x18\x06 \x01(\rR\blogCount\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\a \x01(\x06R\texpiresAt\"\x87\x01\n" +
+	"expires_at\x18\a \x01(\x06R\texpiresAt\"s\n" +
 	"\x12IdempotencyFailure\x12+\n" +
-	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12\x12\n" +
-	"\x04code\x18\x02 \x01(\tR\x04code\x120\n" +
-	"\adetails\x18\x03 \x01(\v2\x16.common.FailureDetailsR\adetails\"B\n" +
+	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x120\n" +
+	"\adetails\x18\x02 \x01(\v2\x16.common.FailureDetailsR\adetails\"B\n" +
 	"\x19TransactionReferenceValue\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\"1\n" +
 	"\x15NumscriptVersionValue\x12\x18\n" +

@@ -28,7 +28,7 @@ func FailureFactsOf(d SerializableError) FailureFacts {
 
 // TypedFailureOf reads the audited representation directly from its producer.
 // Public map facts are rendered only at API boundaries.
-func TypedFailureOf(d SerializableError) (commonpb.ErrorReason, string, *commonpb.FailureDetails) {
+func TypedFailureOf(d SerializableError) (commonpb.ErrorReason, *commonpb.FailureDetails) {
 	reason := ReasonCode(d.Reason())
 	if reason == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
 		panic(fmt.Errorf("error %T has an unknown failure reason", d))
@@ -45,7 +45,7 @@ func TypedFailureOf(d SerializableError) (commonpb.ErrorReason, string, *commonp
 		panic(fmt.Errorf("error %T emits incomplete failure details: %w", d, err))
 	}
 
-	return reason, code, details
+	return reason, details
 }
 
 // NewFailureFacts copies the values supplied by an error for public rendering.
@@ -64,9 +64,9 @@ func FailureFactsFromTyped(reason string, details *commonpb.FailureDetails) Fail
 	}
 }
 
-// FailureFactsFromDetails checks that persisted reason, code, and typed variant
-// all describe the same outcome before exposing its public fact map.
-func FailureFactsFromDetails(reason commonpb.ErrorReason, code string, details *commonpb.FailureDetails) (FailureFacts, error) {
+// FailureFactsFromDetails checks the persisted reason and typed variant before
+// exposing its public code and fact map.
+func FailureFactsFromDetails(reason commonpb.ErrorReason, details *commonpb.FailureDetails) (FailureFacts, error) {
 	if details == nil {
 		return FailureFacts{}, errors.New("failure details are missing")
 	}
@@ -78,10 +78,7 @@ func FailureFactsFromDetails(reason commonpb.ErrorReason, code string, details *
 	if arm != nil && len(parent.Get(arm).Message().GetUnknown()) != 0 {
 		return FailureFacts{}, errors.New("failure detail variant contains unknown fields")
 	}
-	if actual := commonpb.FailureDetailsCode(details); actual != code {
-		return FailureFacts{}, fmt.Errorf("failure detail code %q does not match %q", actual, code)
-	}
-	f := FailureFacts{Reason: reason, Code: code, Facts: commonpb.FailureDetailsFacts(details)}
+	f := FailureFacts{Reason: reason, Code: commonpb.FailureDetailsCode(details), Facts: commonpb.FailureDetailsFacts(details)}
 	if err := ValidateFailureFacts(f); err != nil {
 		return FailureFacts{}, err
 	}
