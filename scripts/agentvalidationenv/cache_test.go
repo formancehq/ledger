@@ -51,6 +51,27 @@ func TestSharedCacheEnvironment(t *testing.T) {
 	require.FileExists(t, filepath.Join(filepath.Dir(first["GOCACHE"]), ".ledger-ai-go-cache-generation"))
 	require.Equal(t, filepath.Join(resolvedCacheRoot, "golangci-lint"), first["GOLANGCI_LINT_CACHE"])
 	require.Equal(t, resolvedCacheRoot, first["LEDGER_AI_CACHE_ROOT"])
+	require.Contains(t, strings.Fields(first["GOFLAGS"]), "-trimpath")
+}
+
+func TestGoFlagsAddTrimpathOnceAndPreserveCallerFlags(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	cacheRoot := filepath.Join(root, "shared-cache")
+	for inherited, expected := range map[string]string{
+		"":                    "-trimpath",
+		"-mod=mod":            "-mod=mod -trimpath",
+		"-trimpath -mod=mod":  "-trimpath -mod=mod",
+		"-mod=mod -trimpath":  "-mod=mod -trimpath",
+		"-trimpath=true -v=0": "-trimpath=true -v=0",
+	} {
+		command := testenv.Command(t, "bash", validationEnvPath(t), t.TempDir(), "sh", "-c", `printf %s "$GOFLAGS"`)
+		command.Env = testenv.Environment("HOME="+root, "LEDGER_AI_CACHE_ROOT="+cacheRoot, "GOFLAGS="+inherited)
+		output, err := command.CombinedOutput()
+		require.NoError(t, err, string(output))
+		require.Equal(t, expected, string(output), "inherited GOFLAGS=%q", inherited)
+	}
 }
 
 func TestGoCacheRotatesAfterBudgetAndRetiresIdleGeneration(t *testing.T) {
@@ -405,7 +426,7 @@ func captureEnvironment(t *testing.T, repository, cacheRoot, userHome, runDirect
 	t.Helper()
 	command := testenv.Command(t,
 		"bash", validationEnvPath(t), runDirectory, "sh", "-c",
-		"env | grep -E '^(HOME|GOCACHE|GOMODCACHE|GOPATH|TMPDIR|XDG_CACHE_HOME|GOLANGCI_LINT_CACHE|LEDGER_AI_CACHE_ROOT)='",
+		"env | grep -E '^(HOME|GOCACHE|GOMODCACHE|GOPATH|GOFLAGS|TMPDIR|XDG_CACHE_HOME|GOLANGCI_LINT_CACHE|LEDGER_AI_CACHE_ROOT)='",
 	)
 	command.Dir = repository
 	command.Env = testenv.Environment("HOME="+userHome, "LEDGER_AI_CACHE_ROOT="+cacheRoot)

@@ -364,7 +364,17 @@ for retired_path in ${retired_go_cache_paths[@]+"${retired_go_cache_paths[@]}"};
     rmdir -- "$retired_path"
 done
 
+# Without -trimpath, Go hashes each workspace package's absolute directory into
+# its compile action ID, so every new worktree path recompiles the whole module
+# and golangci-lint reloads its export data cold. -trimpath keys those entries
+# by import path, letting identical packages hit across worktrees.
+case " ${GOFLAGS:-} " in
+    *" -trimpath "*|*" -trimpath=true "*) ;;
+    *) GOFLAGS="${GOFLAGS:+$GOFLAGS }-trimpath" ;;
+esac
+
 export VALIDATION_RUN_ID="$run_id"
+export GOFLAGS
 export VALIDATION_RUN_DIR="$run_dir"
 export LEDGER_AI_CACHE_ROOT="$cache_root"
 export GOCACHE="$go_cache_path"

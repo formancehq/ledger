@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -312,10 +311,12 @@ func temporaryResults(t *testing.T, f *fixture) []string {
 
 func repositoryRoot(t *testing.T) string {
 	t.Helper()
-	_, filename, _, ok := runtime.Caller(0)
-	require.True(t, ok)
+	// go test runs in the package directory; runtime.Caller paths are
+	// module-relative under -trimpath.
+	packageDir, err := os.Getwd()
+	require.NoError(t, err)
 
-	return filepath.Clean(filepath.Join(filepath.Dir(filename), "..", ".."))
+	return filepath.Clean(filepath.Join(packageDir, "..", ".."))
 }
 
 func copyFile(t *testing.T, source, destination string) {

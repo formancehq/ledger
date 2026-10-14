@@ -33,6 +33,16 @@ The cooperative cache policy does not relax publication identity:
 | `GOLANGCI_LINT_CACHE` | `golangci-lint/` |
 | `XDG_CACHE_HOME` | `xdg/` |
 
+The wrapper also appends `-trimpath` to `GOFLAGS`, keeping any flags the caller
+already set. Without it, Go hashes each workspace package's absolute directory
+into its compile action ID, so a new worktree path recompiles every root-module
+package and golangci-lint reloads its export data cold. With `-trimpath`,
+identical packages hit across worktrees. On 2026-10-14 a fresh worktree took
+199s for the root lint and 13.5s to recompile 125 packages; a copy at a second
+path reused the trimmed entries, recompiled nothing, and linted in 3.4s. Under
+`-trimpath`, `runtime.Caller` returns module-relative file names, so tests
+locate fixtures from their working directory (the package directory) instead.
+
 The cache root must be absolute and outside the candidate worktree, trusted
 root, and disposable validation directory. Run cleanup never removes it.
 `HOME` is inherited for validation; it is not synthesized per run. Reviewer
@@ -156,7 +166,10 @@ seeding and per-run copying are not part of this threat model; ordinary shared
 
 `bash scripts/agent-check` is the fast baseline. It checks repository
 invariants, compiles the root module, and checks tracked and untracked diff
-whitespace. It does not run the full pre-commit recipe or unit suite.
+whitespace. Compilation uses `go list -export ./...`, which compiles and
+type-checks every package through `GOCACHE` without linking. `go build ./...`
+re-linked the eight main packages on every run (about 10s warm versus 1.1s);
+the CI `Build` job still links the binaries. It does not run the full pre-commit recipe or unit suite.
 
 `AI_REVIEW_BASE_SHA=<sha> bash scripts/agent-check-pr` is the normal PR path.
 It classifies the exact base-to-worktree diff, runs the straightforward
