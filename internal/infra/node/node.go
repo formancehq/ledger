@@ -1263,6 +1263,8 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 	}
 }
 
+// processReady preserves Raft Ready ordering across the separate responsibilities.
+// In particular, WAL persistence precedes snapshot installation and message sends.
 func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.Ready) (readyResult, error) {
 	if node.logger.Enabled(logging.TraceLevel) {
 		node.logger.Tracef("Processing ready")
@@ -1270,6 +1272,28 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 
 	node.committedEntriesPerReadyHistogram.Record(context.Background(), int64(len(rd.CommittedEntries)))
 
+	if err := node.processReadyLeadership(ctx, stop, rd); err != nil {
+		return readyResult{}, err
+	}
+	node.retryReadySnapshotSync(stop, rd)
+	node.resolveReadyReadStates(rd)
+	if err := node.persistReady(ctx, rd); err != nil {
+		return readyResult{}, err
+	}
+
+	result := readyResult{rd: rd}
+	if err := node.installReadySnapshot(ctx, stop, rd, &result); err != nil {
+		return readyResult{}, err
+	}
+	node.sendReadyMessages(stop, rd, &result)
+	if err := node.collectReadyConfChanges(rd, &result); err != nil {
+		return readyResult{}, err
+	}
+
+	return result, nil
+}
+
+func (node *Node) processReadyLeadership(ctx context.Context, stop chan struct{}, rd raft.Ready) error {
 	if rd.SoftState != nil {
 		ss := rd.SoftState
 		actualNodeLastSoftState := node.lastSoftState.Load()
@@ -1341,7 +1365,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 					assert.Unreachable("leadership gain Ready must carry the no-op blank entry", emptyDetails)
 					lifecycle.SendEvent("leadership_gain_no_entries", emptyDetails)
 
-					return readyResult{}, fmt.Errorf("leadership gain (nodeID=%d term=%d): %w",
+					return fmt.Errorf("leadership gain (nodeID=%d term=%d): %w",
 						node.config.NodeID, term, err)
 				}
 
@@ -1370,6 +1394,10 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		node.lastSoftState.Store(ss)
 	}
 
+	return nil
+}
+
+func (node *Node) retryReadySnapshotSync(stop chan struct{}, rd raft.Ready) {
 	// Trigger SyncSnapshot when the applier is out-of-sync. Reads lastSoftState
 	// after the SoftState block above so both cases are covered by one
 	// site: this Ready carries a fresh SoftState (Lead learned or changed),
@@ -1396,7 +1424,9 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			node.applier.TrySyncSnapshot(ss.Lead)
 		}
 	}
+}
 
+func (node *Node) resolveReadyReadStates(rd raft.Ready) {
 	// Resolve pending ReadIndex requests from rd.ReadStates.
 	for _, rs := range rd.ReadStates {
 		reqID, ok := parseReadIndexContext(rs.RequestCtx)
@@ -1412,12 +1442,14 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		node.pendingReads.Delete(reqID)
 		req.future.Resolve(rs.Index, nil)
 	}
+}
 
+func (node *Node) persistReady(ctx context.Context, rd raft.Ready) error {
 	now := time.Now()
 
 	err := node.wal.Append(rd.HardState, rd.Entries)
 	if err != nil {
-		return readyResult{}, fmt.Errorf("appending entries to storage: %w", err)
+		return fmt.Errorf("appending entries to storage: %w", err)
 	}
 
 	node.appendEntriesHistogram.Record(ctx, time.Since(now).Seconds())
@@ -1439,8 +1471,10 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}
 	}
 
-	result := readyResult{rd: rd}
+	return nil
+}
 
+func (node *Node) installReadySnapshot(ctx context.Context, stop chan struct{}, rd raft.Ready, result *readyResult) error {
 	if !raft.IsEmptySnap(rd.Snapshot) {
 		snapshotStart := time.Now()
 
@@ -1463,11 +1497,11 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		node.applier.PrepareForSnapshotInstall(stop)
 
 		if err := node.wal.ApplySnapshot(rd.Snapshot); err != nil {
-			return readyResult{}, fmt.Errorf("applying snapshot to storage: %w", err)
+			return fmt.Errorf("applying snapshot to storage: %w", err)
 		}
 
 		if err := node.synchronizer.InstallSnapshot(ctx, rd.Snapshot); err != nil {
-			return readyResult{}, fmt.Errorf("installing snapshot: %w", err)
+			return fmt.Errorf("installing snapshot: %w", err)
 		}
 
 		// Defer ReportSnapshot to orchestrate goroutine (rawNode is not thread-safe).
@@ -1497,6 +1531,10 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}
 	}
 
+	return nil
+}
+
+func (node *Node) sendReadyMessages(stop chan struct{}, rd raft.Ready, result *readyResult) {
 	appendResponses, applyResponses, outbound := splitReadyMessages(node.config.NodeID, rd.Messages)
 	result.applyResponses = applyResponses
 
@@ -1508,13 +1546,15 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		case <-stop:
 		}
 	}
+}
 
+func (node *Node) collectReadyConfChanges(rd raft.Ready, result *readyResult) error {
 	// Extract conf changes from committed entries. The actual rawNode.ApplyConfChange
 	// calls are deferred to the orchestrate goroutine (rawNode is not thread-safe).
 	for _, entry := range rd.CommittedEntries {
 		cc, ok, err := membership.UnmarshalConfChangeV2(entry)
 		if err != nil {
-			return readyResult{}, err
+			return err
 		}
 
 		if ok {
@@ -1525,7 +1565,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}
 	}
 
-	return result, nil
+	return nil
 }
 
 // finishReady completes processing of a Ready by applying deferred rawNode operations
