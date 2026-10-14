@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
 // TestRequestToOrder_WrapsEveryRequestVariant pins the contract that every
@@ -478,4 +479,54 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 			tc.expect.payloadAssert(t, order)
 		})
 	}
+}
+
+func TestRequestToOrder_FamilyConversionSideEffects(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	admission, _ := createTestAdmission(t, store)
+	overlay := newBulkOverlay()
+
+	registration, err := admission.requestToOrder(t.Context(), &servicepb.Request{
+		Type: &servicepb.Request_RegisterSigningKey{
+			RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
+				KeyId: "child", PublicKey: bytes.Repeat([]byte{0x11}, ed25519.PublicKeySize),
+			},
+		},
+	}, &signaturepb.SignedApplyBatch{KeyId: "parent"}, overlay)
+	require.NoError(t, err)
+	require.Equal(t, "parent", registration.GetSystemScoped().GetRegisterSigningKey().GetParentKeyId())
+
+	_, err = admission.requestToOrder(t.Context(), &servicepb.Request{
+		Type: &servicepb.Request_SaveNumscript{
+			SaveNumscript: &servicepb.SaveNumscriptRequest{
+				Ledger: "ledger", Name: "pay", Version: "1.0.0", Content: "send [USD 1] (source = @world destination = @alice)",
+			},
+		},
+	}, nil, overlay)
+	require.NoError(t, err)
+	content, ok := overlay.numscriptEntries.Get(numscriptEntryKey{Ledger: "ledger", Name: "pay", Version: "1.0.0"})
+	require.True(t, ok)
+	require.Equal(t, "send [USD 1] (source = @world destination = @alice)", content)
+	latest, ok := overlay.numscriptLatest.Get(numscriptNameKey{Ledger: "ledger", Name: "pay"})
+	require.True(t, ok)
+	require.Equal(t, "1.0.0", latest)
+
+	config := &commonpb.SinkConfig{Name: "events"}
+	added, err := admission.requestToOrder(t.Context(), &servicepb.Request{
+		Type: &servicepb.Request_AddEventsSink{AddEventsSink: &servicepb.AddEventsSinkRequest{Config: config}},
+	}, nil, overlay)
+	require.NoError(t, err)
+	require.Same(t, config, added.GetSystemScoped().GetAddEventsSink().GetConfig())
+	stored, ok := overlay.sinks.Get("events")
+	require.True(t, ok)
+	require.Same(t, config, stored)
+
+	_, err = admission.requestToOrder(t.Context(), &servicepb.Request{
+		Type: &servicepb.Request_RemoveEventsSink{RemoveEventsSink: &servicepb.RemoveEventsSinkRequest{Name: "events"}},
+	}, nil, overlay)
+	require.NoError(t, err)
+	_, ok = overlay.sinks.Get("events")
+	require.False(t, ok)
 }
