@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -93,16 +94,47 @@ func TestAccountAddressRouting(t *testing.T) {
 	}
 }
 
+// namedResourceEncodings adds encoded slashes, which free-form names may hold
+// but account addresses may not.
+var namedResourceEncodings = append([]struct {
+	name, encoded, decoded string
+	rawPath                bool
+}{
+	{"slash_upper", "reports%2Fgold", "reports/gold", true},
+	{"slash_lower", "reports%2fgold", "reports/gold", true},
+	{"double_encoded_slash", "reports%252Fgold", "reports%2Fgold", false},
+}, pathIdentifierEncodings...)
+
 // Numscript, prepared-query and account-type names are free-form identifiers
 // in a path segment, so they follow the same single-decoding rule.
 func TestNamedResourceRouting(t *testing.T) {
 	t.Parallel()
+	applied := func(name func(*servicepb.Request) string, logs ...*commonpb.Log) func(*testing.T, *MockBackend, *string, string) {
+		return func(t *testing.T, backend *MockBackend, captured *string, _ string) {
+			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+				require.Len(t, req.GetUnsigned().GetRequests(), 1)
+				*captured = name(req.GetUnsigned().GetRequests()[0])
+				if len(logs) == 0 {
+					return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+				}
+
+				return &domain.ApplyResult{Logs: logs}, nil
+			})
+		}
+	}
+	savedNumscript := &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_SavedNumscript{SavedNumscript: &commonpb.SavedNumscriptLog{
+			Info: &commonpb.NumscriptInfo{Name: "saved", Version: "1.0.0"},
+		}},
+	}}
 	routes := []struct {
-		name, method, path string
-		status             int
-		expect             func(t *testing.T, backend *MockBackend, captured *string)
+		name, method, prefix, suffix, body string
+		status                             int
+		// expect registers the backend call and records the name it receives.
+		// want is the decoded name, for backends that answer by name lookup.
+		expect func(t *testing.T, backend *MockBackend, captured *string, want string)
 	}{
-		{"numscript", http.MethodGet, "/numscripts/", http.StatusOK, func(_ *testing.T, backend *MockBackend, captured *string) {
+		{"numscript_get", http.MethodGet, "/numscripts/", "", "", http.StatusOK, func(_ *testing.T, backend *MockBackend, captured *string, _ string) {
 			backend.EXPECT().GetNumscript(gomock.Any(), "ledger1", gomock.Any(), "").DoAndReturn(
 				func(_ context.Context, _, name, _ string) (*commonpb.NumscriptInfo, error) {
 					*captured = name
@@ -110,36 +142,59 @@ func TestNamedResourceRouting(t *testing.T) {
 					return &commonpb.NumscriptInfo{}, nil
 				})
 		}},
-		{"prepared_query", http.MethodDelete, "/prepared-queries/", http.StatusNoContent, func(t *testing.T, backend *MockBackend, captured *string) {
-			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-				require.Len(t, req.GetUnsigned().GetRequests(), 1)
-				*captured = req.GetUnsigned().GetRequests()[0].GetDeletePreparedQuery().GetName()
+		{"numscript_save", http.MethodPut, "/numscripts/", "", `{"content":"send [USD 1] (source = @world destination = @bank)","version":"1.0.0"}`, http.StatusCreated, applied(func(r *servicepb.Request) string {
+			return r.GetSaveNumscript().GetName()
+		}, savedNumscript)},
+		{"prepared_query_delete", http.MethodDelete, "/prepared-queries/", "", "", http.StatusNoContent, applied(func(r *servicepb.Request) string {
+			return r.GetDeletePreparedQuery().GetName()
+		})},
+		{"prepared_query_execute", http.MethodPost, "/prepared-queries/", "/execute", "", http.StatusOK, func(_ *testing.T, backend *MockBackend, captured *string, _ string) {
+			backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+					*captured = req.GetQueryName()
 
-				return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
-			})
+					return &servicepb.ExecutePreparedQueryResponse{}, nil
+				})
 		}},
-		{"account_type", http.MethodDelete, "/account-types/", http.StatusNoContent, func(t *testing.T, backend *MockBackend, captured *string) {
-			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-				require.Len(t, req.GetUnsigned().GetRequests(), 1)
-				*captured = req.GetUnsigned().GetRequests()[0].GetRemoveAccountType().GetName()
-
-				return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
-			})
+		// The handler looks the name up in LedgerInfo, where only the decoded
+		// name exists: a still-escaped lookup answers 404. The name is read
+		// back from the response.
+		{"account_type_get", http.MethodGet, "/account-types/", "", "", http.StatusOK, func(_ *testing.T, backend *MockBackend, _ *string, want string) {
+			backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&commonpb.LedgerInfo{
+				Name:         "ledger1",
+				AccountTypes: map[string]*commonpb.AccountType{want: {Name: want, Pattern: "users:{id}"}},
+			}, nil)
 		}},
+		{"account_type_remove", http.MethodDelete, "/account-types/", "", "", http.StatusNoContent, applied(func(r *servicepb.Request) string {
+			return r.GetRemoveAccountType().GetName()
+		})},
 	}
 	for _, route := range routes {
-		for _, name := range pathIdentifierEncodings {
+		for _, name := range namedResourceEncodings {
 			t.Run(route.name+"/"+name.name, func(t *testing.T) {
 				t.Parallel()
 				var captured string
 				backend := NewMockBackend(gomock.NewController(t))
-				route.expect(t, backend, &captured)
+				route.expect(t, backend, &captured, name.decoded)
 				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
-				req := httptest.NewRequest(route.method, "/v3/ledger1"+route.path+name.encoded, nil)
+				var body io.Reader
+				if route.body != "" {
+					body = strings.NewReader(route.body)
+				}
+				req := httptest.NewRequest(route.method, "/v3/ledger1"+route.prefix+name.encoded+route.suffix, body)
 				require.Equal(t, name.rawPath, req.URL.RawPath != "")
 				rec := httptest.NewRecorder()
 				handler.ServeHTTP(rec, req)
 				require.Equal(t, route.status, rec.Code, rec.Body.String())
+				if route.name == "account_type_get" {
+					var resp struct {
+						Data struct {
+							Name string `json:"name"`
+						} `json:"data"`
+					}
+					require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+					captured = resp.Data.Name
+				}
 				require.Equal(t, name.decoded, captured)
 			})
 		}
