@@ -499,6 +499,12 @@ func (impl *ClusterServiceServerImpl) extractBackupDestination(storageProto *com
 
 	storage, err := backup.NewStorage(cfg)
 	if err != nil {
+		// A missing bucket, account, or container is a caller error; report
+		// it with its reason instead of the sanitized Unknown fallback.
+		if errors.Is(err, backup.ErrInvalidStorageConfig) {
+			return nil, nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+
 		return nil, nil, fmt.Errorf("creating backup storage: %w", err)
 	}
 

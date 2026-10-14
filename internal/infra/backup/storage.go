@@ -12,6 +12,11 @@ import (
 // errors.Is(err, ErrFileNotFound) holds.
 var ErrFileNotFound = errors.New("backup: file not found")
 
+// ErrInvalidStorageConfig is wrapped by NewStorage when the caller-supplied
+// StorageConfig is incomplete or names an unsupported driver. It identifies a
+// caller error, so API adapters can report it as invalid input.
+var ErrInvalidStorageConfig = errors.New("invalid backup storage config")
+
 //go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source storage.go -destination storage_generated_test.go -package backup . Storage
 
 // Storage provides file-level access to a backup destination.
@@ -50,21 +55,21 @@ func NewStorage(cfg StorageConfig) (Storage, error) {
 	switch cfg.Driver {
 	case "s3":
 		if cfg.S3Bucket == "" {
-			return nil, errors.New("s3_bucket is required for s3 driver")
+			return nil, fmt.Errorf("%w: s3_bucket is required for s3 driver", ErrInvalidStorageConfig)
 		}
 
 		return NewS3BackupStorage(cfg.S3Bucket, cfg.S3Region, cfg.S3Endpoint, cfg.S3AccessKeyID, cfg.S3SecretAccessKey)
 	case "azure":
 		if cfg.AzureAccountName == "" {
-			return nil, errors.New("azure_account_name is required for azure driver")
+			return nil, fmt.Errorf("%w: azure_account_name is required for azure driver", ErrInvalidStorageConfig)
 		}
 
 		if cfg.AzureContainer == "" {
-			return nil, errors.New("azure_container is required for azure driver")
+			return nil, fmt.Errorf("%w: azure_container is required for azure driver", ErrInvalidStorageConfig)
 		}
 
 		return NewAzureBackupStorage(cfg.AzureAccountName, cfg.AzureAccountKey, cfg.AzureContainer, cfg.AzureEndpoint)
 	default:
-		return nil, fmt.Errorf("unsupported backup driver: %q (supported: \"s3\", \"azure\")", cfg.Driver)
+		return nil, fmt.Errorf("%w: unsupported backup driver: %q (supported: \"s3\", \"azure\")", ErrInvalidStorageConfig, cfg.Driver)
 	}
 }

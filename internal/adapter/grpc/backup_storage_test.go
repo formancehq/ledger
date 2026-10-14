@@ -78,3 +78,56 @@ func TestStorageConfigFromProto_UnsetProviderInvalidArgument(t *testing.T) {
 	require.True(t, ok, "must be a gRPC status error")
 	require.Equal(t, codes.InvalidArgument, st.Code())
 }
+
+// TestExtractBackupDestination_IncompleteStorageInvalidArgument pins that
+// Backup and IncrementalBackup refuse an incomplete storage provider with
+// InvalidArgument and the missing field, instead of the sanitized Unknown
+// fallback that hides the reason in the server log.
+func TestExtractBackupDestination_IncompleteStorageInvalidArgument(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		storage *commonpb.BackupStorage
+		field   string
+	}{
+		{
+			name: "s3 without bucket",
+			storage: &commonpb.BackupStorage{Provider: &commonpb.BackupStorage_S3{
+				S3: &commonpb.S3StorageConfig{Endpoint: "http://localhost:20462"},
+			}},
+			field: "s3_bucket",
+		},
+		{
+			name: "azure without account name",
+			storage: &commonpb.BackupStorage{Provider: &commonpb.BackupStorage_Azure{
+				Azure: &commonpb.AzureStorageConfig{Container: "backups"},
+			}},
+			field: "azure_account_name",
+		},
+		{
+			name: "azure without container",
+			storage: &commonpb.BackupStorage{Provider: &commonpb.BackupStorage_Azure{
+				Azure: &commonpb.AzureStorageConfig{AccountName: "myaccount"},
+			}},
+			field: "azure_container",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			impl := &ClusterServiceServerImpl{clusterID: "cluster"}
+
+			_, _, err := impl.extractBackupDestination(tc.storage, "", "")
+			require.Error(t, err)
+
+			converted := convertToGRPCError(err, testLogger())
+			st, ok := status.FromError(converted)
+			require.True(t, ok, "must be a gRPC status error")
+			require.Equal(t, codes.InvalidArgument, st.Code())
+			require.Contains(t, st.Message(), tc.field)
+		})
+	}
+}

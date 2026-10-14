@@ -109,6 +109,18 @@ overwrites it. Restore resolves objects by the recorded key.
 
 The work is split between **Raft-coordinated lifecycle orders** (`BackupOrder`, `CompleteBackupOrder`, `FailBackupOrder` at `raft_cmd.proto:431-593`) and **executor work on the leader** (`internal/infra/backup/manager.go:40-180`). The FSM never blocks on the upload — it only records start, success, and failure.
 
+### Storage validation
+
+`Backup` and `IncrementalBackup` validate the storage provider on the leader
+before they propose a `Start` order. A missing provider, an S3 provider without
+a bucket, or an Azure provider without an account name or container returns
+`InvalidArgument` with the missing field in the message.
+`backup.NewStorage` marks these caller errors with
+`backup.ErrInvalidStorageConfig`; the gRPC adapter maps that sentinel in
+`internal/adapter/grpc/server_cluster.go`. Other storage construction failures,
+such as an unavailable driver or an AWS configuration load error, keep the
+sanitized server-error path.
+
 ### Per-destination mutual exclusion
 
 Two simultaneous backups to the same destination are rejected at FSM apply time. The mutex is keyed by `CanonicalDestinationKey` — a hash of the namespace-determining fields of the `BackupDestination` (driver kind, canonicalised endpoint, bucket/container, bucket ID; region, `base_path`, and credentials are deliberately excluded, see `internal/infra/state/backup_jobs.go`). Full (`BackupOrder`) and incremental (`IncrementalBackupOrder`) backups **share the same slot**: both are routed through the leader and propose a `Start` order that lands on the same key, so a full backup and an incremental backup against the same bucket cannot run concurrently — the second gets `ErrBackupInProgress`. Two backups against genuinely distinct destinations (different bucket/endpoint) run in parallel.
