@@ -107,6 +107,8 @@ message Uint256 {
 message Posting {
   string source = 1;
   string destination = 2;
+  // Amount moved. Required on a CreateTransaction posting: admission rejects an
+  // absent amount with POSTING_AMOUNT_REQUIRED. A zero amount must be explicit.
   Uint256 amount = 3;
   string asset = 4;
   // Color of the funds being moved. The empty string is the "uncolored" bucket

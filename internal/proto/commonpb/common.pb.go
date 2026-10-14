@@ -1898,8 +1898,10 @@ type Posting struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	Source      string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
 	Destination string                 `protobuf:"bytes,2,opt,name=destination,proto3" json:"destination,omitempty"`
-	Amount      *Uint256               `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
-	Asset       string                 `protobuf:"bytes,4,opt,name=asset,proto3" json:"asset,omitempty"`
+	// Amount moved. Required on a CreateTransaction posting: admission rejects an
+	// absent amount with POSTING_AMOUNT_REQUIRED. A zero amount must be explicit.
+	Amount *Uint256 `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
+	Asset  string   `protobuf:"bytes,4,opt,name=asset,proto3" json:"asset,omitempty"`
 	// Color of the funds being moved. The empty string is the "uncolored" bucket
 	// and is treated as just another color from a segregation standpoint.
 	// Color values are constrained to ^[A-Z]*$ at admission time.

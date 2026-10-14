@@ -1027,6 +1027,28 @@ func TestValidateOrderContent(t *testing.T) {
 			},
 		},
 		{
+			name: "posting without amount",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{posting, {
+					Source:      "world",
+					Destination: "users:bob",
+					Asset:       "USD",
+				}},
+			},
+			wantErr: domain.ErrPostingAmountRequired,
+		},
+		{
+			name: "posting with explicit zero amount",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{{
+					Source:      "world",
+					Destination: "users:bob",
+					Amount:      &commonpb.Uint256{},
+					Asset:       "USD",
+				}},
+			},
+		},
+		{
 			name: "inline script only",
 			ct: &raftcmdpb.CreateTransactionOrder{
 				Script: &commonpb.Script{Plain: "send [USD 1] (source = @world destination = @a)"},

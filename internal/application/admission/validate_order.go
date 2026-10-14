@@ -274,7 +274,8 @@ func validateOrderAccountAddresses(order *raftcmdpb.Order) domain.Describable {
 // payload (currently CreateTransaction). It rejects orders that declare no
 // content source (no postings, no inline script, no script reference) and
 // orders that combine explicit postings with a script — both shapes silently
-// produce an unintended transaction at the FSM (#452).
+// produce an unintended transaction at the FSM (#452). It also rejects explicit
+// postings without an amount, which the FSM would otherwise record as zero.
 //
 // The "result must contain ≥1 posting" invariant — needed to catch numscripts
 // that execute fine but emit no postings — lives on the FSM
@@ -311,6 +312,14 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 		return domain.ErrPostingsAndScriptConflict
 	case !hasPostings && !hasInlineScript && !refValid:
 		return domain.ErrEmptyTransaction
+	}
+
+	// An absent amount decodes to a nil Uint256, which the FSM would apply as
+	// zero. Zero must be explicit, so a posting without amount is malformed.
+	for _, p := range o.GetPostings() {
+		if p.GetAmount() == nil {
+			return domain.ErrPostingAmountRequired
+		}
 	}
 
 	// An executable reference's selector — the literal "latest" or a full semver
