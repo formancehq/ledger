@@ -745,6 +745,44 @@ func (c *MockScopeGetSinkConfigCall) DoAndReturn(f func(string) (commonpb.SinkCo
 	return c
 }
 
+// HasSigningKeys mocks base method.
+func (m *MockScope) HasSigningKeys() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasSigningKeys")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasSigningKeys indicates an expected call of HasSigningKeys.
+func (mr *MockScopeMockRecorder) HasSigningKeys() *MockScopeHasSigningKeysCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasSigningKeys", reflect.TypeOf((*MockScope)(nil).HasSigningKeys))
+	return &MockScopeHasSigningKeysCall{Call: call}
+}
+
+// MockScopeHasSigningKeysCall wrap *gomock.Call
+type MockScopeHasSigningKeysCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeHasSigningKeysCall) Return(arg0 bool) *MockScopeHasSigningKeysCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeHasSigningKeysCall) Do(f func() bool) *MockScopeHasSigningKeysCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeHasSigningKeysCall) DoAndReturn(f func() bool) *MockScopeHasSigningKeysCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // IncrementNextLedgerID mocks base method.
 func (m *MockScope) IncrementNextLedgerID() uint32 {
 	m.ctrl.T.Helper()

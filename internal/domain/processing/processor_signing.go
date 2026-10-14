@@ -19,6 +19,15 @@ func processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, ctx *Co
 		}
 	}
 
+	// Admission sets the parent to the batch signer, so a parent-less
+	// registration is the unsigned bootstrap. Admission only admits it while
+	// the key store is empty, but that check runs before apply: two unsigned
+	// registrations admitted together would both pass it. Re-check here, on
+	// replicated state, so only the first one can become a root key.
+	if order.GetParentKeyId() == "" && ctx.Scope.HasSigningKeys() {
+		return nil, domain.ErrUnsignedSigningKeyRegistration
+	}
+
 	ctx.Scope.AddSigningKey(order.GetKeyId(), order.GetPublicKey(), order.GetParentKeyId())
 
 	return &commonpb.LogPayload{

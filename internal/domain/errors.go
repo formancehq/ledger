@@ -645,6 +645,11 @@ var (
 	ErrSigningKeyIDRequired    = NewValidationSentinel("SIGNING_KEY_ID_REQUIRED", "signing key id is required")
 	ErrSigningKeyIDInvalidChar = NewValidationSentinel("SIGNING_KEY_ID_INVALID_CHAR", "signing key id must contain only printable ASCII (0x20–0x7E)")
 	ErrSigningKeyIDTooLong     = NewValidationSentinel("SIGNING_KEY_ID_TOO_LONG", "signing key id exceeds maximum length of 256 bytes")
+	// ErrUnsignedSigningKeyRegistration rejects a parent-less registration once
+	// a signing key exists. Admission derives the parent from the batch signer,
+	// so a parent-less registration is the unsigned bootstrap; admission checks
+	// the same rule, but only the FSM sees registrations admitted concurrently.
+	ErrUnsignedSigningKeyRegistration = NewValidationSentinel("UNSIGNED_SIGNING_KEY_REGISTRATION", "unsigned signing key registration rejected: a signing key is already registered")
 	// Color sentinels stay local: color is a ledger-internal posting
 	// dimension label, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants. See ValidateColor in validation.go.

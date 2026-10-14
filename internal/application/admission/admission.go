@@ -1126,7 +1126,9 @@ func (a *Admission) resolveBatch(ctx context.Context, req *servicepb.ApplyReques
 
 // authorizeUnsignedBatch enforces the unsigned-request policy across the whole
 // batch: every request must be admissible without a signature. Bootstrap logic:
-//   - RegisterSigningKey is allowed unsigned when no keys exist yet (bootstrap)
+//   - RegisterSigningKey is allowed unsigned when no keys exist yet (bootstrap).
+//     This read precedes apply, so concurrent unsigned registrations can all
+//     pass it; processRegisterSigningKey re-checks the rule at apply time.
 //   - all other signing-management requests require a signature once keys exist
 //   - regular requests check the requireSignatures flag
 func (a *Admission) authorizeUnsignedBatch(ctx context.Context, reqs []*servicepb.Request) error {

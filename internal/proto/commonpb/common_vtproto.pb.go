@@ -3401,6 +3401,15 @@ func (m *FailureDetails_NumscriptVersionNotFound) CloneVT() isFailureDetails_Kin
 	return r
 }
 
+func (m *FailureDetails_UnsignedSigningKeyRegistration) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_UnsignedSigningKeyRegistration)(nil)
+	}
+	r := new(FailureDetails_UnsignedSigningKeyRegistration)
+	r.UnsignedSigningKeyRegistration = m.UnsignedSigningKeyRegistration.CloneVT()
+	return r
+}
+
 func (m *AccountAddressEmptyDetails) CloneVT() *AccountAddressEmptyDetails {
 	if m == nil {
 		return (*AccountAddressEmptyDetails)(nil)
@@ -6098,6 +6107,22 @@ func (m *SigningKeyInvalidLengthDetails) CloneVT() *SigningKeyInvalidLengthDetai
 }
 
 func (m *SigningKeyInvalidLengthDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *UnsignedSigningKeyRegistrationDetails) CloneVT() *UnsignedSigningKeyRegistrationDetails {
+	if m == nil {
+		return (*UnsignedSigningKeyRegistrationDetails)(nil)
+	}
+	r := new(UnsignedSigningKeyRegistrationDetails)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *UnsignedSigningKeyRegistrationDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -16085,6 +16110,31 @@ func (this *FailureDetails_NumscriptVersionNotFound) EqualVT(thatIface isFailure
 	return true
 }
 
+func (this *FailureDetails_UnsignedSigningKeyRegistration) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_UnsignedSigningKeyRegistration)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.UnsignedSigningKeyRegistration, that.UnsignedSigningKeyRegistration; p != q {
+		if p == nil {
+			p = &UnsignedSigningKeyRegistrationDetails{}
+		}
+		if q == nil {
+			q = &UnsignedSigningKeyRegistrationDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *AccountAddressEmptyDetails) EqualVT(that *AccountAddressEmptyDetails) bool {
 	if this == that {
 		return true
@@ -18645,6 +18695,22 @@ func (this *SigningKeyInvalidLengthDetails) EqualVT(that *SigningKeyInvalidLengt
 
 func (this *SigningKeyInvalidLengthDetails) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*SigningKeyInvalidLengthDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *UnsignedSigningKeyRegistrationDetails) EqualVT(that *UnsignedSigningKeyRegistrationDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *UnsignedSigningKeyRegistrationDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*UnsignedSigningKeyRegistrationDetails)
 	if !ok {
 		return false
 	}
@@ -31403,6 +31469,27 @@ func (m *FailureDetails_NumscriptVersionNotFound) MarshalToSizedBufferVT(dAtA []
 	}
 	return len(dAtA) - i, nil
 }
+func (m *FailureDetails_UnsignedSigningKeyRegistration) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_UnsignedSigningKeyRegistration) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.UnsignedSigningKeyRegistration != nil {
+		size, err := m.UnsignedSigningKeyRegistration.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x9
+		i--
+		dAtA[i] = 0xaa
+	}
+	return len(dAtA) - i, nil
+}
 func (m *AccountAddressEmptyDetails) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -36759,6 +36846,39 @@ func (m *SigningKeyInvalidLengthDetails) MarshalToVT(dAtA []byte) (int, error) {
 }
 
 func (m *SigningKeyInvalidLengthDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *UnsignedSigningKeyRegistrationDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *UnsignedSigningKeyRegistrationDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *UnsignedSigningKeyRegistrationDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -47329,6 +47449,18 @@ func (m *FailureDetails_NumscriptVersionNotFound) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *FailureDetails_UnsignedSigningKeyRegistration) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.UnsignedSigningKeyRegistration != nil {
+		l = m.UnsignedSigningKeyRegistration.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *AccountAddressEmptyDetails) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -49195,6 +49327,16 @@ func (m *SigningKeyIdTooLongDetails) SizeVT() (n int) {
 }
 
 func (m *SigningKeyInvalidLengthDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *UnsignedSigningKeyRegistrationDetails) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -70368,6 +70510,47 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptVersionNotFound{NumscriptVersionNotFound: v}
 			}
 			iNdEx = postIndex
+		case 149:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UnsignedSigningKeyRegistration", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_UnsignedSigningKeyRegistration); ok {
+				if err := oneof.UnsignedSigningKeyRegistration.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &UnsignedSigningKeyRegistrationDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_UnsignedSigningKeyRegistration{UnsignedSigningKeyRegistration: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -81511,6 +81694,57 @@ func (m *SigningKeyInvalidLengthDetails) UnmarshalVT(dAtA []byte) error {
 		}
 		if fieldNum <= 0 {
 			return fmt.Errorf("proto: SigningKeyInvalidLengthDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *UnsignedSigningKeyRegistrationDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: UnsignedSigningKeyRegistrationDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: UnsignedSigningKeyRegistrationDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:

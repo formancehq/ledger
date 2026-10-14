@@ -15034,6 +15034,68 @@ func NewSigningKeyInvalidLengthDetailsListReader(s []*SigningKeyInvalidLengthDet
 	return signingKeyInvalidLengthDetailsListReadonly(s)
 }
 
+// UnsignedSigningKeyRegistrationDetailsReader provides read-only access to UnsignedSigningKeyRegistrationDetails.
+// Call Mutate() to obtain a mutable clone.
+type UnsignedSigningKeyRegistrationDetailsReader interface {
+	Mutate() *UnsignedSigningKeyRegistrationDetails
+}
+
+type unsignedSigningKeyRegistrationDetailsReadonly UnsignedSigningKeyRegistrationDetails
+
+func (r *unsignedSigningKeyRegistrationDetailsReadonly) Mutate() *UnsignedSigningKeyRegistrationDetails {
+	return (*UnsignedSigningKeyRegistrationDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this UnsignedSigningKeyRegistrationDetails.
+func (m *UnsignedSigningKeyRegistrationDetails) AsReader() UnsignedSigningKeyRegistrationDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*unsignedSigningKeyRegistrationDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this UnsignedSigningKeyRegistrationDetails.
+func (m *UnsignedSigningKeyRegistrationDetails) Mutate() *UnsignedSigningKeyRegistrationDetails {
+	return m.CloneVT()
+}
+
+// UnsignedSigningKeyRegistrationDetailsListReader provides read-only iteration over []*UnsignedSigningKeyRegistrationDetails.
+type UnsignedSigningKeyRegistrationDetailsListReader interface {
+	Len() int
+	Get(i int) UnsignedSigningKeyRegistrationDetailsReader
+	Range(yield func(int, UnsignedSigningKeyRegistrationDetailsReader) bool)
+}
+
+type unsignedSigningKeyRegistrationDetailsListReadonly []*UnsignedSigningKeyRegistrationDetails
+
+func (l unsignedSigningKeyRegistrationDetailsListReadonly) Len() int { return len(l) }
+
+func (l unsignedSigningKeyRegistrationDetailsListReadonly) Get(i int) UnsignedSigningKeyRegistrationDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l unsignedSigningKeyRegistrationDetailsListReadonly) Range(yield func(int, UnsignedSigningKeyRegistrationDetailsReader) bool) {
+	for i, v := range l {
+		var r UnsignedSigningKeyRegistrationDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewUnsignedSigningKeyRegistrationDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewUnsignedSigningKeyRegistrationDetailsListReader(s []*UnsignedSigningKeyRegistrationDetails) UnsignedSigningKeyRegistrationDetailsListReader {
+	return unsignedSigningKeyRegistrationDetailsListReadonly(s)
+}
+
 // SinkAlreadyExistsDetailsReader provides read-only access to SinkAlreadyExistsDetails.
 // Call Mutate() to obtain a mutable clone.
 type SinkAlreadyExistsDetailsReader interface {

@@ -70,7 +70,14 @@ Keys are managed by Raft-replicated orders (`processor_signing.go`):
 | `RevokeSigningKey` | Revoke a key, and with `cascade` every key descended from it (BFS over the parent relation). |
 | `SetSigningConfig` | Cluster-wide flags such as `require_signatures`. |
 
-The **first** `RegisterSigningKey` is the bootstrap: it has no parent because no signing key exists yet to authorise it. `authorizeUnsignedBatch()` in admission allows that single unsigned bootstrap to land. Every subsequent registration must be signed by an existing key.
+The **first** `RegisterSigningKey` is the bootstrap: it has no parent because no signing key exists yet to authorise it. Every subsequent registration must be signed by an existing key.
+
+Two components enforce the bootstrap rule:
+
+1. `authorizeUnsignedBatch()` in admission rejects an unsigned registration when its key store already holds a key. This check fails fast, but it reads the key store **before** the order is applied. Two unsigned registrations sent together are both admitted while the store is still empty.
+2. `processRegisterSigningKey` in the FSM re-checks the rule at apply time. Admission derives `ParentKeyId` from the batch signer, so a parent-less registration is exactly an unsigned one. The FSM rejects a parent-less registration with `ErrUnsignedSigningKeyRegistration` (`UNSIGNED_SIGNING_KEY_REGISTRATION`, a validation failure) when `Scope.HasSigningKeys()` is true. That method counts the committed key store and the registrations staged by earlier orders of the same proposal, so it also rejects two roots in one unsigned batch.
+
+The apply-time check reads only replicated state, so every replica reaches the same outcome (invariant #2). The rejected proposal is audited as a failure and stages no signing-key update. The admission-only `HasUndecodableRows` gate stays at admission: it depends on node-local recovery results and must not affect apply.
 
 Registration is an upsert rather than an insert: nothing rejects a duplicate key ID. Re-registering moves the key under whoever signed that batch, and re-registering with no parent makes it a root. The hierarchy is therefore mutable — a key's parent is whatever its **latest** registration assigned. See [Cascade and the effective parent](#cascade-and-the-effective-parent).
 
@@ -85,7 +92,7 @@ Two consequences inside a single signed batch, both following from "the last reg
 - A key revoked earlier in the batch and then **re-registered** under the revoke target **is** cascaded. The registration supersedes the removal, so the key is back in the subtree when the cascade runs.
 - A key **reassigned** earlier in the batch is cascaded or not according to where its new parent sits. Reassignment removes the old edge, so the key is no longer reachable through it — but the walk is transitive, so a new parent that is *itself* inside the revoked subtree still carries the cascade to it. Only a new parent the cascade never reaches takes the key out of range.
 
-Since the parent is the batch signer, reassignment means submitting the registration in a batch signed by the intended new parent, and an empty parent is reachable only for the unsigned bootstrap registration — once any key exists, `authorizeUnsignedBatch` rejects unsigned registration, so every registration is signed and therefore parented. The FSM still handles an empty `ParentKeyId` deterministically: recovery and `RebuildDelta` both rebuild roots from parent-less persisted rows.
+Since the parent is the batch signer, reassignment means submitting the registration in a batch signed by the intended new parent, and an empty parent is reachable only for the unsigned bootstrap registration — once any key exists, the FSM rejects a parent-less registration (see [Lifecycle](#lifecycle)), so a key cannot be re-registered as a root. Recovery and `RebuildDelta` both rebuild the root from its parent-less persisted row.
 
 A batch boundary does not change either answer: the same ordered operations produce the same surviving key set whether they are submitted as one signed batch or several. Deriving the cascade from an unordered view of the staged updates is what made those two disagree (EN-2011).
 
@@ -121,5 +128,6 @@ The signed payload format is fixed by vtprotobuf encoding rules — `internal/pk
 |---------|-------|
 | `ErrInvalidSignature` returned at admission | Wrong key ID, tampered payload, or wrong private key. |
 | Bootstrap registration rejected | `RequireSignatures()` is true and there is no parent key — solution is the maintenance-mode workaround above. |
+| `UNSIGNED_SIGNING_KEY_REGISTRATION` returned for an unsigned registration | Another unsigned registration was applied first, or the same unsigned batch registers more than one key. Sign the registration with an existing key. |
 | Client cannot verify a stored log | Server's response key has rotated; client must refresh via the Discovery RPC or the `--response-verify-key` flag. |
 | Audit chain hash mismatch on entries with valid `Log.Signature` | Log entry tampered after the fact — caught by the checker, not by signature verification (the signature still verifies; the hash chain doesn't). |

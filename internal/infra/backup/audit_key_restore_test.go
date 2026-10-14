@@ -94,7 +94,7 @@ func TestAuditKeyFullIncrementalRestoreAcrossClusterIDs(t *testing.T) {
 	require.NoError(t, sourceStore.Flush())
 	_, err = RunBackup(ctx, testLogger(), sourceStore, storage, "cluster-a", "audit-key-full-a")
 	require.NoError(t, err)
-	applySigningEntry(t, source, sourceStore, 2, signingRegisterOrder("after", make([]byte, 32), ""))
+	applySigningEntry(t, source, sourceStore, 2, signingRegisterOrder("after", make([]byte, 32), "before"))
 	require.NoError(t, sourceStore.Flush())
 	inc, err := RunIncrementalBackup(ctx, testLogger(), sourceStore, storage, "cluster-a", 0)
 	require.NoError(t, err)
@@ -137,7 +137,7 @@ func TestAuditKeyFullIncrementalRestoreAcrossClusterIDs(t *testing.T) {
 	before := lastAuditForKeyTest(t, restored)
 	require.Equal(t, uint64(2), before.GetSequence())
 	applySigningEntry(t, destination, restored, destination.State.LastAppliedIndex+1,
-		signingRegisterOrder("new-on-b", make([]byte, 32), ""))
+		signingRegisterOrder("new-on-b", make([]byte, 32), "before"))
 	after := lastAuditForKeyTest(t, restored)
 	require.Equal(t, uint64(3), after.GetSequence())
 	require.NotEqual(t, before.GetHash(), after.GetHash())

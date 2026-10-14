@@ -134,6 +134,10 @@ func (s *skipSafeScope) GetSigningKeyChildren(keyID string) []string {
 	return s.inner.GetSigningKeyChildren(keyID)
 }
 
+func (s *skipSafeScope) HasSigningKeys() bool {
+	return s.inner.HasSigningKeys()
+}
+
 func (s *skipSafeScope) SetRequireSignatures(require bool) {
 	trapUnbuffered("SetRequireSignatures", map[string]any{"require": require})
 }

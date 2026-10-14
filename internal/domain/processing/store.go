@@ -66,6 +66,10 @@ type Scope interface {
 	AddSigningKey(keyID string, publicKey []byte, parentKeyID string)
 	RemoveSigningKey(keyID string)
 	GetSigningKeyChildren(keyID string) []string
+	// HasSigningKeys reports whether a signing key exists in the state the
+	// proposal has built so far: committed keys, or a registration staged by
+	// an earlier order of the same proposal.
+	HasSigningKeys() bool
 	SetRequireSignatures(require bool)
 
 	// Maintenance mode operations

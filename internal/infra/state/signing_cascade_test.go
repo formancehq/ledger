@@ -281,10 +281,14 @@ func TestSigningCascadeSurvivesRestart(t *testing.T) {
 	childPub, _ := signingKeypair(t)
 	replacementPub, replacementPriv := signingKeypair(t)
 	survivorPub, survivorPriv := signingKeypair(t)
+	rootPub, _ := signingKeypair(t)
 
-	runner.commit(registerOrder("P", parentPub, ""))
+	// Only the unsigned bootstrap registers a parent-less key, so P and the
+	// survivor share the single root.
+	runner.commit(registerOrder("root", rootPub, ""))
+	runner.commit(registerOrder("P", parentPub, "root"))
 	runner.commit(registerOrder("C", childPub, "P"))
-	runner.commit(registerOrder("survivor", survivorPub, ""))
+	runner.commit(registerOrder("survivor", survivorPub, "root"))
 
 	runner.commit(
 		revokeOrder("C", false),
@@ -292,7 +296,7 @@ func TestSigningCascadeSurvivesRestart(t *testing.T) {
 		revokeOrder("P", true),
 	)
 
-	require.ElementsMatch(t, []string{"survivor"}, runner.persistedKeyIDs())
+	require.ElementsMatch(t, []string{"root", "survivor"}, runner.persistedKeyIDs())
 
 	recovered := runner.restart()
 
@@ -304,7 +308,7 @@ func TestSigningCascadeSurvivesRestart(t *testing.T) {
 	}
 
 	require.Equal(t, survivorPub, recovered.GetPublicKey("survivor"),
-		"an unrelated root key survives the restart with its material intact")
+		"an unrelated key survives the restart with its material intact")
 
 	// The cascade walks the parent relation, so the two stores have to agree on
 	// the edges too, not just on which keys exist.
@@ -312,11 +316,12 @@ func TestSigningCascadeSurvivesRestart(t *testing.T) {
 		"the revoked parent has no children left to cascade on a restarted replica")
 	require.Equal(t, runner.machine.keyStore.GetChildren("P"), recovered.GetChildren("P"))
 	require.Equal(t, runner.machine.keyStore.GetChildren("survivor"), recovered.GetChildren("survivor"))
+	require.Equal(t, runner.machine.keyStore.GetChildren("root"), recovered.GetChildren("root"))
 
 	require.False(t, runner.authenticates("C", replacementPriv))
 	require.False(t, runner.authenticates("P", parentPriv))
 	require.True(t, runner.authenticates("survivor", survivorPriv),
-		"an unrelated root key is untouched by the cascade")
+		"a key outside the revoked subtree is untouched by the cascade")
 }
 
 // TestSigningCascadeFollowsTheEffectiveParent covers the rest of the ordered-fold
@@ -334,7 +339,7 @@ func TestSigningCascadeFollowsTheEffectiveParent(t *testing.T) {
 		// orders are applied after P, other and C (parented to P) are committed.
 		orders func(replacement []byte) []*raftcmdpb.Order
 		// survives lists the key IDs still usable once the batch is applied, beyond
-		// the "other" root key, which every case keeps.
+		// the root and the "other" key, which every case keeps.
 		survives []string
 		cascaded []string
 	}{
@@ -351,20 +356,6 @@ func TestSigningCascadeFollowsTheEffectiveParent(t *testing.T) {
 			orders: func(replacement []byte) []*raftcmdpb.Order {
 				return []*raftcmdpb.Order{
 					registerOrder("C", replacement, "other"),
-					revokeOrder("P", true),
-				}
-			},
-			survives: []string{"C"},
-			cascaded: nil,
-		},
-		{
-			// Admission only ever emits an empty ParentKeyId for the unsigned
-			// bootstrap registration, but recovery and RebuildDelta both rebuild
-			// roots from parent-less rows, so the FSM must resolve one the same way.
-			name: "a child re-registered as a root leaves the subtree",
-			orders: func(replacement []byte) []*raftcmdpb.Order {
-				return []*raftcmdpb.Order{
-					registerOrder("C", replacement, ""),
 					revokeOrder("P", true),
 				}
 			},
@@ -428,14 +419,18 @@ func TestSigningCascadeFollowsTheEffectiveParent(t *testing.T) {
 			otherPub, otherPriv := signingKeypair(t)
 			childPub, _ := signingKeypair(t)
 			replacementPub, replacementPriv := signingKeypair(t)
+			rootPub, _ := signingKeypair(t)
 
-			runner.commit(registerOrder("P", parentPub, ""))
-			runner.commit(registerOrder("other", otherPub, ""))
+			// Only the unsigned bootstrap registers a parent-less key, so P and
+			// "other" share the single root, which no case revokes.
+			runner.commit(registerOrder("root", rootPub, ""))
+			runner.commit(registerOrder("P", parentPub, "root"))
+			runner.commit(registerOrder("other", otherPub, "root"))
 			runner.commit(registerOrder("C", childPub, "P"))
 
 			payloads := runner.commit(tc.orders(replacementPub)...)
 
-			expected := append([]string{"other"}, tc.survives...)
+			expected := append([]string{"root", "other"}, tc.survives...)
 			require.ElementsMatch(t, expected, runner.persistedKeyIDs())
 
 			require.True(t, runner.authenticates("other", otherPriv))

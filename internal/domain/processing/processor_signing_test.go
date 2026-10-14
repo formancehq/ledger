@@ -380,3 +380,64 @@ func TestProcessSetSigningConfig(t *testing.T) {
 	require.NotNil(t, configLog)
 	require.True(t, configLog.GetRequireSignatures())
 }
+
+// TestProcessRegisterSigningKey_UnsignedBootstrapRequiresAnEmptyKeyStore pins
+// the apply-time half of the unsigned bootstrap rule. A parent-less
+// registration is the unsigned bootstrap (admission derives the parent from the
+// batch signer), and admission checks the key store before the order is
+// applied. Two such registrations admitted together both pass that check, so
+// the FSM must reject every one that finds a signing key already present.
+func TestProcessRegisterSigningKey_UnsignedBootstrapRequiresAnEmptyKeyStore(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		hasKeys bool
+		wantErr domain.SerializableError
+	}{
+		{name: "empty key store accepts the bootstrap root", hasKeys: false},
+		{name: "existing key rejects a second root", hasKeys: true, wantErr: domain.ErrUnsignedSigningKeyRegistration},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStore := NewMockScope(ctrl)
+			processor, err := NewRequestProcessor(nil, 0)
+			require.NoError(t, err)
+
+			mockStore.EXPECT().HasSigningKeys().Return(tt.hasKeys)
+			if tt.wantErr == nil {
+				mockStore.EXPECT().AddSigningKey("root", []byte{0xAB, 0xCD}, "")
+			}
+
+			order := &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_SystemScoped{
+					SystemScoped: &raftcmdpb.SystemScopedOrder{
+						Payload: &raftcmdpb.SystemScopedOrder_RegisterSigningKey{
+							RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
+								KeyId:     "root",
+								PublicKey: []byte{0xAB, 0xCD},
+							},
+						},
+					},
+				},
+			}
+
+			result, err := processor.ProcessOrder(order, mockStore)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				require.Nil(t, result)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Empty(t, result.GetRegisterSigningKey().GetParentKeyId())
+		})
+	}
+}

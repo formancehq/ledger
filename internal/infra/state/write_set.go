@@ -1347,6 +1347,30 @@ func (b *WriteSet) GetSigningKeyChildren(keyID string) []string {
 	return children
 }
 
+// HasSigningKeys reports whether any signing key exists once the proposal's
+// staged registrations are counted: a committed key, or a registration staged
+// by an earlier order that a later one has not removed.
+//
+// It gates the unsigned bootstrap in processRegisterSigningKey, so it must be
+// identical on every replica (invariant #2). Both inputs are replicated state:
+// the key store holds what earlier applied proposals committed, and the staged
+// updates come from this proposal. Removals staged in the proposal do not
+// reopen the window for committed keys; the answer stays "keys exist". That is
+// the safe answer, and an unsigned batch cannot carry a revocation anyway.
+func (b *WriteSet) HasSigningKeys() bool {
+	if b.fsm.keyStore != nil && b.fsm.keyStore.HasKeys() {
+		return true
+	}
+
+	for _, state := range b.effectiveSigningKeys() {
+		if !state.removed {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (b *WriteSet) SetRequireSignatures(require bool) {
 	b.pendingSigningConfigUpdate = &signingConfigUpdate{
 		requireSignatures: require,

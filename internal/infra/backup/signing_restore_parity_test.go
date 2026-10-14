@@ -142,11 +142,11 @@ func TestBackup_UncommittedRejectionKeepsHLCParityAfterDelta(t *testing.T) {
 
 	// The non-empty post-checkpoint delta supplies the restored HLC. A later
 	// uncommitted rejection must leave that clock unchanged on the source.
-	applySigningEntry(t, source, sourceStore, 2, signingRegisterOrder("after", make([]byte, 32), ""))
+	applySigningEntry(t, source, sourceStore, 2, signingRegisterOrder("after", make([]byte, 32), "before"))
 	auditedTimestamp := source.State.LastAppliedTimestamp
 	key := "retry-after-uncommitted"
 	newProposal := func(id uint64, preloadUnavailable bool) *raftcmdpb.Proposal {
-		order := signingRegisterOrder("retry", make([]byte, 32), "")
+		order := signingRegisterOrder("retry", make([]byte, 32), "before")
 		if preloadUnavailable {
 			order.Technical = &raftcmdpb.OrderTechnical{PreloadUnavailable: true}
 		}
@@ -263,6 +263,7 @@ func TestBackup_SigningCascadeRestoreParity(t *testing.T) {
 		childPub       = bytes.Repeat([]byte{0x22}, 32)
 		replacementPub = bytes.Repeat([]byte{0x33}, 32)
 		survivorPub    = bytes.Repeat([]byte{0x44}, 32)
+		rootPub        = bytes.Repeat([]byte{0x55}, 32)
 	)
 
 	ctx := context.Background()
@@ -270,31 +271,33 @@ func TestBackup_SigningCascadeRestoreParity(t *testing.T) {
 
 	src, srcStore, _ := newSigningParityMachine(t)
 
-	// Pre-checkpoint: P with child C, plus an unrelated root the cascade must
+	// Pre-checkpoint: P with child C, plus an unrelated key the cascade must
 	// leave alone, so the checkpoint is non-trivial and the comparison has a
-	// positive case as well as a negative one.
-	applySigningEntry(t, src, srcStore, 1, signingRegisterOrder("P", parentPub, ""))
-	applySigningEntry(t, src, srcStore, 2, signingRegisterOrder("C", childPub, "P"))
-	applySigningEntry(t, src, srcStore, 3, signingRegisterOrder("survivor", survivorPub, ""))
+	// positive case as well as a negative one. Only the unsigned bootstrap
+	// registers a parent-less key, so P and the survivor share one root.
+	applySigningEntry(t, src, srcStore, 1, signingRegisterOrder("root", rootPub, ""))
+	applySigningEntry(t, src, srcStore, 2, signingRegisterOrder("P", parentPub, "root"))
+	applySigningEntry(t, src, srcStore, 3, signingRegisterOrder("C", childPub, "P"))
+	applySigningEntry(t, src, srcStore, 4, signingRegisterOrder("survivor", survivorPub, "root"))
 	require.NoError(t, srcStore.Flush())
 
 	full, err := RunBackup(ctx, testLogger(), srcStore, storage, bucketID, "bk-full")
 	require.NoError(t, err)
 	require.Positive(t, full.LastLogSequence)
 
-	require.ElementsMatch(t, []string{"P", "C", "survivor"}, signingKeyIDs(t, srcStore),
+	require.ElementsMatch(t, []string{"root", "P", "C", "survivor"}, signingKeyIDs(t, srcStore),
 		"the checkpoint is taken while C is live, so it carries C's row")
 
 	// After the checkpoint: the reported sequence, in one proposal.
-	applySigningEntry(t, src, srcStore, 4,
+	applySigningEntry(t, src, srcStore, 5,
 		signingRevokeOrder("C", false),
 		signingRegisterOrder("C", replacementPub, "P"),
 		signingRevokeOrder("P", true),
 	)
 	require.NoError(t, srcStore.Flush())
 
-	require.ElementsMatch(t, []string{"survivor"}, signingKeyIDs(t, srcStore),
-		"live apply must leave only the unrelated root")
+	require.ElementsMatch(t, []string{"root", "survivor"}, signingKeyIDs(t, srcStore),
+		"live apply must leave only the root and the unrelated key")
 
 	inc, err := RunIncrementalBackup(ctx, testLogger(), srcStore, storage, bucketID, 0)
 	require.NoError(t, err)
@@ -305,9 +308,10 @@ func TestBackup_SigningCascadeRestoreParity(t *testing.T) {
 
 	// The restored cluster: the checkpoint's state, then the delta.
 	dst, dstStore, dstAttrs := newSigningParityMachine(t)
-	applySigningEntry(t, dst, dstStore, 1, signingRegisterOrder("P", parentPub, ""))
-	applySigningEntry(t, dst, dstStore, 2, signingRegisterOrder("C", childPub, "P"))
-	applySigningEntry(t, dst, dstStore, 3, signingRegisterOrder("survivor", survivorPub, ""))
+	applySigningEntry(t, dst, dstStore, 1, signingRegisterOrder("root", rootPub, ""))
+	applySigningEntry(t, dst, dstStore, 2, signingRegisterOrder("P", parentPub, "root"))
+	applySigningEntry(t, dst, dstStore, 3, signingRegisterOrder("C", childPub, "P"))
+	applySigningEntry(t, dst, dstStore, 4, signingRegisterOrder("survivor", survivorPub, "root"))
 	require.NoError(t, dstStore.Flush())
 
 	require.NoError(t, ApplyExportsAndRebuild(ctx, testLogger(), storage, dstStore, manifest))

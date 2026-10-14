@@ -698,6 +698,7 @@ func (s *scopeImpl) PutReverted(key domain.TransactionKey, reverted bool) {
 func (s *scopeImpl) AddSigningKey(_ string, _ []byte, _ string) {}
 func (s *scopeImpl) RemoveSigningKey(_ string)                  {}
 func (s *scopeImpl) GetSigningKeyChildren(_ string) []string    { return nil }
+func (s *scopeImpl) HasSigningKeys() bool                       { return false }
 func (s *scopeImpl) SetRequireSignatures(_ bool)                {}
 func (s *scopeImpl) SetMaintenanceMode(_ bool)                  {}
 
