@@ -108,6 +108,21 @@ rg -n '^//go:generate mockgen' --glob '*.go'
 Always run `go generate ./...` rather than generating only the interface you
 remember changing, so every annotated package stays synchronized.
 
+Use mockgen source mode (`-source <file>`) for interfaces declared in this
+repository, including interfaces from another package (`-source
+../../infra/backup/storage.go`). Package mode (an import path or `.` followed
+by interface names) type-checks the whole dependency graph from source on every
+call and costs roughly a second per directive; source mode parses one file
+in about 0.1 seconds.
+
+Source mode mocks every interface in the file and ignores trailing interface
+names. Exclude the others with `-exclude_interfaces`, for example the server
+interfaces in a `*_grpc.pb.go` file. Keep package mode only where source mode
+cannot produce the mock: interfaces from external modules, such as
+`google.golang.org/grpc` streams, and type aliases of generic instantiations,
+such as `readstore.EntityIterator`. Generate several interfaces from one
+package-mode import path in a single directive so the package loads once.
+
 ## Adding a New CLI Command
 
 1. Create `cmd/ledgerctl/<group>/<action>.go` with:

@@ -26,7 +26,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -destination=recovery_storage_generated_test.go -package=backup github.com/formancehq/ledger/v3/internal/infra/backup Storage
+//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source=../../infra/backup/storage.go -destination=recovery_storage_generated_test.go -package=backup Storage
 
 // recoveryFixture injects one transport failure at the Proposer boundary. It
 // executes and commits the real job-state transitions, not Raft elections. The
