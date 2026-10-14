@@ -106,17 +106,18 @@ jobs:
           echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      - name: Use HTTP/1 for Go dependency downloads in the compiler stage
+      - name: Use HTTP/1 for Go dependency downloads in compiler stages
         run: |
           nix develop .#ci --command python3 - <<'PYCODE'
           from pathlib import Path
-          path = Path("Dockerfile.antithesis")
-          source = path.read_text()
-          stages = [line for line in source.splitlines() if line.startswith("FROM golang:") and line.endswith(" AS compiler")]
-          if len(stages) != 1:
-              raise SystemExit("Expected exactly one Go compiler stage")
-          source = source.replace(stages[0] + "\n", stages[0] + "\nENV GODEBUG=http2client=0\n", 1)
-          path.write_text(source)
+          for filename in ("Dockerfile.antithesis", "tests/antithesis/workload/Dockerfile", "misc/operator/Dockerfile"):
+              path = Path(filename)
+              source = path.read_text()
+              stages = [line for line in source.splitlines() if line.startswith("FROM ") and "golang:" in line]
+              if len(stages) != 1:
+                  raise SystemExit(f"Expected exactly one Go compiler stage in {filename}")
+              source = source.replace(stages[0] + "\n", stages[0] + "\nENV GODEBUG=http2client=0\n", 1)
+              path.write_text(source)
           PYCODE
 
       - name: Build and publish AMD64 images
