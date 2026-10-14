@@ -670,7 +670,7 @@ func accountCursorOf(a *commonpb.Account) string {
 }
 
 func (impl *BucketServiceServerImpl) GetPrimaryMetrics(ctx context.Context, req *servicepb.GetPrimaryMetricsRequest) (*servicepb.GetPrimaryMetricsResponse, error) {
-	if conn, err := impl.forwarder.resolve(req.GetNodeId()); err != nil {
+	if conn, err := impl.forwarder.resolve(uint64(req.GetNodeId())); err != nil {
 		return nil, err
 	} else if conn != nil {
 		return servicepb.NewBucketServiceClient(conn).GetPrimaryMetrics(ctx, req)
@@ -691,7 +691,7 @@ func (impl *BucketServiceServerImpl) GetPrimaryMetrics(ctx context.Context, req 
 }
 
 func (impl *BucketServiceServerImpl) GetSecondaryMetrics(ctx context.Context, req *servicepb.GetSecondaryMetricsRequest) (*servicepb.GetSecondaryMetricsResponse, error) {
-	if conn, err := impl.forwarder.resolve(req.GetNodeId()); err != nil {
+	if conn, err := impl.forwarder.resolve(uint64(req.GetNodeId())); err != nil {
 		return nil, err
 	} else if conn != nil {
 		return servicepb.NewBucketServiceClient(conn).GetSecondaryMetrics(ctx, req)

@@ -16,6 +16,18 @@ An empty error by itself does not establish successful delivery.
 Filtered or internal logs can advance the cursor without external delivery;
 `Delivering=True` therefore does not establish a successful publish by itself.
 
+For scale-down membership observations (EN-2904), trace the actual
+`ledgerctl cluster status --json` output into the removal postcondition.
+Member IDs are decimal JSON strings decoded across the full uint64 range;
+`3` and `4294967299` must remain distinct. With retained leader node 1 and
+member 4294967299, removable target node 3 must not appear present. Retain
+small-ID, high-bit-only and maximum-ID
+cases, and require nonnumeric strings, overflowing or unquoted numeric IDs to stop
+before removal. Keep the existing normal/force removal, lost-response,
+replacement-Pod and partial-reconciliation evidence; widening the observation
+does not change the ordinal-based scale-down algorithm or authorize old v3
+numeric-output fallback.
+
 ## Reachability and proof
 
 For each hypothesis, establish all of the following from the audited SHA:

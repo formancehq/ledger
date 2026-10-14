@@ -75,7 +75,7 @@ func TestRoutedController_GetLedgerFallbackDoesNotFenceCheckpointMetadata(t *tes
 	require.False(t, follower.IsLeader())
 	followerState, err := follower.GetClusterState(ctx)
 	require.NoError(t, err)
-	require.Equal(t, uint32(2), followerState.GetLocalNode())
+	require.Equal(t, uint64(2), followerState.GetLocalNode())
 	require.Equal(t, uint64(155), followerState.GetRaftStatus().GetLastPersistedIndex())
 	require.Empty(t, followerState.GetNodes(), "followers report their local cursor without leader topology")
 	routed := NewRoutedController(followerController, follower, pool)
@@ -167,10 +167,10 @@ func TestClusterService_CheckpointFenceIdentityAndLocalProgress(t *testing.T) {
 	topology, err := pinned.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 	require.NoError(t, err)
 	require.Equal(t, "Leader", topology.GetState())
-	require.Equal(t, uint32(1), topology.GetLocalNode())
+	require.Equal(t, uint64(1), topology.GetLocalNode())
 	require.GreaterOrEqual(t, topology.GetRaftStatus().GetLastPersistedIndex(), uint64(521))
 	require.Len(t, topology.GetNodes(), 2)
-	var resolvedID uint32
+	var resolvedID uint64
 	for _, peer := range topology.GetNodes() {
 		switch peer.GetId() {
 		case 1:
@@ -180,7 +180,7 @@ func TestClusterService_CheckpointFenceIdentityAndLocalProgress(t *testing.T) {
 			resolvedID = peer.GetId()
 		}
 	}
-	require.Equal(t, uint32(2), resolvedID)
+	require.Equal(t, uint64(2), resolvedID)
 
 	// The explicit discovered ID selects the follower's own durable cursor.
 	// Reusing the leader response, or requiring topology on this local response,

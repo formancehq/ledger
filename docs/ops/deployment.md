@@ -4,6 +4,16 @@
 
 This document describes the different deployment methods for Ledger v3, from local configuration to production deployment on Kubernetes.
 
+### Cluster status consumers
+
+Cluster node ID fields widen to uint64 while retaining protocol revision 40.
+`ledgerctl cluster status --json` encodes node IDs as decimal strings, including ordinary ordinal IDs. Deploy the
+operator with its corresponding updated status reader when deploying these
+server/CLI builds: scale-down membership observations depend on this wire shape.
+Older gRPC clients preserve IDs through 2^32-1 but truncate larger IDs; upgrade
+cluster-management clients before using nodes above that limit. Consumers of
+structured CLI output must accept decimal strings.
+
 ### Service protocol compatibility
 
 Deploy the server and `ledgerctl` from the same delivery, and update other gRPC

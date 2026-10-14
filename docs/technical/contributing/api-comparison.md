@@ -1621,3 +1621,16 @@ Admission rejects the exact names `_` (system API routes) and `_system`
 (system events) on every ledger-scoped write, before proposing to Raft.
 This applies equally to HTTP and gRPC. Other underscore-prefixed names,
 including `_systemx` and `_System`, remain valid.
+
+### Cluster management identities
+
+The v3 ClusterService and `ledgerctl cluster status/watch/transfer-leader`
+preserve unsigned 64-bit Raft node IDs. Status uses zero for leader routing;
+transfer requires a nonzero target. Protocol revision 40 is retained: the
+widening preserves varint encoding. Older clients preserve IDs through
+MaxUint32 but truncate larger values; upgrade those clients before using
+nodes above that limit. Structured CLI status IDs are decimal
+strings under protobuf JSON, including small IDs; the operator membership reader
+consumes that exact representation. These Raft administration RPCs have no
+v2 ledger HTTP endpoint counterpart; HTTP routes and envelopes are unchanged.
+BucketService metrics selectors retain their existing uint32 contract.

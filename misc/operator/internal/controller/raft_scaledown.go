@@ -279,7 +279,7 @@ func raftNodePresent(ctx context.Context, cfg *rest.Config, clientset kubernetes
 	var state struct {
 		State string `json:"state"`
 		Nodes []struct {
-			ID uint32 `json:"id"`
+			ID uint64 `json:"id,string"`
 		} `json:"nodes"`
 	}
 	if err := json.Unmarshal([]byte(result.Stdout), &state); err != nil {
@@ -290,7 +290,7 @@ func raftNodePresent(ctx context.Context, cfg *rest.Config, clientset kubernetes
 	}
 
 	for _, member := range state.Nodes {
-		if member.ID == uint32(nodeID) {
+		if member.ID == uint64(nodeID) {
 			return true, nil
 		}
 	}

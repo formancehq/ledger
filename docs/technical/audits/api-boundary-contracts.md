@@ -297,3 +297,24 @@ oneofs. Get/list fixtures in `internal/adapter/http/testdata/ledger_info_rewrite
 are shared routed-response and generated SDK operation inputs. Marshal failure must return sanitized 500 before
 headers. The confidentiality oracle belongs to sensitive-data-exposure-boundaries.
 See [LedgerInfo](../architecture/subsystems/api/ledger-info.md).
+
+## Full-width cluster identities (EN-2904)
+
+Follow each admitted uint64 Raft identity through Node.GetClusterState,
+ClusterService status routing and peer enrichment, leadership transfer, and
+Cobra status/watch/transfer commands. Exercise nodes 1 and 4294967297 together,
+plus 4294967296 to distinguish loss into the zero sentinel. Assert exact local,
+leader and progress IDs, correct address/version/sync/index attribution, and
+the outgoing transfer target and returned leader. Preserve small-ID controls,
+status zero routing, transfer zero rejection and overflow above MaxUint64.
+Revision 40 is retained because the widening preserves varint wire encoding.
+Older clients still truncate IDs above MaxUint32; upgrade those clients before
+using high node IDs.
+This evidence covers identity preservation at the service/CLI boundary; it does
+not change persisted membership, transfer readiness or quorum semantics.
+
+Structured CLI status uses protobuf JSON decimal strings for these identities,
+including small IDs. Exercise the actual Cobra stdout contract and the operator
+scale-down membership reader; string parsing must preserve high values and must
+not mistake node 4294967297 for node 1. The operator reconciliation domain owns
+the later removal/retry/StatefulSet/PVC sequence.

@@ -658,3 +658,20 @@ page. The protobuf text changes only by a comment. Clients that previously
 treated the requested page as complete must now follow the cursor to read all
 results. This response behavior changes under revision 40 by the RC policy;
 the revision is frozen, and the client impact must be documented.
+
+## Full-width cluster identities
+
+ClusterService status requests, node-list IDs, top-level leader/local IDs,
+and leadership-transfer request/response IDs use `uint64`. Status projection,
+peer enrichment and CLI selection preserve the full Raft identity, including
+IDs above 2^32-1. Zero still selects the leader for status and is invalid for
+leadership transfer.
+
+The protocol remains at revision 40: `uint32` and `uint64` share the same varint
+wire encoding, and existing clients preserve values through 2^32-1. Older
+clients truncate larger IDs, so upgrade cluster-management clients before using
+nodes with IDs above that limit. Protobuf JSON and structured CLI status output
+encode these IDs as decimal strings, including small IDs; consumers of that
+output must accept strings. The operator's membership reader is updated
+accordingly. No persisted Raft or membership format changes or migration are
+introduced.

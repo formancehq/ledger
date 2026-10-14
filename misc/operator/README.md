@@ -27,7 +27,12 @@ only the removal mode: crashed or missing Pods use the existing force-removal
 path first. Other Pods, including Pending or running Pods without a crash
 indicator, use normal consensus removal in descending ordinal order. Before
 **each** removal it queries structured
-`ledgerctl cluster status --json` and requires a leader response. Force removal
+`ledgerctl cluster status --json` and requires a leader response. It reads
+member IDs as decimal JSON strings without narrowing their uint64 range
+(EN-2904); member `4294967299` remains distinct from removable target node `3`.
+The retained leader remains node `1`. JSON
+decoding failures, including overflowing or unquoted numeric IDs, stop
+reconciliation before removal. Force removal
 uses `--node-id 1` to read the retained leader's local membership without a
 quorum-backed route. An already-absent node is not removed again. A present node
 must be removed successfully; if `remove-node` returns an error, the operator
