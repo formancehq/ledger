@@ -361,7 +361,10 @@ A supplied JSON body is decoded regardless of `Content-Length`, including
 HTTP/1.1 chunked requests; `force`, `atEffectiveDate` and `metadata` reach the
 same Apply payload for known and unknown lengths. Malformed or truncated JSON
 returns `400 INVALID_REQUEST` before Apply, including extra values or non-whitespace
-after the first value. The complete body, including trailing whitespace, counts
+after the first value. An option of the wrong JSON type (for example
+`"atEffectiveDate": "true"`, `"force": 1` or a non-object `metadata`) also returns
+`400 INVALID_REQUEST` before Apply instead of falling back to the default; a JSON
+`null` option keeps its default. The complete body, including trailing whitespace, counts
 towards the 4 MiB limit (`413 BODY_TOO_LARGE`), independently of framing.
 
 **Navigable revert relationship.** The revert link is a first-class part of the
