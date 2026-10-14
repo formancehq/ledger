@@ -98,6 +98,14 @@ The system uses `go.etcd.io/raft/v3`, the standalone Raft implementation extract
 - Writes to the WAL and sends messages via transport
 - Delegates FSM application to the **Applier**
 
+`processReady` handles each Raft Ready in a fixed sequence: observe leadership
+and resolve ReadIndex state, append HardState and entries to the WAL, install a
+received snapshot if present, send peer and local storage responses, then
+collect committed configuration changes for the orchestrate goroutine.
+Leadership acquisition drains earlier apply work before opening its readiness
+gate. Peer messages must not leave before the corresponding WAL append; the
+orchestrate goroutine alone applies configuration changes to `rawNode`.
+
 ```go
 type Node struct {
     rawNode          *raft.RawNode
