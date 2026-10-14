@@ -1,4 +1,5 @@
 name: Run Antithesis
+run-name: ${{ inputs.name }}
 
 on:
   workflow_dispatch:
@@ -18,6 +19,11 @@ on:
         required: true
         type: number
         default: 20
+      end_at_utc:
+        description: Optional UTC end time (ISO 8601); overrides duration after image preparation
+        required: false
+        type: string
+        default: ''
       include:
         description: Optional comma-separated driver paths
         required: false
@@ -28,7 +34,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: antithesis-${{ inputs.source_ref }}
+  group: antithesis-${{ inputs.source_ref }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -47,6 +53,7 @@ jobs:
       INCLUDE: ${{ inputs.include }}
       RUN_DESCRIPTION: ${{ inputs.name }}
       RUN_DURATION_MINUTES: ${{ inputs.duration_minutes }}
+      RUN_END_AT_UTC: ${{ inputs.end_at_utc }}
       SOURCE_REF: ${{ inputs.source_ref }}
     steps:
       - name: Checkout source ref
@@ -119,6 +126,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ -n "$RUN_END_AT_UTC" ]]; then
+            deadline_epoch="$(date -u -d "$RUN_END_AT_UTC" +%s)"
+            now_epoch="$(date -u +%s)"
+            # Antithesis takes whole minutes. Round down to end before the deadline.
+            RUN_DURATION_MINUTES="$(( (deadline_epoch - now_epoch) / 60 ))"
+            if (( RUN_DURATION_MINUTES < 1 )); then
+              echo "The requested end time has passed or is less than one minute away" >&2
+              exit 1
+            fi
+            echo "RUN_DURATION_MINUTES=$RUN_DURATION_MINUTES" >> "$GITHUB_ENV"
+            echo "Launching for $RUN_DURATION_MINUTES minutes; requested end: $RUN_END_AT_UTC"
+          fi
           response_file="$RUNNER_TEMP/antithesis-launch-response"
           nix develop .#ci --command just --quiet \
             tag='${{ steps.image.outputs.tag }}' \
@@ -159,6 +178,9 @@ jobs:
             echo "| Commit | \`${SOURCE_SHA:-not resolved}\` |"
             echo "| Image tag | \`${IMAGE_TAG:-not published}\` |"
             echo "| Duration | ${RUN_DURATION_MINUTES} minutes |"
+            if [[ -n "$RUN_END_AT_UTC" ]]; then
+              echo "| Requested end (UTC) | ${RUN_END_AT_UTC} |"
+            fi
             if [[ -n "${RUN_ID:-}" ]]; then
               echo "| Run ID | \`${RUN_ID}\` |"
             fi
