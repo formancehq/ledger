@@ -41,12 +41,13 @@ func leaderStatus(t *testing.T, code codes.Code, message, reason string) error {
 // what is a plain 4xx. Each row feeds handleError exactly what the decorated
 // connection now produces and asserts the client-visible outcome.
 //
-// The table covers one reason per ErrorKind that has an enum reason. The
-// remaining two kinds, KindUnauthenticated and KindPermissionDenied, have no
-// reason codes: HTTP auth is enforced by the middleware at the entry node
-// before any forwarding, so an auth status arriving from the leader denotes a
-// cluster-secret failure, which is a genuine server fault and correctly stays
-// a 500.
+// The table covers one reason per ErrorKind that has an enum reason, except
+// KindUnauthenticated, whose only reason (MISSING_SIGNATURE) has its own
+// regression in TestHandleErrorMissingSignature. KindPermissionDenied has no
+// reason code: HTTP auth is enforced by the middleware at the entry node
+// before any forwarding, so a bare auth status arriving from the leader
+// denotes a cluster-secret failure, which is a genuine server fault and
+// correctly stays a 500.
 func TestHandleErrorForwardedFromLeader(t *testing.T) {
 	t.Parallel()
 

@@ -5,15 +5,28 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
 var (
 	ErrInvalidSignature = errors.New("invalid signature")
-	ErrMissingSignature = errors.New("missing signature")
 	ErrUnknownKeyID     = errors.New("unknown key ID")
+
+	// ErrMissingSignature is the admission refusal of an unsigned batch that
+	// must be signed. It is a caller error with a public reason so every API
+	// surface answers it as unauthenticated — including an HTTP write that a
+	// follower forwards to the leader, which can only recover the
+	// classification from the ErrorInfo reason on the wire.
+	ErrMissingSignature domain.Describable = errMissingSignature{}
 )
+
+type errMissingSignature struct{}
+
+func (errMissingSignature) Error() string          { return "missing signature" }
+func (errMissingSignature) Kind() domain.ErrorKind { return domain.KindUnauthenticated }
+func (errMissingSignature) Reason() string         { return domain.ErrReasonMissingSignature }
 
 // Sign serializes an ApplyBatch and returns a SignedApplyBatch envelope
 // carrying the exact bytes signed by the client. The returned envelope is

@@ -79,6 +79,12 @@ Keys are managed via gRPC API calls, replicated through Raft consensus:
 | Revoke key | `signing revoke-key` | Revoke a registered key |
 | Require signatures | `signing require` | Enable/disable mandatory signatures |
 
+While signatures are required, admission refuses every unsigned batch with the
+`MISSING_SIGNATURE` reason: gRPC `Unauthenticated`, HTTP `401`. The HTTP API
+never signs, so every HTTP write answers `401 MISSING_SIGNATURE` until
+signatures are no longer required; send signed batches through gRPC instead.
+A follower that forwards the write to the leader answers the same way.
+
 ### Hierarchical Keys
 
 Keys form a **parent-child hierarchy**. When a new key is registered by signing the request with an existing key, the signing key becomes the **parent** of the new key. The first key (bootstrap) has no parent.

@@ -25,8 +25,9 @@ var ErrNotFound = errors.New("not found")
 // switch remains the single source of truth, because a frozen failure replayed
 // from the idempotency projection carries only a reason and must re-derive the
 // same classification. TestEveryDomainErrorImplementsDescribable enforces the
-// agreement. Anything with no Kind at all (signing.*, raft.*, ctx errors, AWS
-// smithy, etc.) is sanitised by convertToGRPCError's defence-in-depth default
+// agreement. Anything with no Kind at all (the signature-verification
+// sentinels, raft.*, ctx errors, AWS smithy, etc.) is answered by
+// convertToGRPCError's dedicated branches or its defence-in-depth default
 // branch. See #431 and EN-2081.
 type ErrorKind int
 
@@ -375,6 +376,13 @@ const (
 	// request because cluster clock skew exceeds the configured threshold.
 	// Maps to gRPC Unavailable / HTTP 503.
 	ErrReasonWritesBlockedClockSkew = "WRITES_BLOCKED_CLOCK_SKEW"
+
+	// ErrReasonMissingSignature signals that admission refused an unsigned
+	// batch that must be signed. The error itself (signing.ErrMissingSignature)
+	// lives in internal/domain/crypto/signing; it is raised before any
+	// proposal, so it never reaches the FSM or the audit chain.
+	// Maps to gRPC Unauthenticated / HTTP 401.
+	ErrReasonMissingSignature = "MISSING_SIGNATURE"
 )
 
 // ErrSequenceExhausted rejects an allocation that would wrap an authoritative

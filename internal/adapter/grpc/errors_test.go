@@ -865,10 +865,16 @@ func TestConvertToGRPCError_CheckpointNotReady(t *testing.T) {
 func TestConvertToGRPCError_MissingSignature(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(signing.ErrMissingSignature, testLogger())
+	grpcErr := convertToGRPCError(fmt.Errorf("applying raft requests: %w", signing.ErrMissingSignature), testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.Unauthenticated, st.Code())
+	require.Equal(t, "missing signature", st.Message())
+
+	// A follower forwarding an HTTP write recovers the classification from
+	// this reason alone; a bare Unauthenticated status answers 500 (EN-2930).
+	info := extractErrorInfo(t, st)
+	require.Equal(t, domain.ErrReasonMissingSignature, info.GetReason())
 }
 
 func TestConvertToGRPCError_InvalidSignature(t *testing.T) {

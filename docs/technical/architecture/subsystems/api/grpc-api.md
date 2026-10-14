@@ -666,6 +666,7 @@ All business errors carry an `ErrorInfo` detail with a machine-readable reason. 
 | Numscript compile error | `INVALID_ARGUMENT` | `NUMSCRIPT_COMPILE_ERROR` | Variant-specific structured facts, when available; no diagnostic `details` field |
 | Numscript execution error | `FAILED_PRECONDITION` | `NUMSCRIPT_EXECUTION_ERROR` | Variant-specific structured facts, when available; no diagnostic `detail` field |
 | Validation error | `INVALID_ARGUMENT` | `VALIDATION` | *(none)* |
+| Missing signature | `UNAUTHENTICATED` | `MISSING_SIGNATURE` | *(none)* |
 
 ### Error Handling Example (with ErrorInfo)
 

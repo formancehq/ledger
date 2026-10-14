@@ -533,11 +533,9 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 		return err
 	}
 
-	// Convert signature errors to proper gRPC codes
-	if errors.Is(err, signing.ErrMissingSignature) {
-		return status.Error(codes.Unauthenticated, err.Error())
-	}
-
+	// Convert signature errors to proper gRPC codes. A missing signature is
+	// Describable (MISSING_SIGNATURE) and flows through the classified branch
+	// below, which attaches the ErrorInfo a forwarding follower needs.
 	if errors.Is(err, signing.ErrInvalidSignature) {
 		return status.Error(codes.PermissionDenied, err.Error())
 	}

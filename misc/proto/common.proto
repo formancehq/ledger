@@ -2131,6 +2131,13 @@ enum ErrorReason {
   // meta(), so the same script may succeed against other state
   // (Kind=Precondition).
   ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR = 74;
+  // ERROR_REASON_MISSING_SIGNATURE: admission refused an unsigned batch that
+  // must be signed — every client batch while signatures are required, and
+  // signing-key management outside the first-key bootstrap. The caller must
+  // resubmit the batch as a SignedApplyBatch (Kind=Unauthenticated). Raised
+  // before any proposal, so it is never audited or frozen under an
+  // idempotency key.
+  ERROR_REASON_MISSING_SIGNATURE = 75;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"40"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"41"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 40:
+leader. For example, with a schema implementing revision 41:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 40' \
+grpcurl -plaintext -H 'ledger-protocol-version: 41' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -606,3 +606,16 @@ policy retry the request. A measured disk block still returns
 block retains its existing response. Admission checks the gate before proposing
 an order, so a retry after `Unavailable` cannot duplicate a committed write.
 This status change requires revision 40 clients and servers together.
+
+## Missing-signature reason (revision 41)
+
+Revision 41 adds `ERROR_REASON_MISSING_SIGNATURE` (`signing.ErrMissingSignature`,
+`KindUnauthenticated`). Admission raises it when it refuses an unsigned batch
+that must be signed. gRPC still answers `Unauthenticated`, and the status now
+carries an `ErrorInfo` with the `MISSING_SIGNATURE` reason. HTTP answers `401`
+with error code `MISSING_SIGNATURE`. Revision 40 answered HTTP `500
+INTERNAL_ERROR` for the same refusal, both on the leader and on a follower that
+forwards the write, because a bare `Unauthenticated` status from the leader is
+treated as a cluster-secret failure. A revision-40 node that forwards to a
+revision-41 leader receives a reason it does not know. Clients and servers must
+use the matching revision.

@@ -136,6 +136,8 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 	case commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL,
 		commonpb.ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED:
 		return KindResourceExhausted
+	case commonpb.ErrorReason_ERROR_REASON_MISSING_SIGNATURE:
+		return KindUnauthenticated
 	case commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
 		commonpb.ErrorReason_ERROR_REASON_INDEX_INCONSISTENT,
 		commonpb.ErrorReason_ERROR_REASON_INVALID_ORDER_TYPE,

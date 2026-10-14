@@ -3,10 +3,14 @@ package signing
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
@@ -218,4 +222,25 @@ func TestSignDoesNotMutateOriginal(t *testing.T) {
 	require.Equal(t, "key-abc", batch.GetIdempotencyKey())
 	require.Len(t, batch.GetRequests(), 1)
 	require.Equal(t, "test", batch.GetRequests()[0].GetCreateLedger().GetName())
+}
+
+// TestErrMissingSignatureIsDescribable pins the public contract of the
+// admission refusal: a stable reason whose kind agrees with KindForReason, so
+// every API surface and a forwarding follower answer it as unauthenticated
+// rather than as a server fault (EN-2930).
+func TestErrMissingSignatureIsDescribable(t *testing.T) {
+	t.Parallel()
+
+	wrapped := fmt.Errorf("%w: empty unsigned batch", ErrMissingSignature)
+	require.ErrorIs(t, wrapped, ErrMissingSignature)
+
+	d, ok := errors.AsType[domain.Describable](wrapped)
+	require.True(t, ok)
+	require.Equal(t, domain.ErrReasonMissingSignature, d.Reason())
+	require.Equal(t, domain.KindUnauthenticated, d.Kind())
+	require.Equal(t, domain.KindForReason(domain.ReasonCode(d.Reason())), d.Kind())
+
+	code, known := domain.LookupReasonCode(d.Reason())
+	require.True(t, known)
+	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_MISSING_SIGNATURE, code)
 }
