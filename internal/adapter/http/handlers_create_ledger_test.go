@@ -259,3 +259,58 @@ func TestHandleCreateLedger_RejectsUnsupportedMetadata(t *testing.T) {
 		})
 	}
 }
+
+func TestHandleCreateLedger_InvalidMode(t *testing.T) {
+	t.Parallel()
+
+	for _, mode := range []string{"mirror", "normal", "BOGUS"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+
+			// The mock backend has no expectations: any Apply call fails the test.
+			srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodPost, "/test-ledger",
+				strings.NewReader(`{"mode":"`+mode+`","mirrorSource":{"ledgerName":"x","baseUrl":"http://localhost:1"}}`),
+				map[string]string{"ledgerName": "test-ledger"})
+
+			srv.handleCreateLedger(w, r)
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			require.Contains(t, w.Body.String(), "invalid ledger mode")
+		})
+	}
+}
+
+func TestHandleCreateLedger_ExplicitNormalMode(t *testing.T) {
+	t.Parallel()
+
+	var captured *servicepb.CreateLedgerRequest
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+			captured = req.GetUnsigned().GetRequests()[0].GetCreateLedger()
+
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_CreateLedger{
+						CreateLedger: &commonpb.CreatedLedgerLog{Name: "test-ledger"},
+					},
+				},
+			}}}, nil
+		})
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/test-ledger", strings.NewReader(`{"mode":"NORMAL"}`), map[string]string{
+		"ledgerName": "test-ledger",
+	})
+
+	srv.handleCreateLedger(w, r)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	require.NotNil(t, captured)
+	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, captured.GetMode())
+}

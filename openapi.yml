@@ -3975,7 +3975,7 @@ components:
             - NORMAL
             - MIRROR
           default: NORMAL
-          description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source.
+          description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source. Values are case-sensitive; any other value is rejected with 400 INVALID_REQUEST.
         mirrorSource:
           $ref: '#/components/schemas/MirrorSourceConfig'
         defaultEnforcementMode:
