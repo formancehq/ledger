@@ -10,6 +10,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -220,5 +221,37 @@ func (r *ClusterReconciler) deleteIfExists(ctx context.Context, ledger *ledgerv1
 		return nil
 	}
 
-	return r.Delete(ctx, obj)
+	return deleteInspected(ctx, r.Client, obj)
+}
+
+// deleteInspected deletes obj, an object whose ownership was just checked on
+// a read, only while the live object under its name is still that object: the
+// delete carries a UID precondition. Delete addresses objects by name, so
+// without it an owned object replaced by a foreign one between the read and
+// the delete (or a stale cached read) would delete the replacement.
+//
+// The precondition pins the UID only, not the resourceVersion: ownership is a
+// property of the object's identity, and the API server and the garbage
+// collector update owned objects continually (a StatefulSet's status, for
+// instance), so a resourceVersion precondition would turn every such write
+// into a spurious conflict without protecting anything more.
+//
+// A failed precondition (Conflict) is returned as an error so the reconcile
+// retries and re-inspects ownership on the next pass; the replacement is never
+// deleted. NotFound (already gone) is not an error. opts are applied before
+// the precondition, which they cannot override.
+func deleteInspected(ctx context.Context, c client.Client, obj client.Object, opts ...client.DeleteOption) error {
+	uid := obj.GetUID()
+	if uid == "" {
+		return fmt.Errorf("invariant: refusing to delete %T %s/%s without the UID of the inspected object", obj, obj.GetNamespace(), obj.GetName())
+	}
+	err := c.Delete(ctx, obj, append(opts, client.Preconditions{UID: &uid})...)
+	switch {
+	case apierrors.IsNotFound(err):
+		return nil
+	case apierrors.IsConflict(err):
+		return fmt.Errorf("%T %s/%s was replaced after its ownership was checked, re-inspecting on retry: %w", obj, obj.GetNamespace(), obj.GetName(), err)
+	default:
+		return err
+	}
 }

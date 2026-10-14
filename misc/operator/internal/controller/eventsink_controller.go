@@ -285,9 +285,13 @@ func (r *EventSinkReconciler) persistSinkStatus(ctx context.Context, sink *ledge
 // StatefulSet matches when it carries an owner reference to that Cluster (the
 // normal garbage-collection window) or, once an orphaning deletion stripped the
 // owner reference, the operator's managed-by and instance labels AND the
-// default base name prefixedName(clusterName). The instance label alone is not
-// trusted: spec.additionalLabels can override it, so another Cluster's
-// StatefulSet could carry it. An orphaned StatefulSet of a Cluster that used
+// default base name prefixedName(clusterName), and only while it has no
+// controller reference (an orphaned StatefulSet has none). The instance label
+// alone is not trusted: spec.additionalLabels can override it, so another
+// Cluster's StatefulSet could carry it, and spec.resourceName lets that Cluster
+// name its StatefulSet prefixedName(clusterName) once clusterName is gone; such
+// a StatefulSet carries the other Cluster's controller reference and must not
+// hold the finalizer forever. An orphaned StatefulSet of a Cluster that used
 // spec.resourceName therefore no longer holds the finalizer: nothing left on
 // it proves which Cluster it belonged to.
 func (r *EventSinkReconciler) deletedClusterStatefulSetExists(ctx context.Context, namespace, clusterName string) (bool, error) {
@@ -302,7 +306,7 @@ func (r *EventSinkReconciler) deletedClusterStatefulSetExists(ctx context.Contex
 				return true, nil
 			}
 		}
-		if sts.Name == prefixedName(clusterName) &&
+		if metav1.GetControllerOf(sts) == nil && sts.Name == prefixedName(clusterName) &&
 			sts.Labels[labelManagedBy] == "ledger-operator" && sts.Labels[labelInstance] == clusterName {
 			return true, nil
 		}

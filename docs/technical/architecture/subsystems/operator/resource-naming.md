@@ -27,10 +27,12 @@ Cluster before deriving anything:
 - an EventSink whose Cluster is already deleted cannot recompute the base name,
   so it finds the lingering StatefulSet by owner reference (GC window) or, once
   orphaned, by the operator's `managed-by` and `instance` labels together with
-  the default name `ledger-<clusterRef>`. The `instance` label alone is not
-  trusted because `spec.additionalLabels` can override it; an orphaned
-  StatefulSet of a Cluster that used `spec.resourceName` therefore does not hold
-  the sink finalizer.
+  the default name `ledger-<clusterRef>`, and only while it has no controller
+  reference. The `instance` label alone is not trusted because
+  `spec.additionalLabels` can override it; an orphaned StatefulSet of a Cluster
+  that used `spec.resourceName` therefore does not hold the sink finalizer, and
+  neither does another Cluster's StatefulSet that took the default name through
+  `spec.resourceName` and the deleted Cluster's `instance` label.
 
 The kubectl plugin mirrors the rule in `cmdutil.ClusterBaseName`.
 
@@ -75,6 +77,16 @@ Ownership is enforced at three layers:
   NetworkPolicy, `pruneDisabledOptionalServices`), the auth-keys ConfigMap and
   cluster Secret removals, the StatefulSet orphan-recreate path and the
   DNSEndpoint prune all skip or refuse objects the Cluster does not control.
+  Each of these deletes goes through `deleteInspected`, which pins the delete
+  to the UID of the object whose ownership was just read
+  (`Preconditions.UID`). Delete addresses objects by name, so without the
+  precondition an owned object replaced by a foreign one between the read and
+  the delete, or a stale cached read, would delete the replacement. The
+  precondition pins the UID only: ownership is a property of the object's
+  identity, and a `resourceVersion` precondition would turn every concurrent
+  status write into a spurious conflict. A failed precondition (Conflict) is
+  returned as an error, so the reconcile retries and re-inspects ownership;
+  NotFound is not an error.
 - **Up-front check.** `validateResourceNameOwnership` runs after `validateSpec`
   and before any create, update or delete, and checks only names this pass will
   create or update: the StatefulSet, the ClusterIP Service, the headless Service

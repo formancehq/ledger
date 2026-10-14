@@ -116,7 +116,9 @@ func (r *ClusterReconciler) pruneDNSEndpoints(ctx context.Context, ledger *ledge
 		if !metav1.IsControlledBy(obj, ledger) {
 			continue
 		}
-		if err := r.deleteUnstructuredIfExists(ctx, obj); err != nil {
+		// deleteIfExists re-reads the object, re-checks ownership and pins the
+		// delete to the inspected UID: the listed copy may be stale.
+		if err := r.deleteIfExists(ctx, ledger, obj); err != nil {
 			return err
 		}
 	}

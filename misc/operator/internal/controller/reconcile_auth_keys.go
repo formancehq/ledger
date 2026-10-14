@@ -206,7 +206,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 		} else if notControlledBy(cm, ledger) {
 			logger.Info("not deleting auth-keys ConfigMap not controlled by this Cluster", "name", cmName)
 		} else {
-			if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
+			if err := deleteInspected(ctx, r.Client, cm); err != nil {
 				return nil, authKeysNotPending, fmt.Errorf("deleting auth-keys ConfigMap: %w", err)
 			}
 			logger.Info("deleted auth-keys ConfigMap (no matching credentials)")
@@ -435,7 +435,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 		} else if notControlledBy(cm, ledger) {
 			logger.Info("not deleting auth-keys ConfigMap not controlled by this Cluster", "name", cmName)
 		} else {
-			if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
+			if err := deleteInspected(ctx, r.Client, cm); err != nil {
 				return nil, authKeysNotPending, fmt.Errorf("deleting auth-keys ConfigMap: %w", err)
 			}
 			logger.Info("deleted auth-keys ConfigMap (no effective auth keys)")

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -17,9 +18,15 @@ func clusterNamed(name string) *ledgerv1alpha1.Cluster {
 // controlledByCluster stamps the controller reference the operator sets on
 // every object it creates (CreateOrUpdate + SetControllerReference), so test
 // fixtures seed derived objects as the operator would actually have left them.
+// It also gives the object the UID the API server assigns on create (the fake
+// client assigns none): guarded deletes are pinned to the inspected UID
+// (deleteInspected) and refuse an object without one.
 func controlledByCluster[T metav1.Object](obj T, cluster *ledgerv1alpha1.Cluster) T {
 	obj.SetOwnerReferences(append(obj.GetOwnerReferences(),
 		*metav1.NewControllerRef(cluster, ledgerv1alpha1.GroupVersion.WithKind("Cluster"))))
+	if obj.GetUID() == "" {
+		obj.SetUID(types.UID(obj.GetName() + "-uid"))
+	}
 
 	return obj
 }
