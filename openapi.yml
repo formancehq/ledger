@@ -1511,7 +1511,7 @@ paths:
       description: |
         Scans all transactions in a ledger, discovers flow patterns by normalizing
         account addresses, and returns statistics per flow type including temporal
-        distribution and volume metrics. Requires `ledger:read` scope.
+        distribution and volume metrics. Requires `ledger:TransactionRead` scope.
       operationId: analyzeTransactions
       tags:
         - Transactions

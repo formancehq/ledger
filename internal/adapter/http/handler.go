@@ -157,6 +157,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			// Transactions read scope
 			r.With(requireTransactionsRead).Group(func(r chi.Router) {
 				r.Get("/{ledgerName}/transactions/{transactionId}", server.handleGetTransaction)
+				// Derived entirely from transactions: same scope as gRPC AnalyzeTransactions.
+				r.Get("/{ledgerName}/analyze-transactions", server.handleAnalyzeTransactions)
 			})
 
 			// Audit read scope. Audit reads are cluster/bucket-wide (a proposal can
@@ -202,7 +204,6 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Get("/{ledgerName}/accounts/{address}", server.handleGetAccount)
 				r.Get("/{ledgerName}/metadata-schema", server.handleGetMetadataSchema)
 				r.Get("/{ledgerName}/analyze-accounts", server.handleAnalyzeAccounts)
-				r.Get("/{ledgerName}/analyze-transactions", server.handleAnalyzeTransactions)
 				r.Get("/{ledgerName}/account-types", server.handleListAccountTypes)
 				r.Get("/{ledgerName}/account-types/{typeName}", server.handleGetAccountType)
 			})

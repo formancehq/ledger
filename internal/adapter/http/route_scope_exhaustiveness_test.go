@@ -148,6 +148,9 @@ func expectedRouteScopes() []routeScope {
 		// --- Transactions read, requireTransactionsRead (handler.go:120-123) ---
 		{http.MethodGet, "/v3/{ledgerName}/transactions", kindGuarded, internalauth.ScopeTransactionsRead, false},
 		{http.MethodGet, "/v3/{ledgerName}/transactions/{transactionId}", kindGuarded, internalauth.ScopeTransactionsRead, false},
+		// Derived entirely from transactions, so it shares the transaction-read
+		// scope with the list, as gRPC AnalyzeTransactions does (bucket.proto).
+		{http.MethodGet, "/v3/{ledgerName}/analyze-transactions", kindGuarded, internalauth.ScopeTransactionsRead, false},
 
 		// --- Audit read, requireAuditRead (handler.go:132-135) ---
 		{http.MethodGet, "/v3/_/audit-entries", kindGuarded, internalauth.ScopeAuditRead, false},
@@ -170,7 +173,6 @@ func expectedRouteScopes() []routeScope {
 		{http.MethodGet, "/v3/{ledgerName}/volumes", kindGuarded, internalauth.ScopeAccountsRead, false},
 		{http.MethodGet, "/v3/{ledgerName}/metadata-schema", kindGuarded, internalauth.ScopeAccountsRead, false},
 		{http.MethodGet, "/v3/{ledgerName}/analyze-accounts", kindGuarded, internalauth.ScopeAccountsRead, false},
-		{http.MethodGet, "/v3/{ledgerName}/analyze-transactions", kindGuarded, internalauth.ScopeAccountsRead, false},
 		{http.MethodGet, "/v3/{ledgerName}/account-types", kindGuarded, internalauth.ScopeAccountsRead, false},
 		{http.MethodGet, "/v3/{ledgerName}/account-types/{typeName}", kindGuarded, internalauth.ScopeAccountsRead, false},
 
