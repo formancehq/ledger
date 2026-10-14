@@ -67,6 +67,10 @@ GOTOOLCHAIN=$(go env GOVERSION)
 export GOTOOLCHAIN
 
 raw_dir="${profile%.out}.covdata"
+# Drop the previous profile too: a run that writes no counters (e.g. a build
+# failure) must not leave stale coverage for uploads or coverage-merge, which
+# only check that the file exists. -coverprofile truncated it the same way.
+rm -f "$profile"
 rm -rf "$raw_dir"
 mkdir -p "$raw_dir"
 # Test binaries run from their package directory, so the counter directory
