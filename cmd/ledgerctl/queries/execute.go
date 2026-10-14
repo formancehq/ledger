@@ -47,7 +47,7 @@ Examples:
 	cmdutil.RegisterEnumCompletion(cmd, "mode", "list", "aggregate")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmdutil.AddAnalyzeFlag(cmd)
-	cmd.Flags().Bool("all", false, "Fetch all results at once (no pagination)")
+	cmd.Flags().Bool("all", false, "Fetch every page and print all results at once (list mode only; --page-size sets the size of each request)")
 	cmd.Flags().Bool("reverse", false, "List results in descending order (list mode only)")
 	cmdutil.AddOutputFlags(cmd)
 
@@ -83,8 +83,15 @@ func runExecute(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if fetchAll {
-		pageSize = 0
+	if fetchAll && mode == commonpb.QueryMode_QUERY_MODE_LIST {
+		return executeAll(cmd, client, &servicepb.ExecutePreparedQueryRequest{
+			Ledger:     ledgerName,
+			QueryName:  queryName,
+			Parameters: params,
+			PageSize:   pageSize,
+			Mode:       mode,
+			Reverse:    reverse,
+		}, showProfile)
 	}
 
 	var cursor string
@@ -123,7 +130,7 @@ func runExecute(cmd *cobra.Command, args []string) error {
 				cmdutil.RenderProfile(cmdutil.ExtractProfile(trailer))
 			}
 
-			if !result.Cursor.GetHasMore() || fetchAll {
+			if !result.Cursor.GetHasMore() {
 				return nil
 			}
 
@@ -164,6 +171,67 @@ func runExecute(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 	}
+}
+
+// executeAll follows the response cursor until HasMore is false and renders
+// every result as one page. The server caps each response at its page size,
+// so a single request never returns the full result set.
+func executeAll(cmd *cobra.Command, client servicepb.BucketServiceClient, req *servicepb.ExecutePreparedQueryRequest, showProfile bool) error {
+	var lastTrailer metadata.MD
+
+	spinner := cmdutil.StartSpinner("Fetching all results...")
+
+	pages, err := cmdutil.DrainPages("", func(cursor string) ([]*commonpb.PreparedQueryCursor, string, error) {
+		ctx, cancel := cmdutil.GetContext(cmd)
+		defer cancel()
+
+		if showProfile {
+			ctx = cmdutil.ProfileContext(ctx)
+		}
+
+		req.Cursor = cursor
+
+		var trailer metadata.MD
+
+		resp, err := client.ExecutePreparedQuery(ctx, req, ggrpc.Trailer(&trailer))
+		if err != nil {
+			return nil, "", cmdutil.FormatGRPCError("failed to execute prepared query", err)
+		}
+
+		lastTrailer = trailer
+
+		page := resp.GetCursor()
+		if page == nil {
+			return nil, "", fmt.Errorf("prepared query returned %T in list mode, expected a cursor", resp.GetResult())
+		}
+
+		var next string
+		if page.GetHasMore() {
+			next = page.GetNext()
+		}
+
+		return []*commonpb.PreparedQueryCursor{page}, next, nil
+	})
+
+	_ = spinner.Stop()
+
+	if err != nil {
+		return err
+	}
+
+	merged := &commonpb.PreparedQueryCursor{}
+	for _, page := range pages {
+		merged.AccountData = append(merged.AccountData, page.GetAccountData()...)
+		merged.TransactionData = append(merged.TransactionData, page.GetTransactionData()...)
+	}
+
+	renderCursorPage(cmd, merged, 1)
+
+	if showProfile {
+		cmdutil.RenderProfile(cmdutil.ExtractProfile(lastTrailer))
+	}
+
+	return nil
 }
 
 func renderCursorPage(cmd *cobra.Command, cursor *commonpb.PreparedQueryCursor, pageNum int) {
