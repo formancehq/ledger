@@ -35,6 +35,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/apitrace"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
+	"github.com/formancehq/ledger/v3/internal/application/membership"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
@@ -571,7 +572,7 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	// Removing an already-absent node is a stable membership postcondition,
 	// not an internal server failure. Operators can treat NotFound as
 	// idempotent success, while callers that need certainty can confirm via
-	// GetClusterState.
+	// GetClusterState. Promoting a non-member returns the same NotFound.
 	if errors.Is(err, node.ErrNodeNotInCluster) {
 		st := status.New(codes.NotFound, err.Error())
 
@@ -635,6 +636,18 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	// and keeps this off the "unexpected error" path.
 	if errors.Is(err, backup.ErrNoFullCheckpoint) {
 		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+
+	// Refused membership changes carry an operator-actionable reason: the
+	// target is already a voter, or the leader cannot remove itself.
+	if errors.Is(err, node.ErrNodeAlreadyVoter) ||
+		errors.Is(err, node.ErrCannotRemoveSelf) {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+
+	// Malformed membership requests are rejected before any Raft proposal.
+	if errors.Is(err, membership.ErrInvalidRequest) {
+		return status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	// Convert ErrNodeAlreadyInCluster to AlreadyExists (idempotent AddLearner).

@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"40"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"41"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 40:
+leader. For example, with a schema implementing revision 41:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 40' \
+grpcurl -plaintext -H 'ledger-protocol-version: 41' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -606,3 +606,21 @@ policy retry the request. A measured disk block still returns
 block retains its existing response. Admission checks the gate before proposing
 an order, so a retry after `Unavailable` cannot duplicate a committed write.
 This status change requires revision 40 clients and servers together.
+
+## Refused membership changes (revision 41)
+
+Revision 41 (EN-2927) returns client status codes with the reason when the
+leader refuses a cluster membership change. Revision 40 sanitized these
+refusals to `Unknown` with `unknown server error (correlation ID: …)`.
+
+| Refusal | Revision 41 status |
+|---------|--------------------|
+| `PromoteLearner` for a node that is not a member | `NotFound` with reason `RAFT_NODE_NOT_IN_CLUSTER` |
+| `PromoteLearner` for a node that is already a voter | `FailedPrecondition` |
+| `RemoveNode` (with or without `force`) for the leader itself | `FailedPrecondition` |
+| `RemoveNode` with `force` sent to a follower | `FailedPrecondition` |
+| `AddLearner`, `PromoteLearner`, or `RemoveNode` with a zero `node_id`, a missing address, or a malformed `instance_id` | `InvalidArgument` |
+
+The bootstrap `JoinAsLearner` path shares the `InvalidArgument` mapping for
+malformed requests; a joining node treats it as fatal, as it did `Unknown`.
+This status change requires revision 41 clients and servers together.

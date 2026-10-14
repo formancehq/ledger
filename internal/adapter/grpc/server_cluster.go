@@ -354,7 +354,7 @@ func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clust
 	// Force-remove bypasses consensus and must run on the leader directly.
 	// Do NOT forward: the operator already exec's into the leader pod.
 	if req.GetForce() && !impl.node.IsLeader() {
-		return nil, errors.New("force-remove must be executed on the leader node")
+		return nil, status.Error(codes.FailedPrecondition, "force-remove must be executed on the leader node")
 	}
 
 	if !req.GetForce() && !impl.node.IsLeader() {

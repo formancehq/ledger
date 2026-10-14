@@ -83,8 +83,13 @@ var (
 	// ErrCannotRemoveSelf is returned when trying to remove the leader node itself.
 	ErrCannotRemoveSelf = errors.New("cannot remove the leader node; transfer leadership first")
 
-	// ErrNodeNotInCluster is returned when trying to remove a node that is not a cluster member.
+	// ErrNodeNotInCluster is returned when trying to remove or promote a node
+	// that is not a cluster member.
 	ErrNodeNotInCluster = errors.New("node is not a member of the cluster")
+
+	// ErrNodeAlreadyVoter is returned when trying to promote a node that is
+	// already a voter.
+	ErrNodeAlreadyVoter = errors.New("node is already a voter")
 
 	// ErrNodeRemoved is returned by AddLearner / JoinAsLearner when the
 	// (nodeID, instance_id) tuple is present in the removed-member
@@ -2953,11 +2958,11 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 
 		prog, ok := status.Progress[nodeID]
 		if !ok {
-			return fmt.Errorf("node %d is not a known cluster member", nodeID)
+			return fmt.Errorf("node %d: %w", nodeID, ErrNodeNotInCluster)
 		}
 
 		if !prog.IsLearner {
-			return fmt.Errorf("node %d is already a voter", nodeID)
+			return fmt.Errorf("node %d: %w", nodeID, ErrNodeAlreadyVoter)
 		}
 
 		ccCtx, err := node.promotionContext(nodeID, proposalID)

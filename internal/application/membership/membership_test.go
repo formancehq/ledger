@@ -41,7 +41,7 @@ func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			err := s.AddLearner(context.Background(), tc.nodeID, tc.raftAddr, tc.serviceAddr, tc.instanceID)
-			require.Error(t, err)
+			require.ErrorIs(t, err, ErrInvalidRequest)
 			assert.Contains(t, err.Error(), tc.wantSubstr)
 		})
 	}
@@ -65,6 +65,7 @@ func TestService_JoinAsLearner_RejectsMissingInstanceID(t *testing.T) {
 	t.Parallel()
 
 	err := (&Service{}).JoinAsLearner(context.Background(), 1, "r:1", "s:1", nil)
+	require.ErrorIs(t, err, ErrInvalidRequest)
 	require.ErrorContains(t, err, "instance_id")
 }
 
@@ -74,7 +75,7 @@ func TestService_PromoteLearner_RejectsZeroNodeID(t *testing.T) {
 	s := &Service{}
 
 	err := s.PromoteLearner(context.Background(), 0)
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInvalidRequest)
 	assert.Contains(t, err.Error(), "node_id")
 }
 
@@ -86,14 +87,14 @@ func TestService_RemoveNode_RejectsZeroNodeID(t *testing.T) {
 	t.Run("consensus path", func(t *testing.T) {
 		t.Parallel()
 		err := s.RemoveNode(context.Background(), 0, false)
-		require.Error(t, err)
+		require.ErrorIs(t, err, ErrInvalidRequest)
 		assert.Contains(t, err.Error(), "node_id")
 	})
 
 	t.Run("force path", func(t *testing.T) {
 		t.Parallel()
 		err := s.RemoveNode(context.Background(), 0, true)
-		require.Error(t, err)
+		require.ErrorIs(t, err, ErrInvalidRequest)
 		assert.Contains(t, err.Error(), "node_id")
 	})
 }

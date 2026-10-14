@@ -2829,6 +2829,8 @@ ledgerctl cluster promote-learner <node-id> [flags]
 - The request is forwarded to the current leader if sent to a follower
 - The leader proposes a ConfChange to promote the learner to a voter
 - Once committed, the node participates in elections and can become leader
+- Promoting a node that is not a cluster member returns `NotFound` with reason `RAFT_NODE_NOT_IN_CLUSTER`
+- Promoting a node that is already a voter returns `FailedPrecondition`
 
 **Example:**
 
@@ -2862,13 +2864,13 @@ ledgerctl cluster remove-node <node-id> [flags]
 - The leader waits for the committed Raft index to be durable in the FSM, including the peer-row deletion and its mandatory removed-member tombstone; this uses the caller's `--timeout` rather than a separate fixed five-second wait
 - If the caller timeout expires after the Raft removal committed, the server returns `Unavailable` with reason `RAFT_NODE_REMOVAL_COMMITTED`; confirm the node is absent with `cluster status`
 - Removing an already-absent node returns `NotFound` with reason `RAFT_NODE_NOT_IN_CLUSTER`
-- Cannot remove the leader node; use `cluster transfer-leader` first
+- Cannot remove the leader node; the server returns `FailedPrecondition`. Use `cluster transfer-leader` first
 - Works for both voters and learners
 - The removed node is not automatically shut down; the operator must stop it manually
 
 **Force mode (`--force`):**
 - Bypasses Raft consensus by directly applying the configuration change on the leader
-- Must be executed on the leader node (not forwarded)
+- Must be executed on the leader node (not forwarded); a follower returns `FailedPrecondition`
 - Use only for permanently unreachable nodes where consensus-based removal would block
 - Useful when a downed node causes quorum loss (e.g., 3→1 scale-down with a crashed node)
 - The change is persisted to the WAL snapshot and survives leader restarts

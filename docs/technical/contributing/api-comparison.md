@@ -1459,7 +1459,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Stale proposal | `UNAVAILABLE` | `STALE_PROPOSAL` | *(none)* |
 | Stale inputs resolution (Numscript inputs, or a revert's target observation) | `UNAVAILABLE` | `STALE_INPUTS_RESOLUTION` | *(none)* |
 | Preload unavailable (discovery failed; forwarded for idempotent replay) | `UNAVAILABLE` | `PRELOAD_UNAVAILABLE` | *(none)* |
-| Raft node already absent during removal | `NOT_FOUND` | `RAFT_NODE_NOT_IN_CLUSTER` | *(none)* |
+| Raft node not a member (already absent during removal, or promotion target unknown) | `NOT_FOUND` | `RAFT_NODE_NOT_IN_CLUSTER` | *(none)* |
 | Raft node removal committed; durable FSM apply still pending | `UNAVAILABLE` | `RAFT_NODE_REMOVAL_COMMITTED` | `nodeId`, `committedIndex` |
 | Writes blocked — disk full | `RESOURCE_EXHAUSTED` | `WRITES_BLOCKED_DISK_FULL` | *(none)* |
 | Authoritative sequence exhausted | `RESOURCE_EXHAUSTED` | `SEQUENCE_EXHAUSTED` | `counter` (`transactionId`, `ledgerId`, `ledgerLogId`, `logSequence`, `auditSequence`, or `mirrorV2LogId`) |

@@ -41,6 +41,11 @@ import (
 // surface enforces the same wire identity length.
 const InstanceIDLen = membership.InstanceIDLen
 
+// ErrInvalidRequest marks a membership request rejected before any Raft
+// proposal because its arguments are malformed. Adapters map it to their
+// transport-specific "invalid argument" status.
+var ErrInvalidRequest = errors.New("invalid membership request")
+
 // Peer is the minimal view of a cluster member as returned by ListPeers.
 // It is intentionally proto-free so the application layer does not leak
 // gRPC types up the dependency graph; adapters convert to their own
@@ -134,7 +139,7 @@ func (s *Service) addLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 // have routed to the leader.
 func (s *Service) PromoteLearner(ctx context.Context, nodeID uint64) error {
 	if nodeID == 0 {
-		return errors.New("node_id must be non-zero")
+		return fmt.Errorf("%w: node_id must be non-zero", ErrInvalidRequest)
 	}
 
 	if err := s.node.PromoteLearner(ctx, nodeID); err != nil {
@@ -150,7 +155,7 @@ func (s *Service) PromoteLearner(ctx context.Context, nodeID uint64) error {
 // the consensus path is stuck).
 func (s *Service) RemoveNode(ctx context.Context, nodeID uint64, force bool) error {
 	if nodeID == 0 {
-		return errors.New("node_id must be non-zero")
+		return fmt.Errorf("%w: node_id must be non-zero", ErrInvalidRequest)
 	}
 
 	if force {
@@ -207,19 +212,19 @@ func (s *Service) ListPeers(ctx context.Context) ([]Peer, error) {
 
 func validatePeer(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
 	if nodeID == 0 {
-		return errors.New("node_id must be non-zero")
+		return fmt.Errorf("%w: node_id must be non-zero", ErrInvalidRequest)
 	}
 
 	if raftAddr == "" {
-		return errors.New("raft_address is required")
+		return fmt.Errorf("%w: raft_address is required", ErrInvalidRequest)
 	}
 
 	if serviceAddr == "" {
-		return errors.New("service_address is required")
+		return fmt.Errorf("%w: service_address is required", ErrInvalidRequest)
 	}
 
 	if err := membership.ValidateInstanceID(instanceID); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 
 	return nil
