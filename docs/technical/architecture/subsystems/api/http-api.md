@@ -1060,6 +1060,10 @@ GET /v3/{ledgerName}/indexes/{canonicalId}/inspect?mode=summary
 
 Scans the index and returns distinct values, facets, or a summary (`mode=distinctValues|distinct-values|facets|summary`). Only metadata indexes are inspectable; builtin canonicals return `400`. The `distinctValues` and `facets` modes page in ascending value order with `pageSize` and `cursor`, and return `nextCursor` / `previousCursor` page tokens whose key is the base64url of the encoded value (see [Paged list](#paged-list)).
 
+The deprecated `distinct-values` alias remains accepted, but OpenAPI lists only
+the canonical `distinctValues` spelling in its enum to avoid generated SDK enum
+collisions.
+
 Omitting `mode` selects `summary`. An explicitly empty or unsupported mode returns
 `400` with `errorCode: INVALID_REQUEST`. Omitting `pageSize` preserves the
 backend default of 100 for paginated modes. Every supplied `pageSize` must be

@@ -1408,10 +1408,10 @@ paths:
             type: string
         - name: mode
           in: query
-          description: Inspection mode. distinct-values is an alias for distinctValues. An explicitly empty or unsupported value returns 400.
+          description: Inspection mode. The deprecated distinct-values alias for distinctValues remains accepted. An explicitly empty or unsupported value returns 400.
           schema:
             type: string
-            enum: [summary, distinctValues, distinct-values, facets]
+            enum: [summary, distinctValues, facets]
             default: summary
         - name: pageSize
           in: query
