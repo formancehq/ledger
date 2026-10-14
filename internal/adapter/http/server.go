@@ -42,7 +42,7 @@ func (s *Server) applyUnsigned(ctx context.Context, idempotencyKey string, reqs 
 	return result.Logs, nil
 }
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -destination backend_generated_test.go -typed -package http . Backend
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source server.go -destination backend_generated_test.go -typed -package http Backend
 
 type Backend interface {
 	ctrl.Controller
