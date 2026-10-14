@@ -348,11 +348,14 @@ The HTTP sink acknowledges an event only after an event-bearing POST receives
 2xx. This is a transport acknowledgement; it does not prove that the receiver
 completed downstream business processing.
 
-Redirects that change POST to a bodyless GET (301, 302, and 303) are rejected
-before following the redirect. Their status is reported as a publication error,
-so a login page returning 200 cannot advance the sink cursor. Redirects that
-preserve POST and its replayable body (307 and 308) remain supported, with a
-maximum of ten requests in a redirect chain.
+The sink never follows redirects. Any 3xx response, including the
+method-preserving 307 and 308, is a delivery failure: configure the final URL as
+the endpoint. Only the configured endpoint can acknowledge an event, so a login
+page or another host cannot advance the sink cursor. The event body, its
+`X-Webhook-Signature`, and the endpoint URL (through `Referer`) never reach a
+redirect target, and a redirect cannot downgrade HTTPS to HTTP. The publication
+error names the redirect status and the `Location` scheme, host, and path; it
+omits the `Location` userinfo, query, and fragment.
 
 If any event in a batch fails, publication stops and the batch cursor remains
 unchanged. The emitter reports the error and retries the batch from that cursor,

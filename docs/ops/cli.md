@@ -5059,6 +5059,8 @@ The HTTP sink sends each event as an individual POST request with headers:
 - `X-Log-Sequence`: global log sequence number
 - `X-Webhook-Signature`: `sha256=<hex>` HMAC signature (only when `--http-secret` is set)
 
+Only a 2xx response acknowledges an event. The sink does not follow redirects: any 3xx response is a delivery failure, so `--http-endpoint` must be the final URL.
+
 ### `events remove-sink`
 
 Remove a named event sink. If this is the last sink, event emission is implicitly disabled. With `--controller-id`, removal succeeds only if the current Raft-applied configuration carries the exact same identity; a missing sink or different owner returns an error without removing anything. Omit the flag for ordinary unconditional removal.

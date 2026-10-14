@@ -99,16 +99,17 @@ func TestHTTPSinkRedirectEmitterCursorAndRetry(t *testing.T) {
 			for _, request := range requests {
 				t.Logf("request path=%s method=%s sequence=%s bodyBytes=%d", request.Path, request.Method, request.Sequence, len(request.Body))
 			}
-			if status == 301 || status == 302 || status == 303 {
+			if status != 0 {
 				// Do not abort: on the vulnerable source the subsequent restart proves
 				// that the incorrectly proposed cursor actually excludes both logs.
 				assert.Error(t, publishErr)
 				assert.Zero(t, cursor)
 				assert.Zero(t, update.GetCursor())
 				assert.Empty(t, acknowledged)
-				assert.Len(t, requests, 1, "method-changing redirect must not reach /login")
+				assert.Len(t, requests, 1, "no redirect, including method-preserving 307/308, may reach /login")
 				if publishErr != nil {
-					assert.Contains(t, publishErr.Error(), "unexpected status code")
+					assert.Contains(t, publishErr.Error(), "returned redirect "+strconv.Itoa(status))
+					assert.Contains(t, publishErr.Error(), "/login")
 				}
 			} else {
 				require.NoError(t, publishErr)
@@ -119,11 +120,7 @@ func TestHTTPSinkRedirectEmitterCursorAndRetry(t *testing.T) {
 					require.Equal(t, http.MethodPost, ack.Method)
 					require.NotEmpty(t, ack.Body)
 				}
-				if status != 0 {
-					require.Len(t, requests, 4)
-					require.Equal(t, requests[0].Body, requests[1].Body)
-					require.Equal(t, requests[2].Body, requests[3].Body)
-				}
+				require.Len(t, requests, 2)
 
 				return
 			}
@@ -156,7 +153,7 @@ func TestHTTPSinkRedirectEmitterCursorAndRetry(t *testing.T) {
 
 func TestHTTPSinkRedirectPartialBatchRetry(t *testing.T) {
 	t.Parallel()
-	for _, status := range []int{301, 302, 303} {
+	for _, status := range []int{301, 302, 303, 307, 308} {
 		t.Run(strconv.Itoa(status), func(t *testing.T) {
 			t.Parallel()
 			receiver := &redirectReceiver{status: status, failSequence: "2"}
@@ -171,7 +168,7 @@ func TestHTTPSinkRedirectPartialBatchRetry(t *testing.T) {
 			batch := []*eventspb.Event{{LogSequence: 1}, {LogSequence: 2}}
 			err = emitter.publishBatch(context.Background(), batch)
 			require.Error(t, err)
-			require.Contains(t, err.Error(), "unexpected status code")
+			require.Contains(t, err.Error(), "returned redirect "+strconv.Itoa(status))
 			requests, acknowledged := receiver.snapshot()
 			require.Len(t, requests, 2)
 			require.Len(t, acknowledged, 1)
