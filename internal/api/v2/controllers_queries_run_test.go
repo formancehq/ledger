@@ -2,6 +2,7 @@ package v2
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"math/big"
 	"net/http"
@@ -60,7 +61,7 @@ func TestQueriesRun(t *testing.T) {
 		RunQuery(gomock.Any(), "1.2.3", "QUERY_ID", storagecommon.RunQuery{
 			Params: json.RawMessage(`{ "pageSize": 42 }`),
 			Vars: map[string]any{
-				"foo": float64(123.0),
+				"foo": json.Number("123"),
 				"bar": "barnacle",
 			},
 		}, storagecommon.PaginationConfig{
@@ -86,4 +87,79 @@ func TestQueriesRun(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	require.JSONEq(t, rec.Body.String(), string(expectedResponse))
+}
+
+func TestQueriesRunIntegerVars(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		raw  string
+		want string // exact integer, empty when the value must be rejected
+	}{
+		{name: "2^53+1", raw: "9007199254740993", want: "9007199254740993"},
+		{name: "above max int64", raw: "12345678901234567890", want: "12345678901234567890"},
+		{name: "integral decimal", raw: "123.0", want: "123"},
+		{name: "exponent", raw: "1e3", want: "1000"},
+		{name: "signed exponent", raw: "1e+16", want: "10000000000000000"},
+		{name: "fraction", raw: "1.5"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			systemController, ledgerController := newTestingSystemController(t, true)
+			router := NewRouter(systemController, jwt.NewNoAuth(), "develop")
+
+			expectedResourceKind := queries.ResourceKindAccount
+			var received storagecommon.RunQuery
+			ledgerController.EXPECT().
+				RunQuery(gomock.Any(), "1.2.3", "QUERY_ID", gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ string, _ string, q storagecommon.RunQuery, _ storagecommon.PaginationConfig) (*queries.ResourceKind, *paginate.Cursor[any], error) {
+					received = q
+					return &expectedResourceKind, &paginate.Cursor[any]{Data: []any{}}, nil
+				})
+
+			req := httptest.NewRequest(http.MethodPost, "/xxx/queries/QUERY_ID/run?schemaVersion=1.2.3",
+				bytes.NewBufferString(`{"vars": {"v": `+tc.raw+`}}`))
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			require.Equal(t, http.StatusOK, rec.Code)
+
+			// Resolve the variable the same way the ledger controller does,
+			// once in a numeric filter and once interpolated into an address.
+			resolve := func(body string) (any, error) {
+				builder, err := queries.ResolveFilterTemplate(
+					queries.ResourceKindAccount,
+					json.RawMessage(body),
+					map[string]queries.VarDecl{"v": {Type: queries.NewTypeNumeric()}},
+					received.Vars,
+				)
+				if err != nil {
+					return nil, err
+				}
+				var resolved any
+				require.NoError(t, builder.Walk(func(_ string, _ string, value *any) error {
+					resolved = *value
+					return nil
+				}))
+				return resolved, nil
+			}
+
+			threshold, err := resolve(`{"$gte": {"balance[COIN]": "${v}"}}`)
+			if tc.want == "" {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.want, threshold.(*big.Int).String())
+			}
+
+			address, err := resolve(`{"$match": {"address": "users:${v}"}}`)
+			if tc.want == "" {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, "users:"+tc.want, address)
+			}
+		})
+	}
 }
