@@ -54,9 +54,17 @@ func (s *Server) serveBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.bulkMaxSize > 0 && len(elements) > s.bulkMaxSize {
+		writeBulkErrorResponse(w, http.StatusRequestEntityTooLarge, "BULK_SIZE_EXCEEDED",
+			fmt.Errorf("bulk size exceeded, max size is %d", s.bulkMaxSize))
+
+		return
+	}
+
 	// A JSON null entry decodes to a nil pointer without reaching
 	// BulkElement.UnmarshalJSON, so it is rejected here as a malformed body
-	// before the scope loop and runBulk dereference it.
+	// after the element-count guard (an oversized batch stays 413) and before
+	// the scope loop and runBulk dereference it.
 	for i, elem := range elements {
 		if elem == nil {
 			writeBulkErrorResponse(w, http.StatusBadRequest, "VALIDATION",
@@ -64,13 +72,6 @@ func (s *Server) serveBulk(w http.ResponseWriter, r *http.Request) {
 
 			return
 		}
-	}
-
-	if s.bulkMaxSize > 0 && len(elements) > s.bulkMaxSize {
-		writeBulkErrorResponse(w, http.StatusRequestEntityTooLarge, "BULK_SIZE_EXCEEDED",
-			fmt.Errorf("bulk size exceeded, max size is %d", s.bulkMaxSize))
-
-		return
 	}
 
 	// Per-element scope check: each element may require a different granular

@@ -76,6 +76,26 @@ func TestHandleBulk_SizeLimitExceeded(t *testing.T) {
 	require.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
 }
 
+// TestHandleBulk_SizeLimitExceededWithNullElement pins the request-level
+// order: the element-count guard runs before null-element validation, so an
+// oversized batch keeps its 413 BULK_SIZE_EXCEEDED even when it carries a
+// null entry.
+func TestHandleBulk_SizeLimitExceededWithNullElement(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithBulkLimit(t, NewMockBackend(gomock.NewController(t)), 1)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/bulk", strings.NewReader(`[null,null]`), map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	srv.handleBulk(w, r)
+
+	require.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
+	require.Equal(t, "BULK_SIZE_EXCEEDED", decodeResponse[bulkResponse](t, w).ErrorCode)
+}
+
 // TestHandleBulk_OrderSkippedSurfacesInResponse pins BOTH ends of the
 // per-entry skip wiring for the bulk endpoint:
 //
