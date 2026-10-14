@@ -276,6 +276,10 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 			continue // already running with same config
 		}
 
+		if m.startupBackoffPending(sc) {
+			continue // its retry timer owns the next attempt
+		}
+
 		if ms := m.startSink(sc, generation); ms != nil {
 			if !m.isCurrentLeader(generation) {
 				m.stopSink(name, ms)
@@ -483,6 +487,20 @@ func (m *Manager) synchronizeSinkStatus(name string, generation uint64) error {
 
 	return NewEmitter(m.store, nil, name, m.proposer, m.builder, m.logger, DefaultEmitterConfig()).proposeSinkUpdate(ctx,
 		&raftcmdpb.EventsSinkUpdate{SinkName: name})
+}
+
+// startupBackoffPending reports whether the sink failed to start with this
+// configuration and its retry timer has not fired yet. Reconciles triggered by
+// other sinks or notifications must not attempt it before the backoff expires.
+// Must be called under lock.
+func (m *Manager) startupBackoffPending(sc *commonpb.SinkConfig) bool {
+	failures, failed := m.startupFailures[sc.GetName()]
+	if !failed || !sc.EqualVT(failures.config) {
+		return false
+	}
+	_, pending := m.retries[sc.GetName()]
+
+	return pending
 }
 
 // scheduleStartupRetry triggers a future reconcile after a startup failure

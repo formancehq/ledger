@@ -288,6 +288,8 @@ the startup error via Raft, and retries startup with exponential backoff. The
 delay follows the publish backoff (1 s doubling to a 60 s cap, with jitter) and
 counts consecutive startup failures per sink configuration. A successful start,
 a changed or removed configuration, and a new leadership term reset the count.
+Until its retry timer fires, a failed sink with an unchanged configuration is
+skipped by reconciles that other sinks or notifications trigger.
 A sink type that is not compiled into the build is therefore retried at most
 once a minute, not every second. Constructor failures therefore recover
 without another configuration write or leadership transition when an external

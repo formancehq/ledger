@@ -662,3 +662,61 @@ func TestManager_SinkConstructorRetryBacksOff(t *testing.T) {
 		return !failing
 	}, 3*time.Second, 10*time.Millisecond, "a successful start must reset the sink's startup backoff")
 }
+
+func TestManager_UnrelatedReconcileHonorsStartupBackoff(t *testing.T) {
+	// This test temporarily replaces a package-global factory. Keep it
+	// sequential so parallel package tests remain paused until cleanup restores
+	// the registry.
+	previous, existed := sinkFactories["nats"]
+	t.Cleanup(func() {
+		if existed {
+			sinkFactories["nats"] = previous
+
+			return
+		}
+
+		delete(sinkFactories, "nats")
+	})
+
+	var attempts atomic.Int64
+	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
+		attempts.Add(1)
+
+		return nil, errors.New("unsupported events sink type: nats (not compiled in this build)")
+	}
+
+	builder, store := newTestBuilder(t)
+	attrs := attributes.New()
+	failing := &commonpb.SinkConfig{
+		Name: "constructor-failure-in-backoff",
+		Type: &commonpb.SinkConfig_Nats{
+			Nats: &commonpb.NatsSinkConfig{
+				Url:   "nats://dependency.invalid:4222",
+				Topic: "ledger.events",
+			},
+		},
+	}
+	saveManagedSinkConfig(t, attrs, store, failing)
+
+	m := NewManager(store, attrs, &startupStatusProposer{store: store}, builder, logging.Testing(), signal.NewNotifications())
+	m.startupRetryDelay = func(int) time.Duration { return time.Hour }
+	m.Start()
+	t.Cleanup(m.Stop)
+	m.OnLeadershipChange(true)
+
+	require.Eventually(t, func() bool {
+		return attempts.Load() == 1 && pendingStartupRetry(m, failing.GetName())
+	}, 3*time.Second, 10*time.Millisecond, "the first reconcile must try the sink and schedule a retry")
+
+	healthy := &commonpb.SinkConfig{Name: "unrelated-healthy-sink", Type: &commonpb.SinkConfig_Http{
+		Http: &commonpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
+	}}
+	saveManagedSinkConfig(t, attrs, store, healthy)
+	m.notifications.NotifyConfigChanged()
+	require.Eventually(t, func() bool {
+		return managedSinkByName(m, healthy.GetName()) != nil
+	}, 3*time.Second, 10*time.Millisecond, "the unrelated configuration change must be reconciled")
+
+	require.Equal(t, int64(1), attempts.Load(),
+		"a reconcile triggered by another sink must not retry a sink whose backoff is pending")
+}
