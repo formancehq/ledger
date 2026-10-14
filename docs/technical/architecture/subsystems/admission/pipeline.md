@@ -94,7 +94,7 @@ If `RequireSignatures()` is true cluster-wide, an unsigned batch is rejected her
 
 ### 4. Order conversion
 
-`requestsToOrders()` walks every `Request` in the batch and dispatches to a per-type converter (`CreateLedger`, `Apply`, `RegisterSigningKey`, …) producing an internal `Order`. Orders are the FSM's input language; requests are the wire language. The conversion is structural — it does not consult Pebble.
+`requestsToOrders()` walks every `Request` in the batch. `requestToOrder()` routes Apply through its admission checks and action converter, ledger-scoped requests through `ledgerRequestToOrder()`, and cluster-wide requests through `systemRequestToOrder()`. Each family retains an explicit protobuf request-to-order mapping. The common final `validateOrder()` checks storage safety for every converted order. SaveNumscript and events-sink requests also update the intra-batch overlay; signing-key registration takes its parent key ID from the batch signature. Orders are the FSM's input language; requests are the wire language. Revert conversion observes the target transaction locally so admission can declare coverage and bind an observation digest; the FSM still makes the authoritative business decision.
 
 ### 5. Preload coverage extraction
 

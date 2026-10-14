@@ -2217,12 +2217,69 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 	return nil
 }
 
-// requestToOrder converts a single Request into its ledger- or system-scoped
-// raftcmdpb.Order. batchSig is consulted only by the signing-key registration
-// path, to record the signing key as the new key's parent.
+// requestToOrder converts one wire request into the corresponding Raft order.
+// The family converters keep each protobuf request-to-payload mapping explicit.
+// Validation remains after conversion so every family uses the same storage rules.
 func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, batchSig *signaturepb.SignedApplyBatch, overlay *bulkOverlay) (*raftcmdpb.Order, error) {
 	order := &raftcmdpb.Order{}
 
+	if apply, ok := req.GetType().(*servicepb.Request_Apply); ok {
+		if err := a.applyRequestToOrder(ctx, order, apply.Apply, overlay); err != nil {
+			return nil, err
+		}
+	} else if !a.ledgerRequestToOrder(order, req, overlay) && !a.systemRequestToOrder(order, req, batchSig, overlay) {
+		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
+	}
+
+	// Validate storage-safety invariants (null bytes in ledger names, metadata keys, etc.)
+	if err := validateOrder(order); err != nil {
+		return nil, err
+	}
+
+	return order, nil
+}
+
+// applyRequestToOrder handles Apply's admission checks before wrapping its
+// action. convertApplyRequest retains the action-level protobuf mapping.
+func (a *Admission) applyRequestToOrder(ctx context.Context, order *raftcmdpb.Order, apply *servicepb.LedgerApplyRequest, overlay *bulkOverlay) error {
+	// Validate and extract the per-order skippable_reasons opt-in
+	// from the public payload BEFORE constructing the raft Order, so
+	// a bad whitelist gets a clear admission rejection instead of a
+	// silent FSM-side defense.
+	skippable, err := extractSkippableReasonsFromApply(apply)
+	if err != nil {
+		return err
+	}
+
+	applyOrder, err := a.convertApplyRequest(ctx, apply, overlay)
+	if err != nil {
+		return err
+	}
+
+	applyOrder.SkippableReasons = skippable
+
+	// Bind what the revert-target lookup above observed. The FSM re-derives
+	// this digest from the transaction state it already reads through the
+	// coverage gate; a mismatch means admission declared coverage against a
+	// view apply does not share, and the order is rejected before it can
+	// read an undeclared volume.
+	if err := bindRevertTargetDigest(order, apply.GetLedger(), applyOrder, overlay); err != nil {
+		return err
+	}
+
+	wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+		Ledger: apply.GetLedger(),
+		Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+			Apply: applyOrder,
+		},
+	})
+
+	return nil
+}
+
+// ledgerRequestToOrder handles ledger-scoped requests other than Apply. It
+// records SaveNumscript in the overlay for later requests in the same batch.
+func (a *Admission) ledgerRequestToOrder(order *raftcmdpb.Order, req *servicepb.Request, overlay *bulkOverlay) bool {
 	switch reqType := req.GetType().(type) {
 	case *servicepb.Request_CreateLedger:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
@@ -2243,99 +2300,6 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 			Ledger: reqType.DeleteLedger.GetName(),
 			Payload: &raftcmdpb.LedgerScopedOrder_DeleteLedger{
 				DeleteLedger: &raftcmdpb.DeleteLedgerOrder{},
-			},
-		})
-	case *servicepb.Request_Apply:
-		// Validate and extract the per-order skippable_reasons opt-in
-		// from the public payload BEFORE constructing the raft Order, so
-		// a bad whitelist gets a clear admission rejection instead of a
-		// silent FSM-side defense.
-		skippable, err := extractSkippableReasonsFromApply(reqType.Apply)
-		if err != nil {
-			return nil, err
-		}
-
-		applyOrder, err := a.convertApplyRequest(ctx, reqType.Apply, overlay)
-		if err != nil {
-			return nil, err
-		}
-
-		applyOrder.SkippableReasons = skippable
-
-		// Bind what the revert-target lookup above observed. The FSM re-derives
-		// this digest from the transaction state it already reads through the
-		// coverage gate; a mismatch means admission declared coverage against a
-		// view apply does not share, and the order is rejected before it can
-		// read an undeclared volume.
-		if err := bindRevertTargetDigest(order, reqType.Apply.GetLedger(), applyOrder, overlay); err != nil {
-			return nil, err
-		}
-
-		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
-			Ledger: reqType.Apply.GetLedger(),
-			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
-				Apply: applyOrder,
-			},
-		})
-	case *servicepb.Request_RegisterSigningKey:
-		var parentKeyID string
-		if batchSig != nil {
-			parentKeyID = batchSig.GetKeyId()
-		}
-
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_RegisterSigningKey{
-				RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
-					KeyId:       reqType.RegisterSigningKey.GetKeyId(),
-					PublicKey:   reqType.RegisterSigningKey.GetPublicKey(),
-					ParentKeyId: parentKeyID,
-				},
-			},
-		})
-	case *servicepb.Request_RevokeSigningKey:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_RevokeSigningKey{
-				RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
-					KeyId:   reqType.RevokeSigningKey.GetKeyId(),
-					Cascade: reqType.RevokeSigningKey.GetCascade(),
-				},
-			},
-		})
-	case *servicepb.Request_SetSigningConfig:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_SetSigningConfig{
-				SetSigningConfig: &raftcmdpb.SetSigningConfigOrder{
-					RequireSignatures: reqType.SetSigningConfig.GetRequireSignatures(),
-				},
-			},
-		})
-	case *servicepb.Request_AddEventsSink:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{
-				AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-					Config: reqType.AddEventsSink.GetConfig(),
-				},
-			},
-		})
-
-		overlay.sinks.Put(reqType.AddEventsSink.GetConfig().GetName(), reqType.AddEventsSink.GetConfig())
-	case *servicepb.Request_RemoveEventsSink:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_RemoveEventsSink{
-				RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
-					Name:         reqType.RemoveEventsSink.GetName(),
-					ControllerId: reqType.RemoveEventsSink.GetControllerId(),
-				},
-			},
-		})
-
-		overlay.sinks.Delete(reqType.RemoveEventsSink.GetName())
-	case *servicepb.Request_SetMaintenanceMode:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{
-				SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{
-					Enabled: reqType.SetMaintenanceMode.GetEnabled(),
-				},
 			},
 		})
 	case *servicepb.Request_PromoteLedger:
@@ -2442,34 +2406,6 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 			reqType.SaveNumscript.GetVersion(),
 			reqType.SaveNumscript.GetContent(),
 		)
-	case *servicepb.Request_CreateQueryCheckpoint:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
-				CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
-			},
-		})
-	case *servicepb.Request_DeleteQueryCheckpoint:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint{
-				DeleteQueryCheckpoint: &raftcmdpb.DeleteQueryCheckpointOrder{
-					CheckpointId: reqType.DeleteQueryCheckpoint.GetCheckpointId(),
-				},
-			},
-		})
-	case *servicepb.Request_SetQueryCheckpointSchedule:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule{
-				SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{
-					Cron: reqType.SetQueryCheckpointSchedule.GetCron(),
-				},
-			},
-		})
-	case *servicepb.Request_DeleteQueryCheckpointSchedule:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule{
-				DeleteQueryCheckpointSchedule: &raftcmdpb.DeleteQueryCheckpointScheduleOrder{},
-			},
-		})
 	case *servicepb.Request_AddAccountType:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.AddAccountType.GetLedger(),
@@ -2528,15 +2464,110 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 			},
 		})
 	default:
-		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
+		return false
 	}
 
-	// Validate storage-safety invariants (null bytes in ledger names, metadata keys, etc.)
-	if err := validateOrder(order); err != nil {
-		return nil, err
+	return true
+}
+
+// systemRequestToOrder handles cluster-wide requests. Signing-key parentage
+// comes from the batch signature; sink changes update the intra-batch overlay.
+func (a *Admission) systemRequestToOrder(order *raftcmdpb.Order, req *servicepb.Request, batchSig *signaturepb.SignedApplyBatch, overlay *bulkOverlay) bool {
+	switch reqType := req.GetType().(type) {
+	case *servicepb.Request_RegisterSigningKey:
+		var parentKeyID string
+		if batchSig != nil {
+			parentKeyID = batchSig.GetKeyId()
+		}
+
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_RegisterSigningKey{
+				RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
+					KeyId:       reqType.RegisterSigningKey.GetKeyId(),
+					PublicKey:   reqType.RegisterSigningKey.GetPublicKey(),
+					ParentKeyId: parentKeyID,
+				},
+			},
+		})
+	case *servicepb.Request_RevokeSigningKey:
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_RevokeSigningKey{
+				RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
+					KeyId:   reqType.RevokeSigningKey.GetKeyId(),
+					Cascade: reqType.RevokeSigningKey.GetCascade(),
+				},
+			},
+		})
+	case *servicepb.Request_SetSigningConfig:
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_SetSigningConfig{
+				SetSigningConfig: &raftcmdpb.SetSigningConfigOrder{
+					RequireSignatures: reqType.SetSigningConfig.GetRequireSignatures(),
+				},
+			},
+		})
+	case *servicepb.Request_AddEventsSink:
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{
+				AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
+					Config: reqType.AddEventsSink.GetConfig(),
+				},
+			},
+		})
+
+		overlay.sinks.Put(reqType.AddEventsSink.GetConfig().GetName(), reqType.AddEventsSink.GetConfig())
+	case *servicepb.Request_RemoveEventsSink:
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_RemoveEventsSink{
+				RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
+					Name:         reqType.RemoveEventsSink.GetName(),
+					ControllerId: reqType.RemoveEventsSink.GetControllerId(),
+				},
+			},
+		})
+
+		overlay.sinks.Delete(reqType.RemoveEventsSink.GetName())
+	case *servicepb.Request_SetMaintenanceMode:
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{
+				SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{
+					Enabled: reqType.SetMaintenanceMode.GetEnabled(),
+				},
+			},
+		})
+	case *servicepb.Request_CreateQueryCheckpoint:
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+				CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+			},
+		})
+	case *servicepb.Request_DeleteQueryCheckpoint:
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint{
+				DeleteQueryCheckpoint: &raftcmdpb.DeleteQueryCheckpointOrder{
+					CheckpointId: reqType.DeleteQueryCheckpoint.GetCheckpointId(),
+				},
+			},
+		})
+	case *servicepb.Request_SetQueryCheckpointSchedule:
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule{
+				SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{
+					Cron: reqType.SetQueryCheckpointSchedule.GetCron(),
+				},
+			},
+		})
+	case *servicepb.Request_DeleteQueryCheckpointSchedule:
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule{
+				DeleteQueryCheckpointSchedule: &raftcmdpb.DeleteQueryCheckpointScheduleOrder{},
+			},
+		})
+	default:
+		return false
 	}
 
-	return order, nil
+	return true
 }
 
 // convertApplyRequest converts a servicepb.LedgerApplyRequest to a
