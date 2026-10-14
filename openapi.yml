@@ -3995,8 +3995,10 @@ components:
             Initial account types (name -> account type definition). Each type is
             validated exactly like `addAccountType`, in name order against the types
             before it: an invalid pattern or segment type returns `400 INVALID_PATTERN`,
-            and two types that can match the same address return
-            `409 ACCOUNT_TYPE_CONFLICT`. A rejected creation creates no ledger.
+            and two types with the same segment count and specificity that can
+            match the same address return `409 ACCOUNT_TYPE_CONFLICT`. Overlapping
+            types of different specificity are allowed; the most specific one
+            matches. A rejected creation creates no ledger.
           additionalProperties:
             $ref: '#/components/schemas/AddAccountTypeRequest'
           example:

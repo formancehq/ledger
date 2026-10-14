@@ -17,9 +17,12 @@ passes the same acceptance check as `AddAccountType`
 (`validateAccountTypeForChart`): the FSM visits names in sorted order and checks
 each type against the types accepted before it. A pattern that does not parse,
 or `segmentTypes` that name an unknown variable or carry an invalid constraint,
-fails the creation with `INVALID_PATTERN`. A pattern that can match the same
-address as an earlier type fails it with `ACCOUNT_TYPE_CONFLICT` and names that
-earlier type. The initial chart is therefore always a chart that successive
+fails the creation with `INVALID_PATTERN`. A pattern that conflicts with an
+earlier type fails it with `ACCOUNT_TYPE_CONFLICT` and names that earlier type.
+Two patterns conflict when they have the same number of segments and the same
+specificity, and can match the same address (`accounttype.PatternsConflict`).
+Overlapping patterns of different specificity, such as `users:{id}` and
+`users:alice`, do not conflict: the most specific type matches. The initial chart is therefore always a chart that successive
 `AddAccountType` calls could build.
 
 Because creation and `AddAccountType` share this check, every stored chart
