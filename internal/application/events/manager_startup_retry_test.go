@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -317,7 +318,7 @@ func TestManager_StopCancelsSinkConstructorRetry(t *testing.T) {
 	m.Stop()
 	require.Never(t, func() bool {
 		return attempts.Load() > 1
-	}, 2*sinkStartupRetryDelay, 10*time.Millisecond,
+	}, 2*sinkFailureBackoffBase, 10*time.Millisecond,
 		"manager shutdown must cancel the pending constructor retry")
 }
 
@@ -563,4 +564,101 @@ func TestManager_PreservesPendingDeliveryErrorAcrossStartup(t *testing.T) {
 		t.Fatal("startup cleared a previously accepted delivery error")
 	default:
 	}
+}
+
+func TestManager_SinkConstructorRetryBacksOff(t *testing.T) {
+	// This test temporarily replaces a package-global factory. Keep it
+	// sequential so parallel package tests remain paused until cleanup restores
+	// the registry.
+	previous, existed := sinkFactories["nats"]
+	t.Cleanup(func() {
+		if existed {
+			sinkFactories["nats"] = previous
+
+			return
+		}
+
+		delete(sinkFactories, "nats")
+	})
+
+	allowSuccess := make(chan struct{})
+	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
+		select {
+		case <-allowSuccess:
+		default:
+			return nil, errors.New("unsupported events sink type: nats (not compiled in this build)")
+		}
+
+		return startupRetryTestSink{}, nil
+	}
+
+	builder, store := newTestBuilder(t)
+	attrs := attributes.New()
+	config := &commonpb.SinkConfig{
+		Name: "constructor-failure-backoff",
+		Type: &commonpb.SinkConfig_Nats{
+			Nats: &commonpb.NatsSinkConfig{
+				Url:   "nats://dependency.invalid:4222",
+				Topic: "ledger.events",
+			},
+		},
+	}
+	saveManagedSinkConfig(t, attrs, store, config)
+
+	var (
+		mu       sync.Mutex
+		requests []int
+	)
+	m := NewManager(store, attrs, &startupStatusProposer{store: store}, builder, logging.Testing(), signal.NewNotifications())
+	m.startupRetryDelay = func(consecutiveFails int) time.Duration {
+		mu.Lock()
+		defer mu.Unlock()
+		requests = append(requests, consecutiveFails)
+
+		return 10 * time.Millisecond
+	}
+	m.Start()
+	t.Cleanup(m.Stop)
+	m.OnLeadershipChange(true)
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+
+		return len(requests) >= 4
+	}, 3*time.Second, 10*time.Millisecond, "a failing sink constructor must keep scheduling retries")
+
+	mu.Lock()
+	observed := append([]int(nil), requests[:4]...)
+	mu.Unlock()
+	require.Equal(t, []int{1, 2, 3, 4}, observed,
+		"each retry delay must follow the sink's consecutive startup failures so the wait grows")
+	require.Greater(t, nextBackoff(4), sinkFailureBackoffBase*4,
+		"the default startup delay must grow past a fixed one-second retry")
+
+	mu.Lock()
+	seen := len(requests)
+	mu.Unlock()
+	changed := config.CloneVT()
+	changed.GetNats().Topic = "ledger.events.changed"
+	saveManagedSinkConfig(t, attrs, store, changed)
+	m.notifications.NotifyConfigChanged()
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+
+		return slices.Contains(requests[seen:], 1)
+	}, 3*time.Second, 10*time.Millisecond, "a changed sink configuration must restart the startup backoff")
+
+	close(allowSuccess)
+	require.Eventually(t, func() bool {
+		if managedSinkByName(m, config.GetName()) == nil {
+			return false
+		}
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		_, failing := m.startupFailures[config.GetName()]
+
+		return !failing
+	}, 3*time.Second, 10*time.Millisecond, "a successful start must reset the sink's startup backoff")
 }

@@ -284,8 +284,12 @@ The Manager reconciles emitter lifecycles on leadership changes and config updat
 
 If a sink cannot be constructed or its emitter cannot read its persisted cursor
 at startup, the leader keeps the Raft-replicated configuration unchanged, reports
-the startup error via Raft, and retries startup after a bounded delay.
-Constructor failures therefore recover
+the startup error via Raft, and retries startup with exponential backoff. The
+delay follows the publish backoff (1 s doubling to a 60 s cap, with jitter) and
+counts consecutive startup failures per sink configuration. A successful start,
+a changed or removed configuration, and a new leadership term reset the count.
+A sink type that is not compiled into the build is therefore retried at most
+once a minute, not every second. Constructor failures therefore recover
 without another configuration write or leadership transition when an external
 dependency becomes available. Retry wake-ups are deduplicated per sink and are
 canceled with the Manager lifecycle; followers never start a sink. Constructors

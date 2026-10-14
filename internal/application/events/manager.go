@@ -20,8 +20,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-const sinkStartupRetryDelay = time.Second
 const sinkStartupErrorPrefix = "sink startup: "
+
+// sinkStartupFailures counts consecutive startup failures of one sink
+// configuration. A different configuration starts a fresh backoff.
+type sinkStartupFailures struct {
+	config *commonpb.SinkConfig
+	count  int
+}
 
 // managedSink holds an emitter and its sink for a named sink configuration.
 type managedSink struct {
@@ -44,6 +50,7 @@ type Manager struct {
 	mu                  sync.Mutex
 	emitters            map[string]*managedSink
 	retries             map[string]struct{}
+	startupFailures     map[string]*sinkStartupFailures
 	resourcesGeneration uint64
 
 	leadershipMu         sync.Mutex
@@ -56,6 +63,9 @@ type Manager struct {
 	w worker.Worker
 	// readSinkCursor is an optional startup read hook used by tests.
 	readSinkCursor func(dal.PebbleGetter, string) (uint64, error)
+	// startupRetryDelay returns the wait before the next startup attempt
+	// after the given number of consecutive failures. Tests may replace it.
+	startupRetryDelay func(consecutiveFails int) time.Duration
 }
 
 // NewManager creates a new event Manager.
@@ -69,6 +79,9 @@ func NewManager(store *dal.Store, attrs *attributes.Attributes, proposer Propose
 		notifications:  notifications,
 		emitters:       make(map[string]*managedSink),
 		retries:        make(map[string]struct{}),
+
+		startupFailures:   make(map[string]*sinkStartupFailures),
+		startupRetryDelay: nextBackoff,
 	}
 }
 
@@ -198,6 +211,8 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 	if m.resourcesGeneration != generation {
 		m.teardown()
 		m.resourcesGeneration = generation
+		// A new leadership term starts with a fresh startup backoff.
+		clear(m.startupFailures)
 	}
 
 	if stopped || !isLeader {
@@ -270,6 +285,14 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 
 			m.emitters[name] = ms
 			delete(m.retries, name)
+			delete(m.startupFailures, name)
+		}
+	}
+
+	// Forget the backoff of failed sinks that are no longer configured.
+	for name := range m.startupFailures {
+		if _, stillDesired := desired[name]; !stillDesired {
+			delete(m.startupFailures, name)
 		}
 	}
 
@@ -303,7 +326,7 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig, generation uint64) *managed
 	if err != nil {
 		m.logger.Errorf("Failed to create sink %q: %v", sc.GetName(), err)
 		m.reportStartupError(sc.GetName(), err, generation)
-		m.scheduleStartupRetry(sc.GetName())
+		m.scheduleStartupRetry(sc)
 
 		return nil
 	}
@@ -324,7 +347,7 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig, generation uint64) *managed
 		}
 		m.reportStartupError(sc.GetName(), err, generation)
 
-		m.scheduleStartupRetry(sc.GetName())
+		m.scheduleStartupRetry(sc)
 
 		return nil
 	}
@@ -334,7 +357,7 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig, generation uint64) *managed
 		if closeErr := sink.Close(); closeErr != nil {
 			m.logger.Errorf("Failed to close sink %q after status failure: %v", sc.GetName(), closeErr)
 		}
-		m.scheduleStartupRetry(sc.GetName())
+		m.scheduleStartupRetry(sc)
 
 		return nil
 	}
@@ -462,18 +485,31 @@ func (m *Manager) synchronizeSinkStatus(name string, generation uint64) error {
 		&raftcmdpb.EventsSinkUpdate{SinkName: name})
 }
 
-// scheduleStartupRetry triggers a future reconcile for transient startup
-// failures without spinning the notification loop. Must be called under lock.
-func (m *Manager) scheduleStartupRetry(name string) {
+// scheduleStartupRetry triggers a future reconcile after a startup failure
+// without spinning the notification loop. The delay grows with each
+// consecutive failure of the sink, like publish failures, so a sink that can
+// never start (for example a type not compiled in this build) is not retried
+// every second. Must be called under lock.
+func (m *Manager) scheduleStartupRetry(sc *commonpb.SinkConfig) {
+	name := sc.GetName()
+	failures, exists := m.startupFailures[name]
+	if !exists || !sc.EqualVT(failures.config) {
+		// A changed configuration must not wait for the previous backoff.
+		failures = &sinkStartupFailures{config: sc}
+		m.startupFailures[name] = failures
+		delete(m.retries, name)
+	}
+	failures.count++
 	if _, exists := m.retries[name]; exists {
 		return
 	}
 
 	m.retries[name] = struct{}{}
 	stopCh := m.w.StopCh()
+	delay := m.startupRetryDelay(failures.count)
 
 	go func() {
-		timer := time.NewTimer(sinkStartupRetryDelay)
+		timer := time.NewTimer(delay)
 		defer timer.Stop()
 
 		select {
