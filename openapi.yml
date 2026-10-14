@@ -2235,8 +2235,11 @@ paths:
       summary: Execute a prepared query
       description: |
         Executes a prepared query with optional parameter substitution. Supports LIST and
-        AGGREGATE_VOLUMES modes with cursor pagination. Also accepts pageSize, cursor and
-        reverse as query parameters. Requires `ledger:QueryRead` scope.
+        AGGREGATE_VOLUMES modes. LIST uses cursor pagination with an effective page size
+        of 100 when omitted or zero, capped at 1000 before collecting and enriching rows.
+        AGGREGATE_VOLUMES ignores pageSize and aggregates all matching accounts. Also
+        accepts pageSize, cursor and reverse as query parameters. Supplied pageSize and
+        reverse values, and nonempty cursor values, override the body. Requires `ledger:QueryRead` scope.
       operationId: executePreparedQuery
       tags:
         - Prepared Queries
@@ -2250,10 +2253,16 @@ paths:
         - $ref: '#/components/parameters/QueryName'
         - name: pageSize
           in: query
-          description: Maximum number of results per page (overrides body value)
+          description: |
+            LIST page size. A supplied value overrides the body, including empty or
+            zero (default 100). The effective maximum is 1000; larger uint32 values
+            are accepted and clamped, not rejected. Ignored for AGGREGATE_VOLUMES.
           schema:
             type: integer
             format: uint32
+            minimum: 0
+            maximum: 4294967295
+            default: 100
         - name: cursor
           in: query
           description: |
@@ -6217,8 +6226,15 @@ components:
           description: Parameter values for the query (substituted into filter placeholders)
         pageSize:
           type: integer
-          format: int32
-          description: Maximum number of results per page
+          format: uint32
+          minimum: 0
+          maximum: 4294967295
+          default: 100
+          description: |
+            LIST page size. Omitted or zero means 100. The effective maximum is
+            1000; larger uint32 values are accepted and clamped, not rejected.
+            A supplied query parameter overrides this value. Ignored for
+            AGGREGATE_VOLUMES.
         cursor:
           type: string
           description: |
@@ -6451,6 +6467,10 @@ components:
           properties:
             pageSize:
               type: integer
+              format: uint32
+              minimum: 1
+              maximum: 1000
+              description: Effective LIST page size after applying the default and cap.
             hasMore:
               type: boolean
               description: True when a following page exists; set iff `next` is.

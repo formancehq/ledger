@@ -7134,9 +7134,12 @@ type ExecutePreparedQueryRequest struct {
 	Ledger     string                              `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	QueryName  string                              `protobuf:"bytes,2,opt,name=query_name,json=queryName,proto3" json:"query_name,omitempty"`
 	Parameters map[string]*commonpb.ParameterValue `protobuf:"bytes,3,rep,name=parameters,proto3" json:"parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	PageSize   uint32                              `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	Cursor     string                              `protobuf:"bytes,5,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	Mode       commonpb.QueryMode                  `protobuf:"varint,6,opt,name=mode,proto3,enum=common.QueryMode" json:"mode,omitempty"`
+	// LIST defaults zero to 100 and clamps values above 1000 to 1000 before
+	// collecting or enriching results. The cursor reports the effective size.
+	// AGGREGATE_VOLUMES ignores page_size and aggregates all matching accounts.
+	PageSize uint32             `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Cursor   string             `protobuf:"bytes,5,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	Mode     commonpb.QueryMode `protobuf:"varint,6,opt,name=mode,proto3,enum=common.QueryMode" json:"mode,omitempty"`
 	// reverse pages LIST results in descending entity order. A page token is
 	// relative to the requested order, so every page of a descending walk must
 	// repeat reverse=true. AGGREGATE_VOLUMES rejects it with InvalidArgument.
