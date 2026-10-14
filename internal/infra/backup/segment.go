@@ -93,12 +93,20 @@ func ownsCheckpointKey(bucketID, key string) bool {
 		return false
 	}
 
-	dot := strings.LastIndexByte(name, '.')
-	if dot < 0 {
-		return false
+	_, ok := checkpointKeyHash(name)
+
+	return ok
+}
+
+// checkpointKeyHash returns the hex sha256 that CheckpointFileKey appended to
+// key, and false when key does not end in one.
+func checkpointKeyHash(key string) (string, bool) {
+	dot := strings.LastIndexByte(key, '.')
+	if dot < 0 || !isLowerHex(key[dot+1:], sha256HexLen) {
+		return "", false
 	}
 
-	return isLowerHex(name[dot+1:], sha256HexLen)
+	return key[dot+1:], true
 }
 
 // ownsExportKey reports whether key is one the Export*SegmentKey builders could

@@ -150,6 +150,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 			// Resolve by the content-addressed key recorded in the manifest,
 			// never by reconstructing prefix+filename: the manifest is the
 			// authoritative pointer to the exact object bytes it committed.
+			// CopyVerified checks the bytes against the hash the key embeds.
 			key := cf.Key
 			destPath := filepath.Join(stagingDir, filepath.FromSlash(filename))
 
@@ -174,9 +175,12 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 				return cmdutil.Displayed(fmt.Errorf("creating file %s: %w", filename, err))
 			}
 
-			n, err := io.Copy(outFile, reader)
+			n, err := cf.CopyVerified(outFile, reader)
 			_ = reader.Close()
-			_ = outFile.Close()
+
+			if closeErr := outFile.Close(); err == nil && closeErr != nil {
+				err = closeErr
+			}
 
 			if err != nil {
 				dlSpinner.Fail("Failed to write file")

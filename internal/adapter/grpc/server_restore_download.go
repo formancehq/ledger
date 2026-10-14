@@ -362,7 +362,7 @@ func (s *RestoreServiceServerImpl) downloadCheckpointFiles(
 				return err
 			}
 
-			return s.downloadOneFile(gctx, job, storage, stagingDir, filename, cf.Key)
+			return s.downloadOneFile(gctx, job, storage, stagingDir, filename, cf)
 		})
 	}
 
@@ -378,14 +378,15 @@ func (s *RestoreServiceServerImpl) downloadCheckpointFiles(
 }
 
 // downloadOneFile resolves the destination path, fetches the object, streams
-// it to disk, and bumps the job counters. Workers call this concurrently.
+// it to disk while verifying its size and sha256 against the manifest entry,
+// and bumps the job counters. Workers call this concurrently.
 func (s *RestoreServiceServerImpl) downloadOneFile(
 	ctx context.Context,
 	job *downloadJob,
 	storage backup.Storage,
 	stagingDir string,
 	filename string,
-	storageKey string,
+	cf backup.CheckpointFile,
 ) error {
 	destPath, err := safeStagingPath(stagingDir, filename)
 	if err != nil {
@@ -399,10 +400,11 @@ func (s *RestoreServiceServerImpl) downloadOneFile(
 	name := filename
 	job.currentFile.Store(&name)
 
-	// storageKey is the content-addressed object key recorded in the manifest;
+	// cf.Key is the content-addressed object key recorded in the manifest;
 	// downloads resolve by that key, never by reconstructing prefix+filename,
-	// so a restore always fetches the exact bytes the manifest committed.
-	reader, err := storage.GetFile(ctx, storageKey)
+	// and CopyVerified checks the bytes against the hash the key embeds, so a
+	// damaged or replaced object fails the job instead of reaching staging.
+	reader, err := storage.GetFile(ctx, cf.Key)
 	if err != nil {
 		return fmt.Errorf("downloading %s: %w", filename, err)
 	}
@@ -414,11 +416,15 @@ func (s *RestoreServiceServerImpl) downloadOneFile(
 		return fmt.Errorf("creating file %s: %w", filename, err)
 	}
 
-	n, err := io.Copy(outFile, reader)
-	_ = outFile.Close()
+	n, err := cf.CopyVerified(outFile, reader)
+	closeErr := outFile.Close()
 
 	if err != nil {
 		return fmt.Errorf("writing file %s: %w", filename, err)
+	}
+
+	if closeErr != nil {
+		return fmt.Errorf("closing file %s: %w", filename, closeErr)
 	}
 
 	job.filesDownloaded.Add(1)

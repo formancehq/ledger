@@ -480,6 +480,10 @@ The server-side job:
 3. Reads the manifest from S3 and downloads the checkpoint files in parallel
    through an `errgroup` worker pool. The pool size is set by the server flag
    `--restore-download-parallelism` (default 16, clamped to `[1, 64]`).
+   Every checkpoint file must match the size recorded in the manifest and the
+   sha256 embedded in its object key. A mismatch fails the job
+   (`DOWNLOAD_STATE_FAILED`) with an error that names the file, and the
+   staging directory is wiped.
 4. Applies any incremental export segments on top of the checkpoint and rebuilds derived state (volumes, metadata, transactions, reversion bitsets, prepared queries, the index registry) from the exported logs, starting at the checkpoint's last log sequence. Every object must contain the explicit stream footer and the complete sequence range advertised by the manifest; physical EOF or incomplete coverage fails the download closed. This is the same `ApplyExports` + `RebuildDelta` path used by the offline `ledgerctl store bootstrap` command, so a manifest with incremental backups restores all data written after the last full checkpoint. Prepared-query create, update, and delete logs are folded in order, including multiple mutations within one delta. The index registry fold covers the full lifecycle — create, retype version bump, drop, and the removal cascade — see [Restore Lifecycle](../technical/architecture/subsystems/indexer/indexes.md#restore-lifecycle); per-replica read indexes are deliberately NOT restored and are rebuilt by each node's indexbuilder from the restored registry.
 5. On success, marks the staging as ready.
 
@@ -661,7 +665,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 ### How It Works
 
 1. **Fresh directory guard**: Scans the target data directory's `checkpoints/` subdirectory for existing checkpoints using `ScanLatestCheckpointID()`. Refuses to overwrite.
-2. **Download**: Reads the manifest from the configured backend, downloads all checkpoint files and export segments into `{data-dir}/restore-staging/`.
+2. **Download**: Reads the manifest from the configured backend, downloads all checkpoint files and export segments into `{data-dir}/restore-staging/`. Each checkpoint file is verified against its manifest size and the sha256 in its object key; a mismatch aborts bootstrap and names the file.
 3. **Apply exports**: If the manifest contains incremental export segments, applies them to the staging database and rebuilds derived state.
 4. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
 5. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`. Execution failures or reported integrity errors abort bootstrap before confirmation, preparation, and finalization. Without this flag, bootstrap skips Checker entirely.
