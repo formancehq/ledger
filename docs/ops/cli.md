@@ -1862,7 +1862,7 @@ ledgerctl account-types set-default-enforcement [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | *(required)* | Name of the ledger |
-| `--mode` | | Enforcement mode: `STRICT` (reject untyped accounts) or `AUDIT` (warn only) |
+| `--mode` | | Enforcement mode: `STRICT` (reject untyped accounts) or `AUDIT` (accept untyped accounts without reporting them) |
 
 **Example:**
 

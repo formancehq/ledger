@@ -2381,7 +2381,10 @@ paths:
       summary: Set default enforcement mode
       description: |
         Sets the default enforcement mode for accounts that do not match any defined
-        account type. Must be STRICT or AUDIT. Requires `ledger:MetadataWrite` scope.
+        account type. Must be STRICT or AUDIT. STRICT rejects an order that uses an
+        unmatched account with `400 ACCOUNT_NOT_MATCHING_TYPE`. AUDIT accepts the
+        order and does not report the unmatched account: the response carries no
+        warning. Requires `ledger:MetadataWrite` scope.
       operationId: setDefaultEnforcementMode
       tags:
         - Account Types
@@ -3901,23 +3904,6 @@ components:
           metadata:
             category: premium
 
-    ChartViolation:
-      type: object
-      description: A chart of accounts violation reported in AUDIT enforcement mode
-      required:
-        - type
-        - message
-      properties:
-        type:
-          type: string
-          description: The type of violation
-        message:
-          type: string
-          description: Human-readable description of the violation
-        account:
-          type: string
-          description: The account address that caused the violation
-
     MetadataValue:
       description: >-
         A typed metadata value (string, integer, boolean, or null). Integer
@@ -4502,17 +4488,6 @@ components:
                 type: object
                 additionalProperties: true
               description: Metadata for accounts involved in the transaction
-            previousAccountMetadata:
-              type: object
-              additionalProperties:
-                type: object
-                additionalProperties: true
-              description: Previous account metadata values (for index replay)
-            warnings:
-              type: array
-              items:
-                $ref: '#/components/schemas/ChartViolation'
-              description: Chart of accounts violations (AUDIT mode only, empty in STRICT mode)
 
     OrderSkippedResponse:
       type: object
@@ -4835,11 +4810,6 @@ components:
         revertTransaction:
           $ref: '#/components/schemas/TransactionResponse'
           description: The new transaction that reverses the original transaction
-        warnings:
-          type: array
-          items:
-            $ref: '#/components/schemas/ChartViolation'
-          description: Chart of accounts violations (AUDIT mode only, empty in STRICT mode)
 
     RevertedTransactionResponse:
       type: object
