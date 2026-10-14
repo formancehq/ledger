@@ -68,9 +68,11 @@ Renumbering exposed fields is a breaking change even if the generated code still
 compiles. Internal persisted/Raft-only changes require an impact assessment of
 shared service types rather than an automatic service revision bump. See the
 [service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
-for the gate, client obligations, and review criteria. This does not change the
-unreleased-v3 rule: remove obsolete fields and realign their numbers; do not add
-migrations, reserved fields, or support for older v3 formats.
+for the gate, client obligations, and review criteria. Starting with
+`v3.0.0-rc.1`, a persisted or Raft wire change must also preserve or migrate
+data from the preceding released version. Follow the
+[upgrade policy](../../ops/upgrades.md#release-requirement-from-v300-rc1) before
+removing or renumbering fields used by stored data.
 
 1. Edit the `.proto` file in `misc/proto/`
 2. **Realign field numbers sequentially** when adding/removing fields (no gaps, remove obsolete `reserved` entries)

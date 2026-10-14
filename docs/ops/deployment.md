@@ -739,7 +739,8 @@ This refactor changes two things that are not backward-compatible with persisted
 - The **attribute hash scheme** moves from seeded XXH3 (`DefaultSeeds`) to unseeded XXH3. Persisted cache U128 keys (zone `0xFF`) and persisted bloom blocks were computed under the old hash, so they no longer match the IDs the new binary computes for the same canonical inputs.
 - The **audit hash chain** moves from an unkeyed hash to one keyed by a value derived from the immutable `cluster-id` (`processing.HashGenerator`). Audit entries written by the old binary become unverifiable under the new scheme.
 
-The service is not yet stable, so this break is accepted instead of adding migration code. **The only supported upgrade path is a full data wipe**:
+This change predates `v3.0.0-rc.1`. No migration was provided for clusters from
+that development period. **Their only supported upgrade path was a full data wipe**:
 
 1. Drain the cluster.
 2. Delete the Pebble data directory on every node.
@@ -770,7 +771,7 @@ Changes in this release line that fall under the rule:
 | EN-1536 (`8b24ee535`) | `buildAuditFailure` resolves the outermost `Describable` instead of `errors.As`-unwrapping, and takes `Message` from `d.Error()` — reason, message and context can all shift for a wrapped failure | any wrapped FSM failure |
 | EN-1379 | a preload coverage miss stops being flattened into `ERROR_REASON_STORAGE_OPERATION_FAILED` and surfaces as `ERROR_REASON_COVERAGE_MISS`, with `attribute`, `canonicalHex`, `idHex`, `raftIndex` intact | coverage misses only — themselves admission-contract violations that must never fire (invariant #7), so in a healthy cluster the window is empty |
 
-**Revision 30 requires a state replacement for any cluster with pre-30 data.** It replaces persisted audit failure `message/context`, idempotency failure `message/metadata`, and skipped-order `context` with `reason/code/facts`. The protocol revision changes, but `storage-schema-version` does not reject the old records at startup. A coordinated restart alone cannot convert those records or make their old audit hashes verifiable under the new pre-image. Because v3 has not reached RC, there is no in-place migration: drain and stop every node, discard the old Pebble and Raft state (including pre-30 snapshots), bootstrap a fresh revision-30 cluster, and rebuild business state from a trusted external source through the new binary. Do not restore a pre-30 Ledger backup into it. If the state cannot be rebuilt, keep the pre-30 deployment until a migration path exists.
+**Revision 30 required a state replacement for any development cluster with pre-30 data.** It replaced persisted audit failure `message/context`, idempotency failure `message/metadata`, and skipped-order `context` with `reason/code/facts`. The protocol revision changed, but `storage-schema-version` did not reject the old records at startup. A coordinated restart alone could not convert those records or make their old audit hashes verifiable under the new pre-image. Before the first RC, there was no in-place migration: drain and stop every node, discard the old Pebble and Raft state (including pre-30 snapshots), bootstrap a fresh revision-30 cluster, and rebuild business state from a trusted external source through the new binary. Do not restore a pre-30 Ledger backup into it. If the state cannot be rebuilt, keep the pre-30 deployment until a migration path exists. For upgrades from `v3.0.0-rc.1` onward, follow the [release migration requirement](upgrades.md#release-requirement-from-v300-rc1).
 
 Mixed binaries that disagree on the failure-facts schema still require a coordinated restart after the replacement. Revision 30 removes presentation wording from that schema, reducing the changes that can affect future entries in the chain. See [coverage-gate.md](../technical/architecture/subsystems/fsm/coverage-gate.md#upgrade-note-the-reason-is-hash-bound) for the mechanism in detail.
 
@@ -816,10 +817,10 @@ entry differently from the stored outcome, and a locally consistent audit
 chain does not by itself prove that replicas agree with each other.
 
 For a library change that can alter script outcomes, do not use a mixed-version
-rolling upgrade. During unreleased v3 development, state is wiped on pushes
-to `release/v3.0`; a clean cluster restart with reset state is the supported
-boundary for such a change. Before a stable release, maintaining data across
-such an upgrade would require a separately designed, replicated semantic
+rolling upgrade. Before `v3.0.0-rc.1`, state was wiped on pushes to
+`release/v3.0`; a clean cluster restart with reset state was the supported
+boundary for such a change. From the RC onward, maintaining data across
+such an upgrade requires a separately designed, replicated semantic
 version boundary covering in-flight Raft entries and audit replay. Merely
 stopping all nodes does not establish that boundary when unapplied entries or
 replayable history remain.

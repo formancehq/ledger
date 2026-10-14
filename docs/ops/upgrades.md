@@ -1,11 +1,26 @@
 # Server Binary Upgrades
 
-## Current v3 Support Boundary
+## Release requirement from v3.0.0-rc.1
 
-Ledger v3 is pre-GA and does not yet promise persisted-storage or wire-format
-compatibility between development revisions. Do not assume that an in-place,
-mixed-binary rolling upgrade is supported merely because Kubernetes can perform
-a rolling update.
+`v3.0.0-rc.1` is the first supported v3 persisted-state baseline. Every later
+v3 release, including another RC and the stable release, must provide a tested
+forward upgrade from the preceding released v3 version. The upgrade must
+preserve all committed business data, audit history, and the state needed to
+resume the cluster. If a format changes, ship and test its migration in the
+target release. A full data wipe or reconstruction from an external system is
+not an acceptable release upgrade. Beta and development revisions before
+`v3.0.0-rc.1` remain outside this guarantee.
+
+Before tagging a new release, verify the upgrade using state created by the
+preceding released version. Cover the affected Pebble records, Raft log and
+snapshot state, backup and restore formats, audit verification, and any
+rebuildable projections. Document the upgrade procedure, whether mixed binaries
+are safe, and the rollback boundary in the release notes. If the target cannot
+read or migrate the source state, delay the release until it can.
+
+The target release may require a coordinated restart or migration. Use its
+declared upgrade class; Kubernetes rolling updates alone do not establish
+safety.
 
 Every target revision must explicitly identify one of these upgrade classes:
 
@@ -13,7 +28,7 @@ Every target revision must explicitly identify one of these upgrade classes:
 |-------|-----------------|-----------|
 | Rolling | The target revision explicitly supports mixed binaries and the existing storage schema. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
 | Coordinated restart | The storage schema is compatible, but mixed binaries can apply a committed entry differently. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart the cluster without a mixed-version window. |
-| Rebuild or restore | Persisted or backup formats are incompatible. | Follow the revision-specific reset instructions and rebuild from the declared source of truth or a backup explicitly supported by the target revision. |
+| Migrate or restore | Persisted or backup formats change and a rolling or coordinated restart cannot read the old state directly. | Follow the tested migration procedure or restore a backup from the preceding release into the target format. Verify the complete state before serving writes. |
 
 If the target revision does not declare its class, stop and obtain a release
 decision. Do not guess from a successful single-node restart.
@@ -22,7 +37,8 @@ The change-specific constraints currently documented under
 [Upgrading from pre-#400 clusters](./deployment.md#upgrading-from-pre-400-clusters)
 and
 [Upgrading across an FSM error-identity change](./deployment.md#upgrading-across-an-fsm-error-identity-change)
-take precedence over this general workflow.
+describe development upgrades before `v3.0.0-rc.1`. Their reset instructions do
+not apply to upgrades from the RC or any later release.
 
 ## Preflight
 

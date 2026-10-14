@@ -2,11 +2,19 @@
 
 This file is the always-loaded entry point for AI agents working on Ledger v3. Keep it short. Detailed technical knowledge belongs in `docs/`; load only the documentation relevant to the task.
 
-## Release status — v3 is unreleased
+## Release status — v3 RC baseline
 
-**CRITICAL:** Ledger v3 has not been released and state is wiped on pushes to `release/v3.0`. There is no backward-compatibility burden between v3 development revisions.
+**CRITICAL:** `v3.0.0-rc.1` is the first v3 release with a supported
+persisted-state baseline. Starting with this RC, every new v3 release must
+provide a tested forward upgrade that preserves and, when necessary, migrates
+data from the preceding released v3 version. A data wipe or reconstruction from
+an external source is not an acceptable release upgrade. Follow
+[the upgrade policy](docs/ops/upgrades.md#release-requirement-from-v300-rc1).
 
-- Do not add migrations, compatibility shims, version guards, or fallback paths for old v3 wire/storage formats.
+- Classify every persisted, Raft, snapshot, backup, and audit format change
+  against that baseline. Include the migration or prove the existing data
+  remains readable and valid before tagging the new release.
+- Compatibility with beta or development revisions before `v3.0.0-rc.1` is not required.
 - When removing protobuf fields, delete them and realign field numbers sequentially. The EN-1551 cleanup removed every existing `reserved` declaration from `misc/proto/`; do not reintroduce any.
 - Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
 
