@@ -6214,7 +6214,12 @@ components:
           type: object
           additionalProperties:
             type: string
-          description: Parameter values for the query (substituted into filter placeholders)
+          description: >-
+            Parameter values for the query (substituted into filter placeholders).
+            Values may also be JSON booleans or integers; an integer is kept
+            exactly and must fit int64 (negative) or uint64 (non-negative).
+            null, fractions and out-of-range integers are rejected with
+            400 INVALID_PARAMETERS.
         pageSize:
           type: integer
           format: int32

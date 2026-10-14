@@ -1,12 +1,14 @@
 package http
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"math"
+	"math/big"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -142,7 +144,10 @@ type executePreparedQueryResponseJSON struct {
 }
 
 // convertJSONParameters converts raw JSON values into typed ParameterValue messages.
-// Strings → StringValue, booleans → BoolValue, integers → Int64Value or Uint64Value.
+// Strings → StringValue, booleans → BoolValue, integers → Int64Value (negative)
+// or Uint64Value (non-negative). A value that cannot be forwarded exactly —
+// null, a fraction, or an integer outside the int64/uint64 range — is refused
+// instead of being replaced by another value.
 func convertJSONParameters(raw map[string]json.RawMessage) (map[string]*commonpb.ParameterValue, error) {
 	if len(raw) == 0 {
 		return nil, nil
@@ -163,34 +168,68 @@ func convertJSONParameters(raw map[string]json.RawMessage) (map[string]*commonpb
 }
 
 func jsonToParameterValue(raw json.RawMessage) (*commonpb.ParameterValue, error) {
-	var s string
-	if err := json.Unmarshal(raw, &s); err == nil {
-		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_StringValue{StringValue: s}}, nil
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return nil, fmt.Errorf("invalid value %s: %w", string(raw), err)
 	}
 
-	var b bool
-	if err := json.Unmarshal(raw, &b); err == nil {
-		// Distinguish from number 0/1: raw must be "true" or "false"
-		trimmed := string(raw)
-		if trimmed == "true" || trimmed == "false" {
-			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_BoolValue{BoolValue: b}}, nil
-		}
+	switch v := v.(type) {
+	case nil:
+		return nil, errors.New("null is not a valid parameter value")
+	case string:
+		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_StringValue{StringValue: v}}, nil
+	case bool:
+		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_BoolValue{BoolValue: v}}, nil
+	case json.Number:
+		return jsonNumberToParameterValue(v)
+	default:
+		return nil, fmt.Errorf("unsupported value type: %s", string(raw))
+	}
+}
+
+// jsonNumberToParameterValue parses n exactly (no float64 round trip), so an
+// integer above 2^53 keeps every digit and one outside the int64/uint64 range
+// is refused rather than wrapped. Integral notations such as 1e3 or 100.0 are
+// still accepted. The fallback uses a fixed precision so a huge exponent
+// costs no more than a small one.
+func jsonNumberToParameterValue(n json.Number) (*commonpb.ParameterValue, error) {
+	s := n.String()
+
+	if u, err := strconv.ParseUint(s, 10, 64); err == nil {
+		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: u}}, nil
 	}
 
-	var f float64
-	if err := json.Unmarshal(raw, &f); err == nil {
-		if f != math.Trunc(f) {
-			return nil, fmt.Errorf("floating-point values are not supported, got %v", f)
-		}
-
-		if f < 0 {
-			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: int64(f)}}, nil
-		}
-
-		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: uint64(f)}}, nil
+	if i, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: i}}, nil
 	}
 
-	return nil, fmt.Errorf("unsupported value type: %s", string(raw))
+	// Every int64/uint64 is exact in 128 bits: an inexact parse is either a
+	// fraction or an integer far outside the range.
+	f, _, err := big.ParseFloat(s, 10, 128, big.ToNearestEven)
+	if err != nil {
+		return nil, fmt.Errorf("invalid number %s: %w", s, err)
+	}
+
+	if f.Acc() != big.Exact || !f.IsInt() {
+		if f.IsInt() {
+			return nil, fmt.Errorf("integer %s is out of range", s)
+		}
+
+		return nil, fmt.Errorf("floating-point values are not supported, got %s", s)
+	}
+
+	if f.Sign() < 0 {
+		if i, acc := f.Int64(); acc == big.Exact {
+			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: i}}, nil
+		}
+	} else if u, acc := f.Uint64(); acc == big.Exact {
+		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: u}}, nil
+	}
+
+	return nil, fmt.Errorf("integer %s is out of range", s)
 }
 
 // parseQueryMode maps the wire string to a QueryMode enum value. The empty

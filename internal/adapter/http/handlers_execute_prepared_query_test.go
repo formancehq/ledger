@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -400,6 +401,88 @@ func TestHandleExecutePreparedQuery_Reverse(t *testing.T) {
 
 			require.Equal(t, http.StatusOK, w.Code)
 			require.Equal(t, tc.want, captured.GetReverse())
+		})
+	}
+}
+
+// TestHandleExecutePreparedQuery_RejectsAlteredParameters pins that the HTTP
+// decoder never forwards a value different from the one the caller sent: a
+// JSON null used to decode as "" and an integer outside the int64/uint64
+// range used to be cast from float64, so the query ran on another value and
+// answered 200 with an empty page.
+func TestHandleExecutePreparedQuery_RejectsAlteredParameters(t *testing.T) {
+	t.Parallel()
+
+	for name, params := range map[string]string{
+		"null":           `{"min":null}`,
+		"above uint64":   `{"min":18446744073709551616}`,
+		"below int64":    `{"min":-9223372036854775809}`,
+		"exponent float": `{"min":1.5e0}`,
+		"fraction":       `{"min":1.5}`,
+		"huge exponent":  `{"min":1e1000000000}`,
+		"tiny fraction":  `{"min":18446744073709551615.0000000000000000000001}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			// No EXPECT: reaching the backend fails the test.
+			srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute",
+				strings.NewReader(`{"parameters":`+params+`}`),
+				map[string]string{
+					"ledgerName": "ledger1",
+					"queryName":  "my-query",
+				})
+
+			srv.handleExecutePreparedQuery(w, r)
+
+			require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+			require.Contains(t, w.Body.String(), `parameter \"min\"`)
+		})
+	}
+}
+
+// TestHandleExecutePreparedQuery_ForwardsExactIntegers pins that integers are
+// forwarded exactly, including values above 2^53 that a float64 cannot hold.
+func TestHandleExecutePreparedQuery_ForwardsExactIntegers(t *testing.T) {
+	t.Parallel()
+
+	for raw, want := range map[string]*commonpb.ParameterValue{
+		`18446744073709551615`: {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 18446744073709551615}},
+		`9007199254740993`:     {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 9007199254740993}},
+		`-9223372036854775808`: {Value: &commonpb.ParameterValue_Int64Value{Int64Value: -9223372036854775808}},
+		`-9007199254740993`:    {Value: &commonpb.ParameterValue_Int64Value{Int64Value: -9007199254740993}},
+		`0`:                    {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 0}},
+		`1e3`:                  {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 1000}},
+		`-42.0`:                {Value: &commonpb.ParameterValue_Int64Value{Int64Value: -42}},
+		`true`:                 {Value: &commonpb.ParameterValue_BoolValue{BoolValue: true}},
+		`""`:                   {Value: &commonpb.ParameterValue_StringValue{StringValue: ""}},
+	} {
+		t.Run(raw, func(t *testing.T) {
+			t.Parallel()
+
+			backend := NewMockBackend(gomock.NewController(t))
+			backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+					require.True(t, proto.Equal(want, req.GetParameters()["min"]), "got %v", req.GetParameters()["min"])
+
+					return &servicepb.ExecutePreparedQueryResponse{}, nil
+				})
+			srv := newTestServer(t, backend)
+
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute",
+				strings.NewReader(`{"parameters":{"min":`+raw+`}}`),
+				map[string]string{
+					"ledgerName": "ledger1",
+					"queryName":  "my-query",
+				})
+
+			srv.handleExecutePreparedQuery(w, r)
+
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 		})
 	}
 }

@@ -81,7 +81,18 @@ A validation error at FSM time is hash-bound as an `AuditFailure`, so a checker 
 
 ## Execution
 
-`ExecutePreparedQueryRequest` carries the ledger name, the query name, an execution mode (`LIST` or `AGGREGATE_VOLUMES`), any runtime parameters, and the `LIST` paging inputs (`page_size`, `cursor`, `reverse`). The executor:
+`ExecutePreparedQueryRequest` carries the ledger name, the query name, an execution mode (`LIST` or `AGGREGATE_VOLUMES`), any runtime parameters, and the `LIST` paging inputs (`page_size`, `cursor`, `reverse`).
+
+HTTP decodes each JSON parameter without a `float64` round trip
+(`jsonToParameterValue`, `internal/adapter/http/handlers_execute_prepared_query.go`):
+a string becomes `StringValue`, a boolean `BoolValue`, a negative integer
+`Int64Value`, and a non-negative integer `Uint64Value`, every digit preserved.
+Integral notations such as `1e3` or `100.0` are accepted. HTTP rejects JSON
+`null`, a fraction, and an integer outside the int64/uint64 range with
+`400 INVALID_PARAMETERS` before the request reaches the executor, so a query
+never runs on a value other than the one the caller sent.
+
+The executor:
 
 1. Rejects `reverse` outside `LIST` with InvalidArgument before any read: an aggregate has no order to invert.
 2. Opens the fixed main-store snapshot, then reads both the ledger schema and prepared query from that snapshot. This prevents a concurrent query/schema update or deletion from being combined with entities from a newer state. Because the stored definition determines whether an index will be used, the executor briefly reserves the event-history floor before opening the snapshot and releases it immediately when the loaded shape needs no index alignment.
