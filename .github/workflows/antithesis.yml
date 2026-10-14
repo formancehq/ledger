@@ -106,6 +106,19 @@ jobs:
           echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
+      - name: Use HTTP/1 for Go dependency downloads in the compiler stage
+        run: |
+          nix develop .#ci --command python3 - <<'PYCODE'
+          from pathlib import Path
+          path = Path("Dockerfile.antithesis")
+          source = path.read_text()
+          stages = [line for line in source.splitlines() if line.startswith("FROM golang:") and line.endswith(" AS compiler")]
+          if len(stages) != 1:
+              raise SystemExit("Expected exactly one Go compiler stage")
+          source = source.replace(stages[0] + "\n", stages[0] + "\nENV GODEBUG=http2client=0\n", 1)
+          path.write_text(source)
+          PYCODE
+
       - name: Build and publish AMD64 images
         working-directory: tests/antithesis
         run: >-
