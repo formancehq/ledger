@@ -1,10 +1,7 @@
 package http
 
 import (
-	"errors"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -31,10 +28,8 @@ func (s *Server) handleListNumscriptVersions(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	name := chi.URLParam(r, "name")
-	if name == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("numscript name is required"))
-
+	name, ok := requirePathParameter(w, r, "name", "numscript name")
+	if !ok {
 		return
 	}
 

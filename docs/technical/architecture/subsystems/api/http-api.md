@@ -57,6 +57,18 @@ the SDK encode the path segment. Passing a pre-encoded key to an SDK produces
 double encoding and is rejected. Direct HTTP clients encode the raw key as one
 path segment themselves.
 
+### Encoded path identifiers
+
+The single-decoding rule also applies to every free-form identifier carried in
+a path segment: account addresses (`GET /accounts/{address}` and the account
+metadata POST/DELETE routes), numscript names, prepared-query names,
+account-type names and events sink names. The adapter extracts them with
+`requirePathParameter`, never with a raw `chi.URLParam`. For example,
+`users%3Aa` and `%75sers:a` both select the account `users:a`. Without this
+decoding, an encoded address would read an empty account with HTTP 200, or be
+rejected by admission on metadata writes. A double-encoded `users%253Aa`
+selects the literal `users%3Aa`, which is not a valid account address.
+
 ### Ledger information
 
 See [LedgerInfo read contract](ledger-info.md) for camelCase properties, explicit

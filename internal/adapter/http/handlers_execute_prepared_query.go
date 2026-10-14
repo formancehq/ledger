@@ -8,8 +8,6 @@ import (
 	"math"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -27,10 +25,8 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	queryName := chi.URLParam(r, "queryName")
-	if queryName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("query name is required"))
-
+	queryName, ok := requirePathParameter(w, r, "queryName", "query name")
+	if !ok {
 		return
 	}
 
