@@ -30,6 +30,7 @@ type parsedLog struct {
 	LogType          int32                     // LedgerLogPayload oneof tag: 1=created, 2=reverted, 0=skip
 	PurgedVolumes    []*commonpb.TouchedVolume // LedgerLog.purged_volumes    (field 4) — draining evictions, reused
 	EphemeralVolumes []*commonpb.TouchedVolume // LedgerLog.ephemeral_volumes (field 6) — pure ephemeral evictions, reused
+	PurgedAccounts   []string                  // LedgerLog.purged_accounts   (field 7), reused
 	// DeletedLedger is the name carried by a DeleteLedger log (LogPayload
 	// field 2); empty for every other log. It lets the backfill replay wipe
 	// the deleted ledger's readstore rows, mirroring the live processLogs path.
@@ -41,6 +42,7 @@ type parsedLog struct {
 // through commonpb.
 func (p *parsedLog) GetPurgedVolumes() []*commonpb.TouchedVolume    { return p.PurgedVolumes }
 func (p *parsedLog) GetEphemeralVolumes() []*commonpb.TouchedVolume { return p.EphemeralVolumes }
+func (p *parsedLog) GetPurgedAccounts() []string                    { return p.PurgedAccounts }
 
 // parsePostingsFromLog extracts only the fields needed for posting indexation
 // from the raw bytes of a serialized Log message. It skips ~70% of the payload
@@ -65,6 +67,7 @@ func parsePostingsFromLog(data []byte, out *parsedLog) error {
 	out.TxID = 0
 	out.PurgedVolumes = out.PurgedVolumes[:0]
 	out.EphemeralVolumes = out.EphemeralVolumes[:0]
+	out.PurgedAccounts = out.PurgedAccounts[:0]
 	out.DeletedLedger = ""
 
 	// --- Log level: extract sequence (field 1) and payload (field 2) ---
@@ -225,6 +228,13 @@ func parsePostingsFromLog(data []byte, out *parsedLog) error {
 				return fmt.Errorf("TouchedVolume: %w", perr)
 			}
 			out.EphemeralVolumes = append(out.EphemeralVolumes, vol)
+			ledgerLogBytes = ledgerLogBytes[bn:]
+		case num == 7 && typ == protowire.BytesType:
+			b, bn := protowire.ConsumeBytes(ledgerLogBytes)
+			if bn < 0 {
+				return errors.New("protowire: invalid bytes for LedgerLog.purged_accounts")
+			}
+			out.PurgedAccounts = append(out.PurgedAccounts, string(b))
 			ledgerLogBytes = ledgerLogBytes[bn:]
 		default:
 			n := protowire.ConsumeFieldValue(num, typ, ledgerLogBytes)

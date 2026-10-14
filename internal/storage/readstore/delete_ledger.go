@@ -32,6 +32,7 @@ var ledgerScopedPrefixes = [][]byte{
 	{PrefixTransactionInsertedAt},
 	{PrefixTransactionRevertedAt},
 	{PrefixAccountByAsset},
+	{PrefixAssetsByAccount},
 	{PrefixInternal, SubInternalBackfill},
 	{PrefixInternal, SubInternalIndexVersion},
 }

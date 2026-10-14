@@ -26,6 +26,7 @@ type Attributes struct {
 	PreparedQuery    *Attribute[*commonpb.PreparedQuery]
 	LedgerMetadata   *Attribute[*commonpb.MetadataValue]
 	Index            *Attribute[*commonpb.Index]
+	AccountInventory *Attribute[*raftcmdpb.AccountInventoryState]
 }
 
 // New creates a new Attributes instance with all attribute types initialized.
@@ -43,6 +44,7 @@ func New() *Attributes {
 		PreparedQuery:    NewAttribute[*commonpb.PreparedQuery](dal.SubAttrPreparedQuery),
 		LedgerMetadata:   NewAttribute[*commonpb.MetadataValue](dal.SubAttrLedgerMetadata),
 		Index:            NewAttribute[*commonpb.Index](dal.SubAttrIndex),
+		AccountInventory: NewAttribute[*raftcmdpb.AccountInventoryState](dal.SubAttrAccountInventory),
 	}
 }
 

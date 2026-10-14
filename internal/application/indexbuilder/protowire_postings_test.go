@@ -79,6 +79,7 @@ func TestParsePostingsFromLog_CreatedTransaction(t *testing.T) {
 		{Source: "users:alice", Destination: "orders:1234", Amount: &commonpb.Uint256{V0: 1000}, Asset: "USD"},
 		{Source: "orders:1234", Destination: "merchants:bob", Amount: &commonpb.Uint256{V0: 900}, Asset: "USD"},
 	})
+	log.GetPayload().GetApply().GetLog().PurgedAccounts = []string{"orders:1234"}
 
 	data, err := log.MarshalVT()
 	require.NoError(t, err)
@@ -97,6 +98,7 @@ func TestParsePostingsFromLog_CreatedTransaction(t *testing.T) {
 	require.Equal(t, "orders:1234", parsed.Postings[1].Source)
 	require.Equal(t, "merchants:bob", parsed.Postings[1].Destination)
 	require.Equal(t, "USD", parsed.Postings[1].Asset)
+	require.Equal(t, []string{"orders:1234"}, parsed.PurgedAccounts)
 }
 
 func TestParsePostingsFromLog_RevertedTransaction(t *testing.T) {

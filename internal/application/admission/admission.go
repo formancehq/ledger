@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sort"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -19,7 +20,9 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -102,6 +105,7 @@ type Admission struct {
 	ordersPreparationDurationHistogram  metric.Float64Histogram
 	scriptsDurationHistogram            metric.Float64Histogram
 	responseResolutionDurationHistogram metric.Float64Histogram
+	lifecycleSerializer                 *accountlifecycle.Serializer
 }
 
 // phaseBucketBoundaries are the explicit bucket boundaries, in seconds, for the
@@ -135,6 +139,12 @@ func WithAuditProjectionState(state func() (disabled, rebuilding bool)) func(*Ad
 	}
 }
 
+func WithLifecycleSerializer(serializer *accountlifecycle.Serializer) func(*Admission) {
+	return func(a *Admission) {
+		a.lifecycleSerializer = serializer
+	}
+}
+
 func NewAdmission(
 	store *dal.Store,
 	logger logging.Logger,
@@ -150,16 +160,17 @@ func NewAdmission(
 	opts ...func(*Admission),
 ) *Admission {
 	a := &Admission{
-		store:           store,
-		logger:          logger,
-		proposer:        proposer,
-		builder:         builder,
-		writeGate:       writeGate,
-		keyStore:        keyStore,
-		sharedState:     sharedState,
-		attrs:           attrs,
-		numscriptCache:  numscriptCache,
-		waitLeaderReady: waitLeaderReady,
+		store:               store,
+		logger:              logger,
+		proposer:            proposer,
+		builder:             builder,
+		writeGate:           writeGate,
+		keyStore:            keyStore,
+		sharedState:         sharedState,
+		attrs:               attrs,
+		numscriptCache:      numscriptCache,
+		waitLeaderReady:     waitLeaderReady,
+		lifecycleSerializer: accountlifecycle.NewSerializer(),
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -593,6 +604,16 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 	if err != nil {
 		return nil, err
 	}
+	releaseLifecycle, err := a.expandAccountLifecycleCoverage(ctx, needs, perOrder, orders)
+	if err != nil {
+		return nil, fmt.Errorf("expanding account lifecycle coverage: %w", err)
+	}
+	lifecycleReleased := false
+	defer func() {
+		if !lifecycleReleased {
+			releaseLifecycle()
+		}
+	}()
 
 	cmd, build, err := a.buildAdmissionPreload(ctx, caller.Snapshot(), admPlan, orders, needs, perOrder)
 	if err != nil {
@@ -601,11 +622,22 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 
 	fsmFuture, cleanup, err := a.proposeAdmission(ctx, cmd, build)
 	if err != nil {
+		if fsmFuture != nil && ctx.Err() != nil {
+			lifecycleReleased = true
+			releaseLifecycleWhenFSMCompletes(fsmFuture, releaseLifecycle)
+		}
+
 		return nil, err
 	}
 	defer cleanup()
 
-	return a.resolveAdmissionResult(ctx, cmd, fsmFuture)
+	response, err = a.resolveAdmissionResult(ctx, cmd, fsmFuture)
+	if err != nil && ctx.Err() != nil {
+		lifecycleReleased = true
+		releaseLifecycleWhenFSMCompletes(fsmFuture, releaseLifecycle)
+	}
+
+	return response, err
 }
 
 func (a *Admission) prepareAdmission(ctx context.Context, buildPlan func(context.Context) (*admissionPlan, error)) (*admissionPlan, error) {
@@ -877,7 +909,7 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 		guard.ReleaseLoaders()
 		a.proposeQueueInflight.Add(-1)
 
-		return nil, nil, err
+		return fsmFuture, nil, err
 	}
 
 	recordProposeDuration()
@@ -971,6 +1003,287 @@ func (a *Admission) resolveAdmissionResult(ctx context.Context, cmd *raftcmdpb.P
 	}
 
 	return &domain.ApplyResult{Logs: logs, Replayed: result.Replayed}, nil
+}
+
+func releaseLifecycleWhenFSMCompletes(fsmFuture *futures.Future[state.ApplyResult], release func()) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, _ = fsmFuture.Wait(ctx)
+		release()
+	}()
+}
+
+// expandAccountLifecycleCoverage enumerates every persisted volume and metadata
+// key owned by an account already mentioned by an order's coverage. The FSM
+// uses this closed key set to decide and apply an account-wide EPHEMERAL purge
+// without scanning Pebble or bypassing the coverage gate.
+func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregate *plan.Coverage, perOrder []*plan.Coverage, orders []*raftcmdpb.Order) (func(), error) {
+	perOrderAccounts := make([]map[domain.AccountKey]struct{}, len(perOrder))
+
+	// Collect touched accounts before taking the point-in-time read handle.
+	for orderIndex, coverage := range perOrder {
+		accounts, err := accountlifecycle.Accounts(coverage)
+		if err != nil {
+			return nil, err
+		}
+		perOrderAccounts[orderIndex] = accounts
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	generation := a.builder.CacheGeneration()
+	handle, err := a.store.NewReadHandle()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = handle.Close() }()
+	compiledByLedger, err := a.accountLifecycleTypeSnapshots(handle, orders)
+	if err != nil {
+		return nil, err
+	}
+
+	// Account-type mutations can reclassify accounts without directly touching
+	// any account row. Enumerate persisted ledger-scoped rows while all lifecycle
+	// stripes are held so newly EPHEMERAL accounts enter both coverage and the
+	// FSM purge candidate set.
+	for orderIndex, order := range orders {
+		ledgerOrder := order.GetLedgerScoped()
+		apply := ledgerOrder.GetApply()
+		if apply == nil {
+			continue
+		}
+		switch apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_AddAccountType, *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
+		default:
+			continue
+		}
+		ledger := ledgerOrder.GetLedger()
+		for _, spec := range []struct{ attrCode byte }{
+			{dal.SubAttrVolume},
+			{dal.SubAttrMetadata},
+		} {
+			canonicalPrefix := domain.LedgerScopedPrefix(ledger)
+			lower := append([]byte{dal.ZoneAttributes, spec.attrCode}, canonicalPrefix...)
+			upper := append([]byte(nil), lower...)
+			upper[len(upper)-1]++
+			iter, iterErr := dal.NewBoundedIter(handle, lower, upper)
+			if iterErr != nil {
+				return nil, iterErr
+			}
+			for iter.First(); iter.Valid(); iter.Next() {
+				canonical := append([]byte(nil), iter.Key()[2:]...)
+				var account domain.AccountKey
+				if spec.attrCode == dal.SubAttrVolume {
+					var key domain.VolumeKey
+					if err := key.Unmarshal(canonical); err != nil {
+						_ = iter.Close()
+
+						return nil, err
+					}
+					account = key.AccountKey
+				} else {
+					var key domain.MetadataKey
+					if err := key.Unmarshal(canonical); err != nil {
+						_ = iter.Close()
+
+						return nil, err
+					}
+					account = key.AccountKey
+				}
+				if accountMatchesEphemeralSnapshot(account.Account, compiledByLedger[ledger]) {
+					perOrder[orderIndex].AddLifecycleCandidate(spec.attrCode, canonical)
+					aggregate.AddLifecycleCandidate(spec.attrCode, append([]byte(nil), canonical...))
+				}
+			}
+			if err := iter.Error(); err != nil {
+				_ = iter.Close()
+
+				return nil, err
+			}
+			if err := iter.Close(); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	for orderIndex, coverage := range perOrder {
+		accounts := perOrderAccounts[orderIndex]
+		for account := range accounts {
+			if !accountMatchesEphemeralSnapshot(account.Account, compiledByLedger[account.LedgerName]) {
+				continue
+			}
+			if err := accountlifecycle.AddPersistedRows(handle, account, coverage, aggregate); err != nil {
+				return nil, err
+			}
+			if err := accountlifecycle.MarkAccountCandidateRows(account, coverage, aggregate); err != nil {
+				return nil, err
+			}
+		}
+	}
+	// Every order that may change a persistent account key must be allowed to
+	// read the account's inventory projection at apply. Type transitions add
+	// lifecycle candidates above, so collect accounts again after expansion.
+	for _, coverage := range perOrder {
+		accounts, err := accountlifecycle.Accounts(coverage)
+		if err != nil {
+			return nil, err
+		}
+		for account := range accounts {
+			canonical := account.Bytes()
+			coverage.Add(dal.SubAttrAccountInventory, canonical)
+			aggregate.Add(dal.SubAttrAccountInventory, append([]byte(nil), canonical...))
+		}
+	}
+	// Bind the closed set of persisted account keys and its summary to this
+	// snapshot. Only accounts that may be ephemeral need a purge observation.
+	candidates := make(map[domain.AccountKey]struct{})
+	for orderIndex, coverage := range perOrder {
+		accounts, err := accountlifecycle.Accounts(coverage)
+		if err != nil {
+			return nil, err
+		}
+		for account := range accounts {
+			if accountMatchesEphemeralSnapshot(account.Account, compiledByLedger[account.LedgerName]) {
+				candidates[account] = struct{}{}
+				ledgerKey := domain.LedgerKey{Name: account.LedgerName}.Bytes()
+				perOrder[orderIndex].Add(dal.SubAttrLedger, ledgerKey)
+				aggregate.Add(dal.SubAttrLedger, append([]byte(nil), ledgerKey...))
+			}
+		}
+	}
+	ordered := make([]domain.AccountKey, 0, len(candidates))
+	for account := range candidates {
+		ordered = append(ordered, account)
+	}
+	sort.Slice(ordered, func(i, j int) bool { return string(ordered[i].Bytes()) < string(ordered[j].Bytes()) })
+	for _, account := range ordered {
+		var volumeCount, metadataCount uint32
+		for attrCode, entries := range aggregate.Attributes {
+			if attrCode != dal.SubAttrVolume && attrCode != dal.SubAttrMetadata {
+				continue
+			}
+			for id, entry := range entries {
+				if !aggregate.IsPersisted(attrCode, id) {
+					continue
+				}
+				var owner domain.AccountKey
+				if attrCode == dal.SubAttrVolume {
+					var key domain.VolumeKey
+					if err := key.Unmarshal(entry.Canonical); err != nil {
+						return nil, err
+					}
+					owner = key.AccountKey
+				} else {
+					var key domain.MetadataKey
+					if err := key.Unmarshal(entry.Canonical); err != nil {
+						return nil, err
+					}
+					owner = key.AccountKey
+				}
+				if owner != account {
+					continue
+				}
+				if attrCode == dal.SubAttrVolume {
+					volumeCount++
+				} else {
+					metadataCount++
+				}
+			}
+		}
+		expected, err := a.attrs.AccountInventory.Get(handle, account.Bytes())
+		if err != nil {
+			return nil, err
+		}
+		if expected == nil {
+			if volumeCount != 0 || metadataCount != 0 {
+				return nil, fmt.Errorf("account inventory missing for %q", account.Account)
+			}
+		} else if expected.GetVolumeCount() != volumeCount || expected.GetMetadataCount() != metadataCount {
+			return nil, fmt.Errorf("account inventory mismatch for %q: summary=(%d,%d) scanned=(%d,%d)", account.Account, expected.GetVolumeCount(), expected.GetMetadataCount(), volumeCount, metadataCount)
+		}
+		ledgerInfo, err := a.attrs.Ledger.Get(handle, domain.LedgerKey{Name: account.LedgerName}.Bytes())
+		if err != nil {
+			return nil, err
+		}
+		digest, err := accounttype.LedgerTypeDigest(ledgerInfo)
+		if err != nil {
+			return nil, err
+		}
+		aggregate.AccountInventories = append(aggregate.AccountInventories, &raftcmdpb.AccountInventoryObservation{AccountKey: account.Bytes(), Expected: expected, AccountTypesDigest: digest})
+	}
+	aggregate.AccountInventoryGeneration = generation
+
+	if a.builder.CacheGeneration() != generation {
+		return nil, domain.ErrStaleProposal
+	}
+
+	return func() {}, nil
+}
+
+// accountLifecycleTypeSnapshots returns every account-type view that can be
+// observed while the proposal is processed. Keeping the intermediate views is
+// deliberately conservative: a skipped add/remove may leave either side of a
+// transition effective, and coverage must be sufficient for both outcomes.
+func (a *Admission) accountLifecycleTypeSnapshots(reader dal.PebbleGetter, orders []*raftcmdpb.Order) (map[string][][]accounttype.CompiledType, error) {
+	typesByLedger := make(map[string]map[string]*commonpb.AccountType)
+	snapshots := make(map[string][][]accounttype.CompiledType)
+	load := func(ledger string) (map[string]*commonpb.AccountType, error) {
+		if types, ok := typesByLedger[ledger]; ok {
+			return types, nil
+		}
+		info, err := a.attrs.Ledger.Get(reader, domain.LedgerKey{Name: ledger}.Bytes())
+		if err != nil {
+			return nil, err
+		}
+		types := make(map[string]*commonpb.AccountType)
+		if info != nil {
+			for name, accountType := range info.GetAccountTypes() {
+				types[name] = accountType.CloneVT()
+			}
+		}
+		typesByLedger[ledger] = types
+		snapshots[ledger] = append(snapshots[ledger], accounttype.CompileTypes(types))
+
+		return types, nil
+	}
+
+	for _, order := range orders {
+		ledgerOrder := order.GetLedgerScoped()
+		if ledgerOrder == nil || ledgerOrder.GetApply() == nil {
+			continue
+		}
+		ledger := ledgerOrder.GetLedger()
+		types, err := load(ledger)
+		if err != nil {
+			return nil, err
+		}
+		switch data := ledgerOrder.GetApply().GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_AddAccountType:
+			if accountType := data.AddAccountType.GetAccountType(); accountType != nil {
+				if _, exists := types[accountType.GetName()]; !exists {
+					types[accountType.GetName()] = accountType.CloneVT()
+					snapshots[ledger] = append(snapshots[ledger], accounttype.CompileTypes(types))
+				}
+			}
+		case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
+			delete(types, data.RemoveAccountType.GetName())
+			snapshots[ledger] = append(snapshots[ledger], accounttype.CompileTypes(types))
+		}
+	}
+
+	return snapshots, nil
+}
+
+func accountMatchesEphemeralSnapshot(account string, snapshots [][]accounttype.CompiledType) bool {
+	for _, compiled := range snapshots {
+		matched := accounttype.FindMatchingType(account, compiled)
+		if matched != nil && matched.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (a *Admission) checkQueryCheckpointProjectionReady(reqs []*servicepb.Request) error {

@@ -50,6 +50,27 @@ type AccountKey struct {
 	Account    string
 }
 
+// AppendBytes encodes an account under its own attribute code. The ledger
+// prefix has fixed width, so no separator is needed before the address.
+func (k AccountKey) AppendBytes(dst []byte) []byte {
+	dst = appendLedgerName(dst, k.LedgerName)
+
+	return append(dst, k.Account...)
+}
+
+func (k AccountKey) Bytes() []byte { return k.AppendBytes(nil) }
+
+func (k *AccountKey) Unmarshal(src []byte) error {
+	ledger, rest, err := readLedgerName(src)
+	if err != nil {
+		return err
+	}
+	k.LedgerName = ledger
+	k.Account = string(rest)
+
+	return nil
+}
+
 // AccountAssetKey identifies a single Pebble volume cell within a ledger by
 // its (account, asset, color) coordinates. It is the ledger-local subset of
 // VolumeKey (no LedgerName), used as map key in code that already scopes

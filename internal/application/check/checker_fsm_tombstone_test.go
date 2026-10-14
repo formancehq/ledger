@@ -129,12 +129,17 @@ func applyTombstoneFSMProposal(
 	require.NoError(t, err)
 
 	plans := make([]*raftcmdpb.AttributeCoverage, 0, len(items))
+	lifecycleKeys := make([]*raftcmdpb.LifecycleKey, 0)
 
 	for _, item := range items {
 		id, tag := attributes.MakeKey(item.key)
 		plan := &raftcmdpb.AttributeCoverage{
 			Id:       &raftcmdpb.AttributeID{Id: id[:], Tag: tag},
 			AttrCode: uint32(item.code),
+		}
+		var lifecycle *raftcmdpb.LifecycleKey
+		if item.code == dal.SubAttrVolume || item.code == dal.SubAttrMetadata {
+			lifecycle = &raftcmdpb.LifecycleKey{AttrCode: uint32(item.code), CanonicalKey: item.key, LifecycleCandidate: true}
 		}
 
 		var raw []byte
@@ -156,6 +161,7 @@ func applyTombstoneFSMProposal(
 			value, getErr := attrs.Volume.Get(handle, item.key)
 			require.NoError(t, getErr)
 			if value != nil {
+				lifecycle.Persisted = true
 				raw, err = value.MarshalVT()
 			}
 		}
@@ -167,6 +173,9 @@ func applyTombstoneFSMProposal(
 		}
 
 		plans = append(plans, plan)
+		if lifecycle != nil {
+			lifecycleKeys = append(lifecycleKeys, lifecycle)
+		}
 	}
 
 	require.NoError(t, handle.Close())
@@ -187,7 +196,7 @@ func applyTombstoneFSMProposal(
 		CallerSnapshot: &commonpb.CallerSnapshot{
 			Principal: &commonpb.CallerSnapshot_AuthDisabled{AuthDisabled: &commonpb.AuthDisabledCaller{}},
 		},
-		ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: plans},
+		ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: plans, LifecycleKeys: lifecycleKeys},
 	}
 
 	data, err := proto.Marshal(proposal)

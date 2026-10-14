@@ -5,6 +5,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // CoverageEntry is the stored value for one attribute-cache key: the
@@ -36,8 +37,11 @@ type CoverageEntry struct {
 // into a single generic dispatch keyed by attribute code — the same code
 // the FSM uses to route through AttributeCoverage.attr_code.
 type Coverage struct {
-	Attributes      map[byte]map[attributes.U128]CoverageEntry
-	IdempotencyKeys map[domain.IdempotencyKey]struct{}
+	Attributes                 map[byte]map[attributes.U128]CoverageEntry
+	LifecycleFlags             map[byte]map[attributes.U128]uint8
+	IdempotencyKeys            map[domain.IdempotencyKey]struct{}
+	AccountInventoryGeneration uint64
+	AccountInventories         []*raftcmdpb.AccountInventoryObservation
 
 	// collision holds the first XXH3-128 collision detected by Add/Merge
 	// (two distinct canonical keys sharing a 128-bit id). It is surfaced
@@ -53,6 +57,44 @@ type Coverage struct {
 // key's Bytes() method; Coverage takes ownership of the slice, callers
 // MUST NOT mutate it afterwards.
 func (c *Coverage) Add(attrCode byte, canonical []byte) {
+	c.add(attrCode, canonical)
+}
+
+func (c *Coverage) AddPersisted(attrCode byte, canonical []byte) {
+	c.add(attrCode, canonical)
+	c.markLifecycle(attrCode, canonical, 1)
+}
+
+func (c *Coverage) AddLifecycleCandidate(attrCode byte, canonical []byte) {
+	c.add(attrCode, canonical)
+	c.markLifecycle(attrCode, canonical, 3)
+}
+
+// AddCandidate marks a possibly new (not yet persisted) row as belonging to
+// an account whose complete lifecycle must be evaluated by the FSM.
+func (c *Coverage) AddCandidate(attrCode byte, canonical []byte) {
+	c.add(attrCode, canonical)
+	c.markLifecycle(attrCode, canonical, 2)
+}
+
+func (c *Coverage) markLifecycle(attrCode byte, canonical []byte, flags uint8) {
+	if c.LifecycleFlags == nil {
+		c.LifecycleFlags = make(map[byte]map[attributes.U128]uint8)
+	}
+	m := c.LifecycleFlags[attrCode]
+	if m == nil {
+		m = make(map[attributes.U128]uint8)
+		c.LifecycleFlags[attrCode] = m
+	}
+	id, _ := attributes.MakeKey(canonical)
+	m[id] |= flags
+}
+
+func (c *Coverage) IsPersisted(attrCode byte, id attributes.U128) bool {
+	return c.LifecycleFlags[attrCode][id]&1 != 0
+}
+
+func (c *Coverage) add(attrCode byte, canonical []byte) {
 	if c.Attributes == nil {
 		c.Attributes = make(map[byte]map[attributes.U128]CoverageEntry)
 	}
@@ -185,6 +227,19 @@ func (c *Coverage) Merge(src *Coverage) {
 					c.collision = &attributes.ErrCollisionDetected{Bytes: entry.Canonical, OriginalTag: existing.Tag, NewTag: entry.Tag}
 				}
 			}
+		}
+	}
+	for code, flags := range src.LifecycleFlags {
+		if c.LifecycleFlags == nil {
+			c.LifecycleFlags = make(map[byte]map[attributes.U128]uint8)
+		}
+		dst := c.LifecycleFlags[code]
+		if dst == nil {
+			dst = make(map[attributes.U128]uint8, len(flags))
+			c.LifecycleFlags[code] = dst
+		}
+		for id, value := range flags {
+			dst[id] |= value
 		}
 	}
 

@@ -127,6 +127,7 @@ func auditComparableLog(log *commonpb.Log, sequence uint64) *commonpb.Log {
 		apply.Log.PurgedVolumes = nil
 		apply.Log.NewKeptVolumes = nil
 		apply.Log.EphemeralVolumes = nil
+		apply.Log.PurgedAccounts = nil
 	}
 	if cp := ret.GetPayload().GetCreatedQueryCheckpoint(); cp != nil {
 		cp.AppliedIndex = 0
@@ -360,6 +361,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// indirectly relies on, so a tampered cache cannot make a corrupted
 	// state look consistent.
 	stored := excludedVolumesSet{}
+	storedPurgedAccounts := make(map[domain.AccountKey]uint64)
+	lastFreshLogByLedger := make(map[string]uint64)
 	addStored := func(ledger, account, asset, color string) {
 		set, exists := stored[ledger]
 		if !exists {
@@ -380,6 +383,18 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	var replayWriter domainreplay.Writer = replay
+	flushEphemeralPurges := func(boundary uint64) error {
+		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
+			return err
+		}
+		pendingPurges := replay.takePendingPurgedAccounts()
+		comparePurgedAccountProjections(storedPurgedAccounts, pendingPurges, lastFreshLogByLedger, boundary, callback)
+		clear(storedPurgedAccounts)
+		clear(lastFreshLogByLedger)
+
+		return nil
+	}
+
 	// Pass 1: Single forward iterator over all logs.
 	logIter, err := snap.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.ZoneHistory, dal.SubHistoryLog},
@@ -462,7 +477,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 
 		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
-			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
+			if err := flushEphemeralPurges(nextProposalEnd); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at missing log boundary %d: %w", nextProposalEnd, err)
 			}
 
@@ -570,6 +585,15 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			for _, v := range apply.GetLog().GetEphemeralVolumes() {
 				addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
 			}
+			for _, account := range apply.GetLog().GetPurgedAccounts() {
+				key := domain.AccountKey{LedgerName: ledgerName, Account: account}
+				if prior, exists := storedPurgedAccounts[key]; exists {
+					callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+						fmt.Sprintf("stored account-purge annotation for %q occurs more than once in proposal (logs %d and %d)", account, prior, seq),
+						seq, ledgerName, account, ""))
+				}
+				storedPurgedAccounts[key] = seq
+			}
 		}
 
 		// Hash chain verification is now done via audit entries (see audit hash pass below).
@@ -668,9 +692,13 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
+						lastFreshLogByLedger[ledgerName] = seq
 						verifySavedMetadataAgainstAuditedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), chainBound, callback)
 
-						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), payload.Apply.GetLog().GetDate(), replayWriter, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+						// purged_accounts is an unhashed projection. Checker expectations
+						// are derived independently from audit-bound effects at the proposal
+						// boundary; trusting this field would let tampering hide stale rows.
+						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), nil, payload.Apply.GetLog().GetDate(), replayWriter, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 
@@ -761,6 +789,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						// the same "excluded from normal state" semantics
 						// — the split exists to compact log payloads on
 						// ephemeral-heavy workloads (EN-1422).
+						for _, v := range payload.Apply.GetLog().GetPurgedVolumes() {
+							addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
+						}
+						for _, v := range payload.Apply.GetLog().GetEphemeralVolumes() {
+							addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
+						}
 					}
 				}
 			}
@@ -773,7 +807,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		dispatchElisionCheck(seq, log, expectedSkippable, chainBound, callback)
 
 		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
-			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
+			if err := flushEphemeralPurges(nextProposalEnd); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at log %d: %w", seq, err)
 			}
 
@@ -824,7 +858,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	if ephemeralPurgeBuffer != nil {
-		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
+		if err := flushEphemeralPurges(storedMaxLogSeq); err != nil {
 			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)
 		}
 	}
@@ -848,8 +882,15 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// them via EXCLUSION_RECORD_MISMATCH for human review.
 	compareExclusionProjections(stored, excluded, callback)
 
-	// Comparison passes: expected = replayed state. A cell SimulateEphemeralPurge
-	// deleted from the replay store must be absent from the live store too.
+	// `excluded` was populated incrementally by the replay-time
+	// exclusionCollector. It is the audit-derived ground truth — the
+	// AppliedProposal.TransientVolumes and LedgerLog.PurgedVolumes proto
+	// records are intentionally NOT read here (they are not bound to the
+	// audit hash chain and would let a tampered store hide live mutations
+	// on otherwise-purged accounts).
+
+	// Comparison passes: expected = replayed state.
+	c.comparePurgedAccountAbsence(ctx, snap, replay.replayDerivedPurgedAccounts(), replay.replayDerivedPurgedVolumes(), callback)
 	c.compareVolumes(ctx, snap, replay, excluded, callback)
 	c.compareMetadata(ctx, snap, replay, callback)
 	c.compareTransactions(ctx, snap, replay, callback)
@@ -953,6 +994,98 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	return nil
 }
 
+// comparePurgedAccountAbsence verifies the physical current-state cascade for
+// account-wide EPHEMERAL purges. The ordinary comparison passes deliberately
+// exclude purged cells, so this independent assertion must run before those
+// filters can hide a surviving primary row.
+func (c *Checker) comparePurgedAccountAbsence(
+	ctx context.Context,
+	reader dal.PebbleReader,
+	purged map[domain.AccountKey]struct{},
+	purgedVolumes map[domain.VolumeKey]struct{},
+	callback func(*servicepb.CheckStoreEvent),
+) {
+	if len(purged) == 0 && len(purgedVolumes) == 0 {
+		return
+	}
+
+	volumes, err := c.attrs.Volume.NewStreamingIter(reader, nil)
+	if err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			fmt.Sprintf("failed to scan purged-account volumes: %v", err), 0, "", "", ""))
+
+		return
+	}
+	for volumes.Next() {
+		if ctx.Err() != nil {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+				fmt.Sprintf("purged-account volume scan canceled: %v", ctx.Err()), 0, "", "", ""))
+
+			break
+		}
+		entry := volumes.Entry()
+		var key domain.VolumeKey
+		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+				fmt.Sprintf("decoding volume key during purged-account scan: %v", err), 0, "", "", ""))
+
+			continue
+		}
+		_, accountPurged := purged[key.AccountKey]
+		_, volumePurged := purgedVolumes[key]
+		if accountPurged || volumePurged {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+				fmt.Sprintf("volume row survives replay-derived account purge for %s/%s", key.Account, key.Asset),
+				0, key.LedgerName, key.Account, key.Asset))
+		}
+	}
+	if err := volumes.Err(); err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			fmt.Sprintf("scanning purged-account volumes: %v", err), 0, "", "", ""))
+	}
+	if err := volumes.Close(); err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			fmt.Sprintf("closing purged-account volume scan: %v", err), 0, "", "", ""))
+	}
+
+	metadata, err := c.attrs.Metadata.NewStreamingIter(reader, nil)
+	if err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+			fmt.Sprintf("failed to scan purged-account metadata: %v", err), 0, "", "", ""))
+
+		return
+	}
+	for metadata.Next() {
+		if ctx.Err() != nil {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+				fmt.Sprintf("purged-account metadata scan canceled: %v", ctx.Err()), 0, "", "", ""))
+
+			break
+		}
+		entry := metadata.Entry()
+		var key domain.MetadataKey
+		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+				fmt.Sprintf("decoding metadata key during purged-account scan: %v", err), 0, "", "", ""))
+
+			continue
+		}
+		if _, ok := purged[key.AccountKey]; ok {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+				fmt.Sprintf("metadata row survives replay-derived account purge for %s/%s", key.Account, key.Key),
+				0, key.LedgerName, key.Account, key.Key))
+		}
+	}
+	if err := metadata.Err(); err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+			fmt.Sprintf("scanning purged-account metadata: %v", err), 0, "", "", ""))
+	}
+	if err := metadata.Close(); err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+			fmt.Sprintf("closing purged-account metadata scan: %v", err), 0, "", "", ""))
+	}
+}
+
 // collectStoredTransientVolumes walks the AppliedProposal stream and feeds
 // every (ledger, account, asset, color) declared in TransientVolumes into
 // the addStored callback. Paired with the LedgerLog.PurgedVolumes captured
@@ -1031,6 +1164,32 @@ func compareExclusionProjections(stored, derived excludedVolumesSet, callback fu
 				0, ledger, vk.Account, vk.Asset,
 			))
 		}
+	}
+}
+
+func comparePurgedAccountProjections(stored map[domain.AccountKey]uint64, derived map[domain.AccountKey]struct{}, lastFreshLogByLedger map[string]uint64, boundary uint64, callback func(*servicepb.CheckStoreEvent)) {
+	for account, sequence := range stored {
+		if _, ok := derived[account]; ok {
+			if sequence == lastFreshLogByLedger[account.LedgerName] {
+				continue
+			}
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+				fmt.Sprintf("stored account-purge annotation for %q is on log %d instead of terminal ledger log %d at proposal boundary %d", account.Account, sequence, lastFreshLogByLedger[account.LedgerName], boundary),
+				sequence, account.LedgerName, account.Account, ""))
+
+			continue
+		}
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+			fmt.Sprintf("stored account-purge annotation for %q is not audit-derived at proposal boundary %d", account.Account, boundary),
+			boundary, account.LedgerName, account.Account, ""))
+	}
+	for account := range derived {
+		if _, ok := stored[account]; ok {
+			continue
+		}
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+			fmt.Sprintf("audit-derived account purge for %q is missing from stored annotations at proposal boundary %d", account.Account, boundary),
+			boundary, account.LedgerName, account.Account, ""))
 	}
 }
 
@@ -1546,8 +1705,35 @@ func (c *Checker) compareNumscripts(
 // index builder and cannot be trusted by the integrity checker.
 type excludedVolumesSet map[string]map[domain.AccountAssetKey]struct{}
 
-func (e excludedVolumesSet) contains(key domain.VolumeKey) bool {
-	_, has := e[key.LedgerName][domain.AccountAssetKey{Account: key.Account, Asset: key.Asset, Color: key.Color}]
+func (e excludedVolumesSet) excludesCurrentVolume(key domain.VolumeKey, replayHasVolume, replayAccountIsActive bool) bool {
+	return !replayHasVolume && !replayAccountIsActive && e.contains(key.LedgerName, key.Account, key.Asset, key.Color)
+}
+
+func (e excludedVolumesSet) excludesCurrentMetadata(key domain.MetadataKey, replayAccountIsActive bool) bool {
+	return !replayAccountIsActive && e.containsAccount(key.LedgerName, key.Account)
+}
+
+func (e excludedVolumesSet) containsAccount(ledgerName, account string) bool {
+	for key := range e[ledgerName] {
+		if key.Account == account {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (e excludedVolumesSet) contains(ledgerName, account, asset, color string) bool {
+	if e == nil {
+		return false
+	}
+
+	keys, ok := e[ledgerName]
+	if !ok {
+		return false
+	}
+
+	_, has := keys[domain.AccountAssetKey{Account: account, Asset: asset, Color: color}]
 
 	return has
 }
@@ -1635,12 +1821,47 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 
 	// Collect all keys
 	allKeys := make(map[string]struct{})
+	replayActiveAccounts := make(map[domain.AccountKey]struct{})
 	for k := range liveVolumes {
 		allKeys[k] = struct{}{}
 	}
 
 	for k := range replayDeltas {
 		allKeys[k] = struct{}{}
+		var key domain.VolumeKey
+		if err := key.Unmarshal([]byte(k)); err == nil {
+			replayActiveAccounts[key.AccountKey] = struct{}{}
+		}
+	}
+	metadataIter, err := replay.newPrefixIter(replayPrefixMetadata)
+	if err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			fmt.Sprintf("failed to scan replay metadata for active accounts: %v", err), 0, "", "", ""))
+
+		return 1
+	}
+	for metadataIter.First(); metadataIter.Valid(); metadataIter.Next() {
+		value, valueErr := metadataIter.ValueAndErr()
+		if valueErr != nil {
+			_ = metadataIter.Close()
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+				fmt.Sprintf("reading replay metadata for active accounts: %v", valueErr), 0, "", "", ""))
+
+			return 1
+		}
+		if len(value) == 0 || value[0] == metaFlagDeleted {
+			continue
+		}
+		var key domain.MetadataKey
+		if err := key.Unmarshal(metadataIter.Key()[1:]); err == nil {
+			replayActiveAccounts[key.AccountKey] = struct{}{}
+		}
+	}
+	if err := metadataIter.Close(); err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			fmt.Sprintf("closing replay metadata active-account scan: %v", err), 0, "", "", ""))
+
+		return 1
 	}
 
 	// Compare: expected = replayed state
@@ -1666,7 +1887,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 			continue
 		}
 
-		if replayDeltas[key] == nil && excluded.contains(vk) {
+		if replayDeltas[key] == nil && excluded.contains(vk.LedgerName, vk.Account, vk.Asset, vk.Color) {
 			if actual := liveVolumes[key]; actual != nil {
 				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 					fmt.Sprintf("volume row survives replay purge for %s/%s: got %s/%s",
@@ -1695,6 +1916,22 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 		if actual := liveVolumes[key]; actual != nil {
 			actualInput = actual.GetInput().ToBigInt()
 			actualOutput = actual.GetOutput().ToBigInt()
+		}
+
+		// Skip volumes the replay-time ephemeral-purge collector recorded
+		// during this Check() run (see exclusionCollector at the top of
+		// Check). That set is derived from the hash-chain-bound audit
+		// trail — NOT from AppliedProposal.TransientVolumes or
+		// LedgerLog.PurgedVolumes, which are unhashed caches and must
+		// stay untrusted here. The exclusion key is
+		// (account, asset, color) so a multi-bucket account whose
+		// (USD, RED) was purged still has its (USD, BLUE) compared. Do
+		// not "align" this code to consult those proto records — it
+		// would reintroduce the tampering vector this design
+		// deliberately removes.
+		_, replayAccountIsActive := replayActiveAccounts[vk.AccountKey]
+		if excluded.excludesCurrentVolume(vk, replayDeltas[key] != nil, replayAccountIsActive) {
+			continue
 		}
 
 		if expectedInput.Cmp(actualInput) != 0 {
@@ -1791,6 +2028,26 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 	}
 
 	replayEntries := make(map[string]replayMeta)
+	activeAccounts := make(map[domain.AccountKey]struct{})
+	volumeIter, err := replay.newPrefixIter(replayPrefixVolume)
+	if err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+			fmt.Sprintf("failed to scan replay volumes for metadata exclusions: %v", err), 0, "", "", ""))
+
+		return 1
+	}
+	for volumeIter.First(); volumeIter.Valid(); volumeIter.Next() {
+		var key domain.VolumeKey
+		if err := key.Unmarshal(volumeIter.Key()[1:]); err == nil {
+			activeAccounts[key.AccountKey] = struct{}{}
+		}
+	}
+	if err := volumeIter.Close(); err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+			fmt.Sprintf("closing replay-volume exclusion scan: %v", err), 0, "", "", ""))
+
+		return 1
+	}
 
 	replayIter, err := replay.newPrefixIter(replayPrefixMetadata)
 	if err != nil {
@@ -1831,6 +2088,15 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 			}
 
 			replayEntries[string(canonicalKey)] = replayMeta{value: mv}
+		}
+
+		// A deletion tombstone is evidence that this account was recreated
+		// after an earlier purge, even when it has no current volume or metadata.
+		// Keep it active so the historical purge exclusion cannot hide a live
+		// metadata row that should have been deleted in the new incarnation.
+		var key domain.MetadataKey
+		if err := key.Unmarshal(canonicalKey); err == nil {
+			activeAccounts[key.AccountKey] = struct{}{}
 		}
 	}
 

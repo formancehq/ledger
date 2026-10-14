@@ -31,3 +31,29 @@ metadata writes while preserving the failure audit entry.
 - [Consensus](../consensus/) — Raft commit pipeline that feeds the FSM.
 - [Attributes](../attributes/) — the cache the FSM reads through.
 - [Admission](../admission/) — declares the `plan.Coverage` the FSM consumes.
+
+## Ephemeral account lifecycle
+
+An `EPHEMERAL` account is current state only while at least one of its
+asset/color volumes is non-zero. Admission expands every touched account into a
+closed set of its persisted volume and metadata keys. At the proposal boundary
+the FSM evaluates that set through the proposal-wide coverage gate. When every
+volume is zero, the same primary-store batch deletes all account volumes and
+metadata and persists `LedgerLog.purged_accounts`.
+
+The key set is protected by a per-account inventory projection stored under
+`SubAttrAccountInventory`. It records the account's birth Raft index, the last
+key-set revision, and the number of persistent volume and metadata keys.
+Admission reads the inventory, all candidate keys, and the ledger type rules
+from one Pebble snapshot. The proposal carries that observation and the cache
+generation. Before any preload seed or order mutation, each replica rejects a
+proposal whose inventory or type rules changed, or whose cache passed more
+than one generation. A value-only volume update does not change the inventory;
+its newer Gen0 cache entry wins over an older preload. A same-count key swap
+does change the inventory revision. Normal admission does not hold an account
+stripe lock until apply.
+
+The rule does not apply to `NORMAL` or `TRANSIENT` accounts. Historical
+transactions and their address/source/destination mappings are not account-owned
+current state and survive the purge. Re-funding the address therefore creates a
+fresh current-state incarnation without restoring old metadata.

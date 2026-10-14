@@ -217,6 +217,29 @@ func revertTxOrder(ledger string, order *raftcmdpb.RevertTransactionOrder) *raft
 	}
 }
 
+func metadataOrder(ledger, account string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger,
+		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{AddMetadata: &raftcmdpb.SaveMetadataOrder{
+				Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}}},
+				Metadata: commonpb.MetadataFromGoMap(map[string]string{"note": "purge"}),
+			}},
+		}},
+	}}}
+}
+
+func metadataPurgeLog(seq uint64, ledger, account string, purged []*commonpb.TouchedVolume) *commonpb.Log {
+	return &commonpb.Log{Sequence: seq, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		LedgerName: ledger,
+		Log: &commonpb.LedgerLog{Id: seq, PurgedVolumes: purged, Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{Target: &commonpb.Target{
+				Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}},
+			}}},
+		}},
+	}}}}
+}
+
 // mirrorCreatedOrder wraps a MirrorIngest carrying a created-transaction entry.
 func mirrorCreatedOrder(ledger, reference string) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
@@ -235,6 +258,17 @@ func mirrorCreatedOrder(ledger, reference string) *raftcmdpb.Order {
 			},
 		},
 	}
+}
+
+func mirrorMetadataOrder(ledger, account string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger,
+		Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+			Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
+				Target: &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}}},
+			}},
+		}}},
+	}}}
 }
 
 // seedAuditItem is a single order in a synthetic audit entry: the order to
@@ -849,6 +883,36 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 			},
 			// One purged volume: CounterVolume was decremented from 0 → clamped to 0.
 			zeroCounters: []byte{usagestore.CounterVolume, usagestore.CounterReference},
+		},
+		{
+			name: "metadata_only_account_purge_consumes_volume_annotations",
+			entries: []seedAuditEntry{{
+				seq: 1, success: true,
+				items: []seedAuditItem{
+					{order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{}), logSeq: 10,
+						log: createdTxLog(10, ledger, ts, nil, []*commonpb.TouchedVolume{touchedVolume("hold:1", "USD", "")}, nil, nil)},
+					{order: metadataOrder(ledger, "hold:1"), logSeq: 11,
+						log: metadataPurgeLog(11, ledger, "hold:1", []*commonpb.TouchedVolume{touchedVolume("hold:1", "USD", "")})},
+				},
+			}},
+			wantCursor:   1,
+			wantCounters: []wantCounter{{usagestore.CounterEphemeralEvicted, 1}},
+			zeroCounters: []byte{usagestore.CounterVolume},
+		},
+		{
+			name: "mirrored_metadata_account_purge_consumes_volume_annotations",
+			entries: []seedAuditEntry{{
+				seq: 1, success: true,
+				items: []seedAuditItem{
+					{order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{}), logSeq: 10,
+						log: createdTxLog(10, ledger, ts, nil, []*commonpb.TouchedVolume{touchedVolume("hold:1", "USD", "")}, nil, nil)},
+					{order: mirrorMetadataOrder(ledger, "hold:1"), logSeq: 11,
+						log: metadataPurgeLog(11, ledger, "hold:1", []*commonpb.TouchedVolume{touchedVolume("hold:1", "USD", "")})},
+				},
+			}},
+			wantCursor:   1,
+			wantCounters: []wantCounter{{usagestore.CounterEphemeralEvicted, 1}},
+			zeroCounters: []byte{usagestore.CounterVolume},
 		},
 		{
 			// Case 3: MirrorIngest created-transaction — posting + reference +

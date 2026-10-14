@@ -159,35 +159,37 @@ func (al *AttributeLoader[T]) Release(key attributes.U128) {
 
 // Loaders groups all attribute loaders by type.
 type Loaders struct {
-	Volumes           *AttributeLoader[*raftcmdpb.VolumePair]
-	References        *AttributeLoader[*commonpb.TransactionReferenceValue]
-	Ledgers           *AttributeLoader[*commonpb.LedgerInfo]
-	Boundaries        *AttributeLoader[*raftcmdpb.LedgerBoundaries]
-	SinkConfigs       *AttributeLoader[*commonpb.SinkConfig]
-	AccountMetadata   *AttributeLoader[*commonpb.MetadataValue]
-	NumscriptVersions *AttributeLoader[*commonpb.NumscriptVersionValue]
-	Transactions      *AttributeLoader[*commonpb.TransactionState]
-	NumscriptContents *AttributeLoader[*commonpb.NumscriptInfo]
-	PreparedQueries   *AttributeLoader[*commonpb.PreparedQuery]
-	LedgerMetadata    *AttributeLoader[*commonpb.MetadataValue]
-	Indexes           *AttributeLoader[*commonpb.Index]
+	Volumes            *AttributeLoader[*raftcmdpb.VolumePair]
+	References         *AttributeLoader[*commonpb.TransactionReferenceValue]
+	Ledgers            *AttributeLoader[*commonpb.LedgerInfo]
+	Boundaries         *AttributeLoader[*raftcmdpb.LedgerBoundaries]
+	SinkConfigs        *AttributeLoader[*commonpb.SinkConfig]
+	AccountMetadata    *AttributeLoader[*commonpb.MetadataValue]
+	NumscriptVersions  *AttributeLoader[*commonpb.NumscriptVersionValue]
+	Transactions       *AttributeLoader[*commonpb.TransactionState]
+	NumscriptContents  *AttributeLoader[*commonpb.NumscriptInfo]
+	PreparedQueries    *AttributeLoader[*commonpb.PreparedQuery]
+	LedgerMetadata     *AttributeLoader[*commonpb.MetadataValue]
+	Indexes            *AttributeLoader[*commonpb.Index]
+	AccountInventories *AttributeLoader[*raftcmdpb.AccountInventoryState]
 }
 
 // NewLoaders creates a new Loaders instance with all attribute loaders initialized.
 func NewLoaders() *Loaders {
 	return &Loaders{
-		Volumes:           NewAttributeLoader[*raftcmdpb.VolumePair](),
-		References:        NewAttributeLoader[*commonpb.TransactionReferenceValue](),
-		Ledgers:           NewAttributeLoader[*commonpb.LedgerInfo](),
-		Boundaries:        NewAttributeLoader[*raftcmdpb.LedgerBoundaries](),
-		SinkConfigs:       NewAttributeLoader[*commonpb.SinkConfig](),
-		AccountMetadata:   NewAttributeLoader[*commonpb.MetadataValue](),
-		NumscriptVersions: NewAttributeLoader[*commonpb.NumscriptVersionValue](),
-		Transactions:      NewAttributeLoader[*commonpb.TransactionState](),
-		NumscriptContents: NewAttributeLoader[*commonpb.NumscriptInfo](),
-		PreparedQueries:   NewAttributeLoader[*commonpb.PreparedQuery](),
-		LedgerMetadata:    NewAttributeLoader[*commonpb.MetadataValue](),
-		Indexes:           NewAttributeLoader[*commonpb.Index](),
+		Volumes:            NewAttributeLoader[*raftcmdpb.VolumePair](),
+		References:         NewAttributeLoader[*commonpb.TransactionReferenceValue](),
+		Ledgers:            NewAttributeLoader[*commonpb.LedgerInfo](),
+		Boundaries:         NewAttributeLoader[*raftcmdpb.LedgerBoundaries](),
+		SinkConfigs:        NewAttributeLoader[*commonpb.SinkConfig](),
+		AccountMetadata:    NewAttributeLoader[*commonpb.MetadataValue](),
+		NumscriptVersions:  NewAttributeLoader[*commonpb.NumscriptVersionValue](),
+		Transactions:       NewAttributeLoader[*commonpb.TransactionState](),
+		NumscriptContents:  NewAttributeLoader[*commonpb.NumscriptInfo](),
+		PreparedQueries:    NewAttributeLoader[*commonpb.PreparedQuery](),
+		LedgerMetadata:     NewAttributeLoader[*commonpb.MetadataValue](),
+		Indexes:            NewAttributeLoader[*commonpb.Index](),
+		AccountInventories: NewAttributeLoader[*raftcmdpb.AccountInventoryState](),
 	}
 }
 

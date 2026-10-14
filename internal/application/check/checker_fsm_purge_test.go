@@ -113,6 +113,24 @@ func applyFSMPurgeProposal(
 		seen[dedupe] = struct{}{}
 		canonicals = append(canonicals, fsmCoverageItem{code: code, key: key})
 	}
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	addPersistedAccountRows := func(ledger, account string) {
+		for _, spec := range []struct{ code, separator byte }{{dal.SubAttrVolume, dal.CanonicalKeySepVolume}, {dal.SubAttrMetadata, dal.CanonicalKeySepMetadata}} {
+			prefix := append([]byte{dal.ZoneAttributes, spec.code}, domain.LedgerScopedPrefix(ledger)...)
+			prefix = append(prefix, account...)
+			prefix = append(prefix, spec.separator)
+			upper := append([]byte(nil), prefix...)
+			upper[len(upper)-1]++
+			iter, iterErr := dal.NewBoundedIter(handle, prefix, upper)
+			require.NoError(t, iterErr)
+			for iter.First(); iter.Valid(); iter.Next() {
+				add(spec.code, append([]byte(nil), iter.Key()[2:]...))
+			}
+			require.NoError(t, iter.Error())
+			require.NoError(t, iter.Close())
+		}
+	}
 
 	for _, order := range orders {
 		ledger := order.GetLedgerScoped().GetLedger()
@@ -121,6 +139,7 @@ func applyFSMPurgeProposal(
 
 		if meta := order.GetLedgerScoped().GetApply().GetAddMetadata(); meta != nil {
 			account := meta.GetTarget().GetAccount().GetAddr()
+			addPersistedAccountRows(ledger, account)
 
 			for key := range meta.GetMetadata() {
 				add(dal.SubAttrMetadata, domain.MetadataKey{
@@ -142,20 +161,23 @@ func applyFSMPurgeProposal(
 		for _, posting := range create.GetPostings() {
 			for _, account := range []string{posting.GetSource(), posting.GetDestination()} {
 				add(dal.SubAttrVolume, domain.NewVolumeKey(ledger, account, posting.GetAsset(), "").Bytes())
+				addPersistedAccountRows(ledger, account)
 			}
 		}
 	}
 
-	handle, err := store.NewDirectReadHandle()
-	require.NoError(t, err)
-
 	plans := make([]*raftcmdpb.AttributeCoverage, 0, len(canonicals))
+	lifecycleKeys := make([]*raftcmdpb.LifecycleKey, 0)
 
 	for _, item := range canonicals {
 		id, tag := attributes.MakeKey(item.key)
 		plan := &raftcmdpb.AttributeCoverage{
 			Id:       &raftcmdpb.AttributeID{Id: id[:], Tag: tag},
 			AttrCode: uint32(item.code),
+		}
+		var lifecycle *raftcmdpb.LifecycleKey
+		if item.code == dal.SubAttrVolume || item.code == dal.SubAttrMetadata {
+			lifecycle = &raftcmdpb.LifecycleKey{AttrCode: uint32(item.code), CanonicalKey: item.key, LifecycleCandidate: true}
 		}
 
 		var raw []byte
@@ -176,14 +198,15 @@ func applyFSMPurgeProposal(
 		case dal.SubAttrVolume:
 			value, getErr := attrs.Volume.Get(handle, item.key)
 			require.NoError(t, getErr)
-			if value == nil {
-				value = &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)}
+			if value != nil {
+				lifecycle.Persisted = true
+				raw, err = value.MarshalVT()
 			}
-			raw, err = value.MarshalVT()
 		case dal.SubAttrMetadata:
 			value, getErr := attrs.Metadata.Get(handle, item.key)
 			require.NoError(t, getErr)
 			if value != nil {
+				lifecycle.Persisted = true
 				raw, err = value.MarshalVT()
 			}
 		case dal.SubAttrReference:
@@ -201,6 +224,9 @@ func applyFSMPurgeProposal(
 		}
 
 		plans = append(plans, plan)
+		if lifecycle != nil {
+			lifecycleKeys = append(lifecycleKeys, lifecycle)
+		}
 	}
 
 	require.NoError(t, handle.Close())
@@ -221,7 +247,7 @@ func applyFSMPurgeProposal(
 		CallerSnapshot: &commonpb.CallerSnapshot{
 			Principal: &commonpb.CallerSnapshot_AuthDisabled{AuthDisabled: &commonpb.AuthDisabledCaller{}},
 		},
-		ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: plans},
+		ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: plans, LifecycleKeys: lifecycleKeys},
 	}
 
 	data, err := proto.Marshal(proposal)

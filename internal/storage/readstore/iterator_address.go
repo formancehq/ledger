@@ -3,12 +3,95 @@ package readstore
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+// accountTxAddressesByPrefix returns the addresses retained by an account-to-
+// transaction index bucket. Unlike the attributes store, these mappings remain
+// available after an ephemeral account is purged.
+func accountTxAddressesByPrefix(
+	reader dal.PebbleReader,
+	kb *dal.KeyBuilder,
+	ledgerName string,
+	addrPrefix string,
+	prefix byte,
+) ([][]byte, error) {
+	lower := kb.Reset().
+		PutByte(prefix).
+		PutLedgerNameFixed(ledgerName).
+		PutString(addrPrefix).
+		Snapshot()
+	upper := IncrementBytes(lower)
+
+	iter, err := reader.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = iter.Close() }()
+
+	const headerLen = 1 + dal.LedgerNameFixedSize
+	var addresses [][]byte
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if len(key) < headerLen+1+8 {
+			return nil, fmt.Errorf("malformed account-to-transaction key: length %d", len(key))
+		}
+
+		accountEnd := bytes.IndexByte(key[headerLen:len(key)-8], 0)
+		if accountEnd < 0 {
+			return nil, errors.New("malformed account-to-transaction key: missing account terminator")
+		}
+		account := key[headerLen : headerLen+accountEnd]
+		if len(addresses) == 0 || !bytes.Equal(addresses[len(addresses)-1], account) {
+			addresses = append(addresses, bytes.Clone(account))
+		}
+	}
+	if err := iter.Error(); err != nil {
+		return nil, err
+	}
+
+	return addresses, nil
+}
+
+// NewAccountTxAddressPrefixIterator enumerates matching addresses from the
+// retained account-to-transaction mapping in ascending order.
+func NewAccountTxAddressPrefixIterator(
+	reader dal.PebbleReader,
+	kb *dal.KeyBuilder,
+	ledgerName string,
+	addrPrefix string,
+	prefix byte,
+) (EntityIterator, error) {
+	addresses, err := accountTxAddressesByPrefix(reader, kb, ledgerName, addrPrefix, prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewSliceIterator(addresses), nil
+}
+
+// NewReverseAccountTxAddressPrefixIterator is the descending counterpart of
+// NewAccountTxAddressPrefixIterator.
+func NewReverseAccountTxAddressPrefixIterator(
+	reader dal.PebbleReader,
+	kb *dal.KeyBuilder,
+	ledgerName string,
+	addrPrefix string,
+	prefix byte,
+) (ReverseIterator, error) {
+	addresses, err := accountTxAddressesByPrefix(reader, kb, ledgerName, addrPrefix, prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewReverseSliceIterator(addresses), nil
+}
 
 // entitySource is an entity producer whose ORDER IS IRRELEVANT to the
 // consumer. addressTxUnion takes one because it builds a set: it drains every

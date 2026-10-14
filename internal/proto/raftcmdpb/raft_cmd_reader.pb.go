@@ -5132,6 +5132,88 @@ func (l volumePairListReadonly) Range(yield func(int, VolumePairReader) bool) {
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewVolumePairListReader(s []*VolumePair) VolumePairListReader { return volumePairListReadonly(s) }
 
+// AccountInventoryStateReader provides read-only access to AccountInventoryState.
+// Call Mutate() to obtain a mutable clone.
+type AccountInventoryStateReader interface {
+	GetBirthIndex() uint64
+	GetInventoryRevision() uint64
+	GetVolumeCount() uint32
+	GetMetadataCount() uint32
+	Mutate() *AccountInventoryState
+}
+
+type accountInventoryStateReadonly AccountInventoryState
+
+func (r *accountInventoryStateReadonly) GetBirthIndex() uint64 {
+	return (*AccountInventoryState)(r).GetBirthIndex()
+}
+
+func (r *accountInventoryStateReadonly) GetInventoryRevision() uint64 {
+	return (*AccountInventoryState)(r).GetInventoryRevision()
+}
+
+func (r *accountInventoryStateReadonly) GetVolumeCount() uint32 {
+	return (*AccountInventoryState)(r).GetVolumeCount()
+}
+
+func (r *accountInventoryStateReadonly) GetMetadataCount() uint32 {
+	return (*AccountInventoryState)(r).GetMetadataCount()
+}
+
+func (r *accountInventoryStateReadonly) Mutate() *AccountInventoryState {
+	return (*AccountInventoryState)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AccountInventoryState.
+func (m *AccountInventoryState) AsReader() AccountInventoryStateReader {
+	if m == nil {
+		return nil
+	}
+	return (*accountInventoryStateReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AccountInventoryState.
+func (m *AccountInventoryState) Mutate() *AccountInventoryState {
+	return m.CloneVT()
+}
+
+// AccountInventoryStateListReader provides read-only iteration over []*AccountInventoryState.
+type AccountInventoryStateListReader interface {
+	Len() int
+	Get(i int) AccountInventoryStateReader
+	Range(yield func(int, AccountInventoryStateReader) bool)
+}
+
+type accountInventoryStateListReadonly []*AccountInventoryState
+
+func (l accountInventoryStateListReadonly) Len() int { return len(l) }
+
+func (l accountInventoryStateListReadonly) Get(i int) AccountInventoryStateReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountInventoryStateListReadonly) Range(yield func(int, AccountInventoryStateReader) bool) {
+	for i, v := range l {
+		var r AccountInventoryStateReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountInventoryStateListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountInventoryStateListReader(s []*AccountInventoryState) AccountInventoryStateListReader {
+	return accountInventoryStateListReadonly(s)
+}
+
 // ExecutionPlanReader provides read-only access to ExecutionPlan.
 // Call Mutate() to obtain a mutable clone.
 type ExecutionPlanReader interface {
@@ -5139,6 +5221,9 @@ type ExecutionPlanReader interface {
 	GetCacheEpoch() uint64
 	GetAttributes() AttributeCoverageListReader
 	GetIdempotencyKeys() ReloadIdempotencyKeyListReader
+	GetAccountInventoryGeneration() uint64
+	GetAccountInventories() AccountInventoryObservationListReader
+	GetLifecycleKeys() LifecycleKeyListReader
 	Mutate() *ExecutionPlan
 }
 
@@ -5158,6 +5243,18 @@ func (r *executionPlanReadonly) GetAttributes() AttributeCoverageListReader {
 
 func (r *executionPlanReadonly) GetIdempotencyKeys() ReloadIdempotencyKeyListReader {
 	return NewReloadIdempotencyKeyListReader((*ExecutionPlan)(r).GetIdempotencyKeys())
+}
+
+func (r *executionPlanReadonly) GetAccountInventoryGeneration() uint64 {
+	return (*ExecutionPlan)(r).GetAccountInventoryGeneration()
+}
+
+func (r *executionPlanReadonly) GetAccountInventories() AccountInventoryObservationListReader {
+	return NewAccountInventoryObservationListReader((*ExecutionPlan)(r).GetAccountInventories())
+}
+
+func (r *executionPlanReadonly) GetLifecycleKeys() LifecycleKeyListReader {
+	return NewLifecycleKeyListReader((*ExecutionPlan)(r).GetLifecycleKeys())
 }
 
 func (r *executionPlanReadonly) Mutate() *ExecutionPlan {
@@ -5212,6 +5309,169 @@ func (l executionPlanListReadonly) Range(yield func(int, ExecutionPlanReader) bo
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewExecutionPlanListReader(s []*ExecutionPlan) ExecutionPlanListReader {
 	return executionPlanListReadonly(s)
+}
+
+// AccountInventoryObservationReader provides read-only access to AccountInventoryObservation.
+// Call Mutate() to obtain a mutable clone.
+type AccountInventoryObservationReader interface {
+	GetAccountKey() []byte
+	GetExpected() AccountInventoryStateReader
+	GetAccountTypesDigest() []byte
+	Mutate() *AccountInventoryObservation
+}
+
+type accountInventoryObservationReadonly AccountInventoryObservation
+
+func (r *accountInventoryObservationReadonly) GetAccountKey() []byte {
+	return bytes.Clone((*AccountInventoryObservation)(r).GetAccountKey())
+}
+
+func (r *accountInventoryObservationReadonly) GetExpected() AccountInventoryStateReader {
+	v := (*AccountInventoryObservation)(r).GetExpected()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *accountInventoryObservationReadonly) GetAccountTypesDigest() []byte {
+	return bytes.Clone((*AccountInventoryObservation)(r).GetAccountTypesDigest())
+}
+
+func (r *accountInventoryObservationReadonly) Mutate() *AccountInventoryObservation {
+	return (*AccountInventoryObservation)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AccountInventoryObservation.
+func (m *AccountInventoryObservation) AsReader() AccountInventoryObservationReader {
+	if m == nil {
+		return nil
+	}
+	return (*accountInventoryObservationReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AccountInventoryObservation.
+func (m *AccountInventoryObservation) Mutate() *AccountInventoryObservation {
+	return m.CloneVT()
+}
+
+// AccountInventoryObservationListReader provides read-only iteration over []*AccountInventoryObservation.
+type AccountInventoryObservationListReader interface {
+	Len() int
+	Get(i int) AccountInventoryObservationReader
+	Range(yield func(int, AccountInventoryObservationReader) bool)
+}
+
+type accountInventoryObservationListReadonly []*AccountInventoryObservation
+
+func (l accountInventoryObservationListReadonly) Len() int { return len(l) }
+
+func (l accountInventoryObservationListReadonly) Get(i int) AccountInventoryObservationReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountInventoryObservationListReadonly) Range(yield func(int, AccountInventoryObservationReader) bool) {
+	for i, v := range l {
+		var r AccountInventoryObservationReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountInventoryObservationListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountInventoryObservationListReader(s []*AccountInventoryObservation) AccountInventoryObservationListReader {
+	return accountInventoryObservationListReadonly(s)
+}
+
+// LifecycleKeyReader provides read-only access to LifecycleKey.
+// Call Mutate() to obtain a mutable clone.
+type LifecycleKeyReader interface {
+	GetAttrCode() uint32
+	GetCanonicalKey() []byte
+	GetPersisted() bool
+	GetLifecycleCandidate() bool
+	Mutate() *LifecycleKey
+}
+
+type lifecycleKeyReadonly LifecycleKey
+
+func (r *lifecycleKeyReadonly) GetAttrCode() uint32 {
+	return (*LifecycleKey)(r).GetAttrCode()
+}
+
+func (r *lifecycleKeyReadonly) GetCanonicalKey() []byte {
+	return bytes.Clone((*LifecycleKey)(r).GetCanonicalKey())
+}
+
+func (r *lifecycleKeyReadonly) GetPersisted() bool {
+	return (*LifecycleKey)(r).GetPersisted()
+}
+
+func (r *lifecycleKeyReadonly) GetLifecycleCandidate() bool {
+	return (*LifecycleKey)(r).GetLifecycleCandidate()
+}
+
+func (r *lifecycleKeyReadonly) Mutate() *LifecycleKey {
+	return (*LifecycleKey)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this LifecycleKey.
+func (m *LifecycleKey) AsReader() LifecycleKeyReader {
+	if m == nil {
+		return nil
+	}
+	return (*lifecycleKeyReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this LifecycleKey.
+func (m *LifecycleKey) Mutate() *LifecycleKey {
+	return m.CloneVT()
+}
+
+// LifecycleKeyListReader provides read-only iteration over []*LifecycleKey.
+type LifecycleKeyListReader interface {
+	Len() int
+	Get(i int) LifecycleKeyReader
+	Range(yield func(int, LifecycleKeyReader) bool)
+}
+
+type lifecycleKeyListReadonly []*LifecycleKey
+
+func (l lifecycleKeyListReadonly) Len() int { return len(l) }
+
+func (l lifecycleKeyListReadonly) Get(i int) LifecycleKeyReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l lifecycleKeyListReadonly) Range(yield func(int, LifecycleKeyReader) bool) {
+	for i, v := range l {
+		var r LifecycleKeyReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewLifecycleKeyListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewLifecycleKeyListReader(s []*LifecycleKey) LifecycleKeyListReader {
+	return lifecycleKeyListReadonly(s)
 }
 
 // AttributeCoverageReader provides read-only access to AttributeCoverage.

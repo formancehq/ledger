@@ -21,21 +21,22 @@ import (
 // without also writing to the 0xFF cache zone — preventing cache divergence
 // bugs after node restart.
 type StateRegistry struct {
-	Cache             *cache.Cache
-	Attrs             *attributes.Attributes
-	Volumes           *CacheAwareEntry[domain.VolumeKey, *raftcmdpb.VolumePair]
-	AccountMetadata   *CacheAwareEntry[domain.MetadataKey, *commonpb.MetadataValue]
-	Idempotency       *IdempotencyStore
-	References        *CacheAwareEntry[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
-	Ledgers           *CacheAwareEntry[domain.LedgerKey, *commonpb.LedgerInfo]
-	Boundaries        *CacheAwareEntry[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
-	SinkConfigs       *CacheAwareEntry[domain.SinkConfigKey, *commonpb.SinkConfig]
-	NumscriptVersions *CacheAwareEntry[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue]
-	Transactions      *CacheAwareEntry[domain.TransactionKey, *commonpb.TransactionState]
-	NumscriptContents *CacheAwareEntry[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
-	PreparedQueries   *CacheAwareEntry[domain.PreparedQueryKey, *commonpb.PreparedQuery]
-	LedgerMetadata    *CacheAwareEntry[domain.LedgerMetadataKey, *commonpb.MetadataValue]
-	Indexes           *CacheAwareEntry[domain.IndexKey, *commonpb.Index]
+	Cache              *cache.Cache
+	Attrs              *attributes.Attributes
+	Volumes            *CacheAwareEntry[domain.VolumeKey, *raftcmdpb.VolumePair]
+	AccountMetadata    *CacheAwareEntry[domain.MetadataKey, *commonpb.MetadataValue]
+	Idempotency        *IdempotencyStore
+	References         *CacheAwareEntry[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+	Ledgers            *CacheAwareEntry[domain.LedgerKey, *commonpb.LedgerInfo]
+	Boundaries         *CacheAwareEntry[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
+	SinkConfigs        *CacheAwareEntry[domain.SinkConfigKey, *commonpb.SinkConfig]
+	NumscriptVersions  *CacheAwareEntry[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue]
+	Transactions       *CacheAwareEntry[domain.TransactionKey, *commonpb.TransactionState]
+	NumscriptContents  *CacheAwareEntry[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
+	PreparedQueries    *CacheAwareEntry[domain.PreparedQueryKey, *commonpb.PreparedQuery]
+	LedgerMetadata     *CacheAwareEntry[domain.LedgerMetadataKey, *commonpb.MetadataValue]
+	Indexes            *CacheAwareEntry[domain.IndexKey, *commonpb.Index]
+	AccountInventories *CacheAwareEntry[domain.AccountKey, *raftcmdpb.AccountInventoryState]
 
 	// Reversions uses a compact bitset per ledger instead of a KeyStore.
 	// Bit N being set means transaction N in that ledger has been reverted.
@@ -118,6 +119,11 @@ func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes) *StateRegist
 			attributes.NewKeyStore[domain.IndexKey, *commonpb.Index](c.Indexes),
 			attrs.Index,
 			dal.SubAttrIndex,
+		),
+		AccountInventories: NewCacheAwareEntry(
+			attributes.NewKeyStore[domain.AccountKey, *raftcmdpb.AccountInventoryState](c.AccountInventories),
+			attrs.AccountInventory,
+			dal.SubAttrAccountInventory,
 		),
 		Reversions: make(map[string]*bitset.Bitset),
 		BackupJobs: NewBackupJobsState(),

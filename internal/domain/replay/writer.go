@@ -17,6 +17,7 @@ type Writer interface {
 	MoveVolume(oldKey, newKey []byte) error
 	SetMetadata(canonicalKey []byte, value *commonpb.MetadataValue) error
 	DeleteMetadata(canonicalKey []byte) error
+	PurgeAccount(ledger, account string, collector ExclusionCollector) error
 	MoveMetadata(oldKey, newKey []byte) error
 	CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting, revertsTransaction uint64) error
 	SetTransactionReference(ledgerName, reference string, txID uint64) error
@@ -38,4 +39,16 @@ type Writer interface {
 	RemoveAccountType(ledger string, name string) error
 	// The default enforcement mode lives on LedgerInfo as well.
 	SetDefaultEnforcementMode(ledger string, mode commonpb.ChartEnforcementMode) error
+}
+
+// AccountLivenessWriter lets integrity replay derive account-wide EPHEMERAL
+// purges from audit-bound effects without trusting the stored purge annotation.
+type AccountLivenessWriter interface {
+	AccountHasNonZeroVolume(ledger, account string) (bool, error)
+}
+
+// AccountEnumerator lets replay derive the account set affected by a chart
+// transition from replay state instead of trusting unhashed purge annotations.
+type AccountEnumerator interface {
+	Accounts(ledger string) ([]string, error)
 }

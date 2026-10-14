@@ -1873,6 +1873,26 @@ func (m *VolumePair) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
+func (m *AccountInventoryState) CloneVT() *AccountInventoryState {
+	if m == nil {
+		return (*AccountInventoryState)(nil)
+	}
+	r := new(AccountInventoryState)
+	r.BirthIndex = m.BirthIndex
+	r.InventoryRevision = m.InventoryRevision
+	r.VolumeCount = m.VolumeCount
+	r.MetadataCount = m.MetadataCount
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *AccountInventoryState) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (m *ExecutionPlan) CloneVT() *ExecutionPlan {
 	if m == nil {
 		return (*ExecutionPlan)(nil)
@@ -1880,6 +1900,7 @@ func (m *ExecutionPlan) CloneVT() *ExecutionPlan {
 	r := ExecutionPlanFromVTPool()
 	r.LastPersistedIndex = m.LastPersistedIndex
 	r.CacheEpoch = m.CacheEpoch
+	r.AccountInventoryGeneration = m.AccountInventoryGeneration
 	if rhs := m.Attributes; rhs != nil {
 		tmpContainer := make([]*AttributeCoverage, len(rhs))
 		for k, v := range rhs {
@@ -1894,6 +1915,20 @@ func (m *ExecutionPlan) CloneVT() *ExecutionPlan {
 		}
 		r.IdempotencyKeys = tmpContainer
 	}
+	if rhs := m.AccountInventories; rhs != nil {
+		tmpContainer := make([]*AccountInventoryObservation, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.AccountInventories = tmpContainer
+	}
+	if rhs := m.LifecycleKeys; rhs != nil {
+		tmpContainer := make([]*LifecycleKey, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.LifecycleKeys = tmpContainer
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1902,6 +1937,57 @@ func (m *ExecutionPlan) CloneVT() *ExecutionPlan {
 }
 
 func (m *ExecutionPlan) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *AccountInventoryObservation) CloneVT() *AccountInventoryObservation {
+	if m == nil {
+		return (*AccountInventoryObservation)(nil)
+	}
+	r := new(AccountInventoryObservation)
+	r.Expected = m.Expected.CloneVT()
+	if rhs := m.AccountKey; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.AccountKey = tmpBytes
+	}
+	if rhs := m.AccountTypesDigest; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.AccountTypesDigest = tmpBytes
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *AccountInventoryObservation) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *LifecycleKey) CloneVT() *LifecycleKey {
+	if m == nil {
+		return (*LifecycleKey)(nil)
+	}
+	r := new(LifecycleKey)
+	r.AttrCode = m.AttrCode
+	r.Persisted = m.Persisted
+	r.LifecycleCandidate = m.LifecycleCandidate
+	if rhs := m.CanonicalKey; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.CanonicalKey = tmpBytes
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *LifecycleKey) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -5323,6 +5409,34 @@ func (this *VolumePair) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
+func (this *AccountInventoryState) EqualVT(that *AccountInventoryState) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.BirthIndex != that.BirthIndex {
+		return false
+	}
+	if this.InventoryRevision != that.InventoryRevision {
+		return false
+	}
+	if this.VolumeCount != that.VolumeCount {
+		return false
+	}
+	if this.MetadataCount != that.MetadataCount {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *AccountInventoryState) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AccountInventoryState)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (this *ExecutionPlan) EqualVT(that *ExecutionPlan) bool {
 	if this == that {
 		return true
@@ -5369,11 +5483,101 @@ func (this *ExecutionPlan) EqualVT(that *ExecutionPlan) bool {
 			}
 		}
 	}
+	if this.AccountInventoryGeneration != that.AccountInventoryGeneration {
+		return false
+	}
+	if len(this.AccountInventories) != len(that.AccountInventories) {
+		return false
+	}
+	for i, vx := range this.AccountInventories {
+		vy := that.AccountInventories[i]
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &AccountInventoryObservation{}
+			}
+			if q == nil {
+				q = &AccountInventoryObservation{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
+	}
+	if len(this.LifecycleKeys) != len(that.LifecycleKeys) {
+		return false
+	}
+	for i, vx := range this.LifecycleKeys {
+		vy := that.LifecycleKeys[i]
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &LifecycleKey{}
+			}
+			if q == nil {
+				q = &LifecycleKey{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
 func (this *ExecutionPlan) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*ExecutionPlan)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *AccountInventoryObservation) EqualVT(that *AccountInventoryObservation) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if string(this.AccountKey) != string(that.AccountKey) {
+		return false
+	}
+	if !this.Expected.EqualVT(that.Expected) {
+		return false
+	}
+	if string(this.AccountTypesDigest) != string(that.AccountTypesDigest) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *AccountInventoryObservation) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AccountInventoryObservation)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *LifecycleKey) EqualVT(that *LifecycleKey) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.AttrCode != that.AttrCode {
+		return false
+	}
+	if string(this.CanonicalKey) != string(that.CanonicalKey) {
+		return false
+	}
+	if this.Persisted != that.Persisted {
+		return false
+	}
+	if this.LifecycleCandidate != that.LifecycleCandidate {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *LifecycleKey) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*LifecycleKey)
 	if !ok {
 		return false
 	}
@@ -10084,6 +10288,61 @@ func (m *VolumePair) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *AccountInventoryState) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *AccountInventoryState) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AccountInventoryState) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.MetadataCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MetadataCount))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.VolumeCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.VolumeCount))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.InventoryRevision != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.InventoryRevision))
+		i--
+		dAtA[i] = 0x11
+	}
+	if m.BirthIndex != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.BirthIndex))
+		i--
+		dAtA[i] = 0x9
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *ExecutionPlan) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -10113,6 +10372,36 @@ func (m *ExecutionPlan) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.LifecycleKeys) > 0 {
+		for iNdEx := len(m.LifecycleKeys) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.LifecycleKeys[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x3a
+		}
+	}
+	if len(m.AccountInventories) > 0 {
+		for iNdEx := len(m.AccountInventories) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.AccountInventories[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x32
+		}
+	}
+	if m.AccountInventoryGeneration != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.AccountInventoryGeneration))
+		i--
+		dAtA[i] = 0x29
 	}
 	if len(m.IdempotencyKeys) > 0 {
 		for iNdEx := len(m.IdempotencyKeys) - 1; iNdEx >= 0; iNdEx-- {
@@ -10149,6 +10438,128 @@ func (m *ExecutionPlan) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastPersistedIndex))
 		i--
 		dAtA[i] = 0x9
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *AccountInventoryObservation) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *AccountInventoryObservation) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AccountInventoryObservation) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.AccountTypesDigest) > 0 {
+		i -= len(m.AccountTypesDigest)
+		copy(dAtA[i:], m.AccountTypesDigest)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.AccountTypesDigest)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.Expected != nil {
+		size, err := m.Expected.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.AccountKey) > 0 {
+		i -= len(m.AccountKey)
+		copy(dAtA[i:], m.AccountKey)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.AccountKey)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *LifecycleKey) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *LifecycleKey) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LifecycleKey) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.LifecycleCandidate {
+		i--
+		if m.LifecycleCandidate {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.Persisted {
+		i--
+		if m.Persisted {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.CanonicalKey) > 0 {
+		i -= len(m.CanonicalKey)
+		copy(dAtA[i:], m.CanonicalKey)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.CanonicalKey)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.AttrCode != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AttrCode))
+		i--
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -10681,9 +11092,19 @@ func (m *ExecutionPlan) ResetVT() {
 			mm.Reset()
 		}
 		f1 := m.IdempotencyKeys[:0]
+		for _, mm := range m.AccountInventories {
+			mm.Reset()
+		}
+		f2 := m.AccountInventories[:0]
+		for _, mm := range m.LifecycleKeys {
+			mm.Reset()
+		}
+		f3 := m.LifecycleKeys[:0]
 		m.Reset()
 		m.Attributes = f0
 		m.IdempotencyKeys = f1
+		m.AccountInventories = f2
+		m.LifecycleKeys = f3
 	}
 }
 func (m *ExecutionPlan) ReturnToVTPool() {
@@ -12701,6 +13122,28 @@ func (m *VolumePair) SizeVT() (n int) {
 	return n
 }
 
+func (m *AccountInventoryState) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.BirthIndex != 0 {
+		n += 9
+	}
+	if m.InventoryRevision != 0 {
+		n += 9
+	}
+	if m.VolumeCount != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.VolumeCount))
+	}
+	if m.MetadataCount != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.MetadataCount))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *ExecutionPlan) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -12724,6 +13167,66 @@ func (m *ExecutionPlan) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.AccountInventoryGeneration != 0 {
+		n += 9
+	}
+	if len(m.AccountInventories) > 0 {
+		for _, e := range m.AccountInventories {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	if len(m.LifecycleKeys) > 0 {
+		for _, e := range m.LifecycleKeys {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *AccountInventoryObservation) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.AccountKey)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Expected != nil {
+		l = m.Expected.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.AccountTypesDigest)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *LifecycleKey) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.AttrCode != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.AttrCode))
+	}
+	l = len(m.CanonicalKey)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Persisted {
+		n += 2
+	}
+	if m.LifecycleCandidate {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -23558,6 +24061,115 @@ func (m *VolumePair) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *AccountInventoryState) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AccountInventoryState: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AccountInventoryState: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BirthIndex", wireType)
+			}
+			m.BirthIndex = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.BirthIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 2:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field InventoryRevision", wireType)
+			}
+			m.InventoryRevision = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.InventoryRevision = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field VolumeCount", wireType)
+			}
+			m.VolumeCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.VolumeCount |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataCount", wireType)
+			}
+			m.MetadataCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MetadataCount |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *ExecutionPlan) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -23689,6 +24301,397 @@ func (m *ExecutionPlan) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AccountInventoryGeneration", wireType)
+			}
+			m.AccountInventoryGeneration = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AccountInventoryGeneration = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AccountInventories", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if len(m.AccountInventories) == cap(m.AccountInventories) {
+				m.AccountInventories = append(m.AccountInventories, &AccountInventoryObservation{})
+			} else {
+				m.AccountInventories = m.AccountInventories[:len(m.AccountInventories)+1]
+				if m.AccountInventories[len(m.AccountInventories)-1] == nil {
+					m.AccountInventories[len(m.AccountInventories)-1] = &AccountInventoryObservation{}
+				}
+			}
+			if err := m.AccountInventories[len(m.AccountInventories)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LifecycleKeys", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if len(m.LifecycleKeys) == cap(m.LifecycleKeys) {
+				m.LifecycleKeys = append(m.LifecycleKeys, &LifecycleKey{})
+			} else {
+				m.LifecycleKeys = m.LifecycleKeys[:len(m.LifecycleKeys)+1]
+				if m.LifecycleKeys[len(m.LifecycleKeys)-1] == nil {
+					m.LifecycleKeys[len(m.LifecycleKeys)-1] = &LifecycleKey{}
+				}
+			}
+			if err := m.LifecycleKeys[len(m.LifecycleKeys)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AccountInventoryObservation) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AccountInventoryObservation: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AccountInventoryObservation: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AccountKey", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AccountKey = append(m.AccountKey[:0], dAtA[iNdEx:postIndex]...)
+			if m.AccountKey == nil {
+				m.AccountKey = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Expected", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Expected == nil {
+				m.Expected = &AccountInventoryState{}
+			}
+			if err := m.Expected.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AccountTypesDigest", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AccountTypesDigest = append(m.AccountTypesDigest[:0], dAtA[iNdEx:postIndex]...)
+			if m.AccountTypesDigest == nil {
+				m.AccountTypesDigest = []byte{}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *LifecycleKey) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: LifecycleKey: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: LifecycleKey: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AttrCode", wireType)
+			}
+			m.AttrCode = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.AttrCode |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CanonicalKey", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.CanonicalKey = append(m.CanonicalKey[:0], dAtA[iNdEx:postIndex]...)
+			if m.CanonicalKey == nil {
+				m.CanonicalKey = []byte{}
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Persisted", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Persisted = bool(v != 0)
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LifecycleCandidate", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.LifecycleCandidate = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -4,6 +4,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -44,6 +45,76 @@ func TestApplyPostingsSinglePosting(t *testing.T) {
 	dstPair := readVolume(t, rs, destKey.Bytes())
 	require.Equal(t, "100", dstPair.GetInput().ToBigInt().String())
 	require.Equal(t, "0", dstPair.GetOutput().ToBigInt().String())
+}
+
+func TestComparePurgedAccountProjections(t *testing.T) {
+	t.Parallel()
+
+	alice := domain.AccountKey{LedgerName: "ledger", Account: "alice"}
+	bob := domain.AccountKey{LedgerName: "ledger", Account: "bob"}
+	var events []*servicepb.CheckStoreEvent
+	comparePurgedAccountProjections(
+		map[domain.AccountKey]uint64{alice: 42},
+		map[domain.AccountKey]struct{}{bob: {}},
+		map[string]uint64{"ledger": 42},
+		42,
+		func(event *servicepb.CheckStoreEvent) { events = append(events, event) },
+	)
+
+	require.Len(t, events, 2)
+	require.Contains(t, events[0].GetError().GetMessage()+events[1].GetError().GetMessage(), "alice")
+	require.Contains(t, events[0].GetError().GetMessage()+events[1].GetError().GetMessage(), "bob")
+}
+
+func TestComparePurgedAccountProjectionsRejectsNonTerminalAnnotation(t *testing.T) {
+	t.Parallel()
+
+	account := domain.AccountKey{LedgerName: "ledger", Account: "alice"}
+	var events []*servicepb.CheckStoreEvent
+	comparePurgedAccountProjections(
+		map[domain.AccountKey]uint64{account: 41},
+		map[domain.AccountKey]struct{}{account: {}},
+		map[string]uint64{"ledger": 42},
+		42,
+		func(event *servicepb.CheckStoreEvent) { events = append(events, event) },
+	)
+
+	require.Len(t, events, 1)
+	require.Contains(t, events[0].GetError().GetMessage(), "terminal ledger log 42")
+}
+
+func TestAccountPurgeCollectsCoveredVolumeExclusion(t *testing.T) {
+	t.Parallel()
+
+	rs := newTestReplayStore(t)
+	key := domain.VolumeKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "ephemeral"},
+		Asset:      "USD",
+	}
+	require.NoError(t, rs.AddVolumeDelta(key.Bytes(), big.NewInt(1), big.NewInt(1)))
+	collected := 0
+	require.NoError(t, rs.PurgeAccount("ledger", "ephemeral", func(_, _, _, _ string) { collected++ }))
+	require.Equal(t, 1, collected)
+	require.Contains(t, rs.takePendingPurgedAccounts(), key.AccountKey)
+}
+
+func TestHistoricalExclusionDoesNotHideRefundedAccount(t *testing.T) {
+	t.Parallel()
+
+	volume := domain.VolumeKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "ephemeral"},
+		Asset:      "USD",
+	}
+	metadata := domain.MetadataKey{AccountKey: volume.AccountKey, Key: "status"}
+	excluded := excludedVolumesSet{
+		"ledger": {domain.AccountAssetKey{Account: "ephemeral", Asset: "USD"}: {}},
+	}
+
+	require.True(t, excluded.excludesCurrentVolume(volume, false, false))
+	require.False(t, excluded.excludesCurrentVolume(volume, true, true))
+	require.False(t, excluded.excludesCurrentVolume(volume, false, true), "a re-funded account must not hide an older absent cell")
+	require.True(t, excluded.excludesCurrentMetadata(metadata, false))
+	require.False(t, excluded.excludesCurrentMetadata(metadata, true))
 }
 
 func TestApplyPostingsMultiplePostings(t *testing.T) {
@@ -221,6 +292,89 @@ func TestSimulateEphemeralPurgeSkipsWorldAccount(t *testing.T) {
 
 	// Should not error — world is explicitly skipped
 	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", postings, rs, ledgerAccountTypes, nil))
+}
+
+func TestEphemeralPurgeBufferDerivesAccountWidePurgeAndAllowsRefund(t *testing.T) {
+	t.Parallel()
+
+	rs := newTestReplayStore(t)
+	types := map[string][]accounttype.CompiledType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
+			"orders": {
+				Name:        "orders",
+				Pattern:     "orders:{id}",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+			},
+		}),
+	}
+	account := "orders:1"
+	metadataKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: account},
+		Key:        "owner",
+	}.Bytes()
+	replayProposal := func(postings ...*commonpb.Posting) {
+		t.Helper()
+		buffer := domainreplay.NewEphemeralPurgeBuffer()
+		require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
+		buffer.Add("ledger", postings)
+		require.NoError(t, buffer.Flush(rs, types, nil))
+	}
+
+	replayProposal(
+		newPosting("world", account, "USD", 5),
+		newPosting("world", account, "EUR", 7),
+	)
+	require.NoError(t, rs.SetMetadata(metadataKey, commonpb.NewStringValue("old")))
+	replayProposal(
+		newPosting(account, "world", "USD", 5),
+		newPosting(account, "world", "EUR", 7),
+	)
+
+	for _, asset := range []string{"USD", "EUR"} {
+		volume, err := rs.GetVolume(domain.NewVolumeKey("ledger", account, asset, "").Bytes())
+		require.NoError(t, err)
+		require.Nil(t, volume, "account-wide purge must remove every zero volume")
+	}
+	_, closer, err := rs.db.Get(replayKey(replayPrefixMetadata, metadataKey))
+	if closer != nil {
+		_ = closer.Close()
+	}
+	require.ErrorIs(t, err, pebble.ErrNotFound, "account-wide purge must remove metadata")
+
+	replayProposal(newPosting("world", account, "USD", 3))
+	volume, err := rs.GetVolume(domain.NewVolumeKey("ledger", account, "USD", "").Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, volume, "later funding must create a fresh current incarnation")
+}
+
+func TestEphemeralPurgeBufferCollectsTouchedCellsBeforeAccountPurge(t *testing.T) {
+	t.Parallel()
+
+	rs := newTestReplayStore(t)
+	types := map[string][]accounttype.CompiledType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
+			"ephemeral": {
+				Name:        "ephemeral",
+				Pattern:     "ephemeral:{id}",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+			},
+		}),
+	}
+	account := "ephemeral:1"
+	postings := []*commonpb.Posting{newPosting("world", account, "USD", 5), newPosting(account, "world", "USD", 5)}
+	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
+
+	buffer := domainreplay.NewEphemeralPurgeBuffer()
+	buffer.Add("ledger", postings)
+	var collected []domain.AccountAssetKey
+	require.NoError(t, buffer.Flush(rs, types, func(_, account, asset, color string) {
+		collected = append(collected, domain.AccountAssetKey{Account: account, Asset: asset, Color: color})
+	}))
+
+	require.Equal(t, []domain.AccountAssetKey{{Account: account, Asset: "USD"}}, collected)
+	volume, err := rs.GetVolume(domain.NewVolumeKey("ledger", account, "USD", "").Bytes())
+	require.NoError(t, err)
+	require.Nil(t, volume)
 }
 
 // --- checkReversionInvariants tests ---

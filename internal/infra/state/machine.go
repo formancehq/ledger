@@ -17,6 +17,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
@@ -950,27 +951,49 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 	}
 
 	// Validate the entire preload before changing any live cache or idempotency state.
-	seen := make(map[struct {
+	type coverageKey struct {
 		code uint32
 		id   attributes.U128
-	}]struct{}, len(executionPlan.GetAttributes()))
+	}
+	seen := make(map[coverageKey]uint64, len(executionPlan.GetAttributes()))
 	for i, plan := range executionPlan.GetAttributes() {
 		if err := validatePlan(plan, i); err != nil {
 			return err
 		}
 		id := attributes.U128FromBytes(plan.GetId().GetId())
-		key := struct {
-			code uint32
-			id   attributes.U128
-		}{plan.GetAttrCode(), id}
+		key := coverageKey{plan.GetAttrCode(), id}
 		if _, duplicate := seen[key]; duplicate {
 			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("plans[%d]: duplicate attribute coverage", i)}
 		}
-		seen[key] = struct{}{}
+		seen[key] = plan.GetId().GetTag()
 		if plan.GetValue() != nil {
 			if err := fsm.cacheSnapshotter.ValidatePreload(plan.GetId(), byte(plan.GetAttrCode()), plan.GetValue()); err != nil {
 				return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("plans[%d]: invalid preload: %v", i, err)}
 			}
+		}
+	}
+	for i, lifecycleKey := range executionPlan.GetLifecycleKeys() {
+		if lifecycleKey == nil || len(lifecycleKey.GetCanonicalKey()) == 0 {
+			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("lifecycle_keys[%d]: missing canonical key", i)}
+		}
+		var decodeErr error
+		switch byte(lifecycleKey.GetAttrCode()) {
+		case dal.SubAttrVolume:
+			var key domain.VolumeKey
+			decodeErr = key.Unmarshal(lifecycleKey.GetCanonicalKey())
+		case dal.SubAttrMetadata:
+			var key domain.MetadataKey
+			decodeErr = key.Unmarshal(lifecycleKey.GetCanonicalKey())
+		default:
+			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("lifecycle_keys[%d]: unsupported attribute type", i)}
+		}
+		if decodeErr != nil {
+			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("lifecycle_keys[%d]: %v", i, decodeErr)}
+		}
+		id, tag := attributes.MakeKey(lifecycleKey.GetCanonicalKey())
+		declaredTag, ok := seen[coverageKey{lifecycleKey.GetAttrCode(), id}]
+		if !ok || declaredTag != tag {
+			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("lifecycle_keys[%d]: key has no matching attribute coverage", i)}
 		}
 	}
 	seenIdempotency := make(map[string]struct{}, len(executionPlan.GetIdempotencyKeys()))
@@ -1114,6 +1137,40 @@ func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 // doesn't match the current state. This detects stale proposals admitted with
 // an inflated IndexTracker or before a cache reset.
 func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Proposal) domain.SerializableError {
+	if plan := proposal.GetExecutionPlan(); len(plan.GetAccountInventories()) != 0 {
+		observedGeneration := plan.GetAccountInventoryGeneration()
+		currentGeneration := fsm.Registry.Cache.CurrentGeneration()
+		if currentGeneration < observedGeneration || currentGeneration-observedGeneration > 1 {
+			return domain.ErrStaleProposal
+		}
+		for _, observation := range plan.GetAccountInventories() {
+			var account domain.AccountKey
+			if err := account.Unmarshal(observation.GetAccountKey()); err != nil {
+				return domain.ErrStaleProposal
+			}
+			if entry, found := fsm.Registry.AccountInventories.KeyStore().GetEntry(observation.GetAccountKey()); found {
+				current := entry.Data
+				if entry.Deleted {
+					current = nil
+				}
+				expected := observation.GetExpected()
+				if (current == nil) != (expected == nil) || current != nil && (current.GetBirthIndex() != expected.GetBirthIndex() || current.GetInventoryRevision() != expected.GetInventoryRevision() || current.GetVolumeCount() != expected.GetVolumeCount() || current.GetMetadataCount() != expected.GetMetadataCount()) {
+					return domain.ErrStaleProposal
+				}
+			}
+			ledgerKey := domain.LedgerKey{Name: account.LedgerName}.Bytes()
+			if entry, found := fsm.Registry.Ledgers.KeyStore().GetEntry(ledgerKey); found {
+				ledgerInfo := entry.Data
+				if entry.Deleted {
+					ledgerInfo = nil
+				}
+				digest, err := accounttype.LedgerTypeDigest(ledgerInfo)
+				if err != nil || !bytes.Equal(digest, observation.GetAccountTypesDigest()) {
+					return domain.ErrStaleProposal
+				}
+			}
+		}
+	}
 	if predicted := proposal.GetPredictedIndex(); predicted != 0 && predicted != raftIndex {
 		if fsm.logger.Enabled(logging.TraceLevel) {
 			fsm.logger.WithFields(map[string]any{
@@ -1680,6 +1737,10 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		result.AuditEntryWritten = true
 
 		return result, nil
+	}
+
+	if err := buffer.PrepareEphemeralAccountPurge(validateScope, proposal.GetExecutionPlan().GetLifecycleKeys()); err != nil {
+		return nil, fmt.Errorf("preparing ephemeral account purge: %w", err)
 	}
 
 	sinkConfigChanged := buffer.SinkConfigChanged()

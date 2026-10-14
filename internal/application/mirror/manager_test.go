@@ -89,6 +89,7 @@ func newTestManager(t *testing.T, store *dal.Store, builder *plan.Builder) *Mana
 		signal.NewNotifications(),
 		noop.NewMeterProvider(),
 		0,
+		nil,
 	)
 	m.Start()
 	t.Cleanup(m.Stop)

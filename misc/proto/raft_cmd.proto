@@ -698,6 +698,15 @@ message VolumePair {
   common.Uint256 output = 2;
 }
 
+// Technical projection of the persistent keys owned by one account.
+// Updated only when the set of volume or metadata keys changes.
+message AccountInventoryState {
+  fixed64 birth_index = 1;
+  fixed64 inventory_revision = 2;
+  uint32 volume_count = 3;
+  uint32 metadata_count = 4;
+}
+
 // ExecutionPlan is the apply-time recipe admission attaches to a proposal:
 // the keys the FSM is allowed to read, the values to seed in the cache, the
 // idempotency entries to restore, and the intra-batch producer→consumer
@@ -725,6 +734,30 @@ message ExecutionPlan {
   // wire level.
   repeated ReloadIdempotencyKey idempotency_keys = 4;
 
+  // Generation under which account inventories were read from one Pebble
+  // snapshot. The FSM rejects the observation after more than one rotation.
+  fixed64 account_inventory_generation = 5;
+  repeated AccountInventoryObservation account_inventories = 6;
+  // Only candidate account keys travel here; the ordinary attribute plan
+  // stays compact on high-throughput paths.
+  repeated LifecycleKey lifecycle_keys = 7;
+
+}
+
+message AccountInventoryObservation {
+  // [ledger name padded to 64 bytes][account address].
+  bytes account_key = 1;
+  // Nil means the account had no persistent volume or metadata keys.
+  AccountInventoryState expected = 2;
+  // Digest of the account-type definitions in the same Pebble snapshot.
+  bytes account_types_digest = 3;
+}
+
+message LifecycleKey {
+  uint32 attr_code = 1;
+  bytes canonical_key = 2;
+  bool persisted = 3;
+  bool lifecycle_candidate = 4;
 }
 
 // AttributeCoverage declares the FSM apply path may access `id` under

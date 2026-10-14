@@ -76,6 +76,14 @@ exemptions. The two signing projections (`SubGlobSigningKey`,
 chain-bound signing orders; maintenance mode has the identical shape and gap but
 is deliberately deferred.
 
+`SubAttrAccountInventory` is a technical admission certificate. The checker
+verifies underlying volume and metadata rows and independently replays account
+purges, but does not yet verify stored inventory counts or Raft incarnation
+and revision tokens. Admission checks counts against a point-in-time scan
+before proposing, and restore rebuilds them from final attributes. Corruption
+of an inventory row is therefore an explicit checker gap; the affected
+account's next admission detects the mismatch and stops the proposal.
+
 ## Related
 
 - [Consensus → global-log.md](../consensus/global-log.md) — what produces the audit entries the chain links.

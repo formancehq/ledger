@@ -42,6 +42,13 @@ audit-entry, audit-item, and applied-proposal rows. `ApplyExports` restores thos
 rows, then `RebuildDelta` reconstructs the derived state that the live FSM wrote
 after the checkpoint.
 
+`SubAttrAccountInventory` is a technical projection of the final persistent
+volume and metadata key set. After replaying the delta, `RebuildDelta` scans
+those keys and replaces every account inventory row. Restored birth and
+revision tokens start at zero in the destination Raft domain; its first
+membership change assigns a new Raft index. The count projection is therefore
+rebuilt from the final attributes rather than copied from the source domain.
+
 The audit secret is **preserved** checkpoint state, not a rebuilt projection:
 it is initialized once before the first audit entry and cannot be changed by
 post-checkpoint live apply. `RunBackup` refuses a full checkpoint without a
@@ -149,6 +156,16 @@ regression fail; this falsifies a vacuous test that never reached the delta path
 | Rebuild unit tests | `internal/infra/backup/rebuild_test.go` |
 | Cross-lifecycle restore tests | `tests/e2e/cluster/restore*_test.go` |
 | Model-driven restore cycles | `tests/antithesis/run_model_test.sh --restore` |
+
+## Ephemeral account purge
+
+An account-wide ephemeral purge is rebuilt from
+`LedgerLog.purged_accounts`. A checkpoint may seed volume and metadata rows for
+the address; folding a later non-empty delta range-deletes both account-owned
+attribute prefixes. Later funding logs may then create a fresh incarnation.
+Transaction history is preserved. The live FSM and rebuild writer consume the
+same committed signal, while checker comparison independently rejects surviving
+current volume or metadata rows.
 
 Also read [Audit-Bound vs Technical State](../../audit-vs-technical-state.md)
 before deciding whether a value is authoritative, checker-verified, rebuildable,

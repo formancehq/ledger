@@ -429,6 +429,8 @@ func kindLabel(kind byte) string {
 		return "ledger_metadata"
 	case dal.SubAttrIndex:
 		return "indexes"
+	case dal.SubAttrAccountInventory:
+		return "account_inventories"
 	default:
 		return fmt.Sprintf("unknown(0x%02x)", kind)
 	}
@@ -451,6 +453,7 @@ var cacheAttrKinds = [...]byte{
 	dal.SubAttrPreparedQuery,
 	dal.SubAttrLedgerMetadata,
 	dal.SubAttrIndex,
+	dal.SubAttrAccountInventory,
 }
 
 // coverageSlots holds one slice of declared U128 ids per gated

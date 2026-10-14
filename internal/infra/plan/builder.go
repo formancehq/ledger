@@ -1,7 +1,9 @@
 package plan
 
 import (
+	"bytes"
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -155,6 +157,8 @@ func (p *Builder) ReadBoundaries(ledgerName string) (*raftcmdpb.LedgerBoundaries
 // TrackerNext returns the predicted next Raft index from the IndexTracker.
 func (p *Builder) TrackerNext() uint64 { return p.tracker.Next() }
 
+func (p *Builder) CacheGeneration() uint64 { return p.cache.CurrentGeneration() }
+
 // LockTracker acquires the IndexTracker's mutex. Used by non-guard callers
 // (mirror error reporting, admission barrier) that Propose without going
 // through AcquireProposalGuard, to serialize the tracker Increment with
@@ -192,6 +196,9 @@ func (p *Builder) Build(aggregate *Coverage, operations []WriteOperation) (*Buil
 
 	nextIndex := p.tracker.Next()
 	snap := p.cache.Snapshot()
+	if len(aggregate.AccountInventories) != 0 && snap.CurrentGeneration != aggregate.AccountInventoryGeneration {
+		return &BuildResult{operations: operations, aggregate: aggregate}, domain.ErrStaleProposal
+	}
 	nextIndexGen := cache.Gen(nextIndex, snap.GenerationThreshold)
 
 	executionPlan, token, err := p.buildPreloadsAt(nextIndex, snap, aggregate)
@@ -234,6 +241,9 @@ func (p *Builder) AcquireProposalGuard(build *BuildResult) (*raftcmdpb.Execution
 	p.tracker.Lock()
 
 	snap := p.cache.Snapshot()
+	if len(build.aggregate.AccountInventories) != 0 && snap.CurrentGeneration != build.aggregate.AccountInventoryGeneration {
+		return nil, &ProposalGuard{p: p, token: build.token}, domain.ErrStaleProposal
+	}
 	nextIndexAfter := p.tracker.Next()
 	nextIndexGenAfter := cache.Gen(nextIndexAfter, snap.GenerationThreshold)
 
@@ -421,8 +431,10 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 	// Build preload.CleanupToken and merge results, returning first error encountered.
 	token := &preload.CleanupToken{}
 	executionPlan := &raftcmdpb.ExecutionPlan{
-		LastPersistedIndex: boundary,
-		CacheEpoch:         snap.Epoch,
+		LastPersistedIndex:         boundary,
+		CacheEpoch:                 snap.Epoch,
+		AccountInventoryGeneration: needs.AccountInventoryGeneration,
+		AccountInventories:         needs.AccountInventories,
 	}
 
 	for i := range results {
@@ -449,6 +461,32 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 			executionPlan.IdempotencyKeys = append(executionPlan.IdempotencyKeys, results[i].resolve.idempotencyKeys...)
 		}
 	}
+	for code, entries := range needs.Attributes {
+		if code != dal.SubAttrVolume && code != dal.SubAttrMetadata {
+			continue
+		}
+		if len(needs.LifecycleFlags[code]) == 0 {
+			continue
+		}
+		for id, entry := range entries {
+			flags := needs.LifecycleFlags[code][id]
+			if flags == 0 {
+				continue
+			}
+			executionPlan.LifecycleKeys = append(executionPlan.LifecycleKeys, &raftcmdpb.LifecycleKey{
+				AttrCode: uint32(code), CanonicalKey: entry.Canonical,
+				Persisted: flags&1 != 0, LifecycleCandidate: flags&2 != 0,
+			})
+		}
+	}
+	sort.Slice(executionPlan.GetLifecycleKeys(), func(i, j int) bool {
+		left, right := executionPlan.GetLifecycleKeys()[i], executionPlan.GetLifecycleKeys()[j]
+		if left.GetAttrCode() != right.GetAttrCode() {
+			return left.GetAttrCode() < right.GetAttrCode()
+		}
+
+		return bytes.Compare(left.GetCanonicalKey(), right.GetCanonicalKey()) < 0
+	})
 
 	return executionPlan, token, nil
 }

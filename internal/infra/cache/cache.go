@@ -265,6 +265,7 @@ type Cache struct {
 	PreparedQueries     *AttributeCache[*commonpb.PreparedQuery]
 	LedgerMetadata      *AttributeCache[*commonpb.MetadataValue]
 	Indexes             *AttributeCache[*commonpb.Index]
+	AccountInventories  *AttributeCache[*raftcmdpb.AccountInventoryState]
 	BaseIndex           DualGen[uint64]
 	generationThreshold atomic.Uint64
 
@@ -530,6 +531,7 @@ func (c *Cache) SetEpoch(e uint64) {
 type ConfigSnapshot struct {
 	GenerationThreshold uint64
 	Epoch               uint64
+	CurrentGeneration   uint64
 }
 
 // Snapshot returns a consistent snapshot of the cache's mutable config.
@@ -542,6 +544,7 @@ func (c *Cache) Snapshot() ConfigSnapshot {
 	return ConfigSnapshot{
 		GenerationThreshold: c.generationThreshold.Load(),
 		Epoch:               c.epoch.Load(),
+		CurrentGeneration:   c.currentGeneration.Load(),
 	}
 }
 
@@ -578,6 +581,7 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	ret.PreparedQueries = newAttributeCache[*commonpb.PreparedQuery](ret, "prepared_queries")
 	ret.LedgerMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "ledger_metadata")
 	ret.Indexes = newAttributeCache[*commonpb.Index](ret, "indexes")
+	ret.AccountInventories = newAttributeCache[*raftcmdpb.AccountInventoryState](ret, "account_inventories")
 
 	// Register all caches for iteration in Rotate/Reset/metrics.
 	ret.caches = []CacheOps{
@@ -585,14 +589,14 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 		ret.References, ret.Ledgers, ret.Boundaries,
 		ret.Transactions, ret.SinkConfigs, ret.NumscriptVersions,
 		ret.NumscriptContents, ret.PreparedQueries, ret.LedgerMetadata,
-		ret.Indexes,
+		ret.Indexes, ret.AccountInventories,
 	}
 	ret.cacheNames = []string{
 		"volumes", "account_metadata",
 		"references", "ledgers", "boundaries",
 		"transactions", "sink_configs", "numscript_versions",
 		"numscript_contents", "prepared_queries", "ledger_metadata",
-		"indexes",
+		"indexes", "account_inventories",
 	}
 
 	err := ret.initMetrics(m)

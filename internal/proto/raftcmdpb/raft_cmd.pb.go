@@ -4825,6 +4825,76 @@ func (x *VolumePair) GetOutput() *commonpb.Uint256 {
 	return nil
 }
 
+// Technical projection of the persistent keys owned by one account.
+// Updated only when the set of volume or metadata keys changes.
+type AccountInventoryState struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	BirthIndex        uint64                 `protobuf:"fixed64,1,opt,name=birth_index,json=birthIndex,proto3" json:"birth_index,omitempty"`
+	InventoryRevision uint64                 `protobuf:"fixed64,2,opt,name=inventory_revision,json=inventoryRevision,proto3" json:"inventory_revision,omitempty"`
+	VolumeCount       uint32                 `protobuf:"varint,3,opt,name=volume_count,json=volumeCount,proto3" json:"volume_count,omitempty"`
+	MetadataCount     uint32                 `protobuf:"varint,4,opt,name=metadata_count,json=metadataCount,proto3" json:"metadata_count,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *AccountInventoryState) Reset() {
+	*x = AccountInventoryState{}
+	mi := &file_raft_cmd_proto_msgTypes[62]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountInventoryState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountInventoryState) ProtoMessage() {}
+
+func (x *AccountInventoryState) ProtoReflect() protoreflect.Message {
+	mi := &file_raft_cmd_proto_msgTypes[62]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountInventoryState.ProtoReflect.Descriptor instead.
+func (*AccountInventoryState) Descriptor() ([]byte, []int) {
+	return file_raft_cmd_proto_rawDescGZIP(), []int{62}
+}
+
+func (x *AccountInventoryState) GetBirthIndex() uint64 {
+	if x != nil {
+		return x.BirthIndex
+	}
+	return 0
+}
+
+func (x *AccountInventoryState) GetInventoryRevision() uint64 {
+	if x != nil {
+		return x.InventoryRevision
+	}
+	return 0
+}
+
+func (x *AccountInventoryState) GetVolumeCount() uint32 {
+	if x != nil {
+		return x.VolumeCount
+	}
+	return 0
+}
+
+func (x *AccountInventoryState) GetMetadataCount() uint32 {
+	if x != nil {
+		return x.MetadataCount
+	}
+	return 0
+}
+
 // ExecutionPlan is the apply-time recipe admission attaches to a proposal:
 // the keys the FSM is allowed to read, the values to seed in the cache, the
 // idempotency entries to restore, and the intra-batch producer→consumer
@@ -4851,13 +4921,20 @@ type ExecutionPlan struct {
 	// an AttributeCoverage variant to make that distinction visible at the
 	// wire level.
 	IdempotencyKeys []*ReloadIdempotencyKey `protobuf:"bytes,4,rep,name=idempotency_keys,json=idempotencyKeys,proto3" json:"idempotency_keys,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Generation under which account inventories were read from one Pebble
+	// snapshot. The FSM rejects the observation after more than one rotation.
+	AccountInventoryGeneration uint64                         `protobuf:"fixed64,5,opt,name=account_inventory_generation,json=accountInventoryGeneration,proto3" json:"account_inventory_generation,omitempty"`
+	AccountInventories         []*AccountInventoryObservation `protobuf:"bytes,6,rep,name=account_inventories,json=accountInventories,proto3" json:"account_inventories,omitempty"`
+	// Only candidate account keys travel here; the ordinary attribute plan
+	// stays compact on high-throughput paths.
+	LifecycleKeys []*LifecycleKey `protobuf:"bytes,7,rep,name=lifecycle_keys,json=lifecycleKeys,proto3" json:"lifecycle_keys,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExecutionPlan) Reset() {
 	*x = ExecutionPlan{}
-	mi := &file_raft_cmd_proto_msgTypes[62]
+	mi := &file_raft_cmd_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4869,7 +4946,7 @@ func (x *ExecutionPlan) String() string {
 func (*ExecutionPlan) ProtoMessage() {}
 
 func (x *ExecutionPlan) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[62]
+	mi := &file_raft_cmd_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4882,7 +4959,7 @@ func (x *ExecutionPlan) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecutionPlan.ProtoReflect.Descriptor instead.
 func (*ExecutionPlan) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{62}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *ExecutionPlan) GetLastPersistedIndex() uint64 {
@@ -4913,6 +4990,158 @@ func (x *ExecutionPlan) GetIdempotencyKeys() []*ReloadIdempotencyKey {
 	return nil
 }
 
+func (x *ExecutionPlan) GetAccountInventoryGeneration() uint64 {
+	if x != nil {
+		return x.AccountInventoryGeneration
+	}
+	return 0
+}
+
+func (x *ExecutionPlan) GetAccountInventories() []*AccountInventoryObservation {
+	if x != nil {
+		return x.AccountInventories
+	}
+	return nil
+}
+
+func (x *ExecutionPlan) GetLifecycleKeys() []*LifecycleKey {
+	if x != nil {
+		return x.LifecycleKeys
+	}
+	return nil
+}
+
+type AccountInventoryObservation struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// [ledger name padded to 64 bytes][account address].
+	AccountKey []byte `protobuf:"bytes,1,opt,name=account_key,json=accountKey,proto3" json:"account_key,omitempty"`
+	// Nil means the account had no persistent volume or metadata keys.
+	Expected *AccountInventoryState `protobuf:"bytes,2,opt,name=expected,proto3" json:"expected,omitempty"`
+	// Digest of the account-type definitions in the same Pebble snapshot.
+	AccountTypesDigest []byte `protobuf:"bytes,3,opt,name=account_types_digest,json=accountTypesDigest,proto3" json:"account_types_digest,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *AccountInventoryObservation) Reset() {
+	*x = AccountInventoryObservation{}
+	mi := &file_raft_cmd_proto_msgTypes[64]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountInventoryObservation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountInventoryObservation) ProtoMessage() {}
+
+func (x *AccountInventoryObservation) ProtoReflect() protoreflect.Message {
+	mi := &file_raft_cmd_proto_msgTypes[64]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountInventoryObservation.ProtoReflect.Descriptor instead.
+func (*AccountInventoryObservation) Descriptor() ([]byte, []int) {
+	return file_raft_cmd_proto_rawDescGZIP(), []int{64}
+}
+
+func (x *AccountInventoryObservation) GetAccountKey() []byte {
+	if x != nil {
+		return x.AccountKey
+	}
+	return nil
+}
+
+func (x *AccountInventoryObservation) GetExpected() *AccountInventoryState {
+	if x != nil {
+		return x.Expected
+	}
+	return nil
+}
+
+func (x *AccountInventoryObservation) GetAccountTypesDigest() []byte {
+	if x != nil {
+		return x.AccountTypesDigest
+	}
+	return nil
+}
+
+type LifecycleKey struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	AttrCode           uint32                 `protobuf:"varint,1,opt,name=attr_code,json=attrCode,proto3" json:"attr_code,omitempty"`
+	CanonicalKey       []byte                 `protobuf:"bytes,2,opt,name=canonical_key,json=canonicalKey,proto3" json:"canonical_key,omitempty"`
+	Persisted          bool                   `protobuf:"varint,3,opt,name=persisted,proto3" json:"persisted,omitempty"`
+	LifecycleCandidate bool                   `protobuf:"varint,4,opt,name=lifecycle_candidate,json=lifecycleCandidate,proto3" json:"lifecycle_candidate,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *LifecycleKey) Reset() {
+	*x = LifecycleKey{}
+	mi := &file_raft_cmd_proto_msgTypes[65]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LifecycleKey) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LifecycleKey) ProtoMessage() {}
+
+func (x *LifecycleKey) ProtoReflect() protoreflect.Message {
+	mi := &file_raft_cmd_proto_msgTypes[65]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LifecycleKey.ProtoReflect.Descriptor instead.
+func (*LifecycleKey) Descriptor() ([]byte, []int) {
+	return file_raft_cmd_proto_rawDescGZIP(), []int{65}
+}
+
+func (x *LifecycleKey) GetAttrCode() uint32 {
+	if x != nil {
+		return x.AttrCode
+	}
+	return 0
+}
+
+func (x *LifecycleKey) GetCanonicalKey() []byte {
+	if x != nil {
+		return x.CanonicalKey
+	}
+	return nil
+}
+
+func (x *LifecycleKey) GetPersisted() bool {
+	if x != nil {
+		return x.Persisted
+	}
+	return false
+}
+
+func (x *LifecycleKey) GetLifecycleCandidate() bool {
+	if x != nil {
+		return x.LifecycleCandidate
+	}
+	return false
+}
+
 // AttributeCoverage declares the FSM apply path may access `id` under
 // `attr_code`. When `value` is set, the FSM's MirrorPreload seeds the
 // cache with it (CacheMiss + Pebble-load-hit at admission); when unset,
@@ -4933,7 +5162,7 @@ type AttributeCoverage struct {
 
 func (x *AttributeCoverage) Reset() {
 	*x = AttributeCoverage{}
-	mi := &file_raft_cmd_proto_msgTypes[63]
+	mi := &file_raft_cmd_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4945,7 +5174,7 @@ func (x *AttributeCoverage) String() string {
 func (*AttributeCoverage) ProtoMessage() {}
 
 func (x *AttributeCoverage) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[63]
+	mi := &file_raft_cmd_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4958,7 +5187,7 @@ func (x *AttributeCoverage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttributeCoverage.ProtoReflect.Descriptor instead.
 func (*AttributeCoverage) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{63}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *AttributeCoverage) GetId() *AttributeID {
@@ -4996,7 +5225,7 @@ type AttributeValue struct {
 
 func (x *AttributeValue) Reset() {
 	*x = AttributeValue{}
-	mi := &file_raft_cmd_proto_msgTypes[64]
+	mi := &file_raft_cmd_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5008,7 +5237,7 @@ func (x *AttributeValue) String() string {
 func (*AttributeValue) ProtoMessage() {}
 
 func (x *AttributeValue) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[64]
+	mi := &file_raft_cmd_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5021,7 +5250,7 @@ func (x *AttributeValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttributeValue.ProtoReflect.Descriptor instead.
 func (*AttributeValue) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{64}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *AttributeValue) GetRawValue() []byte {
@@ -5046,7 +5275,7 @@ type ReloadIdempotencyKey struct {
 
 func (x *ReloadIdempotencyKey) Reset() {
 	*x = ReloadIdempotencyKey{}
-	mi := &file_raft_cmd_proto_msgTypes[65]
+	mi := &file_raft_cmd_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5058,7 +5287,7 @@ func (x *ReloadIdempotencyKey) String() string {
 func (*ReloadIdempotencyKey) ProtoMessage() {}
 
 func (x *ReloadIdempotencyKey) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[65]
+	mi := &file_raft_cmd_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5071,7 +5300,7 @@ func (x *ReloadIdempotencyKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReloadIdempotencyKey.ProtoReflect.Descriptor instead.
 func (*ReloadIdempotencyKey) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{65}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *ReloadIdempotencyKey) GetKey() string {
@@ -5098,7 +5327,7 @@ type CacheGenerationMeta struct {
 
 func (x *CacheGenerationMeta) Reset() {
 	*x = CacheGenerationMeta{}
-	mi := &file_raft_cmd_proto_msgTypes[66]
+	mi := &file_raft_cmd_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5110,7 +5339,7 @@ func (x *CacheGenerationMeta) String() string {
 func (*CacheGenerationMeta) ProtoMessage() {}
 
 func (x *CacheGenerationMeta) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[66]
+	mi := &file_raft_cmd_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5123,7 +5352,7 @@ func (x *CacheGenerationMeta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CacheGenerationMeta.ProtoReflect.Descriptor instead.
 func (*CacheGenerationMeta) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{66}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *CacheGenerationMeta) GetBaseIndex() uint64 {
@@ -5143,7 +5372,7 @@ type CacheSnapshotMeta struct {
 
 func (x *CacheSnapshotMeta) Reset() {
 	*x = CacheSnapshotMeta{}
-	mi := &file_raft_cmd_proto_msgTypes[67]
+	mi := &file_raft_cmd_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5155,7 +5384,7 @@ func (x *CacheSnapshotMeta) String() string {
 func (*CacheSnapshotMeta) ProtoMessage() {}
 
 func (x *CacheSnapshotMeta) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[67]
+	mi := &file_raft_cmd_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5168,7 +5397,7 @@ func (x *CacheSnapshotMeta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CacheSnapshotMeta.ProtoReflect.Descriptor instead.
 func (*CacheSnapshotMeta) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{67}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *CacheSnapshotMeta) GetCurrentGeneration() uint64 {
@@ -5198,7 +5427,7 @@ type PeerAddress struct {
 
 func (x *PeerAddress) Reset() {
 	*x = PeerAddress{}
-	mi := &file_raft_cmd_proto_msgTypes[68]
+	mi := &file_raft_cmd_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5210,7 +5439,7 @@ func (x *PeerAddress) String() string {
 func (*PeerAddress) ProtoMessage() {}
 
 func (x *PeerAddress) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[68]
+	mi := &file_raft_cmd_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5223,7 +5452,7 @@ func (x *PeerAddress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerAddress.ProtoReflect.Descriptor instead.
 func (*PeerAddress) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{68}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *PeerAddress) GetNodeId() uint64 {
@@ -5271,7 +5500,7 @@ type RemovedMemberEntry struct {
 
 func (x *RemovedMemberEntry) Reset() {
 	*x = RemovedMemberEntry{}
-	mi := &file_raft_cmd_proto_msgTypes[69]
+	mi := &file_raft_cmd_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5283,7 +5512,7 @@ func (x *RemovedMemberEntry) String() string {
 func (*RemovedMemberEntry) ProtoMessage() {}
 
 func (x *RemovedMemberEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[69]
+	mi := &file_raft_cmd_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5296,7 +5525,7 @@ func (x *RemovedMemberEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemovedMemberEntry.ProtoReflect.Descriptor instead.
 func (*RemovedMemberEntry) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{69}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *RemovedMemberEntry) GetNodeId() uint64 {
@@ -5337,7 +5566,7 @@ type AttributeID struct {
 
 func (x *AttributeID) Reset() {
 	*x = AttributeID{}
-	mi := &file_raft_cmd_proto_msgTypes[70]
+	mi := &file_raft_cmd_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5349,7 +5578,7 @@ func (x *AttributeID) String() string {
 func (*AttributeID) ProtoMessage() {}
 
 func (x *AttributeID) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[70]
+	mi := &file_raft_cmd_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5362,7 +5591,7 @@ func (x *AttributeID) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttributeID.ProtoReflect.Descriptor instead.
 func (*AttributeID) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{70}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *AttributeID) GetId() []byte {
@@ -5711,7 +5940,13 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\n" +
 	"VolumePair\x12%\n" +
 	"\x05input\x18\x01 \x01(\v2\x0f.common.Uint256R\x05input\x12'\n" +
-	"\x06output\x18\x02 \x01(\v2\x0f.common.Uint256R\x06output\"\xe0\x01\n" +
+	"\x06output\x18\x02 \x01(\v2\x0f.common.Uint256R\x06output\"\xb1\x01\n" +
+	"\x15AccountInventoryState\x12\x1f\n" +
+	"\vbirth_index\x18\x01 \x01(\x06R\n" +
+	"birthIndex\x12-\n" +
+	"\x12inventory_revision\x18\x02 \x01(\x06R\x11inventoryRevision\x12!\n" +
+	"\fvolume_count\x18\x03 \x01(\rR\vvolumeCount\x12%\n" +
+	"\x0emetadata_count\x18\x04 \x01(\rR\rmetadataCount\"\xb1\x03\n" +
 	"\rExecutionPlan\x12.\n" +
 	"\x12lastPersistedIndex\x18\x01 \x01(\x06R\x12lastPersistedIndex\x12\x1f\n" +
 	"\vcache_epoch\x18\x02 \x01(\x06R\n" +
@@ -5719,7 +5954,20 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\n" +
 	"attributes\x18\x03 \x03(\v2\x17.raft.AttributeCoverageR\n" +
 	"attributes\x12E\n" +
-	"\x10idempotency_keys\x18\x04 \x03(\v2\x1a.raft.ReloadIdempotencyKeyR\x0fidempotencyKeys\"\x7f\n" +
+	"\x10idempotency_keys\x18\x04 \x03(\v2\x1a.raft.ReloadIdempotencyKeyR\x0fidempotencyKeys\x12@\n" +
+	"\x1caccount_inventory_generation\x18\x05 \x01(\x06R\x1aaccountInventoryGeneration\x12R\n" +
+	"\x13account_inventories\x18\x06 \x03(\v2!.raft.AccountInventoryObservationR\x12accountInventories\x129\n" +
+	"\x0elifecycle_keys\x18\a \x03(\v2\x12.raft.LifecycleKeyR\rlifecycleKeys\"\xa9\x01\n" +
+	"\x1bAccountInventoryObservation\x12\x1f\n" +
+	"\vaccount_key\x18\x01 \x01(\fR\n" +
+	"accountKey\x127\n" +
+	"\bexpected\x18\x02 \x01(\v2\x1b.raft.AccountInventoryStateR\bexpected\x120\n" +
+	"\x14account_types_digest\x18\x03 \x01(\fR\x12accountTypesDigest\"\x9f\x01\n" +
+	"\fLifecycleKey\x12\x1b\n" +
+	"\tattr_code\x18\x01 \x01(\rR\battrCode\x12#\n" +
+	"\rcanonical_key\x18\x02 \x01(\fR\fcanonicalKey\x12\x1c\n" +
+	"\tpersisted\x18\x03 \x01(\bR\tpersisted\x12/\n" +
+	"\x13lifecycle_candidate\x18\x04 \x01(\bR\x12lifecycleCandidate\"\x7f\n" +
 	"\x11AttributeCoverage\x12!\n" +
 	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x12\x1b\n" +
 	"\tattr_code\x18\x02 \x01(\rR\battrCode\x12*\n" +
@@ -5774,7 +6022,7 @@ func file_raft_cmd_proto_rawDescGZIP() []byte {
 }
 
 var file_raft_cmd_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_raft_cmd_proto_msgTypes = make([]protoimpl.MessageInfo, 83)
+var file_raft_cmd_proto_msgTypes = make([]protoimpl.MessageInfo, 86)
 var file_raft_cmd_proto_goTypes = []any{
 	(BackupKind)(0),                              // 0: raft.BackupKind
 	(BackupJobStatus)(0),                         // 1: raft.BackupJobStatus
@@ -5840,55 +6088,58 @@ var file_raft_cmd_proto_goTypes = []any{
 	(*CreatedLogOrReference)(nil),                // 61: raft.CreatedLogOrReference
 	(*LedgerBoundaries)(nil),                     // 62: raft.LedgerBoundaries
 	(*VolumePair)(nil),                           // 63: raft.VolumePair
-	(*ExecutionPlan)(nil),                        // 64: raft.ExecutionPlan
-	(*AttributeCoverage)(nil),                    // 65: raft.AttributeCoverage
-	(*AttributeValue)(nil),                       // 66: raft.AttributeValue
-	(*ReloadIdempotencyKey)(nil),                 // 67: raft.ReloadIdempotencyKey
-	(*CacheGenerationMeta)(nil),                  // 68: raft.CacheGenerationMeta
-	(*CacheSnapshotMeta)(nil),                    // 69: raft.CacheSnapshotMeta
-	(*PeerAddress)(nil),                          // 70: raft.PeerAddress
-	(*RemovedMemberEntry)(nil),                   // 71: raft.RemovedMemberEntry
-	(*AttributeID)(nil),                          // 72: raft.AttributeID
-	nil,                                          // 73: raft.CreateLedgerOrder.AccountTypesEntry
-	nil,                                          // 74: raft.CreateLedgerOrder.MetadataEntry
-	nil,                                          // 75: raft.MirrorCreatedTransaction.MetadataEntry
-	nil,                                          // 76: raft.MirrorCreatedTransaction.AccountMetadataEntry
-	nil,                                          // 77: raft.MirrorSavedMetadata.MetadataEntry
-	nil,                                          // 78: raft.MirrorRevertedTransaction.MetadataEntry
-	nil,                                          // 79: raft.CreateTransactionOrder.MetadataEntry
-	nil,                                          // 80: raft.CreateTransactionOrder.AccountMetadataEntry
-	nil,                                          // 81: raft.NumscriptReference.VarsEntry
-	nil,                                          // 82: raft.SaveMetadataOrder.MetadataEntry
-	nil,                                          // 83: raft.RevertTransactionOrder.MetadataEntry
-	nil,                                          // 84: raft.SaveLedgerMetadataOrder.MetadataEntry
-	(*commonpb.PreparedQuery)(nil),               // 85: common.PreparedQuery
-	(*commonpb.QueryFilter)(nil),                 // 86: common.QueryFilter
-	(*commonpb.SinkConfig)(nil),                  // 87: common.SinkConfig
-	(*commonpb.ClusterPolicy)(nil),               // 88: common.ClusterPolicy
-	(*commonpb.Timestamp)(nil),                   // 89: common.Timestamp
-	(*commonpb.SetMetadataFieldTypeCommand)(nil), // 90: common.SetMetadataFieldTypeCommand
-	(commonpb.LedgerMode)(0),                     // 91: common.LedgerMode
-	(*commonpb.MirrorSourceConfig)(nil),          // 92: common.MirrorSourceConfig
-	(commonpb.ChartEnforcementMode)(0),           // 93: common.ChartEnforcementMode
-	(*commonpb.Posting)(nil),                     // 94: common.Posting
-	(*commonpb.Target)(nil),                      // 95: common.Target
-	(commonpb.ErrorReason)(0),                    // 96: common.ErrorReason
-	(*commonpb.IndexID)(nil),                     // 97: common.IndexID
-	(*commonpb.AccountType)(nil),                 // 98: common.AccountType
-	(commonpb.TargetType)(0),                     // 99: common.TargetType
-	(commonpb.MetadataType)(0),                   // 100: common.MetadataType
-	(*commonpb.Script)(nil),                      // 101: common.Script
-	(*commonpb.CallerSnapshot)(nil),              // 102: common.CallerSnapshot
-	(*commonpb.Idempotency)(nil),                 // 103: common.Idempotency
-	(*signaturepb.SignedApplyBatch)(nil),         // 104: signature.SignedApplyBatch
-	(*commonpb.ClusterConfig)(nil),               // 105: common.ClusterConfig
-	(*commonpb.MirrorSyncError)(nil),             // 106: common.MirrorSyncError
-	(*commonpb.SinkError)(nil),                   // 107: common.SinkError
-	(*commonpb.Log)(nil),                         // 108: common.Log
-	(*commonpb.Uint256)(nil),                     // 109: common.Uint256
-	(*commonpb.IdempotencyKeyValue)(nil),         // 110: common.IdempotencyKeyValue
-	(*commonpb.MetadataValue)(nil),               // 111: common.MetadataValue
-	(*commonpb.MetadataMap)(nil),                 // 112: common.MetadataMap
+	(*AccountInventoryState)(nil),                // 64: raft.AccountInventoryState
+	(*ExecutionPlan)(nil),                        // 65: raft.ExecutionPlan
+	(*AccountInventoryObservation)(nil),          // 66: raft.AccountInventoryObservation
+	(*LifecycleKey)(nil),                         // 67: raft.LifecycleKey
+	(*AttributeCoverage)(nil),                    // 68: raft.AttributeCoverage
+	(*AttributeValue)(nil),                       // 69: raft.AttributeValue
+	(*ReloadIdempotencyKey)(nil),                 // 70: raft.ReloadIdempotencyKey
+	(*CacheGenerationMeta)(nil),                  // 71: raft.CacheGenerationMeta
+	(*CacheSnapshotMeta)(nil),                    // 72: raft.CacheSnapshotMeta
+	(*PeerAddress)(nil),                          // 73: raft.PeerAddress
+	(*RemovedMemberEntry)(nil),                   // 74: raft.RemovedMemberEntry
+	(*AttributeID)(nil),                          // 75: raft.AttributeID
+	nil,                                          // 76: raft.CreateLedgerOrder.AccountTypesEntry
+	nil,                                          // 77: raft.CreateLedgerOrder.MetadataEntry
+	nil,                                          // 78: raft.MirrorCreatedTransaction.MetadataEntry
+	nil,                                          // 79: raft.MirrorCreatedTransaction.AccountMetadataEntry
+	nil,                                          // 80: raft.MirrorSavedMetadata.MetadataEntry
+	nil,                                          // 81: raft.MirrorRevertedTransaction.MetadataEntry
+	nil,                                          // 82: raft.CreateTransactionOrder.MetadataEntry
+	nil,                                          // 83: raft.CreateTransactionOrder.AccountMetadataEntry
+	nil,                                          // 84: raft.NumscriptReference.VarsEntry
+	nil,                                          // 85: raft.SaveMetadataOrder.MetadataEntry
+	nil,                                          // 86: raft.RevertTransactionOrder.MetadataEntry
+	nil,                                          // 87: raft.SaveLedgerMetadataOrder.MetadataEntry
+	(*commonpb.PreparedQuery)(nil),               // 88: common.PreparedQuery
+	(*commonpb.QueryFilter)(nil),                 // 89: common.QueryFilter
+	(*commonpb.SinkConfig)(nil),                  // 90: common.SinkConfig
+	(*commonpb.ClusterPolicy)(nil),               // 91: common.ClusterPolicy
+	(*commonpb.Timestamp)(nil),                   // 92: common.Timestamp
+	(*commonpb.SetMetadataFieldTypeCommand)(nil), // 93: common.SetMetadataFieldTypeCommand
+	(commonpb.LedgerMode)(0),                     // 94: common.LedgerMode
+	(*commonpb.MirrorSourceConfig)(nil),          // 95: common.MirrorSourceConfig
+	(commonpb.ChartEnforcementMode)(0),           // 96: common.ChartEnforcementMode
+	(*commonpb.Posting)(nil),                     // 97: common.Posting
+	(*commonpb.Target)(nil),                      // 98: common.Target
+	(commonpb.ErrorReason)(0),                    // 99: common.ErrorReason
+	(*commonpb.IndexID)(nil),                     // 100: common.IndexID
+	(*commonpb.AccountType)(nil),                 // 101: common.AccountType
+	(commonpb.TargetType)(0),                     // 102: common.TargetType
+	(commonpb.MetadataType)(0),                   // 103: common.MetadataType
+	(*commonpb.Script)(nil),                      // 104: common.Script
+	(*commonpb.CallerSnapshot)(nil),              // 105: common.CallerSnapshot
+	(*commonpb.Idempotency)(nil),                 // 106: common.Idempotency
+	(*signaturepb.SignedApplyBatch)(nil),         // 107: signature.SignedApplyBatch
+	(*commonpb.ClusterConfig)(nil),               // 108: common.ClusterConfig
+	(*commonpb.MirrorSyncError)(nil),             // 109: common.MirrorSyncError
+	(*commonpb.SinkError)(nil),                   // 110: common.SinkError
+	(*commonpb.Log)(nil),                         // 111: common.Log
+	(*commonpb.Uint256)(nil),                     // 112: common.Uint256
+	(*commonpb.IdempotencyKeyValue)(nil),         // 113: common.IdempotencyKeyValue
+	(*commonpb.MetadataValue)(nil),               // 114: common.MetadataValue
+	(*commonpb.MetadataMap)(nil),                 // 115: common.MetadataMap
 }
 var file_raft_cmd_proto_depIdxs = []int32{
 	4,   // 0: raft.Order.ledger_scoped:type_name -> raft.LedgerScopedOrder
@@ -5916,34 +6167,34 @@ var file_raft_cmd_proto_depIdxs = []int32{
 	20,  // 22: raft.SystemScopedOrder.set_query_checkpoint_schedule:type_name -> raft.SetQueryCheckpointScheduleOrder
 	21,  // 23: raft.SystemScopedOrder.delete_query_checkpoint_schedule:type_name -> raft.DeleteQueryCheckpointScheduleOrder
 	15,  // 24: raft.SystemScopedOrder.set_cluster_policy:type_name -> raft.SetClusterPolicyOrder
-	85,  // 25: raft.CreatePreparedQueryOrder.query:type_name -> common.PreparedQuery
-	86,  // 26: raft.UpdatePreparedQueryOrder.filter:type_name -> common.QueryFilter
-	87,  // 27: raft.AddEventsSinkOrder.config:type_name -> common.SinkConfig
-	88,  // 28: raft.SetClusterPolicyOrder.policy:type_name -> common.ClusterPolicy
-	89,  // 29: raft.QueryCheckpointState.created_at:type_name -> common.Timestamp
-	90,  // 30: raft.CreateLedgerOrder.initial_schema:type_name -> common.SetMetadataFieldTypeCommand
-	91,  // 31: raft.CreateLedgerOrder.mode:type_name -> common.LedgerMode
-	92,  // 32: raft.CreateLedgerOrder.mirror_source:type_name -> common.MirrorSourceConfig
-	73,  // 33: raft.CreateLedgerOrder.account_types:type_name -> raft.CreateLedgerOrder.AccountTypesEntry
-	93,  // 34: raft.CreateLedgerOrder.default_enforcement_mode:type_name -> common.ChartEnforcementMode
-	74,  // 35: raft.CreateLedgerOrder.metadata:type_name -> raft.CreateLedgerOrder.MetadataEntry
+	88,  // 25: raft.CreatePreparedQueryOrder.query:type_name -> common.PreparedQuery
+	89,  // 26: raft.UpdatePreparedQueryOrder.filter:type_name -> common.QueryFilter
+	90,  // 27: raft.AddEventsSinkOrder.config:type_name -> common.SinkConfig
+	91,  // 28: raft.SetClusterPolicyOrder.policy:type_name -> common.ClusterPolicy
+	92,  // 29: raft.QueryCheckpointState.created_at:type_name -> common.Timestamp
+	93,  // 30: raft.CreateLedgerOrder.initial_schema:type_name -> common.SetMetadataFieldTypeCommand
+	94,  // 31: raft.CreateLedgerOrder.mode:type_name -> common.LedgerMode
+	95,  // 32: raft.CreateLedgerOrder.mirror_source:type_name -> common.MirrorSourceConfig
+	76,  // 33: raft.CreateLedgerOrder.account_types:type_name -> raft.CreateLedgerOrder.AccountTypesEntry
+	96,  // 34: raft.CreateLedgerOrder.default_enforcement_mode:type_name -> common.ChartEnforcementMode
+	77,  // 35: raft.CreateLedgerOrder.metadata:type_name -> raft.CreateLedgerOrder.MetadataEntry
 	24,  // 36: raft.MirrorIngestOrder.entry:type_name -> raft.MirrorLogEntry
-	89,  // 37: raft.MirrorLogEntry.date:type_name -> common.Timestamp
+	92,  // 37: raft.MirrorLogEntry.date:type_name -> common.Timestamp
 	26,  // 38: raft.MirrorLogEntry.created_transaction:type_name -> raft.MirrorCreatedTransaction
 	27,  // 39: raft.MirrorLogEntry.saved_metadata:type_name -> raft.MirrorSavedMetadata
 	28,  // 40: raft.MirrorLogEntry.reverted_transaction:type_name -> raft.MirrorRevertedTransaction
 	29,  // 41: raft.MirrorLogEntry.deleted_metadata:type_name -> raft.MirrorDeletedMetadata
 	25,  // 42: raft.MirrorLogEntry.fill_gap:type_name -> raft.MirrorFillGap
-	94,  // 43: raft.MirrorCreatedTransaction.postings:type_name -> common.Posting
-	75,  // 44: raft.MirrorCreatedTransaction.metadata:type_name -> raft.MirrorCreatedTransaction.MetadataEntry
-	89,  // 45: raft.MirrorCreatedTransaction.timestamp:type_name -> common.Timestamp
-	76,  // 46: raft.MirrorCreatedTransaction.account_metadata:type_name -> raft.MirrorCreatedTransaction.AccountMetadataEntry
-	95,  // 47: raft.MirrorSavedMetadata.target:type_name -> common.Target
-	77,  // 48: raft.MirrorSavedMetadata.metadata:type_name -> raft.MirrorSavedMetadata.MetadataEntry
-	94,  // 49: raft.MirrorRevertedTransaction.reverse_postings:type_name -> common.Posting
-	78,  // 50: raft.MirrorRevertedTransaction.metadata:type_name -> raft.MirrorRevertedTransaction.MetadataEntry
-	89,  // 51: raft.MirrorRevertedTransaction.timestamp:type_name -> common.Timestamp
-	95,  // 52: raft.MirrorDeletedMetadata.target:type_name -> common.Target
+	97,  // 43: raft.MirrorCreatedTransaction.postings:type_name -> common.Posting
+	78,  // 44: raft.MirrorCreatedTransaction.metadata:type_name -> raft.MirrorCreatedTransaction.MetadataEntry
+	92,  // 45: raft.MirrorCreatedTransaction.timestamp:type_name -> common.Timestamp
+	79,  // 46: raft.MirrorCreatedTransaction.account_metadata:type_name -> raft.MirrorCreatedTransaction.AccountMetadataEntry
+	98,  // 47: raft.MirrorSavedMetadata.target:type_name -> common.Target
+	80,  // 48: raft.MirrorSavedMetadata.metadata:type_name -> raft.MirrorSavedMetadata.MetadataEntry
+	97,  // 49: raft.MirrorRevertedTransaction.reverse_postings:type_name -> common.Posting
+	81,  // 50: raft.MirrorRevertedTransaction.metadata:type_name -> raft.MirrorRevertedTransaction.MetadataEntry
+	92,  // 51: raft.MirrorRevertedTransaction.timestamp:type_name -> common.Timestamp
+	98,  // 52: raft.MirrorDeletedMetadata.target:type_name -> common.Target
 	40,  // 53: raft.LedgerApplyOrder.create_transaction:type_name -> raft.CreateTransactionOrder
 	42,  // 54: raft.LedgerApplyOrder.add_metadata:type_name -> raft.SaveMetadataOrder
 	43,  // 55: raft.LedgerApplyOrder.revert_transaction:type_name -> raft.RevertTransactionOrder
@@ -5955,37 +6206,37 @@ var file_raft_cmd_proto_depIdxs = []int32{
 	35,  // 61: raft.LedgerApplyOrder.add_account_type:type_name -> raft.AddAccountTypeOrder
 	36,  // 62: raft.LedgerApplyOrder.remove_account_type:type_name -> raft.RemoveAccountTypeOrder
 	37,  // 63: raft.LedgerApplyOrder.update_default_enforcement_mode:type_name -> raft.UpdateDefaultEnforcementModeOrder
-	96,  // 64: raft.LedgerApplyOrder.skippable_reasons:type_name -> common.ErrorReason
-	97,  // 65: raft.CreateIndexOrder.id:type_name -> common.IndexID
-	97,  // 66: raft.DropIndexOrder.id:type_name -> common.IndexID
-	98,  // 67: raft.AddAccountTypeOrder.account_type:type_name -> common.AccountType
-	93,  // 68: raft.UpdateDefaultEnforcementModeOrder.enforcement_mode:type_name -> common.ChartEnforcementMode
-	99,  // 69: raft.SetMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
-	100, // 70: raft.SetMetadataFieldTypeOrder.type:type_name -> common.MetadataType
-	99,  // 71: raft.RemoveMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
-	94,  // 72: raft.CreateTransactionOrder.postings:type_name -> common.Posting
-	101, // 73: raft.CreateTransactionOrder.script:type_name -> common.Script
-	89,  // 74: raft.CreateTransactionOrder.timestamp:type_name -> common.Timestamp
-	79,  // 75: raft.CreateTransactionOrder.metadata:type_name -> raft.CreateTransactionOrder.MetadataEntry
-	80,  // 76: raft.CreateTransactionOrder.account_metadata:type_name -> raft.CreateTransactionOrder.AccountMetadataEntry
+	99,  // 64: raft.LedgerApplyOrder.skippable_reasons:type_name -> common.ErrorReason
+	100, // 65: raft.CreateIndexOrder.id:type_name -> common.IndexID
+	100, // 66: raft.DropIndexOrder.id:type_name -> common.IndexID
+	101, // 67: raft.AddAccountTypeOrder.account_type:type_name -> common.AccountType
+	96,  // 68: raft.UpdateDefaultEnforcementModeOrder.enforcement_mode:type_name -> common.ChartEnforcementMode
+	102, // 69: raft.SetMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
+	103, // 70: raft.SetMetadataFieldTypeOrder.type:type_name -> common.MetadataType
+	102, // 71: raft.RemoveMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
+	97,  // 72: raft.CreateTransactionOrder.postings:type_name -> common.Posting
+	104, // 73: raft.CreateTransactionOrder.script:type_name -> common.Script
+	92,  // 74: raft.CreateTransactionOrder.timestamp:type_name -> common.Timestamp
+	82,  // 75: raft.CreateTransactionOrder.metadata:type_name -> raft.CreateTransactionOrder.MetadataEntry
+	83,  // 76: raft.CreateTransactionOrder.account_metadata:type_name -> raft.CreateTransactionOrder.AccountMetadataEntry
 	41,  // 77: raft.CreateTransactionOrder.numscript_reference:type_name -> raft.NumscriptReference
-	81,  // 78: raft.NumscriptReference.vars:type_name -> raft.NumscriptReference.VarsEntry
-	95,  // 79: raft.SaveMetadataOrder.target:type_name -> common.Target
-	82,  // 80: raft.SaveMetadataOrder.metadata:type_name -> raft.SaveMetadataOrder.MetadataEntry
-	83,  // 81: raft.RevertTransactionOrder.metadata:type_name -> raft.RevertTransactionOrder.MetadataEntry
-	95,  // 82: raft.DeleteMetadataOrder.target:type_name -> common.Target
-	84,  // 83: raft.SaveLedgerMetadataOrder.metadata:type_name -> raft.SaveLedgerMetadataOrder.MetadataEntry
+	84,  // 78: raft.NumscriptReference.vars:type_name -> raft.NumscriptReference.VarsEntry
+	98,  // 79: raft.SaveMetadataOrder.target:type_name -> common.Target
+	85,  // 80: raft.SaveMetadataOrder.metadata:type_name -> raft.SaveMetadataOrder.MetadataEntry
+	86,  // 81: raft.RevertTransactionOrder.metadata:type_name -> raft.RevertTransactionOrder.MetadataEntry
+	98,  // 82: raft.DeleteMetadataOrder.target:type_name -> common.Target
+	87,  // 83: raft.SaveLedgerMetadataOrder.metadata:type_name -> raft.SaveLedgerMetadataOrder.MetadataEntry
 	2,   // 84: raft.Proposal.orders:type_name -> raft.Order
-	89,  // 85: raft.Proposal.date:type_name -> common.Timestamp
-	64,  // 86: raft.Proposal.execution_plan:type_name -> raft.ExecutionPlan
-	102, // 87: raft.Proposal.caller_snapshot:type_name -> common.CallerSnapshot
-	103, // 88: raft.Proposal.idempotency:type_name -> common.Idempotency
-	104, // 89: raft.Proposal.signature:type_name -> signature.SignedApplyBatch
+	92,  // 85: raft.Proposal.date:type_name -> common.Timestamp
+	65,  // 86: raft.Proposal.execution_plan:type_name -> raft.ExecutionPlan
+	105, // 87: raft.Proposal.caller_snapshot:type_name -> common.CallerSnapshot
+	106, // 88: raft.Proposal.idempotency:type_name -> common.Idempotency
+	107, // 89: raft.Proposal.signature:type_name -> signature.SignedApplyBatch
 	48,  // 90: raft.Proposal.technical_updates:type_name -> raft.TechnicalUpdate
 	59,  // 91: raft.TechnicalUpdate.mirror_sync:type_name -> raft.MirrorSyncUpdate
 	60,  // 92: raft.TechnicalUpdate.events_sink:type_name -> raft.EventsSinkUpdate
 	58,  // 93: raft.TechnicalUpdate.idempotency_eviction:type_name -> raft.IdempotencyEviction
-	105, // 94: raft.TechnicalUpdate.cluster_config:type_name -> common.ClusterConfig
+	108, // 94: raft.TechnicalUpdate.cluster_config:type_name -> common.ClusterConfig
 	53,  // 95: raft.TechnicalUpdate.backup_order:type_name -> raft.BackupOrder
 	54,  // 96: raft.TechnicalUpdate.incremental_backup_order:type_name -> raft.IncrementalBackupOrder
 	50,  // 97: raft.BackupDestination.s3:type_name -> raft.S3BackupTarget
@@ -6000,32 +6251,35 @@ var file_raft_cmd_proto_depIdxs = []int32{
 	56,  // 106: raft.IncrementalBackupOrder.complete:type_name -> raft.BackupOrderComplete
 	57,  // 107: raft.IncrementalBackupOrder.fail:type_name -> raft.BackupOrderFail
 	49,  // 108: raft.BackupOrderStart.destination:type_name -> raft.BackupDestination
-	106, // 109: raft.MirrorSyncUpdate.error:type_name -> common.MirrorSyncError
-	107, // 110: raft.EventsSinkUpdate.error:type_name -> common.SinkError
-	108, // 111: raft.CreatedLogOrReference.created_log:type_name -> common.Log
-	109, // 112: raft.VolumePair.input:type_name -> common.Uint256
-	109, // 113: raft.VolumePair.output:type_name -> common.Uint256
-	65,  // 114: raft.ExecutionPlan.attributes:type_name -> raft.AttributeCoverage
-	67,  // 115: raft.ExecutionPlan.idempotency_keys:type_name -> raft.ReloadIdempotencyKey
-	72,  // 116: raft.AttributeCoverage.id:type_name -> raft.AttributeID
-	66,  // 117: raft.AttributeCoverage.value:type_name -> raft.AttributeValue
-	110, // 118: raft.ReloadIdempotencyKey.value:type_name -> common.IdempotencyKeyValue
-	98,  // 119: raft.CreateLedgerOrder.AccountTypesEntry.value:type_name -> common.AccountType
-	111, // 120: raft.CreateLedgerOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	111, // 121: raft.MirrorCreatedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
-	112, // 122: raft.MirrorCreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	111, // 123: raft.MirrorSavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
-	111, // 124: raft.MirrorRevertedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
-	111, // 125: raft.CreateTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	112, // 126: raft.CreateTransactionOrder.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	111, // 127: raft.SaveMetadataOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	111, // 128: raft.RevertTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	111, // 129: raft.SaveLedgerMetadataOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	130, // [130:130] is the sub-list for method output_type
-	130, // [130:130] is the sub-list for method input_type
-	130, // [130:130] is the sub-list for extension type_name
-	130, // [130:130] is the sub-list for extension extendee
-	0,   // [0:130] is the sub-list for field type_name
+	109, // 109: raft.MirrorSyncUpdate.error:type_name -> common.MirrorSyncError
+	110, // 110: raft.EventsSinkUpdate.error:type_name -> common.SinkError
+	111, // 111: raft.CreatedLogOrReference.created_log:type_name -> common.Log
+	112, // 112: raft.VolumePair.input:type_name -> common.Uint256
+	112, // 113: raft.VolumePair.output:type_name -> common.Uint256
+	68,  // 114: raft.ExecutionPlan.attributes:type_name -> raft.AttributeCoverage
+	70,  // 115: raft.ExecutionPlan.idempotency_keys:type_name -> raft.ReloadIdempotencyKey
+	66,  // 116: raft.ExecutionPlan.account_inventories:type_name -> raft.AccountInventoryObservation
+	67,  // 117: raft.ExecutionPlan.lifecycle_keys:type_name -> raft.LifecycleKey
+	64,  // 118: raft.AccountInventoryObservation.expected:type_name -> raft.AccountInventoryState
+	75,  // 119: raft.AttributeCoverage.id:type_name -> raft.AttributeID
+	69,  // 120: raft.AttributeCoverage.value:type_name -> raft.AttributeValue
+	113, // 121: raft.ReloadIdempotencyKey.value:type_name -> common.IdempotencyKeyValue
+	101, // 122: raft.CreateLedgerOrder.AccountTypesEntry.value:type_name -> common.AccountType
+	114, // 123: raft.CreateLedgerOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	114, // 124: raft.MirrorCreatedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
+	115, // 125: raft.MirrorCreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	114, // 126: raft.MirrorSavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
+	114, // 127: raft.MirrorRevertedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
+	114, // 128: raft.CreateTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	115, // 129: raft.CreateTransactionOrder.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	114, // 130: raft.SaveMetadataOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	114, // 131: raft.RevertTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	114, // 132: raft.SaveLedgerMetadataOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	133, // [133:133] is the sub-list for method output_type
+	133, // [133:133] is the sub-list for method input_type
+	133, // [133:133] is the sub-list for extension type_name
+	133, // [133:133] is the sub-list for extension extendee
+	0,   // [0:133] is the sub-list for field type_name
 }
 
 func init() { file_raft_cmd_proto_init() }
@@ -6116,7 +6370,7 @@ func file_raft_cmd_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_raft_cmd_proto_rawDesc), len(file_raft_cmd_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   83,
+			NumMessages:   86,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

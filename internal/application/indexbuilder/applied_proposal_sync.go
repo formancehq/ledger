@@ -277,22 +277,21 @@ type ledgerLogWithPurgedVolumes interface {
 	GetEphemeralVolumes() []*commonpb.TouchedVolume
 }
 
-// excludedForLog returns the union of the transient (proposal-level) and
-// purged (per-log) exclusion sets for the given log. This is the single
-// helper used by process_logs.go (live path), indexLogEntry (backfill),
-// and processBackfillPostings — the three previously inlined the same
-// transientForLedger / extractPurgedVolumes / mergeExcluded combo. The
-// sync is allowed to be nil so backfill callers without an
-// AppliedProposal stream still get the purged side of the set.
-func (s *appliedProposalSync) excludedForLog(logSeq uint64, ledger string, log ledgerLogWithPurgedVolumes) map[domain.AccountAssetKey]struct{} {
-	if s == nil {
-		return extractPurgedVolumes(log)
-	}
+// exclusionsForLog separates current-state exclusions from immutable-history
+// exclusions. Purged EPHEMERAL volumes must disappear from has-asset, but the
+// transaction that drained them remains part of account history. TRANSIENT
+// volumes are excluded from both projections.
+func (s *appliedProposalSync) exclusionsForLog(logSeq uint64, ledger string, log ledgerLogWithPurgedVolumes) (
+	current map[domain.AccountAssetKey]struct{},
+	history map[domain.AccountAssetKey]struct{},
+) {
+	purged := extractPurgedVolumes(log)
+	transient := s.transientForLedger(logSeq, ledger)
 
 	return mergeExcluded(
-		s.transientForLedger(logSeq, ledger),
-		extractPurgedVolumes(log),
-	)
+		transient,
+		purged,
+	), transient
 }
 
 // mergeExcluded unions two (account, asset) exclusion sets without mutating

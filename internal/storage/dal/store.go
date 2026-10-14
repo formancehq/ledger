@@ -244,6 +244,7 @@ const (
 	SubAttrNumscriptContent byte = 0x0A
 	SubAttrPreparedQuery    byte = 0x0B
 	SubAttrIndex            byte = 0x0C
+	SubAttrAccountInventory byte = 0x0D
 )
 
 // Cache sub-prefixes (zone 0x02).

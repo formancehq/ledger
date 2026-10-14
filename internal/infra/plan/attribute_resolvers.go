@@ -186,5 +186,13 @@ func buildAttrResolvers(
 			getValue: attrs.Index.Get,
 			bloom:    filter(dal.SubAttrIndex),
 		},
+		dal.SubAttrAccountInventory: &protoAttrResolver[*raftcmdpb.AccountInventoryState]{
+			attrCode: dal.SubAttrAccountInventory,
+			typeName: "account_inventories",
+			cache:    c.AccountInventories,
+			loader:   loaders.AccountInventories,
+			getValue: attrs.AccountInventory.Get,
+			bloom:    filter(dal.SubAttrAccountInventory),
+		},
 	}
 }
