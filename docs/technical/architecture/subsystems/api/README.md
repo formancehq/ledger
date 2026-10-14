@@ -14,7 +14,7 @@ Client-facing transport layers (`internal/adapter/grpc`, `internal/adapter/http`
 | [sensitive-projection.md](sensitive-projection.md) | Detached, descriptor-driven secret projection and its ownership boundary. |
 
 The [HTTP index inspection contract](http-api.md#inspect-a-metadata-index)
-defines accepted modes, the `distinct-values` alias, omission defaults, and
+defines accepted modes, omission defaults, and
 validation of supplied page sizes before backend invocation (EN-2905).
 
 Decoded leader errors retain their exact gRPC status through routing wrappers

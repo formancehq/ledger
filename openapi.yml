@@ -1408,22 +1408,22 @@ paths:
             type: string
         - name: mode
           in: query
-          description: Inspection mode. `distinct-values` is an alias for `distinctValues`. An explicitly empty or unsupported value returns 400.
+          description: Inspection mode. An explicitly empty or unsupported value returns 400.
           schema:
             type: string
-            enum: [summary, distinctValues, distinct-values, facets]
+            enum: [summary, distinctValues, facets]
             default: summary
         - name: pageSize
           in: query
           description: |
             Page size for distinctValues/facets modes (defaults to 100 when
-            omitted). Any supplied value must be in 1..10000, including in
+            omitted). Any supplied value must be in 1..1000, including in
             summary mode, which does not use pagination. Empty or invalid
             values return 400.
           schema:
             type: integer
             minimum: 1
-            maximum: 10000
+            maximum: 1000
         - name: cursor
           in: query
           description: |

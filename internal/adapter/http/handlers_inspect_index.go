@@ -104,7 +104,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	var mode servicepb.InspectIndexMode
 	switch suppliedMode := query.Get("mode"); suppliedMode {
-	case "distinctValues", "distinct-values":
+	case "distinctValues":
 		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES
 	case "facets":
 		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS
@@ -112,7 +112,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY
 	case "":
 		if query.Has("mode") {
-			writeBadRequest(w, "INVALID_REQUEST", errors.New("mode must be summary, distinctValues, distinct-values, or facets"))
+			writeBadRequest(w, "INVALID_REQUEST", errors.New("mode must be summary, distinctValues, or facets"))
 
 			return
 		}
@@ -134,8 +134,8 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if v < 1 || v > 10000 {
-			writeBadRequest(w, "INVALID_PAGE_SIZE", errors.New("pageSize must be between 1 and 10000"))
+		if v < 1 || v > uint64(maxPageSize) {
+			writeBadRequest(w, "INVALID_PAGE_SIZE", fmt.Errorf("pageSize must be between 1 and %d", maxPageSize))
 
 			return
 		}
