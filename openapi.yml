@@ -1704,7 +1704,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Name of the numscript
+          description: Name of the numscript, URL-encoded as one path segment. Decoded exactly once.
         - name: version
           in: query
           required: false
@@ -1761,7 +1761,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Name of the numscript
+          description: Name of the numscript, URL-encoded as one path segment. Decoded exactly once.
       requestBody:
         required: true
         content:
@@ -1833,7 +1833,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Name of the numscript
+          description: Name of the numscript, URL-encoded as one path segment. Decoded exactly once.
       responses:
         '200':
           description: Numscript versions retrieved successfully
@@ -1878,7 +1878,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Name of the numscript template
+          description: Name of the numscript template, URL-encoded as one path segment. Decoded exactly once.
       responses:
         '200':
           description: Template usage retrieved successfully
@@ -3303,7 +3303,10 @@ components:
       required: true
       schema:
         type: string
-      description: Account address
+        example: users:001
+      description: |
+        Raw account address, for example users:001. Direct HTTP clients may
+        URL-encode it as one path segment (users%3A001). Decoded exactly once.
 
     MetadataKey:
       name: key
@@ -3338,7 +3341,7 @@ components:
       required: true
       schema:
         type: string
-      description: Prepared query name
+      description: Prepared query name, URL-encoded as one path segment. Decoded exactly once.
 
     TypeName:
       name: typeName
@@ -3346,7 +3349,7 @@ components:
       required: true
       schema:
         type: string
-      description: Account type name
+      description: Account type name, URL-encoded as one path segment. Decoded exactly once.
 
     IdempotencyKey:
       name: Idempotency-Key
