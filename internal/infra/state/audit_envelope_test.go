@@ -221,7 +221,7 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 		Ledgers:     []string{"ledger-a"},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+
 				// Intentionally unsorted: the builder must sort the field keys.
 				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{
 					"balance": "9",
@@ -302,7 +302,7 @@ func TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns(t *testing.T) {
 		Ledgers:     []string{"ledger-a"},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason: commonpb.ErrorReason_ERROR_REASON_METADATA_LIMIT_EXCEEDED,
+
 				Details: commonpb.MustFailureDetails("ACCOUNT_METADATA_KEY_LIMIT_EXCEEDED", map[string]string{
 					"dimension": "value",
 					"limit":     "16",

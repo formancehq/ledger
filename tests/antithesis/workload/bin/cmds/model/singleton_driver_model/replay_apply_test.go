@@ -29,7 +29,7 @@ func TestReplayRejectsChangedApplyOutcomes(t *testing.T) {
 			logs[0].GetPayload().GetApply().GetLog().Data = logs[1].GetPayload().GetApply().GetLog().GetData().CloneVT()
 		},
 		"skip reason": func(logs []*commonpb.Log) {
-			logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Reason = commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+			logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Details = commonpb.MustFailureDetails("METADATA_NOT_FOUND", map[string]string{"target": "account", "key": "k"})
 		},
 		"skip correlator": func(logs []*commonpb.Log) {
 			other := "other"

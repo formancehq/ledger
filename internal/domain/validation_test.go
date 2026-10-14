@@ -76,13 +76,13 @@ func TestMetadataValidationRetainsKey(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			require.ErrorIs(t, tc.err, tc.cause)
-			_, details := TypedFailureOf(tc.err)
+			details := TypedFailureOf(tc.err)
 			require.Equal(t, tc.code, commonpb.FailureDetailsCode(details))
 			require.Equal(t, tc.key, commonpb.FailureDetailsFacts(details)["key"])
 		})
 	}
 
-	_, details := TypedFailureOf(ValidateMetadataKey(""))
+	details := TypedFailureOf(ValidateMetadataKey(""))
 	require.Equal(t, "METADATA_KEY_EMPTY", commonpb.FailureDetailsCode(details))
 	require.Empty(t, commonpb.FailureDetailsFacts(details))
 }

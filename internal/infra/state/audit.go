@@ -9,8 +9,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-// buildAuditFailure projects a typed domain error into stable reason, code,
-// and facts. The same FailureFactsOf derivation feeds idempotency, so
+// buildAuditFailure projects a typed domain error into stable details. The
+// same typed derivation feeds idempotency, so
 // presentation wording cannot change either persisted outcome or audit hash.
 // The checker compares the two projections and detects drift.
 // It accepts domain.SerializableError — not a bare error — so the compiler
@@ -19,10 +19,9 @@ import (
 // invariant violation that must fail loudly at its origin, never be downgraded
 // to an unspecified business outcome in the authoritative chain.
 func buildAuditFailure(d domain.SerializableError) *auditpb.AuditFailure {
-	reason, details := domain.TypedFailureOf(d)
+	details := domain.TypedFailureOf(d)
 
 	failure := &auditpb.AuditFailure{
-		Reason:  reason,
 		Details: details,
 	}
 

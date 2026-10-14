@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"37"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"39"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 38:
+leader. For example, with a schema implementing revision 39:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 38' \
+grpcurl -plaintext -H 'ledger-protocol-version: 39' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -461,9 +461,9 @@ Revision 32 replaces the persisted and service-visible `facts` string maps in
 `AuditFailure`, `IdempotencyFailure`, and `OrderSkippedLog` with one shared
 `FailureDetails` protobuf oneof. Each arm names a concrete stable failure code
 and carries presence-tracked fields with explicit protobuf types; numeric
-correlators are `uint64` instead of decimal text. The containing reason must
-be one of the arm's `failure_reasons`
-annotations, and the code must name that arm. Ledger rejects missing arms,
+correlators are `uint64` instead of decimal text. At revision 32, the
+containing reason had to match an arm annotation and the code had to name that
+arm. Ledger rejects missing arms,
 absent required facts, unknown fields, and malformed values
 when reading audited failures. HTTP and public
 `ErrorInfo.metadata` still render the named facts as strings at their API
@@ -576,3 +576,22 @@ responses still render the same `code` from the arm. gRPC `ErrorInfo` continues
 to expose the coarse reason and the facts as metadata.
 The fields are removed and renumbered because v3 is unreleased. This shared
 protobuf change requires fresh v3 state and revision 38 clients and servers.
+
+## Derive stored failure reasons from typed details (revision 39)
+
+Revision 39 removes the redundant `reason` field from `AuditFailure`,
+`IdempotencyFailure`, and `OrderSkippedLog`. Each `FailureDetails` oneof arm now
+declares exactly one `failure_reason` enum value; the selected arm is the sole
+stored identity for the failure. The FSM validates that a producer's `Reason()`
+matches the arm before persistence. Audit hashing still binds the derived reason,
+arm number, and facts. The checker rejects missing or invalid details and
+compares idempotency projections against the hash-bound audit outcome.
+
+The request's `skippable_reasons` whitelist remains a list of coarse reasons.
+FSM order processing checks the producer's reason against that whitelist, then
+validates that it matches the typed details before emitting an `OrderSkippedLog`.
+Public HTTP and JSON responses continue to render the same reason, code, and
+facts; gRPC clients reading `OrderSkippedLog` derive its reason from `details`.
+The removed and renumbered protobuf fields change the service wire format.
+Ledger v3 is unreleased, so deployments start with fresh state and use revision
+39 clients and servers together.

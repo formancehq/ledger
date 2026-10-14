@@ -755,7 +755,7 @@ Mixed-binary rolling upgrades are **not supported** across this change. Stop all
 
 ### Upgrading across an FSM error-identity change
 
-`buildAuditFailurePayload` folds a failure's reason, code, and sorted fact keys and values into the audit hash pre-image. A wording change to a rendered error message does not change the hash. A change to reason, code, or facts can make two binaries compute different `AuditEntry.Hash` values for the same Raft entry. `HashVersion` identifies the hash algorithm only; it does not identify failure-projection semantics. Before revision 30 the hash also included the diagnostic message and context.
+`buildAuditFailurePayload` folds the reason and code derived from a failure's selected `FailureDetails` arm, plus sorted fact keys and values, into the audit hash pre-image. A wording change to a rendered error message does not change the hash. A change to the arm's reason annotation, code, or facts can make two binaries compute different `AuditEntry.Hash` values for the same Raft entry. `HashVersion` identifies the hash algorithm only; it does not identify failure-projection semantics. Before revision 30 the hash also included the diagnostic message and context.
 
 This is a standing rule rather than a per-change note. Whenever a release changes an FSM-emitted error's identity:
 

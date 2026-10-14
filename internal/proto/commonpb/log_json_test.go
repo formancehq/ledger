@@ -50,7 +50,7 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 		{"reverted", commonpb.RevertedTransactionLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &commonpb.RevertedTransaction{RevertedTransactionId: transaction.GetId(), RevertTransaction: revert}}}},
 		{"set-field", commonpb.SetMetadataFieldTypeLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "count", Type: commonpb.MetadataType_METADATA_TYPE_UINT64}}}},
 		{"remove-field", commonpb.RemovedMetadataFieldTypeLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{RemovedMetadataFieldType: &commonpb.RemovedMetadataFieldTypeLog{TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "count", DroppedIndex: &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{Target: commonpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "count"}}}}}}},
-		{"skipped", commonpb.OrderSkippedLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"reference": "ref-1", "existingTransactionId": "9007199254740993"})}}}},
+		{"skipped", commonpb.OrderSkippedLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"reference": "ref-1", "existingTransactionId": "9007199254740993"})}}}},
 	}
 	for name, target := range map[string]*commonpb.Target{
 		"zero":        {Target: &commonpb.Target_TransactionId{TransactionId: 0}},
@@ -172,6 +172,16 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOrderSkippedJSONDerivesReasonFromDetails(t *testing.T) {
+	t.Parallel()
+
+	var skipped commonpb.OrderSkippedLog
+	require.NoError(t, json.Unmarshal([]byte(`{"reason":"TRANSACTION_REFERENCE_CONFLICT","code":"TRANSACTION_REFERENCE_CONFLICT","facts":{"ledger":"L","reference":"ref","existingTransactionId":"1"}}`), &skipped))
+	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
+	require.ErrorContains(t, json.Unmarshal([]byte(`{"reason":"VALIDATION","code":"TRANSACTION_REFERENCE_CONFLICT","facts":{"ledger":"L","reference":"ref","existingTransactionId":"1"}}`), &skipped), "does not match")
+	require.ErrorContains(t, json.Unmarshal([]byte(`{"code":"TRANSACTION_REFERENCE_CONFLICT","facts":{"reference":"ref","existingTransactionId":"1"}}`), &skipped), "missing required fact ledger")
 }
 
 // The JSON projection preserves metadata values but cannot reconstruct internal

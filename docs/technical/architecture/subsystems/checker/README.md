@@ -8,9 +8,9 @@ see [audit-chain.md](audit-chain.md) for the trust boundary.
 
 The checker (`internal/application/check`) is the integrity verification subsystem. It does **not** sit on the request path — it is invoked on demand via gRPC (`BucketService.CheckStore`) and produces a stream of `CheckStoreEvent`s describing any divergence between the persisted projections and what the audit chain says they should hold.
 
-For rejected proposals, it verifies that the persisted `FailureDetails` oneof
-matches the stable failure code and contains only the facts defined by that
-variant. See [audit-chain.md](audit-chain.md) for the hash binding.
+For rejected proposals, it derives the reason and stable failure code from the
+persisted `FailureDetails` oneof and verifies that it contains only the facts
+defined by that variant. See [audit-chain.md](audit-chain.md) for the hash binding.
 
 Two pages cover what the checker depends on and what it does.
 

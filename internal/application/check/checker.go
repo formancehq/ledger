@@ -2365,7 +2365,7 @@ func (c *Checker) verifyAuditHashChain(
 		headerPayload, headerErr := state.BuildHashedHeaderPayload(entry)
 		if headerErr == nil && entry.GetFailure() != nil {
 			failure := entry.GetFailure()
-			_, headerErr = domain.FailureFactsFromDetails(failure.GetReason(), failure.GetDetails())
+			_, headerErr = domain.FailureFactsFromDetails(failure.GetDetails())
 		}
 		if headerErr != nil {
 			// A persisted entry that fails to rebuild its own header
@@ -3673,7 +3673,7 @@ func verifySkippedOrder(
 	}
 
 	reason := skipped.OrderSkipped.GetReason()
-	_, detailsErr := domain.FailureFactsFromDetails(reason, skipped.OrderSkipped.GetDetails())
+	_, detailsErr := domain.FailureFactsFromDetails(skipped.OrderSkipped.GetDetails())
 	if detailsErr != nil {
 		callback(errorEvent(
 			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
@@ -4357,7 +4357,7 @@ func idempotencyMismatch(stored *commonpb.IdempotencyKeyValue, exp expectedIdemp
 	if exp.failure {
 		f := stored.GetFailure()
 		if f != nil {
-			if _, err := domain.FailureFactsFromDetails(f.GetReason(), f.GetDetails()); err != nil {
+			if _, err := domain.FailureFactsFromDetails(f.GetDetails()); err != nil {
 				return fmt.Sprintf("stored invalid typed failure details: %v", err)
 			}
 		}

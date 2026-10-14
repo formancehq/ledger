@@ -366,12 +366,11 @@ func (x *AuditSuccess) GetMaxLogSequence() uint64 {
 	return 0
 }
 
-// AuditFailure records the stable reason and typed details of a failed proposal.
-// The details arm determines the subcode and structured facts at read time.
+// AuditFailure records the typed details of a failed proposal. The details arm
+// determines its reason, stable subcode, and structured facts at read time.
 type AuditFailure struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
-	Reason        commonpb.ErrorReason     `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"`
-	Details       *commonpb.FailureDetails `protobuf:"bytes,2,opt,name=details,proto3" json:"details,omitempty"`
+	Details       *commonpb.FailureDetails `protobuf:"bytes,1,opt,name=details,proto3" json:"details,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -404,13 +403,6 @@ func (x *AuditFailure) ProtoReflect() protoreflect.Message {
 // Deprecated: Use AuditFailure.ProtoReflect.Descriptor instead.
 func (*AuditFailure) Descriptor() ([]byte, []int) {
 	return file_audit_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *AuditFailure) GetReason() commonpb.ErrorReason {
-	if x != nil {
-		return x.Reason
-	}
-	return commonpb.ErrorReason(0)
 }
 
 func (x *AuditFailure) GetDetails() *commonpb.FailureDetails {
@@ -451,10 +443,9 @@ const file_audit_proto_rawDesc = "" +
 	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequence\"b\n" +
 	"\fAuditSuccess\x12(\n" +
 	"\x10min_log_sequence\x18\x01 \x01(\x06R\x0eminLogSequence\x12(\n" +
-	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\"m\n" +
-	"\fAuditFailure\x12+\n" +
-	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x120\n" +
-	"\adetails\x18\x02 \x01(\v2\x16.common.FailureDetailsR\adetailsB8Z6github.com/formancehq/ledger/v3/internal/proto/auditpbb\x06proto3"
+	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\"@\n" +
+	"\fAuditFailure\x120\n" +
+	"\adetails\x18\x01 \x01(\v2\x16.common.FailureDetailsR\adetailsB8Z6github.com/formancehq/ledger/v3/internal/proto/auditpbb\x06proto3"
 
 var (
 	file_audit_proto_rawDescOnce sync.Once
@@ -478,8 +469,7 @@ var file_audit_proto_goTypes = []any{
 	(*commonpb.CallerSnapshot)(nil),      // 5: common.CallerSnapshot
 	(*commonpb.Idempotency)(nil),         // 6: common.Idempotency
 	(*signaturepb.SignedApplyBatch)(nil), // 7: signature.SignedApplyBatch
-	(commonpb.ErrorReason)(0),            // 8: common.ErrorReason
-	(*commonpb.FailureDetails)(nil),      // 9: common.FailureDetails
+	(*commonpb.FailureDetails)(nil),      // 8: common.FailureDetails
 }
 var file_audit_proto_depIdxs = []int32{
 	4, // 0: audit.AuditEntry.timestamp:type_name -> common.Timestamp
@@ -489,13 +479,12 @@ var file_audit_proto_depIdxs = []int32{
 	5, // 4: audit.AuditEntry.caller_snapshot:type_name -> common.CallerSnapshot
 	6, // 5: audit.AuditEntry.idempotency:type_name -> common.Idempotency
 	7, // 6: audit.AuditEntry.signature:type_name -> signature.SignedApplyBatch
-	8, // 7: audit.AuditFailure.reason:type_name -> common.ErrorReason
-	9, // 8: audit.AuditFailure.details:type_name -> common.FailureDetails
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	8, // 7: audit.AuditFailure.details:type_name -> common.FailureDetails
+	8, // [8:8] is the sub-list for method output_type
+	8, // [8:8] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	8, // [8:8] is the sub-list for extension extendee
+	0, // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_audit_proto_init() }

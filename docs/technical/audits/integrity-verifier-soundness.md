@@ -35,6 +35,12 @@ allocated. For missing-row probes, first establish that the healthy production
 path actually committed an audited outcome and retained an independent witness;
 do not report an expected unaudited interruption as missing history.
 
+For definitive failures, the audit entry stores one `FailureDetails` variant.
+The selected arm derives the stable code and its annotation derives the public
+reason. The checker verifies skipped and idempotency projections against those
+chain-bound details and rejects missing or malformed variants; it does not
+trust a separately stored reason or code.
+
 P0/P1/P2 require the concrete failure path and impact prescribed by the native
 [audit contract](../contributing/ai-audit.md). Each candidate remains a hypothesis
 until the independent [challenge](../contributing/ai-audit-challenge.md) at the

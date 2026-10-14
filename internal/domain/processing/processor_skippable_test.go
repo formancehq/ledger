@@ -179,7 +179,9 @@ func TestAssignSkipLogIDAndDate_AllocatesLogIDAndDateOnParent(t *testing.T) {
 		},
 	}
 	payload := wrapSkippedPayloadForOrder(order, &commonpb.OrderSkippedLog{
-		Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
+			"ledger": "L", "reference": "ref", "existingTransactionId": "1",
+		}),
 	})
 
 	require.Nil(t, assignSkipLogIDAndDate(parent, order, payload))

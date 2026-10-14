@@ -6,6 +6,10 @@ func (x *AuditFailure) GetCode() string {
 	return commonpb.FailureDetailsCode(x.GetDetails())
 }
 
+func (x *AuditFailure) GetReason() commonpb.ErrorReason {
+	return commonpb.FailureDetailsReason(x.GetDetails())
+}
+
 func (x *AuditFailure) GetFacts() map[string]string {
 	return commonpb.FailureDetailsFacts(x.GetDetails())
 }

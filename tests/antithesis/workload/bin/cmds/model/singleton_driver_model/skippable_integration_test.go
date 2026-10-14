@@ -75,7 +75,7 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 		)
 		rejectCorruption(t, func(resp *servicepb.ApplyResponse) {
-			resp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Reason = commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED
+			resp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Details = nil
 		}, duplicate, oracletest.TxReq("world", "typed:1", "USD", 1))
 
 		mode := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{

@@ -514,9 +514,9 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 			name, d.Kind(), d.Reason(), KindForReason(ReasonCode(d.Reason())))
 		_, uncommitted := inst.(UncommittedFailure)
 		if serializable, ok := inst.(SerializableError); ok && !uncommitted && name != "validationSentinel" && name != "errValidation" && name != "ErrNumscriptCompile" && name != "ErrNumscriptExecution" {
-			reason, details := TypedFailureOf(serializable)
-			require.True(t, commonpb.FailureDetailsAllowsReason(details, reason), name)
-			decoded, err := FailureFactsFromDetails(reason, details)
+			details := TypedFailureOf(serializable)
+			require.Equal(t, ReasonCode(serializable.Reason()), commonpb.FailureDetailsReason(details), name)
+			decoded, err := FailureFactsFromDetails(details)
 			require.NoError(t, err, name)
 			require.Equal(t, FailureFactsOf(serializable), decoded, name)
 		}

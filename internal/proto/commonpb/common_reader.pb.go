@@ -15943,16 +15943,11 @@ func NewVolumeOverflowDetailsListReader(s []*VolumeOverflowDetails) VolumeOverfl
 // OrderSkippedLogReader provides read-only access to OrderSkippedLog.
 // Call Mutate() to obtain a mutable clone.
 type OrderSkippedLogReader interface {
-	GetReason() ErrorReason
 	GetDetails() FailureDetailsReader
 	Mutate() *OrderSkippedLog
 }
 
 type orderSkippedLogReadonly OrderSkippedLog
-
-func (r *orderSkippedLogReadonly) GetReason() ErrorReason {
-	return (*OrderSkippedLog)(r).GetReason()
-}
 
 func (r *orderSkippedLogReadonly) GetDetails() FailureDetailsReader {
 	v := (*OrderSkippedLog)(r).GetDetails()
@@ -19280,16 +19275,11 @@ func NewIdempotencyKeyValueListReader(s []*IdempotencyKeyValue) IdempotencyKeyVa
 // IdempotencyFailureReader provides read-only access to IdempotencyFailure.
 // Call Mutate() to obtain a mutable clone.
 type IdempotencyFailureReader interface {
-	GetReason() ErrorReason
 	GetDetails() FailureDetailsReader
 	Mutate() *IdempotencyFailure
 }
 
 type idempotencyFailureReadonly IdempotencyFailure
-
-func (r *idempotencyFailureReadonly) GetReason() ErrorReason {
-	return (*IdempotencyFailure)(r).GetReason()
-}
 
 func (r *idempotencyFailureReadonly) GetDetails() FailureDetailsReader {
 	v := (*IdempotencyFailure)(r).GetDetails()

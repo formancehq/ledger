@@ -45,7 +45,7 @@ func newFailureAuditEntry(sequence uint64, orderCount int) (*auditpb.AuditEntry,
 		CallerSnapshot: testCallerSnapshot(),
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+
 				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
 			},
 		},
@@ -194,8 +194,8 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedAuditHash(t *testing.T) {
 		name   string
 		mutate func(entry *auditpb.AuditEntry)
 	}{
-		{"failure reason", func(e *auditpb.AuditEntry) {
-			e.GetFailure().Reason = commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
+		{"failure details", func(e *auditpb.AuditEntry) {
+			e.GetFailure().Details = commonpb.MustFailureDetails("LEDGER_NOT_FOUND", map[string]string{"name": "L"})
 		}},
 		{"proposal id", func(e *auditpb.AuditEntry) { e.ProposalId += 100 }},
 		{"stored hash", func(e *auditpb.AuditEntry) { e.Hash = []byte("forged-chain-hash") }},
@@ -256,7 +256,7 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome(t *testing.T
 		CreatedAt: createdAt,
 		Hash:      proposalHash,
 		Failure: &commonpb.IdempotencyFailure{
-			Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+
 			Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
 		},
 	}
@@ -275,8 +275,8 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome(t *testing.T
 		name   string
 		mutate func(v *commonpb.IdempotencyKeyValue)
 	}{
-		{"failure reason", func(v *commonpb.IdempotencyKeyValue) {
-			v.Failure.Reason = commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
+		{"failure details", func(v *commonpb.IdempotencyKeyValue) {
+			v.Failure.Details = commonpb.MustFailureDetails("LEDGER_NOT_FOUND", map[string]string{"name": "L"})
 		}},
 		{"proposal hash", func(v *commonpb.IdempotencyKeyValue) { v.Hash = []byte("forged-hash") }},
 		// A nil failure with a log range is how a SUCCESS is frozen; the audit

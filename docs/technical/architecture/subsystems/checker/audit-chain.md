@@ -123,30 +123,31 @@ Reference: `internal/infra/state/machine.go:1370-1384`. The hash is bound to the
 
 ## What's in the chain — orders and logs
 
-**Exactly one `AuditEntry` per committed business outcome.** Its outcome is either `Success` (with the resulting log range) or a definitive `Failure` (with a reason and typed details that determine its code and facts). **Both outcomes write `order_count` `AuditItem` rows** — one per order in the proposal, each carrying that order's `SerializedOrder`. The difference is `LogSequence`: a success binds each item to the log its order produced, while a failure produced no log at all and every one of its items therefore carries `LogSequence = 0` (`writeAuditEntry(failureEntry, nil, …)` in `internal/infra/state/machine.go` reaches `buildAuditItems(serializedOrders, nil)` in `internal/infra/state/audit.go`). The items enter the hash identically in both cases: `writeAuditEntry` appends `BuildPerItemPayload` for every item before computing the hash, whatever the outcome.
+**Exactly one `AuditEntry` per committed business outcome.** Its outcome is either `Success` (with the resulting log range) or a definitive `Failure` (with typed details that determine its reason, code, and facts). **Both outcomes write `order_count` `AuditItem` rows** — one per order in the proposal, each carrying that order's `SerializedOrder`. The difference is `LogSequence`: a success binds each item to the log its order produced, while a failure produced no log at all and every one of its items therefore carries `LogSequence = 0` (`writeAuditEntry(failureEntry, nil, …)` in `internal/infra/state/machine.go` reaches `buildAuditItems(serializedOrders, nil)` in `internal/infra/state/audit.go`). The items enter the hash identically in both cases: `writeAuditEntry` appends `BuildPerItemPayload` for every item before computing the hash, whatever the outcome.
 
 An `UncommittedFailure` is a technical interruption before a business verdict: preload unavailability, a coverage or execution-plan fault, and an invalid or conflicting cluster-policy update take this path. The FSM discards staged writes and restores the prior HLC; it writes no `AuditEntry`, `AuditItem`, log, or frozen idempotency result. A corrected request or repaired environment may be retried. Absence from the audit chain therefore does not prove that no Raft proposal was attempted; the chain attests committed business outcomes, not every technical attempt. A keyed retry can still replay an earlier frozen outcome before reaching this path.
 
 Each successful order produces a `Log` (`internal/proto/commonpb/common.proto`, `message Log { LogPayload payload = …; }`). The audit chain binds the orders via `AuditItem.SerializedOrder` (the order's canonical vtprotobuf bytes); the resulting `Log` rows are addressable separately by `LogSequence` and bound transitively through the items.
 
 `TypedFailureOf` reads each error's required `FailureDetails()` projection.
-The error owns its reason and typed details; the selected oneof arm determines
-the code and explicit fact keys. Field-specific size rules are enforced at their producers,
+The error owns its reason and typed details; the selected oneof arm must declare
+that same reason and determines the code and explicit fact keys. Field-specific size rules are enforced at their producers,
 before a command enters Raft when the value comes from the request.
 Diagnostic `Error()` text never feeds this tuple; a producer must choose each
 fact deliberately instead of relying on a list of excluded metadata keys.
 `ValidateFailureFacts` rejects unknown codes, fact keys and malformed values
 before persistence. Each persisted failure carries one `FailureDetails` arm
-for its concrete code; the checker rejects a missing arm, invalid reason, or
-unknown protobuf fields. `buildAuditFailurePayload` hashes the reason,
+for its concrete code; the checker rejects a missing arm, invalid derived reason, or
+unknown protobuf fields. `buildAuditFailurePayload` hashes the reason derived from the arm,
 selected arm number, and facts in sorted key order, followed by the raw unknown
 field bytes of the parent and selected detail message. It does not hash `Error()`
 text or Numscript diagnostics.
 `RenderFailureFacts` creates presentation text when a caller reads or replays
 the failure. Audit and idempotency store the same tuple so the checker can
 compare the two outcomes without depending on wording.
-The broad `reason` is a protobuf enum; the finer `code` is derived from the
-selected typed detail arm at read time. A new code requires a new
+The broad `reason` is a protobuf enum derived from the selected arm's singular
+`failure_reason` annotation; the finer `code` is the arm's name. Neither is
+stored separately in the failure. A new code requires a new
 arm and a service protocol revision.
 
 The log surface has **two levels**:

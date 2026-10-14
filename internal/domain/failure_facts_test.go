@@ -17,16 +17,7 @@ func TestTypedFailureDetailsCoverEveryStableCode(t *testing.T) {
 		details, err := commonpb.NewFailureDetails(code, nil)
 		require.NoError(t, err, code)
 		require.Equal(t, code, commonpb.FailureDetailsCode(details))
-		if code == "VALIDATION" {
-			continue // A coarse validation reason must use a concrete subcode.
-		}
-		foundReason := false
-		for _, reason := range commonpb.ErrorReason_value {
-			if commonpb.FailureDetailsAllowsReason(details, commonpb.ErrorReason(reason)) {
-				foundReason = true
-			}
-		}
-		require.True(t, foundReason, "variant %s must declare a coarse reason", code)
+		require.NotEqual(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, commonpb.FailureDetailsReason(details), code)
 	}
 }
 
@@ -43,20 +34,19 @@ func TestFailureDetailsTrackEveryScalarFactPresence(t *testing.T) {
 	}
 }
 
-func TestTypedFailureDetailsRoundTripAndRejectMismatches(t *testing.T) {
+func TestTypedFailureDetailsRoundTrip(t *testing.T) {
 	t.Parallel()
-	reason, details := TypedFailureOf(&ErrTransactionReferenceConflict{
+	details := TypedFailureOf(&ErrTransactionReferenceConflict{
 		Ledger: "L", Reference: "ref", ExistingTransactionID: 42,
 	})
-	f := FailureFactsFromTyped(ErrReasonTransactionReferenceConflict, details)
-	actual, err := FailureFactsFromDetails(reason, details)
+	f := FailureFactsFromTyped(details)
+	actual, err := FailureFactsFromDetails(details)
 	require.NoError(t, err)
 	require.Equal(t, f, actual)
+	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, f.Reason)
 	require.Equal(t, uint64(42), details.GetTransactionReferenceConflict().GetExistingTransactionId())
 
-	_, err = FailureFactsFromDetails(commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND, details)
-	require.ErrorContains(t, err, "not allowed")
-	_, err = FailureFactsFromDetails(f.Reason, nil)
+	_, err = FailureFactsFromDetails(nil)
 	require.ErrorContains(t, err, "missing")
 	_, err = commonpb.NewFailureDetails(f.Code, map[string]string{"arbitrary": "text"})
 	require.ErrorContains(t, err, "not part of")
@@ -68,10 +58,7 @@ func TestFailureFactPresenceFollowsSchema(t *testing.T) {
 	t.Parallel()
 
 	missingAmount := commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", nil)
-	_, err := FailureFactsFromDetails(
-		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR,
-		missingAmount,
-	)
+	_, err := FailureFactsFromDetails(missingAmount)
 	require.ErrorContains(t, err, "missing required fact amount")
 	require.Panics(t, func() {
 		TypedFailureOf(&ErrNumscriptExecution{Details: missingAmount})

@@ -296,16 +296,11 @@ func NewAuditSuccessListReader(s []*AuditSuccess) AuditSuccessListReader {
 // AuditFailureReader provides read-only access to AuditFailure.
 // Call Mutate() to obtain a mutable clone.
 type AuditFailureReader interface {
-	GetReason() commonpb.ErrorReason
 	GetDetails() commonpb.FailureDetailsReader
 	Mutate() *AuditFailure
 }
 
 type auditFailureReadonly AuditFailure
-
-func (r *auditFailureReadonly) GetReason() commonpb.ErrorReason {
-	return (*AuditFailure)(r).GetReason()
-}
 
 func (r *auditFailureReadonly) GetDetails() commonpb.FailureDetailsReader {
 	v := (*AuditFailure)(r).GetDetails()

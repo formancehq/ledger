@@ -23,12 +23,17 @@ type FailureFacts struct {
 
 // FailureFactsOf renders the typed audited outcome for public API boundaries.
 func FailureFactsOf(d SerializableError) FailureFacts {
-	return FailureFactsFromTyped(d.Reason(), d.FailureDetails())
+	details := d.FailureDetails()
+
+	return FailureFacts{
+		Reason: ReasonCode(d.Reason()), Code: commonpb.FailureDetailsCode(details),
+		Facts: commonpb.FailureDetailsFacts(details),
+	}
 }
 
 // TypedFailureOf reads the audited representation directly from its producer.
 // Public map facts are rendered only at API boundaries.
-func TypedFailureOf(d SerializableError) (commonpb.ErrorReason, *commonpb.FailureDetails) {
+func TypedFailureOf(d SerializableError) *commonpb.FailureDetails {
 	reason := ReasonCode(d.Reason())
 	if reason == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
 		panic(fmt.Errorf("error %T has an unknown failure reason", d))
@@ -38,14 +43,14 @@ func TypedFailureOf(d SerializableError) (commonpb.ErrorReason, *commonpb.Failur
 	if code == "" {
 		panic(fmt.Errorf("error %T has no typed failure details", d))
 	}
-	if !commonpb.FailureDetailsAllowsReason(details, reason) {
+	if commonpb.FailureDetailsReason(details) != reason {
 		panic(fmt.Errorf("error %T emits code %q for reason %q", d, code, d.Reason()))
 	}
 	if err := commonpb.ValidateRequiredFailureFacts(details); err != nil {
 		panic(fmt.Errorf("error %T emits incomplete failure details: %w", d, err))
 	}
 
-	return reason, details
+	return details
 }
 
 // NewFailureFacts copies the values supplied by an error for public rendering.
@@ -57,16 +62,16 @@ func NewFailureFacts(reason, code string, values map[string]string) FailureFacts
 	return FailureFacts{Reason: ReasonCode(reason), Code: code, Facts: facts}
 }
 
-func FailureFactsFromTyped(reason string, details *commonpb.FailureDetails) FailureFacts {
+func FailureFactsFromTyped(details *commonpb.FailureDetails) FailureFacts {
 	return FailureFacts{
-		Reason: ReasonCode(reason), Code: commonpb.FailureDetailsCode(details),
+		Reason: commonpb.FailureDetailsReason(details), Code: commonpb.FailureDetailsCode(details),
 		Facts: commonpb.FailureDetailsFacts(details),
 	}
 }
 
-// FailureFactsFromDetails checks the persisted reason and typed variant before
-// exposing its public code and fact map.
-func FailureFactsFromDetails(reason commonpb.ErrorReason, details *commonpb.FailureDetails) (FailureFacts, error) {
+// FailureFactsFromDetails validates the persisted variant before exposing its
+// derived reason, public code, and fact map.
+func FailureFactsFromDetails(details *commonpb.FailureDetails) (FailureFacts, error) {
 	if details == nil {
 		return FailureFacts{}, errors.New("failure details are missing")
 	}
@@ -78,7 +83,7 @@ func FailureFactsFromDetails(reason commonpb.ErrorReason, details *commonpb.Fail
 	if arm != nil && len(parent.Get(arm).Message().GetUnknown()) != 0 {
 		return FailureFacts{}, errors.New("failure detail variant contains unknown fields")
 	}
-	f := FailureFacts{Reason: reason, Code: commonpb.FailureDetailsCode(details), Facts: commonpb.FailureDetailsFacts(details)}
+	f := FailureFactsFromTyped(details)
 	if err := ValidateFailureFacts(f); err != nil {
 		return FailureFacts{}, err
 	}
@@ -87,7 +92,7 @@ func FailureFactsFromDetails(reason commonpb.ErrorReason, details *commonpb.Fail
 }
 
 // ValidateFailureFacts validates public map facts against the protobuf variant.
-// The oneof fields and their failure_reasons annotations are the sole schema.
+// The oneof fields and their failure_reason annotations are the sole schema.
 func ValidateFailureFacts(f FailureFacts) error {
 	if f.Reason == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED || ReasonString(f.Reason) == "" {
 		return fmt.Errorf("failure reason is unknown: %d", f.Reason)
@@ -96,8 +101,8 @@ func ValidateFailureFacts(f FailureFacts) error {
 	if err != nil {
 		return err
 	}
-	if !commonpb.FailureDetailsAllowsReason(details, f.Reason) {
-		return fmt.Errorf("failure code %q is not allowed for reason %q", f.Code, ReasonString(f.Reason))
+	if commonpb.FailureDetailsReason(details) != f.Reason {
+		return fmt.Errorf("failure code %q has reason %q, not %q", f.Code, ReasonString(commonpb.FailureDetailsReason(details)), ReasonString(f.Reason))
 	}
 	if err := commonpb.ValidateRequiredFailureFacts(details); err != nil {
 		return err

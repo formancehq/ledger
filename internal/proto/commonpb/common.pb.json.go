@@ -233,11 +233,9 @@ func (x *OrderSkippedLog) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// UnmarshalJSON implements json.Unmarshaler for OrderSkippedLog. Accepts
-// the short reason identifier (e.g. "TRANSACTION_REFERENCE_CONFLICT") and
-// re-prepends the "ERROR_REASON_" prefix before the enum-name lookup —
-// keeps the JSON wire symmetric with MarshalJSON and consistent with the
-// CreateTransactionPayload skippableReasons decoder.
+// UnmarshalJSON implements json.Unmarshaler for OrderSkippedLog. It rebuilds
+// typed details from code and facts and checks any supplied public reason
+// against the reason derived from those details.
 func (x *OrderSkippedLog) UnmarshalJSON(data []byte) error {
 	var aux struct {
 		Reason string            `json:"reason"`
@@ -249,24 +247,20 @@ func (x *OrderSkippedLog) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	if aux.Reason != "" {
-		code, ok := ErrorReason_value["ERROR_REASON_"+aux.Reason]
-		if !ok {
-			return fmt.Errorf("unknown ErrorReason %q", aux.Reason)
-		}
-
-		x.Reason = ErrorReason(code)
+	if aux.Code == "" {
+		return errors.New("skipped failure requires a code")
 	}
-
-	if aux.Code != "" {
-		details, err := NewFailureDetails(aux.Code, aux.Facts)
-		if err != nil {
-			return err
-		}
-		x.Details = details
-	} else if len(aux.Facts) != 0 {
-		return errors.New("failure facts require a code")
+	details, err := NewFailureDetails(aux.Code, aux.Facts)
+	if err != nil {
+		return err
 	}
+	if err := ValidateRequiredFailureFacts(details); err != nil {
+		return err
+	}
+	if aux.Reason != "" && aux.Reason != strings.TrimPrefix(FailureDetailsReason(details).String(), "ERROR_REASON_") {
+		return fmt.Errorf("failure reason %q does not match code %q", aux.Reason, aux.Code)
+	}
+	x.Details = details
 
 	return nil
 }

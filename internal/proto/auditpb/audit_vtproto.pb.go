@@ -131,7 +131,6 @@ func (m *AuditFailure) CloneVT() *AuditFailure {
 		return (*AuditFailure)(nil)
 	}
 	r := new(AuditFailure)
-	r.Reason = m.Reason
 	r.Details = m.Details.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -326,9 +325,6 @@ func (this *AuditFailure) EqualVT(that *AuditFailure) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Reason != that.Reason {
 		return false
 	}
 	if !this.Details.EqualVT(that.Details) {
@@ -648,12 +644,7 @@ func (m *AuditFailure) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x12
-	}
-	if m.Reason != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Reason))
-		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -810,9 +801,6 @@ func (m *AuditFailure) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Reason != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Reason))
-	}
 	if m.Details != nil {
 		l = m.Details.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -1478,25 +1466,6 @@ func (m *AuditFailure) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Reason", wireType)
-			}
-			m.Reason = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Reason |= commonpb.ErrorReason(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Details", wireType)
 			}

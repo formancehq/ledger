@@ -643,7 +643,7 @@ func writeFailureAuditEntry(t *testing.T, store *dal.Store, seq uint64) {
 	entry := &auditpb.AuditEntry{
 		Sequence: seq,
 		Outcome: &auditpb.AuditEntry_Failure{
-			Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS},
+			Failure: &auditpb.AuditFailure{Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "1", "balance": "0", "color": ""})},
 		},
 	}
 

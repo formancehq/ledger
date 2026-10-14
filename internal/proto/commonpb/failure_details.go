@@ -3,7 +3,6 @@ package commonpb
 import (
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -62,24 +61,23 @@ func NewFailureDetails(code string, facts map[string]string) (*FailureDetails, e
 	return details, nil
 }
 
-// FailureDetailsAllowsReason reads the coarse reasons declared on the selected
-// protobuf variant. The schema owns this relationship; producers do not keep
-// separate code/reason registries.
-func FailureDetailsAllowsReason(details *FailureDetails, reason ErrorReason) bool {
-	if details == nil || reason == ErrorReason_ERROR_REASON_UNSPECIFIED {
-		return false
+// FailureDetailsReason derives the sole coarse reason from the selected
+// variant. An absent variant or annotation is invalid and yields UNSPECIFIED.
+func FailureDetailsReason(details *FailureDetails) ErrorReason {
+	if details == nil {
+		return ErrorReason_ERROR_REASON_UNSPECIFIED
 	}
 	message := details.ProtoReflect()
 	arm := message.WhichOneof(message.Descriptor().Oneofs().ByName("kind"))
 	if arm == nil {
-		return false
+		return ErrorReason_ERROR_REASON_UNSPECIFIED
 	}
 	options, ok := arm.Options().(*descriptorpb.FieldOptions)
-	if !ok || !proto.HasExtension(options, E_FailureReasons) {
-		return false
+	if !ok || !proto.HasExtension(options, E_FailureReason) {
+		return ErrorReason_ERROR_REASON_UNSPECIFIED
 	}
 
-	return slices.Contains(proto.GetExtension(options, E_FailureReasons).([]ErrorReason), reason)
+	return proto.GetExtension(options, E_FailureReason).(ErrorReason)
 }
 
 // ValidateRequiredFailureFacts enforces presence and protobuf string validity
@@ -170,3 +168,5 @@ func (x *OrderSkippedLog) GetCode() string                { return FailureDetail
 func (x *IdempotencyFailure) GetCode() string             { return FailureDetailsCode(x.GetDetails()) }
 func (x *OrderSkippedLog) GetFacts() map[string]string    { return FailureDetailsFacts(x.GetDetails()) }
 func (x *IdempotencyFailure) GetFacts() map[string]string { return FailureDetailsFacts(x.GetDetails()) }
+func (x *OrderSkippedLog) GetReason() ErrorReason         { return FailureDetailsReason(x.GetDetails()) }
+func (x *IdempotencyFailure) GetReason() ErrorReason      { return FailureDetailsReason(x.GetDetails()) }
