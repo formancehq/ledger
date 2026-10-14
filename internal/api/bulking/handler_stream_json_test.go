@@ -56,8 +56,11 @@ func TestBulkStreamHandlerJSON(t *testing.T) {
 
 			require.True(t, ok)
 
-			_, err := writer.Write([]byte(testCase.stream))
-			require.NoError(t, err)
+			writeDone := make(chan error, 1)
+			go func() {
+				_, err := writer.Write([]byte(testCase.stream))
+				writeDone <- err
+			}()
 
 			for id := range testCase.expectScriptCount {
 				select {
@@ -75,6 +78,7 @@ func TestBulkStreamHandlerJSON(t *testing.T) {
 					t.Fatal("should have been able to send on receive channel")
 				}
 			}
+			require.NoError(t, <-writeDone)
 
 			require.NoError(t, writer.Close())
 			select {

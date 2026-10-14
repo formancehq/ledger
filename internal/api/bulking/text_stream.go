@@ -25,18 +25,32 @@ func ParseTextStream(scanner *bufio.Scanner) (*BulkElement, error) {
 			text = strings.TrimSpace(text)
 
 			if len(text) > 0 {
-				parts := strings.Split(text, ",")
-				for _, part := range parts {
-					parts2 := strings.Split(part, "=")
-					switch parts2[0] {
+				idempotencyKeySeen := false
+				emptyIdempotencyKey := false
+				for _, part := range strings.Split(text, ",") {
+					key, value, hasValue := strings.Cut(strings.TrimSpace(part), "=")
+					key = strings.TrimSpace(key)
+					value = strings.TrimSpace(value)
+					switch key {
 					case "ik":
-						if bulkElement.IdempotencyKey != "" {
+						if !hasValue {
+							return nil, errors.New("invalid header, idempotency key must use key=value format")
+						}
+						if idempotencyKeySeen {
 							return nil, errors.New("invalid header, idempotency key already set")
 						}
-						bulkElement.IdempotencyKey = parts2[1]
+						idempotencyKeySeen = true
+						if value == "" {
+							emptyIdempotencyKey = true
+							continue
+						}
+						bulkElement.IdempotencyKey = value
 					default:
-						return nil, errors.New("invalid header, key '" + parts2[0] + "' not recognized")
+						return nil, errors.New("invalid header, key '" + key + "' not recognized")
 					}
+				}
+				if emptyIdempotencyKey {
+					return nil, errors.New("invalid header, idempotency key must not be empty")
 				}
 			}
 
@@ -48,7 +62,7 @@ func ParseTextStream(scanner *bufio.Scanner) (*BulkElement, error) {
 					bulkElement.Data = TransactionRequest{
 						Script: ledgercontroller.ScriptV1{
 							Script: vm.Script{
-								Plain: plain[:len(plain)-1], // remove last \n
+								Plain: strings.TrimSuffix(plain, "\n"),
 							},
 						},
 					}
@@ -65,7 +79,7 @@ func ParseTextStream(scanner *bufio.Scanner) (*BulkElement, error) {
 				bulkElement.Data = TransactionRequest{
 					Script: ledgercontroller.ScriptV1{
 						Script: vm.Script{
-							Plain: plain[:len(plain)-1], // remove last \n
+							Plain: strings.TrimSuffix(plain, "\n"),
 						},
 					},
 				}
