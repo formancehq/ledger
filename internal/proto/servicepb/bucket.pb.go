@@ -6791,14 +6791,18 @@ func (x *HourBucket) GetCount() uint64 {
 	return 0
 }
 
+// AssetVolumeStats aggregates one asset across the transactions of a flow.
+// Each transaction contributes a single sample: the sum of its postings in
+// that asset. Min, max, and average are per-transaction values, not
+// per-posting values.
 type AssetVolumeStats struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Asset            string                 `protobuf:"bytes,1,opt,name=asset,proto3" json:"asset,omitempty"`
-	TotalVolume      string                 `protobuf:"bytes,2,opt,name=total_volume,json=totalVolume,proto3" json:"total_volume,omitempty"` // big.Int decimal string
-	AverageVolume    string                 `protobuf:"bytes,3,opt,name=average_volume,json=averageVolume,proto3" json:"average_volume,omitempty"`
+	TotalVolume      string                 `protobuf:"bytes,2,opt,name=total_volume,json=totalVolume,proto3" json:"total_volume,omitempty"`       // big.Int decimal string
+	AverageVolume    string                 `protobuf:"bytes,3,opt,name=average_volume,json=averageVolume,proto3" json:"average_volume,omitempty"` // total_volume / transaction_count, truncated
 	MinVolume        string                 `protobuf:"bytes,4,opt,name=min_volume,json=minVolume,proto3" json:"min_volume,omitempty"`
 	MaxVolume        string                 `protobuf:"bytes,5,opt,name=max_volume,json=maxVolume,proto3" json:"max_volume,omitempty"`
-	TransactionCount uint64                 `protobuf:"fixed64,6,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`
+	TransactionCount uint64                 `protobuf:"fixed64,6,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"` // Transactions with at least one posting in this asset
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }

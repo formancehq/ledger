@@ -33,11 +33,16 @@ type txGroupAccum struct {
 	hours               [24]uint64
 	// Volume accumulators per asset
 	volumes map[string]*assetAccum
+	// txAssetTotals is scratch space reused by addTransaction to sum one
+	// transaction's postings per asset.
+	txAssetTotals map[string]*big.Int
 	// Metadata keys (accumulated)
 	metadataKeys []string
 }
 
-// assetAccum accumulates volume statistics for a single asset.
+// assetAccum accumulates volume statistics for a single asset. Each sample is
+// one transaction's total volume in that asset; count is the number of
+// transactions that moved the asset.
 type assetAccum struct {
 	total *big.Int
 	min   *big.Int
@@ -65,29 +70,43 @@ func (g *txGroupAccum) addTransaction(ct CompactTransaction) {
 		g.hours[hour]++
 	}
 
-	// Volumes
+	// Volumes: each transaction contributes one sample per asset, equal to
+	// the sum of its postings in that asset. Counting postings instead would
+	// inflate transaction_count and deflate average_volume for split payments.
+	clear(g.txAssetTotals)
+
 	for j := range ct.Postings {
 		p := &ct.Postings[j]
 
-		acc, ok := g.volumes[p.Asset]
+		total, ok := g.txAssetTotals[p.Asset]
+		if !ok {
+			total = new(big.Int)
+			g.txAssetTotals[p.Asset] = total
+		}
+
+		total.Add(total, p.Amount)
+	}
+
+	for asset, amount := range g.txAssetTotals {
+		acc, ok := g.volumes[asset]
 		if !ok {
 			acc = &assetAccum{
 				total: new(big.Int),
-				min:   new(big.Int).Set(p.Amount),
-				max:   new(big.Int).Set(p.Amount),
+				min:   new(big.Int).Set(amount),
+				max:   new(big.Int).Set(amount),
 			}
-			g.volumes[p.Asset] = acc
+			g.volumes[asset] = acc
 		}
 
-		acc.total.Add(acc.total, p.Amount)
+		acc.total.Add(acc.total, amount)
 
 		acc.count++
-		if p.Amount.Cmp(acc.min) < 0 {
-			acc.min.Set(p.Amount)
+		if amount.Cmp(acc.min) < 0 {
+			acc.min.Set(amount)
 		}
 
-		if p.Amount.Cmp(acc.max) > 0 {
-			acc.max.Set(p.Amount)
+		if amount.Cmp(acc.max) > 0 {
+			acc.max.Set(amount)
 		}
 	}
 
@@ -258,6 +277,7 @@ func AnalyzeTransactionsFromIterators(
 				postings:         normalized,
 				structure:        classifyPostingStructure(normalized),
 				volumes:          make(map[string]*assetAccum),
+				txAssetTotals:    make(map[string]*big.Int),
 			}
 			groups[sig] = g
 		}

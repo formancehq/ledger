@@ -1183,13 +1183,17 @@ message HourBucket {
   fixed64 count = 2;
 }
 
+// AssetVolumeStats aggregates one asset across the transactions of a flow.
+// Each transaction contributes a single sample: the sum of its postings in
+// that asset. Min, max, and average are per-transaction values, not
+// per-posting values.
 message AssetVolumeStats {
   string asset = 1;
   string total_volume = 2;      // big.Int decimal string
-  string average_volume = 3;
+  string average_volume = 3;    // total_volume / transaction_count, truncated
   string min_volume = 4;
   string max_volume = 5;
-  fixed64 transaction_count = 6;
+  fixed64 transaction_count = 6; // Transactions with at least one posting in this asset
 }
 
 // ============================================================================

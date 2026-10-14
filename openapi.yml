@@ -6155,6 +6155,12 @@ components:
 
     AssetVolumeStats:
       type: object
+      description: |
+        Volume statistics for one asset across the transactions of a flow.
+        Each transaction contributes one sample: the sum of its postings in
+        this asset. Minimum, maximum, and average are per-transaction values;
+        averageVolume is totalVolume divided by transactionCount, truncated
+        toward zero.
       properties:
         asset:
           type: string
@@ -6169,6 +6175,7 @@ components:
         transactionCount:
           type: integer
           format: int64
+          description: Number of transactions in the flow with at least one posting in this asset.
 
     CreatePreparedQueryRequest:
       type: object

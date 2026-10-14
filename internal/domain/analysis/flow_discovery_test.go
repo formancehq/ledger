@@ -224,6 +224,43 @@ func TestAnalyzeTransactions_VolumeStats(t *testing.T) {
 	assert.Equal(t, uint64(2), volumeStats[0].GetTransactionCount())
 }
 
+// TestAnalyzeTransactions_VolumeStatsSplitPayments guards against counting
+// postings as transactions: a transaction with several postings in the same
+// asset contributes one transaction whose volume is the sum of those postings.
+func TestAnalyzeTransactions_VolumeStatsSplitPayments(t *testing.T) {
+	t.Parallel()
+
+	txns := []CompactTransaction{
+		makeCompactTransaction(1000000, []CompactPosting{
+			makeCompactPosting("world", "shop:a:main", "USD/2", 100),
+			makeCompactPosting("world", "shop:a:fees", "USD/2", 10),
+		}),
+		makeCompactTransaction(2000000, []CompactPosting{
+			makeCompactPosting("world", "shop:a:main", "USD/2", 200),
+			makeCompactPosting("world", "shop:a:fees", "USD/2", 20),
+		}),
+		makeCompactTransaction(3000000, []CompactPosting{
+			makeCompactPosting("world", "shop:a:main", "USD/2", 300),
+			makeCompactPosting("world", "shop:a:fees", "USD/2", 30),
+		}),
+	}
+
+	resp := analyzeTransactions(txns, 0)
+	require.Len(t, resp.GetFlowPatterns(), 1)
+
+	pattern := resp.GetFlowPatterns()[0]
+	assert.Equal(t, uint64(3), pattern.GetTransactionCount())
+
+	volumeStats := pattern.GetVolumeStats()
+	require.Len(t, volumeStats, 1)
+	assert.Equal(t, "USD/2", volumeStats[0].GetAsset())
+	assert.Equal(t, "660", volumeStats[0].GetTotalVolume())
+	assert.Equal(t, "220", volumeStats[0].GetAverageVolume())
+	assert.Equal(t, "110", volumeStats[0].GetMinVolume())
+	assert.Equal(t, "330", volumeStats[0].GetMaxVolume())
+	assert.Equal(t, uint64(3), volumeStats[0].GetTransactionCount())
+}
+
 func TestAnalyzeTransactions_RevertedCounted(t *testing.T) {
 	t.Parallel()
 
