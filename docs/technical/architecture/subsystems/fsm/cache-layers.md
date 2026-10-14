@@ -90,6 +90,14 @@ A single `gatedScope` is allocated per proposal: `gatedScope` doubles as its own
 
 Empty `coverage_bits` on `NewScope` admit no plan (any `CheckCoverage` misses). Proposal-wide coverage — needed by `ValidateTransientVolumes` to reach into every ledger the proposal touched — uses the separate `NewProposalScope()` method, so an order whose proto `OrderTechnical.coverage_bits` is unset cannot silently inherit coverage from another order in the same batch.
 
+## WriteSet merge phases
+
+`WriteSet.Merge` coordinates one proposal through ordered, private phases. `drainDerived` first merges the derived stores into a local `mergeDrained` snapshot and partitions volumes using the ledger types resolved by the gated validation pass. The overlay merge may already mutate the in-memory cache; a later validation failure is fatal to the applier, which discards the uncommitted Pebble batch rather than retrying with that cache.
+
+`prepareMerge` checks the full double-entry invariant, checks the persisted partition in sentinel mode, records the logical updates for post-commit verification, updates the in-memory reversion bitset, and annotates newly created logs by their original order slot. A replay reference consumes its slot but produces no new log. `flushAttributes` writes kept, purged, and transient volume cache state before the other attribute sub-prefixes; `flushPerLedger` writes reversions and mirror state; `AppendLogs` writes history; then idempotency and `flushGlobal` write their zones. `finalizeMerge` performs deleted-ledger cleanup and updates FSM counters.
+
+The helper boundaries preserve the existing order of cache mutations and Pebble writes. The `mergeDrained` slices stay private to this call. The existing `WriteSet` accounting slices are populated before commit for the applier’s later checks, with the same fatal-error semantics as before. The exact zone and sub-prefix order is documented beside `WriteSet.Merge` in `internal/infra/state/write_set.go`.
+
 ## TechnicalUpdate envelope (per-update coverage on tech-side writes)
 
 `Proposal.technical_updates` is a `repeated TechnicalUpdate`. Each `TechnicalUpdate` wraps one of the seven non-order payloads (mirror sync, events-sink cursor, idempotency eviction, cluster config, metadata batch, metadata completion, index ready) inside a `oneof kind` and carries its own `coverage_bits` — symmetric to `OrderTechnical.coverage_bits` (the order-side coverage gate now lives on the `Order.technical` sub-message). The FSM apply loop builds one `Scope` per `TechnicalUpdate`, narrowed by that update's bits, before dispatching to the handler:
