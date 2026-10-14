@@ -4410,13 +4410,13 @@ When the write gate is active, write commands are rejected with a structured gRP
 
 | Condition | gRPC status | HTTP status | `ErrorInfo.reason` |
 |-----------|-------------|-------------|-------------------|
+| New leader has no fresh health verdict | `Unavailable` | 503 | none; retry after the first poll |
 | Disk full (WAL or data volume at or above block mark) | `ResourceExhausted` | 429 | `WRITES_BLOCKED_DISK_FULL` |
 | Clock skew (any peer exceeds `--health-clock-skew-threshold`) | `Unavailable` | 503 | `WRITES_BLOCKED_CLOCK_SKEW` |
 
-The post-election unknown disk verdict uses the same
-`WRITES_BLOCKED_DISK_FULL` response until fresh local evidence and the first
-cluster poll are available; this keeps the safety change within the existing
-public error contract.
+The post-election unknown verdict rejects writes with a retryable `Unavailable`
+status until fresh local evidence and the first cluster poll are available.
+It does not claim that a disk is full without evidence.
 
 The node remains `Ready` (gRPC health: `SERVING`) and continues to serve reads in both cases. Readiness is unaffected by disk usage and clock skew.
 
