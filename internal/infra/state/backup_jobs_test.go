@@ -150,6 +150,67 @@ func TestCanonicalDestinationKey_S3EndpointTrailingSlash(t *testing.T) {
 		"trailing slash must not split the destination slot")
 }
 
+// TestCanonicalDestinationKey_EndpointSchemeAndHostCaseFold guards the
+// URL-level canonicalisation of S3 and Azure endpoints. URL schemes and
+// DNS host names are case-insensitive, so `http://minio:9000` and
+// `HTTP://MinIO:9000` reach the same server and the same object
+// namespace. Hashing them to distinct destination keys would let two
+// backups run concurrently against one bucket_id and prune each other's
+// objects. The path keeps its case because servers may treat it as
+// significant.
+func TestCanonicalDestinationKey_EndpointSchemeAndHostCaseFold(t *testing.T) {
+	t.Parallel()
+
+	s3 := func(endpoint string) *raftcmdpb.BackupDestination {
+		return &raftcmdpb.BackupDestination{
+			BucketId: "b",
+			Target: &raftcmdpb.BackupDestination_S3{
+				S3: &raftcmdpb.S3BackupTarget{
+					Bucket:   "ledger-backups",
+					Endpoint: endpoint,
+				},
+			},
+		}
+	}
+	azure := func(endpoint string) *raftcmdpb.BackupDestination {
+		return &raftcmdpb.BackupDestination{
+			BucketId: "b",
+			Target: &raftcmdpb.BackupDestination_Azure{
+				Azure: &raftcmdpb.AzureBackupTarget{
+					AccountName: "acct",
+					Container:   "backups",
+					Endpoint:    endpoint,
+				},
+			},
+		}
+	}
+
+	minio := CanonicalDestinationKey(s3("http://localhost:9000"))
+	for _, form := range []string{
+		"http://LOCALHOST:9000",
+		"HTTP://LocalHost:9000/",
+		"http://localhost:9000//",
+	} {
+		require.Equal(t, minio, CanonicalDestinationKey(s3(form)),
+			"S3 endpoint %q must share the slot of http://localhost:9000", form)
+	}
+
+	require.Equal(t,
+		CanonicalDestinationKey(s3("")),
+		CanonicalDestinationKey(s3("HTTPS://S3.EU-WEST-3.AMAZONAWS.COM")),
+		"upper-case AWS endpoint must fold with the SDK default")
+
+	require.Equal(t,
+		CanonicalDestinationKey(azure("")),
+		CanonicalDestinationKey(azure("HTTPS://ACCT.Blob.Core.Windows.Net/")),
+		"upper-case Azure default endpoint must fold with the SDK default")
+
+	require.NotEqual(t,
+		CanonicalDestinationKey(s3("http://gateway:9000/Tenant")),
+		CanonicalDestinationKey(s3("http://gateway:9000/tenant")),
+		"endpoint path case must stay significant")
+}
+
 // TestStart_ClonesDestination guards against the pooled-pointer
 // aliasing bug. start.GetDestination() comes from a vtprotobuf-pooled
 // Proposal that is reset/reused after apply; without a clone, mutating
@@ -273,6 +334,45 @@ func TestBackupJobsState_StartRejectsBusyDestination(t *testing.T) {
 	_, ok, err = s.Start(nil, 1100, raftcmdpb.BackupKind_BACKUP_KIND_FULL, second)
 	require.ErrorIs(t, err, ErrBackupInProgress)
 	require.False(t, ok)
+}
+
+// TestBackupJobsState_StartRejectsBusyDestinationHostCase drives the
+// Heal reproduction through Start: a second backup to the same MinIO
+// bucket_id, with the endpoint host written in upper case, must hit
+// the running job's slot instead of starting a concurrent writer.
+func TestBackupJobsState_StartRejectsBusyDestinationHostCase(t *testing.T) {
+	t.Parallel()
+
+	mk := func(endpoint string) *raftcmdpb.BackupDestination {
+		return &raftcmdpb.BackupDestination{
+			BucketId: "y",
+			Target: &raftcmdpb.BackupDestination_S3{
+				S3: &raftcmdpb.S3BackupTarget{
+					Bucket:   "ledger-backups",
+					Endpoint: endpoint,
+				},
+			},
+		}
+	}
+
+	s := NewBackupJobsState()
+
+	_, ok, err := s.Start(nil, 1000, raftcmdpb.BackupKind_BACKUP_KIND_FULL, &raftcmdpb.BackupOrderStart{
+		JobId:          1,
+		Destination:    mk("http://localhost:9000"),
+		ExecutorNodeId: 7,
+	})
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	existing, ok, err := s.Start(nil, 1100, raftcmdpb.BackupKind_BACKUP_KIND_FULL, &raftcmdpb.BackupOrderStart{
+		JobId:          2,
+		Destination:    mk("http://LOCALHOST:9000"),
+		ExecutorNodeId: 7,
+	})
+	require.ErrorIs(t, err, ErrBackupInProgress)
+	require.False(t, ok)
+	require.Equal(t, uint64(1), existing.GetJobId())
 }
 
 // TestBackupJobsState_StartRejectsDuplicateJobID exercises the

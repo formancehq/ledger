@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -132,13 +133,27 @@ func CanonicalDestinationKey(dst *raftcmdpb.BackupDestination) []byte {
 }
 
 // canonicalEndpoint normalises any endpoint URL into a single form so
-// purely cosmetic differences (e.g. a trailing slash) do not hash into
-// distinct destination slots. The storage client treats
-// `http://minio:9000` and `http://minio:9000/` identically; without
-// this normalisation a careless caller could bypass the FSM mutex by
-// alternating the two forms.
+// purely cosmetic differences do not hash into distinct destination
+// slots. The storage client treats `http://minio:9000`,
+// `http://minio:9000/` and `HTTP://MinIO:9000` identically: URL schemes
+// and DNS host names are case-insensitive. Without this normalisation a
+// careless caller could bypass the FSM mutex by alternating the forms,
+// and the two concurrent runs would prune each other's objects under the
+// shared bucket_id prefix. The path keeps its case because a gateway may
+// treat it as significant. An endpoint that does not parse as an
+// absolute URL is only trimmed; the storage client rejects it anyway.
 func canonicalEndpoint(endpoint string) string {
-	return strings.TrimRight(endpoint, "/")
+	trimmed := strings.TrimRight(endpoint, "/")
+
+	u, err := url.Parse(trimmed)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return trimmed
+	}
+
+	u.Scheme = strings.ToLower(u.Scheme)
+	u.Host = strings.ToLower(u.Host)
+
+	return u.String()
 }
 
 // awsS3EndpointRE matches every public AWS S3 endpoint shape: the
@@ -177,11 +192,12 @@ func canonicalS3Endpoint(endpoint string) string {
 //
 // All three resolve to the same container at runtime; they must hash
 // to the same destination_key so the FSM slot is shared. We substitute
-// the no-slash default for the empty form and trim any trailing slash
-// from explicit endpoints.
+// the no-slash default for the empty form and pass both forms through
+// canonicalEndpoint, which trims trailing slashes and folds the scheme
+// and host case.
 func canonicalAzureEndpoint(accountName, endpoint string) string {
 	if endpoint == "" {
-		return fmt.Sprintf("https://%s.blob.core.windows.net", accountName)
+		return canonicalEndpoint(fmt.Sprintf("https://%s.blob.core.windows.net", accountName))
 	}
 
 	return canonicalEndpoint(endpoint)
