@@ -574,22 +574,41 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 		return nil, fmt.Errorf("waiting for leader readiness: %w", err)
 	}
 
-	// Verify the batch signature (if any) and unwrap the trusted ApplyBatch.
-	// A signed batch is opaque: the signature is verified against the payload
-	// bytes and the trusted batch (ordered requests + idempotency key) is
-	// unmarshaled from those bytes — signing the batch authenticates its
-	// composition and ordering, not just individual request content.
-	// commandDurationHistogram measures the full command lifecycle "from Apply
-	// call to future resolution". Start the timer here — the first timed phase —
-	// so the per-phase histograms (resolve_batch, orders_preparation, scripts,
-	// preload, propose, fsm_future.wait, response_resolution) decompose
-	// command.duration rather than summing to more than it. The defer records on
-	// every return path below.
+	// Exclude caller, write-gate, and leader-readiness waits from command duration.
 	start := time.Now()
 	defer func() {
 		a.commandDurationHistogram.Record(ctx, time.Since(start).Seconds())
 	}()
 
+	admPlan, err := a.prepareAdmission(ctx, buildPlan)
+	if err != nil {
+		return nil, err
+	}
+
+	orders, needs, perOrder, err := a.prepareOrders(ctx, admPlan)
+	if orders != nil {
+		// Every built order shares the atomic batch outcome, including preparation failures.
+		defer a.recordActionOutcome(ctx, orders, &err)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	cmd, build, err := a.buildAdmissionPreload(ctx, caller.Snapshot(), admPlan, orders, needs, perOrder)
+	if err != nil {
+		return nil, err
+	}
+
+	fsmFuture, cleanup, err := a.proposeAdmission(ctx, cmd, build)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	return a.resolveAdmissionResult(ctx, cmd, fsmFuture)
+}
+
+func (a *Admission) prepareAdmission(ctx context.Context, buildPlan func(context.Context) (*admissionPlan, error)) (*admissionPlan, error) {
 	admPlan, err := buildPlan(ctx)
 	if err != nil {
 		return nil, err
@@ -626,6 +645,10 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 		}
 	}
 
+	return admPlan, nil
+}
+
+func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) ([]*raftcmdpb.Order, *plan.Coverage, []*plan.Coverage, error) {
 	// Convert requests to orders. Idempotency and signature are batch-level now
 	// (carried on the Proposal), so orders no longer hold either.
 	//
@@ -638,7 +661,7 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 
 	orders, overlay, err := admPlan.buildOrders(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("converting requests to orders: %w", err)
+		return nil, nil, nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
 
 	// Enforce the metadata size contract over the whole command. It runs here,
@@ -653,24 +676,18 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 	if admPlan.businessBatch {
 		policy, policyErr := query.ReadClusterPolicy(a.store)
 		if policyErr != nil {
-			return nil, fmt.Errorf("reading cluster policy for metadata limits: %w", policyErr)
+			return nil, nil, nil, fmt.Errorf("reading cluster policy for metadata limits: %w", policyErr)
 		}
 
 		if err := validateCommandMetadata(orders, domain.MetadataLimitsFromPolicy(policy)); err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
 	}
-
-	// Tally per-order action counters at whichever exit Admit returns through.
-	// Registered here — after orders exist — so pre-order failures (signature,
-	// maintenance mode, conversion) fall outside per-action attribution. Reads the
-	// named return err to classify the batch outcome. See recordActionOutcome.
-	defer a.recordActionOutcome(ctx, orders, &err)
 
 	// Step 1: Extract preload needs from orders (excludes script-dependent needs)
 	needs, perOrder, err := a.extractPreloadNeeds(ctx, orders, overlay)
 	if err != nil {
-		return nil, err
+		return orders, nil, nil, err
 	}
 
 	// The batch idempotency key is preloaded once for the whole proposal. It
@@ -697,13 +714,17 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 	defer stopScripts()
 
 	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, admPlan.key != ""); err != nil {
-		return nil, err
+		return orders, nil, nil, err
 	}
 	stopScripts()
 
+	return orders, needs, perOrder, nil
+}
+
+func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.CallerSnapshot, admPlan *admissionPlan, orders []*raftcmdpb.Order, needs *plan.Coverage, perOrder []*plan.Coverage) (*raftcmdpb.Proposal, *plan.BuildResult, error) {
 	// Step 3-5: Build preloads via shared Builder (no lock)
 	cmd := commands.NewCommand(orders...)
-	cmd.CallerSnapshot = caller.Snapshot()
+	cmd.CallerSnapshot = caller
 	if admPlan.key != "" {
 		cmd.Idempotency = &commonpb.Idempotency{Key: admPlan.key}
 	}
@@ -742,7 +763,7 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 		preloadSpan.End()
 		build.ReleaseLoaders()
 
-		return nil, fmt.Errorf("building preloads: %w", err)
+		return nil, nil, fmt.Errorf("building preloads: %w", err)
 	}
 
 	totalKeys := int64(needs.TotalKeys())
@@ -764,6 +785,10 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 
 	preloadSpan.End()
 
+	return cmd, build, nil
+}
+
+func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
 	// Step 5: Marshal + acquire proposal guard + set PredictedIndex
 	// + propose, all via the shared preload runner. The runner also
 	// patches PredictedIndex onto the pre-marshaled buffer (or
@@ -815,7 +840,7 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 			a.proposeQueueFullCounter.Add(context.Background(), 1)
 		}
 
-		return nil, err
+		return nil, nil, err
 	}
 
 	if runResult.Rebuilt {
@@ -852,16 +877,22 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 		guard.ReleaseLoaders()
 		a.proposeQueueInflight.Add(-1)
 
-		return nil, err
+		return nil, nil, err
 	}
 
 	recordProposeDuration()
 	proposeSpan.End()
 
-	// Ensure cleanup runs on all paths after proposal acceptance (success and error).
-	defer a.proposeQueueInflight.Add(-1)
-	defer guard.ReleaseLoaders()
+	// Keep loaders alive until the FSM future has resolved.
+	cleanup := func() {
+		guard.ReleaseLoaders()
+		a.proposeQueueInflight.Add(-1)
+	}
 
+	return fsmFuture, cleanup, nil
+}
+
+func (a *Admission) resolveAdmissionResult(ctx context.Context, cmd *raftcmdpb.Proposal, fsmFuture *futures.Future[state.ApplyResult]) (*domain.ApplyResult, error) {
 	// Wait for FSM to apply the command
 	ctx, fsmSpan := tracer.Start(ctx, "admission.fsm_wait")
 	defer fsmSpan.End()

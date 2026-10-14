@@ -3,6 +3,7 @@ package admission
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -166,6 +167,28 @@ func TestRecordActionOutcome(t *testing.T) {
 // exist (the carve-out) records nothing.
 func TestAdmitActionCounters(t *testing.T) {
 	t.Parallel()
+
+	t.Run("metadata rejection before attribution records no action", func(t *testing.T) {
+		t.Parallel()
+
+		store := createTestStore(t)
+		a, reader := createTestAdmissionWithReader(t, store, nil)
+		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
+				Name: "ledger-oversized-metadata",
+				Metadata: map[string]*commonpb.MetadataValue{
+					"key": metadataStringValue(strings.Repeat("x", domain.DefaultMetadataMaxValueBytes+1)),
+				},
+			}},
+		}))
+		var limitErr *domain.ErrMetadataLimitExceeded
+		require.ErrorAs(t, err, &limitErr)
+		require.Equal(t, domain.MetadataLimitDimensionValue, limitErr.Dimension)
+
+		counts := recordedActionCounts(t, reader)
+		require.Empty(t, counts[mActionTotal])
+		require.Empty(t, counts[mActionErrors])
+	})
 
 	t.Run("failure after orders built increments total and errors", func(t *testing.T) {
 		t.Parallel()

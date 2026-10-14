@@ -60,6 +60,14 @@ The gRPC interceptor, handler, and controller layers exist so the same admission
 
 `Admit` is structured as a sequence of stages, each of which can short-circuit the whole batch:
 
+The implementation keeps those stages explicit in `admit`: `prepareAdmission`
+checks the resolved batch and write readiness, `prepareOrders` converts orders
+and completes their coverage, `buildAdmissionPreload` creates the execution
+plan, `proposeAdmission` submits and waits for Raft acceptance, and
+`resolveAdmissionResult` waits for FSM apply and resolves replayed logs. The
+command timer starts after the caller, write-gate, and leader-readiness checks;
+per-order action counters start only after command metadata validation.
+
 ### 0. Caller attribution
 
 `ResolveCallerAttribution()` converts authenticated request state, a trusted
