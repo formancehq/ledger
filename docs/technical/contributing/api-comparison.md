@@ -66,7 +66,7 @@ audit reads render messages from the stored fields. HTTP clients do not send
 the gRPC revision.
 
 The v3 gRPC service requires one `ledger-protocol-version` metadata value per
-business RPC, equal to `pkg/grpcprotocol.Version` (currently `"39"`). Revision 29
+business RPC, equal to `pkg/grpcprotocol.Version` (currently `"40"`). Revision 29
 requires the target's 16-byte `instance_id` on administrative `AddLearner`
 requests; revision 28 clients that omit it are incompatible. Missing,
 invalid, duplicate, or different revisions fail with `FailedPrecondition` before
@@ -1312,7 +1312,8 @@ same contract, and `ClusterBootstrapService.GetPeers` returns each member's 16-b
 in `PeerInfo.instance_id` (distinct from the numeric `PeerInfo.id` node identifier). Missing or incorrectly sized registration identities
 are rejected with gRPC `InvalidArgument`. Peer discovery aborts startup when a
 returned member has an invalid identity, rather than retrying a malformed
-response. There is no identity-less compatibility path because v3 is unreleased.
+response. This requirement predates `v3.0.0-rc.1`; no release contains an
+identity-less membership format.
 
 ### BucketService Methods
 

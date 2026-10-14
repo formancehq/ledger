@@ -20,12 +20,16 @@ precedence over every section below.
 > has been REMOVED. Log/audit history is now permanent in the primary store.
 > Do not treat any chapter/cold-storage material below as current behavior.
 
-## Release Status — v3 is unreleased
+## Release Status — v3 RC baseline
 
-**CRITICAL**: The Raft-based ledger v3 has never been released. No deployment carries data across versions, and all state is wiped on every push to `release/v3.0`. Because nothing persists across versions, there is no backward-compatibility burden — break wire and storage formats freely:
+**CRITICAL**: This legacy reference predates `v3.0.0-rc.1`. The RC is the first
+supported persisted-state baseline. The current [agent instructions](../../AGENTS.md)
+and [upgrade policy](../ops/upgrades.md) govern new work:
 
-- **No compatibility shims.** Do not add migrations, version guards, or fallback paths to preserve old wire or storage formats. Change the format and move on.
-- **Do not reserve proto fields.** When removing a field, delete it and realign the remaining field numbers sequentially (see [Protocol Buffers](#protocol-buffers)). The cleanup pass that removed every pre-existing `reserved` declaration has run (EN-1551): there are none left in `misc/proto/`, and none should be reintroduced.
+- **Preserve released data.** Every later release must read or migrate the
+  preceding released version's persisted data.
+- **Preserve published protobuf numbers.** Reserve removed numbers and names;
+  never renumber or reuse them.
 
 ## Invariants
 
@@ -98,9 +102,9 @@ Interfaces with mockgen: `Transport` (`internal/infra/node/transport.go`), `Cont
 
 ## Protocol Buffers
 
-**CRITICAL**: After modifying any `.proto` file, **immediately** run `just generate-proto`. Realign field numbers sequentially when adding/removing fields. Do not add `reserved` declarations for removed fields — see [Release Status](#release-status--v3-is-unreleased).
+**CRITICAL**: After modifying any `.proto` file, **immediately** run `just generate-proto`. Preserve published field numbers and reserve removed numbers and names — see [Release Status](#release-status--v3-rc-baseline).
 
-**Before renumbering, audit the hand-rolled wire sites** — grep the read side (`protowire.Consume*`) as well as the write side (`protowireutil` / `AppendTag`). `internal/application/indexbuilder/protowire_postings.go` hardcodes field numbers when decoding `Log` / `LogPayload` / `ApplyLedgerLog` / `LedgerLog` / `Transaction` / `TouchedVolume` / `Posting`, and a stale literal there fails **silently**: the parser skips the unrecognised field and yields empty postings, with nothing failing at compile time. `internal/infra/plan/predicted_index.go` reads its field number from the descriptor so the number self-heals, but its `fixed64` wire type is hardcoded. See [protobuf.md](docs/technical/contributing/protobuf.md#renumbering-audit-the-hand-rolled-wire-sites-first).
+**Before changing a protobuf field's encoding or adding a field, audit the hand-rolled wire sites** — grep the read side (`protowire.Consume*`) as well as the write side (`protowireutil` / `AppendTag`). `internal/application/indexbuilder/protowire_postings.go` hardcodes field numbers when decoding `Log` / `LogPayload` / `ApplyLedgerLog` / `LedgerLog` / `Transaction` / `TouchedVolume` / `Posting`, and a stale literal there fails **silently**: the parser skips the unrecognised field and yields empty postings, with nothing failing at compile time. `internal/infra/plan/predicted_index.go` reads its field number from the descriptor so the number self-heals, but its `fixed64` wire type is hardcoded. See [protobuf.md](contributing/protobuf.md#wire-changes-audit-the-hand-rolled-wire-sites-first).
 
 See [docs/technical/contributing/protobuf.md](docs/technical/contributing/protobuf.md) for full details (file locations, vtprotobuf, Uint256 wire format, adding new command models).
 

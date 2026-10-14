@@ -1202,8 +1202,8 @@ func (c *Checker) compareIndexes(
 //
 // A non-mirror ledger has stored == 0 and audited max == 0 → equal → not flagged.
 // A mirror ledger corrupted to 0 has audited max > 0 → not equal → flagged. There
-// is no legacy/no-backfill leniency: existing pre-field clusters are unsupported
-// (no compat shim).
+// is no no-backfill leniency for development clusters before v3.0.0-rc.1.
+// Later releases must preserve or migrate this persisted boundary.
 //
 // The comparison is driven from the UNION of (a) ledgers with a stored boundary
 // row and (b) ledgers with audited MirrorIngest orders (maxMirrorV2LogID > 0).

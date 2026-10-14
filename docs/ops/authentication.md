@@ -385,4 +385,4 @@ spec:
 The generated key configuration and `kubectl-ledger credentials get-key` bundle
 use `superuser` as well. Update Credentials manifests, auth key JSON, OIDC claim
 mappings, and token-generation commands together. The previous privileged field,
-claim, and flag have no compatibility aliases in unreleased v3.
+claim, and flag were removed before `v3.0.0-rc.1`.

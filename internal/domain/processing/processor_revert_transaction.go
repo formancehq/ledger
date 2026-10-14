@@ -241,7 +241,8 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 // A revert order with no digest is not tolerated. Admission is the only producer
 // of one (mirror reverts have their own handler), and it binds the observation
 // unconditionally, so an empty digest is a malformed proposal rather than an
-// older wire format — v3 is unreleased and carries no compatibility fallbacks.
+// older wire format. The v3.0.0-rc.1 baseline requires the digest; later
+// releases must preserve or migrate committed orders that contain it.
 // Accepting it would silently disable the check and let the stale-target path
 // reach applyPosting again. A missing batch transaction-id horizon is refused
 // the same way, for the same reason: without it the two causes cannot be told

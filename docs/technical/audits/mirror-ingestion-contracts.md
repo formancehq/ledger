@@ -67,9 +67,10 @@ alongside these sources. At preparation time, several passages need qualificatio
   default first HTTP page as newest-first. Neither that pair of comments nor
   ordered HTTP test fixtures proves actual v2 pagination. Establish the supported
   upstream contract before treating a first-page mismatch as a product finding.
-- The mirror doc's protobuf example still contains a removed `reserved` slot
-  and an old rewrite field number. Read `misc/proto/common.proto`; historical v3
-  wire compatibility is not an audit requirement during pre-release.
+- The mirror doc's protobuf example contains an old rewrite field number. Read
+  `misc/proto/common.proto`; compatibility with development formats before
+  `v3.0.0-rc.1` is outside scope. Published field numbers from the RC onward
+  must remain stable or have a tested migration for stored data.
 - CEL prose saying actions never evaluate CEL predates `value_expr`. The current
   implementation in `value_expr.go` and its tests establishes expression
   evaluation during leader-side translation, before proposal, not follower apply.

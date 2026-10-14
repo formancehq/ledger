@@ -212,8 +212,8 @@ func TestProcessRevertTransaction_InvalidMetadataBeatsObservationCheck(t *testin
 //
 // Admission binds the digest on every revert order it emits, so an empty one is
 // a malformed proposal. Treating it as "nothing to check" would be a fallback
-// for an older v3 wire format — which the repository does not carry, v3 being
-// unreleased — and would silently restore the very path this check closes.
+// for a format predating v3.0.0-rc.1 and would silently restore the very path
+// this check closes. Released formats must instead have an explicit migration.
 func TestProcessRevertTransaction_NoDigestIsRejected(t *testing.T) {
 	t.Parallel()
 

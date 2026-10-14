@@ -15,13 +15,16 @@ an external source is not an acceptable release upgrade. Follow
   against that baseline. Include the migration or prove the existing data
   remains readable and valid before tagging the new release.
 - Compatibility with beta or development revisions before `v3.0.0-rc.1` is not required.
-- When removing protobuf fields, delete them and realign field numbers sequentially. The EN-1551 cleanup removed every existing `reserved` declaration from `misc/proto/`; do not reintroduce any.
+- Preserve field and enum numbers published in `v3.0.0-rc.1` or later, including
+  numbers stored in Raft, snapshots, backups, and audit records. Reserve removed
+  numbers and names; never reuse or renumber them. Migrate persisted data when
+  the new binary cannot read the old representation.
 - Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
 
-### Service protocol revision — required during pre-release
+### Service protocol revision — required for incompatible changes
 
 Every incompatible service gRPC contract change must increment
-`pkg/grpcprotocol.Version` in the same PR, including during pre-release. Read the
+`pkg/grpcprotocol.Version` in the same PR, including during RC development. Read the
 [protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
 before modifying this contract.
 

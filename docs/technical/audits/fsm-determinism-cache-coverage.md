@@ -262,8 +262,9 @@ same business result. Include Raft entries accepted before an upgrade but
 applied afterward, WAL replay after a restart, and checker replay when
 assessing a semantic change. A node-local flag or binary default must not
 select a different apply interpretation for the same committed entry. The
-current unreleased-v3 deployment contract resets state across such changes;
-maintaining history would need a separate replicated semantic boundary.
+pre-RC development contract reset state across such changes. From
+`v3.0.0-rc.1` onward, preserving history across a semantic change requires an
+explicit, tested upgrade boundary.
 
 **Equivalence scenarios.** Compare the complete result — postings, metadata,
 error reason, audit bytes, and writes — for the same committed order across:
@@ -351,9 +352,9 @@ or residual risk rather than duplicating its finding.
 - Coverage misses are documented deterministic business rejections of malformed
   plans, not proof that replicas diverged. Investigate their producer and
   mutation ordering before assigning severity.
-- The domain does not require backward compatibility between unreleased v3
-  formats or mixed development revisions. Compare binaries only within a
-  documented supported rolling-upgrade contract.
+- The domain does not require compatibility with formats before
+  `v3.0.0-rc.1`. Compare released binaries against the documented upgrade path;
+  compare mixed binaries only when the target release supports a rolling upgrade.
 - Dynamic scenarios are optional evidence strategies, not authorization to edit
   tracked code, operate user infrastructure, or launch the audit from inside an
   audit provider.

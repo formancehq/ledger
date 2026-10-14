@@ -38,7 +38,8 @@ Keep the existing unsafe identity/TTL override distinct from non-bypassable
 schema rejection and the explicit restore-mode branch. Trace in-memory mutation,
 write order and residual persisted bytes on each error; validation rejection does
 not imply no prior writes. Existing historical backfill branches are evidence to
-inspect, not authorization to add v3 compatibility shims or migrations.
+inspect. From `v3.0.0-rc.1` onward, assess whether the target release needs a
+tested migration from the preceding release.
 
 The current layout relocates the persisted-config anchor to
 `ZoneClusterPersistent`. The loader checks the old physical `ZoneGlobal` anchor

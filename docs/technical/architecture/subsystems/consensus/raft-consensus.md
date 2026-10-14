@@ -737,7 +737,7 @@ not a consistency proof. With `CheckQuorum` disabled, an isolated former leader
 can temporarily keep its local leader role and serve old local state if that
 route shortcuts `ReadIndex`.
 
-Because v3 is unreleased, EN-1946 removes the `x-consistency: leader` selector
+Before `v3.0.0-rc.1`, EN-1946 removed the `x-consistency: leader` selector
 instead of preserving that ambiguous contract. The default route always uses
 `ReadIndexAndWait`; `stale` remains the sole explicit opt-out and says exactly
 that it skips quorum confirmation.

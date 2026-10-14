@@ -84,7 +84,7 @@ started containers; it does not update an already running container's environmen
 Omit both references to retain the default AWS credential chain on the **Ledger
 server**, which performs the upload (including its IAM/IRSA configuration).
 The Job's ServiceAccount is still inherited from the Cluster, but ambient AWS
-credentials in the Job are not forwarded by the backup RPC. This unreleased CRD
+credentials in the Job are not forwarded by the backup RPC. Before the first RC, this CRD
 replaces the former literal `s3AccessKeyId` and `s3SecretAccessKey` fields; update
 Backup manifests to use the references when upgrading the operator and CRDs.
 
@@ -301,7 +301,7 @@ The backup is a complete Pebble database that contains:
 | Cluster transient | `0x07` | Backup jobs, removed on cross-cluster restore |
 | Cluster persistent | `0x08` | Source applied index, node/cluster identity, Raft members and removal tombstones, Bloom blocks; removed on cross-cluster restore except for the rewritten genesis boundary |
 
-This changes the physical Pebble layout. An older pre-release store is rejected
+This pre-RC change altered the physical Pebble layout. An older development store is rejected
 at startup through its old boot anchor; take a new backup with the matching
 binary before recovery. See the [key-by-key restore classification](../technical/architecture/subsystems/backup/README.md#global-key-lifetimes-en-1415).
 

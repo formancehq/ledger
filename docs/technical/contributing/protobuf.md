@@ -74,14 +74,17 @@ data from the preceding released version. Follow the
 [upgrade policy](../../ops/upgrades.md#release-requirement-from-v300-rc1) before
 removing or renumbering fields used by stored data.
 
-1. Edit the `.proto` file in `misc/proto/`
-2. **Realign field numbers sequentially** when adding/removing fields (no gaps, remove obsolete `reserved` entries)
-3. **Audit the hand-rolled wire sites** before renumbering — see below
+1. Edit the `.proto` file in `misc/proto/`.
+2. **Preserve published field and enum numbers.** Never renumber or reuse a number
+   present in `v3.0.0-rc.1` or a later release. Reserve the number and name of a
+   removed field or enum value. Add a tested migration if stored data needs one.
+3. **Audit the hand-rolled wire sites** before changing a field's encoding or
+   adding a new field — see below.
 4. Run `just generate-proto` **immediately**
 5. Update Go code that uses the generated types
 6. Rebuild: `go build ./...`
 
-### Renumbering: audit the hand-rolled wire sites first
+### Wire changes: audit the hand-rolled wire sites first
 
 Most code goes through the generated marshallers and follows a renumbering automatically. A few
 hot paths bypass them and encode or decode protobuf by hand, and those break **silently** — the

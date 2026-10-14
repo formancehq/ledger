@@ -448,6 +448,6 @@ Before go-live, verify:
 - [Monitoring](./monitoring.md) — metrics, dashboards, and alerts
 - [Backup and Restore](./backup-restore.md) — RPO/RTO implementation
 - [Availability and Disaster Recovery](./availability-and-recovery.md) — multi-region placement and failure recovery
-- [Server Binary Upgrades](./upgrades.md) — pre-GA compatibility boundary and upgrade classes
+- [Server Binary Upgrades](./upgrades.md) — release migration requirement and upgrade classes
 - [Authentication](./authentication.md) and [TLS Migration](./tls-migration.md)
 - [CLI Reference](./cli.md) — exhaustive server flag reference
