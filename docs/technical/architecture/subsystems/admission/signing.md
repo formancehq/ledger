@@ -79,7 +79,7 @@ Two components enforce the bootstrap rule:
 
 The apply-time check reads only replicated state, so every replica reaches the same outcome (invariant #2). The rejected proposal is audited as a failure and stages no signing-key update. The admission-only `HasUndecodableRows` gate stays at admission: it depends on node-local recovery results and must not affect apply.
 
-Registration is an upsert rather than an insert: nothing rejects a duplicate key ID. Re-registering moves the key under whoever signed that batch, and re-registering with no parent makes it a root. The hierarchy is therefore mutable — a key's parent is whatever its **latest** registration assigned. See [Cascade and the effective parent](#cascade-and-the-effective-parent).
+Registration is an upsert rather than an insert: nothing rejects a duplicate key ID. Re-registering moves the key under whoever signed that batch. Re-registering with no parent is rejected once any key exists, so a key cannot become a second root. The hierarchy is therefore mutable — a key's parent is whatever its **latest** registration assigned. See [Cascade and the effective parent](#cascade-and-the-effective-parent).
 
 ### Cascade and the effective parent
 
