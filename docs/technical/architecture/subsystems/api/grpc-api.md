@@ -552,21 +552,21 @@ message Log {
 
 ## Idempotency
 
-Include an `idempotency_key` in any request for safe retries:
+Set `ApplyBatch.idempotency_key` for safe retries. The key covers the whole atomic batch, never an individual request:
 
 ```go
-resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-    Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-        IdempotencyKey: "unique-request-id-123",
-        Type: &servicepb.Request_Apply{...},
-    }),
-})
+resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(
+    "unique-request-id-123",
+    &servicepb.Request{Type: &servicepb.Request_Apply{...}},
+))
 ```
 
 **Behavior:**
-- **New key**: Request is processed normally
-- **Same key + same content**: Returns reference to original log
-- **Same key + different content**: Returns `idempotency key conflict` error
+- **New key**: The batch is processed normally, and its outcome is stored against the key: a success, or a definitive business refusal such as `INSUFFICIENT_FUNDS`
+- **Same key + same content, stored success**: Returns references to the original logs
+- **Same key + same content, stored refusal**: Returns the original error again, without re-executing
+- **Same key + different content**: Returns `IDEMPOTENCY_KEY_CONFLICT`
+- **Rejected by admission, or failed with a retryable error**: Nothing is stored; the key stays free
 
 See [Idempotency](../admission/idempotency.md) for detailed documentation.
 

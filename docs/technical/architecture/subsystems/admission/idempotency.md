@@ -2,7 +2,9 @@
 
 ## Overview
 
-Idempotency keys provide a mechanism to safely retry requests without risking duplicate operations. When a client includes an idempotency key with a request, the system guarantees that the operation will only be executed once, even if the request is sent multiple times.
+Idempotency keys let a client retry a request safely. The first time a batch carrying a key is applied, the FSM records the batch's **outcome** against the key. Every later batch with the same key and the same content, within the TTL, gets that outcome back without being executed again.
+
+The recorded outcome is either a success or a **definitive business refusal** (for example `INSUFFICIENT_FUNDS`). A key is therefore not a lock that only a committed transaction can take: a refused batch holds its key too, and a retry replays the original error instead of re-executing against state that has changed since. See [Stored refusals](#stored-refusals).
 
 Idempotency keys are stored under the dedicated `ZoneIdempotency` zone (`0x05`) with an in-memory bridge map for inter-proposal visibility. They are not part of the shared attribute/cache system.
 
@@ -12,9 +14,11 @@ Idempotency keys are stored under the dedicated `ZoneIdempotency` zone (`0x05`) 
 |----------------|-------------|
 | **Scope** | System-level (not per-ledger) |
 | **Uniqueness** | Keys must be globally unique across all ledgers |
-| **Hash verification** | Content is hashed (BLAKE3) to detect conflicts |
+| **Unit** | One key per atomic batch (`ApplyBatch.idempotency_key`), never per individual request |
+| **Recorded outcome** | A success (references to the committed logs) or a definitive business refusal (the original error) |
+| **Hash verification** | The batch content is hashed (BLAKE3) to detect conflicts |
 | **Persistence** | Stored under `{0x05, 0x01}` (`ZoneIdempotency` + `SubIdempKeys`) with a time index at `{0x05, 0x02}` (`ZoneIdempotency` + `SubIdempTimeIdx`) |
-| **TTL** | Set by the Raft-replicated cluster policy (default: 24h, 0 = no expiration); frozen per outcome as an absolute `expires_at` at write time |
+| **TTL** | Set by the Raft-replicated cluster policy (default: 24h, 0 = no expiration); frozen per outcome as an absolute `expires_at` at write time. Successes and refusals share the same TTL |
 | **Eviction** | Deterministic cleanup via Raft `IdempotencyEviction` commands |
 
 ## How It Works
@@ -23,47 +27,100 @@ Idempotency keys are stored under the dedicated `ZoneIdempotency` zone (`0x05`) 
 
 ```mermaid
 flowchart TD
-    REQ[Request with Idempotency Key] --> CHECK{Key exists?}
-    CHECK -->|No| PROCESS[Process request normally]
-    PROCESS --> STORE[Store key + hash + sequence + created_at + expires_at]
-    STORE --> RETURN[Return response]
-    
-    CHECK -->|Yes| EXPIRED{TTL expired?}
-    EXPIRED -->|Yes| PROCESS
-    EXPIRED -->|No| HASH{Hash matches?}
-    HASH -->|Yes| CACHED[Return cached response<br/>Reference to original log]
-    HASH -->|No| CONFLICT[Return conflict error]
+    REQ[Batch with Idempotency Key] --> CHECK{Live outcome<br/>stored for key?}
+    CHECK -->|No, or expired| PROCESS[Process batch normally]
+    PROCESS --> RESULT{Outcome}
+    RESULT -->|Success| STORE_OK[Store key + hash + log refs]
+    RESULT -->|Definitive business refusal| STORE_KO[Store key + hash + failure]
+    RESULT -->|Retryable / internal failure| NOSTORE[Store nothing<br/>key stays free]
+    STORE_OK --> RETURN[Return response]
+    STORE_KO --> RETURN
+    NOSTORE --> RETURN
+
+    CHECK -->|Yes| HASH{Hash matches?}
+    HASH -->|Yes, stored success| CACHED[Replay: references<br/>to the original logs]
+    HASH -->|Yes, stored refusal| REPLAYED[Replay: the original error]
+    HASH -->|No| CONFLICT[Return IDEMPOTENCY_KEY_CONFLICT]
 ```
+
+Requests rejected by admission never reach the FSM, so they never reach this flow and never hold a key. See [Stored refusals](#stored-refusals).
 
 ### Hash Computation
 
-When processing a request with an idempotency key:
+When processing a batch with an idempotency key:
 
-1. **Hash computation**: The request content (excluding the idempotency key itself) is hashed using BLAKE3
-2. **Storage**: The idempotency key maps to:
-   - `LogSequence`: The global log sequence number of the original response
-   - `Hash`: BLAKE3 hash of the request content
-   - `CreatedAt`: HLC microsecond timestamp from the Raft entry
-   - `ExpiresAt`: absolute HLC-microsecond expiry, frozen from the committed policy TTL (`created_at + ttl`; 0 = never)
+1. **Hash computation**: The batch's ordered requests (excluding the idempotency key itself and technical fields) are hashed using BLAKE3 (`HashProposal`).
+2. **Storage**: The idempotency key maps to an `IdempotencyKeyValue` (`misc/proto/common.proto`):
 
-```go
-type IdempotencyKeyValue struct {
-    LogSequence uint64  // Global sequence number of the original log
-    Hash        []byte  // BLAKE3 hash of the request content
-    CreatedAt   uint64  // HLC microseconds (from Raft entry timestamp)
-    ExpiresAt   uint64  // absolute HLC-microsecond expiry (0 = never)
-}
-```
+| Field | Meaning |
+|-------|---------|
+| `first_log_sequence` | Sequence of the first log the batch committed (success only) |
+| `log_count` | Number of contiguous logs the batch committed; `0` when `failure` is set |
+| `hash` | BLAKE3 hash of the batch content |
+| `hash_version` | Hash algorithm version |
+| `created_at` | HLC microseconds, from the Raft entry |
+| `failure` | Set instead of the log refs when the first apply was a definitive business refusal: typed `reason`, client-facing `message` and error `metadata` |
+| `expires_at` | Absolute HLC-microsecond expiry, frozen from the committed policy TTL (`created_at + ttl`; 0 = never) |
 
 ### Behavior Matrix
 
 | Scenario | Result |
 |----------|--------|
-| New idempotency key | Process normally, store key |
-| Same key + same content (within TTL) | Return reference to original log |
-| Same key + different content (within TTL) | Return `idempotency key conflict` error |
+| New idempotency key | Process normally; store the outcome (success or definitive refusal) |
+| Same key + same content (within TTL), stored success | Return references to the original logs |
+| Same key + same content (within TTL), stored refusal | Return the original error again, without re-executing |
+| Same key + different content (within TTL) | Return `IDEMPOTENCY_KEY_CONFLICT`, whatever the stored outcome |
 | Same key (after TTL expiration) | Process normally (key treated as new) |
+| First attempt failed with a retryable or internal error | Nothing stored: the next batch under the key is processed normally |
+| First attempt rejected by admission | Nothing stored: the next batch under the key is processed normally |
 | No idempotency key | Process normally, no idempotency tracking |
+
+## Stored refusals
+
+`Machine.recordIdempotencyFailure` (`internal/infra/state/machine.go`) stores a refusal against the key when the FSM rejects the batch with an error whose kind passes `domain.IsFreezableFailure` (`internal/domain/errors.go`): `KindValidation`, `KindNotFound`, `KindAlreadyExists`, `KindConflict` or `KindPrecondition`. The reason-to-kind mapping is `domain.KindForReason` (`internal/domain/reason.go`).
+
+| Outcome | Holds the key? | Examples |
+|---------|----------------|----------|
+| Committed success | Yes | |
+| Business refusal raised by the FSM | Yes | `INSUFFICIENT_FUNDS`, `NUMSCRIPT_EXECUTION_ERROR`, `VOLUME_OVERFLOW`, account-type violations, `TRANSACTION_REFERENCE_CONFLICT`, `TRANSACTION_ALREADY_REVERTED`, `LEDGER_NOT_FOUND` |
+| Rejected by admission, before the batch is proposed | No | Malformed request, account/asset/metadata shape, metadata size limits, Numscript parse errors, auth errors. See [Validation — Admission vs FSM](validation.md) |
+| Retryable or internal failure | No | `PRELOAD_UNAVAILABLE`, `BALANCE_NOT_PRELOADED`, maintenance mode, cluster unhealthy, index building, timeouts, internal errors |
+
+Rules that follow from this:
+
+- **The whole batch shares one outcome.** If one request in an atomic batch is refused, the whole batch is refused and the key holds that refusal.
+- **A replayed refusal is not re-recorded**, so its expiry is not reset. A live stored outcome is never overwritten.
+- **There is no opt-out.** No per-request, per-ledger or cluster setting keeps a business refusal from holding its key.
+- **To retry after a business refusal, use a new key.** Retrying under the same key, even after the cause is fixed (for example after funding the account), replays the original refusal until the key expires.
+
+### Keys versus transaction references
+
+A transaction `reference` behaves differently, and is the right tool when only one writer may take a given slot:
+
+| | Idempotency key | Transaction reference |
+|---|---|---|
+| Taken by | Success **or** definitive refusal | Committed transaction only |
+| Scope | Whole cluster, all ledgers | One ledger |
+| Lifetime | TTL (default 24h) | Permanent |
+| Reuse with a different body | `IDEMPOTENCY_KEY_CONFLICT` | `TRANSACTION_REFERENCE_CONFLICT`, with `existingTransactionId` in the error metadata |
+
+A refused transaction does not take its reference: the reference is written only on the success path (`processor_transaction.go`), and the proposal's write set is rolled back on failure. A common pattern is to put the slot in the reference and use one idempotency key per attempt.
+
+### Inspecting a key
+
+There is no dedicated lookup RPC. Every FSM-applied batch, success or refusal, writes an audit entry carrying the batch's idempotency key, and the audit is indexed by key:
+
+```bash
+ledgerctl audit list --filter 'idempotency_key == "K"'
+```
+
+The gRPC equivalent is `ListAuditEntries` with the same filter. Read the result with these rules:
+
+- Each entry carries the key and its frozen `expires_at`.
+- The entry that holds the key is the **first** entry for that key within the TTL window. A later `IDEMPOTENCY_KEY_CONFLICT` is audited as a fresh refusal, so it also appears with the key, but it never replaces the stored outcome.
+- Replays of the stored outcome write no audit entry.
+- The audit keeps entries after their key has expired.
+- Batches rejected by admission write no entry, and hold no key either.
 
 ## Historical outcomes and checkpoint readiness
 
@@ -230,7 +287,7 @@ All write operations support idempotency keys:
 | Delete transaction metadata | `DELETE /{ledger}/transactions/{id}/metadata/{key}` | Yes |
 | Create ledger | `POST /{ledger}` | Yes |
 | Delete ledger | `DELETE /{ledger}` | Yes |
-| Bulk operations | `POST /{ledger}/bulk` | Yes (per action) |
+| Bulk operations | `POST /{ledger}/bulk` | Yes. Atomic bulk: one key for the whole batch (`Idempotency-Key` header). Non-atomic bulk: one key per element, each element its own batch |
 
 ## Key Validation
 
@@ -242,7 +299,7 @@ All write operations support idempotency keys:
 
 ### Conflict Error
 
-When a conflict is detected (same key, different content, within TTL):
+When a conflict is detected (same key, different content, within TTL), whether the stored outcome is a success or a refusal:
 
 **HTTP Response:**
 ```json
@@ -254,14 +311,22 @@ When a conflict is detected (same key, different content, within TTL):
 
 **Status Code:** `409 Conflict`
 
+The conflict is itself an FSM refusal: it writes an audit failure entry carrying the key, but it never replaces the stored outcome.
+
+### Replayed Refusal
+
+When the stored outcome is a refusal, a retry with the same content returns the original error (same reason, message and metadata) and the response is flagged as a replay. No new log or audit entry is written.
+
 ### Best Practices
 
-1. **Use unique keys**: UUIDs or composite keys (e.g., `{client-id}-{request-id}`)
-2. **Be aware of TTL**: Keys expire after the configured TTL (default 24h)
-3. **Don't reuse keys**: Even for "similar" operations
-4. **Handle conflicts**: Implement retry logic with new keys on conflict
+1. **Use unique keys**: UUIDs or composite keys (e.g., `{client-id}-{request-id}`). Keys are shared across all ledgers.
+2. **One key per attempt**: Reuse a key only to retry the same batch after a retryable error or a lost response. After a business refusal, send the next attempt under a new key.
+3. **Be aware of TTL**: Keys, including those holding a refusal, expire after the configured TTL (default 24h)
+4. **Don't reuse keys**: Even for "similar" operations
+5. **Use a reference for exclusive slots**: If only one writer may take a slot, put the slot in the transaction `reference`, not in the idempotency key. See [Keys versus transaction references](#keys-versus-transaction-references).
 
 ## Related Documentation
 
 - [Numscript Library](../scripting/numscript-library.md) — the versioning model behind selector mutability, and dependency discovery / resolution.
+- [Validation — Admission vs FSM](validation.md) — which rejections happen before the FSM, and therefore never hold a key.
 - [Admission Pipeline](pipeline.md) — where numscript resolution and coverage enrichment sit in the overall admission flow.
