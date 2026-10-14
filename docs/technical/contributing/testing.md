@@ -894,6 +894,18 @@ go test -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out
 ```
 
+The `just` coverage recipes (`test-coverage`, `test-internal-coverage`,
+`test-antithesis-assertions`, `test-e2e-coverage`, `test-scenarios-coverage`,
+`fuzz-check-coverage`) run through `scripts/go-test-coverage` rather than
+`-coverprofile`. With `-coverpkg=github.com/formancehq/ledger/v3/internal/...`,
+`-coverprofile` concatenates one full profile per test binary, so the unit
+profile grew past 1 GB. The script makes each binary write binary counters to
+`build/coverage/<name>.covdata/` and merges them with
+`go tool covdata textfmt` into a single `build/coverage/<name>.out` entry per
+block. A `go test -exec` wrapper also copies the meta-data that cmd/go provides
+for tested packages no test binary imports. Those packages still count as
+uncovered, exactly as they did with `-coverprofile`.
+
 ### Coverage Goals
 
 - **Minimum**: 70% for critical code

@@ -110,12 +110,11 @@ test-antithesis-assertions:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{coverage_dir}}
-    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags enable_antithesis_sdk \
-        -coverprofile={{coverage_dir}}/antithesis.out -coverpkg={{coverage_pkgs}} \
+    scripts/go-test-coverage {{coverage_dir}}/antithesis.out \
+        -race -tags enable_antithesis_sdk -coverpkg={{coverage_pkgs}} -timeout 20m \
         ./internal/infra/state/... ./internal/infra/node/... \
         ./internal/domain/processing/... ./internal/query/... \
-        ./internal/application/ctrl/... -timeout 20m
-    echo "Coverage profile: {{coverage_dir}}/antithesis.out"
+        ./internal/application/ctrl/...
 
 # Run unit tests with all optional features
 test-full:
@@ -196,8 +195,7 @@ test-coverage:
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     echo "==> Unit tests with coverage..."
-    GOTOOLCHAIN=$(go env GOVERSION) go test -race -coverprofile={{coverage_dir}}/unit.out -coverpkg={{coverage_pkgs}} ./... -timeout 20m
-    echo "Coverage profile: {{coverage_dir}}/unit.out"
+    scripts/go-test-coverage {{coverage_dir}}/unit.out -race -coverpkg={{coverage_pkgs}} -timeout 20m ./...
 
 # Execute internal assertions behind optional feature tags (requires Docker).
 test-internal-coverage:
@@ -205,8 +203,7 @@ test-internal-coverage:
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     echo "==> Internal tests with optional features and coverage..."
-    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags "{{all_tags}}" -coverprofile={{coverage_dir}}/internal.out -coverpkg={{coverage_pkgs}} ./internal/... -timeout 20m
-    echo "Coverage profile: {{coverage_dir}}/internal.out"
+    scripts/go-test-coverage {{coverage_dir}}/internal.out -race -tags "{{all_tags}}" -coverpkg={{coverage_pkgs}} -timeout 20m ./internal/...
 
 # Run E2E tests with coverage. The CI gates invoke this recipe once for each
 # isolated Business/Cluster job. Every invocation uses the full tag set: the
@@ -220,8 +217,7 @@ test-e2e-coverage packages="./tests/e2e/business/... ./tests/e2e/cluster/..." pr
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     echo "==> E2E tests with coverage..."
-    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags "e2e,{{all_tags}}" -p 1 -coverprofile={{coverage_dir}}/{{profile}} -coverpkg={{coverage_pkgs}} {{packages}} -timeout 30m
-    echo "Coverage profile: {{coverage_dir}}/{{profile}}"
+    scripts/go-test-coverage {{coverage_dir}}/{{profile}} -race -tags "e2e,{{all_tags}}" -p 1 -coverpkg={{coverage_pkgs}} -timeout 30m {{packages}}
 
 # Run scenario tests with coverage
 test-scenarios-coverage:
@@ -229,8 +225,7 @@ test-scenarios-coverage:
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     echo "==> Scenario tests with coverage..."
-    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags scenario -coverprofile={{coverage_dir}}/scenario.out -coverpkg={{coverage_pkgs}} ./tests/scenarios/... -timeout 300s
-    echo "Coverage profile: {{coverage_dir}}/scenario.out"
+    scripts/go-test-coverage {{coverage_dir}}/scenario.out -race -tags scenario -coverpkg={{coverage_pkgs}} -timeout 300s ./tests/scenarios/...
 
 # Run fuzz seed replay with coverage
 fuzz-check-coverage:
@@ -248,8 +243,7 @@ fuzz-check-coverage:
         ./internal/pkg/semver/
     )
     echo "==> Fuzz seed replay with coverage..."
-    GOTOOLCHAIN=$(go env GOVERSION) go test -coverprofile={{coverage_dir}}/fuzz.out -coverpkg={{coverage_pkgs}} -run 'Fuzz' -timeout 60s "${fuzz_pkgs[@]}"
-    echo "Coverage profile: {{coverage_dir}}/fuzz.out"
+    scripts/go-test-coverage {{coverage_dir}}/fuzz.out -coverpkg={{coverage_pkgs}} -run 'Fuzz' -timeout 60s "${fuzz_pkgs[@]}"
 
 # Merge all coverage profiles into a single report
 coverage-merge:

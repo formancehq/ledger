@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Run `go test` with coverage and write one merged text profile.
+#
+# Usage: scripts/go-test-coverage <profile.out> <go test flags and packages...>
+#
+# `go test -coverprofile -coverpkg=<many packages> ./...` concatenates one
+# profile per test binary, and every binary reports every block of every
+# -coverpkg package, so the text file grows as test packages x instrumented
+# blocks (over 1 GB for the unit suite). Instead, every test binary writes
+# binary counters to a shared directory and `go tool covdata textfmt` merges
+# them into a single entry per block.
+#
+# A test binary only writes meta-data for the packages linked into it. With
+# -coverpkg, cmd/go also hands each binary a metafiles.txt (in its own
+# GOCOVERDIR) listing the meta-data of every tested package, so packages that
+# no test binary imports still count as uncovered. The -exec wrapper below
+# copies those meta-data files next to the counters so the merged profile keeps
+# the same statement set as -coverprofile.
+#
+# Like -coverprofile, the profile is still written when tests fail so CI can
+# upload partial coverage; the script then exits with the `go test` status.
+set -euo pipefail
+
+if [[ ${1:-} == "--exec" ]]; then
+    # -exec wrapper: GO_TEST_COVERAGE_DIR is the shared counter directory and
+    # GOCOVERDIR is the per-run directory cmd/go prepared for this binary.
+    shift
+    metafiles="${GOCOVERDIR:-}/metafiles.txt"
+    if [[ -n ${GOCOVERDIR:-} && -f $metafiles ]]; then
+        # cmd/go marshals a nil slice, so MetaFileFragments is null when no
+        # tested package matches -coverpkg (e.g. ./tests/e2e/... against
+        # ./internal/...): that means zero fragments. Anything other than
+        # null or a list of strings is a changed cmd/go format and must fail.
+        # Assign first so a jq failure aborts under set -e instead of
+        # silently dropping the fragments.
+        fragments=$(jq -r '
+            if type == "object" and has("MetaFileFragments")
+                and (.MetaFileFragments == null
+                    or (.MetaFileFragments | type == "array" and all(.[]; type == "string")))
+            then (.MetaFileFragments // [])[]
+            else error("unexpected metafiles.txt format: \(.)")
+            end' "$metafiles")
+        while IFS= read -r fragment; do
+            [[ -n $fragment ]] || continue
+            dst="$GO_TEST_COVERAGE_DIR/$(basename "$fragment")"
+            if [[ ! -f $dst ]]; then
+                # Test binaries run in parallel: copy then rename so a
+                # concurrent reader never sees a partial file.
+                tmp=$(mktemp "$dst.XXXXXX")
+                cp "$fragment" "$tmp"
+                mv -f "$tmp" "$dst"
+            fi
+        done <<< "$fragments"
+    fi
+    exec "$@"
+fi
+
+if [[ $# -lt 2 ]]; then
+    echo "usage: $0 <profile.out> <go test flags and packages...>" >&2
+    exit 2
+fi
+
+profile=$1
+shift
+
+GOTOOLCHAIN=$(go env GOVERSION)
+export GOTOOLCHAIN
+
+raw_dir="${profile%.out}.covdata"
+# Drop the previous profile too: a run that writes no counters (e.g. a build
+# failure) must not leave stale coverage for uploads or coverage-merge, which
+# only check that the file exists. -coverprofile truncated it the same way.
+rm -f "$profile"
+rm -rf "$raw_dir"
+mkdir -p "$raw_dir"
+# Test binaries run from their package directory, so the counter directory
+# must be absolute.
+GO_TEST_COVERAGE_DIR=$(cd "$raw_dir" && pwd)
+export GO_TEST_COVERAGE_DIR
+self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+status=0
+go test -cover -exec "$self --exec" "$@" -args -test.gocoverdir="$GO_TEST_COVERAGE_DIR" || status=$?
+
+shopt -s nullglob
+counters=("$GO_TEST_COVERAGE_DIR"/covcounters.*)
+shopt -u nullglob
+if [[ ${#counters[@]} -gt 0 ]]; then
+    go tool covdata textfmt -i="$GO_TEST_COVERAGE_DIR" -o="$profile"
+    echo "Coverage profile: $profile"
+else
+    echo "No coverage counters were written to $GO_TEST_COVERAGE_DIR" >&2
+    if [[ $status -eq 0 ]]; then
+        status=1
+    fi
+fi
+
+exit "$status"
