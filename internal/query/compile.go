@@ -663,29 +663,42 @@ func (b *resolvedIntBounds) setMax(v int64, exclusive bool) {
 // Every parameter the condition references is resolved and type-checked
 // before the range is reported empty: whether a bad parameter is refused must
 // not depend on the other bound's value.
-func resolveIntBounds(cond *commonpb.IntCondition, params map[string]*commonpb.ParameterValue) (resolvedIntBounds, error) {
-	var b resolvedIntBounds
-
-	if cond.GetParamMin() != "" {
-		v, err := resolveParamInt64(params, cond.GetParamMin())
+func resolveNumericBounds[T int64 | uint64](
+	literalMin, literalMax *T, paramMin, paramMax string, minExclusive, maxExclusive bool,
+	params map[string]*commonpb.ParameterValue,
+	resolveParam func(map[string]*commonpb.ParameterValue, string) (T, error),
+	setMin, setMax func(T, bool),
+) error {
+	if paramMin != "" {
+		v, err := resolveParam(params, paramMin)
 		if err != nil {
-			return b, err
+			return err
 		}
-
-		b.setMin(v, cond.GetMinExclusive())
-	} else if cond.Min != nil {
-		b.setMin(cond.GetMin(), cond.GetMinExclusive())
+		setMin(v, minExclusive)
+	} else if literalMin != nil {
+		setMin(*literalMin, minExclusive)
 	}
 
-	if cond.GetParamMax() != "" {
-		v, err := resolveParamInt64(params, cond.GetParamMax())
+	// Resolve the upper parameter even when the lower bound is already
+	// impossible: invalid parameters must still be reported to the caller.
+	if paramMax != "" {
+		v, err := resolveParam(params, paramMax)
 		if err != nil {
-			return b, err
+			return err
 		}
+		setMax(v, maxExclusive)
+	} else if literalMax != nil {
+		setMax(*literalMax, maxExclusive)
+	}
 
-		b.setMax(v, cond.GetMaxExclusive())
-	} else if cond.Max != nil {
-		b.setMax(cond.GetMax(), cond.GetMaxExclusive())
+	return nil
+}
+
+func resolveIntBounds(cond *commonpb.IntCondition, params map[string]*commonpb.ParameterValue) (resolvedIntBounds, error) {
+	var b resolvedIntBounds
+	if err := resolveNumericBounds(cond.Min, cond.Max, cond.GetParamMin(), cond.GetParamMax(),
+		cond.GetMinExclusive(), cond.GetMaxExclusive(), params, resolveParamInt64, b.setMin, b.setMax); err != nil {
+		return b, err
 	}
 
 	// max is the exclusive upper, so [min, max) holds nothing once the
@@ -832,27 +845,9 @@ func (b *resolvedUintBounds) setMax(v uint64, exclusive bool) {
 // range is reported empty.
 func resolveUintBounds(cond *commonpb.UintCondition, params map[string]*commonpb.ParameterValue) (resolvedUintBounds, error) {
 	var b resolvedUintBounds
-
-	if cond.GetParamMin() != "" {
-		v, err := resolveParamUint64(params, cond.GetParamMin())
-		if err != nil {
-			return b, err
-		}
-
-		b.setMin(v, cond.GetMinExclusive())
-	} else if cond.Min != nil {
-		b.setMin(cond.GetMin(), cond.GetMinExclusive())
-	}
-
-	if cond.GetParamMax() != "" {
-		v, err := resolveParamUint64(params, cond.GetParamMax())
-		if err != nil {
-			return b, err
-		}
-
-		b.setMax(v, cond.GetMaxExclusive())
-	} else if cond.Max != nil {
-		b.setMax(cond.GetMax(), cond.GetMaxExclusive())
+	if err := resolveNumericBounds(cond.Min, cond.Max, cond.GetParamMin(), cond.GetParamMax(),
+		cond.GetMinExclusive(), cond.GetMaxExclusive(), params, resolveParamUint64, b.setMin, b.setMax); err != nil {
+		return b, err
 	}
 
 	// See resolveIntBounds: adjusted bounds that meet or cross are the
