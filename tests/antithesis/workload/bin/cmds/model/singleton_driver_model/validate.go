@@ -520,21 +520,24 @@ func learnTxStamps(gs *oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Lo
 
 // validateFailure accepts the observed failure of failedBulk iff some
 // candidate base reproduces the observed error reason when failedBulk is applied
-// to it — i.e. there is a serialization of the in-flight bulks under which the
-// server would reject failedBulk exactly this way. Because failedBulk is applied
-// fresh on each base, its own requests can never "explain" its own rejection.
-// Caller holds c.mu.
+// to it under a verdict admission reached on that base or an earlier one of
+// the same serialization — i.e. there is a serialization of the in-flight
+// bulks under which the server would reject failedBulk exactly this way.
+// Because failedBulk is applied fresh on each base, its own requests can never
+// "explain" its own rejection. Caller holds c.mu.
 func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqErr error) {
 	var reason string
 
 	matched := false
-	c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
-		res := base.Apply(failedBulk)
-		if !res.OK && internal.HasErrorReason(reqErr, res.Reason) {
-			reason = res.Reason
-			matched = true
+	c.admittedBases(maxTicket, failedBulk, func(base oracle.GlobalState, verdicts []oracle.Admission) bool {
+		for _, verdict := range verdicts {
+			res := base.ApplyAdmitted(failedBulk, verdict)
+			if !res.OK && internal.HasErrorReason(reqErr, res.Reason) {
+				reason = res.Reason
+				matched = true
 
-			return true
+				return true
+			}
 		}
 
 		return false

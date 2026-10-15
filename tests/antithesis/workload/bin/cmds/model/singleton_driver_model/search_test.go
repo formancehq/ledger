@@ -3,6 +3,8 @@ package main
 import (
 	"testing"
 
+	"google.golang.org/grpc/codes"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -166,4 +168,45 @@ func TestCandidateBasesCompletesAtInflightBound(t *testing.T) {
 	// Distinct insertion orders produce distinct fingerprints, so this is the
 	// full sum of partial permutations: sum(8!/(8-k)!, k=0..8).
 	require.Equal(t, 109601, visited)
+}
+
+// A delete committed between a scripted create's admission and its apply.
+// Admission saw the live ledger — the reference existed, so the skip applied
+// and nothing was resolved — and the FSM refused the order on the deleted one.
+// No single base gives that pair: on the deleted base the purged ledger makes
+// admission forward the script instead, so the verdict must come from the
+// base before the delete.
+func TestValidateFailure_AdmissionOlderThanApply(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	committed := c.modelState.Apply(bulkOf(oracletest.TxReqRefL("L", "R", "world", "a", "USD", 10)))
+	require.True(t, committed.OK, committed.Reason)
+	c.modelState = committed.State
+
+	c.inflight[1] = bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
+		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
+	}})
+
+	scripted := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		Ledger:           "L",
+		SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
+			Reference: "R",
+			Script: &commonpb.Script{Plain: `vars {
+	account $dst = meta(@cfg:1, "dst")
+}
+send [USD 1] (
+	source = @world
+	destination = $dst
+)`},
+		}}},
+	}}}
+	failed := bulkOf(scripted)
+
+	deletedBase := c.modelState.Apply(c.inflight[1]).State
+	require.Equal(t, domain.ErrReasonPreloadUnavailable, deletedBase.Apply(failed).Reason)
+
+	c.validateFailure(1, failed, reasonErr(t, codes.FailedPrecondition, domain.ErrReasonLedgerDeleted))
+	require.Contains(t, c.rejections, rejectedBulk{ledgers: "L", orders: 1, reason: domain.ErrReasonLedgerDeleted})
 }
