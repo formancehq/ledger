@@ -4088,6 +4088,10 @@ Selects the hash function used for log chain integrity. This is a cluster-wide s
 - **`blake3`** (default): Cryptographic hash, 32-byte output. Detects both corruption and intentional tampering.
 - **`xxh3`**: Non-cryptographic hash (XXH3-128), 16-byte output. ~5-10x faster. Detects corruption only.
 
+The server rejects unsupported values before startup. `HASH_ALGORITHM` selects the same
+setting through the environment; an explicit CLI flag takes precedence. Omitting the
+setting or passing an empty value retains the `blake3` default.
+
 Each log records which algorithm was used in its `hash_version` field, so switching algorithms mid-stream is safe and the `store check` command verifies each log with the correct algorithm.
 
 ```bash
