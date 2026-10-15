@@ -83,9 +83,9 @@ services:
       - etcd-2-data:/var/run/etcd
 
   minio:
-    # Pinned to the same release as the k8s manifests (k8s/minio.yaml) so
-    # docker-compose and k8s runs are reproducible and test the same MinIO.
-    image: minio/minio:RELEASE.2024-06-13T22-53-53Z
+    # Formance's digest-pinned MinIO mirror; k8s/Dockerfile.minio packages the
+    # same build so docker-compose and k8s runs test the same MinIO.
+    image: ghcr.io/formancehq/minio:RELEASE.2025-10-15T17-29-55Z@sha256:69b55a1c1c5dc285ce04db96689f5b2102317fc77a50680a1874ca6efd1c87f9
     container_name: minio
     hostname: minio
     command: server /data --console-address ":9001"
@@ -102,7 +102,8 @@ services:
     command: ["-js"]
 
   minio-init:
-    image: minio/mc:RELEASE.2024-06-12T14-34-03Z
+    # The MinIO mirror also ships mc; the shell entrypoint below runs it.
+    image: ghcr.io/formancehq/minio:RELEASE.2025-10-15T17-29-55Z@sha256:69b55a1c1c5dc285ce04db96689f5b2102317fc77a50680a1874ca6efd1c87f9
     container_name: minio-init
     depends_on:
       - minio

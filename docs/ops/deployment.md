@@ -63,7 +63,7 @@ Available flags for `run`:
 - `--join`: Raft transport address of an existing cluster member to join as a learner (e.g., `--join node-1:7777`; mutually exclusive with `--bootstrap`). Discovery and learner registration go through the inter-node `ClusterBootstrapService` on the RaftServer — no user JWT is required. If the target cluster enforces a `--cluster-secret` and this node's secret is missing or wrong, startup **fails fast** with an actionable error rather than retrying forever (EN-1080); a `--cluster-id` the target does not accept fails fast the same way (EN-2738). See the [`--cluster-secret`](cli.md#server-cluster-secret-flag) section.
 - `--learner-promotion-threshold`: Max log entry lag before auto-promoting a caught-up learner to voter (default: `100`, `0` = disable auto-promotion)
 - `--http-port`: HTTP server port (default: `9000`)
-- `--health-check-interval`: Interval between disk usage health checks (default: `30s`)
+- `--health-check-interval`: Interval between disk usage health checks; must be greater than zero (default: `30s`)
 - `--health-wal-threshold`: WAL volume usage threshold, 0.0-1.0 (default: `0.8`)
 - `--health-data-threshold`: Data volume usage threshold, 0.0-1.0 (default: `0.8`)
 
