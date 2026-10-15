@@ -658,7 +658,8 @@ type CacheConfig struct {
 
 // HealthConfig holds health check configuration.
 type HealthConfig struct {
-	// Interval between health checks.
+	// Interval between health checks, as a Go duration greater than zero.
+	// Omitted or empty uses the server default of 30s.
 	// +optional
 	Interval string `json:"interval,omitempty"`
 

@@ -1531,3 +1531,30 @@ func TestBuildEnvVars_MetadataLimits(t *testing.T) {
 		assertNoEnv(t, envs, "METADATA_MAX_ENTITY_BYTES")
 	})
 }
+
+func TestBuildEnvVars_HealthInterval(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		health *ledgerv1alpha1.HealthConfig
+		want   string
+	}{
+		{name: "omitted"},
+		{name: "empty", health: &ledgerv1alpha1.HealthConfig{}},
+		{name: "positive", health: &ledgerv1alpha1.HealthConfig{Interval: "1m30s"}, want: "1m30s"},
+		{name: "smallest positive", health: &ledgerv1alpha1.HealthConfig{Interval: "1ns"}, want: "1ns"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cluster := newMinimalCluster()
+			cluster.Spec.Health = tt.health
+			envs := buildEnvVars(cluster, "", nil)
+			if tt.want == "" {
+				assertNoEnv(t, envs, "HEALTH_CHECK_INTERVAL")
+			} else {
+				assertEnv(t, envs, "HEALTH_CHECK_INTERVAL", tt.want)
+			}
+		})
+	}
+}
