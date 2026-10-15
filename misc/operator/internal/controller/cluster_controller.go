@@ -681,7 +681,7 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 		if err != nil {
 			return fmt.Errorf("bloom.%s.fpRate %q is not a valid float: %w", b.name, b.spec.FPRate, err)
 		}
-		if f <= 0 || f >= 1 {
+		if !(f > 0 && f < 1) {
 			return fmt.Errorf("bloom.%s.fpRate must be in (0,1), got %v", b.name, f)
 		}
 	}

@@ -105,3 +105,16 @@ removes the source operational identity while preserving the key. A destination
 may then persist its own cluster ID and extend the source chain. Inspect the
 startup and follower-recovery paths separately; the checker owns full-history
 verification, and the persistence domain owns checkpoint/delta preservation.
+
+## EN-2923 bloom rate validation
+
+Trace desired bloom settings through CLI loading into `Config.Validate` before
+Fx construction of `NewFilterSet`. Enabled rates must be finite and strictly in
+`(0,1)` for every server slot, including indexes. CLI rate zero normalizes to
+`0.01`; zero expected keys disables the type and ignores its rate. The operator
+retains empty-rate defaulting and explicit-zero rejection, while rejecting
+`NaN` as well as infinities. The server `TestLoadConfigBloomRates` and bootstrap
+`TestConfigValidateBloom` exercise accepted/invalid/disabled inputs; operator
+`TestValidateClusterConfig_RejectsInvalidFPRate` independently covers non-finite
+spec rates. A constructor panic is the original failure signal, not an accepted
+startup rejection. No persisted or committed configuration semantics change.

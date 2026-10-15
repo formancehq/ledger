@@ -148,7 +148,7 @@ func TestValidateClusterConfig_AcceptsZeroExpectedKeys(t *testing.T) {
 
 func TestValidateClusterConfig_RejectsInvalidFPRate(t *testing.T) {
 	t.Parallel()
-	cases := []string{"0", "1", "-0.01", "1.01", "not-a-float"}
+	cases := []string{"0", "1", "-0.01", "1.01", "not-a-float", "NaN", "+Inf", "-Inf"}
 	for _, c := range cases {
 		t.Run("fpRate="+c, func(t *testing.T) {
 			t.Parallel()
