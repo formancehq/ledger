@@ -30,12 +30,16 @@ runs:
       run: |
         nix develop .#ci --command bash -c "go env | sed -E \"s/^([^=]+)='(.*)'\$/\1=\2/\"" >> "$GITHUB_OUTPUT"
     # Dirty uses the linter's default cache directory; keep it aligned with this path.
+    # Jobs on the remote Go build cache do not mount GOCACHE: Go no longer
+    # writes build outputs there, and leaving it unmounted keeps their commits
+    # from changing the build cache that jobs without it still use. The action
+    # drops the empty line left when GOCACHE is omitted.
     - uses: namespacelabs/nscloud-cache-action@58bf6e08898e88803c098e2b522668541cd3b2e3 # v1.6.0
       with:
         path: |
-          ${{ steps.go-env.outputs.GOCACHE }}
           ${{ steps.go-env.outputs.GOMODCACHE }}
           ~/.cache/golangci-lint
+          ${{ inputs.go-remote-cache != 'true' && steps.go-env.outputs.GOCACHE || '' }}
     # Namespace keeps the last commit per node and never merges commits, so a
     # job that only needs a few modules would drop the modules other jobs need.
     # Downloading every module here makes each commit carry the full set; on a
