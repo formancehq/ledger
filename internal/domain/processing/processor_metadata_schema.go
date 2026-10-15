@@ -98,7 +98,8 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 // O(1) on the apply path: the field is removed from the schema and any index
 // attached to it is dropped. Existing stored values are untouched (they remain
 // in their original type; reads no longer coerce them). Idempotent: an
-// undeclared key leaves the schema unchanged and is still logged.
+// undeclared key leaves the schema unchanged (an absent schema stays absent)
+// and is still logged.
 func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetadataFieldTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	s := ctx.Scope
 
@@ -111,10 +112,10 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 		return nil, err
 	}
 
-	if info.GetMetadataSchema() == nil {
-		info.MetadataSchema = &commonpb.MetadataSchema{}
-	}
-
+	// Do not materialize an absent schema: deleting from a nil schema's nil
+	// maps is a no-op, so a removal on a ledger with no schema keeps
+	// MetadataSchema unset. This mirrors the restore replay writer and the
+	// checker, which both treat a removal against a nil schema as a no-op.
 	switch order.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 		delete(info.GetMetadataSchema().GetAccountFields(), order.GetKey())

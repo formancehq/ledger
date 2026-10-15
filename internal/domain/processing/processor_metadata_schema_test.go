@@ -382,6 +382,71 @@ func TestProcessRemoveMetadataFieldType_UndeclaredKeyIsIdempotent(t *testing.T) 
 	require.Nil(t, removeLog.GetDroppedIndex())
 }
 
+// A ledger with no metadata schema at all must keep it absent after a no-op
+// removal: materializing an empty schema would change GetLedger from omitting
+// metadataSchema to returning {} and diverge from the restore replay writer,
+// which leaves a nil schema untouched.
+func TestProcessRemoveMetadataFieldType_NilSchemaStaysAbsent(t *testing.T) {
+	t.Parallel()
+
+	for _, target := range []commonpb.TargetType{
+		commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+		commonpb.TargetType_TARGET_TYPE_LEDGER,
+	} {
+		t.Run(target.String(), func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStore := NewMockScope(ctrl)
+			expectDefaultMetadataLimits(mockStore)
+			processor, err := NewRequestProcessor(nil, 0)
+			require.NoError(t, err)
+
+			now := &commonpb.Timestamp{Data: 1234567890}
+			boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+			ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
+
+			expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+			expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+			expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
+			expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+				require.Nil(t, info.GetMetadataSchema(), "a no-op removal must not materialize an empty schema")
+			})
+			mockStore.EXPECT().GetDate().Return(now.AsReader())
+			expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+
+			order := &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "test-ledger",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
+								RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
+									TargetType: target,
+									Key:        "never-declared",
+								},
+							}},
+						},
+					},
+				},
+			}
+
+			result, err := processor.ProcessOrder(order, mockStore)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+
+			removeLog := result.GetApply().GetLog().GetData().GetRemovedMetadataFieldType()
+			require.NotNil(t, removeLog)
+			require.Equal(t, target, removeLog.GetTargetType())
+			require.Equal(t, "never-declared", removeLog.GetKey())
+			require.Nil(t, removeLog.GetDroppedIndex())
+		})
+	}
+}
+
 func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 	t.Parallel()
 
