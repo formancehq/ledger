@@ -212,7 +212,7 @@ scripting against the CLI predictable across resources.
 | Pagination | `--page-size` | uint32 | Number of items per page (clamped server-side; default `10`). |
 | Pagination | `--cursor` | string | Page token printed by a previous page (`next_cursor` or `previous_cursor`). Pass the same `--reverse` and `--filter` on every page of a walk. See [Page tokens](#page-tokens). |
 | Pagination | `--reverse` | bool | Reverse iteration order. Available on commands whose server endpoint supports it. |
-| Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts` and `transactions`. |
+| Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts`, `transactions` and `queries execute`. |
 | Filter | `--filter` | string | Boolean filter expression — textual `filterexpr` grammar OR the structured JSON `QueryFilter` DSL (dual-format, EN-1511). |
 | Filter | `--prefix` | string | Account-address prefix shortcut. Only on `accounts list` (server-side `HardcodedPrefix` optimization). |
 | Consistency | `--checkpoint-id` | uint64 | Read from a named query checkpoint instead of the live store. |
@@ -3698,14 +3698,23 @@ ledgerctl queries execute <name> --ledger <ledger-name> [flags]
 | `--page-size` | `10` | Number of results per page |
 | `--mode` | `list` | Query mode: `list` or `aggregate` |
 | `--reverse` | `false` | List results in descending order. Rejected in `aggregate` mode |
+| `--all` | `false` | Fetch every page and print all results at once, without the interactive prompt. List mode only |
 | `--analyze` | `false` | Display the query profile: server-side phase timing (prepare/execute/barrier/deliver) plus iterator stats |
-| `--timeout` | `10s` | Request timeout |
+| `--timeout` | `10s` | Request timeout, applied to each page request |
+
+**Behavior:**
+- In list mode without `--all`, the CLI prints one page and asks before it loads the next one. With `--json` or `--yaml`, it prints only the first page
+- With `--all`, the CLI sends one request per page of `--page-size` results. It follows the response cursor until the server reports no more results, then prints every result in one table or one JSON/YAML array
+- With `--all --analyze`, the profile shown is the profile of the last page request
 
 **Examples:**
 
 ```bash
 # Execute without parameters
 ledgerctl queries execute active-users --ledger my-ledger
+
+# Fetch every result as one JSON array
+ledgerctl queries execute active-users --ledger my-ledger --all --json
 
 # Execute with parameters
 ledgerctl queries execute by-tier --ledger my-ledger --param tier=gold
