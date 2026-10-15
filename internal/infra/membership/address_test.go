@@ -1,6 +1,7 @@
 package membership
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,6 +16,9 @@ func TestValidatePeerAddress(t *testing.T) {
 		"[::1]:7777",
 		"node-2:65535",
 		":7777",
+		"localhost:7777",
+		"ledger_1.internal.:7777",
+		"[fe80::1%eth0]:7777",
 	} {
 		t.Run("valid "+addr, func(t *testing.T) {
 			t.Parallel()
@@ -30,6 +34,16 @@ func TestValidatePeerAddress(t *testing.T) {
 		{addr: "not an address", want: "must be host:port"},
 		{addr: "node-2", want: "must be host:port"},
 		{addr: "not an:7777", want: "invalid host"},
+		{addr: "bad\x00host:7777", want: "invalid host"},
+		{addr: "bad\thost:7777", want: "invalid host"},
+		{addr: "bad/host:7777", want: "invalid host"},
+		{addr: "-node:7777", want: "invalid host"},
+		{addr: "node-:7777", want: "invalid host"},
+		{addr: "node..svc:7777", want: "invalid host"},
+		{addr: ".:7777", want: "invalid host"},
+		{addr: "1234:7777", want: "invalid host"},
+		{addr: strings.Repeat("a", 64) + ":7777", want: "invalid host"},
+		{addr: strings.Repeat("a.", 127) + "ab:7777", want: "invalid host"},
 		{addr: "node-2:", want: "port must be a number between 1 and 65535"},
 		{addr: "node-2:0", want: "port must be a number between 1 and 65535"},
 		{addr: "node-2:65536", want: "port must be a number between 1 and 65535"},

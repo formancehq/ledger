@@ -2786,7 +2786,7 @@ ledgerctl cluster add-learner <node-id> <raft-address> <service-address> <instan
 
 **Behavior:**
 - The request is forwarded to the current leader if sent to a follower
-- `raft-address` and `service-address` must be `host:port` with a numeric port from 1 to 65535; ledgerctl and the server reject other values (`InvalidArgument`) before any membership change is proposed
+- `raft-address` and `service-address` must be `host:port`, where the host is empty, an IP literal, or a syntactically valid hostname, and the port is a number from 1 to 65535; ledgerctl and the server reject other values (`InvalidArgument`) before any membership change is proposed
 - `instance-id` is the 32-character hexadecimal encoding of the target node's 16-byte persisted `INSTANCE_ID` file
 - An existing member with replicated progress rejects a different identity with `FailedPrecondition`; retrying the same active identity returns `AlreadyExists`. With no replicated progress, a different identity refreshes the registration.
 - For stale progress, retire the old instance, remove its membership, then retry. If quorum is unavailable, use the leader-only `cluster remove-node --force` procedure in [Cluster operations](./cluster-operations.md), ensuring the retired instance cannot rejoin.
