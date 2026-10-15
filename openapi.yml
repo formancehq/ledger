@@ -1410,14 +1410,18 @@ paths:
             type: string
         - name: mode
           in: query
-          description: Inspection mode
+          description: Inspection mode. The deprecated distinct-values alias for distinctValues remains accepted. An explicitly empty or unsupported value returns 400.
           schema:
             type: string
             enum: [summary, distinctValues, facets]
             default: summary
         - name: pageSize
           in: query
-          description: Page size for distinctValues/facets modes
+          description: |
+            Page size for distinctValues/facets modes (defaults to 100 when
+            omitted). Any supplied value must be in 1..10000, including in
+            summary mode, which does not use pagination. Empty or invalid
+            values return 400.
           schema:
             type: integer
             minimum: 1
