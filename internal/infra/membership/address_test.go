@@ -18,6 +18,7 @@ func TestValidatePeerAddress(t *testing.T) {
 		":7777",
 		"localhost:7777",
 		"ledger_1.internal.:7777",
+		"node.:7777",
 		"[fe80::1%eth0]:7777",
 	} {
 		t.Run("valid "+addr, func(t *testing.T) {
@@ -40,6 +41,7 @@ func TestValidatePeerAddress(t *testing.T) {
 		{addr: "-node:7777", want: "invalid host"},
 		{addr: "node-:7777", want: "invalid host"},
 		{addr: "node..svc:7777", want: "invalid host"},
+		{addr: "node..:7777", want: "invalid host"},
 		{addr: ".:7777", want: "invalid host"},
 		{addr: "1234:7777", want: "invalid host"},
 		{addr: strings.Repeat("a", 64) + ":7777", want: "invalid host"},

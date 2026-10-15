@@ -108,5 +108,7 @@ func validHostname(host string) bool {
 		previous = c
 	}
 
-	return previous != '-' && labelLen <= maxLabelLen && nonNumeric
+	// previous == '.' means the final label is empty ("node.." once the
+	// optional trailing dot is removed).
+	return previous != '-' && previous != '.' && labelLen <= maxLabelLen && nonNumeric
 }
