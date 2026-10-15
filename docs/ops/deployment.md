@@ -98,6 +98,13 @@ Explicit zero retains each flag's documented sentinel meaning, including the
 1 MiB default for `--raft-max-size-per-msg=0`. Individual consumers may impose
 smaller limits.
 
+Enabled bloom filters require a finite false-positive rate strictly between
+`0` and `1`. Direct server flags normalize rate `0` to `0.01`; setting expected
+keys to `0` disables that filter and ignores its rate. Invalid enabled rates
+fail startup validation before filter construction. The operator rejects
+non-finite or out-of-range supplied rates; an omitted operator rate retains its
+default. See [bloom filter flags](cli.md#server-bloom-filter-flags).
+
 Example with environment variables:
 ```bash
 export NODE_ID=1

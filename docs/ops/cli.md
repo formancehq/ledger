@@ -4028,6 +4028,11 @@ contract](../technical/architecture/subsystems/admission/metadata-limits.md).
 
 Application-level bloom filters that avoid Pebble reads for keys known not to exist. Each attribute type has its own filter with independent sizing. Set `expected-keys` to `0` to disable a type.
 
+For an enabled filter, `fp-rate` must be finite and strictly between `0` and `1`.
+The CLI value `0` selects the default `0.01` before startup validation. Invalid
+enabled rates, including `NaN` and infinities, fail startup with the offending
+flag named before filter construction. A disabled type ignores its rate.
+
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--bloom-volumes-expected-keys` | uint | `0` | Expected unique volume keys (0 = disabled by default) |

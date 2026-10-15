@@ -20,6 +20,24 @@ PreparedQuery, Index
 
 Adding a new attribute kind requires adding both a coverage-gate entry and a bloom-filter slot (`filterSnapshot.filterForAttrType` dispatch in `bloom.go:244` and the `bloomTypes()` descriptor at `bloom.go:633`). The two pieces were historically forgotten in isolation; landing them together is the convention now (the wire-up of `PreparedQuery` in `bloom.go:237, 488` is the most recent example — added by EN-1321).
 
+## Startup rate validation
+
+Startup validation prevents a direct server rate from reaching the panic-prone filter
+constructor. `bootstrap.Config.Validate` checks all twelve enabled types before
+Fx constructs `NewFilterSet`: each rate must be finite and strictly in `(0,1)`.
+CLI loading first maps a zero rate to `0.01`; `expectedKeys=0` disables the type
+and its rate is unused. Invalid enabled rates identify the offending CLI flag.
+The operator validates supplied rates with the same probability predicate,
+including rejection of `NaN` and infinities; its empty rate retains defaulting,
+and an explicit zero remains invalid.
+
+This is a startup boundary on desired configuration. It does not change
+replicated configuration, persistence, or FSM apply. Validation examines a fixed
+set of twelve descriptors without allocating filters or reading storage. The
+server regression exercises command flags through loading and public config
+validation, then constructs filters for accepted configurations. The operator
+regression covers its existing spec validator independently.
+
 ## Structure — blocked filter
 
 Each filter is a **blocked** bloom filter (`internal/infra/bloom/filter.go:72-98`). Memory is laid out as fixed-size 512-bit blocks (one cache-line each), with `k` hash functions chosen via the standard `c · ln(2)` formula against the target false-positive rate.
