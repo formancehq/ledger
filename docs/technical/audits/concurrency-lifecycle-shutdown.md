@@ -37,6 +37,28 @@ unrelated workers. Likewise a leadership term alone is not a complete resource
 identity when configuration, ledger incarnation or pending version can change
 within the term.
 
+## Node hook deadline ownership
+
+Once the bootstrap node stop hook is entered, it calls `Node.Stop` with the
+original stop context, joins `Run` independently of that context and of the
+Stop result, then cancels the run context and returns any original Stop error.
+The context must stay live while a blocked commit drains. Leadership transfer
+still precedes the persistent stop request; direct `Node.Stop` callers retain
+their bounded wait. A permanently stalled drain can hold the entered hook.
+
+Use deterministic hook barriers for cancellation during Stop, deadline expiry,
+an already-expired context, an ordinary Stop error and early successful Stop.
+Assert that hook return and run-context cancellation follow actual Run exit.
+Complement that oracle with a real-node blocked post-commit notification: the
+proposal remains pending until release, then its durable result and Run join
+must complete. Preserve successful drain and failed-start regression triggers.
+
+Check real Fx execution separately: its outer `App.Stop` may return before the
+hook joins and its expired context skips remaining dependency stop hooks. Prove
+normal dependency release after Run exit; explicitly release skipped resources
+only after joining in the timeout fixture. Do not infer process survival or
+complete dependency cleanup from the hook's join guarantee.
+
 ## Evidence required for a finding
 
 For each hypothesis, establish the following from the audited SHA:
