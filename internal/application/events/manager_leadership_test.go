@@ -40,7 +40,7 @@ func TestManager_StopFencesLaterLeadershipGain(t *testing.T) {
 	m := &Manager{
 		notifications: signal.NewNotifications(),
 		emitters:      make(map[string]*managedSink),
-		retries:       make(map[string]struct{}),
+		retries:       make(map[string]*startupRetry),
 	}
 	m.Start()
 	m.Stop()
@@ -72,7 +72,7 @@ func TestManager_SupersededLossCannotTearDownCurrentGeneration(t *testing.T) {
 	m := &Manager{
 		notifications: signal.NewNotifications(),
 		emitters:      map[string]*managedSink{"current": nil},
-		retries:       make(map[string]struct{}),
+		retries:       make(map[string]*startupRetry),
 	}
 
 	m.OnLeadershipChange(false)

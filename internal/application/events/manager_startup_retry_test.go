@@ -720,3 +720,145 @@ func TestManager_UnrelatedReconcileHonorsStartupBackoff(t *testing.T) {
 	require.Equal(t, int64(1), attempts.Load(),
 		"a reconcile triggered by another sink must not retry a sink whose backoff is pending")
 }
+
+// manualStartupRetryTimers replaces real startup retry timers so a test fires
+// each scheduled retry explicitly, in any order.
+type manualStartupRetryTimers struct {
+	mu    sync.Mutex
+	fires []chan time.Time
+}
+
+func (s *manualStartupRetryTimers) start(time.Duration) (<-chan time.Time, func()) {
+	fire := make(chan time.Time, 1)
+	s.mu.Lock()
+	s.fires = append(s.fires, fire)
+	s.mu.Unlock()
+
+	return fire, func() {}
+}
+
+func (s *manualStartupRetryTimers) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return len(s.fires)
+}
+
+func (s *manualStartupRetryTimers) fire(index int) {
+	s.mu.Lock()
+	fire := s.fires[index]
+	s.mu.Unlock()
+	fire <- time.Now()
+}
+
+func currentStartupRetry(m *Manager, name string) *startupRetry {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.retries[name]
+}
+
+// requireObsoleteStartupRetryIgnored fires an invalidated timer and checks that
+// it neither consumes the current retry nor triggers an early attempt. It then
+// fires the current timer to prove the current retry still owns the next attempt.
+func requireObsoleteStartupRetryIgnored(t *testing.T, m *Manager, timers *manualStartupRetryTimers,
+	attempts *atomic.Int64, name string, obsolete, current int,
+) {
+	t.Helper()
+	token := currentStartupRetry(m, name)
+	require.NotNil(t, token)
+	before := attempts.Load()
+
+	timers.fire(obsolete)
+	require.Never(t, func() bool {
+		return attempts.Load() != before || currentStartupRetry(m, name) != token
+	}, 300*time.Millisecond, 10*time.Millisecond,
+		"an obsolete startup retry timer must not consume the current retry or start the sink early")
+
+	timers.fire(current)
+	require.Eventually(t, func() bool { return attempts.Load() == before+1 }, 3*time.Second, 10*time.Millisecond,
+		"the current startup retry timer must trigger the next attempt")
+}
+
+func failingNatsSinkFactory(t *testing.T, attempts *atomic.Int64) {
+	t.Helper()
+	previous, existed := sinkFactories["nats"]
+	t.Cleanup(func() {
+		if existed {
+			sinkFactories["nats"] = previous
+
+			return
+		}
+
+		delete(sinkFactories, "nats")
+	})
+	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
+		attempts.Add(1)
+
+		return nil, errors.New("unsupported events sink type: nats (not compiled in this build)")
+	}
+}
+
+func TestManager_ConfigChangeInvalidatesObsoleteStartupRetry(t *testing.T) {
+	// This test temporarily replaces a package-global factory. Keep it
+	// sequential so parallel package tests remain paused until cleanup restores
+	// the registry.
+	var attempts atomic.Int64
+	failingNatsSinkFactory(t, &attempts)
+
+	builder, store := newTestBuilder(t)
+	attrs := attributes.New()
+	config := &commonpb.SinkConfig{Name: "obsolete-retry-config-change", Type: &commonpb.SinkConfig_Nats{
+		Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
+	}}
+	saveManagedSinkConfig(t, attrs, store, config)
+
+	timers := &manualStartupRetryTimers{}
+	m := NewManager(store, attrs, &startupStatusProposer{store: store}, builder, logging.Testing(), signal.NewNotifications())
+	m.newStartupRetryTimer = timers.start
+	m.Start()
+	t.Cleanup(m.Stop)
+	m.OnLeadershipChange(true)
+	require.Eventually(t, func() bool { return attempts.Load() == 1 && timers.count() == 1 },
+		3*time.Second, 10*time.Millisecond, "the first startup failure must schedule a retry")
+
+	changed := config.CloneVT()
+	changed.GetNats().Topic = "ledger.events.changed"
+	saveManagedSinkConfig(t, attrs, store, changed)
+	m.notifications.NotifyConfigChanged()
+	require.Eventually(t, func() bool { return attempts.Load() == 2 && timers.count() == 2 },
+		3*time.Second, 10*time.Millisecond, "the changed configuration must fail and schedule its own retry")
+
+	requireObsoleteStartupRetryIgnored(t, m, timers, &attempts, config.GetName(), 0, 1)
+}
+
+func TestManager_LeadershipChangeInvalidatesObsoleteStartupRetry(t *testing.T) {
+	// This test temporarily replaces a package-global factory. Keep it
+	// sequential so parallel package tests remain paused until cleanup restores
+	// the registry.
+	var attempts atomic.Int64
+	failingNatsSinkFactory(t, &attempts)
+
+	builder, store := newTestBuilder(t)
+	attrs := attributes.New()
+	config := &commonpb.SinkConfig{Name: "obsolete-retry-leadership-change", Type: &commonpb.SinkConfig_Nats{
+		Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
+	}}
+	saveManagedSinkConfig(t, attrs, store, config)
+
+	timers := &manualStartupRetryTimers{}
+	m := NewManager(store, attrs, &startupStatusProposer{store: store}, builder, logging.Testing(), signal.NewNotifications())
+	m.newStartupRetryTimer = timers.start
+	m.Start()
+	t.Cleanup(m.Stop)
+	m.OnLeadershipChange(true)
+	require.Eventually(t, func() bool { return attempts.Load() == 1 && timers.count() == 1 },
+		3*time.Second, 10*time.Millisecond, "the first startup failure must schedule a retry")
+
+	m.OnLeadershipChange(false)
+	m.OnLeadershipChange(true)
+	require.Eventually(t, func() bool { return attempts.Load() == 2 && timers.count() == 2 },
+		3*time.Second, 10*time.Millisecond, "the new leadership term must retry at once and schedule its own retry")
+
+	requireObsoleteStartupRetryIgnored(t, m, timers, &attempts, config.GetName(), 0, 1)
+}

@@ -29,6 +29,23 @@ type sinkStartupFailures struct {
 	count  int
 }
 
+// startupRetry is the token of one scheduled startup retry. Its timer callback
+// acts only while the manager still holds this exact token, so a timer that
+// was replaced or invalidated cannot consume a newer retry.
+type startupRetry struct {
+	cancel chan struct{}
+}
+
+// startupRetryTimer starts the wait of one startup retry. It returns the
+// channel that fires when the wait ends and a function that releases the timer.
+type startupRetryTimer func(time.Duration) (<-chan time.Time, func())
+
+func newRealStartupRetryTimer(delay time.Duration) (<-chan time.Time, func()) {
+	timer := time.NewTimer(delay)
+
+	return timer.C, func() { timer.Stop() }
+}
+
 // managedSink holds an emitter and its sink for a named sink configuration.
 type managedSink struct {
 	emitter *Emitter
@@ -49,7 +66,7 @@ type Manager struct {
 
 	mu                  sync.Mutex
 	emitters            map[string]*managedSink
-	retries             map[string]struct{}
+	retries             map[string]*startupRetry
 	startupFailures     map[string]*sinkStartupFailures
 	resourcesGeneration uint64
 
@@ -66,6 +83,9 @@ type Manager struct {
 	// startupRetryDelay returns the wait before the next startup attempt
 	// after the given number of consecutive failures. Tests may replace it.
 	startupRetryDelay func(consecutiveFails int) time.Duration
+	// newStartupRetryTimer starts the wait of a startup retry. Tests may
+	// replace it to fire retries deterministically.
+	newStartupRetryTimer startupRetryTimer
 }
 
 // NewManager creates a new event Manager.
@@ -78,10 +98,11 @@ func NewManager(store *dal.Store, attrs *attributes.Attributes, proposer Propose
 		logger:         logger.WithFields(map[string]any{"cmp": "event-manager"}),
 		notifications:  notifications,
 		emitters:       make(map[string]*managedSink),
-		retries:        make(map[string]struct{}),
+		retries:        make(map[string]*startupRetry),
 
-		startupFailures:   make(map[string]*sinkStartupFailures),
-		startupRetryDelay: nextBackoff,
+		startupFailures:      make(map[string]*sinkStartupFailures),
+		startupRetryDelay:    nextBackoff,
+		newStartupRetryTimer: newRealStartupRetryTimer,
 	}
 }
 
@@ -211,8 +232,12 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 	if m.resourcesGeneration != generation {
 		m.teardown()
 		m.resourcesGeneration = generation
-		// A new leadership term starts with a fresh startup backoff.
+		// A new leadership term starts with a fresh startup backoff. Cancel
+		// the previous term's retry timers so they cannot fire into it.
 		clear(m.startupFailures)
+		for name := range m.retries {
+			m.cancelStartupRetry(name)
+		}
 	}
 
 	if stopped || !isLeader {
@@ -288,15 +313,20 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 			}
 
 			m.emitters[name] = ms
-			delete(m.retries, name)
+			m.cancelStartupRetry(name)
 			delete(m.startupFailures, name)
 		}
 	}
 
-	// Forget the backoff of failed sinks that are no longer configured.
+	// Forget the backoff and retry of failed sinks that are no longer configured.
 	for name := range m.startupFailures {
 		if _, stillDesired := desired[name]; !stillDesired {
 			delete(m.startupFailures, name)
+		}
+	}
+	for name := range m.retries {
+		if _, stillDesired := desired[name]; !stillDesired {
+			m.cancelStartupRetry(name)
 		}
 	}
 
@@ -515,29 +545,33 @@ func (m *Manager) scheduleStartupRetry(sc *commonpb.SinkConfig) {
 		// A changed configuration must not wait for the previous backoff.
 		failures = &sinkStartupFailures{config: sc}
 		m.startupFailures[name] = failures
-		delete(m.retries, name)
+		m.cancelStartupRetry(name)
 	}
 	failures.count++
 	if _, exists := m.retries[name]; exists {
 		return
 	}
 
-	m.retries[name] = struct{}{}
+	retry := &startupRetry{cancel: make(chan struct{})}
+	m.retries[name] = retry
 	stopCh := m.w.StopCh()
-	delay := m.startupRetryDelay(failures.count)
+	fired, release := m.newStartupRetryTimer(m.startupRetryDelay(failures.count))
 
 	go func() {
-		timer := time.NewTimer(delay)
-		defer timer.Stop()
+		defer release()
 
 		select {
 		case <-stopCh:
 			return
-		case <-timer.C:
+		case <-retry.cancel:
+			return
+		case <-fired:
 		}
 
 		m.mu.Lock()
-		if _, pending := m.retries[name]; !pending {
+		if m.retries[name] != retry {
+			// A replacement, removal, success, or leadership change
+			// invalidated this retry after its timer fired.
 			m.mu.Unlock()
 
 			return
@@ -551,6 +585,17 @@ func (m *Manager) scheduleStartupRetry(sc *commonpb.SinkConfig) {
 			m.notifications.NotifyConfigChanged()
 		}
 	}()
+}
+
+// cancelStartupRetry invalidates the pending startup retry of a sink and stops
+// its timer goroutine. Must be called under lock.
+func (m *Manager) cancelStartupRetry(name string) {
+	retry, pending := m.retries[name]
+	if !pending {
+		return
+	}
+	close(retry.cancel)
+	delete(m.retries, name)
 }
 
 // stopSink stops an emitter and closes its sink.

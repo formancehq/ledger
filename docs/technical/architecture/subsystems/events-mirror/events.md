@@ -294,7 +294,11 @@ A sink type that is not compiled into the build is therefore retried at most
 once a minute, not every second. Constructor failures therefore recover
 without another configuration write or leadership transition when an external
 dependency becomes available. Retry wake-ups are deduplicated per sink and are
-canceled with the Manager lifecycle; followers never start a sink. Constructors
+canceled with the Manager lifecycle; followers never start a sink. Each scheduled
+retry holds a unique token. A changed or removed configuration, a successful
+start, and a new leadership term cancel the pending retry, and a timer acts only
+while its token is still the pending retry of the sink, so an obsolete timer
+cannot consume a newer retry or trigger an early attempt. Constructors
 must release resources acquired by a failed attempt because the Manager may
 retry them repeatedly.
 
