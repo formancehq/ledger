@@ -23,6 +23,7 @@ type constructorLifecycleSink struct{ closes atomic.Int64 }
 func (*constructorLifecycleSink) Publish(context.Context, []*eventspb.Event) error { return nil }
 func (s *constructorLifecycleSink) Close() error {
 	s.closes.Add(1)
+
 	return nil
 }
 
@@ -78,6 +79,7 @@ func TestManager_ClosesStaleConstructorBeforeEmitterStartup(t *testing.T) {
 			m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
 			m.readSinkCursor = func(dal.PebbleGetter, string) (uint64, error) {
 				cursorReads.Add(1)
+
 				return 0, nil
 			}
 			m.Start()
@@ -98,6 +100,7 @@ func TestManager_ClosesStaleConstructorBeforeEmitterStartup(t *testing.T) {
 				go func() { m.Stop(); close(stopped) }()
 				require.Eventually(t, func() bool {
 					_, _, terminal := m.leadershipSnapshot()
+
 					return terminal
 				}, time.Second, time.Millisecond)
 			} else {
