@@ -3,6 +3,8 @@ package backup
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +41,51 @@ type CheckpointManifest struct {
 type CheckpointFile struct {
 	Size int64  `json:"size"`
 	Key  string `json:"key"`
+}
+
+// ErrCheckpointFileCorrupted is returned by CheckpointFile.CopyVerified when
+// the downloaded bytes do not match the manifest entry.
+var ErrCheckpointFileCorrupted = errors.New("checkpoint file does not match its manifest entry")
+
+// CopyVerified streams src into dst and checks the bytes against the entry:
+// exactly Size bytes whose sha256 equals the hash CheckpointFileKey embedded in
+// Key. It reads at most Size+1 bytes, so an oversized object is rejected
+// without being copied in full. On a mismatch dst holds partial or wrong bytes;
+// the caller must discard it. It returns the number of bytes written to dst.
+//
+// This detects an object that was damaged or replaced on storage. It does not
+// authenticate the manifest itself: a manifest rewritten together with its
+// objects passes.
+func (cf CheckpointFile) CopyVerified(dst io.Writer, src io.Reader) (int64, error) {
+	want, ok := checkpointKeyHash(cf.Key)
+	if !ok {
+		return 0, fmt.Errorf("%w: key %q carries no sha256", ErrCheckpointFileCorrupted, cf.Key)
+	}
+
+	if cf.Size < 0 {
+		return 0, fmt.Errorf("%w: negative size %d", ErrCheckpointFileCorrupted, cf.Size)
+	}
+
+	h := sha256.New()
+
+	n, err := io.Copy(io.MultiWriter(dst, h), io.LimitReader(src, cf.Size+1))
+	if err != nil {
+		return n, err
+	}
+
+	if n > cf.Size {
+		return n, fmt.Errorf("%w: size mismatch: object is larger than %d bytes", ErrCheckpointFileCorrupted, cf.Size)
+	}
+
+	if n < cf.Size {
+		return n, fmt.Errorf("%w: size mismatch: got %d bytes, want %d", ErrCheckpointFileCorrupted, n, cf.Size)
+	}
+
+	if got := hex.EncodeToString(h.Sum(nil)); got != want {
+		return n, fmt.Errorf("%w: sha256 mismatch: got %s, want %s", ErrCheckpointFileCorrupted, got, want)
+	}
+
+	return n, nil
 }
 
 // ExportSegment describes a single incremental export segment stored on S3.
