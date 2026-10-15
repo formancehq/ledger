@@ -520,8 +520,8 @@ the leader after a failure.
   locally, and only then read Pebble. See
   [Linearizable Reads via ReadIndex](#linearizable-reads-via-readindex).
 - Cluster bootstrap, learner registration, automatic voter promotion, and the
-  safeguards preventing a syncing node from becoming leader are detailed in
-  [Cluster Lifecycle](../../../../ops/cluster-operations.md).
+  gates an out-of-sync node keeps on serving while it may still vote and lead
+  are detailed in [Cluster Lifecycle](../../../../ops/cluster-operations.md).
 
 ## Snapshots
 
