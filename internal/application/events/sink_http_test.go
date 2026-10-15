@@ -223,9 +223,11 @@ func TestHTTPSinkRedirectFailureSanitizesActualURL(t *testing.T) {
 	err = sink.Publish(t.Context(), []*eventspb.Event{{LogSequence: 1}})
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), "EXAMPLE_CREDENTIAL")
-	require.Contains(t, err.Error(), "/next?")
-	require.Contains(t, err.Error(), "EOF")
-	require.ErrorIs(t, err, io.EOF)
+	// The redirect is not followed: the failing /next handler is never reached.
+	require.Contains(t, err.Error(), "returned redirect 307")
+	require.Contains(t, err.Error(), "/next")
+	require.NotContains(t, err.Error(), "/next?")
+	require.NotErrorIs(t, err, io.EOF)
 }
 
 func TestHTTPSinkMalformedURLDiagnosticIsSafe(t *testing.T) {
