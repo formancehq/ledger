@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"40"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"41"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 40:
+leader. For example, with a schema implementing revision 41:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 40' \
+grpcurl -plaintext -H 'ledger-protocol-version: 41' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -606,3 +606,15 @@ policy retry the request. A measured disk block still returns
 block retains its existing response. Admission checks the gate before proposing
 an order, so a retry after `Unavailable` cannot duplicate a committed write.
 This status change requires revision 40 clients and servers together.
+
+## Incomplete backup storage configuration (revision 41)
+
+`ClusterService.Backup` and `ClusterService.IncrementalBackup` now return
+`InvalidArgument` when the storage provider is incomplete: an S3 provider
+without a bucket, or an Azure provider without an account name or container.
+The message names the missing field. Revision 40 returned the sanitized
+`Unknown` server error for the same requests. The `.proto` text is unchanged,
+but a revision-40 client sees a different status code for an identical
+request, so clients and servers must use revision 41 together. Other storage
+construction failures keep the sanitized server-error path. See
+[backup storage validation](../backup/README.md#storage-validation).
