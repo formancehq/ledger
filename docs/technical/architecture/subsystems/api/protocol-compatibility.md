@@ -373,6 +373,35 @@ or Raft message does not automatically change the service protocol; inspect any
 shared types exposed through the service API. See
 [protobuf contributor rules](../../../contributing/protobuf.md).
 
+### Automated enforcement
+
+`scripts/checkprotocolversion --base <commit>` enforces the mechanical part of
+this rule. CI runs it on every pull request and merge-queue entry against the
+target tip; `agent-check-pr` runs it when `misc/proto/**` or
+`pkg/grpcprotocol/**` changes.
+
+1. The check reads `Version` at the base and in the worktree. The value must
+   stay the same or increase by exactly one. A decrease or a larger jump fails,
+   including in a revert: a revert that restores an older contract consumes a
+   new revision so one number never names two contracts.
+2. The check runs `buf breaking` between the base and the worktree with the
+   rules in `misc/proto/buf.yaml` (`WIRE`, `SERVICE_NO_DELETE`,
+   `RPC_NO_DELETE`). `buf` is used only for this classification; code
+   generation stays on `protoc`.
+3. The check keeps a finding only when its innermost enclosing declaration is
+   a gated service (`BucketService`, `ClusterService`, `RestoreService`) or a
+   message or enum transitively reachable from one of their RPCs. A finding it
+   cannot attribute to a declaration counts when its file declares a gated
+   type. Raft-only and persisted-only messages are therefore not counted.
+4. At least one kept finding without a `+1` fails the check.
+
+The check does not detect semantic changes that keep the `.proto` text
+unchanged; those remain the author's and reviewer's classification. A `+1`
+without a detected wire break passes with a note asking the PR to state the
+semantic change. When a gated service is added or renamed, update
+`gatedServices()` in the same PR: the check fails if a listed service no
+longer exists.
+
 The gate is a transport admission check. Its metadata and revision are not
 persisted, included in audited business intent, or consulted during Raft apply.
 It introduces no storage migration or incremental-restore state. It does not

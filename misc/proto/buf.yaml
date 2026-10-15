@@ -1,0 +1,13 @@
+# Used only by scripts/checkprotocolversion to classify service contract
+# changes. Code generation stays on protoc (see `just generate-proto`).
+version: v2
+breaking:
+  # WIRE flags changes that make an existing peer decode bytes differently
+  # (deleted or renumbered fields, incompatible type changes). Ledger v3
+  # renumbers fields without reservations, so every such change is real.
+  # Removed services and RPCs are added because a peer still calling them
+  # breaks even though the remaining bytes decode the same way.
+  use:
+    - WIRE
+    - SERVICE_NO_DELETE
+    - RPC_NO_DELETE

@@ -68,7 +68,9 @@ Renumbering exposed fields is a breaking change even if the generated code still
 compiles. Internal persisted/Raft-only changes require an impact assessment of
 shared service types rather than an automatic service revision bump. See the
 [service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
-for the gate, client obligations, and review criteria. This does not change the
+for the gate, client obligations, and review criteria. CI enforces the wire part
+with `go run ./scripts/checkprotocolversion --base <target-sha>`; run it locally
+before pushing a `.proto` change. This does not change the
 unreleased-v3 rule: remove obsolete fields and realign their numbers; do not add
 migrations, reserved fields, or support for older v3 formats.
 
