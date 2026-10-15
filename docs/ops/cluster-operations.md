@@ -201,7 +201,7 @@ After joining, a node may need to catch up with the cluster's state. The synchro
 | `statusNormal` | 0 | Normal operation: committed entries applied directly to FSM |
 | `statusSyncing` | 1 | Checkpoint fetch in progress: entries spooled |
 | `statusSnapshotting` | 2 | Local snapshot creation in progress: entries spooled |
-| `statusOutOfSync` | 3 | Store behind FSM snapshot: waiting for leader discovery |
+| `statusOutOfSync` | 3 | Store behind the WAL snapshot: waiting for the next donor attempt |
 
 ### State Transitions
 
@@ -222,11 +222,12 @@ After joining, a node may need to catch up with the cluster's state. The synchro
            └─────────────────┘               │ resume      │   │
                                              └─────────────┘   │
                                                     ▲           │
-  startup ──►┌──────────────┐  leader    ┌─────────────────┐   │
-  (store     │statusOutOfSync│──found───►│  statusSyncing   │──┘
+  startup ──►┌──────────────┐  donor     ┌─────────────────┐   │
+  (store     │statusOutOfSync│──picked──►│  statusSyncing   │──┘
    behind)   └──────────────┘            └────────┬────────┘
                     ▲                             │
-                    │         peer unavailable     │
+                    │   donor unavailable or       │
+                    │   resynchronizing itself     │
                     └─────────────────────────────┘
 ```
 
@@ -239,23 +240,23 @@ When the node starts, `NewNode` checks whether the data store is up to date with
 
 ### Out-of-Sync State
 
-In `statusOutOfSync`, the node waits for a leader to be discovered. Tick processing is **suppressed** to prevent spurious elections. When a `SoftState` with a non-zero leader arrives, the node transitions to `statusSyncing` and begins the checkpoint fetch.
+In `statusOutOfSync`, the node keeps ticking: its Raft log is complete, so it votes and may campaign on it (see [Elections While Out of Sync](#elections-while-out-of-sync)). On the next Ready it picks a checkpoint donor, the known leader first, then the other voters in turn, never itself, transitions to `statusSyncing` and begins the checkpoint fetch. See [Donor Selection](../technical/architecture/data-flows.md#donor-selection).
 
 ### Syncing State (Checkpoint Fetch)
 
-The synchronization fetches a Pebble checkpoint from the leader:
+The synchronization fetches a Pebble checkpoint from a donor:
 
 ```
 statusOutOfSync
     │
-    │  SoftState reveals leader
+    │  Ready picks a donor (leader first)
     ▼
 statusSyncing
     │
     │  Background task starts:
     │
-    │  1. snapshotFetcher.GetForPeer(leaderID)
-    │     → gRPC-based fetcher for the leader
+    │  1. snapshotFetcher.GetForPeer(donorID)
+    │     → gRPC-based fetcher for the donor
     │
     │  2. fsm.SynchronizeWithLeader(fetcher)
     │     → Compare lastCheckpointID vs currentCheckpointID
@@ -273,10 +274,10 @@ statusNormal
 
 While in `statusSyncing`:
 - All new committed Raft entries are **spooled** (buffered), not applied to the FSM
-- Ticks are **suppressed** (no elections, no heartbeats)
+- Ticks keep firing: the node votes and may campaign on its log, while ReadIndex refuses and admission waits for `leaderReady`
 - `MsgTimeoutNow` messages are **rejected** (prevents forced leadership transfer to this node)
 
-If the leader is unreachable (`ErrNotAvailable`), the node falls back to `statusOutOfSync` and retries when a new leader is found.
+If the donor is unreachable, or refuses with `FailedPrecondition` because it is resynchronizing itself, the node falls back to `statusOutOfSync` and tries the next donor.
 
 ### Entry Spooling During Sync
 
@@ -311,15 +312,19 @@ When the background task completes:
    - Sets status to `statusNormal`
    - Prunes applied spool entries
 
-### Protection Against Premature Leadership
+### Elections While Out of Sync
 
-Two mechanisms prevent a syncing node from becoming leader prematurely:
+A node whose store is behind still holds a complete, durable Raft log, and elections are decided on the log alone. The node keeps ticking in `statusSyncing` and `statusOutOfSync`: it times out, votes, may campaign, and may win. Withholding its ticks would leave the cluster leaderless whenever the voters holding the newest log are the resynchronizing ones, since no candidate with an older log can collect their votes. Only `statusInstallingSnapshot`, the short window in which the WAL snapshot is rewritten, pauses the clock.
 
-1. **Tick suppression**: During `statusSyncing` and `statusOutOfSync`, `rawNode.Tick()` is not called. Without ticks, the node cannot trigger election timeouts and will never start an election.
+What needs the store waits for the store instead:
 
-2. **MsgTimeoutNow rejection**: If a leader tries to transfer leadership to a syncing node via `TransferLeadership` (which sends `MsgTimeoutNow` to force an immediate election), the message is silently dropped.
+1. **Write admission** waits for `leaderReady`, which completes only once the FSM has applied the new leader's no-op entry. On an out-of-sync leader that happens after its checkpoint sync and spool replay.
+2. **ReadIndex** refuses while the node is syncing or out of sync.
+3. **Membership changes** (`AddLearner`, `JoinAsLearner`, `PromoteLearner`, `RemoveNode`, automatic promotion) wait for the same readiness, so removed-member tombstones and instance identities are read from a current store.
+4. **Event sinks and mirrors** start on `LeaderReadyEvent`.
+5. **Leadership transfer** to such a node is still refused: the `MsgTimeoutNow` that `TransferLeadership` sends is dropped outside `statusNormal`. An operator cannot hand leadership to a node that is still restoring its checkpoint; it can only win an election on its own log.
 
-These protections ensure a node that is still restoring its Pebble checkpoint will not become leader, even if it appears active from Raft's perspective.
+An out-of-sync leader therefore serves nothing until its store is current, and it fetches its checkpoint from another voter (see [Donor Selection](../technical/architecture/data-flows.md#donor-selection)).
 
 ## Automatic Learner Promotion
 
