@@ -40,18 +40,13 @@ runs:
           ${{ steps.go-env.outputs.GOMODCACHE }}
           ~/.cache/golangci-lint
           ${{ inputs.go-remote-cache != 'true' && steps.go-env.outputs.GOCACHE || '' }}
-    # Namespace keeps the last commit per node and never merges commits, so a
-    # job that only needs a few modules would drop the modules other jobs need.
-    # Downloading every module here makes each commit carry the full set; on a
-    # warm cache this is a no-op. Must run after the cache mount above.
-    - name: Download Go modules
-      shell: bash
-      run: nix develop .#ci --command just go-mod-download
     # Go build outputs differ per job (build tags, -race, -cover, GOOS), and the
     # cache volume keeps only the last save per node, so most of them are lost.
     # gocacheprog shares outputs across jobs and nodes through Namespace's
     # remote cache. Its local files stay in RUNNER_TEMP, off the volume, so jobs
-    # using it do not change what other jobs fork from the volume.
+    # using it do not change what other jobs fork from the volume. Enabled
+    # before the module download so its controller-gen build is served from the
+    # remote cache instead of an empty local GOCACHE.
     - name: Enable remote Go build cache
       if: inputs.go-remote-cache == 'true'
       shell: bash
@@ -70,3 +65,10 @@ runs:
         echo "${GOCACHEPROG_LINUX_AMD64_SHA256}  $dir/$archive" | sha256sum --check --strict
         tar -xzf "$dir/$archive" -C "$dir/bin" gocacheprog
         echo "GOCACHEPROG=$dir/bin/gocacheprog -tag ledger -cache-dir $dir/cache" >> "$GITHUB_ENV"
+    # Namespace keeps the last commit per node and never merges commits, so a
+    # job that only needs a few modules would drop the modules other jobs need.
+    # Downloading every module here makes each commit carry the full set; on a
+    # warm cache this is a no-op. Must run after the cache mount above.
+    - name: Download Go modules
+      shell: bash
+      run: nix develop .#ci --command just go-mod-download
