@@ -79,7 +79,7 @@ obsolete fields and realign their numbers; do not add migrations, reserved
 fields, or support for older v3 formats.
 
 1. Edit the `.proto` file in `misc/proto/`
-2. **Realign field numbers sequentially** when adding/removing fields (no gaps, remove obsolete `reserved` entries)
+2. **Realign field numbers sequentially** when adding/removing fields (no gaps, remove obsolete `reserved` entries). `just lint-proto` enforces this; see [Convention checks](#convention-checks)
 3. **Audit the hand-rolled wire sites** before renumbering — see below
 4. Run `just generate-proto` **immediately**
 5. Update Go code that uses the generated types
@@ -110,6 +110,23 @@ The two known sites behave differently, and only one of them is self-healing:
 `CreatedTransaction`, `RevertedTransaction`, `Transaction`, `TouchedVolume` and `Posting`. If you
 renumber any field of those messages, update the corresponding `case num == N` arm in the same
 commit.
+
+## Convention checks
+
+`just lint-proto` (`go run ./scripts/lintproto`) runs `buf lint` on `misc/proto/`
+with the check plugin in `tools/buf-plugin-ledger`. It is part of
+`just pre-commit`, so the required `Dirty` CI job runs it.
+
+| Rule | Requirement |
+|---|---|
+| `LEDGER_NO_RESERVED` | No `reserved` numbers or names in messages or enums |
+| `LEDGER_FIELD_NUMBERS_SEQUENTIAL` | Message field numbers are exactly `1..N`, oneof members included; map entries are exempt |
+| `LEDGER_ENUM_NUMBERS_SEQUENTIAL` | Enum value numbers are exactly `0..N-1`, without aliases |
+
+Imported files such as `google/protobuf/descriptor.proto` are not checked. To
+add a rule, add a `check.RuleSpec` to the plugin with a fixture-based test, list
+its ID under `lint.use` in `misc/proto/buf.yaml`, and confirm `just lint-proto`
+passes on the current tree.
 
 ## vtprotobuf (Fast Serialization)
 

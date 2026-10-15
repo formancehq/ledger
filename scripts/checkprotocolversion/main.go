@@ -31,6 +31,8 @@ import (
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/bufplugin"
 )
 
 const (
@@ -55,6 +57,10 @@ type checker struct {
 	base     string
 	buf      string
 	services []string
+	// pluginRoot is the repository providing tools/buf-plugin-ledger, which
+	// misc/proto/buf.yaml requires on PATH for every buf command.
+	pluginRoot string
+	env        []string
 }
 
 type bufFinding struct {
@@ -96,6 +102,7 @@ func main() {
 		buf:      "buf",
 		services: gatedServices(),
 	}
+	c.pluginRoot = c.repoRoot
 
 	res, err := c.run()
 	if err != nil {
@@ -165,6 +172,10 @@ func (c checker) run() (result, error) {
 		return res, fmt.Errorf("creating temporary directory: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(tmp) }() // best-effort cleanup of scratch data
+
+	if c.env, err = bufplugin.Environment(c.pluginRoot, filepath.Join(tmp, "bin")); err != nil {
+		return res, err
+	}
 
 	baseTree := filepath.Join(tmp, "base")
 	if err := c.extractBaseProtos(baseTree); err != nil {
@@ -326,6 +337,7 @@ func copyConfig(from, to string) error {
 func (c checker) buildImage(dir, out string) (*descriptorpb.FileDescriptorSet, error) {
 	cmd := exec.Command(c.buf, "build", dir, "-o", out)
 	cmd.Dir = c.repoRoot
+	cmd.Env = c.env
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("buf build %s: %w\n%s", dir, err, output)
 	}
@@ -345,6 +357,7 @@ func (c checker) buildImage(dir, out string) (*descriptorpb.FileDescriptorSet, e
 func (c checker) breaking(againstDir string) ([]bufFinding, error) {
 	cmd := exec.Command(c.buf, "breaking", protoDir, "--against", againstDir, "--error-format", "json")
 	cmd.Dir = c.repoRoot
+	cmd.Env = c.env
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

@@ -1,6 +1,6 @@
 set dotenv-load
 
-pre-commit: fuzz-inventory-check generate generate-proto test-rpcauth-generator operator-generate test-dashboards tidy lint
+pre-commit: fuzz-inventory-check generate generate-proto test-rpcauth-generator test-buf-plugin lint-proto operator-generate test-dashboards tidy lint
 pc: pre-commit
 
 # Regenerate the Grafana dashboards (otel + prom variants) from Jsonnet
@@ -366,6 +366,14 @@ generate-proto:
 
 test-rpcauth-generator:
     go -C tools/protoc-gen-rpcauth test ./...
+
+# Ledger protobuf conventions (no reserved, sequential numbers) via the buf
+# check plugin in tools/buf-plugin-ledger.
+lint-proto:
+    go run ./scripts/lintproto
+
+test-buf-plugin:
+    go -C tools/buf-plugin-ledger test ./...
 
 # --- Operator (Kubernetes) ---
 

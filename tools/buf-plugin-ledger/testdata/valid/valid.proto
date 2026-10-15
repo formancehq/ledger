@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package valid;
+
+message Order {
+  string id = 1;
+  oneof kind {
+    string script = 2;
+    bytes bytecode = 3;
+  }
+  map<string, string> metadata = 4;
+
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    STATE_DONE = 1;
+  }
+}
+
+enum Mode {
+  MODE_UNSPECIFIED = 0;
+  MODE_STRICT = 1;
+}
