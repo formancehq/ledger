@@ -1081,7 +1081,7 @@ func registerBloomFlags(cmd *cobra.Command) {
 		)
 		cmd.Flags().Float64(
 			fmt.Sprintf("bloom-%s-fp-rate", name), 0,
-			fmt.Sprintf("False positive rate for %s bloom filter (0 = use 0.01 when enabled)", name),
+			fmt.Sprintf("False positive rate for %s bloom filter (finite, > 0 and < 1; 0 = use 0.01 when enabled)", name),
 		)
 	}
 }
@@ -1097,7 +1097,7 @@ func loadBloomConfig(cmd *cobra.Command, cfg *commonpb.ClusterConfig) {
 			return nil
 		}
 
-		// FPRate must be > 0 when filter is enabled.
+		// Normalize the CLI default sentinel before bootstrap validates (0,1).
 		if fpRate == 0 {
 			fpRate = 0.01
 		}

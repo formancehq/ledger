@@ -315,6 +315,10 @@ func (c Config) Validate() error {
 		return err
 	}
 
+	if err := c.validateBloomConfig(); err != nil {
+		return err
+	}
+
 	// The reconciler only proposes when the desired revision exceeds the applied
 	// one, and the FSM reserves revision 0 for "no policy committed"; a zero
 	// desired revision would never commit a policy, leaving the node write-unready.
@@ -342,6 +346,41 @@ func (c Config) Validate() error {
 	}
 	if err := validateHealthThresholds(c.HealthConfig.DataThreshold, c.HealthConfig.DataResumeThreshold); err != nil {
 		return fmt.Errorf("data: %w", err)
+	}
+
+	return nil
+}
+
+// validateBloomConfig rejects invalid enabled-filter rates before Fx constructs
+// the filter set. CLI zero rates have already been normalized to the default;
+// expectedKeys=0 disables a filter and its rate is unused.
+func (c Config) validateBloomConfig() error {
+	filters := []struct {
+		name   string
+		config *commonpb.BloomTypeConfig
+	}{
+		{"volumes", c.BloomConfig.GetBloomVolumes()},
+		{"metadata", c.BloomConfig.GetBloomMetadata()},
+		{"references", c.BloomConfig.GetBloomReferences()},
+		{"ledgers", c.BloomConfig.GetBloomLedgers()},
+		{"boundaries", c.BloomConfig.GetBloomBoundaries()},
+		{"transactions", c.BloomConfig.GetBloomTransactions()},
+		{"sink-configs", c.BloomConfig.GetBloomSinkConfigs()},
+		{"numscript-versions", c.BloomConfig.GetBloomNumscriptVersions()},
+		{"numscript-contents", c.BloomConfig.GetBloomNumscriptContents()},
+		{"ledger-metadata", c.BloomConfig.GetBloomLedgerMetadata()},
+		{"prepared-queries", c.BloomConfig.GetBloomPreparedQueries()},
+		{"indexes", c.BloomConfig.GetBloomIndexes()},
+	}
+	for _, filter := range filters {
+		if filter.config.GetExpectedKeys() == 0 {
+			continue
+		}
+		rate := filter.config.GetFpRate()
+		// The positive conjunction also rejects NaN; infinities fail a bound.
+		if !(rate > 0 && rate < 1) {
+			return fmt.Errorf("--bloom-%s-fp-rate must be finite and in (0,1), got %v", filter.name, rate)
+		}
 	}
 
 	return nil

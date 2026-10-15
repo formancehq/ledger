@@ -144,6 +144,8 @@ spec:
   # bounded by one election cycle after the last pod restarts.
   cache:
     rotationThreshold: 1000
+  # Supplied fpRate must be finite and strictly between 0 and 1.
+  # Omit it for the default; explicit zero, NaN and infinities are invalid.
   bloom:
     volumes:
       expectedKeys: 100000000
