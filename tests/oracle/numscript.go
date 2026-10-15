@@ -483,7 +483,7 @@ func (s *LedgerState) produceScriptWith(ct *servicepb.CreateTransactionPayload, 
 			return scriptProduct{}, nil, err.Reason()
 		}
 
-		if err := domain.ValidateMetadataString(row.Value); err != nil {
+		if err := domain.ValidateMetadataString(row.Key, row.Value); err != nil {
 			return scriptProduct{}, nil, err.Reason()
 		}
 
@@ -504,7 +504,7 @@ func (s *LedgerState) produceScriptWith(ct *servicepb.CreateTransactionPayload, 
 			return scriptProduct{}, nil, err.Reason()
 		}
 
-		if err := domain.ValidateMetadataString(result.Metadata[key]); err != nil {
+		if err := domain.ValidateMetadataString(key, result.Metadata[key]); err != nil {
 			return scriptProduct{}, nil, err.Reason()
 		}
 
