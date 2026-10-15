@@ -1,6 +1,10 @@
 package main
 
-import "github.com/formancehq/ledger/v3/tests/oracle"
+import (
+	"strings"
+
+	"github.com/formancehq/ledger/v3/tests/oracle"
+)
 
 // Candidate enumeration is exponential in independently committable in-flight
 // bulks. Workers are capped two below this limit so the separately dispatched
@@ -43,6 +47,16 @@ func (c *Checker) candidateBases(maxTicket uint64, visit func(oracle.GlobalState
 	c.walkCandidateStates(maxTicket, visit, nil)
 }
 
+// admittedBases is candidateBases for a bulk the server rejected: visit gets
+// each base together with the verdicts admission reaches for bulk on that base
+// and on every base before it along the path. The leader admits on the state
+// it has applied and the FSM applies later, so the verdict can be older than
+// the state the bulk is applied on — the model must pair them the same way.
+// Caller holds c.mu.
+func (c *Checker) admittedBases(maxTicket uint64, bulk oracle.Bulk, visit func(oracle.GlobalState, []oracle.Admission) bool) {
+	c.walk(maxTicket, &bulk, visit, nil)
+}
+
 // checkpointCreationMatches checks a served predicted checkpoint against the
 // state immediately before the candidate create transition that assigned id.
 // Caller holds c.mu.
@@ -73,6 +87,14 @@ func (c *Checker) checkpointCreationMatches(maxTicket, id uint64, match func(ora
 // walkCandidateStates enumerates candidate states and optionally observes each
 // successful transition. Caller holds c.mu.
 func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.GlobalState) bool, transition func(oracle.GlobalState, oracle.Bulk, oracle.ApplyResult) bool) {
+	c.walk(maxTicket, nil, func(base oracle.GlobalState, _ []oracle.Admission) bool { return visit(base) }, transition)
+}
+
+// walk is the enumeration behind walkCandidateStates and admittedBases. With
+// admitted set, each path accumulates the distinct verdicts admitted gets on
+// its states, and a state reached under a different verdict set is a distinct
+// node: the verdicts are part of what the server could have done there.
+func (c *Checker) walk(maxTicket uint64, admitted *oracle.Bulk, visit func(oracle.GlobalState, []oracle.Admission) bool, transition func(oracle.GlobalState, oracle.Bulk, oracle.ApplyResult) bool) {
 	// Only operations dispatched no later than maxTicket (the observation's
 	// high-water) can precede it; one dispatched after the observation's response
 	// cannot have committed before it, so folding it would invent a state the
@@ -110,22 +132,31 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 	}
 
 	type dedupKey struct {
-		state oracle.Digest
-		pIdx  int
-		rem   string
+		state    oracle.Digest
+		pIdx     int
+		rem      string
+		verdicts string
 	}
 	seen := map[dedupKey]bool{}
 
-	var rec func(base oracle.GlobalState, pIdx int, rem []byte) bool
+	var rec func(base oracle.GlobalState, pIdx int, rem []byte, verdicts []oracle.Admission) bool
 
-	rec = func(base oracle.GlobalState, pIdx int, rem []byte) bool {
-		k := dedupKey{state: base.Fingerprint(), pIdx: pIdx, rem: string(rem)}
+	rec = func(base oracle.GlobalState, pIdx int, rem []byte, verdicts []oracle.Admission) bool {
+		var verdictKeys []string
+		if admitted != nil {
+			verdicts = withVerdict(verdicts, base.Admit(*admitted))
+			for _, v := range verdicts {
+				verdictKeys = append(verdictKeys, v.Key())
+			}
+		}
+
+		k := dedupKey{state: base.Fingerprint(), pIdx: pIdx, rem: string(rem), verdicts: strings.Join(verdictKeys, "\x00")}
 		if seen[k] {
 			return false
 		}
 		seen[k] = true
 
-		if visit(base) {
+		if visit(base, verdicts) {
 			return true
 		}
 
@@ -136,7 +167,7 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 				if transition != nil && transition(base, candidate.bulk, res) {
 					return true
 				}
-				if rec(res.State, pIdx+1, rem) {
+				if rec(res.State, pIdx+1, rem, verdicts) {
 					return true
 				}
 			}
@@ -161,7 +192,7 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 			}
 
 			rem[byteIdx] &^= mask
-			matched := rec(res.State, pIdx, rem)
+			matched := rec(res.State, pIdx, rem, verdicts)
 			rem[byteIdx] |= mask
 			if matched {
 				return true
@@ -171,5 +202,18 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 		return false
 	}
 
-	rec(c.modelState, 0, allRem)
+	rec(c.modelState, 0, allRem, nil)
+}
+
+// withVerdict appends v to the path's verdicts unless an equal one is there.
+// The result never aliases verdicts: sibling branches extend the same prefix.
+func withVerdict(verdicts []oracle.Admission, v oracle.Admission) []oracle.Admission {
+	key := v.Key()
+	for _, have := range verdicts {
+		if have.Key() == key {
+			return verdicts
+		}
+	}
+
+	return append(verdicts[:len(verdicts):len(verdicts)], v)
 }
