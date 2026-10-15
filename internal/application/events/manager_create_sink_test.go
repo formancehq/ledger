@@ -24,7 +24,7 @@ func TestCreateSink_HTTP(t *testing.T) {
 		Format: "json",
 	}
 
-	sink, err := m.createSink(cfg)
+	sink, err := m.createSink(t.Context(), cfg)
 	require.NoError(t, err)
 	require.NotNil(t, sink)
 
@@ -49,7 +49,7 @@ func TestCreateSink_HTTP_EmptyEndpoint(t *testing.T) {
 		Format: "json",
 	}
 
-	sink, err := m.createSink(cfg)
+	sink, err := m.createSink(t.Context(), cfg)
 	require.Error(t, err)
 	require.Nil(t, sink)
 }
@@ -69,7 +69,7 @@ func TestCreateSink_HTTP_DefaultFormat(t *testing.T) {
 		Format: "", // Should default to JSON
 	}
 
-	sink, err := m.createSink(cfg)
+	sink, err := m.createSink(t.Context(), cfg)
 	require.NoError(t, err)
 	require.NotNil(t, sink)
 
@@ -90,7 +90,7 @@ func TestCreateSink_UnsupportedType(t *testing.T) {
 		// No type set
 	}
 
-	sink, err := m.createSink(cfg)
+	sink, err := m.createSink(t.Context(), cfg)
 	require.Error(t, err)
 	require.Nil(t, sink)
 	require.Contains(t, err.Error(), "unsupported events sink type")
