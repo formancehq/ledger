@@ -324,27 +324,77 @@ send [USD 1] (
 	require.False(t, fwd[1])
 }
 
-// A script on a deleted ledger is refused as such, ahead of anything its
-// resolution would decide.
-func TestScript_DeletedLedgerWinsOverAdmission(t *testing.T) {
-	t.Parallel()
+// scriptFixtures is a ledger holding a transaction under reference R and the
+// library entry ns0@1.0.0, with the same ledger after a delete.
+func scriptFixtures(t *testing.T) (live, deleted GlobalState) {
+	t.Helper()
 
-	created := NewGlobalState().Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_CreateLedger{
+	res := NewGlobalState().Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_CreateLedger{
 		CreateLedger: &servicepb.CreateLedgerRequest{Name: "L"},
 	}}))
-	require.True(t, created.OK, created.Reason)
+	require.True(t, res.OK, res.Reason)
 
-	deleted := created.State.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
+	res = res.State.Apply(bulkOf(
+		oracletest.TxReqRefL("L", "R", "world", "a", "USD", 10),
+		saveReq("L", "ns0", "1.0.0", "send [USD 1] (source = @world destination = @a)"),
+	))
+	require.True(t, res.OK, res.Reason)
+	live = res.State
+
+	res = live.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
 		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
 	}}))
-	require.True(t, deleted.OK, deleted.Reason)
+	require.True(t, res.OK, res.Reason)
 
-	res := deleted.State.Apply(bulkOf(scriptReq("L", `vars {
+	return live, res.State
+}
+
+func withReference(req *servicepb.Request, ref string, skippable bool) *servicepb.Request {
+	req.GetApply().GetAction().GetCreateTransaction().Reference = ref
+	if skippable {
+		req.GetApply().SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
+	}
+
+	return req
+}
+
+const metaReadScript = `vars {
 	account $dst = meta(@cfg:1, "dst")
 }
 send [USD 1] (
 	source = @world
 	destination = $dst
-)`, nil, false)))
-	require.Equal(t, domain.ErrReasonLedgerDeleted, res.Reason)
+)`
+
+// A delete can commit between a bulk's admission and its apply. Admission then
+// saw the live ledger and the FSM refuses the order on the deleted one — unless
+// admission forwarded it, which fails before the deleted-ledger check.
+func TestScript_AdmissionOlderThanApply(t *testing.T) {
+	t.Parallel()
+
+	live, deleted := scriptFixtures(t)
+
+	skipped := bulkOf(withReference(scriptReq("L", metaReadScript, nil, false), "R", true))
+	require.True(t, live.Apply(skipped).OK)
+	require.Equal(t, domain.ErrReasonLedgerDeleted, deleted.ApplyAdmitted(skipped, live.Admit(skipped)).Reason)
+
+	forwarded := bulkOf(scriptReq("L", metaReadScript, nil, false))
+	require.Equal(t, domain.ErrReasonPreloadUnavailable, live.Apply(forwarded).Reason)
+	require.Equal(t, domain.ErrReasonPreloadUnavailable, deleted.ApplyAdmitted(forwarded, live.Admit(forwarded)).Reason)
+}
+
+// Admission on an already deleted ledger reads its purged data: the reference
+// skip no longer applies, the library is empty and a mutable read forwards.
+// Only a script that resolves cleanly reaches the deleted-ledger check.
+func TestScript_AdmissionOnDeletedLedger(t *testing.T) {
+	t.Parallel()
+
+	_, deleted := scriptFixtures(t)
+
+	require.Equal(t, domain.ErrReasonPreloadUnavailable,
+		deleted.Apply(bulkOf(withReference(scriptReq("L", metaReadScript, nil, false), "R", true))).Reason)
+	require.Equal(t, domain.ErrReasonNumscriptNotFound, deleted.Apply(bulkOf(referenceReq("L", "ns0", "1.0.0", nil))).Reason)
+	require.Equal(t, domain.ErrReasonNumscriptParseError, deleted.Apply(bulkOf(scriptReq("L", "send [USD", nil, false))).Reason)
+	require.Equal(t, domain.ErrReasonLedgerDeleted,
+		deleted.Apply(bulkOf(scriptReq("L", "send [USD 1] (source = @world destination = @a)", nil, false))).Reason)
 }
