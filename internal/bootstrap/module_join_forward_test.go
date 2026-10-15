@@ -126,6 +126,9 @@ func TestTryAddLearner_RetriesWhenFollowerLeaderConnectionRestarts(t *testing.T)
 	cfg := Config{
 		ClusterID: "test-cluster",
 		TLSConfig: TLSConfig{Mode: TLSModeDisabled},
+		// The follower validates the advertised service address before
+		// forwarding, so the join must carry a real service port.
+		GRPCPort: 8888,
 		RaftConfig: node.NodeConfig{
 			NodeID:        3,
 			WalDir:        walDir,
