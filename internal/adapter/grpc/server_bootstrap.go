@@ -151,6 +151,17 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 		return nil, err
 	}
 
+	// Reject malformed addresses before leadership checks and forwarding, so
+	// a follower without a reachable leader answers InvalidArgument instead
+	// of Unavailable, which the joining node would retry as transient.
+	if err := membership.ValidatePeerAddress("raft_address", req.GetRaftAddress()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	if err := membership.ValidatePeerAddress("service_address", req.GetServiceAddress()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	impl.logger.WithFields(map[string]any{
 		"requestedNodeID":      req.GetNodeId(),
 		"requestedRaftAddress": req.GetRaftAddress(),
@@ -194,14 +205,6 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 	// acquire one at first boot via wal.EnsureInstanceID.
 	if len(req.GetInstanceId()) != membership.InstanceIDLen {
 		return nil, status.Errorf(codes.InvalidArgument, "instance_id must be 16 bytes, got %d", len(req.GetInstanceId()))
-	}
-
-	if err := membership.ValidatePeerAddress("raft_address", req.GetRaftAddress()); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	if err := membership.ValidatePeerAddress("service_address", req.GetServiceAddress()); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	// Refuse a peer whose (nodeID, instance_id) has been blacklisted.

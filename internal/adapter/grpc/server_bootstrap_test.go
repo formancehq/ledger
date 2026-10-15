@@ -15,9 +15,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 )
 
-// Cluster-id gate is the only piece of behaviour exercised here.
-// Request-validation and membership invariants live in the application
-// membership package and are covered by membership_test.go.
+// The cluster-id gate and the pre-forwarding address checks are exercised
+// here. Other request-validation and membership invariants live in the
+// application membership package and are covered by membership_test.go.
 // End-to-end behaviour (peer listing, leader forwarding, ConfChange)
 // lives in tests/e2e/cluster.
 
@@ -95,5 +95,45 @@ func TestForwardedCallError_ForwardingHopFailureIsUnavailable(t *testing.T) {
 		status.Error(codes.DeadlineExceeded, "context deadline exceeded"),
 	} {
 		assert.Equal(t, codes.Unavailable, status.Code(forwardedCallError(hopErr)))
+	}
+}
+
+// Malformed addresses are rejected before leadership or forwarding: a
+// follower without a reachable leader must answer InvalidArgument, not the
+// Unavailable status the joining node retries as transient.
+func TestClusterBootstrapServiceServer_JoinAsLearnerRejectsMalformedAddresses(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name           string
+		raftAddress    string
+		serviceAddress string
+		want           string
+	}{
+		{name: "raft", raftAddress: "not an address", serviceAddress: "node-2:8888", want: "raft_address \"not an address\" must be host:port"},
+		{name: "service", raftAddress: "node-2:7777", serviceAddress: "also bad", want: "service_address \"also bad\" must be host:port"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// node, raftTransport and membership are nil: consulting any of
+			// them (leadership, forwarding, proposal) would panic.
+			impl := &ClusterBootstrapServiceServerImpl{
+				clusterID: "expected-cluster",
+				logger:    noopLogger{},
+			}
+			ctx := metadata.NewIncomingContext(context.Background(),
+				metadata.Pairs(node.MetadataKeyClusterID, "expected-cluster"))
+
+			response, err := impl.JoinAsLearner(ctx, &clusterbootstrappb.JoinAsLearnerRequest{
+				NodeId:         2,
+				RaftAddress:    tt.raftAddress,
+				ServiceAddress: tt.serviceAddress,
+				InstanceId:     make([]byte, 16),
+			})
+			require.Nil(t, response)
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
+			require.ErrorContains(t, err, tt.want)
+		})
 	}
 }
