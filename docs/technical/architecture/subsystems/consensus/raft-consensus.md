@@ -199,9 +199,12 @@ generation. Terminal node shutdown cancels and joins the final generation
 after the task pool exits. Cancellation is idempotent so this also works after
 a processed leadership loss. A callback already executing must return before
 `Run` completes; generation cancellation does not interrupt arbitrary observer
-code. The bootstrap cluster-config observer uses its own 30-second proposal
-timeout, so joining it can wait for that timeout. Store reads and lock
-acquisition precede that timeout; it is not a hard bound on shutdown duration.
+code. `LeaderReadyEvent.Context` carries generation cancellation into blocking
+observer work. The bootstrap cluster-config observer derives its 30-second
+proposal timeout from that context, so shutdown or leadership loss interrupts
+its Raft-acceptance/FSM-apply wait rather than waiting for the timeout. Store
+reads and lock acquisition still precede that wait; cancellation is not a hard
+bound on arbitrary observer code or storage operations.
 
 A failed FSM wait completes the background waiter without marking the
 generation ready, so admission remains blocked until its request context is

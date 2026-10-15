@@ -156,8 +156,12 @@ failure, then assert the final generation is cancelled and joined before
 `Run` publishes completion. Repeat cancellation after leadership loss and with
 concurrent callers to prove close-once behavior without skipping any join.
 Cancellation cannot forcibly interrupt an executing observer; dependency closure
-must wait for it to return. Preserve the independent commit-drain and
-leadership-loss ordering regressions.
+must wait for it to return. The production cluster-config observer must use the
+readiness event's generation context for its blocking proposal. Hold its FSM
+future after Raft acceptance, cancel the generation, and prove the observer
+returns without waiting for its independent 30-second timeout. Retain the normal
+HTTP-failure process regression to cover application shutdown wiring. Preserve
+the independent commit-drain and leadership-loss ordering regressions.
 
 Record initial and final generations, identities, goroutine completion, resource
 close counts, proposal/publication counts and durable cursor bytes. A test using

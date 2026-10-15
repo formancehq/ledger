@@ -409,3 +409,37 @@ func TestNodeShutdownCancelsPendingLeaderReadyGeneration(t *testing.T) {
 		})
 	}
 }
+
+func TestNodeShutdownCancelsLeaderReadyEventContext(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		setup := newTestApplierSetup(t)
+		_, err := setup.fsm.ApplyEntries(context.Background(), setup.store,
+			&raftpb.Entry{Index: proto.Uint64(1), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal)})
+		require.NoError(t, err)
+		n, result, resume := startShutdownNode(t, context.Background(), setup)
+		entered := make(chan context.Context, 1)
+		n.SetObserver(NewObserver(func(event any) {
+			if e, ok := event.(LeaderReadyEvent); ok {
+				entered <- e.Context
+				if e.Context != nil {
+					<-e.Context.Done()
+				}
+			}
+		}))
+		require.NoError(t, n.processReadyLeadership(context.Background(), setup.stop, raft.Ready{
+			SoftState: &raft.SoftState{Lead: 1, RaftState: raft.StateLeader},
+			Entries:   []*raftpb.Entry{{Index: proto.Uint64(1)}},
+		}))
+		ctx := <-entered
+		require.NotNil(t, ctx, "the production readiness event must carry its generation context")
+		require.NoError(t, ctx.Err())
+		stopped := make(chan error, 1)
+		go func() { stopped <- n.Stop(context.Background()) }()
+		resume()
+		require.NoError(t, <-stopped)
+		require.NoError(t, <-result)
+		require.ErrorIs(t, ctx.Err(), context.Canceled)
+		requireClosed(t, n.leaderReady.Load().done)
+	})
+}

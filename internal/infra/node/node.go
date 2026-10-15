@@ -1385,7 +1385,7 @@ func (node *Node) processReadyLeadership(ctx context.Context, stop chan struct{}
 						func(waitCtx context.Context) error {
 							return node.fsm.WaitForApplied(waitCtx, target)
 						},
-						func() { node.observer.Emit(LeaderReadyEvent{}) },
+						func() { node.observer.Emit(LeaderReadyEvent{Context: generation.ctx}) },
 					)
 					if err != nil && !errors.Is(err, context.Canceled) {
 						node.logger.WithFields(map[string]any{
