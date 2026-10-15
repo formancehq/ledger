@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"41"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"40"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 41:
+leader. For example, with a schema implementing revision 40:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 41' \
+grpcurl -plaintext -H 'ledger-protocol-version: 40' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -347,60 +347,52 @@ must implement the same revision; there is no compatibility fallback.
 
 ## Maintaining the revision
 
+Ledger v3 is in its release-candidate phase. The revision is frozen at `"40"`:
+do not increment `pkg/grpcprotocol.Version`. Every service contract change must
+stay compatible instead. An existing client and server at the same revision must
+interpret requests, responses, and operations the same way, in both directions.
+
 The author of a service contract change must determine whether an existing
 client or server would interpret requests, responses, or operations differently.
-Increment the decimal counter `pkg/grpcprotocol.Version` by one in the same PR
-for an incompatible wire or semantic change (for example, `"1"` to `"2"`), and
-rebuild every service client and server that will communicate. This includes
-renumbering or changing the interpretation of exposed
-protobuf fields, and incompatible semantics even when the `.proto` text stays
-unchanged. Reviewers must check this classification; the revision is not inferred
-from a release tag or automatically negotiated from a schema hash.
+Renumbering or changing the interpretation of exposed protobuf fields is
+incompatible, and so are incompatible semantics even when the `.proto` text
+stays unchanged. Such a change is not allowed during the release-candidate
+phase. Make the change compatible, or escalate it to the team before
+publication; do not bump the revision to work around it. Reviewers must check
+this classification. State the compatibility assessment in the PR.
+Documentation-only changes need no assessment.
 
-This obligation applies to AI agents throughout pre-release development, even
-though older Ledger versions and storage formats are not supported. Before
-publication, and again after a rebase or target-branch update, compare the
-revision with the target branch. If another PR has already consumed the planned
-number, increment from the target branch's current value so a newly incompatible
-contract does not reuse that number. Keep examples of the current revision in
-sync. State the compatibility assessment and the old/new revision in the PR;
-when no increment is needed, explain why. Documentation-only changes do not
-increment the counter.
-
-Compatible additions need not bump the revision only when both directions remain
-compatible under the declared service contract. A change confined to a persisted
+A compatible addition is acceptable only when both directions remain compatible
+under the declared service contract. A change confined to a persisted
 or Raft message does not automatically change the service protocol; inspect any
 shared types exposed through the service API. See
 [protobuf contributor rules](../../../contributing/protobuf.md).
 
 ### Automated enforcement
 
-`scripts/checkprotocolversion --base <commit>` enforces the mechanical part of
-this rule. CI runs it on every pull request and merge-queue entry against the
+`scripts/checkprotocolversion --base <commit>` enforces the wire part of the
+freeze. CI runs it on every pull request and merge-queue entry against the
 target tip; `agent-check-pr` runs it when `misc/proto/**` or
 `pkg/grpcprotocol/**` changes.
 
-1. The check reads `Version` at the base and in the worktree. The value must
-   stay the same or increase by exactly one. A decrease or a larger jump fails,
-   including in a revert: a revert that restores an older contract consumes a
-   new revision so one number never names two contracts.
+1. The check reads `Version` at the base and in the worktree. Any change fails.
 2. The check runs `buf breaking` between the base and the worktree with the
    rules in `misc/proto/buf.yaml` (`WIRE`, `SERVICE_NO_DELETE`,
-   `RPC_NO_DELETE`). `buf` is used only for this classification; code
-   generation stays on `protoc`.
+   `RPC_NO_DELETE`). Deleting, renumbering, or retyping a field is reported;
+   adding a field or a wire-compatible widening such as `int32` to `int64` is
+   not. `buf` is used only for this classification; code generation stays on
+   `protoc`.
 3. The check keeps a finding only when its innermost enclosing declaration is
    a gated service (`BucketService`, `ClusterService`, `RestoreService`) or a
    message or enum transitively reachable from one of their RPCs. A finding it
    cannot attribute to a declaration counts when its file declares a gated
-   type. Raft-only and persisted-only messages are therefore not counted.
-4. At least one kept finding without a `+1` fails the check.
+   type. Raft-only and persisted-only messages are not counted.
+4. Any kept finding fails the check. A revision bump does not excuse it.
 
 The check does not detect semantic changes that keep the `.proto` text
-unchanged; those remain the author's and reviewer's classification. A `+1`
-without a detected wire break passes with a note asking the PR to state the
-semantic change. When a gated service is added or renamed, update
-`gatedServices()` in the same PR: the check fails if a listed service no
-longer exists.
+unchanged; those remain the author's and reviewer's classification. When a
+gated service is added or renamed, update `gatedServices()` in the same PR: the
+check fails if a listed service no longer exists.
 
 The gate is a transport admission check. Its metadata and revision are not
 persisted, included in audited business intent, or consulted during Raft apply.
@@ -636,12 +628,11 @@ block retains its existing response. Admission checks the gate before proposing
 an order, so a retry after `Unavailable` cannot duplicate a committed write.
 This status change requires revision 40 clients and servers together.
 
-## Capped index inspection page size (revision 41)
+## Capped index inspection page size
 
 EN-2946 caps `InspectIndexRequest.page_size` at 10000 in the read store, which
 HTTP and gRPC share. A request for more than 10000 values or facets returns
-10000, `has_more`, and a next cursor. Revision 40 returned the full requested
-page. The protobuf text changes only by a comment, but the interpretation of
-`page_size` changes: a revision 40 client that requests a larger page and does
-not follow the cursor receives fewer values than it requested. This
-response-semantic change requires revision 41 clients and servers together.
+10000, `has_more`, and a next cursor. Earlier builds returned the full requested
+page. The protobuf text changes only by a comment. A client that follows the
+cursor reads the same values, so the change keeps revision 40: the service
+protocol revision is frozen during the v3 release-candidate phase.

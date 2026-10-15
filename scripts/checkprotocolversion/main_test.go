@@ -21,11 +21,10 @@ func TestVerdict(t *testing.T) {
 		errorSub string
 	}{
 		{name: "unchanged without break", res: result{baseVersion: 3, headVersion: 3}},
-		{name: "bump with break", res: result{baseVersion: 3, headVersion: 4, clientFindings: breaks}},
-		{name: "semantic bump without break", res: result{baseVersion: 3, headVersion: 4}},
-		{name: "break without bump", res: result{baseVersion: 3, headVersion: 3, clientFindings: breaks}, errorSub: `set Version to "4"`},
-		{name: "jump", res: result{baseVersion: 3, headVersion: 5, clientFindings: breaks}, errorSub: "jumped from 3 to 5"},
-		{name: "decrease", res: result{baseVersion: 3, headVersion: 2}, errorSub: "decreased from 3 to 2"},
+		{name: "break", res: result{baseVersion: 3, headVersion: 3, clientFindings: breaks}, errorSub: "1 wire-incompatible change(s) reach a gated service"},
+		{name: "bump without break", res: result{baseVersion: 3, headVersion: 4}, errorSub: "changed from 3 to 4"},
+		{name: "bump does not excuse a break", res: result{baseVersion: 3, headVersion: 4, clientFindings: breaks}, errorSub: "wire-incompatible"},
+		{name: "decrease", res: result{baseVersion: 3, headVersion: 2}, errorSub: `changed from 3 to 2; it is frozen during the v3 release-candidate phase: restore "3"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -90,6 +89,7 @@ message GetResponse {
 message Inner {
   string label = 1;
   int64 amount = 2;
+  int32 count = 3;
 }
 
 message RaftOnly {
@@ -117,17 +117,36 @@ func TestCheckerClassifiesAgainstBase(t *testing.T) {
 			version: "3",
 		},
 		{
-			name:      "gated break without bump",
+			name:      "gated retype",
 			proto:     strings.Replace(fixtureProto, "int64 amount = 2;", "string amount = 2;", 1),
 			version:   "3",
 			wantGated: 1,
-			errorSub:  `set Version to "4"`,
+			errorSub:  "1 wire-incompatible change(s) reach a gated service",
 		},
 		{
-			name:      "gated break with bump",
+			name:      "gated retype with bump",
 			proto:     strings.Replace(fixtureProto, "int64 amount = 2;", "string amount = 2;", 1),
 			version:   "4",
 			wantGated: 1,
+			errorSub:  "changed from 3 to 4",
+		},
+		{
+			name:      "gated field deletion",
+			proto:     strings.Replace(fixtureProto, "  int64 amount = 2;\n", "", 1),
+			version:   "3",
+			wantGated: 1,
+			errorSub:  "wire-incompatible",
+		},
+		{
+			name:    "gated field addition",
+			proto:   strings.Replace(fixtureProto, "int32 count = 3;", "int32 count = 3;\n  bool settled = 4;", 1),
+			version: "3",
+		},
+		{
+			// Same varint wire type: existing peers decode the value unchanged.
+			name:    "gated int32 to int64 widening",
+			proto:   strings.Replace(fixtureProto, "int32 count = 3;", "int64 count = 3;", 1),
+			version: "3",
 		},
 		{
 			name:         "internal-only break",

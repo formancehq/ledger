@@ -1,14 +1,13 @@
-// Command checkprotocolversion enforces the service protocol revision rule from
-// docs/technical/architecture/subsystems/api/protocol-compatibility.md against
-// a base commit:
+// Command checkprotocolversion enforces the frozen service protocol revision
+// from docs/technical/architecture/subsystems/api/protocol-compatibility.md
+// against a base commit:
 //
-//   - pkg/grpcprotocol.Version is a decimal counter that only moves by +1;
-//   - a wire-incompatible change to a type reachable from a gated service
-//     (as classified by `buf breaking` with misc/proto/buf.yaml) requires
-//     that +1 in the same change.
+//   - pkg/grpcprotocol.Version must not change;
+//   - no change may be wire-incompatible for a type reachable from a gated
+//     service, as classified by `buf breaking` with misc/proto/buf.yaml.
 //
-// A bump without a detected wire break is accepted: semantic changes keep the
-// `.proto` text unchanged and remain a reviewer classification.
+// Semantic changes that keep the `.proto` text unchanged remain a reviewer
+// classification.
 package main
 
 import (
@@ -114,16 +113,15 @@ func main() {
 		for _, item := range res.clientFindings {
 			fmt.Printf("%s:%d:%d: BREAKING: %s (%s)\n", item.Path, item.StartLine, item.StartColumn, item.Message, item.Type)
 		}
-		fmt.Printf("%s:1:1: ERROR: %v\n", protocolFile, err)
+		for line := range strings.SplitSeq(err.Error(), "\n") {
+			fmt.Printf("%s:1:1: ERROR: %s\n", protocolFile, line)
+		}
 		fmt.Fprintln(os.Stderr, "check-protocol-version: FAIL")
 		os.Exit(1)
 	}
 
-	fmt.Printf("check-protocol-version: PASS (revision %d -> %d, %d gated wire break(s), %d internal-only)\n",
-		res.baseVersion, res.headVersion, len(res.clientFindings), res.otherFindings)
-	if res.headVersion == res.baseVersion+1 && len(res.clientFindings) == 0 {
-		fmt.Println("check-protocol-version: NOTE: revision bumped without a detected wire break; state the semantic change in the PR")
-	}
+	fmt.Printf("check-protocol-version: PASS (revision %d unchanged, no gated wire break, %d internal-only)\n",
+		res.headVersion, res.otherFindings)
 }
 
 func fail(err error) {
@@ -135,17 +133,19 @@ func fail(err error) {
 // verdict applies the revision rule. It is pure so the policy is unit-tested
 // independently of git and buf.
 func (r result) verdict() error {
-	switch delta := r.headVersion - r.baseVersion; {
-	case delta < 0:
-		return fmt.Errorf("protocol revision decreased from %d to %d; it is a monotonic counter", r.baseVersion, r.headVersion)
-	case delta > 1:
-		return fmt.Errorf("protocol revision jumped from %d to %d; increment by exactly one from the target branch", r.baseVersion, r.headVersion)
-	case delta == 0 && len(r.clientFindings) > 0:
-		return fmt.Errorf("%d wire-incompatible change(s) reach a gated service; set Version to %q",
-			len(r.clientFindings), strconv.Itoa(r.baseVersion+1))
+	var errs []error
+	if r.headVersion != r.baseVersion {
+		errs = append(errs, fmt.Errorf(
+			"protocol revision changed from %d to %d; it is frozen during the v3 release-candidate phase: restore %q and keep the contract compatible, or escalate",
+			r.baseVersion, r.headVersion, strconv.Itoa(r.baseVersion)))
+	}
+	if len(r.clientFindings) > 0 {
+		errs = append(errs, fmt.Errorf(
+			"%d wire-incompatible change(s) reach a gated service; the revision is frozen: add fields instead of deleting, renumbering or retyping them, or escalate",
+			len(r.clientFindings)))
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func (c checker) run() (result, error) {

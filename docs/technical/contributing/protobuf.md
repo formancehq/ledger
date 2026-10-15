@@ -62,17 +62,21 @@ go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.1-0.
 ## Modifying Protocol Definitions
 
 The service API has a compiled protocol revision independent of release versions.
-For every exposed wire or semantic change, assess client/server compatibility and
-bump `pkg/grpcprotocol.Version` in the same change when the contract breaks.
+For every exposed wire or semantic change, assess client/server compatibility.
+During the v3 release-candidate phase the revision is frozen: do not bump
+`pkg/grpcprotocol.Version`; keep the contract compatible or escalate the change.
 Renumbering exposed fields is a breaking change even if the generated code still
 compiles. Internal persisted/Raft-only changes require an impact assessment of
 shared service types rather than an automatic service revision bump. See the
 [service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
 for the gate, client obligations, and review criteria. CI enforces the wire part
-with `go run ./scripts/checkprotocolversion --base <target-sha>`; run it locally
-before pushing a `.proto` change. This does not change the
-unreleased-v3 rule: remove obsolete fields and realign their numbers; do not add
-migrations, reserved fields, or support for older v3 formats.
+with `go run ./scripts/checkprotocolversion --base <target-sha>`: it fails on a
+revision change and on any field deletion, renumbering, or incompatible retype in
+a type reachable from a gated service. Run it locally before pushing a `.proto`
+change. For types reachable from the service API, add fields instead. The
+unreleased-v3 rule still applies to persisted and Raft-only messages: remove
+obsolete fields and realign their numbers; do not add migrations, reserved
+fields, or support for older v3 formats.
 
 1. Edit the `.proto` file in `misc/proto/`
 2. **Realign field numbers sequentially** when adding/removing fields (no gaps, remove obsolete `reserved` entries). `just lint-proto` enforces this; see [Convention checks](#convention-checks)
