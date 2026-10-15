@@ -61,6 +61,17 @@ func (s *Server) serveBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A JSON null entry decodes to a nil element; everything downstream
+	// relies on elements being non-nil.
+	for i, elem := range elements {
+		if elem == nil {
+			writeBulkErrorResponse(w, http.StatusBadRequest, "VALIDATION",
+				fmt.Errorf("element %d is null", i))
+
+			return
+		}
+	}
+
 	// Per-element scope check: each element may require a different granular
 	// scope. Enforcement keys off auth being enabled — same as RequireScope and
 	// the gRPC Apply handler — so an anonymous request with an empty or nil scope
