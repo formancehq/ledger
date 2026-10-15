@@ -606,3 +606,13 @@ policy retry the request. A measured disk block still returns
 block retains its existing response. Admission checks the gate before proposing
 an order, so a retry after `Unavailable` cannot duplicate a committed write.
 This status change requires revision 40 clients and servers together.
+
+## Required posting amount (revision 41)
+
+Admission rejects a `CreateTransaction` posting without an `amount` with the
+`POSTING_AMOUNT_REQUIRED` validation code. An omitted or JSON `null` amount
+returns HTTP 400 and gRPC `InvalidArgument` with reason `VALIDATION`. An
+explicit zero amount stays valid. Earlier revisions accepted the posting and
+recorded a zero amount. Revision 41 also adds the `posting_amount_required` arm
+to the `FailureDetails` oneof. Clients and servers must use revision 41
+together.

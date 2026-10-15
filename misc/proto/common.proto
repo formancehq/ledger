@@ -948,6 +948,7 @@ message FailureDetails {
     NumscriptScopedMetadataNotFoundDetails numscript_scoped_metadata_not_found = 146 [(failure_reason) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
     NumscriptScopedNegativeBalanceDetails numscript_scoped_negative_balance = 147 [(failure_reason) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
     NumscriptVersionNotFoundDetails numscript_version_not_found = 148 [(failure_reason) = ERROR_REASON_NUMSCRIPT_NOT_FOUND];
+    PostingAmountRequiredDetails posting_amount_required = 149 [(failure_reason) = ERROR_REASON_VALIDATION];
   }
 }
 
@@ -1452,6 +1453,9 @@ message NumscriptUnboundVariableDetails {
 message NumscriptVersionAlreadyExistsDetails {
   optional string name = 1;
   optional string version = 2;
+}
+
+message PostingAmountRequiredDetails {
 }
 
 message PostingsAndScriptConflictDetails {

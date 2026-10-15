@@ -159,3 +159,21 @@ func TestFailureFactsExcludeDiagnosticText(t *testing.T) {
 		})
 	}
 }
+
+// A validation sentinel without a VALIDATION FailureDetails arm cannot be
+// rendered by the API or projected into the audit chain. Construction must fail
+// at package init rather than panic on the first rejected request (EN-2945).
+func TestNewValidationSentinelRequiresValidationArm(t *testing.T) {
+	t.Parallel()
+	require.PanicsWithError(t, `invalid failure details for NOT_A_FAILURE_CODE: unknown failure detail code "NOT_A_FAILURE_CODE"`, func() {
+		_ = NewValidationSentinel("NOT_A_FAILURE_CODE", "unused")
+	})
+	require.PanicsWithError(t, "validation sentinel TRANSACTION_NOT_FOUND maps to failure reason ERROR_REASON_TRANSACTION_NOT_FOUND", func() {
+		_ = NewValidationSentinel("TRANSACTION_NOT_FOUND", "unused")
+	})
+
+	facts := FailureFactsOf(ErrPostingAmountRequired)
+	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_VALIDATION, facts.Reason)
+	require.Equal(t, "POSTING_AMOUNT_REQUIRED", facts.Code)
+	require.Empty(t, facts.Facts)
+}

@@ -481,7 +481,17 @@ func (*validationSentinel) Reason() string  { return ErrReasonValidation }
 // Exported so packages outside internal/domain (e.g. integration-config
 // validators in the application layer) can build their own sentinels without
 // piling integration-specific errors into the domain package.
+//
+// The code must name a FailureDetails arm whose failure_reason is VALIDATION.
+// API rendering and audit projection both derive the public detail from that
+// arm, so a missing arm panics at package init instead of on the first
+// rejected request.
 func NewValidationSentinel(code, msg string) SerializableError {
+	details := mustFailureDetails(code, nil)
+	if reason := commonpb.FailureDetailsReason(details); reason != commonpb.ErrorReason_ERROR_REASON_VALIDATION {
+		panic(fmt.Errorf("validation sentinel %s maps to failure reason %s", code, reason))
+	}
+
 	return &validationSentinel{code: code, msg: msg}
 }
 

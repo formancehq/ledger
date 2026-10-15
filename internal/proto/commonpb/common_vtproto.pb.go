@@ -3401,6 +3401,15 @@ func (m *FailureDetails_NumscriptVersionNotFound) CloneVT() isFailureDetails_Kin
 	return r
 }
 
+func (m *FailureDetails_PostingAmountRequired) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_PostingAmountRequired)(nil)
+	}
+	r := new(FailureDetails_PostingAmountRequired)
+	r.PostingAmountRequired = m.PostingAmountRequired.CloneVT()
+	return r
+}
+
 func (m *AccountAddressEmptyDetails) CloneVT() *AccountAddressEmptyDetails {
 	if m == nil {
 		return (*AccountAddressEmptyDetails)(nil)
@@ -5822,6 +5831,22 @@ func (m *NumscriptVersionAlreadyExistsDetails) CloneVT() *NumscriptVersionAlread
 }
 
 func (m *NumscriptVersionAlreadyExistsDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *PostingAmountRequiredDetails) CloneVT() *PostingAmountRequiredDetails {
+	if m == nil {
+		return (*PostingAmountRequiredDetails)(nil)
+	}
+	r := new(PostingAmountRequiredDetails)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *PostingAmountRequiredDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -16085,6 +16110,31 @@ func (this *FailureDetails_NumscriptVersionNotFound) EqualVT(thatIface isFailure
 	return true
 }
 
+func (this *FailureDetails_PostingAmountRequired) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_PostingAmountRequired)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.PostingAmountRequired, that.PostingAmountRequired; p != q {
+		if p == nil {
+			p = &PostingAmountRequiredDetails{}
+		}
+		if q == nil {
+			q = &PostingAmountRequiredDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *AccountAddressEmptyDetails) EqualVT(that *AccountAddressEmptyDetails) bool {
 	if this == that {
 		return true
@@ -18374,6 +18424,22 @@ func (this *NumscriptVersionAlreadyExistsDetails) EqualVT(that *NumscriptVersion
 
 func (this *NumscriptVersionAlreadyExistsDetails) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*NumscriptVersionAlreadyExistsDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *PostingAmountRequiredDetails) EqualVT(that *PostingAmountRequiredDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *PostingAmountRequiredDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*PostingAmountRequiredDetails)
 	if !ok {
 		return false
 	}
@@ -31403,6 +31469,27 @@ func (m *FailureDetails_NumscriptVersionNotFound) MarshalToSizedBufferVT(dAtA []
 	}
 	return len(dAtA) - i, nil
 }
+func (m *FailureDetails_PostingAmountRequired) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_PostingAmountRequired) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.PostingAmountRequired != nil {
+		size, err := m.PostingAmountRequired.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x9
+		i--
+		dAtA[i] = 0xaa
+	}
+	return len(dAtA) - i, nil
+}
 func (m *AccountAddressEmptyDetails) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -36208,6 +36295,39 @@ func (m *NumscriptVersionAlreadyExistsDetails) MarshalToSizedBufferVT(dAtA []byt
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Name)))
 		i--
 		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *PostingAmountRequiredDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PostingAmountRequiredDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *PostingAmountRequiredDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
 	}
 	return len(dAtA) - i, nil
 }
@@ -47329,6 +47449,18 @@ func (m *FailureDetails_NumscriptVersionNotFound) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *FailureDetails_PostingAmountRequired) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.PostingAmountRequired != nil {
+		l = m.PostingAmountRequired.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *AccountAddressEmptyDetails) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -49021,6 +49153,16 @@ func (m *NumscriptVersionAlreadyExistsDetails) SizeVT() (n int) {
 		l = len(*m.Version)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *PostingAmountRequiredDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	n += len(m.unknownFields)
 	return n
 }
@@ -70368,6 +70510,47 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptVersionNotFound{NumscriptVersionNotFound: v}
 			}
 			iNdEx = postIndex
+		case 149:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PostingAmountRequired", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_PostingAmountRequired); ok {
+				if err := oneof.PostingAmountRequired.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &PostingAmountRequiredDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_PostingAmountRequired{PostingAmountRequired: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -80545,6 +80728,57 @@ func (m *NumscriptVersionAlreadyExistsDetails) UnmarshalVT(dAtA []byte) error {
 			s := string(dAtA[iNdEx:postIndex])
 			m.Version = &s
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PostingAmountRequiredDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PostingAmountRequiredDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PostingAmountRequiredDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

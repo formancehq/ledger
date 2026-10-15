@@ -14017,6 +14017,68 @@ func NewNumscriptVersionAlreadyExistsDetailsListReader(s []*NumscriptVersionAlre
 	return numscriptVersionAlreadyExistsDetailsListReadonly(s)
 }
 
+// PostingAmountRequiredDetailsReader provides read-only access to PostingAmountRequiredDetails.
+// Call Mutate() to obtain a mutable clone.
+type PostingAmountRequiredDetailsReader interface {
+	Mutate() *PostingAmountRequiredDetails
+}
+
+type postingAmountRequiredDetailsReadonly PostingAmountRequiredDetails
+
+func (r *postingAmountRequiredDetailsReadonly) Mutate() *PostingAmountRequiredDetails {
+	return (*PostingAmountRequiredDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this PostingAmountRequiredDetails.
+func (m *PostingAmountRequiredDetails) AsReader() PostingAmountRequiredDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*postingAmountRequiredDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this PostingAmountRequiredDetails.
+func (m *PostingAmountRequiredDetails) Mutate() *PostingAmountRequiredDetails {
+	return m.CloneVT()
+}
+
+// PostingAmountRequiredDetailsListReader provides read-only iteration over []*PostingAmountRequiredDetails.
+type PostingAmountRequiredDetailsListReader interface {
+	Len() int
+	Get(i int) PostingAmountRequiredDetailsReader
+	Range(yield func(int, PostingAmountRequiredDetailsReader) bool)
+}
+
+type postingAmountRequiredDetailsListReadonly []*PostingAmountRequiredDetails
+
+func (l postingAmountRequiredDetailsListReadonly) Len() int { return len(l) }
+
+func (l postingAmountRequiredDetailsListReadonly) Get(i int) PostingAmountRequiredDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l postingAmountRequiredDetailsListReadonly) Range(yield func(int, PostingAmountRequiredDetailsReader) bool) {
+	for i, v := range l {
+		var r PostingAmountRequiredDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPostingAmountRequiredDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPostingAmountRequiredDetailsListReader(s []*PostingAmountRequiredDetails) PostingAmountRequiredDetailsListReader {
+	return postingAmountRequiredDetailsListReadonly(s)
+}
+
 // PostingsAndScriptConflictDetailsReader provides read-only access to PostingsAndScriptConflictDetails.
 // Call Mutate() to obtain a mutable clone.
 type PostingsAndScriptConflictDetailsReader interface {
