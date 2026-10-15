@@ -122,6 +122,7 @@ func TestLoadConfig_DefaultsApplyWhenFlagUnset(t *testing.T) {
 		"--idempotency-ttl unset must yield the 24h default")
 	require.Equal(t, uint64(100), cfg.RaftConfig.AutoPromoteThreshold)
 	require.Equal(t, 500*time.Millisecond, cfg.HealthConfig.ClockSkewThreshold)
+	require.Equal(t, 30*time.Second, cfg.HealthConfig.Interval)
 	require.Equal(t, 10*time.Millisecond, cfg.QueryProfileThreshold)
 	// Regression: --cache-rotation-threshold (cobra default 1000) used to
 	// regress to 0 when the call site's local fallback (0) was preferred

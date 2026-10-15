@@ -82,9 +82,23 @@ Thresholds are configurable independently for each volume type, allowing fine-gr
 
 | Flag | Environment Variable | Default | Description |
 |------|---------------------|---------|-------------|
-| `--health-check-interval` | `HEALTH_CHECK_INTERVAL` | `30s` | Interval between health checks |
+| `--health-check-interval` | `HEALTH_CHECK_INTERVAL` | `30s` | Interval between health checks; must be greater than zero |
 | `--health-wal-threshold` | `HEALTH_WAL_THRESHOLD` | `0.8` | WAL volume usage threshold (0.0-1.0) |
 | `--health-data-threshold` | `HEALTH_DATA_THRESHOLD` | `0.8` | Data volume usage threshold (0.0-1.0) |
+
+The polling interval must parse as a Go duration greater than zero. Zero does
+not disable health checks. The server rejects a non-positive interval during
+configuration validation, before bootstrap starts the health worker; parsing
+and join discovery in `LoadConfig` can occur before that validation.
+
+The operator rejects a nonempty invalid `spec.health.interval` during
+reconciliation with `ConfigValid=False`, reason `ValidationFailed`, and
+`Phase=Error`. It does not create or update workloads for that spec, and leaves
+existing workloads in place. A generated cluster ID may already have been
+persisted before validation; the failure status is written afterward. Correcting
+the spec resumes normal reconciliation. An omitted/empty interval uses the
+server's `30s` default. `extraEnv` overrides remain subject to server validation;
+typed-spec validation does not validate Secret-backed or other overrides.
 
 A threshold of `0.8` means the volume is considered full when 80% of its total capacity is used.
 
