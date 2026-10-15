@@ -62,8 +62,9 @@ go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.1-0.
 ## Modifying Protocol Definitions
 
 The service API has a compiled protocol revision independent of release versions.
-For every exposed wire or semantic change, assess client/server compatibility and
-bump `pkg/grpcprotocol.Version` in the same change when the contract breaks.
+For every exposed wire or semantic change, assess client/server compatibility.
+During the v3 release-candidate phase the revision is frozen: do not bump
+`pkg/grpcprotocol.Version`; keep the contract compatible or escalate the change.
 Renumbering exposed fields is a breaking change even if the generated code still
 compiles. Internal persisted/Raft-only changes require an impact assessment of
 shared service types rather than an automatic service revision bump. See the

@@ -10,10 +10,12 @@ This file is the always-loaded entry point for AI agents working on Ledger v3. K
 - When removing protobuf fields, delete them and realign field numbers sequentially. The EN-1551 cleanup removed every existing `reserved` declaration from `misc/proto/`; do not reintroduce any.
 - Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
 
-### Service protocol revision — required during pre-release
+### Service protocol revision — frozen during the release-candidate phase
 
-Every incompatible service gRPC contract change must increment
-`pkg/grpcprotocol.Version` in the same PR, including during pre-release. Read the
+Do not increment `pkg/grpcprotocol.Version`; it stays at `"40"` during the v3
+release-candidate phase. Every service gRPC contract change must stay compatible
+with clients and servers at that revision. If a change cannot stay compatible,
+escalate it instead of bumping the revision. Read the
 [protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
 before modifying this contract.
 
