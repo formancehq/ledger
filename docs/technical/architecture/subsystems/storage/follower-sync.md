@@ -9,7 +9,13 @@ in parallel.
 
 1. `PrepareSnapshot` waits for the serving FSM to reach the requested Raft
    index, creates a temporary Pebble checkpoint, and returns a session ID plus
-   a manifest containing only each regular file's relative path and size.
+   a manifest containing only each regular file's relative path and size. A
+   server whose own store is behind its Raft log (out of sync, fetching a
+   checkpoint, or installing a Raft snapshot) refuses with
+   `FailedPrecondition` before waiting: it reaches the requested index only
+   after fetching a checkpoint itself. The fetcher treats that code as final
+   and the requester moves on to another voter (see
+   [Donor Selection](../../data-flows.md#donor-selection)).
 2. `FetchFile` streams one manifest file in chunks. The server computes SHA-256
    while reading the file and puts the lowercase hexadecimal digest on the EOF
    response.
