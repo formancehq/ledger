@@ -849,8 +849,12 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 					return err
 				}
 
-				a.status.Store(statusGated)
+				// The reason is stored before the status: readers such as
+				// IsResynchronizing load both without the lock, and a reason
+				// seen with the old status is harmless while the reverse is
+				// a gated status with a stale reason.
 				a.gatingReason.Store(gatingReasonSyncing)
+				a.status.Store(statusGated)
 				syncingLeader = work.syncLeader
 				a.startSyncSnapshot(ctx, work.syncLeader)
 				waitStart = time.Now()
@@ -1664,8 +1668,8 @@ func (a *Applier) gateAndLaunchMaintenance(
 ) error {
 	frozenAtIndex := entries[len(entries)-1].GetIndex()
 
-	a.status.Store(statusGated)
 	a.gatingReason.Store(gatingReason)
+	a.status.Store(statusGated)
 
 	deferredResult, deferredFuture := a.extractDeferredFuture(applyResult)
 

@@ -309,14 +309,15 @@ start_node() {
 	SERVER_PIDS[$i]=$!
 }
 
-# Wait (bounded) for a node to log leadership; fail if it dies first. A caller
+# Wait (bounded) for a node to log leader readiness, the point where its FSM
+# has caught up and it admits writes; fail if it dies first. A caller
 # relaunching a node passes the log's current byte size: server logs are
-# appended across boots, so without the offset a leadership line from an
+# appended across boots, so without the offset a readiness line from an
 # earlier boot satisfies the check instantly.
 wait_leader() {
 	local i="$1" offset="${2:-0}"
 	for _ in $(seq 1 60); do
-		if tail -c +"$(( offset + 1 ))" "${SERVER_LOGS[$i]}" 2>/dev/null | grep -qE "Became leader|became leader at term"; then return 0; fi
+		if tail -c +"$(( offset + 1 ))" "${SERVER_LOGS[$i]}" 2>/dev/null | grep -q "Leader ready"; then return 0; fi
 		if ! kill -0 "${SERVER_PIDS[$i]}" 2>/dev/null; then
 			echo "ERROR: node $(( i + 1 )) exited during startup:" >&2
 			tail -20 "${SERVER_LOGS[$i]}" >&2

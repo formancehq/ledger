@@ -906,8 +906,10 @@ func Module() fx.Option {
 						handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
 					case node.LeaderReadyEvent:
 						healthChecker.OnLeaderReady()
-						proposeClusterConfigIfNeeded(n, builder, store, cfg, logger)
+						// Recorded before the cluster-config proposal, which
+						// can block on its own commit.
 						handleLeaderReadyEvent(eventsManager, mirrorManager, logger)
+						proposeClusterConfigIfNeeded(n, builder, store, cfg, logger)
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
@@ -1823,7 +1825,8 @@ func handleLeadershipChangeEvent(
 }
 
 // handleLeaderReadyEvent records leadership for the managers once the leader's
-// store is current.
+// store is current. The model harness (tests/antithesis/run_model_test.sh)
+// waits for the "Leader ready" log line before driving a node.
 func handleLeaderReadyEvent(
 	eventsManager leadershipChangeManager,
 	mirrorManager leadershipChangeManager,
