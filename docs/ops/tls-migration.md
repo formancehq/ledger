@@ -11,12 +11,14 @@ The `Cluster` CRD exposes a single boolean:
 spec:
   tls:
     enabled: true            # or false
-    secretName: my-tls-certs # only used when enabled is true
+    secretName: my-tls-certs # retained while disabling TLS
     caSecretKey: ca.crt      # optional
 ```
 
-To enable or disable TLS you flip `tls.enabled`. The operator handles the
-rest.
+To enable or disable TLS you flip `tls.enabled`. Removing `spec.tls` also
+requests disabled mode. The operator handles the rollout. Keep the referenced
+certificate Secret available until the disabled rollout completes, even when
+removing the TLS configuration from the desired spec.
 
 ## What happens under the hood
 
@@ -48,9 +50,9 @@ transitional state during a TLS toggle.
 
 | Phase                            | Meaning                                          |
 |----------------------------------|--------------------------------------------------|
-| `disabled`                       | Cluster runs plaintext, no migration in flight   |
+| `disabled`                       | Disabled template selected; rollout may still be in progress |
 | `transitioning-to-required`      | Phase 1 of an enable: rolling out `optional`     |
-| `required`                       | Cluster runs TLS only                            |
+| `required`                       | Required template selected; rollout may still be in progress |
 | `transitioning-to-disabled`      | Phase 1 of a disable: rolling out `optional`     |
 
 You can watch the migration with:
@@ -62,10 +64,54 @@ kubectl get cluster my-ledger -w \
 
 ### Toggle flow (disable: `required` → `disabled`)
 
-Symmetric to the enable path. The operator drives the StatefulSet through
-`optional` first so that pods restarting in plaintext can still be reached
-by peers that haven't been updated yet. After convergence, the operator
-moves to `disabled` and deletes the `cluster-secret` Secret.
+1. User sets `tls.enabled: false` (with or without `secretName`) or removes
+   `spec.tls`. External authentication must be disabled before TLS can be
+   disabled; `auth.enabled: true` still requires TLS.
+2. Before changing or deleting the StatefulSet, the operator persists
+   `status.tlsRollout` with the rollout mode, certificate Secret name and CA
+   key. Existing installations recover these references from the live
+   StatefulSet. A failed status write stops the workload change.
+3. The operator renders `optional` with those retained references, including
+   the certificate mount and server/client CA configuration. It leaves the
+   desired spec unchanged. Old TLS-only peers can communicate with optional
+   peers throughout this first rolling update.
+4. After optional rollout convergence, the operator persists the next rollout
+   mode and updates the template to `disabled`, removing its certificate mount and
+   certificate/CA environment. Once the template no longer references the
+   operator-managed `cluster-secret`, that Secret can be deleted. This is
+   separate from the user-owned certificate Secret, which the operator never
+   deletes.
+5. The operator retains `status.tlsRollout` until the disabled template has
+   converged, then clears it. Convergence requires the StatefulSet to have
+   observed its current generation and all desired replicas to be updated
+   and ready. `status.tlsMigrationPhase: disabled` indicates the selected
+   template mode; by itself it does not prove rollout completion.
+
+If reconciliation or the operator stops after a status write, a replacement
+operator resumes from the persisted rollout state. If StatefulSet recreation
+is interrupted after orphan deletion, the missing StatefulSet is reconstructed
+using the retained mode and references rather than treated as a new plaintext
+cluster. A failure after the workload update leaves retained recovery state
+available for the next reconciliation. Status stores references only, never
+certificate or private-key bytes.
+
+The certificate Secret remains user-owned. Removing it during the transition
+can prevent replacement optional-mode pods from starting; restore that Secret
+and let reconciliation continue. Remove it yourself only after the disabled
+rollout has converged and `status.tlsRollout` has been cleared.
+
+### Backup Jobs during migration
+
+When provisioning a new backup Job, the operator reads TLS mode and
+certificate/CA references together from the current StatefulSet template owned
+by the Cluster. Desired `spec.tls` can already be absent while that template
+still requires TLS. The Job therefore retains the live template's trust
+configuration instead of falling back to plaintext or losing its CA mount.
+If the StatefulSet is temporarily absent during recreation, Job provisioning
+returns a retryable error and resumes once the owned workload is available.
+A same-name workload owned by another Cluster is rejected. This template
+snapshot selects transport configuration; it does not prove every Pod has
+finished rolling. An already persisted backup Job keeps its original template.
 
 ### Cluster secret coupling
 

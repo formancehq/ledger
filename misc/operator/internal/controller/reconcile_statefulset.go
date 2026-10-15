@@ -48,10 +48,14 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 
 	targetTLSMode := computeTargetTLSMode(
 		desiredTLSMode(ledger),
-		currentTLSModeFromStatefulSet(existingForTLS),
+		observedTLSMode(ledger, existingForTLS),
 		rolloutConverged(existingForTLS),
 	)
 	ledger.Status.TLSMigrationPhase = tlsMigrationPhase(desiredTLSMode(ledger), targetTLSMode)
+	effective, err := prepareTLSRollout(ctx, r.Client, ledger, existingForTLS, targetTLSMode)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	desiredReplicas := int32(3)
 	if ledger.Spec.Replicas != nil {
@@ -84,11 +88,11 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 					Namespace: ledger.Namespace,
 				},
 			}
-			savedReplicas := ledger.Spec.Replicas
-			ledger.Spec.Replicas = &previousReplicas
+			savedReplicas := effective.Spec.Replicas
+			effective.Spec.Replicas = &previousReplicas
 			_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
 				sts.Labels = commonLabels(ledger)
-				desired := buildStatefulSetSpec(ledger, specHash, credentials, targetTLSMode)
+				desired := buildStatefulSetSpec(effective, specHash, credentials, targetTLSMode)
 
 				if sts.CreationTimestamp.IsZero() {
 					sts.Spec = desired
@@ -102,7 +106,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 
 				return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
 			})
-			ledger.Spec.Replicas = savedReplicas
+			effective.Spec.Replicas = savedReplicas
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("updating StatefulSet spec before scale-down: %w", err)
 			}
@@ -128,7 +132,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		},
 	}
 
-	desired := buildStatefulSetSpec(ledger, specHash, credentials, targetTLSMode)
+	desired := buildStatefulSetSpec(effective, specHash, credentials, targetTLSMode)
 
 	// Check if VolumeClaimTemplates changed on an existing StatefulSet.
 	// VCTs are immutable — we must delete-recreate with orphan propagation.

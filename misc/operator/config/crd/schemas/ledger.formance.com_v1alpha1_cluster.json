@@ -4178,6 +4178,34 @@
         "tlsMigrationPhase": {
           "description": "TLSMigrationPhase reflects the operator's current TLS rollout phase.\nOne of \"disabled\", \"required\", \"transitioning-to-required\",\n\"transitioning-to-disabled\". Set by the controller's TLS state\nmachine; users observe the user-facing tls.enabled bool, this field\nexposes the intermediate \"optional\" mode used during a toggle.",
           "type": "string"
+        },
+        "tlsRollout": {
+          "additionalProperties": false,
+          "description": "TLSRollout preserves certificate references and mode across operator restarts\nand StatefulSet recreation. Cleared after the disabled rollout converges.",
+          "properties": {
+            "caSecretKey": {
+              "description": "CASecretKey is the optional CA key in the certificate Secret.",
+              "type": "string"
+            },
+            "mode": {
+              "description": "Mode is the last TLS mode selected before mutating the StatefulSet.",
+              "enum": [
+                "disabled",
+                "optional",
+                "required"
+              ],
+              "type": "string"
+            },
+            "secretName": {
+              "description": "SecretName is the same-namespace certificate Secret retained for the rollout.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode",
+            "secretName"
+          ],
+          "type": "object"
         }
       },
       "type": "object"
