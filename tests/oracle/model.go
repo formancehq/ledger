@@ -904,6 +904,13 @@ func (g GlobalState) SeedInitialSchema(reqs []*servicepb.Request) GlobalState {
 }
 
 func (g GlobalState) Apply(bulk Bulk) ApplyResult {
+	return g.ApplyAdmitted(bulk, g.Admit(bulk))
+}
+
+// ApplyAdmitted applies bulk under a verdict admission reached on g or on an
+// earlier state of the same history: the FSM sees every commit the admitting
+// node saw, plus whatever landed in between.
+func (g GlobalState) ApplyAdmitted(bulk Bulk, admission Admission) ApplyResult {
 	// The cluster-wide maintenance interceptor rejects non-toggle bulks before
 	// request conversion and structural validation. This ordering matters for a
 	// malformed request observed while maintenance is enabled: the service
@@ -936,10 +943,11 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 	}
 
-	forwarded, reason := g.admitScripts(bulk)
-	if reason != "" {
-		return ApplyResult{OK: false, Reason: reason, State: g}
+	if admission.reason != "" {
+		return ApplyResult{OK: false, Reason: admission.reason, State: g}
 	}
+
+	forwarded := admission.forwarded
 
 	// Per-batch idempotency, checked after admission's structural and maintenance
 	// gates and before any other FSM outcome — mirroring the server,

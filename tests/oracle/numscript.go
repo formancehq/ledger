@@ -1,6 +1,7 @@
 package oracle
 
 import (
+	"fmt"
 	"context"
 	"errors"
 	"maps"
@@ -617,6 +618,28 @@ func createContentReason(ct *servicepb.CreateTransactionPayload) string {
 // fails; account metadata writes and deletes fold unconditionally; a revert
 // folds its reversed postings when its target predates the batch. Orders on a
 // deleted ledger are left to the FSM, which refuses them before any script.
+// Admission is what the server decides about a bulk's scripts before it is
+// proposed: a terminal reason, or the orders it forwards to fail in the FSM.
+// The admitting node reads the state it has applied so far, so a verdict may
+// be older than the state the FSM applies the bulk on.
+type Admission struct {
+	forwarded map[int]bool
+	reason    string
+}
+
+// Key identifies the verdict, so equal verdicts reached on different bases
+// collapse.
+func (a Admission) Key() string {
+	return a.reason + "|" + fmt.Sprint(slices.Sorted(maps.Keys(a.forwarded)))
+}
+
+// Admit runs the admission pass on g.
+func (g GlobalState) Admit(bulk Bulk) Admission {
+	forwarded, reason := g.admitScripts(bulk)
+
+	return Admission{forwarded: forwarded, reason: reason}
+}
+
 func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason string) {
 	if !slices.ContainsFunc(bulk.Requests, func(req *servicepb.Request) bool {
 		return IsScripted(req.GetApply().GetAction().GetCreateTransaction())
@@ -641,10 +664,6 @@ func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason str
 
 		apply := req.GetApply()
 		if apply == nil {
-			continue
-		}
-
-		if lc, exists := g.lifecycle.Get(name); exists && lc.Deleted {
 			continue
 		}
 
