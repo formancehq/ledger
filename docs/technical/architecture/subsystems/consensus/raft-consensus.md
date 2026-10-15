@@ -177,9 +177,9 @@ Leadership acquisition does not admit writes immediately. The node first
 drains previously submitted apply work and waits until the FSM has applied the
 new leader's current-term no-op entry. Applying that entry proves that every
 preceding entry is committed and locally applied. `WaitLeaderReady` exposes
-this generation-specific gate to admission, and `LeaderReadyEvent` lets
-bootstrap reconcile persisted cluster configuration and start the event and
-mirror managers only after the same gate.
+this generation-specific gate to admission and to membership changes, and
+`LeaderReadyEvent` lets bootstrap reconcile persisted cluster configuration and
+start the event and mirror managers only after the same gate.
 
 Each acquisition owns a cancellable readiness generation. After the FSM
 wait succeeds, the waiter rechecks cancellation before emitting the event and
