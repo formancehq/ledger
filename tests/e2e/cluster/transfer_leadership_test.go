@@ -43,10 +43,10 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		GinkgoLogr.Info(fmt.Sprintf("Transferring leadership from node %d to node %d", lid, targetID))
 
 		resp, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-			Transferee: uint32(targetID),
+			Transferee: uint64(targetID),
 		})
 		Expect(err).To(Succeed())
-		Expect(resp.NewLeader).To(Equal(uint32(targetID)))
+		Expect(resp.NewLeader).To(Equal(uint64(targetID)))
 
 		// Verify all nodes see the new leader
 		for i := range countInstances {
@@ -71,10 +71,10 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		GinkgoLogr.Info(fmt.Sprintf("Requesting transfer via follower %d, target node %d (leader is %d)", followerID, targetID, lid))
 
 		resp, err := servers[followerID-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-			Transferee: uint32(targetID),
+			Transferee: uint64(targetID),
 		})
 		Expect(err).To(Succeed())
-		Expect(resp.NewLeader).To(Equal(uint32(targetID)))
+		Expect(resp.NewLeader).To(Equal(uint64(targetID)))
 
 		*leaderID = targetID
 	})
@@ -92,7 +92,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		// Transfer leadership
 		targetID := (lid % countInstances) + 1
 		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-			Transferee: uint32(targetID),
+			Transferee: uint64(targetID),
 		})
 		Expect(err).To(Succeed())
 

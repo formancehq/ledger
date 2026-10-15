@@ -2657,6 +2657,17 @@ ledgerctl logs get 42 --json
 
 Manage and inspect the Raft cluster.
 
+`status --node-id`, `watch --node-id`, and `transfer-leader <node-id>` accept
+unsigned 64-bit IDs, including 4294967297, and preserve them in RPC requests
+and displayed cluster identities. Values above 18446744073709551615 are
+rejected. Status/watch retain zero as the leader-routing selector; transfer
+requires a nonzero ID.
+
+Structured status output (`--json`/`--yaml`) follows protobuf JSON: `leader`,
+`localNode`, and each node's `id` are decimal strings, including small IDs.
+Consumers must preserve the string value or parse it as an unsigned 64-bit
+integer; the operator scale-down reader uses the same contract.
+
 **Aliases:** `cl`
 
 #### cluster status

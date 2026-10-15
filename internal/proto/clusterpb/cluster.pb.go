@@ -25,7 +25,7 @@ const (
 type GetClusterStateRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// node_id indicates which node to query for cluster state (0 = route to leader)
-	NodeId        uint32 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	NodeId        uint64 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -60,7 +60,7 @@ func (*GetClusterStateRequest) Descriptor() ([]byte, []int) {
 	return file_cluster_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *GetClusterStateRequest) GetNodeId() uint32 {
+func (x *GetClusterStateRequest) GetNodeId() uint64 {
 	if x != nil {
 		return x.NodeId
 	}
@@ -70,7 +70,7 @@ func (x *GetClusterStateRequest) GetNodeId() uint32 {
 // NodeInfo represents information about a node in the cluster
 type NodeInfo struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	Id             uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Id             uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Suffrage       string                 `protobuf:"bytes,2,opt,name=suffrage,proto3" json:"suffrage,omitempty"`                                   // Voter or Learner
 	Progress       *ProgressInfo          `protobuf:"bytes,3,opt,name=progress,proto3" json:"progress,omitempty"`                                   // Progress information (only available when querying leader)
 	RaftAddress    string                 `protobuf:"bytes,4,opt,name=raft_address,json=raftAddress,proto3" json:"raft_address,omitempty"`          // Raft transport address
@@ -112,7 +112,7 @@ func (*NodeInfo) Descriptor() ([]byte, []int) {
 	return file_cluster_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *NodeInfo) GetId() uint32 {
+func (x *NodeInfo) GetId() uint64 {
 	if x != nil {
 		return x.Id
 	}
@@ -382,9 +382,9 @@ func (x *RaftStatus) GetLastPersistedIndex() uint64 {
 type ClusterState struct {
 	state           protoimpl.MessageState  `protogen:"open.v1"`
 	State           string                  `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`                                             // Leader, Follower, Candidate, Shutdown
-	Leader          uint32                  `protobuf:"varint,2,opt,name=leader,proto3" json:"leader,omitempty"`                                          // ID of the current leader (0 if no leader)
+	Leader          uint64                  `protobuf:"varint,2,opt,name=leader,proto3" json:"leader,omitempty"`                                          // ID of the current leader (0 if no leader)
 	Nodes           []*NodeInfo             `protobuf:"bytes,3,rep,name=nodes,proto3" json:"nodes,omitempty"`                                             // List of all nodes in the cluster
-	LocalNode       uint32                  `protobuf:"varint,4,opt,name=local_node,json=localNode,proto3" json:"local_node,omitempty"`                   // ID of the local node
+	LocalNode       uint64                  `protobuf:"varint,4,opt,name=local_node,json=localNode,proto3" json:"local_node,omitempty"`                   // ID of the local node
 	RaftStatus      *RaftStatus             `protobuf:"bytes,5,opt,name=raft_status,json=raftStatus,proto3" json:"raft_status,omitempty"`                 // Complete Raft status information
 	MaintenanceMode bool                    `protobuf:"varint,6,opt,name=maintenance_mode,json=maintenanceMode,proto3" json:"maintenance_mode,omitempty"` // Whether maintenance mode is active
 	SyncProgress    *SyncProgress           `protobuf:"bytes,7,opt,name=sync_progress,json=syncProgress,proto3" json:"sync_progress,omitempty"`           // Local node checkpoint sync progress
@@ -432,7 +432,7 @@ func (x *ClusterState) GetState() string {
 	return ""
 }
 
-func (x *ClusterState) GetLeader() uint32 {
+func (x *ClusterState) GetLeader() uint64 {
 	if x != nil {
 		return x.Leader
 	}
@@ -446,7 +446,7 @@ func (x *ClusterState) GetNodes() []*NodeInfo {
 	return nil
 }
 
-func (x *ClusterState) GetLocalNode() uint32 {
+func (x *ClusterState) GetLocalNode() uint64 {
 	if x != nil {
 		return x.LocalNode
 	}
@@ -611,7 +611,7 @@ func (x *SyncProgress) GetBytesTotal() uint64 {
 
 type TransferLeadershipRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Transferee    uint32                 `protobuf:"varint,1,opt,name=transferee,proto3" json:"transferee,omitempty"` // Target node ID
+	Transferee    uint64                 `protobuf:"varint,1,opt,name=transferee,proto3" json:"transferee,omitempty"` // Target node ID
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -646,7 +646,7 @@ func (*TransferLeadershipRequest) Descriptor() ([]byte, []int) {
 	return file_cluster_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *TransferLeadershipRequest) GetTransferee() uint32 {
+func (x *TransferLeadershipRequest) GetTransferee() uint64 {
 	if x != nil {
 		return x.Transferee
 	}
@@ -655,7 +655,7 @@ func (x *TransferLeadershipRequest) GetTransferee() uint32 {
 
 type TransferLeadershipResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	NewLeader     uint32                 `protobuf:"varint,1,opt,name=new_leader,json=newLeader,proto3" json:"new_leader,omitempty"` // Confirmed new leader ID
+	NewLeader     uint64                 `protobuf:"varint,1,opt,name=new_leader,json=newLeader,proto3" json:"new_leader,omitempty"` // Confirmed new leader ID
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -690,7 +690,7 @@ func (*TransferLeadershipResponse) Descriptor() ([]byte, []int) {
 	return file_cluster_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *TransferLeadershipResponse) GetNewLeader() uint32 {
+func (x *TransferLeadershipResponse) GetNewLeader() uint64 {
 	if x != nil {
 		return x.NewLeader
 	}
@@ -2062,9 +2062,9 @@ const file_cluster_proto_rawDesc = "" +
 	"\n" +
 	"\rcluster.proto\x12\acluster\x1a\fcommon.proto\"1\n" +
 	"\x16GetClusterStateRequest\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\rR\x06nodeId\"\xca\x02\n" +
+	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\"\xca\x02\n" +
 	"\bNodeInfo\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\rR\x02id\x12\x1a\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1a\n" +
 	"\bsuffrage\x18\x02 \x01(\tR\bsuffrage\x121\n" +
 	"\bprogress\x18\x03 \x01(\v2\x15.cluster.ProgressInfoR\bprogress\x12!\n" +
 	"\fraft_address\x18\x04 \x01(\tR\vraftAddress\x12'\n" +
@@ -2099,10 +2099,10 @@ const file_cluster_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.cluster.ProgressInfoR\x05value:\x028\x01\"\xc1\x03\n" +
 	"\fClusterState\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x16\n" +
-	"\x06leader\x18\x02 \x01(\rR\x06leader\x12'\n" +
+	"\x06leader\x18\x02 \x01(\x04R\x06leader\x12'\n" +
 	"\x05nodes\x18\x03 \x03(\v2\x11.cluster.NodeInfoR\x05nodes\x12\x1d\n" +
 	"\n" +
-	"local_node\x18\x04 \x01(\rR\tlocalNode\x124\n" +
+	"local_node\x18\x04 \x01(\x04R\tlocalNode\x124\n" +
 	"\vraft_status\x18\x05 \x01(\v2\x13.cluster.RaftStatusR\n" +
 	"raftStatus\x12)\n" +
 	"\x10maintenance_mode\x18\x06 \x01(\bR\x0fmaintenanceMode\x12:\n" +
@@ -2121,11 +2121,11 @@ const file_cluster_proto_rawDesc = "" +
 	"bytesTotal\";\n" +
 	"\x19TransferLeadershipRequest\x12\x1e\n" +
 	"\n" +
-	"transferee\x18\x01 \x01(\rR\n" +
+	"transferee\x18\x01 \x01(\x04R\n" +
 	"transferee\";\n" +
 	"\x1aTransferLeadershipResponse\x12\x1d\n" +
 	"\n" +
-	"new_leader\x18\x01 \x01(\rR\tnewLeader\"\x15\n" +
+	"new_leader\x18\x01 \x01(\x04R\tnewLeader\"\x15\n" +
 	"\x13GetDiskUsageRequest\"\x14\n" +
 	"\x12GetNodeTimeRequest\"-\n" +
 	"\bNodeTime\x12!\n" +

@@ -232,3 +232,22 @@ bash scripts/ai-audit-challenge <audit-result.json>
 Both passes require the same exact clean `HEAD`; the providers remain read-only.
 Do not launch either command while reviewing this manifest PR. Jira preview or
 publication is a separate explicitly authorized action.
+
+## Full-width cluster identities (EN-2904)
+
+Follow each admitted uint64 Raft identity through Node.GetClusterState,
+ClusterService status routing and peer enrichment, leadership transfer, and
+Cobra status/watch/transfer commands. Exercise nodes 1 and 4294967297 together,
+plus 4294967296 to distinguish loss into the zero sentinel. Assert exact local,
+leader and progress IDs, correct address/version/sync/index attribution, and
+the outgoing transfer target and returned leader. Preserve small-ID controls,
+status zero routing, transfer zero rejection and overflow above MaxUint64.
+Revision 41 gates clients that would truncate these widened service fields.
+This evidence covers identity preservation at the service/CLI boundary; it does
+not change persisted membership, transfer readiness or quorum semantics.
+
+Structured CLI status uses protobuf JSON decimal strings for these identities,
+including small IDs. Exercise the actual Cobra stdout contract and the operator
+scale-down membership reader; string parsing must preserve high values and must
+not mistake node 4294967297 for node 1. The operator reconciliation domain owns
+the later removal/retry/StatefulSet/PVC sequence.
