@@ -3117,6 +3117,13 @@ paths:
         Removes an index from a ledger. The path parameter carries the target
         `IndexID` in canonical form (e.g. `metadata:TARGET_TYPE_ACCOUNT:color`,
         `tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP`). Requires `ledger:LedgerWrite` scope.
+
+        The drop is idempotent. An `IndexID` that has no registry entry on the
+        ledger (never created, or already dropped) also answers `204`, and each
+        committed drop appends a `DROP_INDEX` entry to the ledger log. A
+        mistyped canonical id is therefore not reported; read the index with
+        `GET /v3/{ledgerName}/indexes/{canonicalId}` first when the caller must
+        know that it exists. `404` means that the ledger does not exist.
       operationId: dropIndex
       tags:
         - Indexes
@@ -3137,7 +3144,7 @@ paths:
             type: string
       responses:
         '204':
-          description: Index removed.
+          description: Index removed, or no index with this id was registered on the ledger.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3145,7 +3152,11 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: The ledger does not exist. A missing index does not produce `404`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           $ref: '#/components/responses/Conflict'
         '500':

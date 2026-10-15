@@ -1066,7 +1066,10 @@ Scans the index and returns distinct values, facets, or a summary (`mode=distinc
 DELETE /v3/{ledgerName}/indexes/{canonicalId}
 ```
 
-Returns `204 No Content` once the FSM has committed the drop.
+Returns `204 No Content` once the FSM has committed the drop. The drop is
+idempotent: an index id with no registry entry on the ledger (never created,
+or already dropped) also returns `204` and appends a `DROP_INDEX` log entry.
+Only an unknown ledger returns `404`.
 
 #### Bucket-wide index reads
 

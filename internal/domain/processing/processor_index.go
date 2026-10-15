@@ -54,6 +54,9 @@ func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Conte
 	}
 
 	id := order.GetId()
+	// Dropping is idempotent by contract (openapi.yml dropIndex): unlike
+	// processCreateIndex there is no registry lookup, so an id with no entry
+	// still tombstones the key and records a DroppedIndexLog.
 	// Key off the command envelope, never the loaded projection's mutable
 	// name field (see processCreateIndex).
 	if err := indexes.Remove(ctx.Scope.Indexes(), ledger, id); err != nil {
