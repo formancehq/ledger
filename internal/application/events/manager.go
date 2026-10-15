@@ -86,6 +86,12 @@ type Manager struct {
 	// newStartupRetryTimer starts the wait of a startup retry. Tests may
 	// replace it to fire retries deterministically.
 	newStartupRetryTimer startupRetryTimer
+	// onStartupRetryFired and onStartupRetryHandled are optional test hooks.
+	// The first runs after a retry timer fires and before its callback takes
+	// the lock; the second runs when that callback returns. Both are nil in
+	// production.
+	onStartupRetryFired   func(name string)
+	onStartupRetryHandled func(name string)
 }
 
 // NewManager creates a new event Manager.
@@ -566,6 +572,12 @@ func (m *Manager) scheduleStartupRetry(sc *commonpb.SinkConfig) {
 		case <-retry.cancel:
 			return
 		case <-fired:
+		}
+		if m.onStartupRetryHandled != nil {
+			defer m.onStartupRetryHandled(name)
+		}
+		if m.onStartupRetryFired != nil {
+			m.onStartupRetryFired(name)
 		}
 
 		m.mu.Lock()
