@@ -30,11 +30,14 @@ class HeaderSanitizationTest(unittest.TestCase):
             ("\x03lÛT", "lÛT"),
             ("a\x7fb", "ab"),
             ("\x01 key", "key"),
+            ("\x01\xa0key", "key"),
+            ("\x01\x85key", "key"),
             ("a\tb", "a\tb"),
             ("", ""),
         ):
             with self.subTest(raw=raw):
                 self.assertEqual(sanitize_header_value(raw), expected)
+                assert_reaches_handler(self, sanitize_header_value(raw))
 
     def test_map_headers_keeps_names_and_absent_headers(self):
         self.assertIsNone(map_headers(None, None))

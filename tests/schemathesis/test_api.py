@@ -136,7 +136,7 @@ def sanitize_header_value(value):
     """Drop the bytes Go rejects before routing, keeping the value sendable by requests."""
     if not isinstance(value, str):
         return value
-    return _GO_INVALID_HEADER_VALUE_RE.sub("", value).lstrip(" \t")
+    return _GO_INVALID_HEADER_VALUE_RE.sub("", value).lstrip()
 
 
 @schemathesis.hook
