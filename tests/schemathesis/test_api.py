@@ -57,6 +57,10 @@ SAMPLE_NUMSCRIPTS = [
 
 _numscript_idx = 0
 
+# Bytes Go's net/http rejects in a header value (httpguts.ValidHeaderFieldValue):
+# control characters other than horizontal tab, and DEL.
+_GO_INVALID_HEADER_VALUE_RE = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
+
 
 def load_schema(base_url: str):
     """Load OpenAPI schema from the local file."""
@@ -126,6 +130,27 @@ def before_call(context, case):
         # Metadata: ensure it's a valid object
         if "metadata" in case.body and not isinstance(case.body["metadata"], dict):
             case.body["metadata"] = {}
+
+
+def sanitize_header_value(value):
+    """Drop the bytes Go rejects before routing, keeping the value sendable by requests."""
+    if not isinstance(value, str):
+        return value
+    return _GO_INVALID_HEADER_VALUE_RE.sub("", value).lstrip(" \t")
+
+
+@schemathesis.hook
+def map_headers(context, headers):
+    """Keep generated header values within what reaches the handlers.
+
+    Go's net/http answers an invalid header value with a plain-text 400 and
+    closes the connection before reading the request body. When the body
+    arrives after that first read, the close resets the connection and the
+    client fails reading the 400 with ECONNRESET.
+    """
+    if not headers:
+        return headers
+    return {name: sanitize_header_value(value) for name, value in headers.items()}
 
 
 @schemathesis.hook
