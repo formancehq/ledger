@@ -435,6 +435,13 @@ type Node struct {
 	// avoiding unnecessary I/O on the data volume.
 	lastCheckpointPersistedIndex uint64
 
+	// syncDonorAttempts counts the checkpoint-sync attempts of the current
+	// out-of-sync episode and selects the donor of the next one (see
+	// syncDonor). lastSyncAttempt spaces the attempts out. Both are touched
+	// only by the processReadies goroutine.
+	syncDonorAttempts uint64
+	lastSyncAttempt   time.Time
+
 	// Metrics (kept on Node: WAL/transport/orchestrate-related)
 	processEntryHistogram             metric.Float64Histogram
 	appendEntriesHistogram            metric.Float64Histogram
@@ -1397,6 +1404,43 @@ func (node *Node) processReadyLeadership(ctx context.Context, stop chan struct{}
 	return nil
 }
 
+// syncRetryInterval is the minimum spacing between two checkpoint-sync
+// attempts of one out-of-sync episode. Readies arrive at heartbeat rate once
+// a leader exists; without the spacing a fast-failing donor would be retried
+// on every one of them, and a back-to-back Ready could enqueue a second
+// request before Run has acknowledged the first, interrupting it.
+const syncRetryInterval = time.Second
+
+// syncDonor picks the peer to fetch a checkpoint from on the given attempt of
+// an out-of-sync episode. The first attempt goes to the known leader; later
+// attempts rotate through the other voters. The leader is not always a usable
+// donor: it may be resynchronizing itself (it leads on its log while its store
+// is behind) or unreachable while another voter holds the applied state, and
+// a node that has just won an election while out of sync has no leader other
+// than itself. The node is never its own donor. Returns 0 when no peer can
+// serve.
+func (node *Node) syncDonor(attempt uint64) uint64 {
+	self := node.config.NodeID
+
+	var lead uint64
+	if ss := node.lastSoftState.Load(); ss != nil {
+		lead = ss.Lead
+	}
+
+	voters := slices.Sorted(slices.Values(node.confState.Load().GetVoters()))
+	voters = slices.DeleteFunc(voters, func(id uint64) bool { return id == self })
+
+	if lead != 0 && lead != self && (attempt == 0 || len(voters) == 0) {
+		return lead
+	}
+
+	if len(voters) == 0 {
+		return 0
+	}
+
+	return voters[attempt%uint64(len(voters))]
+}
+
 func (node *Node) retryReadySnapshotSync(stop chan struct{}, rd raft.Ready) {
 	// Trigger SyncSnapshot when the applier is out-of-sync. Reads lastSoftState
 	// after the SoftState block above so both cases are covered by one
@@ -1413,17 +1457,37 @@ func (node *Node) retryReadySnapshotSync(stop chan struct{}, rd raft.Ready) {
 	// PVC runs out of space. EN-1431 follow-up.
 	//
 	// Guarded on IsEmptySnap so we don't collide with the snapshot-processing
-	// block below, which fires its own syncSnapshot for the leader that just
-	// sent this snapshot. TrySyncSnapshot is non-blocking so back-to-back
+	// block below, which fires its own SyncSnapshot for the snapshot it
+	// installs. TrySyncSnapshot is non-blocking so back-to-back
 	// Readies can't stack duplicate syncLeader items (which would interrupt
 	// an in-flight checkpoint fetch via taskExecutor.Interrupt()). The
 	// applier's own status transition (statusOutOfSync -> statusGated)
 	// makes subsequent Readies skip this block once the request is picked up.
-	if raft.IsEmptySnap(rd.Snapshot) && node.applier.Status() == statusOutOfSync && !isStopping(stop) {
-		if ss := node.lastSoftState.Load(); ss != nil && ss.Lead != 0 {
-			node.applier.TrySyncSnapshot(ss.Lead)
-		}
+	if !raft.IsEmptySnap(rd.Snapshot) || isStopping(stop) {
+		return
 	}
+
+	switch node.applier.Status() {
+	case statusNormal:
+		node.syncDonorAttempts = 0
+
+		return
+	case statusOutOfSync:
+	default:
+		return
+	}
+
+	if time.Since(node.lastSyncAttempt) < syncRetryInterval {
+		return
+	}
+
+	donor := node.syncDonor(node.syncDonorAttempts)
+	if donor == 0 || !node.applier.TrySyncSnapshot(donor) {
+		return
+	}
+
+	node.syncDonorAttempts++
+	node.lastSyncAttempt = time.Now()
 }
 
 func (node *Node) resolveReadyReadStates(rd raft.Ready) {
@@ -1514,8 +1578,8 @@ func (node *Node) installReadySnapshot(ctx context.Context, stop chan struct{}, 
 
 		// The snapshot is already persisted in WAL at this point. If syncSnapshot
 		// fails (network issue, leader unavailable, etc.), the node transitions to
-		// statusOutOfSync and will retry automatically when a leader is detected
-		// via SoftState or on restart (isStoreUpToDate check).
+		// statusOutOfSync and retryReadySnapshotSync tries the next donor, or
+		// the restart check (isStoreUpToDate) does.
 		// Skip sync if the node is shutting down — RestoreCheckpoint reopens the
 		// Pebble DB, and background tasks (bloom restore) would create iterators
 		// that outlive the DB.Close() in the fx shutdown hook.
@@ -1527,7 +1591,16 @@ func (node *Node) installReadySnapshot(ctx context.Context, stop chan struct{}, 
 		// peer-address cache once Pebble has been swapped — do NOT call
 		// peerStore.LoadAll here, it would read the pre-restore DB.
 		if !isStopping(stop) {
-			node.applier.SyncSnapshot(node.lastSoftState.Load().Lead, stop)
+			node.syncDonorAttempts = 0
+			if donor := node.syncDonor(node.syncDonorAttempts); donor != 0 {
+				node.syncDonorAttempts++
+				node.lastSyncAttempt = time.Now()
+				node.applier.SyncSnapshot(donor, stop)
+			} else {
+				node.logger.WithFields(map[string]any{
+					"index": rd.Snapshot.GetMetadata().GetIndex(),
+				}).Errorf("No peer can serve the checkpoint for the installed snapshot")
+			}
 		}
 	}
 
@@ -1840,16 +1913,22 @@ func isStopping(stop chan struct{}) bool {
 // for query checkpoints — on the leader AND on followers. Suppressing Tick
 // on the leader means no MsgHeartbeat is emitted for the entire duration of
 // a checkpoint, and any checkpoint longer than the election timeout
-// (default 1s) lets followers depose the leader on every checkpoint. Tick
-// only needs to be suppressed when the node is genuinely behind raft state
-// (#316).
+// (default 1s) lets followers depose the leader on every checkpoint (#316).
+//
+// Tick MUST also keep firing during statusOutOfSync. Only the store is behind
+// there; the Raft log is complete and durable, and elections are decided on
+// the log alone. A voter that withholds its ticks never times out and never
+// campaigns, so when the voters holding the newest log are the out-of-sync
+// ones, no candidate with an older log can win and the cluster stays
+// leaderless. Everything that needs the store is gated on its own: admission
+// waits for leaderReady, ReadIndex refuses while out of sync, and
+// MsgTimeoutNow is dropped outside statusNormal.
+//
+// statusInstallingSnapshot is the only exception: processReadies is rewriting
+// the WAL snapshot under the applier, and Run leaves the status within the
+// same Ready.
 func shouldTickRaft(status int32) bool {
-	switch status {
-	case statusOutOfSync, statusInstallingSnapshot:
-		return false
-	default:
-		return true
-	}
+	return status != statusInstallingSnapshot
 }
 
 func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {

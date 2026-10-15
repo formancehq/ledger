@@ -1111,6 +1111,33 @@ func (a *Applier) IsSyncing() bool {
 	return a.status.Load() == statusGated && a.gatingReason.Load() == gatingReasonSyncing
 }
 
+// IsResynchronizing reports whether the store is behind the Raft log: the
+// node is waiting for a donor, fetching a checkpoint, or installing a Raft
+// snapshot.
+func (a *Applier) IsResynchronizing() bool {
+	switch a.status.Load() {
+	case statusOutOfSync, statusInstallingSnapshot:
+		return true
+	case statusGated:
+		return a.gatingReason.Load() == gatingReasonSyncing
+	default:
+		return false
+	}
+}
+
+// WaitForCheckpointable blocks until a checkpoint taken from the store would
+// contain targetIndex. A resynchronizing store fails at once with
+// state.ErrStoreResynchronizing: it reaches targetIndex only after fetching a
+// checkpoint itself, and the peer asking would otherwise spend its whole
+// PrepareSnapshot budget on a donor that cannot deliver.
+func (a *Applier) WaitForCheckpointable(ctx context.Context, targetIndex uint64) error {
+	if a.IsResynchronizing() {
+		return state.ErrStoreResynchronizing
+	}
+
+	return a.fsm.WaitForApplied(ctx, targetIndex)
+}
+
 // GetSyncProgress returns the current sync progress, or nil if not syncing.
 func (a *Applier) GetSyncProgress() *state.SyncProgress {
 	return a.syncProgress.Load()

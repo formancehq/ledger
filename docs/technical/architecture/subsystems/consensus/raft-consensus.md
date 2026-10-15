@@ -685,6 +685,12 @@ if !raft.IsEmptySnap(rd.Snapshot) {
 
 #### Snapshot Synchronization Flow
 
+The checkpoint is fetched from a donor the follower picks on each attempt:
+the leader first, then the other voters in turn, never itself. The leader
+can be unreachable, or resynchronizing itself after winning an election while
+out of sync; a donor in that state refuses and the follower tries the next
+one. See [Donor Selection](../../data-flows.md#donor-selection).
+
 The `SynchronizeWithLeader` method handles the complex task of bringing the store up to date:
 
 1. **Ledger reconciliation**: Compare FSM ledgers with store ledgers
