@@ -22,7 +22,7 @@ Adding a new attribute kind requires adding both a coverage-gate entry and a blo
 
 ## Startup rate validation
 
-EN-2923 prevents a direct server rate from reaching the panic-prone filter
+Startup validation prevents a direct server rate from reaching the panic-prone filter
 constructor. `bootstrap.Config.Validate` checks all twelve enabled types before
 Fx constructs `NewFilterSet`: each rate must be finite and strictly in `(0,1)`.
 CLI loading first maps a zero rate to `0.01`; `expectedKeys=0` disables the type
