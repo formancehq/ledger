@@ -308,6 +308,7 @@ What needs the store is gated on its own:
 3. **MsgTimeoutNow rejection**: if a leader tries to transfer leadership to a node outside `statusNormal` via `TransferLeadership`, the `MsgTimeoutNow` message is silently dropped.
 4. **Maintenance snapshots** wait for `LastPersistedIndex` to move, so an out-of-sync node never compacts entries it has not applied.
 5. **Event sinks and mirrors** start on `LeaderReadyEvent`, behind the same gate as admission, so their managers read sink and mirror config from a current store. Leadership loss stops them at once.
+6. **Membership changes** wait for `leaderReady` before proposing (`retryConfChange`), and automatic promotion skips its tick until then, so the removed-member registry and instance identities they check are read from a current store. Force removal, the no-quorum recovery path, is not gated.
 
 #### Sync Completion
 

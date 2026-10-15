@@ -1920,9 +1920,9 @@ func isStopping(stop chan struct{}) bool {
 // campaigns, so when the voters holding the newest log are the out-of-sync
 // ones, no candidate with an older log can win and the cluster stays
 // leaderless. Everything that needs the store is gated on its own: admission
-// waits for leaderReady, event sinks and mirrors start on LeaderReadyEvent,
-// ReadIndex refuses while out of sync, and MsgTimeoutNow is dropped outside
-// statusNormal.
+// and membership changes wait for leaderReady, event sinks and mirrors start
+// on LeaderReadyEvent, ReadIndex refuses while out of sync, and MsgTimeoutNow
+// is dropped outside statusNormal.
 //
 // statusInstallingSnapshot is the only exception: processReadies is rewriting
 // the WAL snapshot under the applier, and Run leaves the status within the
@@ -2406,6 +2406,23 @@ func (node *Node) Logger() logging.Logger {
 	return node.logger
 }
 
+// isLeaderReady reports, without blocking, whether the current readiness
+// generation has completed. Work on the orchestrate loop uses it to skip
+// store-dependent steps until the FSM has caught up.
+func (node *Node) isLeaderReady() bool {
+	generation := node.leaderReady.Load()
+	if generation == nil {
+		return true
+	}
+
+	select {
+	case <-generation.ready:
+		return true
+	default:
+		return false
+	}
+}
+
 // WaitLeaderReady blocks until the leader's FSM has caught up after a
 // leadership transition. During steady-state the channel is already
 // closed, so this returns immediately.
@@ -2796,6 +2813,12 @@ func (node *Node) proposeConfChangeAndWait(
 // it commits or the context is cancelled. etcd/raft silently drops ConfChange
 // proposals when another is pending; this method handles that transparently.
 //
+// Proposals wait for leader readiness first: the removed-member registry and
+// instance identities checked before proposing live in the store, and a leader
+// elected while its store is behind its Raft log (see shouldTickRaft) restores
+// them only once its FSM has caught up. ForceRemoveNode does not pass through
+// here and keeps working without a quorum.
+//
 // Every successful return is gated on the correlated entry's durable local FSM
 // application while confChangeMu is still held. The future in finishReady
 // resolves after the ConfState WAL update but before the async applier has
@@ -2814,6 +2837,10 @@ func (node *Node) retryConfChange(
 	proposeFn func() error,
 	postApplyFn func(ctx context.Context, committedIndex uint64) error,
 ) error {
+	if err := node.WaitLeaderReady(ctx); err != nil {
+		return err
+	}
+
 	node.confChangeMu.Lock()
 	defer node.confChangeMu.Unlock()
 
@@ -3453,6 +3480,12 @@ func (node *Node) checkAndPromoteLearners() error {
 
 	status := node.rawNode.Status()
 	if status.RaftState != raft.StateLeader {
+		return nil
+	}
+
+	// The registry and identity checks below read the store, which a leader
+	// elected while out of sync restores only once its FSM has caught up.
+	if !node.isLeaderReady() {
 		return nil
 	}
 
