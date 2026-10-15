@@ -611,14 +611,15 @@ This status change requires revision 40 clients and servers together.
 
 The FSM backup-job slot is keyed by a canonical destination key. Revision 41
 lower-cases the URL scheme and host of an S3 or Azure endpoint before it hashes
-the key; the path keeps its case. `http://minio:9000` and `HTTP://MinIO:9000`
-therefore share one slot. While a backup job runs, a `Backup` or
-`IncrementalBackup` request for the same `bucket_id` and storage bucket or
-container through a case-variant endpoint now returns `FailedPrecondition`
-(backup already in progress). A revision-40 server opened a second slot,
-accepted that request, and let the two runs prune each other's objects. The
-`.proto` text is unchanged and the rejection already existed, so the difference
-is invisible to a schema comparison: only which request produces it changed. The
-destination key exists only in Raft and persisted state; no service RPC carries
-it. This semantic change requires revision 41 clients and servers together. See
-[backup](../backup/README.md).
+the key. The path and an IPv6 zone identifier (`%25eth0`) keep their case,
+because a gateway may treat the path as significant and interface names are
+case-sensitive. `http://minio:9000` and `HTTP://MinIO:9000` therefore share one
+slot. While a backup job runs, a `Backup` or `IncrementalBackup` request for the
+same `bucket_id` and storage bucket or container through a case-variant endpoint
+now returns `FailedPrecondition` (backup already in progress). A revision-40
+server opened a second slot, accepted that request, and let the two runs prune
+each other's objects. The `.proto` text is unchanged and the rejection already
+existed, so the difference is invisible to a schema comparison: only which
+request produces it changed. The destination key exists only in Raft and
+persisted state; no service RPC carries it. This semantic change requires
+revision 41 clients and servers together. See [backup](../backup/README.md).

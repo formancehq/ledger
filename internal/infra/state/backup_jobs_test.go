@@ -211,6 +211,42 @@ func TestCanonicalDestinationKey_EndpointSchemeAndHostCaseFold(t *testing.T) {
 		"endpoint path case must stay significant")
 }
 
+// TestCanonicalDestinationKey_IPv6ZoneCasePreserved guards the zone
+// identifier exception to host case folding. The IPv6 address and port
+// fold, but the zone names a network interface, which Go resolves
+// case-sensitively: `%25BackupA` and `%25backupa` can reach different
+// servers and must not share a destination slot.
+func TestCanonicalDestinationKey_IPv6ZoneCasePreserved(t *testing.T) {
+	t.Parallel()
+
+	s3 := func(endpoint string) *raftcmdpb.BackupDestination {
+		return &raftcmdpb.BackupDestination{
+			BucketId: "b",
+			Target: &raftcmdpb.BackupDestination_S3{
+				S3: &raftcmdpb.S3BackupTarget{
+					Bucket:   "ledger-backups",
+					Endpoint: endpoint,
+				},
+			},
+		}
+	}
+
+	require.NotEqual(t,
+		CanonicalDestinationKey(s3("http://[fe80::1%25BackupA]:9000")),
+		CanonicalDestinationKey(s3("http://[fe80::1%25backupa]:9000")),
+		"IPv6 zone identifier case must stay significant")
+
+	require.Equal(t,
+		CanonicalDestinationKey(s3("http://[fe80::1%25BackupA]:9000")),
+		CanonicalDestinationKey(s3("HTTP://[FE80::1%25BackupA]:9000/")),
+		"IPv6 address and scheme case must still fold around the zone")
+
+	require.Equal(t,
+		CanonicalDestinationKey(s3("http://[fe80::abcd]:9000")),
+		CanonicalDestinationKey(s3("http://[FE80::ABCD]:9000")),
+		"unscoped IPv6 address case must fold")
+}
+
 // TestStart_ClonesDestination guards against the pooled-pointer
 // aliasing bug. start.GetDestination() comes from a vtprotobuf-pooled
 // Proposal that is reset/reused after apply; without a clone, mutating

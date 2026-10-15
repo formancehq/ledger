@@ -142,6 +142,7 @@ func CanonicalDestinationKey(dst *raftcmdpb.BackupDestination) []byte {
 // shared bucket_id prefix. The path keeps its case because a gateway may
 // treat it as significant. An endpoint that does not parse as an
 // absolute URL is only trimmed; the storage client rejects it anyway.
+// See foldHostCase for the IPv6 zone identifier exception.
 func canonicalEndpoint(endpoint string) string {
 	trimmed := strings.TrimRight(endpoint, "/")
 
@@ -151,9 +152,27 @@ func canonicalEndpoint(endpoint string) string {
 	}
 
 	u.Scheme = strings.ToLower(u.Scheme)
-	u.Host = strings.ToLower(u.Host)
+	u.Host = foldHostCase(u.Host)
 
 	return u.String()
+}
+
+// foldHostCase lower-cases a URL host (with its optional port) but keeps
+// an IPv6 zone identifier verbatim. In `[fe80::1%BackupA]:9000` the
+// address is case-insensitive, but the zone `BackupA` names a network
+// interface and Go resolves interface names case-sensitively, so
+// `%BackupA` and `%backupa` can reach different servers and must keep
+// distinct destination keys. url.Parse has already decoded `%25` to `%`.
+func foldHostCase(host string) string {
+	if strings.HasPrefix(host, "[") {
+		zone := strings.Index(host, "%")
+		end := strings.LastIndex(host, "]")
+		if zone >= 0 && end > zone {
+			return strings.ToLower(host[:zone]) + host[zone:end] + strings.ToLower(host[end:])
+		}
+	}
+
+	return strings.ToLower(host)
 }
 
 // awsS3EndpointRE matches every public AWS S3 endpoint shape: the
