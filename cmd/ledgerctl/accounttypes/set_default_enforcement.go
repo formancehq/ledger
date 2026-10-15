@@ -19,7 +19,7 @@ func NewSetDefaultEnforcementCommand() *cobra.Command {
 when an account address doesn't match any defined account type.
 
 STRICT (default): reject transactions with unmatched accounts.
-AUDIT: allow transactions but log a warning.
+AUDIT: accept transactions with unmatched accounts; nothing reports them.
 
 Examples:
   ledgerctl account-types set-default-enforcement --ledger my-ledger --mode STRICT
