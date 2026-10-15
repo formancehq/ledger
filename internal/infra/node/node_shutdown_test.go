@@ -12,6 +12,7 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -295,6 +296,115 @@ func TestNodeStopWaitsForRunCompletionOrCallerCancellation(t *testing.T) {
 				} else {
 					require.ErrorIs(t, <-result, context.Canceled)
 				}
+			})
+		})
+	}
+}
+
+func TestNodeShutdownJoinsRunningLeaderReadyCallback(t *testing.T) {
+	t.Parallel()
+	for _, failed := range []bool{false, true} {
+		name := "stop"
+		if failed {
+			name = "task failure"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				n, result, resume := startShutdownNode(t, context.Background(), newTestApplierSetup(t))
+				generation := newLeaderReadyGeneration(context.Background())
+				n.leaderReady.Store(generation)
+				entered := make(chan struct{})
+				releaseCallback := make(chan struct{})
+				release := sync.OnceFunc(func() { close(releaseCallback) })
+				t.Cleanup(release)
+				n.SetObserver(NewObserver(func(event any) {
+					if _, ok := event.(LeaderReadyEvent); ok {
+						close(entered)
+						<-releaseCallback
+					}
+				}))
+				go func() {
+					_ = generation.run(func(context.Context) error { return nil },
+						func() { n.observer.Emit(LeaderReadyEvent{}) })
+				}()
+				<-entered
+				stopped := make(chan error, 1)
+				if failed {
+					// Deliver a task error through the taskSet boundary while the
+					// real tasks remain live, exercising Run's error cleanup.
+					n.tasks.errChannel <- context.Canceled
+				} else {
+					go func() { stopped <- n.Stop(context.Background()) }()
+				}
+				resume()
+				synctest.Wait()
+				requireClosed(t, n.tasks.terminated)
+				requireOpen(t, n.runDone)
+				requireOpen(t, generation.done)
+				require.ErrorIs(t, generation.ctx.Err(), context.Canceled)
+				release()
+				if failed {
+					require.ErrorIs(t, <-result, context.Canceled)
+				} else {
+					require.NoError(t, <-stopped)
+					require.NoError(t, <-result)
+				}
+				requireClosed(t, generation.done)
+				requireClosed(t, n.runDone)
+			})
+		})
+	}
+}
+
+func TestNodeShutdownCancelsPendingLeaderReadyGeneration(t *testing.T) {
+	t.Parallel()
+	for _, lost := range []bool{false, true} {
+		name := "still leader"
+		if lost {
+			name = "leadership already lost"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				setup := newTestApplierSetup(t)
+				n, result, resume := startShutdownNode(t, context.Background(), setup)
+				emitted := make(chan struct{})
+				n.SetObserver(NewObserver(func(event any) {
+					if _, ok := event.(LeaderReadyEvent); ok {
+						close(emitted)
+					}
+				}))
+				// Use the real acquisition path and FSM wait. No entry at index 1
+				// has been applied; stopping must cancel this wait independently
+				// of the still-live node run context.
+				require.NoError(t, n.processReadyLeadership(context.Background(), setup.stop, raft.Ready{
+					SoftState: &raft.SoftState{Lead: 1, RaftState: raft.StateLeader},
+					Entries:   []*raftpb.Entry{{Index: proto.Uint64(1)}},
+				}))
+				generation := n.leaderReady.Load()
+				t.Cleanup(func() {
+					// Also join on the unfixed failure path before fixture storage closes.
+					generation.cancel()
+					<-generation.done
+				})
+				synctest.Wait()
+				requireOpen(t, generation.done)
+				if lost {
+					require.NoError(t, n.processReadyLeadership(context.Background(), setup.stop, raft.Ready{
+						SoftState: &raft.SoftState{Lead: 2, RaftState: raft.StateFollower},
+					}))
+				}
+				stopped := make(chan error, 1)
+				go func() { stopped <- n.Stop(context.Background()) }()
+				resume()
+				require.NoError(t, <-stopped)
+				require.NoError(t, <-result)
+				requireClosed(t, generation.done)
+				requireClosed(t, generation.lost)
+				requireOpen(t, generation.ready)
+				requireOpen(t, emitted)
+				require.ErrorIs(t, generation.ctx.Err(), context.Canceled)
 			})
 		})
 	}
