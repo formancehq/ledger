@@ -1,5 +1,7 @@
-# Used only by scripts/checkprotocolversion to classify service contract
-# changes. Code generation stays on protoc (see `just generate-proto`).
+# Used by scripts/checkprotocolversion (breaking) and scripts/lintproto (lint).
+# Code generation stays on protoc (see `just generate-proto`). The declared
+# plugin is built from tools/buf-plugin-ledger by both commands: a bare
+# `buf lint` or `buf breaking` needs it on PATH.
 version: v2
 breaking:
   # WIRE flags changes that make an existing peer decode bytes differently
@@ -11,3 +13,13 @@ breaking:
     - WIRE
     - SERVICE_NO_DELETE
     - RPC_NO_DELETE
+lint:
+  # Ledger v3 conventions only (docs/technical/contributing/protobuf.md). The
+  # builtin buf categories are not enabled: they mostly flag naming choices
+  # that are part of the published API.
+  use:
+    - LEDGER_NO_RESERVED
+    - LEDGER_FIELD_NUMBERS_SEQUENTIAL
+    - LEDGER_ENUM_NUMBERS_SEQUENTIAL
+plugins:
+  - plugin: buf-plugin-ledger

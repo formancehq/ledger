@@ -121,6 +121,23 @@ The two known sites behave differently, and only one of them is self-healing:
 change an internal-only field number in those messages, update the corresponding
 `case num == N` arm in the same commit and prove the upgrade contract.
 
+## Convention checks
+
+`just lint-proto` (`go run ./scripts/lintproto`) runs `buf lint` on `misc/proto/`
+with the check plugin in `tools/buf-plugin-ledger`. It is part of
+`just pre-commit`, so the required `Dirty` CI job runs it.
+
+| Rule | Requirement |
+|---|---|
+| `LEDGER_NO_RESERVED` | No `reserved` numbers or names in messages or enums |
+| `LEDGER_FIELD_NUMBERS_SEQUENTIAL` | Message field numbers are exactly `1..N`, oneof members included; map entries are exempt |
+| `LEDGER_ENUM_NUMBERS_SEQUENTIAL` | Enum value numbers are exactly `0..N-1`, without aliases |
+
+Imported files such as `google/protobuf/descriptor.proto` are not checked. To
+add a rule, add a `check.RuleSpec` to the plugin with a fixture-based test, list
+its ID under `lint.use` in `misc/proto/buf.yaml`, and confirm `just lint-proto`
+passes on the current tree.
+
 ## vtprotobuf (Fast Serialization)
 
 The project uses [vtprotobuf](https://github.com/planetscale/vtprotobuf) to generate reflection-free protobuf methods (~2-3x faster, fewer allocations).
