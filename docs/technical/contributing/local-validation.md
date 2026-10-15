@@ -61,6 +61,15 @@ atomically selects a fresh generation; processes already running keep using the
 retired generation through a PID lease. A retired generation is removed only
 after none of its lease processes exists.
 
+Lease checks read the PID and process identity from one published owner snapshot.
+If an owner file disappears during lock handoff, the waiting initializer defers
+recovery to its next acquisition attempt rather than treating the missing file
+as a stale successor. Owner publication uses a hard link that cannot replace an
+existing owner. Publication and cleanup operate relative to an opened lock
+directory, so recovery of an older directory cannot remove a successor's owner
+at the same public path. A creator that cannot publish its claim retries
+acquisition without replacing the owner that won the handoff.
+
 Cache size measurement happens before acquiring the selection lock and is used
 only if the current generation has not changed. Retirement detaches idle
 generations under the lock; recursive deletion runs after unlocking. A marked
