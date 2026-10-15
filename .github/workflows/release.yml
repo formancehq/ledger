@@ -11,6 +11,8 @@ permissions:
 jobs:
   GoReleaser:
     runs-on: namespace-profile-linux-amd64-4vcpu
+    env:
+      GOPATH: /tmp/go
     steps:
       - uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
         with:
