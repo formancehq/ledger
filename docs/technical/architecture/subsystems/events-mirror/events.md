@@ -194,7 +194,7 @@ Startup status proposals have a bounded wait and are canceled when the captured
 leadership generation ends. The Manager holds a newly started emitter before
 delivery until any prior startup error has been cleared.
 
-The `GetEventsSinks` gRPC endpoint returns all sink configs and their statuses, allowing operators to monitor sink health cluster-wide. A configured sink with cursor zero and no error is pending delivery; an error takes precedence over that pending state. A nonzero cursor with no error indicates log-processing progress without a recorded failure. It does not establish external delivery: internal or filtered logs can advance the cursor without a `Publish` call.
+The `GetEventsSinks` gRPC endpoint returns all sink configs and exactly one status per configured sink, allowing operators to monitor sink health cluster-wide. Removing a sink deletes only its config: its per-name cursor and error status keys remain in `ZoneGlobal`, and the read view omits them while no sink of that name is configured. A sink added again under the same name resumes from the retained cursor and reports the retained error status until a successful publication clears it; a successful start also clears a retained startup error. A configured sink with cursor zero and no error is pending delivery; an error takes precedence over that pending state. A nonzero cursor with no error indicates log-processing progress without a recorded failure. It does not establish external delivery: internal or filtered logs can advance the cursor without a `Publish` call.
 
 ```protobuf
 message SinkStatus {
@@ -536,7 +536,7 @@ Use `ledgerctl events list` to read all sink configurations and per-sink statuse
 ledgerctl events list
 ```
 
-The response includes a list of `SinkConfig` entries (including `controller_id`) and a list of `SinkStatus` entries showing each sink's cursor position and any active error. `add-sink` rejects an existing name. A guarded `remove-sink` compares the requested identity with the current config during FSM apply; a mismatch rejects the removal and leaves the sink intact. Without an identity the command retains unconditional removal semantics.
+The response includes a list of `SinkConfig` entries (including `controller_id`) and a list of `SinkStatus` entries, one per configured sink, showing its cursor position and any active error. Statuses retained for removed sink names are not listed. `add-sink` rejects an existing name. A guarded `remove-sink` compares the requested identity with the current config during FSM apply; a mismatch rejects the removal and leaves the sink intact. Without an identity the command retains unconditional removal semantics.
 
 #### Kubernetes Operator Configuration
 

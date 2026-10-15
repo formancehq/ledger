@@ -371,3 +371,32 @@ func TestSinkConfig(t *testing.T) {
 		require.Len(t, configs, 1)
 	})
 }
+
+// TestBuildSinkStatuses_OmitsUnconfiguredSinks pins that a persisted error
+// status left behind by a removed sink is not reported by the read view: the
+// view covers configured sinks only (Heal s2-removed-sink-status-lingers-1).
+func TestBuildSinkStatuses_OmitsUnconfiguredSinks(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	batch := s.OpenWriteSession()
+	require.NoError(t, state.SetSinkStatus(batch, &commonpb.SinkStatus{
+		SinkName: "removed",
+		Cursor:   7,
+		Error:    &commonpb.SinkError{Message: "HTTP 500"},
+	}))
+	require.NoError(t, state.SetSinkCursor(batch, "removed", 7))
+	require.NoError(t, state.SetSinkCursor(batch, "kept", 3))
+	require.NoError(t, batch.Commit())
+
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	statuses, err := query.BuildSinkStatuses(handle, []*commonpb.SinkConfig{{Name: "kept"}})
+	require.NoError(t, err)
+	require.Len(t, statuses, 1)
+	require.Equal(t, "kept", statuses[0].GetSinkName())
+	require.Equal(t, uint64(3), statuses[0].GetCursor())
+	require.Nil(t, statuses[0].GetError())
+}
