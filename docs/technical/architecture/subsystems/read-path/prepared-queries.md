@@ -88,9 +88,18 @@ HTTP decodes each JSON parameter without a `float64` round trip
 a string becomes `StringValue`, a boolean `BoolValue`, a negative integer
 `Int64Value`, and a non-negative integer `Uint64Value`, every digit preserved.
 Integral notations such as `1e3` or `100.0` are accepted. HTTP rejects JSON
-`null`, a fraction, and an integer outside the int64/uint64 range with
+`null`, a fraction (including an underflowing exponent such as
+`1e-1000000000`), and an integer outside the int64/uint64 range with
 `400 INVALID_PARAMETERS` before the request reaches the executor, so a query
 never runs on a value other than the one the caller sent.
+
+Numbers go through `ExactInteger` (`internal/adapter/json/numbers.go`), the
+same normalizer that metadata values use. It splits the token into sign,
+digits, fraction length and exponent, and shifts the decimal point
+lexically. Its work is linear in the token length and never depends on the
+exponent value. The final integer has at most 20 digits. No
+arbitrary-precision conversion runs, so a multi-megabyte digit string cannot
+cost quadratic work.
 
 The executor:
 

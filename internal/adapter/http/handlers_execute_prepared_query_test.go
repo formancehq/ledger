@@ -2,10 +2,13 @@ package http
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -421,6 +424,10 @@ func TestHandleExecutePreparedQuery_RejectsAlteredParameters(t *testing.T) {
 		"fraction":       `{"min":1.5}`,
 		"huge exponent":  `{"min":1e1000000000}`,
 		"tiny fraction":  `{"min":18446744073709551615.0000000000000000000001}`,
+		// big.Float rounded these to an exact zero and forwarded Uint64Value(0).
+		"underflow":          `{"min":1e-1000000000}`,
+		"negative underflow": `{"min":-1e-1000000000}`,
+		"huge digit string":  `{"min":1` + strings.Repeat("0", 4096) + `}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -450,15 +457,20 @@ func TestHandleExecutePreparedQuery_ForwardsExactIntegers(t *testing.T) {
 	t.Parallel()
 
 	for raw, want := range map[string]*commonpb.ParameterValue{
-		`18446744073709551615`: {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 18446744073709551615}},
-		`9007199254740993`:     {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 9007199254740993}},
-		`-9223372036854775808`: {Value: &commonpb.ParameterValue_Int64Value{Int64Value: -9223372036854775808}},
-		`-9007199254740993`:    {Value: &commonpb.ParameterValue_Int64Value{Int64Value: -9007199254740993}},
-		`0`:                    {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 0}},
-		`1e3`:                  {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 1000}},
-		`-42.0`:                {Value: &commonpb.ParameterValue_Int64Value{Int64Value: -42}},
-		`true`:                 {Value: &commonpb.ParameterValue_BoolValue{BoolValue: true}},
-		`""`:                   {Value: &commonpb.ParameterValue_StringValue{StringValue: ""}},
+		`18446744073709551615`:     {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 18446744073709551615}},
+		`9007199254740993`:         {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 9007199254740993}},
+		`-9223372036854775808`:     {Value: &commonpb.ParameterValue_Int64Value{Int64Value: -9223372036854775808}},
+		`-9007199254740993`:        {Value: &commonpb.ParameterValue_Int64Value{Int64Value: -9007199254740993}},
+		`0`:                        {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 0}},
+		`1e3`:                      {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 1000}},
+		`-42.0`:                    {Value: &commonpb.ParameterValue_Int64Value{Int64Value: -42}},
+		`1e19`:                     {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 10000000000000000000}},
+		`1.0e2`:                    {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 100}},
+		`10e-1`:                    {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 1}},
+		`-9.223372036854775808e18`: {Value: &commonpb.ParameterValue_Int64Value{Int64Value: math.MinInt64}},
+		`0e-1000000000`:            {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 0}},
+		`true`:                     {Value: &commonpb.ParameterValue_BoolValue{BoolValue: true}},
+		`""`:                       {Value: &commonpb.ParameterValue_StringValue{StringValue: ""}},
 	} {
 		t.Run(raw, func(t *testing.T) {
 			t.Parallel()
@@ -483,6 +495,65 @@ func TestHandleExecutePreparedQuery_ForwardsExactIntegers(t *testing.T) {
 			srv.handleExecutePreparedQuery(w, r)
 
 			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		})
+	}
+}
+
+// TestHandleExecutePreparedQuery_BoundsNumericParsingWork pins that numeric
+// parameters are normalized with work linear in their length. big.ParseFloat
+// builds the full mantissa before rounding, which is quadratic in the digit
+// count: these 4 MiB tokens took about 8.5s each before the fix and take a few
+// milliseconds after it, so the bound below leaves a wide margin either way.
+func TestHandleExecutePreparedQuery_BoundsNumericParsingWork(t *testing.T) {
+	t.Parallel()
+
+	const digits = 4 << 20
+
+	for name, tc := range map[string]struct {
+		raw  string
+		want *commonpb.ParameterValue
+	}{
+		"integral after shift": {
+			raw:  "1" + strings.Repeat("0", digits) + "e-" + strconv.Itoa(digits),
+			want: &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 1}},
+		},
+		"out of range": {
+			raw: "1" + strings.Repeat("0", digits),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			backend := NewMockBackend(gomock.NewController(t))
+			if tc.want != nil {
+				backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+					func(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+						require.True(t, proto.Equal(tc.want, req.GetParameters()["min"]), "got %v", req.GetParameters()["min"])
+
+						return &servicepb.ExecutePreparedQueryResponse{}, nil
+					})
+			}
+			srv := newTestServer(t, backend)
+
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute",
+				strings.NewReader(`{"parameters":{"min":`+tc.raw+`}}`),
+				map[string]string{
+					"ledgerName": "ledger1",
+					"queryName":  "my-query",
+				})
+
+			start := time.Now()
+			srv.handleExecutePreparedQuery(w, r)
+			elapsed := time.Since(start)
+
+			if tc.want != nil {
+				require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			} else {
+				require.Equal(t, http.StatusBadRequest, w.Code)
+				require.Contains(t, w.Body.String(), "is out of range")
+			}
+			require.Less(t, elapsed, 2*time.Second, "numeric parameter parsing must stay linear in the token length")
 		})
 	}
 }

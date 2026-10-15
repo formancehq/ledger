@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
+	"math"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
+	jsonPkg "github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -190,46 +190,37 @@ func jsonToParameterValue(raw json.RawMessage) (*commonpb.ParameterValue, error)
 	}
 }
 
-// jsonNumberToParameterValue parses n exactly (no float64 round trip), so an
-// integer above 2^53 keeps every digit and one outside the int64/uint64 range
-// is refused rather than wrapped. Integral notations such as 1e3 or 100.0 are
-// still accepted. The fallback uses a fixed precision so a huge exponent
-// costs no more than a small one.
+// jsonNumberToParameterValue converts n exactly through jsonPkg.ExactInteger.
+// The token is normalized lexically with work linear in its length, so an
+// integer above 2^53 keeps every digit, a huge digit string or exponent costs
+// no arbitrary-precision arithmetic, and a value outside the int64/uint64
+// range or with a fractional part (including an underflowing exponent such as
+// 1e-1000000000) is refused rather than replaced. Integral notations such as
+// 1e3 or 100.0 are still accepted.
 func jsonNumberToParameterValue(n json.Number) (*commonpb.ParameterValue, error) {
 	s := n.String()
 
-	if u, err := strconv.ParseUint(s, 10, 64); err == nil {
-		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: u}}, nil
-	}
-
-	if i, err := strconv.ParseInt(s, 10, 64); err == nil {
-		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: i}}, nil
-	}
-
-	// Every int64/uint64 is exact in 128 bits: an inexact parse is either a
-	// fraction or an integer far outside the range.
-	f, _, err := big.ParseFloat(s, 10, 128, big.ToNearestEven)
-	if err != nil {
+	magnitude, negative, err := jsonPkg.ExactInteger(s)
+	switch {
+	case errors.Is(err, jsonPkg.ErrNotInteger):
+		return nil, fmt.Errorf("floating-point values are not supported, got %s", s)
+	case errors.Is(err, jsonPkg.ErrIntegerOutOfRange):
+		return nil, fmt.Errorf("integer %s is out of range", s)
+	case err != nil:
 		return nil, fmt.Errorf("invalid number %s: %w", s, err)
 	}
 
-	if f.Acc() != big.Exact || !f.IsInt() {
-		if f.IsInt() {
-			return nil, fmt.Errorf("integer %s is out of range", s)
+	if negative {
+		// ExactInteger caps a negative magnitude at 2^63 (math.MinInt64).
+		value := int64(math.MinInt64)
+		if magnitude != uint64(1)<<63 {
+			value = -int64(magnitude)
 		}
 
-		return nil, fmt.Errorf("floating-point values are not supported, got %s", s)
+		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: value}}, nil
 	}
 
-	if f.Sign() < 0 {
-		if i, acc := f.Int64(); acc == big.Exact {
-			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: i}}, nil
-		}
-	} else if u, acc := f.Uint64(); acc == big.Exact {
-		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: u}}, nil
-	}
-
-	return nil, fmt.Errorf("integer %s is out of range", s)
+	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: magnitude}}, nil
 }
 
 // parseQueryMode maps the wire string to a QueryMode enum value. The empty

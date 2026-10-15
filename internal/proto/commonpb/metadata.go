@@ -2,10 +2,9 @@ package commonpb
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
@@ -179,85 +178,36 @@ func MetadataValueFromAny(v any) (*MetadataValue, error) {
 	}
 }
 
-// metadataValueFromJSONNumber normalizes decimal/exponent notation before
-// parsing the integer. Work and allocation are bounded by the input length,
-// never by an untrusted exponent; the final integer has at most 20 digits.
+// metadataValueFromJSONNumber converts a JSON number token exactly through
+// jsonPkg.ExactInteger, whose work is bounded by the input length.
 func metadataValueFromJSONNumber(number json.Number) (*MetadataValue, error) {
 	s := number.String()
-	if s == "" || (s[0] != '-' && (s[0] < '0' || s[0] > '9')) ||
-		strings.TrimSpace(s) != s || !json.Valid([]byte(s)) {
+
+	magnitude, negative, err := jsonPkg.ExactInteger(s)
+	switch {
+	case errors.Is(err, jsonPkg.ErrInvalidNumber):
 		return nil, fmt.Errorf("invalid metadata number %q", s)
-	}
-
-	negative := s[0] == '-'
-	mantissa := strings.TrimPrefix(s, "-")
-	exponentText := "0"
-	if index := strings.IndexAny(mantissa, "eE"); index >= 0 {
-		exponentText = mantissa[index+1:]
-		mantissa = mantissa[:index]
-	}
-
-	fractionDigits := 0
-	if index := strings.IndexByte(mantissa, '.'); index >= 0 {
-		fractionDigits = len(mantissa) - index - 1
-		mantissa = mantissa[:index] + mantissa[index+1:]
-	}
-	digits := strings.TrimLeft(mantissa, "0")
-	if digits == "" {
-		return NewUintValue(0), nil
-	}
-
-	fractionError := func() (*MetadataValue, error) {
+	case errors.Is(err, jsonPkg.ErrNotInteger):
 		return nil, fmt.Errorf("float values are not supported for metadata, got %s", s)
-	}
-	overflowError := func() (*MetadataValue, error) {
+	case errors.Is(err, jsonPkg.ErrIntegerOutOfRange):
 		if negative {
 			return nil, fmt.Errorf("integer value %s overflows int64", s)
 		}
 
 		return nil, fmt.Errorf("integer value %s overflows uint64", s)
+	case err != nil:
+		return nil, fmt.Errorf("invalid metadata number %q: %w", s, err)
 	}
 
-	exponent, err := strconv.ParseInt(exponentText, 10, 64)
-	// An exponent beyond the input length cannot be canceled by the decimal
-	// point or trailing zeros. Reject it before computing the decimal shift.
-	limit := int64(len(s)) + 20
-	if err != nil || exponent > limit || exponent < -limit {
-		if strings.HasPrefix(exponentText, "-") {
-			return fractionError()
-		}
-
-		return overflowError()
-	}
-
-	shift := exponent - int64(fractionDigits)
-	if shift < 0 {
-		remove := -shift
-		trailingZeros := len(digits) - len(strings.TrimRight(digits, "0"))
-		if remove > int64(trailingZeros) {
-			return fractionError()
-		}
-		digits = digits[:len(digits)-int(remove)]
-	} else {
-		if int64(len(digits))+shift > 20 {
-			return overflowError()
-		}
-		digits += strings.Repeat("0", int(shift))
-	}
-
-	value, err := strconv.ParseUint(digits, 10, 64)
-	if err != nil || (negative && value > uint64(1)<<63) {
-		return overflowError()
-	}
 	if negative {
-		if value == uint64(1)<<63 {
+		if magnitude == uint64(1)<<63 {
 			return NewIntValue(math.MinInt64), nil
 		}
 
-		return NewIntValue(-int64(value)), nil
+		return NewIntValue(-int64(magnitude)), nil
 	}
 
-	return NewUintValue(value), nil
+	return NewUintValue(magnitude), nil
 }
 
 // MetadataFromAnyMap converts a map[string]any to map[string]*MetadataValue with JSON type inference.
