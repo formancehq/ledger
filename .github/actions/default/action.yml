@@ -5,6 +5,13 @@ inputs:
     description: 'A Github PAT'
     required: false
     default: ${{ github.token }}
+  go-remote-cache:
+    description: >-
+      Route Go build outputs through Namespace's remote build cache
+      (gocacheprog). Every job using it can write entries that other jobs
+      read, so leave it off for jobs that publish release artifacts.
+    required: false
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -36,3 +43,26 @@ runs:
     - name: Download Go modules
       shell: bash
       run: nix develop .#ci --command just go-mod-download
+    # Go build outputs differ per job (build tags, -race, -cover, GOOS), and the
+    # cache volume keeps only the last save per node, so most of them are lost.
+    # gocacheprog shares outputs across jobs and nodes through Namespace's
+    # remote cache. Its local files stay in RUNNER_TEMP, off the volume, so jobs
+    # using it do not change what other jobs fork from the volume.
+    - name: Enable remote Go build cache
+      if: inputs.go-remote-cache == 'true'
+      shell: bash
+      env:
+        GOCACHEPROG_VERSION: 0.0.50
+        GOCACHEPROG_LINUX_AMD64_SHA256: 547241e138b87e1b11e9a50b3e21f14ecdc11ffda0a4110da7f5494963de5a16
+      run: |
+        set -euo pipefail
+        [ "$(uname -s)/$(uname -m)" = Linux/x86_64 ] || { echo "gocacheprog is pinned for linux/amd64 only" >&2; exit 1; }
+        dir="$RUNNER_TEMP/gocacheprog"
+        mkdir -p "$dir/bin" "$dir/cache"
+        archive="gocacheprog_${GOCACHEPROG_VERSION}_linux_amd64.tar.gz"
+        curl --proto '=https' --proto-redir '=https' -fsSL \
+          "https://public.namespaceblobs.com/gocacheprog/releases/v${GOCACHEPROG_VERSION}/${archive}" \
+          -o "$dir/$archive"
+        echo "${GOCACHEPROG_LINUX_AMD64_SHA256}  $dir/$archive" | sha256sum --check --strict
+        tar -xzf "$dir/$archive" -C "$dir/bin" gocacheprog
+        echo "GOCACHEPROG=$dir/bin/gocacheprog -tag ledger -cache-dir $dir/cache" >> "$GITHUB_ENV"
