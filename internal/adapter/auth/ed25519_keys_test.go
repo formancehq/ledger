@@ -123,10 +123,10 @@ func TestEnforceAllowedScopes_Valid(t *testing.T) {
 		"bot": {"ledger:read", "ledger:write"},
 	}
 
-	err := enforceAllowedScopes([]string{"ledger:read"}, "bot", allowed, nil)
+	err := enforceAllowedScopes([]string{"ledger:read"}, "bot", allowed, nil, DefaultMapping("ledger"))
 	require.NoError(t, err)
 
-	err = enforceAllowedScopes([]string{"ledger:read", "ledger:write"}, "bot", allowed, nil)
+	err = enforceAllowedScopes([]string{"ledger:read", "ledger:write"}, "bot", allowed, nil, DefaultMapping("ledger"))
 	require.NoError(t, err)
 }
 
@@ -137,10 +137,60 @@ func TestEnforceAllowedScopes_ExcessiveScope(t *testing.T) {
 		"bot": {"ledger:read"},
 	}
 
-	err := enforceAllowedScopes([]string{"ledger:read", "ledger:admin"}, "bot", allowed, nil)
+	err := enforceAllowedScopes([]string{"ledger:read", "ledger:admin"}, "bot", allowed, nil, DefaultMapping("ledger"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ledger:admin")
 	assert.Contains(t, err.Error(), "not allowed")
+}
+
+func TestEnforceAllowedScopes_GranularScopeCoveredByVirtualScope(t *testing.T) {
+	t.Parallel()
+
+	allowed := map[string][]string{
+		"reader": {"ledger:read"},
+	}
+
+	// A least-privilege token claims one granular scope that "ledger:read" expands to.
+	err := enforceAllowedScopes([]string{"ledger:TransactionRead"}, "reader", allowed, nil, DefaultMapping("ledger"))
+	require.NoError(t, err)
+}
+
+func TestEnforceAllowedScopes_GranularScopeOutsideVirtualScope(t *testing.T) {
+	t.Parallel()
+
+	allowed := map[string][]string{
+		"reader": {"ledger:read"},
+	}
+
+	err := enforceAllowedScopes([]string{"ledger:TransactionWrite"}, "reader", allowed, nil, DefaultMapping("ledger"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `scope "ledger:TransactionWrite" not allowed for key "reader"`)
+}
+
+func TestEnforceAllowedScopes_UnknownScopeRejected(t *testing.T) {
+	t.Parallel()
+
+	allowed := map[string][]string{
+		"reader": {"ledger:read"},
+	}
+
+	// An unknown scope expands to nothing; it must not be treated as covered.
+	err := enforceAllowedScopes([]string{"ledger:unknown"}, "reader", allowed, nil, DefaultMapping("ledger"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `scope "ledger:unknown" not allowed for key "reader"`)
+}
+
+func TestEnforceAllowedScopes_VirtualScopeNotCoveredByPartialGranularAllowlist(t *testing.T) {
+	t.Parallel()
+
+	allowed := map[string][]string{
+		"narrow": {"ledger:TransactionRead"},
+	}
+
+	// "ledger:read" expands to more than the key allows.
+	err := enforceAllowedScopes([]string{"ledger:read"}, "narrow", allowed, nil, DefaultMapping("ledger"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `scope "ledger:read" not allowed for key "narrow"`)
 }
 
 func TestEnforceAllowedScopes_UnknownKey(t *testing.T) {
@@ -150,7 +200,7 @@ func TestEnforceAllowedScopes_UnknownKey(t *testing.T) {
 		"bot": {"ledger:read"},
 	}
 
-	err := enforceAllowedScopes([]string{"ledger:read"}, "unknown-key", allowed, nil)
+	err := enforceAllowedScopes([]string{"ledger:read"}, "unknown-key", allowed, nil, DefaultMapping("ledger"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown key ID")
 }
@@ -164,7 +214,7 @@ func TestEnforceAllowedScopes_SuperuserKeyBypassesCheck(t *testing.T) {
 	superuserKeys := map[string]bool{"admin": true}
 
 	// Superuser key can claim any scope regardless of allowlist.
-	err := enforceAllowedScopes([]string{"ledger:admin", "ledger:write"}, "admin", allowed, superuserKeys)
+	err := enforceAllowedScopes([]string{"ledger:admin", "ledger:write"}, "admin", allowed, superuserKeys, DefaultMapping("ledger"))
 	require.NoError(t, err)
 }
 
