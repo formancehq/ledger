@@ -88,6 +88,15 @@ readiness. When the same flag is explicitly supplied on the command line, that
 higher-precedence value is used and the lower-precedence environment value is
 ignored.
 
+Byte-size flags accept non-negative integer bytes or an integer with a binary
+suffix (`Ki`, `Mi`, `Gi`, `Ti`, `Pi`, `Ei`) or decimal suffix (`k`, `M`, `G`,
+`T`, `P`, `E`). The expanded byte count must not exceed 9223372036854775807
+(`MaxInt64`); negative values and overflow fail parsing before configuration
+conversion or defaulting. For example, `--raft-max-size-per-msg=16Ei` is rejected.
+Explicit zero retains each flag's documented sentinel meaning, including the
+1 MiB default for `--raft-max-size-per-msg=0`. Individual consumers may impose
+smaller limits.
+
 Example with environment variables:
 ```bash
 export NODE_ID=1
