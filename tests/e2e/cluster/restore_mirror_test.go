@@ -167,7 +167,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		sourceDateMicrosByTxID = make(map[uint64]uint64, sourceLogCount)
 		addSourceTransaction(1)
 
-		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
+		container, err := testcontainers.Run(context.Background(), testutil.MinIOImage,
 			testcontainers.WithEnv(map[string]string{
 				"MINIO_ROOT_USER":     restoreMinioAccessKey,
 				"MINIO_ROOT_PASSWORD": restoreMinioSecretKey,
