@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -235,4 +236,55 @@ func TestEnforceSuperuserClaim_NotAllowed(t *testing.T) {
 	err := enforceSuperuserClaim("bot", superuserKeys)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not allowed to claim superuser mode")
+}
+
+func TestLoadEd25519KeySet_DuplicateKeyID(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name                 string
+		firstScopes          []string
+		secondScopes         []string
+		firstSuperuser       bool
+		secondSuperuser      bool
+		sameKey              bool
+		nonadjacent          bool
+		invalidDuplicateFile bool
+	}{
+		{name: "conflicting scopes", firstScopes: []string{"ledger:read"}, secondScopes: []string{"ledger:read", "ledger:admin"}},
+		{name: "later superuser", firstScopes: []string{"ledger:read"}, secondSuperuser: true},
+		{name: "earlier superuser", firstSuperuser: true, secondScopes: []string{"ledger:read"}},
+		{name: "identical entries", sameKey: true},
+		{name: "empty scopes", firstScopes: []string{}, secondScopes: []string{}},
+		{name: "nonadjacent duplicate", nonadjacent: true},
+		{name: "duplicate precedes file validation", invalidDuplicateFile: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			writeTestKey(t, dir, "first")
+			writeTestKey(t, dir, "second")
+			firstFile := filepath.Join(dir, "first.pubkey.hex")
+			secondFile := filepath.Join(dir, "second.pubkey.hex")
+			if tc.sameKey {
+				secondFile = firstFile
+			}
+			if tc.invalidDuplicateFile {
+				secondFile = filepath.Join(dir, "missing.hex")
+			}
+			entries := []Ed25519KeyEntry{{KeyID: "dup", PublicKeyFile: firstFile, Scopes: tc.firstScopes, Superuser: tc.firstSuperuser}}
+			if tc.nonadjacent {
+				entries = append(entries, Ed25519KeyEntry{KeyID: "other", PublicKeyFile: firstFile})
+			}
+			entries = append(entries, Ed25519KeyEntry{KeyID: "dup", PublicKeyFile: secondFile, Scopes: tc.secondScopes, Superuser: tc.secondSuperuser})
+			data, err := json.Marshal(Ed25519KeysConfig{Keys: entries})
+			require.NoError(t, err)
+			configPath := filepath.Join(dir, "auth-keys.json")
+			require.NoError(t, os.WriteFile(configPath, data, 0600))
+
+			result, err := LoadEd25519KeySet(configPath)
+			require.EqualError(t, err, `Ed25519 keys config contains duplicate keyId "dup"`)
+			require.Equal(t, Ed25519KeySetResult{}, result)
+		})
+	}
 }

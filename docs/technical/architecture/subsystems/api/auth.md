@@ -24,6 +24,16 @@ This page covers both. The cryptographic request-signing layer (Ed25519, used to
 
 Both formats coexist via a **composite keyset** (`internal/bootstrap/module.go:1626`). EdDSA tokens skip issuer verification (they're self-signed); OIDC tokens go through full issuer + JWKS verification.
 
+The static loader requires every `keyId` to be nonempty and unique by exact
+string equality. Repeated entries are rejected even when their keys, scopes and
+superuser policies are identical, so one key's signature cannot select another
+entry's authorization policy. The duplicate check precedes loading the duplicate
+entry's public-key file; an invalid file in an earlier entry can still fail
+first. On rejection the loader returns no keyset or policy maps, and
+`buildAuthConfig` propagates the error before installing the static/composite
+keyset and its scope/superuser maps. This is constructor/startup validation;
+per-request scope and superuser checks still use the successfully loaded policy.
+
 ### Wire shape
 
 | Transport | Where the token lives |
