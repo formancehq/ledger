@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"40"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"41"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 40:
+leader. For example, with a schema implementing revision 41:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 40' \
+grpcurl -plaintext -H 'ledger-protocol-version: 41' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -606,3 +606,15 @@ policy retry the request. A measured disk block still returns
 block retains its existing response. Admission checks the gate before proposing
 an order, so a retry after `Unavailable` cannot duplicate a committed write.
 This status change requires revision 40 clients and servers together.
+
+## Per-transaction asset volume statistics (revision 41)
+
+EN-2944 changes how flow analysis fills `AssetVolumeStats`. Each transaction
+contributes one sample per asset: the sum of its postings in that asset.
+`transaction_count` is the number of transactions with at least one posting in
+the asset, and `min_volume`, `max_volume`, and `average_volume` are
+per-transaction values. Revision 40 counted and sampled individual postings, so
+a split payment increased the count and reported posting amounts as the minimum
+and maximum. The protobuf fields are unchanged, but their interpretation
+changes. This read-semantic change requires revision 41 clients and servers
+together.
