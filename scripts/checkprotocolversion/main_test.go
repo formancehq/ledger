@@ -150,7 +150,7 @@ func TestCheckerClassifiesAgainstBase(t *testing.T) {
 			writeFixture(t, repo, "misc/proto/api.proto", tc.proto)
 			writeFixture(t, repo, protocolFile, protocolSource(tc.version))
 
-			res, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}}.run()
+			res, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t)}.run()
 			require.NoError(t, err)
 			require.Equal(t, 3, res.baseVersion)
 			require.Len(t, res.clientFindings, tc.wantGated)
@@ -172,7 +172,7 @@ func TestCheckerRejectsUnknownGatedService(t *testing.T) {
 
 	repo := newFixtureRepo(t)
 
-	_, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Missing"}}.run()
+	_, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Missing"}, pluginRoot: repoRoot(t)}.run()
 	require.ErrorContains(t, err, "gated service api.Missing is not declared")
 }
 

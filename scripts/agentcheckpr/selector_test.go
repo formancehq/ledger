@@ -74,7 +74,14 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 		{
 			name:     "restore protocol",
 			paths:    []string{"misc/proto/restore.proto"},
-			expected: []string{"agent-check-full", "test-e2e", "protocol-revision"},
+			expected: []string{"agent-check-full", "test-e2e", "protocol-revision", "proto-lint"},
+		},
+		{
+			name: "buf plugin",
+			// Regression: tools/* are separate modules, so their Go files must
+			// not be race-tested as root-module packages.
+			paths:    []string{"tools/buf-plugin-ledger/main.go"},
+			expected: []string{"pre-commit", "agent-check", "test-tooling", "proto-lint"},
 		},
 		{
 			name:     "protocol revision only",

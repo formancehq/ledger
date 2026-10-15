@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package invalid;
+
+message Reserved {
+  reserved 2;
+  reserved "old";
+  string id = 1;
+}
+
+message Gap {
+  string id = 1;
+  string label = 3;
+}
+
+message StartsAtTwo {
+  string id = 2;
+}
+
+enum Alias {
+  option allow_alias = true;
+  ALIAS_UNSPECIFIED = 0;
+  ALIAS_ONE = 1;
+  ALIAS_AGAIN = 1;
+}
+
+enum ReservedEnum {
+  reserved 1;
+  RESERVED_ENUM_UNSPECIFIED = 0;
+}
