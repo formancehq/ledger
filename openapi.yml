@@ -6207,17 +6207,30 @@ components:
             match all entities in its target. An empty object or empty textual
             expression is invalid.
 
+    PreparedQueryParameterValue:
+      description: >-
+        Value substituted into a prepared-query filter placeholder: a string,
+        a boolean, or an integer. An integer is kept exactly (no float64
+        rounding above 2^53) and must fit int64 when negative or uint64 when
+        non-negative. Integral decimal and exponent spellings are accepted.
+        null and fractions are rejected.
+      oneOf:
+        - type: string
+        - type: integer
+          minimum: -9223372036854775808
+          maximum: 18446744073709551615
+          description: Negative values fit int64; nonnegative values fit uint64.
+        - type: boolean
+
     ExecutePreparedQueryRequest:
       type: object
       properties:
         parameters:
           type: object
           additionalProperties:
-            type: string
+            $ref: '#/components/schemas/PreparedQueryParameterValue'
           description: >-
             Parameter values for the query (substituted into filter placeholders).
-            Values may also be JSON booleans or integers; an integer is kept
-            exactly and must fit int64 (negative) or uint64 (non-negative).
             null, fractions and out-of-range integers are rejected with
             400 INVALID_PARAMETERS.
         pageSize:

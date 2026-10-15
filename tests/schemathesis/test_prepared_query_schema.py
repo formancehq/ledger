@@ -33,6 +33,37 @@ class PreparedQuerySchemaTest(unittest.TestCase):
                 with self.subTest(request=request_name, invalid_filter=filter_value):
                     self.assertTrue(list(validator.iter_errors({**required_fields, "filter": filter_value})))
 
+    def test_execute_parameters_match_handler_accepted_values(self):
+        # Mirrors jsonToParameterValue: strings, booleans and exact integers in
+        # [int64 min, uint64 max] are forwarded; null, fractions and
+        # out-of-range integers are rejected with 400 INVALID_PARAMETERS.
+        validator = OAS30Validator(
+            self.schema["components"]["schemas"]["ExecutePreparedQueryRequest"],
+            resolver=RefResolver.from_schema(self.schema),
+        )
+        for value in (
+            "world",
+            "",
+            True,
+            False,
+            0,
+            9007199254740993,
+            -9223372036854775808,
+            18446744073709551615,
+        ):
+            with self.subTest(valid=value):
+                validator.validate({"parameters": {"p": value}})
+        for value in (
+            None,
+            1.5,
+            -9223372036854775809,
+            18446744073709551616,
+            [],
+            {},
+        ):
+            with self.subTest(invalid=value):
+                self.assertTrue(list(validator.iter_errors({"parameters": {"p": value}})))
+
 
 if __name__ == "__main__":
     unittest.main()
