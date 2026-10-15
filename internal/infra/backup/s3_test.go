@@ -26,6 +26,10 @@ const (
 	backupMinioAccessKey = "minioadmin"
 	backupMinioSecretKey = "minioadmin"
 	backupTestBucket     = "backup-storage-test"
+
+	// backupMinioImage mirrors testutil.MinIOImage; keep both on the same
+	// digest-pinned Formance mirror of MinIO.
+	backupMinioImage = "ghcr.io/formancehq/minio:RELEASE.2025-10-15T17-29-55Z@sha256:69b55a1c1c5dc285ce04db96689f5b2102317fc77a50680a1874ca6efd1c87f9"
 )
 
 // setupMinIOBackup starts a MinIO container and returns an S3 client with the
@@ -35,7 +39,7 @@ func setupMinIOBackup(t *testing.T) *s3.Client {
 
 	ctx := context.Background()
 
-	container, err := testcontainers.Run(ctx, "minio/minio:latest",
+	container, err := testcontainers.Run(ctx, backupMinioImage,
 		testcontainers.WithEnv(map[string]string{
 			"MINIO_ROOT_USER":     backupMinioAccessKey,
 			"MINIO_ROOT_PASSWORD": backupMinioSecretKey,

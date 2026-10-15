@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
         - name: minio
-          image: minio/minio:latest
+          image: ghcr.io/formancehq/minio:RELEASE.2025-10-15T17-29-55Z
           imagePullPolicy: IfNotPresent
           args: ["server", "/data"]
           env:
