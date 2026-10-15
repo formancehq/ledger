@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"40"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"41"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 40:
+leader. For example, with a schema implementing revision 41:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 40' \
+grpcurl -plaintext -H 'ledger-protocol-version: 41' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -606,3 +606,19 @@ policy retry the request. A measured disk block still returns
 block retains its existing response. Admission checks the gate before proposing
 an order, so a retry after `Unavailable` cannot duplicate a committed write.
 This status change requires revision 40 clients and servers together.
+
+## Case-insensitive backup endpoint destinations (revision 41)
+
+The FSM backup-job slot is keyed by a canonical destination key. Revision 41
+lower-cases the URL scheme and host of an S3 or Azure endpoint before it hashes
+the key; the path keeps its case. `http://minio:9000` and `HTTP://MinIO:9000`
+therefore share one slot. While a backup job runs, a `Backup` or
+`IncrementalBackup` request for the same `bucket_id` and storage bucket or
+container through a case-variant endpoint now returns `FailedPrecondition`
+(backup already in progress). A revision-40 server opened a second slot,
+accepted that request, and let the two runs prune each other's objects. The
+`.proto` text is unchanged and the rejection already existed, so the difference
+is invisible to a schema comparison: only which request produces it changed. The
+destination key exists only in Raft and persisted state; no service RPC carries
+it. This semantic change requires revision 41 clients and servers together. See
+[backup](../backup/README.md).
