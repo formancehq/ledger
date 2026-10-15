@@ -320,3 +320,49 @@ func TestAnalyze_OverflowMemoryBounded(t *testing.T) {
 	assert.Equal(t, "users:{number}", resp.GetPatterns()[0].GetPattern())
 	assert.Equal(t, uint64(numAccounts), resp.GetPatterns()[0].GetAccountCount())
 }
+
+func TestAnalyze_OverflowCountsDistinctValues(t *testing.T) {
+	t.Parallel()
+
+	// threshold=2, childCap=4: users a–d become stored children, e and f
+	// overflow. Each overflowed id owns two accounts, which must still count
+	// as one distinct value each.
+	var accounts []CompactAccount
+	for _, id := range []string{"a", "b", "c", "d", "e", "f"} {
+		accounts = append(accounts,
+			makeCompactAccount("users:"+id+":main"),
+			makeCompactAccount("users:"+id+":savings"),
+		)
+	}
+
+	resp := analyze(accounts, 2)
+
+	require.Len(t, resp.GetPatterns(), 2)
+	for _, p := range resp.GetPatterns() {
+		assert.Equal(t, uint64(6), p.GetAccountCount(), p.GetPattern())
+		assert.Equal(t, uint64(6), p.GetSegments()[1].GetUniqueValues(), p.GetPattern())
+	}
+}
+
+func TestAnalyze_OverflowCountsDistinctValuesAcrossMergedSiblings(t *testing.T) {
+	t.Parallel()
+
+	// threshold=2, childCap=4: every user overflows the same wallets w4 and
+	// w5, and users e and f overflow at the users level. Merging the user
+	// subtrees must not add up the overflow of each sibling.
+	var accounts []CompactAccount
+	for _, id := range []string{"a", "b", "c", "d", "e", "f"} {
+		for w := range 6 {
+			accounts = append(accounts, makeCompactAccount(fmt.Sprintf("users:%s:w%d", id, w)))
+		}
+	}
+
+	resp := analyze(accounts, 2)
+
+	require.Len(t, resp.GetPatterns(), 1)
+	p := resp.GetPatterns()[0]
+	assert.Equal(t, "users:{value}:{value}", p.GetPattern())
+	assert.Equal(t, uint64(36), p.GetAccountCount())
+	assert.Equal(t, uint64(6), p.GetSegments()[1].GetUniqueValues())
+	assert.Equal(t, uint64(6), p.GetSegments()[2].GetUniqueValues())
+}
