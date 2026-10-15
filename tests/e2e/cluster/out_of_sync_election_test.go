@@ -6,8 +6,11 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -28,7 +31,9 @@ import (
 // snapshot. The third voter's log is older, so no up-to-date voter grants it a
 // vote: the cluster has a leader only if the out-of-sync voters campaign. The
 // winner then leads a term whose store it does not have, so it must fetch its
-// checkpoint from another peer.
+// checkpoint from another peer. An event sink created while their stores were
+// behind is inside that checkpoint, and the winner must run it once its store
+// is current.
 var _ = Describe("Out-of-sync election", func() {
 	Context("When the voters holding the newest log restart out of sync", Ordered, func() {
 		const (
@@ -39,13 +44,20 @@ var _ = Describe("Out-of-sync election", func() {
 		)
 
 		var (
-			ctx      context.Context
-			servers  []*testutil.ServiceWithClient
-			gateway  *testserver.Gateway
-			leaderID *uint64
+			ctx            context.Context
+			servers        []*testutil.ServiceWithClient
+			gateway        *testserver.Gateway
+			leaderID       *uint64
+			sinkReceiver   *httptest.Server
+			sinkDeliveries atomic.Int64
 		)
 
 		BeforeAll(func() {
+			sinkReceiver = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				sinkDeliveries.Add(1)
+				w.WriteHeader(http.StatusOK)
+			}))
+
 			clusterOptions := []testutil.MultiNodeOption{testutil.WithGateway()}
 			for i := range countInstances {
 				clusterOptions = append(clusterOptions, testutil.WithNodeInstruments(
@@ -67,6 +79,7 @@ var _ = Describe("Out-of-sync election", func() {
 		AfterAll(func() {
 			gateway.SetPrepareSnapshotInterceptor(nil)
 			testutil.StopServers(ctx, servers)
+			sinkReceiver.Close()
 		})
 
 		clusterState := func(g Gomega, id uint64) *clusterpb.ClusterState {
@@ -153,6 +166,20 @@ var _ = Describe("Out-of-sync election", func() {
 			desyncFollower(lid, followers[0], []uint64{lid, followers[0], followers[1]})
 			desyncFollower(lid, followers[1], []uint64{lid, followers[1]})
 
+			// Both followers append this entry to their log and spool it: it
+			// reaches their stores only inside the checkpoint they fetch.
+			By("Creating an event sink while the followers' stores are behind")
+			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+				Name:         "checkpointed-sink",
+				Format:       "json",
+				BatchSize:    1,
+				BatchDelayMs: 1,
+				Type: &commonpb.SinkConfig_Http{
+					Http: &commonpb.HttpSinkConfig{Endpoint: sinkReceiver.URL},
+				},
+			})))
+			Expect(err).To(Succeed())
+
 			By("Stopping the leader so the syncing followers elect among themselves")
 			var oldLeaderLastIndex uint64
 			Eventually(func(g Gomega) {
@@ -222,7 +249,11 @@ var _ = Describe("Out-of-sync election", func() {
 			}
 
 			By("Writing through the recovered cluster")
+			delivered := sinkDeliveries.Load()
 			writeTransactions(finalLeader, 1)
+
+			By("Requiring the sink inside the checkpoint to deliver from the new leader")
+			Eventually(sinkDeliveries.Load).Within(30 * time.Second).ProbeEvery(200 * time.Millisecond).Should(BeNumerically(">", delivered))
 		})
 	})
 })

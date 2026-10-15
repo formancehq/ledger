@@ -1412,33 +1412,32 @@ func (node *Node) processReadyLeadership(ctx context.Context, stop chan struct{}
 const syncRetryInterval = time.Second
 
 // syncDonor picks the peer to fetch a checkpoint from on the given attempt of
-// an out-of-sync episode. The first attempt goes to the known leader; later
-// attempts rotate through the other voters. The leader is not always a usable
-// donor: it may be resynchronizing itself (it leads on its log while its store
-// is behind) or unreachable while another voter holds the applied state, and
-// a node that has just won an election while out of sync has no leader other
-// than itself. The node is never its own donor. Returns 0 when no peer can
-// serve.
+// an out-of-sync episode. Attempts rotate through the known leader first, then
+// the other voters in ascending ID order, each peer once per round. The leader
+// is not always a usable donor: it may be resynchronizing itself (it leads on
+// its log while its store is behind) or unreachable while another voter holds
+// the applied state, and a node that has just won an election while out of
+// sync has no leader other than itself. The node is never its own donor.
+// Returns 0 when no peer can serve.
 func (node *Node) syncDonor(attempt uint64) uint64 {
 	self := node.config.NodeID
 
 	var lead uint64
-	if ss := node.lastSoftState.Load(); ss != nil {
+	if ss := node.lastSoftState.Load(); ss != nil && ss.Lead != self {
 		lead = ss.Lead
 	}
 
-	voters := slices.Sorted(slices.Values(node.confState.Load().GetVoters()))
-	voters = slices.DeleteFunc(voters, func(id uint64) bool { return id == self })
-
-	if lead != 0 && lead != self && (attempt == 0 || len(voters) == 0) {
-		return lead
+	peers := slices.Sorted(slices.Values(node.confState.Load().GetVoters()))
+	peers = slices.DeleteFunc(peers, func(id uint64) bool { return id == self || id == lead })
+	if lead != 0 {
+		peers = slices.Insert(peers, 0, lead)
 	}
 
-	if len(voters) == 0 {
+	if len(peers) == 0 {
 		return 0
 	}
 
-	return voters[attempt%uint64(len(voters))]
+	return peers[attempt%uint64(len(peers))]
 }
 
 func (node *Node) retryReadySnapshotSync(stop chan struct{}, rd raft.Ready) {
@@ -1921,8 +1920,9 @@ func isStopping(stop chan struct{}) bool {
 // campaigns, so when the voters holding the newest log are the out-of-sync
 // ones, no candidate with an older log can win and the cluster stays
 // leaderless. Everything that needs the store is gated on its own: admission
-// waits for leaderReady, ReadIndex refuses while out of sync, and
-// MsgTimeoutNow is dropped outside statusNormal.
+// waits for leaderReady, event sinks and mirrors start on LeaderReadyEvent,
+// ReadIndex refuses while out of sync, and MsgTimeoutNow is dropped outside
+// statusNormal.
 //
 // statusInstallingSnapshot is the only exception: processReadies is rewriting
 // the WAL snapshot under the applier, and Run leaves the status within the
