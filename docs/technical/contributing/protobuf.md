@@ -70,10 +70,13 @@ compiles. Internal persisted/Raft-only changes require an impact assessment of
 shared service types rather than an automatic service revision bump. See the
 [service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
 for the gate, client obligations, and review criteria. CI enforces the wire part
-with `go run ./scripts/checkprotocolversion --base <target-sha>`; run it locally
-before pushing a `.proto` change. This does not change the
-unreleased-v3 rule: remove obsolete fields and realign their numbers; do not add
-migrations, reserved fields, or support for older v3 formats.
+with `go run ./scripts/checkprotocolversion --base <target-sha>`: it fails on a
+revision change and on any field deletion, renumbering, or incompatible retype in
+a type reachable from a gated service. Run it locally before pushing a `.proto`
+change. For types reachable from the service API, add fields instead. The
+unreleased-v3 rule still applies to persisted and Raft-only messages: remove
+obsolete fields and realign their numbers; do not add migrations, reserved
+fields, or support for older v3 formats.
 
 1. Edit the `.proto` file in `misc/proto/`
 2. **Realign field numbers sequentially** when adding/removing fields (no gaps, remove obsolete `reserved` entries)
