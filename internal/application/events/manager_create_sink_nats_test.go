@@ -26,7 +26,7 @@ func TestCreateSink_NATS_FailsWithoutServer(t *testing.T) {
 		Format: "json",
 	}
 
-	sink, err := m.createSink(cfg)
+	sink, err := m.createSink(t.Context(), cfg)
 	// NATS connection will fail since there is no server
 	require.Error(t, err)
 	require.Nil(t, sink)

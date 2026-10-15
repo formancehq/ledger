@@ -15,7 +15,7 @@ import (
 )
 
 func init() {
-	registerSinkFactory("nats", func(sc *commonpb.SinkConfig, format Format) (Sink, error) {
+	registerSinkFactory("nats", func(_ context.Context, sc *commonpb.SinkConfig, format Format) (Sink, error) {
 		s := sc.GetType().(*commonpb.SinkConfig_Nats)
 
 		return NewNATSSink(NATSSinkConfig{

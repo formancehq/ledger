@@ -223,7 +223,7 @@ func TestManager_RetriesTransientSinkConstructorFailure(t *testing.T) {
 
 	var attempts atomic.Int64
 	allowSuccess := make(chan struct{})
-	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
+	sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
 		attempts.Add(1)
 		select {
 		case <-allowSuccess:
@@ -287,7 +287,7 @@ func TestManager_StopCancelsSinkConstructorRetry(t *testing.T) {
 	})
 
 	var attempts atomic.Int64
-	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
+	sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
 		attempts.Add(1)
 
 		return nil, errors.New("dependency unavailable")
@@ -379,7 +379,7 @@ func TestManager_UncertainStartupReportClearedAfterRecovery(t *testing.T) {
 	})
 	var attempts atomic.Int64
 	sink := &startupGateTestSink{}
-	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
+	sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
 		if attempts.Add(1) == 1 {
 			return nil, errors.New("temporary startup failure")
 		}
@@ -460,7 +460,7 @@ func TestManager_PreservesDeliveryErrorAcrossStartupFailure(t *testing.T) {
 		}
 	})
 	allowSuccess := make(chan struct{})
-	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
+	sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
 		select {
 		case <-allowSuccess:
 			return startupRetryTestSink{}, nil
@@ -522,7 +522,7 @@ func TestManager_PreservesPendingDeliveryErrorAcrossStartup(t *testing.T) {
 			delete(sinkFactories, "nats")
 		}
 	})
-	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
+	sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
 		return startupRetryTestSink{}, nil
 	}
 	builder, store := newTestBuilder(t)

@@ -17,10 +17,10 @@ import (
 )
 
 func init() {
-	registerSinkFactory("clickhouse", func(sc *commonpb.SinkConfig, _ Format) (Sink, error) {
+	registerSinkFactory("clickhouse", func(ctx context.Context, sc *commonpb.SinkConfig, _ Format) (Sink, error) {
 		s := sc.GetType().(*commonpb.SinkConfig_Clickhouse)
 
-		return NewClickHouseSink(context.Background(), ClickHouseSinkConfig{
+		return NewClickHouseSink(ctx, ClickHouseSinkConfig{
 			DSN:   s.Clickhouse.GetDsn(),
 			Table: s.Clickhouse.GetTable(),
 		})
