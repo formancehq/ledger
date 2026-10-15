@@ -20,7 +20,7 @@
   "invariants": [
     "Both passes must analyze the intended same ledger and effective transaction set at an established read horizon. Record whether the production read handle actually freezes both scans; do not assume cross-request or concurrent-write snapshot guarantees.",
     "Each included transaction must contribute once to total count and exactly once to its normalized flow group. Reverted count and skipped or non-transaction logs must follow the production source contract rather than an inferred transaction-list result.",
-    "Address normalization at the effective variable threshold and canonical grouping must preserve the intended distinctions among source, destination, asset, color, and posting multiplicity. Human-readable signatures must not serve as collision-sensitive internal grouping keys.",
+    "Address normalization at the effective variable threshold and canonical grouping must preserve the intended distinctions among source, destination, asset, color, and posting multiplicity. Human-readable signatures must not serve as collision-sensitive internal grouping keys. The effective threshold maps a requested 0 to analysis.DefaultVariableThreshold and clamps any value above analysis.MaxVariableThreshold to that maximum, so a requested 0 must produce the same result as the default and every over-maximum request must produce the same result as the maximum.",
     "Per-flow counts and asset volume statistics must equal an independently enumerated non-empty fixture, including extrema and zero or empty cases that the domain supports. Input accounting truth belongs to accounting-invariants; this domain owns aggregation of the selected transactions.",
     "Returned flow ordering and signature presentation must be deterministic for equivalent input, including equal-count groups and different posting order where order is semantically irrelevant.",
     "An iterator, conversion, or aggregation failure must not produce a successful partial final result. Progress events are observational and must not substitute for a final result or hide a terminal error."
@@ -35,7 +35,7 @@
   ],
   "dynamic_checks_to_consider": [
     "Enumerate a small non-empty ledger with known posting flows, colors, repeated addresses, reversions, and skipped logs; calculate expected group membership and statistics without calling production normalization helpers.",
-    "Vary the threshold across supported values and permute transaction and posting order; compare exact group keys, display signatures, counts, volumes, and final ordering.",
+    "Vary the threshold across supported values, including 0 against analysis.DefaultVariableThreshold and analysis.MaxVariableThreshold against MaxVariableThreshold+1 and the uint32 maximum, and permute transaction and posting order; compare exact group keys, display signatures, counts, volumes, and final ordering, and assert equal results within each boundary pair.",
     "Inject an iterator error in each pass after at least one item and distinguish terminal failure from partial success or progress-only completion.",
     "Use existing flow-discovery unit and business e2e tests as evidence leads, recording the exact commands and assertions actually observed."
   ]
