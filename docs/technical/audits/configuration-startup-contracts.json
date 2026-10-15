@@ -33,7 +33,9 @@
     "pkg/testserver/**",
     "tests/e2e/cluster/bloom_config_test.go",
     "tests/e2e/cluster/rolling_config_test.go",
-    "internal/infra/state/fsmstate.go"
+    "internal/infra/state/fsmstate.go",
+    "internal/adapter/auth/ed25519_keys.go",
+    "internal/adapter/auth/ed25519_keys_test.go"
   ],
   "related_docs": [
     "AGENTS.md",
@@ -53,7 +55,9 @@
     "docs/technical/architecture/subsystems/read-path/query-checkpoints.md",
     "docs/ops/deployment.md",
     "docs/ops/cli.md",
-    "misc/operator/README.md"
+    "misc/operator/README.md",
+    "docs/ops/authentication.md",
+    "docs/technical/architecture/subsystems/api/auth.md"
   ],
   "invariants": [
     "For flags bound by the production service entrypoint, explicit CLI input takes precedence over the corresponding environment variable, then the registered default. The selected environment value must parse as the declared flag type; a malformed lower-precedence environment value must not defeat an explicit valid flag. Establish special handling of environment-only inputs and custom flag types from the pinned binder and current implementation rather than assuming every environment variable follows the flag rule (deployment Configuration; main.go; cmd/server).",
@@ -64,7 +68,8 @@
     "Normal startup must preserve the documented persisted node/cluster identity and TTL checks, with the existing explicit unsafe override limited to its established scope. Storage schema incompatibility must remain non-bypassable by that override. Missing configuration, load/decode failure, mismatch, override and restore mode are distinct paths; identify actual writes and residual bytes before claiming fail-closed behavior or an incorrect overwrite (deployment Configuration Safety Checks; bootstrap persisted_config.go/config_validation.go/module.go).",
     "Boot validation must read the ZoneClusterPersistent anchor and reject an old ZoneGlobal anchor before classifying a store as first boot. Unsafe identity override must not bypass that rejection or rewrite the old store.",
     "Node-local settings may influence admission or desired configuration proposals, but committed apply and replay must derive outcomes, cache effects and writes from the same committed input and replicated state. Trace desired ClusterConfig and revisioned ClusterPolicy through their proposals to applied consumers; TTL and query-checkpoint limits currently belong to replicated ClusterPolicy. Do not require equal local desired values across replicas or treat an admission-only soft limit as a strict replicated limit without an established contract (deterministic-fsm sections 3.4 and 3.6).",
-    "Boot and follower recovery reject missing audit key when history exists, malformed key length, and a valid-length key that cannot verify the genesis hash; the operational cluster ID remains independently validated and cannot serve as an audit-key fallback."
+    "Boot and follower recovery reject missing audit key when history exists, malformed key length, and a valid-length key that cannot verify the genesis hash; the operational cluster ID remains independently validated and cannot serve as an audit-key fallback.",
+    "Static Ed25519 configuration requires nonempty key IDs unique by exact string equality, including identical entries. Duplicate rejection occurs before loading the duplicate entry's public-key file; an earlier invalid-file error may precede it. buildAuthConfig propagates the named-ID loader error before installing a static/composite keyset or its scope/superuser maps (EN-2918)."
   ],
   "adversarial_questions": [
     "Which values are selected by service.Execute in the pinned go-libs version, which are read directly from the environment (such as AUTH_SCOPE_MAPPING), and which use pflag Changed or a second default? Can the same supported flag/environment input reach a different effective value because a fixture bypasses binding?",
@@ -76,7 +81,8 @@
     "If the current persisted-config key is absent but the old physical ZoneGlobal anchor exists, does startup reject the incompatible layout before writing any new identity or interpreting shifted keys?",
     "Can a local flag, environment read or version-dependent default affect processing after commit, including replay? Are the desired cache/bloom settings and desired ClusterPolicy revision/payload committed before their applied consumers use them, or can local desired state bypass the replicated value?",
     "When local desired policy differs from applied policy, is the observed behavior an allowed admission difference, a documented policy revision rejection, or a concrete apply divergence? Does a historical example contradict the current implementation and specific contract, requiring a question rather than a bug claim?",
-    "Can a restored store with a new local cluster ID boot and extend the source chain, while a missing, malformed, or mismatched audit key fails before FSM state is swapped or writes are admitted?"
+    "Can a restored store with a new local cluster ID boot and extend the source chain, while a missing, malformed, or mismatched audit key fails before FSM state is swapped or writes are admitted?",
+    "Can duplicate static Ed25519 key IDs pass constructor validation or publish a partial keyset or scope/superuser maps? Test conflicting and identical entries, rejection before the duplicate public-key file read, and earlier invalid-file error precedence. Separate this startup predicate from per-request policy enforcement owned by authentication-authorization-boundaries."
   ],
   "dynamic_checks_to_consider": [
     "Run bytesize.TestParseRejectsOverflowIntoDefault, TestParseRejectsNegativeSizes and TestParseBoundaries, plus server.TestRunCommandRejectsByteSizeOverflow and TestLoadConfigByteSizeDefaults. Check every suffix at the int64 boundary, overflow-to-zero (16Ei), negative input, unchanged flag value after rejection and preserved zero/default semantics. These prove parser and CLI-to-config behavior, not environment binding or process startup.",
@@ -87,6 +93,7 @@
     "Use existing bootstrap persisted-config fixtures to inspect first boot, matching values, explicit override, both schema mismatch directions and malformed records. For proposed extra cases compare exact persisted bytes before/after validation, including any writes before rejection; do not use a same-process close/open test as evidence of crash durability or real restart recovery.",
     "Seed the raw prior-schema ZoneGlobal boot anchor and separately the current ZoneClusterPersistent anchor. Verify old layout rejection even with unsafe override, current-layout first and repeat boot, and unchanged bytes after each rejection.",
     "For a proposed deterministic configuration-boundary comparison, use identical committed entries and initial replicated state in isolated FSM fixtures while varying only supported local desired settings; compare outcomes, audit payloads, cache effects and writes at the same applied index. Use current ClusterPolicy processing and cluster_policy_recovery tests and rolling_config E2E as entry points, distinguishing desired-to-committed handoff from generic replay, leadership, or restart correctness. Tagged E2E requires the native test harness and its documented prerequisites.",
-    "Restart from stores with a valid restored key and altered operational cluster ID, then with deleted, truncated, and replaced audit keys; assert recovery failure precedes FSM-state swap and no first write is accepted."
+    "Restart from stores with a valid restored key and altered operational cluster ID, then with deleted, truncated, and replaced audit keys; assert recovery failure precedes FSM-state swap and no first write is accepted.",
+    "Run TestBuildAuthConfig_DuplicateEd25519KeyIDs with valid synthetic public-key files and assert the exact wrapped duplicate-ID error plus nil KeySet, Ed25519AllowedScopes and Ed25519SuperuserKeys. Inspect LoadEd25519KeySet duplicate cases for error ordering and zero result. This constructor regression proves propagation and no static auth publication, not production binder, TLS validation, process exit or listener/readiness behavior."
   ]
 }
