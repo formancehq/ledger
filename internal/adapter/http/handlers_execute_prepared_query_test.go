@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -499,15 +500,13 @@ func TestHandleExecutePreparedQuery_ForwardsExactIntegers(t *testing.T) {
 	}
 }
 
-// TestHandleExecutePreparedQuery_BoundsNumericParsingWork pins that numeric
-// parameters are normalized with work linear in their length. big.ParseFloat
-// builds the full mantissa before rounding, which is quadratic in the digit
-// count: these 4 MiB tokens took about 8.5s each before the fix and take a few
-// milliseconds after it, so the bound below leaves a wide margin either way.
-func TestHandleExecutePreparedQuery_BoundsNumericParsingWork(t *testing.T) {
+// TestHandleExecutePreparedQuery_ForwardsLongIntegralTokens pins the HTTP
+// path for long numeric tokens: a digit string whose decimal shift leaves an
+// integer is forwarded exactly, and one that does not fit uint64 is refused.
+func TestHandleExecutePreparedQuery_ForwardsLongIntegralTokens(t *testing.T) {
 	t.Parallel()
 
-	const digits = 4 << 20
+	const digits = 64 << 10
 
 	for name, tc := range map[string]struct {
 		raw  string
@@ -543,9 +542,7 @@ func TestHandleExecutePreparedQuery_BoundsNumericParsingWork(t *testing.T) {
 					"queryName":  "my-query",
 				})
 
-			start := time.Now()
 			srv.handleExecutePreparedQuery(w, r)
-			elapsed := time.Since(start)
 
 			if tc.want != nil {
 				require.Equal(t, http.StatusOK, w.Code, w.Body.String())
@@ -553,7 +550,54 @@ func TestHandleExecutePreparedQuery_BoundsNumericParsingWork(t *testing.T) {
 				require.Equal(t, http.StatusBadRequest, w.Code)
 				require.Contains(t, w.Body.String(), "is out of range")
 			}
-			require.Less(t, elapsed, 2*time.Second, "numeric parameter parsing must stay linear in the token length")
+		})
+	}
+}
+
+// TestJSONNumberToParameterValue_BoundsWork pins that numeric conversion is
+// linear in the token length. big.ParseFloat builds the full mantissa before
+// rounding, which is quadratic in the digit count: these 4 MiB tokens took
+// 8-12s each before the fix. The lexical normalizer handles them in a few
+// milliseconds (well under 1s with -race), so the bound leaves a wide margin
+// either way. The conversion is called directly so that HTTP body decoding,
+// which is linear but slow under -race and parallel load, is not measured.
+func TestJSONNumberToParameterValue_BoundsWork(t *testing.T) {
+	t.Parallel()
+
+	const digits = 4 << 20
+
+	for name, tc := range map[string]struct {
+		raw     string
+		want    *commonpb.ParameterValue
+		wantErr string
+	}{
+		"integral after shift": {
+			raw:  "1" + strings.Repeat("0", digits) + "e-" + strconv.Itoa(digits),
+			want: &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 1}},
+		},
+		"out of range": {
+			raw:     "1" + strings.Repeat("0", digits),
+			wantErr: "is out of range",
+		},
+		"fraction": {
+			raw:     "1." + strings.Repeat("0", digits) + "1",
+			wantErr: "floating-point values are not supported",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			start := time.Now()
+			got, err := jsonNumberToParameterValue(json.Number(tc.raw))
+			elapsed := time.Since(start)
+
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+				require.True(t, proto.Equal(tc.want, got), "got %v", got)
+			}
+			require.Less(t, elapsed, 2*time.Second, "numeric parameter conversion must stay linear in the token length")
 		})
 	}
 }
