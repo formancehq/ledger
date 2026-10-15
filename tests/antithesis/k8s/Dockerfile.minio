@@ -1,7 +1,8 @@
-# The upstream minio/minio and minio/mc images used by the harness are no
-# longer publicly pullable. Repackage pinned MinIO and mc binaries into one
-# fresh image in the Antithesis repository for the server and bucket-init Job.
-FROM ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z@sha256:69b55a1c1c5dc285ce04db96689f5b2102317fc77a50680a1874ca6efd1c87f9 AS binaries
+# The upstream minio/minio and minio/mc images are no longer publicly
+# pullable. Repackage the MinIO and mc binaries from Formance's digest-pinned
+# mirror (same build as tests/e2e/testutil.MinIOImage) into one fresh image in
+# the Antithesis repository for the server and bucket-init Job.
+FROM ghcr.io/formancehq/minio:RELEASE.2025-10-15T17-29-55Z@sha256:69b55a1c1c5dc285ce04db96689f5b2102317fc77a50680a1874ca6efd1c87f9 AS binaries
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates
