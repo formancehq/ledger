@@ -33,8 +33,9 @@ func newSyncDonorTestNode(t *testing.T, setup *testApplierSetup, voters []uint64
 }
 
 // TestSyncDonor pins the donor rotation: the known leader first, then every
-// other voter in turn, and never the node itself — a node that has just won
-// an election while out of sync has no leader but itself.
+// other voter in turn, each peer once per round, and never the node itself —
+// a node that has just won an election while out of sync has no leader but
+// itself.
 func TestSyncDonor(t *testing.T) {
 	t.Parallel()
 
@@ -45,9 +46,10 @@ func TestSyncDonor(t *testing.T) {
 		want   []uint64
 	}{
 		{"leader first then the other voters", []uint64{1, 2, 3}, 2, []uint64{2, 3, 2, 3}},
+		{"leader with the highest ID is still first", []uint64{1, 2, 3}, 3, []uint64{3, 2, 3}},
 		{"self as leader is skipped", []uint64{1, 2, 3}, 1, []uint64{2, 3, 2}},
 		{"no leader rotates the voters", []uint64{1, 2, 3}, 0, []uint64{2, 3, 2}},
-		{"learner self rotates every voter", []uint64{2, 3, 4}, 3, []uint64{3, 3, 4, 2}},
+		{"learner self rotates every voter", []uint64{2, 3, 4}, 3, []uint64{3, 2, 4, 3}},
 		{"sole voter has no donor", []uint64{1}, 0, []uint64{0, 0}},
 		{"sole voter is never its own donor", []uint64{1}, 1, []uint64{0}},
 	}

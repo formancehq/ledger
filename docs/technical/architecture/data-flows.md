@@ -248,8 +248,8 @@ When the node starts with an out-of-date store, or when a `MsgSnap` is received 
 
 #### Donor Selection
 
-The first attempt of an episode targets the known leader; later attempts rotate
-through the other voters in ascending ID order. The node is never its own
+Attempts rotate through the known leader first, then the other voters in
+ascending ID order, each peer once per round. The node is never its own
 donor. Attempts are at least `syncRetryInterval` (1s) apart, and the attempt
 counter resets once the applier is back in `statusNormal` or a new `MsgSnap`
 is installed.
@@ -307,6 +307,7 @@ What needs the store is gated on its own:
 2. **ReadIndex** refuses while the node is syncing or out of sync.
 3. **MsgTimeoutNow rejection**: if a leader tries to transfer leadership to a node outside `statusNormal` via `TransferLeadership`, the `MsgTimeoutNow` message is silently dropped.
 4. **Maintenance snapshots** wait for `LastPersistedIndex` to move, so an out-of-sync node never compacts entries it has not applied.
+5. **Event sinks and mirrors** start on `LeaderReadyEvent`, behind the same gate as admission, so their managers read sink and mirror config from a current store. Leadership loss stops them at once.
 
 #### Sync Completion
 
