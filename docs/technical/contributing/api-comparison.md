@@ -590,7 +590,7 @@ Mirror mode enables one-way synchronization from an existing v2 ledger into a v3
 
 **Create a mirror ledger:** `POST /v3/{ledgerName}`
 
-Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying the source configuration.
+Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying the source configuration. `mode` accepts only `"NORMAL"` (the default when omitted) or `"MIRROR"`, case-sensitive; any other value is rejected with HTTP 400 (`INVALID_REQUEST`) and no ledger is created.
 
 **Source types:**
 - **HTTP** (`type: "http"`) — Polls the v2 API endpoint `GET /v2/{ledger}/logs`. Fields: `baseUrl`, `oauth2ClientId`, `oauth2ClientSecret`, `oauth2TokenEndpoint`, `oauth2Scopes` (optional, for OAuth2 client credentials authentication).
