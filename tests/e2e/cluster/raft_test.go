@@ -193,7 +193,7 @@ var _ = Describe("Simple cluster", func() {
 			Expect(ledger.Name).To(Equal(ledgerName))
 		})
 
-		It("should restore the state from the WAL after the follower was offline", func() {
+		It("should restore the state from a snapshot after the follower was offline", func() {
 			lid := *leaderID
 
 			By("Capturing the caught-up follower progress before shutdown")
@@ -254,23 +254,15 @@ var _ = Describe("Simple cluster", func() {
 				return snapshot.GetMetadata().GetIndex()
 			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeNumerically(">=", targetIndex))
 
-			By("Recording Raft messages while the follower catches up from the retained WAL")
+			By("Allowing only snapshot catch-up while recording the Raft MsgSnap")
 			snapshotSent := make(chan uint64, 1)
-			appendSent := make(chan uint64, 1)
 			gateway.SetInterceptor(testserver.MessageInterceptorFunc(func(msg *raftpb.Message) bool {
 				if msg.GetTo() != followerID {
 					return true
 				}
 
 				if msg.GetType() == raftpb.MsgApp {
-					appendIndex := msg.GetIndex()
-					if entries := msg.GetEntries(); len(entries) > 0 {
-						appendIndex = entries[len(entries)-1].GetIndex()
-					}
-					select {
-					case appendSent <- appendIndex:
-					default:
-					}
+					return false
 				}
 
 				if msg.GetType() == raftpb.MsgSnap {
@@ -284,14 +276,12 @@ var _ = Describe("Simple cluster", func() {
 			}))
 			DeferCleanup(gateway.RemoveInterceptor)
 
-			By("Starting the follower and requiring WAL replay evidence")
+			By("Starting the follower and requiring snapshot transfer evidence")
 			testutil.RestartNode(ctx, servers[followerID-1])
 
-			var sentAppendIndex uint64
-			Eventually(appendSent).Within(15 * time.Second).Should(Receive(&sentAppendIndex))
-			Expect(sentAppendIndex).To(BeNumerically(">", followerLastIndex))
-			Consistently(snapshotSent).Within(5*time.Second).ShouldNot(Receive(),
-				"the compaction fence must preserve the follower's replayable WAL range")
+			var sentSnapshotIndex uint64
+			Eventually(snapshotSent).Within(15 * time.Second).Should(Receive(&sentSnapshotIndex))
+			Expect(sentSnapshotIndex).To(BeNumerically(">=", targetIndex))
 			gateway.RemoveInterceptor()
 
 			By("Waiting for the follower's applied and durable indexes to catch up")
@@ -301,8 +291,8 @@ var _ = Describe("Simple cluster", func() {
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(followerState.GetState()).To(Equal("Follower"))
-				g.Expect(followerState.GetRaftStatus().GetApplied()).To(BeNumerically(">=", targetIndex))
-				g.Expect(followerState.GetRaftStatus().GetLastPersistedIndex()).To(BeNumerically(">=", targetIndex))
+				g.Expect(followerState.GetRaftStatus().GetApplied()).To(BeNumerically(">=", sentSnapshotIndex))
+				g.Expect(followerState.GetRaftStatus().GetLastPersistedIndex()).To(BeNumerically(">=", sentSnapshotIndex))
 			}).Within(30 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 
 			By("Reading state created while the follower was offline from that follower")
