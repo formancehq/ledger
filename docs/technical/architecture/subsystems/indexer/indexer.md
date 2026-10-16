@@ -91,8 +91,8 @@ and index handlers.
 
 ### Pass 2 — commit (or skip)
 
-- If the batch is non-empty (or a checkpoint action is pending), the progress cursor is **written into the same batch** and the batch is committed in one `batch.Commit()`. This makes "index writes" and "indexer progress" atomic — a crash mid-pass cannot leave the progress ahead of the data.
-- If the batch is **empty** (no log type in the range produced index writes), the Pebble batch is skipped entirely and the progress cursor is persisted lazily on the next non-empty batch (or via a small dedicated batch at loop exit). This reduces fsyncs to `O(1)` per active batch instead of `O(1)` per tick.
+- When a batch without a checkpoint action is committed, the progress cursor is **written into the same batch** as its index writes. A crash mid-pass cannot leave progress ahead of the data.
+- If a batch has no index writes, has not reached the fixed native target, and has no checkpoint action, its Pebble batch is skipped. The progress cursor is persisted with the next committed batch or in one dedicated batch at loop exit. This coalesces progress writes across empty batches.
 - Query-checkpoint create/delete operations force a batch boundary so the checkpoint state is never persisted across two passes.
 - A continuation retains the first main-store snapshot's native and Raft target.
   Its consumed native frontier bounds each batch, including empty batches whose
