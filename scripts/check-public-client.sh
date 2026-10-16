@@ -4,16 +4,10 @@ cd "$(dirname "$0")/.."
 
 python3 scripts/check-client-generation.py
 python3 scripts/check-public-client-surface.py
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_verify_client_release_contract.py
-server_version=$(git describe --tags --exact-match 2>/dev/null || jq -er '.compatibleServerVersions[-1]' pkg/client/v3/contract.json)
-client_version=$(jq -er '.clientVersion' pkg/client/v3/contract.json)
 [[ "$(go -C pkg/client/v3 list -m -f '{{.Path}}')" == "github.com/formancehq/ledger/pkg/client/v3" ]] || {
     echo "public client module path is invalid" >&2
     exit 1
 }
-python3 scripts/verify_client_release_contract.py "$PWD" "$server_version" \
-    "$PWD/pkg/client/v3" "pkg/client/${client_version}" local local h1:local \
-    --local-contract >/dev/null
 GOWORK=off go -C pkg/client/v3 test ./...
 
 if GOWORK=off go -C pkg/client/v3 list -deps -f '{{.ImportPath}}' ./... |

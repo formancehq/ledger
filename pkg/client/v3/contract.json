@@ -1,9 +1,0 @@
-{
-  "clientModule": "github.com/formancehq/ledger/pkg/client/v3",
-  "clientVersion": "v3.0.0-beta.7",
-  "contractDescriptorSHA256": "b56b14e64bb1aff83ea2af8582b6513265a59a748d028054a5e0f71836bbe3de",
-  "protocolVersion": "40",
-  "compatibleServerVersions": [
-    "v3.0.0-beta.7"
-  ]
-}

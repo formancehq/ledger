@@ -1,9 +1,6 @@
 package grpc_test
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,26 +13,10 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 )
 
-func TestPublishedContractIsTheRegisteredPublicClosure(t *testing.T) {
+func TestPublicDescriptorMatchesRegisteredPublicClosure(t *testing.T) {
 	protoDir := filepath.Join("..", "proto")
 	bytes, err := os.ReadFile(filepath.Join(protoDir, "ledger-public.protoset"))
 	require.NoError(t, err)
-	manifestBytes, err := os.ReadFile(filepath.Join("..", "contract.json"))
-	require.NoError(t, err)
-	var manifest struct {
-		ClientModule             string   `json:"clientModule"`
-		ClientVersion            string   `json:"clientVersion"`
-		ContractDescriptorSHA256 string   `json:"contractDescriptorSHA256"`
-		ProtocolVersion          string   `json:"protocolVersion"`
-		CompatibleServerVersions []string `json:"compatibleServerVersions"`
-	}
-	require.NoError(t, json.Unmarshal(manifestBytes, &manifest))
-	require.Equal(t, "github.com/formancehq/ledger/pkg/client/v3", manifest.ClientModule)
-	require.NotEmpty(t, manifest.ClientVersion)
-	require.NotEmpty(t, manifest.ProtocolVersion)
-	require.NotEmpty(t, manifest.CompatibleServerVersions)
-	digest := sha256.Sum256(bytes)
-	require.Equal(t, hex.EncodeToString(digest[:]), manifest.ContractDescriptorSHA256)
 
 	var set descriptorpb.FileDescriptorSet
 	require.NoError(t, proto.Unmarshal(bytes, &set))
