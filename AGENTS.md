@@ -16,9 +16,9 @@ the same committed entries identically while they coexist. Read
 [server upgrades](docs/ops/upgrades.md) before changing a shared service, Raft,
 FSM, or persisted-state contract.
 
-- Preserve the published gRPC service and method names, request and response
-  types, protobuf field numbers, wire types, field identity, and enum numbers.
-  Do not remove, renumber, or repurpose them during the RC. Internal-only
+- Do not remove or rename published gRPC services or methods, or change their
+  request and response types. Do not remove, renumber, or repurpose published
+  protobuf fields or enum values during the RC. Internal-only
   messages may be cleaned up when existing persisted data remains readable or a
   safe migration is supplied.
 - The EN-1551 cleanup removed every existing `reserved` declaration from `misc/proto/`; do not reintroduce any as a substitute for compatibility.
