@@ -67,6 +67,20 @@ its consumer-specific meaning. These tests cover direct CLI parsing and
 
 ## Ownership and exclusions
 
+For static Ed25519 authentication, follow `LoadEd25519KeySet` into
+`buildAuthConfig`: every nonempty key ID must be unique by exact string equality,
+including identical entries. Duplicate rejection must precede reading that
+duplicate's public-key file, while an earlier invalid-file error can still fail
+first. The loader returns no keyset or policy maps on failure, and bootstrap
+propagates the named-ID error before installing static/composite authentication
+or scope/superuser maps. Use
+`TestBuildAuthConfig_DuplicateEd25519KeyIDs` with valid synthetic key files to
+assert the exact wrapped error and nil `KeySet`, `Ed25519AllowedScopes` and
+`Ed25519SuperuserKeys`; loader duplicate cases distinguish ordering and zero
+results. This is constructor evidence, not production binding, TLS validation,
+process exit or listener/readiness proof. Per-request signature-to-policy
+binding remains owned by `authentication-authorization-boundaries`.
+
 | Domain | Ownership |
 | --- | --- |
 | `configuration-startup-contracts` | Static parameter resolution/translation, validation predicate, consumer wiring and desired-versus-applied authority. |

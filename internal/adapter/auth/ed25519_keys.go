@@ -36,6 +36,7 @@ type Ed25519KeySetResult struct {
 // LoadEd25519KeySet loads Ed25519 public keys from a JSON config file and returns
 // a StaticKeySet for JWT signature verification, a map of keyID -> allowed scopes,
 // and a set of key IDs that are allowed to emit superuser-mode tokens.
+// Key IDs must be nonempty and unique, including entries with identical keys or policies.
 func LoadEd25519KeySet(configPath string) (Ed25519KeySetResult, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -60,6 +61,10 @@ func LoadEd25519KeySet(configPath string) (Ed25519KeySetResult, error) {
 	for _, entry := range cfg.Keys {
 		if entry.KeyID == "" {
 			return Ed25519KeySetResult{}, errors.New("Ed25519 key entry missing keyId")
+		}
+
+		if _, exists := allowedScopes[entry.KeyID]; exists {
+			return Ed25519KeySetResult{}, fmt.Errorf("Ed25519 keys config contains duplicate keyId %q", entry.KeyID)
 		}
 
 		if entry.PublicKeyFile == "" {
