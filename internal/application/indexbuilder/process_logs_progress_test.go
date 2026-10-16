@@ -104,6 +104,55 @@ func TestProjectionTargetSnapshotExcludesCommitBetweenReads(t *testing.T) {
 		"the target sequence read must share the snapshot captured before the concurrent commit")
 }
 
+func TestPinProjectionTargetKeepsFirstSnapshotAcrossContinuation(t *testing.T) {
+	t.Parallel()
+	b := newTestBuilderWithStore(t)
+	seedLogTarget(t, b, 9, 2)
+	handle, err := b.pebbleStore.NewReadHandle()
+	require.NoError(t, err)
+	require.NoError(t, b.pinProjectionTarget(handle))
+	require.NoError(t, handle.Close())
+	require.Equal(t, uint64(9), b.projectionTargetAppliedIndex)
+	require.Equal(t, uint64(2), b.projectionTargetSequence)
+
+	seedLogTarget(t, b, 10, 3)
+	handle, err = b.pebbleStore.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+	require.NoError(t, b.pinProjectionTarget(handle))
+	require.Equal(t, uint64(9), b.projectionTargetAppliedIndex)
+	require.Equal(t, uint64(2), b.projectionTargetSequence)
+}
+
+func TestCheckpointHorizonUsesDestinationForRestoredOrDeletedState(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		seed     bool
+		restored bool
+		want     uint64
+	}{
+		{name: "live", seed: true, want: 7},
+		{name: "restored", seed: true, restored: true, want: 11},
+		{name: "deleted in snapshot", want: 11},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			b := newTestBuilderWithStore(t)
+			if tc.seed {
+				seedQueryCheckpointState(t, b, 3, 7, tc.restored)
+			}
+			handle, err := b.pebbleStore.NewReadHandle()
+			require.NoError(t, err)
+			defer func() { _ = handle.Close() }()
+			horizon, restored, err := checkpointHorizon(handle, 3, 7, 11)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, horizon)
+			require.Equal(t, tc.restored || !tc.seed, restored)
+		})
+	}
+}
+
 func TestProcessLogsPublishesRaftHorizonOnlyAfterFinalNativeBatch(t *testing.T) {
 	t.Parallel()
 
