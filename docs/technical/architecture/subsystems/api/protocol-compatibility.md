@@ -606,3 +606,15 @@ policy retry the request. A measured disk block still returns
 block retains its existing response. Admission checks the gate before proposing
 an order, so a retry after `Unavailable` cannot duplicate a committed write.
 This status change requires revision 40 clients and servers together.
+
+## Granular scope naming (revision 41)
+
+Revision 41 changes the 14 Ledger granular authorization labels from
+`ledger:<Resource><Action>` to `ledger:<Action><Resource>`. Clients that send
+granular labels in JWTs must request and receive the new labels. The aggregate
+`ledger:read`, `ledger:write`, and `ledger:admin` labels retain their meaning,
+but gRPC clients and servers must still declare the same protocol revision.
+Custom and anonymous scope mappings must use the new granular values; see the
+[authentication migration](../../../../ops/authentication.md#migration-from-rc1-granular-labels).
+Persisted audit snapshots retain the exact effective scope strings captured at
+admission, so historical hashes remain verifiable without a storage migration.

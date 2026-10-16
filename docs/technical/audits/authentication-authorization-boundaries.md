@@ -166,7 +166,7 @@ and produces no product audit report.
 
 ## Atomic creation metadata (EN-2686)
 
-Initial metadata on normal or mirror creation is authorized by ledger:LedgerWrite with the creation itself; subsequent metadata saves retain ledger:MetadataWrite.
+Initial metadata on normal or mirror creation is authorized by ledger:WriteLedger with the creation itself; subsequent metadata saves retain ledger:WriteMetadata.
 
 Can a caller with LedgerWrite create a ledger with initial metadata without MetadataWrite, while the same caller cannot use the later metadata-save operation without its required scope?
 

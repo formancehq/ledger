@@ -458,7 +458,7 @@ paths:
         reads and sequence-only bounds scan the audit zone directly without
         waiting for the audit projection.
 
-        Requires `ledger:AuditRead` scope.
+        Requires `ledger:ReadAudit` scope.
       operationId: listAuditEntries
       tags:
         - Audit
@@ -556,7 +556,7 @@ paths:
       description: |
         Returns a single audit entry by its global sequence, with per-order
         `items` populated (the list endpoint omits `items` for compactness).
-        Requires `ledger:AuditRead` scope.
+        Requires `ledger:ReadAudit` scope.
       operationId: getAuditEntry
       tags:
         - Audit
@@ -715,7 +715,7 @@ paths:
         `cursor`), an optional date range (`startDate`/`endDate`),
         and the generic `filter` parameter (e.g. reference selection via
         `filter={"$match":{"reference":"..."}}`, URL-encoded). Requires
-        `ledger:TransactionRead` scope.
+        `ledger:ReadTransaction` scope.
 
         This is a live read, linearizable by default. `X-Consistency: stale`
         reads the receiving node's local state, which may lag the leader. Every
@@ -964,7 +964,7 @@ paths:
         Returns aggregated volumes (input/output/balance per asset) across all accounts in the ledger.
         Supports filtering accounts with the generic `filter` parameter, grouping by account prefixes,
         and max-precision merging.
-        Requires `ledger:AccountRead` scope.
+        Requires `ledger:ReadAccount` scope.
       operationId: aggregateVolumes
       tags:
         - Volumes
@@ -1027,7 +1027,7 @@ paths:
       summary: Save ledger metadata
       description: >-
         Saves metadata key-value pairs on the ledger itself. Requires
-        `ledger:MetadataWrite`; `ledger:write` grants it under the default scope
+        `ledger:WriteMetadata`; `ledger:write` grants it under the default scope
         mapping. Custom scope mappings can differ.
       operationId: saveLedgerMetadata
       tags:
@@ -1076,7 +1076,7 @@ paths:
   /v3/{ledgerName}/metadata/{key}:
     delete:
       summary: Delete ledger metadata
-      description: Deletes a metadata key from the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+      description: Deletes a metadata key from the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
       operationId: deleteLedgerMetadata
       tags:
         - Ledgers
@@ -1112,7 +1112,7 @@ paths:
   /v3/{ledgerName}/accounts/{address}/metadata:
     post:
       summary: Save account metadata
-      description: Saves metadata for a specific account in the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+      description: Saves metadata for a specific account in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
       operationId: saveAccountMetadata
       tags:
         - Accounts
@@ -1162,7 +1162,7 @@ paths:
   /v3/{ledgerName}/transactions/{transactionId}/metadata:
     post:
       summary: Save transaction metadata
-      description: Saves metadata for a specific transaction in the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+      description: Saves metadata for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
       operationId: saveTransactionMetadata
       tags:
         - Transactions
@@ -1211,7 +1211,7 @@ paths:
   /v3/{ledgerName}/accounts/{address}/metadata/{key}:
     delete:
       summary: Delete account metadata
-      description: Deletes a metadata key for a specific account in the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+      description: Deletes a metadata key for a specific account in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
       operationId: deleteAccountMetadata
       tags:
         - Accounts
@@ -1248,7 +1248,7 @@ paths:
   /v3/{ledgerName}/transactions/{transactionId}/metadata/{key}:
     delete:
       summary: Delete transaction metadata
-      description: Deletes a metadata key for a specific transaction in the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+      description: Deletes a metadata key for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
       operationId: deleteTransactionMetadata
       tags:
         - Transactions
@@ -1562,7 +1562,7 @@ paths:
       description: |
         Declares or changes the type used to encode a metadata key in an attached query index.
         Metadata values are neither validated nor converted by this declaration, and existing primary values remain unchanged.
-        Any attached index is rewritten asynchronously. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+        Any attached index is rewritten asynchronously. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
       operationId: setMetadataFieldType
       tags:
         - Metadata Schema
@@ -1604,7 +1604,7 @@ paths:
       summary: Remove metadata field type
       description: |
         Removes the type declaration for a metadata key on a ledger.
-        Existing metadata values remain unchanged and any attached index is dropped. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+        Existing metadata values remain unchanged and any attached index is dropped. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
       operationId: removeMetadataFieldType
       tags:
         - Metadata Schema
@@ -2088,7 +2088,7 @@ paths:
       summary: Create a prepared query
       description: |
         Creates a new prepared query for a ledger. A prepared query defines a reusable
-        filter that can be executed later with parameter substitution. Requires `ledger:QueryWrite` scope.
+        filter that can be executed later with parameter substitution. Requires `ledger:WriteQuery` scope.
       operationId: createPreparedQuery
       tags:
         - Prepared Queries
@@ -2127,7 +2127,7 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
     get:
       summary: List prepared queries
-      description: Returns a list of all prepared queries for a ledger. Requires `ledger:QueryRead` scope.
+      description: Returns a list of all prepared queries for a ledger. Requires `ledger:ReadQuery` scope.
       operationId: listPreparedQueries
       tags:
         - Prepared Queries
@@ -2163,7 +2163,7 @@ paths:
     put:
       summary: Update a prepared query
       description: |
-        Updates the filter of an existing prepared query. Requires `ledger:QueryWrite` scope.
+        Updates the filter of an existing prepared query. Requires `ledger:WriteQuery` scope.
       operationId: updatePreparedQuery
       tags:
         - Prepared Queries
@@ -2202,7 +2202,7 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
       summary: Delete a prepared query
-      description: Deletes a prepared query from a ledger. Requires `ledger:QueryWrite` scope.
+      description: Deletes a prepared query from a ledger. Requires `ledger:WriteQuery` scope.
       operationId: deletePreparedQuery
       tags:
         - Prepared Queries
@@ -2240,7 +2240,7 @@ paths:
       description: |
         Executes a prepared query with optional parameter substitution. Supports LIST and
         AGGREGATE_VOLUMES modes with cursor pagination. Also accepts pageSize, cursor and
-        reverse as query parameters. Requires `ledger:QueryRead` scope.
+        reverse as query parameters. Requires `ledger:ReadQuery` scope.
       operationId: executePreparedQuery
       tags:
         - Prepared Queries
@@ -2308,7 +2308,7 @@ paths:
       summary: Add an account type
       description: |
         Adds a new account type to a ledger's chart of accounts. Account types define
-        address patterns for account validation. Requires `ledger:MetadataWrite` scope.
+        address patterns for account validation. Requires `ledger:WriteMetadata` scope.
       operationId: addAccountType
       tags:
         - Account Types
@@ -2348,7 +2348,7 @@ paths:
       summary: List account types
       description: |
         Returns all account types defined on a ledger, sorted by name.
-        Requires `ledger:AccountRead` scope.
+        Requires `ledger:ReadAccount` scope.
       operationId: listAccountTypes
       tags:
         - Account Types
@@ -2385,7 +2385,7 @@ paths:
       summary: Set default enforcement mode
       description: |
         Sets the default enforcement mode for accounts that do not match any defined
-        account type. Must be STRICT or AUDIT. Requires `ledger:MetadataWrite` scope.
+        account type. Must be STRICT or AUDIT. Requires `ledger:WriteMetadata` scope.
       operationId: setDefaultEnforcementMode
       tags:
         - Account Types
@@ -2425,7 +2425,7 @@ paths:
   /v3/{ledgerName}/account-types/{typeName}:
     get:
       summary: Get an account type
-      description: Retrieves a specific account type by name from a ledger. Requires `ledger:AccountRead` scope.
+      description: Retrieves a specific account type by name from a ledger. Requires `ledger:ReadAccount` scope.
       operationId: getAccountType
       tags:
         - Account Types
@@ -2459,7 +2459,7 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
       summary: Remove an account type
-      description: Removes an account type from a ledger's chart of accounts. Requires `ledger:MetadataWrite` scope.
+      description: Removes an account type from a ledger's chart of accounts. Requires `ledger:WriteMetadata` scope.
       operationId: removeAccountType
       tags:
         - Account Types
@@ -2496,7 +2496,7 @@ paths:
       summary: Get a single system log by bucket-wide sequence
       description: |
         Returns the system log entry with the given bucket-wide sequence number.
-        Requires `ledger:OpsRead` scope.
+        Requires `ledger:ReadOps` scope.
       operationId: getLog
       tags:
         - Logs
@@ -2540,7 +2540,7 @@ paths:
       summary: List configured event sinks
       description: |
         Returns every event sink configured on the cluster. Requires
-        `ledger:OpsRead` scope.
+        `ledger:ReadOps` scope.
       operationId: getEventsSinks
       tags:
         - Ops
@@ -2591,7 +2591,7 @@ paths:
     post:
       summary: Add an event sink
       description: |
-        Adds a named event sink to the cluster. Requires `ledger:OpsWrite` scope.
+        Adds a named event sink to the cluster. Requires `ledger:WriteOps` scope.
         The body is a direct SinkConfig in protobuf JSON form, without a config
         wrapper. A non-empty name and exactly one sink type are required.
         Unknown fields, malformed protobuf JSON and multiple oneof members are
@@ -2654,7 +2654,7 @@ paths:
     delete:
       summary: Remove an event sink
       description: |
-        Removes a named event sink from the cluster. Requires `ledger:OpsWrite`
+        Removes a named event sink from the cluster. Requires `ledger:WriteOps`
         scope. A non-empty controllerId must match the sink's controllerId;
         a mismatch returns `SINK_CONTROLLER_MISMATCH` (409). An omitted or empty
         controllerId removes the sink without an ownership precondition.
@@ -2707,7 +2707,7 @@ paths:
       summary: List registered Ed25519 signing keys
       description: |
         Lists the Ed25519 signing keys registered on the cluster, paged by key
-        id (ascending unless `reverse=true`). Requires `ledger:OpsRead` scope.
+        id (ascending unless `reverse=true`). Requires `ledger:ReadOps` scope.
 
         This route performs a live read, linearizable by default.
         `X-Consistency: stale` reads the receiving node's local state, which
@@ -2771,7 +2771,7 @@ paths:
         entries whose owning ledger no longer exists; `bucket` surfaces only
         bucket-scoped entries (empty ledger, e.g. audit indexes). Use
         `GET /v3/{ledgerName}/indexes` for the per-ledger view. Requires
-        `ledger:OpsRead` scope.
+        `ledger:ReadOps` scope.
       operationId: listBucketIndexes
       tags:
         - Indexes
@@ -2820,7 +2820,7 @@ paths:
         through `GET /v3/{ledgerName}/indexes/{canonicalId}` — the two
         keyspaces are distinct so a bucket-scoped lookup with the same
         canonical will NotFound if only the ledger-scoped entry exists.
-        Requires `ledger:OpsRead` scope.
+        Requires `ledger:ReadOps` scope.
       operationId: getBucketIndex
       tags:
         - Indexes
@@ -2866,7 +2866,7 @@ paths:
       description: |
         Returns the `IndexEntry` (registry entry + backfill cursor +
         per-replica IndexVersionState) for a bucket-scoped index.
-        Requires `ledger:OpsRead` scope.
+        Requires `ledger:ReadOps` scope.
       operationId: getBucketIndexEntryStatus
       tags:
         - Indexes
@@ -2915,7 +2915,7 @@ paths:
         counters (LastIndexedSequence, LastLogSequence, Lag, IndexFileSize).
         The optional `ledger` query parameter narrows the per-index entries to
         a single ledger; the aggregated counters always cover the bucket.
-        Requires `ledger:OpsRead` scope.
+        Requires `ledger:ReadOps` scope.
       operationId: getIndexStatus
       tags:
         - Indexes
@@ -2956,7 +2956,7 @@ paths:
       summary: List indexes for a ledger
       description: |
         Streams the indexes registered on a specific ledger. Requires
-        `ledger:LedgerRead` scope.
+        `ledger:ReadLedger` scope.
       operationId: listLedgerIndexes
       tags:
         - Indexes
@@ -3002,7 +3002,7 @@ paths:
         the original result. The indexbuilder processes the accepted creation.
         The request body carries the target `IndexID` in
         canonical form (see `DELETE /v3/{ledgerName}/indexes/{canonicalId}`
-        for the format). Requires `ledger:LedgerWrite` scope.
+        for the format). Requires `ledger:WriteLedger` scope.
       operationId: createIndex
       tags:
         - Indexes
@@ -3071,7 +3071,7 @@ paths:
       description: |
         Returns the `Index` registry entry (id, ledger, createdAt,
         forwardEncodingVersion) for a single index, serialized in
-        protobuf-JSON camelCase. Requires `ledger:LedgerRead` scope.
+        protobuf-JSON camelCase. Requires `ledger:ReadLedger` scope.
       operationId: getIndex
       tags:
         - Indexes
@@ -3116,7 +3116,7 @@ paths:
       description: |
         Removes an index from a ledger. The path parameter carries the target
         `IndexID` in canonical form (e.g. `metadata:TARGET_TYPE_ACCOUNT:color`,
-        `tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP`). Requires `ledger:LedgerWrite` scope.
+        `tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP`). Requires `ledger:WriteLedger` scope.
       operationId: dropIndex
       tags:
         - Indexes
@@ -3163,7 +3163,7 @@ paths:
         joined with the backfill cursor and the per-replica
         IndexVersionState (current + pending version). Use this to poll
         for backfill completion after a `POST /v3/{ledgerName}/indexes`.
-        Requires `ledger:LedgerRead` scope.
+        Requires `ledger:ReadLedger` scope.
       operationId: getIndexEntryStatus
       tags:
         - Indexes
@@ -3972,7 +3972,7 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: >-
-            Initial typed metadata, persisted atomically with creation in NORMAL and MIRROR modes. Creation requires ledger:LedgerWrite, including initial metadata; later metadata saves require ledger:MetadataWrite. JSON null entries are omitted. Schema declarations govern indexing and queries, not write-time value coercion. Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
+            Initial typed metadata, persisted atomically with creation in NORMAL and MIRROR modes. Creation requires ledger:WriteLedger, including initial metadata; later metadata saves require ledger:WriteMetadata. JSON null entries are omitted. Schema declarations govern indexing and queries, not write-time value coercion. Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
         mode:
           type: string
           enum:
