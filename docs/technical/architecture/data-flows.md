@@ -503,13 +503,13 @@ After Compaction:
 Compaction is triggered automatically after a snapshot is created:
 
 1. A snapshot is created at index `N`
-2. The system keeps a **compaction margin** (configurable via `CompactionMargin`)
-3. Entries before `N - CompactionMargin` are deleted from the WAL
+2. The leader computes a durable voter-quorum fence and keeps a **compaction margin** (configurable via `CompactionMargin`)
+3. Entries before `min(N, quorumDurableIndex) - CompactionMargin` are deleted from the WAL
 4. Old WAL segment files are removed
 
 ### Compaction Margin
 
-The compaction margin (`CompactionMargin` in configuration) determines how many entries are kept before the snapshot index:
+The compaction margin (`CompactionMargin` in configuration) determines how many entries are kept before the effective fenced index. The margin alone is not a durability guarantee: the leader must also have a quorum of voter stores covering the boundary.
 
 ```
 snapshotIndex = 1000

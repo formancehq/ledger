@@ -333,7 +333,10 @@ Missing or unreachable reports contribute zero, but do not block compaction when
 the remaining reports still form a quorum. The fence is reset on a leadership
 change, so a new leader never relies on observations from a previous term.
 Followers continue to compact against their own durable store because their WAL
-is not the replication history being retained for other voters.
+is not the replication history being retained for other voters. This local path
+is safe because the applied index is at or below the committed index, and a
+committed index is present on a quorum of logs; after a restart or election, at
+most a minority of voters can require snapshot recovery.
 
 ## Automatic Learner Promotion
 

@@ -305,9 +305,6 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 			continue
 		}
 		_, isVoter := voters[peerID]
-		if isVoter {
-			hc.forgetPeerPersistedIndex(leadershipEpoch, peerID)
-		}
 
 		// Abort early if shutting down.
 		select {
@@ -326,6 +323,9 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 			hc.pollFailures.Add(context.Background(), 1, metric.WithAttributes(attribute.String("peer", strconv.FormatUint(peerID, 10))))
 			reports = append(reports, nodeUsageReport{nodeID: peerID, fetchErr: err})
 			samples = append(samples, VolumeSample{})
+			if isVoter {
+				hc.forgetPeerPersistedIndex(leadershipEpoch, peerID)
+			}
 
 			continue
 		}
@@ -353,6 +353,9 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 			// A missing peer sample cannot establish a new disk-full state, but it
 			// must prevent an existing state from being cleared without evidence.
 			samples = append(samples, VolumeSample{})
+			if isVoter {
+				hc.forgetPeerPersistedIndex(leadershipEpoch, peerID)
+			}
 		} else {
 			if isVoter {
 				stateCtx, stateCancel := context.WithTimeout(baseCtx, healthCheckCallTimeout)
