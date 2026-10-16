@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -73,6 +74,10 @@ type HealthChecker struct {
 	clockSkewThreshold time.Duration
 
 	gate atomic.Pointer[gateState]
+	// persistedReportsMu makes epoch validation and report mutation one atomic
+	// operation. Without it, an old poll could validate its epoch, lose the
+	// leadership-change reset, and publish a stale cursor afterwards.
+	persistedReportsMu sync.Mutex
 	// leadershipEpoch invalidates node-local verdicts synchronously with Raft
 	// leadership changes. A verdict from an older term can still finish its poll,
 	// but CheckWritesAllowed will reject it because its epoch no longer matches.
@@ -163,11 +168,30 @@ func (hc *HealthChecker) CheckWritesAllowed() error {
 // can run under the new Raft leadership term. It is intentionally cheap and is
 // called synchronously from the node observer.
 func (hc *HealthChecker) OnLeadershipChange(bool) {
+	hc.persistedReportsMu.Lock()
+	defer hc.persistedReportsMu.Unlock()
+
 	hc.leadershipEpoch.Add(1)
 	hc.gate.Store(nil)
 	hc.node.ResetPeerPersistedIndexes()
 	// The LeadershipChangeEvent is emitted before node.IsLeader observes the
 	// new SoftState. LeaderReady triggers the first poll after that publication.
+}
+
+func (hc *HealthChecker) forgetPeerPersistedIndex(epoch, peerID uint64) {
+	hc.persistedReportsMu.Lock()
+	defer hc.persistedReportsMu.Unlock()
+	if hc.leadershipEpoch.Load() == epoch {
+		hc.node.ForgetPeerPersistedIndex(peerID)
+	}
+}
+
+func (hc *HealthChecker) recordPeerPersistedIndex(epoch, peerID, index uint64) {
+	hc.persistedReportsMu.Lock()
+	defer hc.persistedReportsMu.Unlock()
+	if hc.leadershipEpoch.Load() == epoch && hc.node.IsLeader() {
+		hc.node.RecordPeerPersistedIndex(peerID, index)
+	}
 }
 
 // OnLeaderReady schedules the first current-epoch check after Raft has
@@ -282,7 +306,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 		}
 		_, isVoter := voters[peerID]
 		if isVoter {
-			hc.node.ForgetPeerPersistedIndex(peerID)
+			hc.forgetPeerPersistedIndex(leadershipEpoch, peerID)
 		}
 
 		// Abort early if shutting down.
@@ -335,10 +359,10 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				state, stateErr := client.GetClusterState(stateCtx, &clusterpb.GetClusterStateRequest{NodeId: uint32(peerID)})
 				stateCancel()
 				if stateErr != nil {
-					hc.node.ForgetPeerPersistedIndex(peerID)
+					hc.forgetPeerPersistedIndex(leadershipEpoch, peerID)
 					hc.logger.WithFields(map[string]any{"node_id": peerID, "error": stateErr}).Infof("Failed to get peer persisted index")
-				} else if hc.leadershipEpoch.Load() == leadershipEpoch && hc.node.IsLeader() {
-					hc.node.RecordPeerPersistedIndex(peerID, state.GetRaftStatus().GetLastPersistedIndex())
+				} else {
+					hc.recordPeerPersistedIndex(leadershipEpoch, peerID, state.GetRaftStatus().GetLastPersistedIndex())
 				}
 			}
 			walVolume := resp.GetWalVolume()

@@ -956,6 +956,7 @@ func (node *Node) doMaintenance() error {
 		if node.IsLeader() {
 			node.compactWAL(lastSnapIndex)
 		}
+
 		return nil
 	}
 
@@ -1026,6 +1027,7 @@ func (node *Node) compactWAL(snapshotIndex uint64) {
 				"snapshotIndex": snapshotIndex,
 			}).Infof("Background maintenance: compaction fenced until a voter quorum reports durable Pebble progress")
 		}
+
 		return
 	}
 
@@ -2473,6 +2475,7 @@ func quorumPersistedIndex(voters []uint64, localID, localIndex uint64, reports m
 		if a < b {
 			return 1
 		}
+
 		return 0
 	})
 
