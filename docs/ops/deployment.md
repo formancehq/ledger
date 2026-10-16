@@ -11,10 +11,11 @@ service clients to declare the protocol they implement. Servers implementing
 EN-1851 reject business RPCs with a missing or different protocol revision.
 Servers predating EN-1851 do not enforce this gate: the new CLI sends a protocol
 declaration without a preflight, so it cannot protect calls to an older, ungated
-server. Different builds may communicate when they implement the same service
-protocol, but mixed wire-format rolling upgrades are not guaranteed. See the
+server. Updates within the RC line keep the service wire contract at revision
+40 and must support mixed-binary rolling upgrades. The protocol match alone
+does not prove that Raft apply and persisted data remain compatible. See the
 [service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
-for scope and failure behavior.
+and [server upgrades](upgrades.md) for the required validation.
 
 ## Local Deployment
 

@@ -8,27 +8,32 @@ do not require a data wipe to adopt a later RC build. Client-visible behavior
 and configuration may change when the impact and upgrade steps are documented.
 The service gRPC revision stays at 40; see the
 [protocol policy](../technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision).
+Updates within the RC line must also support a rolling server upgrade from the
+previous RC build. Old and new voters must communicate and apply each committed
+entry identically while they coexist. A change that cannot meet this requirement
+needs a staged rollout design or must wait for a different compatibility line.
 
-This data requirement does not make mixed-binary rolling upgrades safe. Do not
-assume that an in-place rolling upgrade is supported merely because Kubernetes
-can perform one.
-
-Every target revision must explicitly identify one of these upgrade classes:
+The upgrade classes below describe existing procedures. RC changes must use the
+rolling class; coordinated restart and rebuild or restore are retained for
+earlier development revisions and explicitly separate compatibility lines.
 
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
-| Rolling | The target revision explicitly supports mixed binaries and the existing storage schema. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
-| Coordinated restart | The storage schema is compatible, but mixed binaries can apply a committed entry differently. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart the cluster without a mixed-version window. |
-| Rebuild or restore | Persisted or backup formats are incompatible. | Follow the revision-specific reset instructions and rebuild from the declared source of truth or a backup explicitly supported by the target revision. |
+| Rolling | Required between builds on the same RC line. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
+| Coordinated restart | Earlier development revisions or a separate compatibility line that cannot mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart the cluster without a mixed-version window. |
+| Rebuild or restore | Earlier development revisions or a separate compatibility line with incompatible persisted or backup formats. | Follow the revision-specific reset instructions and rebuild from the declared source of truth or a backup explicitly supported by the target revision. |
 
-If the target revision does not declare its class, stop and obtain a release
-decision. Do not guess from a successful single-node restart.
+For an RC update, demonstrate the rolling class with old and new binaries in
+one cluster, including leadership transfer, writes, replay, and restart. If the
+target cannot pass, fix the change before release. Do not infer support from a
+successful single-node restart.
 
-The change-specific constraints currently documented under
+For upgrades from builds before `v3.0.0-rc.1`, the change-specific constraints
+documented under
 [Upgrading from pre-#400 clusters](./deployment.md#upgrading-from-pre-400-clusters)
 and
 [Upgrading across an FSM error-identity change](./deployment.md#upgrading-across-an-fsm-error-identity-change)
-take precedence over this general workflow.
+take precedence over this RC workflow.
 
 ## Preflight
 
@@ -48,7 +53,7 @@ Before any server upgrade:
 
 ## Rolling Procedure
 
-Use this only when the target revision explicitly permits mixed binaries:
+Use this for RC updates after the mixed-version validation above passes:
 
 1. Record the current leader and voter set with `ledgerctl cluster status`.
 2. Restart one follower on the target binary.

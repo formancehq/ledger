@@ -98,9 +98,10 @@ server-specific compatibility repair.
 HTTP consumers do not send this gRPC metadata. Internal forwarding from HTTP
 uses the server's service client and is subject to the same gate at the peer.
 Nodes with different service revisions can therefore fail forwarded requests;
-this mechanism does not establish support for mixed-version clusters or rolling
-wire-format upgrades. The separate Raft transport and snapshot server retain
-their own contracts.
+the revision-40 wire contract alone does not prove a rolling upgrade safe. RC
+updates must also preserve peer communication, Raft apply, and persisted-state
+compatibility while old and new servers coexist. The separate Raft transport and
+snapshot server retain their own contracts. See [server upgrades](../../../../ops/upgrades.md).
 
 ## Apply execution provenance (revision 7)
 
