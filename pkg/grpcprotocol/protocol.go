@@ -14,7 +14,7 @@ const (
 	// Behavior changes require a documented client impact assessment.
 	// See docs/technical/architecture/subsystems/api/protocol-compatibility.md.
 	// A compiled constant also identifies local builds without release ldflags.
-	Version = /* keep the published v3 revision */ "41"
+	Version = "41"
 	// MetadataKey carries the protocol version, not authentication credentials.
 	MetadataKey = "ledger-protocol-version"
 )
