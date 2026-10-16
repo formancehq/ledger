@@ -54,6 +54,14 @@ matches; source builds reporting `dev` still carry a defined protocol revision.
 See the [service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
 for SDKs, custom gRPC clients, and internal forwarding.
 
+## Server byte-size flags
+
+Server byte-size flags accept non-negative integer bytes with optional binary
+(`Ki` through `Ei`) or decimal (`k`, `M`, `G`, `T`, `P`, `E`) suffixes. The
+expanded size must fit in an int64. Negative values and overflow are rejected;
+zero keeps the flag's documented default or disabled meaning. See the
+[server configuration contract](deployment.md#configuration) for details.
+
 ## Global Flags
 
 These flags are available for all commands:
@@ -212,7 +220,7 @@ scripting against the CLI predictable across resources.
 | Pagination | `--page-size` | uint32 | Number of items per page (clamped server-side; default `10`). |
 | Pagination | `--cursor` | string | Page token printed by a previous page (`next_cursor` or `previous_cursor`). Pass the same `--reverse` and `--filter` on every page of a walk. See [Page tokens](#page-tokens). |
 | Pagination | `--reverse` | bool | Reverse iteration order. Available on commands whose server endpoint supports it. |
-| Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts` and `transactions`. |
+| Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts`, `transactions` and `queries execute`. |
 | Filter | `--filter` | string | Boolean filter expression — textual `filterexpr` grammar OR the structured JSON `QueryFilter` DSL (dual-format, EN-1511). |
 | Filter | `--prefix` | string | Account-address prefix shortcut. Only on `accounts list` (server-side `HardcodedPrefix` optimization). |
 | Consistency | `--checkpoint-id` | uint64 | Read from a named query checkpoint instead of the live store. |
@@ -849,7 +857,7 @@ ledgerctl indexes drop [flags]
 
 **Behavior:**
 - Queries using the dropped index will be rejected after the drop
-- Dropping a non-existent index returns an error
+- Dropping an index that does not exist (never created, or already dropped) succeeds and still records a `DROP_INDEX` log entry; only an unknown ledger returns an error. Run `ledgerctl indexes list` first to check a mistyped index.
 - `--target` and `--key` are only valid with `--type metadata`; passing them with any other type is rejected.
 
 **Example:**
@@ -1862,7 +1870,7 @@ ledgerctl account-types set-default-enforcement [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | *(required)* | Name of the ledger |
-| `--mode` | | Enforcement mode: `STRICT` (reject untyped accounts) or `AUDIT` (warn only) |
+| `--mode` | | Enforcement mode: `STRICT` (reject untyped accounts) or `AUDIT` (accept untyped accounts without reporting them) |
 
 **Example:**
 
@@ -3698,14 +3706,23 @@ ledgerctl queries execute <name> --ledger <ledger-name> [flags]
 | `--page-size` | `10` | Number of results per page |
 | `--mode` | `list` | Query mode: `list` or `aggregate` |
 | `--reverse` | `false` | List results in descending order. Rejected in `aggregate` mode |
+| `--all` | `false` | Fetch every page and print all results at once, without the interactive prompt. List mode only |
 | `--analyze` | `false` | Display the query profile: server-side phase timing (prepare/execute/barrier/deliver) plus iterator stats |
-| `--timeout` | `10s` | Request timeout |
+| `--timeout` | `10s` | Request timeout, applied to each page request |
+
+**Behavior:**
+- In list mode without `--all`, the CLI prints one page and asks before it loads the next one. With `--json` or `--yaml`, it prints only the first page
+- With `--all`, the CLI sends one request per page of `--page-size` results. It follows the response cursor until the server reports no more results, then prints every result in one table or one JSON/YAML array
+- With `--all --analyze`, the profile shown is the profile of the last page request
 
 **Examples:**
 
 ```bash
 # Execute without parameters
 ledgerctl queries execute active-users --ledger my-ledger
+
+# Fetch every result as one JSON array
+ledgerctl queries execute active-users --ledger my-ledger --all --json
 
 # Execute with parameters
 ledgerctl queries execute by-tier --ledger my-ledger --param tier=gold
@@ -4527,9 +4544,32 @@ the value configured on the existing cluster nodes
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--cluster-secret` | string | `""` | Shared secret for inter-node gRPC authentication (required when auth is enabled) |
+| `--cluster-secret` | string | `""` | Shared secret for inter-node gRPC authentication. Requires TLS (`--tls-mode` other than `disabled`). Multi-node deployments must set it |
 
-When authentication is enabled, all inter-node gRPC calls use this shared secret as a bearer token. Must be the same on all nodes in the cluster.
+When `--cluster-secret` is set, every inter-node gRPC call (Raft transport,
+snapshot transfer, cluster bootstrap, and follower-to-leader forwarding on the
+service API) carries this shared secret as a bearer token. The value must be
+the same on all nodes in the cluster.
+
+The cluster secret and `--auth-enabled` are separate mechanisms:
+
+- `--auth-enabled` authenticates external clients on the service API with
+  JWT or Ed25519 tokens.
+- `--cluster-secret` authenticates nodes to each other. The server does not
+  require it when `--auth-enabled` is set, and `--auth-enabled` does not
+  protect the Raft port.
+
+The two flags interact in one place. When `--auth-enabled` is set, a follower
+forwards writes to the leader with the original caller's identity. The leader
+accepts that identity only from a peer that presents the cluster secret on the
+service API. In a multi-node cluster with `--auth-enabled` and no cluster
+secret, writes sent to a follower fail with `PermissionDenied`.
+
+The server does not check at startup that a multi-node cluster has a secret.
+The Kubernetes operator creates a random secret and injects `CLUSTER_SECRET`
+into every pod whenever TLS is active (`optional` or `required`), whether
+authentication is enabled or not. Manual deployments must set the flag
+themselves.
 
 **TLS is required when `--cluster-secret` is set.** The server refuses to start
 if a cluster secret is configured without TLS (`--tls-cert-file` and
@@ -4542,7 +4582,12 @@ server-side interceptor that rejects any call whose `authorization: Bearer …`
 metadata does not match the configured secret with `codes.Unauthenticated`.
 The comparison is constant-time. Leaving `--cluster-secret` empty preserves the
 historical unauthenticated behavior for single-node setups; multi-node
-deployments **MUST** set it.
+deployments **MUST** set it. Without a secret, the Raft port has no
+authentication. The `ClusterBootstrapService` checks only the `--cluster-id`
+metadata, which is not a secret, so any client that can reach the port can
+call `GetPeers` and `JoinAsLearner` and change cluster membership. This holds even when `--auth-enabled` is set.
+Keep `--bind-addr` (default `0.0.0.0:7777`) off untrusted networks, or set a
+secret.
 
 Peer discovery also fails immediately when a discovered member has a missing or malformed 16-byte `instance_id`; retrying cannot repair this invalid cluster identity. Transient discovery failures still use exponential backoff.
 
@@ -5058,6 +5103,8 @@ The HTTP sink sends each event as an individual POST request with headers:
 - `X-Ledger`: ledger name
 - `X-Log-Sequence`: global log sequence number
 - `X-Webhook-Signature`: `sha256=<hex>` HMAC signature (only when `--http-secret` is set)
+
+Only a 2xx response acknowledges an event. The sink does not follow redirects: any 3xx response is a delivery failure, so `--http-endpoint` must be the final URL.
 
 ### `events remove-sink`
 

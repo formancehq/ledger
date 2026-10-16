@@ -22,6 +22,11 @@ const (
 
 const defaultPageSize = 100
 
+// MaxInspectPageSize bounds the values or facets one inspection page returns,
+// whatever the caller asks. It matches the published HTTP pageSize maximum;
+// a larger request answers this many values and a cursor to the next page.
+const MaxInspectPageSize uint32 = 10000
+
 // InspectParams holds all parameters for an index inspection scan.
 type InspectParams struct {
 	Reader      dal.PebbleReader
@@ -263,15 +268,22 @@ func InspectIndex(params InspectParams) (*InspectResult, error) {
 	}
 }
 
+// inspectPageSize applies the default to an unset page size and caps it at
+// MaxInspectPageSize, so HTTP and gRPC callers share one bound.
+func inspectPageSize(requested uint32) uint32 {
+	if requested == 0 {
+		return defaultPageSize
+	}
+
+	return min(requested, MaxInspectPageSize)
+}
+
 // inspectDistinctValues scans the metadata index and collects unique values with pagination.
 func inspectDistinctValues(params InspectParams) (*InspectResult, error) {
 	prefix := MetadataIndexPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
 	lower, upper, walk := pageScan(params, prefix)
 
-	pageSize := params.PageSize
-	if pageSize == 0 {
-		pageSize = defaultPageSize
-	}
+	pageSize := inspectPageSize(params.PageSize)
 
 	result := &InspectResult{}
 
@@ -323,10 +335,7 @@ func inspectFacets(params InspectParams) (*InspectResult, error) {
 	prefix := MetadataIndexPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
 	lower, upper, walk := pageScan(params, prefix)
 
-	pageSize := params.PageSize
-	if pageSize == 0 {
-		pageSize = defaultPageSize
-	}
+	pageSize := inspectPageSize(params.PageSize)
 
 	result := &InspectResult{}
 

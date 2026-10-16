@@ -62,22 +62,32 @@ go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.1-0.
 ## Modifying Protocol Definitions
 
 The service API has a compiled protocol revision independent of release versions.
-For every exposed wire or semantic change, assess client/server compatibility and
-bump `pkg/grpcprotocol.Version` in the same change when the contract breaks.
-Renumbering exposed fields is a breaking change even if the generated code still
-compiles. Internal persisted/Raft-only changes require an impact assessment of
-shared service types rather than an automatic service revision bump. See the
+For every exposed wire or behavior change, assess its effect on published clients.
+During the v3 release-candidate phase the revision is frozen: do not bump
+`pkg/grpcprotocol.Version`. Preserve published gRPC service and method names,
+request and response types, field numbers, wire types, field identity, and enum
+numbers. Behavior and configuration changes can ship when their client impact
+and upgrade steps are documented. Internal persisted/Raft-only
+changes require an impact assessment of existing data and shared service types
+rather than an automatic service revision bump. See the
 [service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
 for the gate, client obligations, and review criteria. Starting with
-`v3.0.0-rc.1`, a persisted or Raft wire change must also preserve or migrate
-data from the preceding released version. Follow the
-[upgrade policy](../../ops/upgrades.md#release-requirement-from-v300-rc1) before
-removing or renumbering fields used by stored data.
+`v3.0.0-rc.1`, existing persisted data must remain readable or have a safe
+migration. Follow the [upgrade policy](../../ops/upgrades.md#release-requirement-from-v300-rc1).
+
+CI enforces the service wire freeze with
+`PROTOCOL_BASE_SHA=<target-sha> just check-protocol-version`. It fails if the
+revision changes or `buf breaking` finds a wire-incompatible change in a type
+reachable from a gated service. Run it locally before pushing a `.proto`
+change; review behavior changes separately for client impact.
 
 1. Edit the `.proto` file in `misc/proto/`.
-2. **Preserve published field and enum numbers.** Never renumber or reuse a number
-   present in `v3.0.0-rc.1` or a later release. Reserve the number and name of a
-   removed field or enum value. Add a tested migration if stored data needs one.
+2. Preserve published service and method names, request and response types,
+   field numbers, wire types, field identity, and enum numbers. Internal-only
+   fields may change only when existing persisted data remains readable or has
+   a safe migration, and the RC rolling-upgrade contract remains satisfied.
+   Reserve removed numbers and names when they must not be reused; a
+   reservation does not replace migration.
 3. **Audit the hand-rolled wire sites** before changing a field's encoding or
    adding a new field — see below.
 4. Run `just generate-proto` **immediately**
@@ -86,10 +96,11 @@ removing or renumbering fields used by stored data.
 
 ### Wire changes: audit the hand-rolled wire sites first
 
-Most code goes through the generated marshallers and follows a renumbering automatically. A few
-hot paths bypass them and encode or decode protobuf by hand, and those break **silently** — the
-compiler sees nothing, and a wrong field number is not a decode error, just a field that never
-matches. Grep **both** directions before you renumber:
+Most code goes through the generated marshallers and follows a permitted
+internal-only renumbering automatically. A few hot paths bypass them and
+encode or decode protobuf by hand, and those break **silently**: the compiler
+sees nothing, and a wrong field number is not a decode error. Grep **both**
+directions before changing an internal-only field number or wire type:
 
 ```bash
 # write side
@@ -107,8 +118,8 @@ The two known sites behave differently, and only one of them is self-healing:
 
 `protowire_postings.go` decodes `Log`, `LogPayload`, `ApplyLedgerLog`, `LedgerLog`,
 `CreatedTransaction`, `RevertedTransaction`, `Transaction`, `TouchedVolume` and `Posting`. If you
-renumber any field of those messages, update the corresponding `case num == N` arm in the same
-commit.
+change an internal-only field number in those messages, update the corresponding
+`case num == N` arm in the same commit and prove the upgrade contract.
 
 ## vtprotobuf (Fast Serialization)
 

@@ -168,7 +168,12 @@ pre-release stores. In-cluster snapshot installation retains the local zone.
 `internal/infra/backup/restore.go` is the entry point. The flow is conceptually the inverse:
 
 1. Read the manifest from the destination.
-2. Download every SST file the manifest references into a fresh Pebble directory.
+2. Download every checkpoint file the manifest references into a fresh Pebble
+   directory. Each download is checked with `CheckpointFile.CopyVerified`: the
+   object must have exactly the manifest's `size` and its sha256 must equal the
+   hash embedded in its content-addressed key. A damaged, truncated, or
+   replaced object fails the download and names the file. This check detects
+   object corruption; it does not authenticate the manifest itself.
 3. Apply any incremental exports on top (`ApplyExports`).
 4. Reconstruct post-checkpoint derived state from the exported log and audit streams (`RebuildDelta`).
 5. Boot the node against the restored directory.

@@ -136,12 +136,21 @@ background tasks and publishes completion. A successful `Stop` waits for this
 whole sequence. This preserves the existing pending-commit drain; it does not
 promise to apply every queued entry before shutdown.
 
-Bootstrap leaves the run context live until `Stop` returns so normal shutdown
-can complete pending commits. If `Stop` times out, the shutdown request remains
-published and bootstrap cancels context-aware work, but that cancellation does
-not itself terminate idle tasks or join `Run`. Task/drain completion may still
-be pending, so a timeout must not be treated as permission to close the node's
-storage or transport. `Stop` after `Run` has exited returns immediately.
+Bootstrap retains its own `Run` completion channel across startup and stop.
+After `Stop(ctx)` returns, the node hook unconditionally joins `Run`, then
+cancels the run context and returns the original wrapped Stop error, if any.
+The run context stays live throughout pending task/commit drain, including
+when the stop context expires. `Stop` after `Run` has exited returns immediately.
+This preserves hook ownership before later hooks can close storage or transport;
+a permanently stalled drain can retain the hook and dependencies indefinitely.
+
+Fx's outer `App.Stop` can return its context error while the node hook is still
+joining. Fx v1.24.0 checks the shared context before each subsequent stop hook,
+so expiry skips remaining dependency hooks; those resources are not necessarily
+closed after the join. The service runner may also exit after the outer stop
+timeout. The hook-level guarantee applies once the node hook is entered: it
+does not guarantee process survival, a bounded drain, or execution of a hook
+skipped because the shared context already expired.
 
 Failed startup has its own cleanup owner: Fx does not call `OnStop` for a hook
 whose `OnStart` failed. The bootstrap node hook waits for readiness or `Run`

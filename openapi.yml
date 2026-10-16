@@ -1289,8 +1289,10 @@ paths:
         Reverts a transaction by creating a reverse transaction that undoes its effects. Requires `ledger:write` scope.
         The body is optional; an absent or empty body uses default options. Supplied
         options and metadata are decoded for both known-length and HTTP/1.1 chunked
-        requests. Malformed or truncated JSON, extra values and trailing non-whitespace
-        return 400 before applying the revert. The complete body, including trailing
+        requests. Malformed or truncated JSON, extra values, trailing non-whitespace
+        and options of the wrong JSON type (for example `"atEffectiveDate": "true"`
+        or a non-object `metadata`) return 400 before applying the revert. A JSON
+        `null` option uses its default. The complete body, including trailing
         whitespace, counts towards the 4 MiB limit; exceeding it returns 413.
       operationId: revertTransaction
       tags:
@@ -2381,7 +2383,10 @@ paths:
       summary: Set default enforcement mode
       description: |
         Sets the default enforcement mode for accounts that do not match any defined
-        account type. Must be STRICT or AUDIT. Requires `ledger:MetadataWrite` scope.
+        account type. Must be STRICT or AUDIT. STRICT rejects an order that uses an
+        unmatched account with `400 ACCOUNT_NOT_MATCHING_TYPE`. AUDIT accepts the
+        order and does not report the unmatched account: the response carries no
+        warning. Requires `ledger:MetadataWrite` scope.
       operationId: setDefaultEnforcementMode
       tags:
         - Account Types
@@ -2576,7 +2581,9 @@ paths:
                           additionalProperties: true
                           description: >
                             SinkStatus (protobuf JSON representation): per-sink
-                            error status and last-emitted cursor.
+                            error status and last-emitted cursor. Contains one
+                            entry per configured sink; removed sinks are not
+                            listed.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -3113,6 +3120,13 @@ paths:
         Removes an index from a ledger. The path parameter carries the target
         `IndexID` in canonical form (e.g. `metadata:TARGET_TYPE_ACCOUNT:color`,
         `tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP`). Requires `ledger:LedgerWrite` scope.
+
+        The drop is idempotent. An `IndexID` that has no registry entry on the
+        ledger (never created, or already dropped) also answers `204`, and each
+        committed drop appends a `DROP_INDEX` entry to the ledger log. A
+        mistyped canonical id is therefore not reported; read the index with
+        `GET /v3/{ledgerName}/indexes/{canonicalId}` first when the caller must
+        know that it exists. `404` means that the ledger does not exist.
       operationId: dropIndex
       tags:
         - Indexes
@@ -3133,7 +3147,7 @@ paths:
             type: string
       responses:
         '204':
-          description: Index removed.
+          description: Index removed, or no index with this id was registered on the ledger.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3141,7 +3155,11 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: The ledger does not exist. A missing index does not produce `404`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           $ref: '#/components/responses/Conflict'
         '500':
@@ -3901,23 +3919,6 @@ components:
           metadata:
             category: premium
 
-    ChartViolation:
-      type: object
-      description: A chart of accounts violation reported in AUDIT enforcement mode
-      required:
-        - type
-        - message
-      properties:
-        type:
-          type: string
-          description: The type of violation
-        message:
-          type: string
-          description: Human-readable description of the violation
-        account:
-          type: string
-          description: The account address that caused the violation
-
     MetadataValue:
       description: >-
         A typed metadata value (string, integer, boolean, or null). Integer
@@ -3975,7 +3976,7 @@ components:
             - NORMAL
             - MIRROR
           default: NORMAL
-          description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source.
+          description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source. Values are case-sensitive; any other value is rejected with 400 INVALID_REQUEST.
         mirrorSource:
           $ref: '#/components/schemas/MirrorSourceConfig'
         defaultEnforcementMode:
@@ -4502,17 +4503,6 @@ components:
                 type: object
                 additionalProperties: true
               description: Metadata for accounts involved in the transaction
-            previousAccountMetadata:
-              type: object
-              additionalProperties:
-                type: object
-                additionalProperties: true
-              description: Previous account metadata values (for index replay)
-            warnings:
-              type: array
-              items:
-                $ref: '#/components/schemas/ChartViolation'
-              description: Chart of accounts violations (AUDIT mode only, empty in STRICT mode)
 
     OrderSkippedResponse:
       type: object
@@ -4835,11 +4825,6 @@ components:
         revertTransaction:
           $ref: '#/components/schemas/TransactionResponse'
           description: The new transaction that reverses the original transaction
-        warnings:
-          type: array
-          items:
-            $ref: '#/components/schemas/ChartViolation'
-          description: Chart of accounts violations (AUDIT mode only, empty in STRICT mode)
 
     RevertedTransactionResponse:
       type: object
@@ -6049,6 +6034,7 @@ components:
         uniqueValues:
           type: integer
           format: int64
+          description: Number of distinct values observed at this segment position.
         examples:
           type: array
           items:

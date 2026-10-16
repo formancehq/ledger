@@ -5,9 +5,9 @@
 [EN-1851](https://formance-team.atlassian.net/browse/EN-1851) requires detecting
 an incompatible `ledgerctl` before it executes a business operation. Before
 `v3.0.0-rc.1`, protobuf fields could be renumbered between development
-revisions. A mismatched request can decode with a different meaning rather
-than fail to decode. Build versions and commit IDs do not establish protocol
-compatibility.
+revisions, and a mismatched request could decode with a different meaning
+rather than fail to decode. Build versions and commit IDs do not establish
+protocol compatibility.
 
 The approved decision is to **block requests with a different or missing
 protocol revision**, using a revision independent of the software release.
@@ -15,7 +15,8 @@ Each server supports exactly one revision. There is no negotiation, historical
 format support, or bypass flag. An advisory warning would not enforce the
 requirement; exact commit matching would also reject builds whose service
 contract has not changed. Release SemVer does not currently encode the
-compatibility of development revisions.
+compatibility of development revisions. During the RC line, revision 40 is
+frozen and the published gRPC wire contract must remain compatible.
 
 ## Wire contract and failure behavior
 
@@ -98,9 +99,10 @@ server-specific compatibility repair.
 HTTP consumers do not send this gRPC metadata. Internal forwarding from HTTP
 uses the server's service client and is subject to the same gate at the peer.
 Nodes with different service revisions can therefore fail forwarded requests;
-this mechanism does not establish support for mixed-version clusters or rolling
-wire-format upgrades. The separate Raft transport and snapshot server retain
-their own contracts.
+the revision-40 wire contract alone does not prove a rolling upgrade safe. RC
+updates must also preserve peer communication, Raft apply, and persisted-state
+compatibility while old and new servers coexist. The separate Raft transport and
+snapshot server retain their own contracts. See [server upgrades](../../../../ops/upgrades.md).
 
 ## Apply execution provenance (revision 7)
 
@@ -347,32 +349,59 @@ must implement the same revision; there is no compatibility fallback.
 
 ## Maintaining the revision
 
-The author of a service contract change must determine whether an existing
-client or server would interpret requests, responses, or operations differently.
-Increment the decimal counter `pkg/grpcprotocol.Version` by one in the same PR
-for an incompatible wire or semantic change (for example, `"1"` to `"2"`), and
-rebuild every service client and server that will communicate. This includes
-renumbering or changing the interpretation of exposed
-protobuf fields, and incompatible semantics even when the `.proto` text stays
-unchanged. Reviewers must check this classification; the revision is not inferred
-from a release tag or automatically negotiated from a schema hash.
+Ledger v3 is in its release-candidate phase. The revision is frozen at `"40"`:
+do not increment `pkg/grpcprotocol.Version`. Preserve published gRPC service
+and method names, request and response types, protobuf field numbers, wire
+types, field identity, and enum numbers so existing clients can call and decode
+the service. The revision identifies this wire contract; it does not freeze
+every behavior or configuration setting for the release-candidate phase.
 
-This obligation applies to AI agents throughout development and release. From
-`v3.0.0-rc.1`, service compatibility is separate from the
-[persisted-data upgrade guarantee](../../../../ops/upgrades.md#release-requirement-from-v300-rc1). Before
-publication, and again after a rebase or target-branch update, compare the
-revision with the target branch. If another PR has already consumed the planned
-number, increment from the target branch's current value so a newly incompatible
-contract does not reuse that number. Keep examples of the current revision in
-sync. State the compatibility assessment and the old/new revision in the PR;
-when no increment is needed, explain why. Documentation-only changes do not
-increment the counter.
+The author of a service change must identify its effect on published clients.
+Removing or renaming a published RPC, changing its request or response type,
+or removing, renumbering, or repurposing a published field or enum value is not
+allowed during the RC. Behavior and configuration changes can ship when their
+effect and upgrade steps are documented in the PR and user guidance. Reviewers
+must check whether a client can still decode the response and how it must
+handle any changed result. Do not bump the revision to avoid this assessment.
+Documentation-only changes need no client assessment.
 
-Compatible additions need not bump the revision only when both directions remain
-compatible under the declared service contract. A change confined to a persisted
-or Raft message does not automatically change the service protocol; inspect any
-shared types exposed through the service API. See
+The service wire contract is separate from the
+[persisted-data upgrade guarantee](../../../../ops/upgrades.md#release-requirement-from-v300-rc1).
+
+An additive service field must preserve decoding in both directions. A change
+confined to a persisted or Raft message does not automatically change the service
+protocol; inspect any shared types exposed through the service API. Existing
+persisted and audited data must remain readable, or have a safe migration. See
 [protobuf contributor rules](../../../contributing/protobuf.md).
+
+### Automated enforcement
+
+`PROTOCOL_BASE_SHA=<commit> just check-protocol-version` enforces the wire part
+of the freeze.
+The required `Dirty` check and the `invariants` check run it on pull requests
+and merge-queue entries against the target tip, including after a PR changes
+base. `agent-check-pr` runs it when `misc/proto/**` or
+`pkg/grpcprotocol/**` changes.
+
+1. The check reads `Version` at the base and in the worktree. Any change fails.
+2. The check runs `buf breaking` between the base and the worktree with the
+   rules in `misc/proto/buf.yaml` (`WIRE`, `SERVICE_NO_DELETE`,
+   `RPC_NO_DELETE`). Deleting, renumbering, or retyping a field is reported;
+   adding a field or a wire-compatible widening such as `int32` to `int64` is
+   not. `buf` is used only for this classification; code generation stays on
+   `protoc`.
+3. The check keeps a finding only when its innermost enclosing declaration is
+   a gated service (`BucketService`, `ClusterService`, `RestoreService`) or a
+   message or enum transitively reachable from one of their RPCs. It uses source
+   line and column to distinguish nested declarations on the same line. A
+   finding it cannot attribute to a declaration counts when its file declares a
+   gated type. Raft-only and persisted-only messages are not counted.
+4. Any kept finding fails the check. A revision bump does not excuse it.
+
+The check does not detect semantic changes that keep the `.proto` text
+unchanged; those remain the author's and reviewer's classification. When a
+gated service is added or renamed, update `gatedServices()` in the same PR: the
+check fails if a listed service no longer exists.
 
 The gate is a transport admission check. Its metadata and revision are not
 persisted, included in audited business intent, or consulted during Raft apply.
@@ -608,3 +637,13 @@ policy retry the request. A measured disk block still returns
 block retains its existing response. Admission checks the gate before proposing
 an order, so a retry after `Unavailable` cannot duplicate a committed write.
 This status change requires revision 40 clients and servers together.
+
+## Capped index inspection page size
+
+EN-2946 caps `InspectIndexRequest.page_size` at 10000 in the read store, which
+HTTP and gRPC share. A request for more than 10000 values or facets returns
+10000, `has_more`, and a next cursor. Earlier builds returned the full requested
+page. The protobuf text changes only by a comment. Clients that previously
+treated the requested page as complete must now follow the cursor to read all
+results. This response behavior changes under revision 40 by the RC policy;
+the revision is frozen, and the client impact must be documented.

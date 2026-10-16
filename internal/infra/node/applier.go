@@ -614,7 +614,7 @@ const (
 	// this as a shutdown signal and return without further work.
 	fireStopped
 	// fireCtxDone — ctx cancelled. Same shutdown story as fireStopped,
-	// but arriving via the context path (fx OnStop outer timeout, etc.).
+	// but arriving via cancellation of the caller-owned run context.
 	fireCtxDone
 )
 
@@ -792,7 +792,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 	// Local handle on the decoded channel so we can stop selecting on it once
 	// the decoder has closed it. The decoder only ever closes decodedCh from
 	// its ctx.Done() path (a.ch is never closed), i.e. runCtx was cancelled —
-	// the OnStart/OnStop-timeout fallback in bootstrap, NOT a graceful stop.
+	// direct caller cancellation, NOT bootstrap's graceful stop or timeout.
 	// A closed channel always wins the select with a zero value, so without
 	// disabling this branch the loop would busy-spin on the empty batch. We
 	// do NOT return here: the applier task must exit via `stop` (see the fx
@@ -1221,10 +1221,11 @@ func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture
 //
 // The only exit is ctx.Done(): a.ch is never closed (closing it would panic
 // the producers — Submit/SyncSnapshot/Barrier/…), so the decoder runs until
-// runCtx is cancelled. That cancel is the bootstrap OnStart/OnStop-timeout
-// fallback, never a graceful stop — graceful stop goes through the task
-// `stop` channel, which the decoder does not watch. On ctx.Done() the decoder
-// drops any in-flight decode result (releasing its pooled Proposals) and
+// its decoder context is cancelled. Run cancels it after draining the pending
+// commit and joining the committer, including during graceful shutdown via
+// the task `stop` channel. Direct caller cancellation of runCtx also reaches
+// the decoder; bootstrap preserves runCtx until Node.Run exits. On ctx.Done(),
+// the decoder drops any in-flight decode result (releasing its pooled Proposals) and
 // returns; the deferred close(a.decodedCh) then unblocks the main loop, which
 // disables its decodedCh select branch (see Run), and the Run defer drains
 // anything still buffered.
@@ -1274,7 +1275,7 @@ func (a *Applier) runDecoder(ctx context.Context) {
 // stop is the Applier task's shutdown channel — closed by taskSet.stop() at
 // the same instant as orchestrate's stop. It's a second escape hatch on the
 // response-sink send: node.Stop closes the task stop channels but does NOT
-// cancel ctx (only fx OnStop's outer timeout might), so a runCommitter that
+// cancel ctx (bootstrap keeps it live until Node.Run exits). A committer that
 // races into the sink send AFTER orchestrate stopped draining would sit
 // forever on ctx.Done alone (finding 70740916). Selecting on stop too
 // unblocks the send synchronously with orchestrate's exit.

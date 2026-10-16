@@ -231,7 +231,7 @@ func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.Acc
 		if cfg.Ed25519AllowedScopes != nil {
 			keyID := extractKeyID(decrypted)
 
-			err := enforceAllowedScopes(claims.Scopes, keyID, cfg.Ed25519AllowedScopes, cfg.Ed25519SuperuserKeys)
+			err := enforceAllowedScopes(claims.Scopes, keyID, cfg.Ed25519AllowedScopes, cfg.Ed25519SuperuserKeys, cfg.ScopeMapping)
 			if err != nil {
 				return nil, err
 			}

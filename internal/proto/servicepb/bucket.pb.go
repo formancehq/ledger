@@ -8214,14 +8214,16 @@ func (x *IteratorProfile) GetItemsSkipped() int64 {
 }
 
 type InspectIndexRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	TargetType    commonpb.TargetType    `protobuf:"varint,2,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
-	MetadataKey   string                 `protobuf:"bytes,3,opt,name=metadata_key,json=metadataKey,proto3" json:"metadata_key,omitempty"`
-	Mode          InspectIndexMode       `protobuf:"varint,4,opt,name=mode,proto3,enum=ledger.InspectIndexMode" json:"mode,omitempty"`
-	PageSize      uint32                 `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	Cursor        string                 `protobuf:"bytes,6,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	CheckpointId  uint64                 `protobuf:"fixed64,7,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Ledger      string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	TargetType  commonpb.TargetType    `protobuf:"varint,2,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
+	MetadataKey string                 `protobuf:"bytes,3,opt,name=metadata_key,json=metadataKey,proto3" json:"metadata_key,omitempty"`
+	Mode        InspectIndexMode       `protobuf:"varint,4,opt,name=mode,proto3,enum=ledger.InspectIndexMode" json:"mode,omitempty"`
+	// Values or facets per page. 0 selects 100; values above 10000 are capped
+	// at 10000 and the response carries a next cursor.
+	PageSize      uint32 `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Cursor        string `protobuf:"bytes,6,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	CheckpointId  uint64 `protobuf:"fixed64,7,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

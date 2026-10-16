@@ -216,6 +216,11 @@ scans backward for a back token, reverses that page to ascending order, and
 derives `next_cursor` / `previous_cursor` from the first and last values with
 `pagecursor.Cursor.Links` (see [Pagination](../read-path/query-pipeline.md#pagination)).
 
+`InspectParams.PageSize` defaults to 100 when it is zero and is capped at
+`readstore.MaxInspectPageSize` (10000, the published HTTP `pageSize` maximum).
+The cap applies in the read store, so HTTP and gRPC callers share it: a larger
+request returns 10000 values or facets, `has_more`, and a next cursor.
+
 ### How `inspectSummary` works
 
 1. Iterate `MetadataIndexPrefixV(..., version)` and count **distinct** value-encoded suffixes — that gives `Cardinality`, `Min`, `Max`.

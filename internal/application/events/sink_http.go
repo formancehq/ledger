@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,9 @@ type HTTPSinkConfig struct {
 
 // HTTPSink publishes events to an HTTP endpoint via POST requests.
 // Events are sent one at a time to allow the receiver to process them individually.
+// Only a 2xx response from the configured endpoint acknowledges an event. The
+// sink never follows redirects: any 3xx is a delivery failure, so the body, its
+// signature and the endpoint URL never reach an unconfigured destination.
 type HTTPSink struct {
 	errors   sinkErrorSanitizer
 	client   *http.Client
@@ -45,18 +49,9 @@ func NewHTTPSink(cfg HTTPSinkConfig) (_ *HTTPSink, retErr error) {
 		errors: sanitizer,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				// A bodyless GET cannot acknowledge the event POST. Return the
-				// redirect response so post reports its non-2xx status as a failure.
-				if req.Method != http.MethodPost {
-					return http.ErrUseLastResponse
-				}
-				// Installing a policy replaces net/http's default redirect limit.
-				if len(via) >= 10 {
-					return errors.New("stopped after 10 redirects")
-				}
-
-				return nil
+			// Return every redirect response to post, which reports it as a failure.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
 			},
 		},
 		endpoint: cfg.Endpoint,
@@ -120,6 +115,26 @@ func (s *HTTPSink) post(ctx context.Context, event *eventspb.Event, body []byte)
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
 	}
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		return fmt.Errorf("endpoint %s returned redirect %s to %s; configure the final URL",
+			s.endpoint, resp.Status, redirectTarget(resp))
+	}
 
 	return fmt.Errorf("unexpected status code %s from %s", resp.Status, s.endpoint)
+}
+
+// redirectTarget reduces the remote Location, resolved against the request URL,
+// to scheme, host and path. Userinfo, query and fragment can carry credentials
+// and are not reported.
+func redirectTarget(resp *http.Response) string {
+	parsed, err := resp.Location()
+	if errors.Is(err, http.ErrNoLocation) {
+		return "(no Location header)"
+	}
+	if err != nil {
+		return "(invalid Location header)"
+	}
+	safe := url.URL{Scheme: parsed.Scheme, Host: parsed.Host, Path: parsed.Path}
+
+	return strconv.Quote(safe.String())
 }

@@ -90,6 +90,8 @@
             kubernetes-helm
             python314
           ]) ++ (with pkgs-unstable; [
+            # scripts/checkprotocolversion classifies service contract breaks.
+            buf
             protobuf_34
             (mockgen.override { inherit buildGoModule; })
             protoc-gen-go

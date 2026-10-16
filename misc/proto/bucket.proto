@@ -1510,6 +1510,8 @@ message InspectIndexRequest {
   common.TargetType target_type = 2;
   string metadata_key = 3;
   InspectIndexMode mode = 4;
+  // Values or facets per page. 0 selects 100; values above 10000 are capped
+  // at 10000 and the response carries a next cursor.
   uint32 page_size = 5;
   string cursor = 6;
   fixed64 checkpoint_id = 7;

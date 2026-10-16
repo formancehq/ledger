@@ -1,6 +1,7 @@
 package readstore
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -130,4 +131,34 @@ func TestInspectFacets_BackwardCountsAtHorizon(t *testing.T) {
 	require.True(t, r.HasMore)
 	require.Equal(t, encoded("v5"), r.FirstValue)
 	require.Equal(t, encoded("v2"), r.LastValue)
+}
+
+func TestInspectIndex_CapsPageSize(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	kb := dal.NewKeyBuilder()
+
+	batch := s.DB().NewBatch()
+	for i := range MaxInspectPageSize + 1 {
+		value := EncodeMetadataValue(nil, &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: fmt.Sprintf("v%06d", i)}})
+		require.NoError(t, batch.Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, value, []byte("a:1"), 10, MetadataEventAdd), nil, nil))
+	}
+	require.NoError(t, batch.Commit(pebble.NoSync))
+
+	for _, mode := range []InspectMode{InspectDistinctValuesMode, InspectFacetsMode} {
+		r, err := InspectIndex(InspectParams{
+			Reader:      s.DB(),
+			KB:          dal.NewKeyBuilder(),
+			LedgerName:  "l",
+			Namespace:   NamespaceAccount,
+			MetadataKey: "k",
+			Version:     1,
+			Mode:        mode,
+			PageSize:    100_000,
+		})
+		require.NoError(t, err)
+		require.Equal(t, MaxInspectPageSize, uint32(max(len(r.Values), len(r.Facets))), "mode %d", mode)
+		require.True(t, r.HasMore, "mode %d", mode)
+	}
 }

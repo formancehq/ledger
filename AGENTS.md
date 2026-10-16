@@ -2,29 +2,37 @@
 
 This file is the always-loaded entry point for AI agents working on Ledger v3. Keep it short. Detailed technical knowledge belongs in `docs/`; load only the documentation relevant to the task.
 
-## Release status — v3 RC baseline
+## Release status — v3 release candidate
 
-**CRITICAL:** `v3.0.0-rc.1` is the first v3 release with a supported
-persisted-state baseline. Starting with this RC, every new v3 release must
-provide a tested forward upgrade that preserves and, when necessary, migrates
-data from the preceding released v3 version. A data wipe or reconstruction from
-an external source is not an acceptable release upgrade. Follow
-[the upgrade policy](docs/ops/upgrades.md#release-requirement-from-v300-rc1).
+**CRITICAL:** `v3.0.0-rc.1` is the first supported v3 persisted-state baseline.
+Every later v3 release must preserve committed business data, audit history,
+and cluster state from the preceding released version. Ship and test a migration
+when a format changes; a wipe or external reconstruction is not an upgrade.
+Changes to behavior or configuration can ship when client impact and upgrade
+steps are documented. Follow [the upgrade policy](docs/ops/upgrades.md#release-requirement-from-v300-rc1).
 
-- Classify every persisted, Raft, snapshot, backup, and audit format change
-  against that baseline. Include the migration or prove the existing data
-  remains readable and valid before tagging the new release.
-- Compatibility with beta or development revisions before `v3.0.0-rc.1` is not required.
-- Preserve field and enum numbers published in `v3.0.0-rc.1` or later, including
-  numbers stored in Raft, snapshots, backups, and audit records. Reserve removed
-  numbers and names; never reuse or renumber them. Migrate persisted data when
-  the new binary cannot read the old representation.
+Each RC update must also support a direct rolling server upgrade from every
+earlier published RC in the same line. Old and new voters must communicate and
+apply the same committed entries identically while they coexist.
+
+- Classify persisted, Raft, snapshot, backup, and audit changes against the RC
+  baseline. Include a tested migration or prove existing data remains valid.
+- Compatibility with beta or development revisions before `v3.0.0-rc.1` is
+  not required.
+- Preserve published gRPC services, methods, request and response types, field
+  numbers, wire types, field identity, and enum numbers during the RC.
+- Preserve field and enum numbers stored in released Raft, snapshots, backups,
+  and audit records. Internal-only format changes require a safe migration and
+  a mixed-version rollout design. Reserve removed numbers and names when they
+  must not be reused; a reservation does not migrate data.
 - Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
 
-### Service protocol revision — required for incompatible changes
+### Service protocol revision — frozen during the release-candidate phase
 
-Every incompatible service gRPC contract change must increment
-`pkg/grpcprotocol.Version` in the same PR, including during RC development. Read the
+Do not increment `pkg/grpcprotocol.Version`; it stays at `"40"` during the v3
+release-candidate phase. Assess and document the effect of behavior or
+configuration changes on existing clients. Escalate a wire change that cannot
+preserve client decoding instead of bumping the revision. Read the
 [protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
 before modifying this contract.
 

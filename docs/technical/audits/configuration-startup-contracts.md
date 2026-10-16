@@ -55,6 +55,17 @@ contract and current code. Historical deployment snippets likewise may use an
 old CR shape. Conflicting sources, unspecified empty/zero semantics, or an
 unclear strict-versus-soft limit become audit questions, not asserted defects.
 
+## Byte-size input evidence
+
+Byte-size flags accept only non-negative expanded counts representable by int64.
+Check binary and decimal suffix boundaries before signed/unsigned conversion;
+`16Ei` must fail parsing instead of wrapping to the zero/default sentinel.
+Use the parser's overflow, negative-size and boundary regressions, then the
+server command's overflow-rejection and zero/default cases. Rejected flag
+updates must preserve the prior value. Literal zero remains valid and keeps
+its consumer-specific meaning. These tests cover direct CLI parsing and
+`LoadConfig`; they do not establish environment binding or listener behavior.
+
 ## Ownership and exclusions
 
 | Domain | Ownership |

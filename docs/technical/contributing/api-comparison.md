@@ -361,7 +361,10 @@ A supplied JSON body is decoded regardless of `Content-Length`, including
 HTTP/1.1 chunked requests; `force`, `atEffectiveDate` and `metadata` reach the
 same Apply payload for known and unknown lengths. Malformed or truncated JSON
 returns `400 INVALID_REQUEST` before Apply, including extra values or non-whitespace
-after the first value. The complete body, including trailing whitespace, counts
+after the first value. An option of the wrong JSON type (for example
+`"atEffectiveDate": "true"`, `"force": 1` or a non-object `metadata`) also returns
+`400 INVALID_REQUEST` before Apply instead of falling back to the default; a JSON
+`null` option keeps its default. The complete body, including trailing whitespace, counts
 towards the 4 MiB limit (`413 BODY_TOO_LARGE`), independently of framing.
 
 **Navigable revert relationship.** The revert link is a first-class part of the
@@ -553,7 +556,7 @@ The v2 schemaVersion/parallel options are not added to v3 by this correction.
 **Features:**
 - ✅ Pattern-based account address validation (e.g., `users:{id}:checking`)
 - ✅ Variable segments with optional regex constraints (e.g., `{iban:^[A-Z]{2}[0-9]{14}$}`)
-- ✅ Ledger-level default enforcement mode: STRICT (reject) or AUDIT (warnings)
+- ✅ Ledger-level default enforcement mode: STRICT (reject) or AUDIT (accept without reporting)
 - ✅ Longest-match / highest-specificity resolution when multiple types match
 - ✅ `world` account always passes validation
 - ✅ Account types can be set at ledger creation time or added later
@@ -587,7 +590,7 @@ Mirror mode enables one-way synchronization from an existing v2 ledger into a v3
 
 **Create a mirror ledger:** `POST /v3/{ledgerName}`
 
-Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying the source configuration.
+Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying the source configuration. `mode` accepts only `"NORMAL"` (the default when omitted) or `"MIRROR"`, case-sensitive; any other value is rejected with HTTP 400 (`INVALID_REQUEST`) and no ledger is created.
 
 **Source types:**
 - **HTTP** (`type: "http"`) — Polls the v2 API endpoint `GET /v2/{ledger}/logs`. Fields: `baseUrl`, `oauth2ClientId`, `oauth2ClientSecret`, `oauth2TokenEndpoint`, `oauth2Scopes` (optional, for OAuth2 client credentials authentication).

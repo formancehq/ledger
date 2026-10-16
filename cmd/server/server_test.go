@@ -196,3 +196,43 @@ func TestRunCommand_MetricsPrefixDefault(t *testing.T) {
 	require.NoError(t, cmd.Flags().Set(otlpmetrics.OtelMetricsPrefixFlag, "none"))
 	require.Equal(t, "none", otlpmetrics.ConfigFromFlags(cmd.Flags()).Prefix)
 }
+
+// TestRunCommandRejectsByteSizeOverflow pins EN-2924 at the CLI boundary:
+// invalid explicit input must fail instead of selecting the zero/default sentinel.
+func TestRunCommandRejectsByteSizeOverflow(t *testing.T) {
+	t.Parallel()
+	cmd := NewRunCommand()
+	require.NoError(t, cmd.ParseFlags([]string{"--node-id=1", "--raft-max-size-per-msg=2Mi"}))
+	require.ErrorContains(t, cmd.ParseFlags([]string{"--raft-max-size-per-msg=16Ei"}), "out of range")
+	cfg, err := LoadConfig(context.Background(), cmd)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2<<20), cfg.RaftConfig.MaxSizePerMsg,
+		"failed parsing must preserve the previous flag value")
+}
+
+func TestLoadConfigByteSizeDefaults(t *testing.T) {
+	t.Parallel()
+	for _, value := range []string{"", "0", "0Ei", "2Mi"} {
+		t.Run("value="+value, func(t *testing.T) {
+			t.Parallel()
+			cmd := NewRunCommand()
+			args := []string{"--node-id=1"}
+			if value != "" {
+				args = append(args, "--raft-max-size-per-msg="+value)
+			}
+			require.NoError(t, cmd.ParseFlags(args))
+			cfg, err := LoadConfig(context.Background(), cmd)
+			require.NoError(t, err)
+			expected := uint64(0)
+			if value == "2Mi" {
+				expected = 2 << 20
+			}
+			require.Equal(t, expected, cfg.RaftConfig.MaxSizePerMsg)
+			cfg.RaftConfig.SetDefaults()
+			if expected == 0 {
+				expected = 1 << 20
+			}
+			require.Equal(t, expected, cfg.RaftConfig.MaxSizePerMsg)
+		})
+	}
+}

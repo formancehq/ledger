@@ -4,41 +4,51 @@
 
 `v3.0.0-rc.1` is the first supported v3 persisted-state baseline. Every later
 v3 release, including another RC and the stable release, must provide a tested
-forward upgrade from the preceding released v3 version. The upgrade must
-preserve all committed business data, audit history, and the state needed to
-resume the cluster. If a format changes, ship and test its migration in the
-target release. A full data wipe or reconstruction from an external system is
-not an acceptable release upgrade. Beta and development revisions before
-`v3.0.0-rc.1` remain outside this guarantee.
+forward upgrade from the preceding released version. Preserve committed
+business data, audit history, and the state needed to resume the cluster. Ship
+and test a safe migration when a format changes. A full data wipe or external
+reconstruction is not an acceptable release upgrade. Beta and development
+revisions before `v3.0.0-rc.1` remain outside this guarantee.
 
-Before tagging a new release, verify the upgrade using state created by the
-preceding released version. Cover the affected Pebble records, Raft log and
-snapshot state, backup and restore formats, audit verification, and any
-rebuildable projections. Document the upgrade procedure, whether mixed binaries
-are safe, and the rollback boundary in the release notes. If the target cannot
-read or migrate the source state, delay the release until it can.
+During the RC line, keep the service gRPC revision at 40 and document the client
+impact and upgrade steps of behavior or configuration changes. See the
+[protocol policy](../technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision).
+Every RC update must also support a direct rolling server upgrade from every
+earlier published RC in the line, including skipped RCs. Old and new voters must
+communicate and apply each committed entry identically while they coexist. A
+change that cannot meet this requirement needs a staged rollout design or must
+wait for a different compatibility line.
 
-The target release may require a coordinated restart or migration. Use its
-declared upgrade class; Kubernetes rolling updates alone do not establish
-safety.
+Before tagging a new release, verify the upgrade with state created by the
+supported source releases. Cover affected Pebble records, Raft log and snapshot
+state, backup and restore formats, audit verification, and rebuildable
+projections. Document the upgrade procedure and rollback boundary in the
+release notes. Delay the release if the target cannot read or migrate the source
+state.
 
-Every target revision must explicitly identify one of these upgrade classes:
+The upgrade classes below describe existing procedures. RC changes must use the
+rolling class; coordinated restart and rebuild or restore are retained for
+earlier development revisions and explicitly separate compatibility lines.
 
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
-| Rolling | The target revision explicitly supports mixed binaries and the existing storage schema. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
-| Coordinated restart | The storage schema is compatible, but mixed binaries can apply a committed entry differently. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart the cluster without a mixed-version window. |
-| Migrate or restore | Persisted or backup formats change and a rolling or coordinated restart cannot read the old state directly. | Follow the tested migration procedure or restore a backup from the preceding release into the target format. Verify the complete state before serving writes. |
+| Rolling | Required between builds on the same RC line. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
+| Coordinated restart | A separate compatibility line that cannot safely mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart without a mixed-version window. Preserve or migrate the released data. |
+| Migrate or restore | A separate line with a changed persisted or backup format, or development state before the first RC. | Follow a tested migration or restore a backup supported by the target release. A wipe or external rebuild is permitted only for unsupported pre-RC development state. Verify the complete state before serving writes. |
 
-If the target revision does not declare its class, stop and obtain a release
-decision. Do not guess from a successful single-node restart.
+Before publishing an RC update, demonstrate the rolling class separately from
+each earlier published RC binary to the target binary in one cluster, including
+leadership transfer, writes, replay, and restart. Record the source and target
+builds and the results in the release validation. If any path fails, fix the
+change before release. Do not infer support from a successful single-node restart.
 
-The change-specific constraints currently documented under
+For upgrades from builds before `v3.0.0-rc.1`, the change-specific constraints
+documented under
 [Upgrading from pre-#400 clusters](./deployment.md#upgrading-from-pre-400-clusters)
 and
 [Upgrading across an FSM error-identity change](./deployment.md#upgrading-across-an-fsm-error-identity-change)
-describe development upgrades before `v3.0.0-rc.1`. Their reset instructions do
-not apply to upgrades from the RC or any later release.
+describe development upgrades before `v3.0.0-rc.1`. Their reset instructions
+do not apply to upgrades from the RC or any later release.
 
 ## Preflight
 
@@ -58,7 +68,7 @@ Before any server upgrade:
 
 ## Rolling Procedure
 
-Use this only when the target revision explicitly permits mixed binaries:
+Use this for RC updates after the mixed-version validation above passes:
 
 1. Record the current leader and voter set with `ledgerctl cluster status`.
 2. Restart one follower on the target binary.
