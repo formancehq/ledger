@@ -1215,6 +1215,10 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 			node.logger.Errorf("Error stopping task pool: %v", err)
 		}
 
+		// processReadies has exited and can no longer replace the generation.
+		// Join its detached waiter and synchronous observer before FSM cleanup.
+		node.leaderReady.Load().cancelAndWait()
+
 		// Stop background bloom tasks that may hold Pebble iterators.
 		// Must run after tasks.stop() (which stops the applier that can
 		// trigger new bloom tasks) and before the fx hook closes the DB.
@@ -1226,6 +1230,8 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 		if stopErr != nil {
 			node.logger.Errorf("Error stopping remaining tasks after failure: %v", stopErr)
 		}
+
+		node.leaderReady.Load().cancelAndWait()
 
 		node.fsm.StopBackgroundTasks()
 
@@ -1379,7 +1385,7 @@ func (node *Node) processReadyLeadership(ctx context.Context, stop chan struct{}
 						func(waitCtx context.Context) error {
 							return node.fsm.WaitForApplied(waitCtx, target)
 						},
-						func() { node.observer.Emit(LeaderReadyEvent{}) },
+						func() { node.observer.Emit(LeaderReadyEvent{Context: generation.ctx}) },
 					)
 					if err != nil && !errors.Is(err, context.Canceled) {
 						node.logger.WithFields(map[string]any{
@@ -2635,7 +2641,8 @@ func (node *Node) tryTransferLeadershipBeforeShutdown(ctx context.Context) {
 
 // Stop requests task shutdown after a best-effort leadership transfer. The
 // context bounds transfer and waiting, but cannot abandon the shutdown request.
-// A nil result means Run has joined its tasks and stopped FSM background work.
+// A nil result means Run has joined its tasks and leader-ready callback and
+// stopped FSM background work.
 func (node *Node) Stop(ctx context.Context) error {
 	node.logger.Infof("Stopping node")
 
