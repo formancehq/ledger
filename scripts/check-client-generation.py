@@ -16,7 +16,7 @@ def snapshot():
 
 
 before = snapshot()
-subprocess.run(["just", "generate-proto"], cwd=root, check=True)
+subprocess.run(["just", "generate-public-client"], cwd=root, check=True)
 after = snapshot()
 changed = sorted(key for key in before.keys() | after.keys() if before.get(key) != after.get(key))
 if changed:

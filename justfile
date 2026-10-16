@@ -408,6 +408,10 @@ generate-proto:
         misc/proto/restore.proto \
         misc/proto/proposal.proto
 
+# Generate the standalone public gRPC client without touching server protobufs
+generate-public-client:
+    @bash scripts/generate-public-client.sh
+
 test-rpcauth-generator:
     go -C tools/protoc-gen-rpcauth test ./...
 
