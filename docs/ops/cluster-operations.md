@@ -330,7 +330,9 @@ An out-of-sync leader therefore serves nothing until its store is current, and i
 
 The leader also holds new business writes when no other voter is currently
 checkpointable. A voter is checkpointable only when its cluster-state report
-shows `sync_progress.status=normal`; an unreachable, stale, syncing, or
+shows `sync_progress.status=normal`. After the leader emits a Raft `MsgSnap`,
+it also keeps that voter unavailable until the report's Pebble-persisted index
+has reached the snapshot index. An unreachable, stale, syncing, or
 `out_of_sync` voter is treated as unavailable. This prevents the leader from
 continuing to grow followers' spools after the last possible checkpoint donor
 has disappeared. Elections and checkpoint recovery continue while writes are

@@ -361,6 +361,13 @@ type Node struct {
 	lastObservedTerm atomic.Uint64
 	observer         *Observer
 	applier          *Applier
+	// snapshotRecovery tracks voters for which this leader has emitted a
+	// MsgSnap. Raft's Progress state only covers the WAL snapshot; the entry is
+	// removed after the peer confirms that its Pebble checkpoint is installed
+	// (see HealthChecker). Keeping this episode state separate prevents a
+	// follower becoming Replicate in Raft from being mistaken for a ready FSM.
+	snapshotRecoveryMu sync.Mutex
+	snapshotRecovery   map[uint64]uint64
 
 	readies         chan raft.Ready
 	readyTerminated chan readyResult
@@ -695,6 +702,7 @@ func NewNode(
 		lastAutoPromote:  make(map[uint64]time.Time),
 		indexTracker:     NewIndexTracker(initialIndex(wal)),
 		observer:         NewNoOpObserver(),
+		snapshotRecovery: make(map[uint64]uint64),
 	}
 
 	// Start ready: no leadership transition is in progress yet.
@@ -1331,6 +1339,7 @@ func (node *Node) processReadyLeadership(ctx context.Context, stop chan struct{}
 			// leadership loss
 			if wasLeader && !isLeader {
 				node.leaderReady.Load().cancelAndWait()
+				node.resetSnapshotRecovery()
 
 				logger.Infof("Leadership lost")
 				details := map[string]any{
@@ -1609,6 +1618,11 @@ func (node *Node) installReadySnapshot(ctx context.Context, stop chan struct{}, 
 func (node *Node) sendReadyMessages(stop chan struct{}, rd raft.Ready, result *readyResult) {
 	appendResponses, applyResponses, outbound := splitReadyMessages(node.config.NodeID, rd.Messages)
 	result.applyResponses = applyResponses
+	for _, msg := range outbound {
+		if msg.GetType() == raftpb.MsgSnap && msg.GetTo() != 0 {
+			node.markSnapshotRecoveryPending(msg.GetTo(), msg.GetSnapshot().GetMetadata().GetIndex())
+		}
+	}
 
 	node.transport.Send(outbound)
 
@@ -1618,6 +1632,42 @@ func (node *Node) sendReadyMessages(stop chan struct{}, rd raft.Ready, result *r
 		case <-stop:
 		}
 	}
+}
+
+// markSnapshotRecoveryPending records the beginning of a checkpoint recovery
+// episode for a voter. MsgSnap only tells us that the Raft WAL snapshot is
+// needed; the episode remains pending until the remote FSM reports normal
+// sync progress through the health check.
+func (node *Node) markSnapshotRecoveryPending(peerID, snapshotIndex uint64) {
+	node.snapshotRecoveryMu.Lock()
+	node.snapshotRecovery[peerID] = snapshotIndex
+	node.snapshotRecoveryMu.Unlock()
+}
+
+// SnapshotRecoveryPending reports whether this node has sent a MsgSnap to the
+// peer and has not yet observed the peer's Pebble checkpoint as ready.
+func (node *Node) SnapshotRecoveryPending(peerID uint64) (uint64, bool) {
+	node.snapshotRecoveryMu.Lock()
+	snapshotIndex, pending := node.snapshotRecovery[peerID]
+	node.snapshotRecoveryMu.Unlock()
+
+	return snapshotIndex, pending
+}
+
+// ConfirmSnapshotRecovery clears a pending MsgSnap episode only after a
+// remote GetClusterState response reports a normal FSM/checkpoint state.
+func (node *Node) ConfirmSnapshotRecovery(peerID, snapshotIndex uint64) {
+	node.snapshotRecoveryMu.Lock()
+	if pendingIndex, ok := node.snapshotRecovery[peerID]; ok && pendingIndex <= snapshotIndex {
+		delete(node.snapshotRecovery, peerID)
+	}
+	node.snapshotRecoveryMu.Unlock()
+}
+
+func (node *Node) resetSnapshotRecovery() {
+	node.snapshotRecoveryMu.Lock()
+	clear(node.snapshotRecovery)
+	node.snapshotRecoveryMu.Unlock()
 }
 
 func (node *Node) collectReadyConfChanges(rd raft.Ready, result *readyResult) error {

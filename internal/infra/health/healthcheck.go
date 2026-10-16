@@ -38,6 +38,16 @@ type WriteGate interface {
 	CheckWritesAllowed() error
 }
 
+// snapshotRecoveryTracker is implemented by node.Node. It is deliberately
+// optional so health tests and alternate node implementations do not need to
+// model the Raft transport lifecycle. When present, it lets the leader mark a
+// voter as unavailable as soon as MsgSnap is emitted, and clear that state
+// only after the voter reports a ready Pebble checkpoint.
+type snapshotRecoveryTracker interface {
+	SnapshotRecoveryPending(peerID uint64) (snapshotIndex uint64, pending bool)
+	ConfirmSnapshotRecovery(peerID, persistedIndex uint64)
+}
+
 // gateState is the write-gate verdict published as one atomic value so
 // CheckWritesAllowed observes both block reasons consistently — no torn read
 // between separate stores during a block-reason transition (e.g. disk recovers
@@ -241,6 +251,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	skewExceeded := false
 	checkpointableVoters := 0
 	peerVoters := 0
+	recoveryTracker, _ := hc.node.(snapshotRecoveryTracker)
 
 	now := time.Now()
 	localWAL := hc.collector.WALVolume.Load()
@@ -381,7 +392,26 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 					"error":   stateErr,
 				}).Infof("Failed to get peer recovery state")
 			} else if clusterState.GetSyncProgress().GetStatus() == "normal" {
-				checkpointableVoters++
+				// A MsgSnap marks the start of recovery, not its completion:
+				// Raft may already have returned to Replicate while the
+				// checkpoint is still being downloaded/restored. Only the
+				// remote normal status closes the episode. Do not count the
+				// voter in this same sample; the next poll observes the
+				// cleared state and establishes a fresh donor verdict.
+				if recoveryTracker != nil {
+					pendingIndex, pending := recoveryTracker.SnapshotRecoveryPending(peerID)
+					wasPending := pending
+					persistedIndex := clusterState.GetRaftStatus().GetLastPersistedIndex()
+					if pending && persistedIndex >= pendingIndex {
+						recoveryTracker.ConfirmSnapshotRecovery(peerID, persistedIndex)
+						pending = false
+					}
+					if !wasPending && !pending {
+						checkpointableVoters++
+					}
+				} else {
+					checkpointableVoters++
+				}
 			}
 		}
 

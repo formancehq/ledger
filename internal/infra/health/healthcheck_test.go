@@ -27,6 +27,21 @@ type diskUsageTestServer struct {
 	syncStatus atomic.Value
 }
 
+type snapshotRecoveryTestNode struct {
+	pending bool
+}
+
+func (n *snapshotRecoveryTestNode) IsLeader() bool      { return true }
+func (n *snapshotRecoveryTestNode) GetNodeID() uint64   { return 7 }
+func (n *snapshotRecoveryTestNode) MemberIDs() []uint64 { return []uint64{7, 8} }
+func (n *snapshotRecoveryTestNode) VoterIDs() []uint64  { return []uint64{7, 8} }
+func (n *snapshotRecoveryTestNode) IsHealthy() bool     { return true }
+func (n *snapshotRecoveryTestNode) GetLeader() uint64   { return 7 }
+func (n *snapshotRecoveryTestNode) SnapshotRecoveryPending(uint64) (uint64, bool) {
+	return 1, n.pending
+}
+func (n *snapshotRecoveryTestNode) ConfirmSnapshotRecovery(uint64, uint64) { n.pending = false }
+
 func newFreshCollector(t *testing.T) *diskusage.Collector {
 	t.Helper()
 
@@ -70,6 +85,7 @@ func (s *diskUsageTestServer) GetClusterState(context.Context, *clusterpb.GetClu
 
 	return &clusterpb.ClusterState{
 		SyncProgress: &clusterpb.SyncProgress{Status: status},
+		RaftStatus:   &clusterpb.RaftStatus{LastPersistedIndex: 1},
 	}, nil
 }
 
@@ -191,6 +207,45 @@ func TestHealthChecker_BlocksWhenNoOtherVoterIsCheckpointable(t *testing.T) {
 	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedRecovery)
 
 	handler.syncStatus.Store("normal")
+	hc.check(make(chan struct{}))
+	require.NoError(t, hc.CheckWritesAllowed())
+}
+
+func TestHealthChecker_DoesNotCountVoterUntilSnapshotRecoveryIsConfirmed(t *testing.T) {
+	t.Parallel()
+
+	collector := newFreshCollector(t)
+	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := grpc.NewServer()
+	handler := &diskUsageTestServer{}
+	handler.syncStatus.Store("normal")
+	clusterpb.RegisterClusterServiceServer(server, handler)
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		server.Stop()
+		require.NoError(t, <-serveErr)
+	})
+	require.NoError(t, pool.AddPeer(8, listener.Addr().String()))
+
+	ns := &snapshotRecoveryTestNode{pending: true}
+	hc := &HealthChecker{
+		node:        ns,
+		collector:   collector,
+		servicePool: pool,
+		logger:      logging.Testing(),
+		thresholds:  Thresholds{WALBlock: 1.1, WALResume: 0.000000001, DataBlock: 1.1, DataResume: 0.000000001},
+	}
+	hc.OnLeadershipChange(true)
+	hc.check(make(chan struct{}))
+	// The remote status is normal, but this sample only closes the recovery
+	// episode. The voter is counted on the following poll.
+	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedRecovery)
+	require.False(t, ns.pending)
+
 	hc.check(make(chan struct{}))
 	require.NoError(t, hc.CheckWritesAllowed())
 }
