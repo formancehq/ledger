@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -88,6 +90,11 @@ func TestDoMaintenance_AdvancesSnapshotAndCheckpoint(t *testing.T) {
 	node, setup := newTestMaintenanceNode(t)
 
 	entry, _ := makeCreateLedgerEntry(t, 1, "test-ledger")
+	require.NoError(t, setup.wal.Append(&raftpb.HardState{
+		Term:   proto.Uint64(1),
+		Vote:   proto.Uint64(1),
+		Commit: proto.Uint64(1),
+	}, []*raftpb.Entry{entry}))
 	setup.applyEntry(t, ctx, entry)
 
 	persisted := node.fsm.LastPersistedIndex()
@@ -102,6 +109,36 @@ func TestDoMaintenance_AdvancesSnapshotAndCheckpoint(t *testing.T) {
 		"WAL snapshot index must match the lastPersistedIndex captured by doMaintenance")
 	require.Equal(t, persisted, node.lastCheckpointPersistedIndex,
 		"lastCheckpointPersistedIndex must be updated after a successful Pebble checkpoint")
+}
+
+func TestDoMaintenance_RetriesFencedCompactionWhenIdle(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	node, setup := newTestMaintenanceNode(t)
+	node.confState.Store(&raftpb.ConfState{Voters: []uint64{1, 2}})
+	node.lastSoftState.Store(&raft.SoftState{RaftState: raft.StateLeader, Lead: 1})
+	require.True(t, node.IsLeader())
+
+	entry, _ := makeCreateLedgerEntry(t, 1, "test-ledger")
+	require.NoError(t, setup.wal.Append(&raftpb.HardState{
+		Term:   proto.Uint64(1),
+		Vote:   proto.Uint64(1),
+		Commit: proto.Uint64(1),
+	}, []*raftpb.Entry{entry}))
+	setup.applyEntry(t, ctx, entry)
+	require.Zero(t, node.CompactionFence())
+
+	require.NoError(t, node.doMaintenance())
+	firstIndex, err := node.wal.FirstIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), firstIndex, "the unknown voter must fence the first compaction")
+
+	node.RecordPeerPersistedIndex(2, node.fsm.LastPersistedIndex())
+	require.NoError(t, node.doMaintenance(), "an idle maintenance tick must retry the newly unfenced snapshot")
+	firstIndex, err = node.wal.FirstIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), firstIndex)
 }
 
 // TestDoMaintenance_SyncWALFailure_SkipsSnapshotAndCheckpoint exercises the
