@@ -6,15 +6,11 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"path/filepath"
 	"time"
-
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	raftwal "github.com/formancehq/ledger/v3/internal/storage/wal"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -193,7 +189,7 @@ var _ = Describe("Simple cluster", func() {
 			Expect(ledger.Name).To(Equal(ledgerName))
 		})
 
-		It("should restore the state from a snapshot sent by the leader", func() {
+		It("should restore the state from the WAL after the follower was offline", func() {
 			lid := *leaderID
 
 			By("Capturing the caught-up follower progress before shutdown")
@@ -218,7 +214,7 @@ var _ = Describe("Simple cluster", func() {
 			By("Stopping the follower")
 			testutil.StopNode(ctx, servers[followerID-1])
 
-			By("Creating state that cannot be replayed after compaction")
+			By("Creating state while the follower is offline")
 			for i := 0; i < countTransactions; i++ {
 				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", offlineAccountAddress, big.NewInt(100), "USD"),
@@ -226,7 +222,6 @@ var _ = Describe("Simple cluster", func() {
 				Expect(err).To(Succeed())
 			}
 
-			minimumSnapshotIndex := followerLastIndex + raftCompactionMargin + 1
 			var targetIndex uint64
 			Eventually(func(g Gomega) {
 				leaderState, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
@@ -235,35 +230,23 @@ var _ = Describe("Simple cluster", func() {
 				g.Expect(err).To(Succeed())
 
 				targetIndex = leaderState.GetRaftStatus().GetLastPersistedIndex()
-				g.Expect(targetIndex).To(BeNumerically(">=", minimumSnapshotIndex),
-					"offline writes must advance beyond the stopped follower's recoverable log range")
+				g.Expect(targetIndex).To(BeNumerically(">", followerLastIndex),
+					"offline writes must advance beyond the stopped follower's last index")
 			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 
-			By("Waiting for leader maintenance to snapshot beyond the follower's retained range")
-			leaderSnapshotter, err := raftwal.NewSnapshotter(
-				filepath.Join(servers[lid-1].WalDir, "snap"),
-				logging.FromContext(ctx),
-			)
-			Expect(err).To(Succeed())
-			defer func() { Expect(leaderSnapshotter.Close()).To(Succeed()) }()
-
-			Eventually(func(g Gomega) uint64 {
-				snapshot, err := leaderSnapshotter.Load()
-				g.Expect(err).To(Succeed())
-				g.Expect(snapshot).NotTo(BeNil())
-
-				return snapshot.GetMetadata().GetIndex()
-			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeNumerically(">=", targetIndex))
-
-			By("Allowing only snapshot catch-up while recording the real Raft MsgSnap")
+			By("Recording Raft messages while the follower catches up from the retained WAL")
 			snapshotSent := make(chan uint64, 1)
+			appendSent := make(chan uint64, 1)
 			gateway.SetInterceptor(testserver.MessageInterceptorFunc(func(msg *raftpb.Message) bool {
 				if msg.GetTo() != followerID {
 					return true
 				}
 
 				if msg.GetType() == raftpb.MsgApp {
-					return false
+					select {
+					case appendSent <- msg.GetIndex():
+					default:
+					}
 				}
 
 				if msg.GetType() == raftpb.MsgSnap {
@@ -277,23 +260,25 @@ var _ = Describe("Simple cluster", func() {
 			}))
 			DeferCleanup(gateway.RemoveInterceptor)
 
-			By("Starting the follower and requiring snapshot transfer evidence")
+			By("Starting the follower and requiring WAL replay evidence")
 			testutil.RestartNode(ctx, servers[followerID-1])
 
-			var sentSnapshotIndex uint64
-			Eventually(snapshotSent).Within(15 * time.Second).Should(Receive(&sentSnapshotIndex))
-			Expect(sentSnapshotIndex).To(BeNumerically(">=", targetIndex))
+			var sentAppendIndex uint64
+			Eventually(appendSent).Within(15 * time.Second).Should(Receive(&sentAppendIndex))
+			Expect(sentAppendIndex).To(BeNumerically(">", followerLastIndex))
+			Consistently(snapshotSent).Within(5*time.Second).ShouldNot(Receive(),
+				"the compaction fence must preserve the follower's replayable WAL range")
 			gateway.RemoveInterceptor()
 
-			By("Waiting for the follower's applied and durable indexes to pass the installed snapshot")
+			By("Waiting for the follower's applied and durable indexes to catch up")
 			Eventually(func(g Gomega) {
 				followerState, err := servers[followerID-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
 					NodeId: uint32(followerID),
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(followerState.GetState()).To(Equal("Follower"))
-				g.Expect(followerState.GetRaftStatus().GetApplied()).To(BeNumerically(">=", sentSnapshotIndex))
-				g.Expect(followerState.GetRaftStatus().GetLastPersistedIndex()).To(BeNumerically(">=", sentSnapshotIndex))
+				g.Expect(followerState.GetRaftStatus().GetApplied()).To(BeNumerically(">=", targetIndex))
+				g.Expect(followerState.GetRaftStatus().GetLastPersistedIndex()).To(BeNumerically(">=", targetIndex))
 			}).Within(30 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 
 			By("Reading state created while the follower was offline from that follower")
