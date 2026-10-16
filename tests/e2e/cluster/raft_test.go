@@ -243,8 +243,12 @@ var _ = Describe("Simple cluster", func() {
 				}
 
 				if msg.GetType() == raftpb.MsgApp {
+					appendIndex := msg.GetIndex()
+					if entries := msg.GetEntries(); len(entries) > 0 {
+						appendIndex = entries[len(entries)-1].GetIndex()
+					}
 					select {
-					case appendSent <- msg.GetIndex():
+					case appendSent <- appendIndex:
 					default:
 					}
 				}
