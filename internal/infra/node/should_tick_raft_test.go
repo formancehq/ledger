@@ -2,11 +2,12 @@ package node
 
 import "testing"
 
-// TestShouldTickRaft pins the contract from #316: a leader paused for
-// maintenance (statusGated) MUST keep emitting heartbeats. The tick
-// suppression exists for nodes that are genuinely behind raft state —
-// statusOutOfSync (needs catch-up) and statusInstallingSnapshot
-// (snapshot install in progress).
+// TestShouldTickRaft pins two contracts: a leader paused for maintenance
+// (statusGated) MUST keep emitting heartbeats (#316), and an out-of-sync
+// voter MUST keep running election timeouts — its log is complete, and
+// withholding its ticks can leave the cluster without a leader when the
+// newest logs sit on the resynchronizing nodes. Only a snapshot install
+// pauses the clock.
 func TestShouldTickRaft(t *testing.T) {
 	t.Parallel()
 
@@ -17,7 +18,7 @@ func TestShouldTickRaft(t *testing.T) {
 	}{
 		{"normal", statusNormal, true},
 		{"gated", statusGated, true},
-		{"out of sync", statusOutOfSync, false},
+		{"out of sync", statusOutOfSync, true},
 		{"installing snapshot", statusInstallingSnapshot, false},
 	}
 
