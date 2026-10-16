@@ -2,21 +2,29 @@
 
 This file is the always-loaded entry point for AI agents working on Ledger v3. Keep it short. Detailed technical knowledge belongs in `docs/`; load only the documentation relevant to the task.
 
-## Release status — v3 is unreleased
+## Release status — v3 release candidate
 
-**CRITICAL:** Ledger v3 has not been released and state is wiped on pushes to `release/v3.0`. There is no backward-compatibility burden between v3 development revisions.
+**CRITICAL:** Ledger v3 has published a release candidate. Keep existing
+persisted and audited data readable across later v3 builds. Changes to behavior
+or configuration, including pagination, can ship during the RC when their client
+impact and upgrade steps are documented. Do not silently reinterpret existing
+data or require a wipe to adopt a later RC build.
 
-- Do not add migrations, compatibility shims, version guards, or fallback paths for old v3 wire/storage formats.
-- When removing protobuf fields, delete them and realign field numbers sequentially. The EN-1551 cleanup removed every existing `reserved` declaration from `misc/proto/`; do not reintroduce any.
+- Preserve the numbers, wire types, and identity of published service protobuf
+  fields. Do not remove, renumber, or repurpose them during the RC. Internal-only
+  messages may be cleaned up when existing persisted data remains readable or a
+  safe migration is supplied.
+- The EN-1551 cleanup removed every existing `reserved` declaration from `misc/proto/`; do not reintroduce any as a substitute for compatibility.
 - Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
 
 ### Service protocol revision — frozen during the release-candidate phase
 
 Do not increment `pkg/grpcprotocol.Version`; it stays at `"40"` during the v3
-release-candidate phase. Every service gRPC contract change must stay compatible
-with clients and servers at that revision. If a change cannot stay compatible,
-escalate it instead of bumping the revision. Read the
-[protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
+release-candidate phase. Preserve the published service wire format. Assess and
+document the effect of any behavior or configuration change on existing clients;
+the revision freeze does not forbid such changes. Escalate a wire change that
+cannot preserve existing client decoding instead of bumping the revision. Read
+the [protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
 before modifying this contract.
 
 ## Configuration safety checks

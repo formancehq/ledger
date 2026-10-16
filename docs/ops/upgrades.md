@@ -2,10 +2,16 @@
 
 ## Current v3 Support Boundary
 
-Ledger v3 is pre-GA and does not yet promise persisted-storage or wire-format
-compatibility between development revisions. Do not assume that an in-place,
-mixed-binary rolling upgrade is supported merely because Kubernetes can perform
-a rolling update.
+Ledger v3 is in its release-candidate phase. Later RC builds must keep existing
+persisted and audited data readable. A format change needs a safe migration;
+do not require a data wipe to adopt a later RC build. Client-visible behavior
+and configuration may change when the impact and upgrade steps are documented.
+The service gRPC revision stays at 40; see the
+[protocol policy](../technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision).
+
+This data requirement does not make mixed-binary rolling upgrades safe. Do not
+assume that an in-place rolling upgrade is supported merely because Kubernetes
+can perform one.
 
 Every target revision must explicitly identify one of these upgrade classes:
 

@@ -348,24 +348,24 @@ must implement the same revision; there is no compatibility fallback.
 ## Maintaining the revision
 
 Ledger v3 is in its release-candidate phase. The revision is frozen at `"40"`:
-do not increment `pkg/grpcprotocol.Version`. Every service contract change must
-stay compatible instead. An existing client and server at the same revision must
-interpret requests, responses, and operations the same way, in both directions.
+do not increment `pkg/grpcprotocol.Version`. Preserve published field numbers,
+wire types, and identity so existing clients can decode the service messages. The
+revision identifies this wire contract; it does not freeze every behavior or
+configuration setting for the rest of the release-candidate phase.
 
-The author of a service contract change must determine whether an existing
-client or server would interpret requests, responses, or operations differently.
-Renumbering or changing the interpretation of exposed protobuf fields is
-incompatible, and so are incompatible semantics even when the `.proto` text
-stays unchanged. Such a change is not allowed during the release-candidate
-phase. Make the change compatible, or escalate it to the team before
-publication; do not bump the revision to work around it. Reviewers must check
-this classification. State the compatibility assessment in the PR.
-Documentation-only changes need no assessment.
+The author of a service change must identify its effect on published clients.
+Renumbering or changing the wire type or identity of an exposed protobuf field
+is not allowed during the RC. Behavior changes, such as a bounded page with a next
+cursor, and configuration changes can ship when their effect and upgrade steps
+are documented in the PR and user guidance. Reviewers must check whether a
+client can still decode the response and how it must handle any changed result.
+Do not bump the revision to avoid this assessment. Documentation-only changes
+need no client assessment.
 
-A compatible addition is acceptable only when both directions remain compatible
-under the declared service contract. A change confined to a persisted
-or Raft message does not automatically change the service protocol; inspect any
-shared types exposed through the service API. See
+An additive service field must preserve decoding in both directions. A change
+confined to a persisted or Raft message does not automatically change the service
+protocol; inspect any shared types exposed through the service API. Existing
+persisted and audited data must remain readable, or have a safe migration. See
 [protobuf contributor rules](../../../contributing/protobuf.md).
 
 The gate is a transport admission check. Its metadata and revision are not
@@ -607,6 +607,7 @@ This status change requires revision 40 clients and servers together.
 EN-2946 caps `InspectIndexRequest.page_size` at 10000 in the read store, which
 HTTP and gRPC share. A request for more than 10000 values or facets returns
 10000, `has_more`, and a next cursor. Earlier builds returned the full requested
-page. The protobuf text changes only by a comment. A client that follows the
-cursor reads the same values, so the change keeps revision 40: the service
-protocol revision is frozen during the v3 release-candidate phase.
+page. The protobuf text changes only by a comment. Clients that previously
+treated the requested page as complete must now follow the cursor to read all
+results. This response behavior changes under revision 40 by the RC policy;
+the revision is frozen, and the client impact must be documented.
