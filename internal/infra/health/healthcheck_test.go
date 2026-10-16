@@ -230,6 +230,18 @@ func TestHealthChecker_OldLeadershipEpochCannotPublish(t *testing.T) {
 	require.ErrorIs(t, hc.CheckWritesAllowed(), errGateNotReady)
 }
 
+func TestHealthChecker_DropsPersistedReportFromPreviousEpoch(t *testing.T) {
+	t.Parallel()
+
+	ns := NewMocknodeState(gomock.NewController(t))
+	ns.EXPECT().ResetPeerPersistedIndexes()
+	hc := &HealthChecker{node: ns}
+
+	oldEpoch := hc.leadershipEpoch.Load()
+	hc.OnLeadershipChange(true)
+	hc.recordPeerPersistedIndex(oldEpoch, 2, 42)
+}
+
 func TestHealthChecker_MissingCommittedPeerCannotClearDiskGate(t *testing.T) {
 	t.Parallel()
 
