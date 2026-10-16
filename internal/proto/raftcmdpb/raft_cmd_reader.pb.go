@@ -5224,6 +5224,7 @@ type ExecutionPlanReader interface {
 	GetAccountInventoryGeneration() uint64
 	GetAccountInventories() AccountInventoryObservationListReader
 	GetLifecycleKeys() LifecycleKeyListReader
+	GetLedgerTypes() LedgerTypeObservationListReader
 	Mutate() *ExecutionPlan
 }
 
@@ -5255,6 +5256,10 @@ func (r *executionPlanReadonly) GetAccountInventories() AccountInventoryObservat
 
 func (r *executionPlanReadonly) GetLifecycleKeys() LifecycleKeyListReader {
 	return NewLifecycleKeyListReader((*ExecutionPlan)(r).GetLifecycleKeys())
+}
+
+func (r *executionPlanReadonly) GetLedgerTypes() LedgerTypeObservationListReader {
+	return NewLedgerTypeObservationListReader((*ExecutionPlan)(r).GetLedgerTypes())
 }
 
 func (r *executionPlanReadonly) Mutate() *ExecutionPlan {
@@ -5390,6 +5395,78 @@ func (l accountInventoryObservationListReadonly) Range(yield func(int, AccountIn
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewAccountInventoryObservationListReader(s []*AccountInventoryObservation) AccountInventoryObservationListReader {
 	return accountInventoryObservationListReadonly(s)
+}
+
+// LedgerTypeObservationReader provides read-only access to LedgerTypeObservation.
+// Call Mutate() to obtain a mutable clone.
+type LedgerTypeObservationReader interface {
+	GetLedger() string
+	GetDigest() []byte
+	Mutate() *LedgerTypeObservation
+}
+
+type ledgerTypeObservationReadonly LedgerTypeObservation
+
+func (r *ledgerTypeObservationReadonly) GetLedger() string {
+	return (*LedgerTypeObservation)(r).GetLedger()
+}
+
+func (r *ledgerTypeObservationReadonly) GetDigest() []byte {
+	return bytes.Clone((*LedgerTypeObservation)(r).GetDigest())
+}
+
+func (r *ledgerTypeObservationReadonly) Mutate() *LedgerTypeObservation {
+	return (*LedgerTypeObservation)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this LedgerTypeObservation.
+func (m *LedgerTypeObservation) AsReader() LedgerTypeObservationReader {
+	if m == nil {
+		return nil
+	}
+	return (*ledgerTypeObservationReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this LedgerTypeObservation.
+func (m *LedgerTypeObservation) Mutate() *LedgerTypeObservation {
+	return m.CloneVT()
+}
+
+// LedgerTypeObservationListReader provides read-only iteration over []*LedgerTypeObservation.
+type LedgerTypeObservationListReader interface {
+	Len() int
+	Get(i int) LedgerTypeObservationReader
+	Range(yield func(int, LedgerTypeObservationReader) bool)
+}
+
+type ledgerTypeObservationListReadonly []*LedgerTypeObservation
+
+func (l ledgerTypeObservationListReadonly) Len() int { return len(l) }
+
+func (l ledgerTypeObservationListReadonly) Get(i int) LedgerTypeObservationReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l ledgerTypeObservationListReadonly) Range(yield func(int, LedgerTypeObservationReader) bool) {
+	for i, v := range l {
+		var r LedgerTypeObservationReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewLedgerTypeObservationListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewLedgerTypeObservationListReader(s []*LedgerTypeObservation) LedgerTypeObservationListReader {
+	return ledgerTypeObservationListReadonly(s)
 }
 
 // LifecycleKeyReader provides read-only access to LifecycleKey.

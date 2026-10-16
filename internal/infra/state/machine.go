@@ -3,6 +3,7 @@ package state
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"sync"
@@ -949,6 +950,11 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 	if executionPlan == nil {
 		return nil
 	}
+	for i, observation := range executionPlan.GetLedgerTypes() {
+		if observation == nil || observation.GetLedger() == "" || len(observation.GetDigest()) != sha256.Size {
+			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("ledger_types[%d]: invalid ledger type observation", i)}
+		}
+	}
 
 	// Validate the entire preload before changing any live cache or idempotency state.
 	type coverageKey struct {
@@ -1137,11 +1143,24 @@ func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 // doesn't match the current state. This detects stale proposals admitted with
 // an inflated IndexTracker or before a cache reset.
 func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Proposal) domain.SerializableError {
-	if plan := proposal.GetExecutionPlan(); len(plan.GetAccountInventories()) != 0 {
+	if plan := proposal.GetExecutionPlan(); len(plan.GetAccountInventories()) != 0 || len(plan.GetLedgerTypes()) != 0 {
 		observedGeneration := plan.GetAccountInventoryGeneration()
 		currentGeneration := fsm.Registry.Cache.CurrentGeneration()
 		if currentGeneration < observedGeneration || currentGeneration-observedGeneration > 1 {
 			return domain.ErrStaleProposal
+		}
+		for _, observation := range plan.GetLedgerTypes() {
+			ledgerKey := domain.LedgerKey{Name: observation.GetLedger()}.Bytes()
+			if entry, found := fsm.Registry.Ledgers.KeyStore().GetEntry(ledgerKey); found {
+				ledgerInfo := entry.Data
+				if entry.Deleted {
+					ledgerInfo = nil
+				}
+				digest, err := accounttype.LedgerTypeDigest(ledgerInfo)
+				if err != nil || !bytes.Equal(digest, observation.GetDigest()) {
+					return domain.ErrStaleProposal
+				}
+			}
 		}
 		for _, observation := range plan.GetAccountInventories() {
 			var account domain.AccountKey

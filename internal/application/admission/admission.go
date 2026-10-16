@@ -1038,7 +1038,7 @@ func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregat
 		return nil, err
 	}
 	defer func() { _ = handle.Close() }()
-	compiledByLedger, err := a.accountLifecycleTypeSnapshots(handle, orders)
+	compiledByLedger, initialTypeDigests, err := a.accountLifecycleTypeSnapshots(handle, orders)
 	if err != nil {
 		return nil, err
 	}
@@ -1124,16 +1124,37 @@ func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregat
 	// Every order that may change a persistent account key must be allowed to
 	// read the account's inventory projection at apply. Type transitions add
 	// lifecycle candidates above, so collect accounts again after expansion.
+	observedLedgers := make(map[string]struct{})
 	for _, coverage := range perOrder {
 		accounts, err := accountlifecycle.Accounts(coverage)
 		if err != nil {
 			return nil, err
 		}
 		for account := range accounts {
+			observedLedgers[account.LedgerName] = struct{}{}
 			canonical := account.Bytes()
 			coverage.Add(dal.SubAttrAccountInventory, canonical)
 			aggregate.Add(dal.SubAttrAccountInventory, append([]byte(nil), canonical...))
 		}
+	}
+	ledgerNames := make([]string, 0, len(observedLedgers))
+	for ledger := range observedLedgers {
+		ledgerNames = append(ledgerNames, ledger)
+	}
+	sort.Strings(ledgerNames)
+	for _, ledger := range ledgerNames {
+		digest, ok := initialTypeDigests[ledger]
+		if !ok {
+			info, err := a.attrs.Ledger.Get(handle, domain.LedgerKey{Name: ledger}.Bytes())
+			if err != nil {
+				return nil, err
+			}
+			digest, err = accounttype.LedgerTypeDigest(info)
+			if err != nil {
+				return nil, err
+			}
+		}
+		aggregate.LedgerTypes = append(aggregate.LedgerTypes, &raftcmdpb.LedgerTypeObservation{Ledger: ledger, Digest: digest})
 	}
 	// Bind the closed set of persisted account keys and its summary to this
 	// snapshot. Only accounts that may be ephemeral need a purge observation.
@@ -1225,9 +1246,10 @@ func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregat
 // observed while the proposal is processed. Keeping the intermediate views is
 // deliberately conservative: a skipped add/remove may leave either side of a
 // transition effective, and coverage must be sufficient for both outcomes.
-func (a *Admission) accountLifecycleTypeSnapshots(reader dal.PebbleGetter, orders []*raftcmdpb.Order) (map[string][][]accounttype.CompiledType, error) {
+func (a *Admission) accountLifecycleTypeSnapshots(reader dal.PebbleGetter, orders []*raftcmdpb.Order) (map[string][][]accounttype.CompiledType, map[string][]byte, error) {
 	typesByLedger := make(map[string]map[string]*commonpb.AccountType)
 	snapshots := make(map[string][][]accounttype.CompiledType)
+	digests := make(map[string][]byte)
 	load := func(ledger string) (map[string]*commonpb.AccountType, error) {
 		if types, ok := typesByLedger[ledger]; ok {
 			return types, nil
@@ -1236,6 +1258,11 @@ func (a *Admission) accountLifecycleTypeSnapshots(reader dal.PebbleGetter, order
 		if err != nil {
 			return nil, err
 		}
+		digest, err := accounttype.LedgerTypeDigest(info)
+		if err != nil {
+			return nil, err
+		}
+		digests[ledger] = digest
 		types := make(map[string]*commonpb.AccountType)
 		if info != nil {
 			for name, accountType := range info.GetAccountTypes() {
@@ -1256,7 +1283,7 @@ func (a *Admission) accountLifecycleTypeSnapshots(reader dal.PebbleGetter, order
 		ledger := ledgerOrder.GetLedger()
 		types, err := load(ledger)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		switch data := ledgerOrder.GetApply().GetData().(type) {
 		case *raftcmdpb.LedgerApplyOrder_AddAccountType:
@@ -1272,7 +1299,7 @@ func (a *Admission) accountLifecycleTypeSnapshots(reader dal.PebbleGetter, order
 		}
 	}
 
-	return snapshots, nil
+	return snapshots, digests, nil
 }
 
 func accountMatchesEphemeralSnapshot(account string, snapshots [][]accounttype.CompiledType) bool {

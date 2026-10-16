@@ -53,6 +53,12 @@ its newer Gen0 cache entry wins over an older preload. A same-count key swap
 does change the inventory revision. Normal admission does not hold an account
 stripe lock until apply.
 
+For every ledger with an account touched by the proposal, admission also
+records the ledger type-rule digest, even when the account is `NORMAL` in its
+snapshot. A concurrent type change then makes the proposal stale before the
+FSM can classify that account as `EPHEMERAL` using an incomplete key set.
+Normal accounts do not need the full account-key enumeration.
+
 The rule does not apply to `NORMAL` or `TRANSIENT` accounts. Historical
 transactions and their address/source/destination mappings are not account-owned
 current state and survive the purge. Re-funding the address therefore creates a

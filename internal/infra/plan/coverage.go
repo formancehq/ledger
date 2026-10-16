@@ -42,6 +42,7 @@ type Coverage struct {
 	IdempotencyKeys            map[domain.IdempotencyKey]struct{}
 	AccountInventoryGeneration uint64
 	AccountInventories         []*raftcmdpb.AccountInventoryObservation
+	LedgerTypes                []*raftcmdpb.LedgerTypeObservation
 
 	// collision holds the first XXH3-128 collision detected by Add/Merge
 	// (two distinct canonical keys sharing a 128-bit id). It is surfaced

@@ -54,3 +54,25 @@ func TestAccountInventoryGuardRejectsTypeChangeAndTwoRotations(t *testing.T) {
 	fsm.Registry.Cache.SetCurrentGeneration(proposal.GetExecutionPlan().GetAccountInventoryGeneration() + 2)
 	require.ErrorIs(t, fsm.checkStaleProposal(0, proposal), domain.ErrStaleProposal)
 }
+
+func TestNormalAccountProposalRejectsConcurrentEphemeralTypeChange(t *testing.T) {
+	fsm, _, _ := newTestMachine(t)
+	ledgerKey := domain.LedgerKey{Name: "ledger"}.Bytes()
+	initial := &commonpb.LedgerInfo{Name: "ledger", AccountTypes: map[string]*commonpb.AccountType{
+		"normal": {Name: "normal", Pattern: "orders:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL},
+	}}
+	digest, err := accounttype.LedgerTypeDigest(initial)
+	require.NoError(t, err)
+	_, _, err = fsm.Registry.Ledgers.KeyStore().Put(ledgerKey, initial)
+	require.NoError(t, err)
+	proposal := &raftcmdpb.Proposal{ExecutionPlan: &raftcmdpb.ExecutionPlan{
+		AccountInventoryGeneration: fsm.Registry.Cache.CurrentGeneration(),
+		LedgerTypes:                []*raftcmdpb.LedgerTypeObservation{{Ledger: "ledger", Digest: digest}},
+	}}
+	require.NoError(t, fsm.checkStaleProposal(0, proposal))
+	changed := initial.CloneVT()
+	changed.AccountTypes["normal"].Persistence = commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL
+	_, _, err = fsm.Registry.Ledgers.KeyStore().Put(ledgerKey, changed)
+	require.NoError(t, err)
+	require.ErrorIs(t, fsm.checkStaleProposal(0, proposal), domain.ErrStaleProposal)
+}

@@ -196,7 +196,7 @@ func (p *Builder) Build(aggregate *Coverage, operations []WriteOperation) (*Buil
 
 	nextIndex := p.tracker.Next()
 	snap := p.cache.Snapshot()
-	if len(aggregate.AccountInventories) != 0 && snap.CurrentGeneration != aggregate.AccountInventoryGeneration {
+	if (len(aggregate.AccountInventories) != 0 || len(aggregate.LedgerTypes) != 0) && snap.CurrentGeneration != aggregate.AccountInventoryGeneration {
 		return &BuildResult{operations: operations, aggregate: aggregate}, domain.ErrStaleProposal
 	}
 	nextIndexGen := cache.Gen(nextIndex, snap.GenerationThreshold)
@@ -241,7 +241,7 @@ func (p *Builder) AcquireProposalGuard(build *BuildResult) (*raftcmdpb.Execution
 	p.tracker.Lock()
 
 	snap := p.cache.Snapshot()
-	if len(build.aggregate.AccountInventories) != 0 && snap.CurrentGeneration != build.aggregate.AccountInventoryGeneration {
+	if (len(build.aggregate.AccountInventories) != 0 || len(build.aggregate.LedgerTypes) != 0) && snap.CurrentGeneration != build.aggregate.AccountInventoryGeneration {
 		return nil, &ProposalGuard{p: p, token: build.token}, domain.ErrStaleProposal
 	}
 	nextIndexAfter := p.tracker.Next()
@@ -435,6 +435,7 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 		CacheEpoch:                 snap.Epoch,
 		AccountInventoryGeneration: needs.AccountInventoryGeneration,
 		AccountInventories:         needs.AccountInventories,
+		LedgerTypes:                needs.LedgerTypes,
 	}
 
 	for i := range results {

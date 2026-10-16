@@ -10,6 +10,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
@@ -151,7 +152,7 @@ func TestAccountLifecycleTypeSnapshotsCoverProposalTypeTransitions(t *testing.T)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
-	snapshots, err := admission.accountLifecycleTypeSnapshots(store, orders)
+	snapshots, _, err := admission.accountLifecycleTypeSnapshots(store, orders)
 	require.NoError(t, err)
 	require.True(t, accountMatchesEphemeralSnapshot("users:alice", snapshots[testLedgerName]),
 		"removing a more-specific persistent type must expose the ephemeral fallback")
@@ -166,6 +167,27 @@ func TestAccountLifecycleTypeSnapshotsCoverProposalTypeTransitions(t *testing.T)
 	require.True(t, perOrder[0].Has(dal.SubAttrMetadata, metadata.Bytes()))
 	require.True(t, aggregate.Has(dal.SubAttrVolume, volume.Bytes()))
 	require.True(t, aggregate.Has(dal.SubAttrMetadata, metadata.Bytes()))
+}
+
+func TestNormalAccountCoverageObservesLedgerTypeRules(t *testing.T) {
+	t.Parallel()
+	store := createTestStore(t)
+	admission, attrs := createTestAdmission(t, store)
+	ledgerKey := domain.LedgerKey{Name: testLedgerName}.Bytes()
+	info, err := attrs.Ledger.Get(store, ledgerKey)
+	require.NoError(t, err)
+	digest, err := accounttype.LedgerTypeDigest(info)
+	require.NoError(t, err)
+	volume := domain.NewVolumeKey(testLedgerName, "ordinary:one", "USD", "")
+	perOrder := []*plan.Coverage{plan.NewCoverage()}
+	perOrder[0].Add(dal.SubAttrVolume, volume.Bytes())
+	aggregate := plan.NewCoverage()
+	aggregate.Add(dal.SubAttrVolume, volume.Bytes())
+	release, err := admission.expandAccountLifecycleCoverage(t.Context(), aggregate, perOrder, []*raftcmdpb.Order{{}})
+	require.NoError(t, err)
+	defer release()
+	require.Empty(t, aggregate.AccountInventories)
+	require.Equal(t, []*raftcmdpb.LedgerTypeObservation{{Ledger: testLedgerName, Digest: digest}}, aggregate.LedgerTypes)
 }
 
 func TestAccountLifecycleTypeSnapshotsPreserveSkippedDuplicateAdd(t *testing.T) {
@@ -183,7 +205,7 @@ func TestAccountLifecycleTypeSnapshotsPreserveSkippedDuplicateAdd(t *testing.T) 
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
-	snapshots, err := admission.accountLifecycleTypeSnapshots(store, []*raftcmdpb.Order{
+	snapshots, _, err := admission.accountLifecycleTypeSnapshots(store, []*raftcmdpb.Order{
 		ledgerApplyOrder(&raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
 			AddAccountType: &raftcmdpb.AddAccountTypeOrder{AccountType: &commonpb.AccountType{
 				Name: "fallback", Pattern: "users:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL,

@@ -741,6 +741,9 @@ message ExecutionPlan {
   // Only candidate account keys travel here; the ordinary attribute plan
   // stays compact on high-throughput paths.
   repeated LifecycleKey lifecycle_keys = 7;
+  // Ledger type rules observed when account coverage was built, including
+  // accounts that were normal at admission time.
+  repeated LedgerTypeObservation ledger_types = 8;
 
 }
 
@@ -751,6 +754,11 @@ message AccountInventoryObservation {
   AccountInventoryState expected = 2;
   // Digest of the account-type definitions in the same Pebble snapshot.
   bytes account_types_digest = 3;
+}
+
+message LedgerTypeObservation {
+  string ledger = 1;
+  bytes digest = 2;
 }
 
 message LifecycleKey {
