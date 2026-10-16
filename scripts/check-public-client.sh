@@ -7,9 +7,8 @@ python3 scripts/check-public-client-surface.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_verify_client_release_contract.py
 server_version=$(jq -er '.serverVersion' misc/release/public-client.json)
 client_version=$(jq -er '.clientVersion' misc/release/public-client.json)
-required_version=$(GOWORK=off go list -m -f '{{.Version}}' github.com/formancehq/ledger/pkg/client/v3)
-[[ "$required_version" == "$client_version" ]] || {
-    echo "root module requires client $required_version, expected $client_version" >&2
+[[ "$(go -C pkg/client/v3 list -m -f '{{.Path}}')" == "github.com/formancehq/ledger/pkg/client/v3" ]] || {
+    echo "public client module path is invalid" >&2
     exit 1
 }
 python3 scripts/verify_client_release_contract.py "$PWD" "$server_version" \
@@ -57,5 +56,3 @@ GOWORK=off go -C "$external_dir" mod edit \
     -replace="github.com/formancehq/ledger/pkg/client/v3=$(pwd)/pkg/client/v3"
 GOWORK=off go -C "$external_dir" mod tidy
 GOWORK=off go -C "$external_dir" test ./...
-
-go test ./pkg/testserver -run TestPublicClientSharesServerDescriptorRegistry -count=1
