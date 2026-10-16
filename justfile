@@ -451,6 +451,10 @@ generate-proto:
         misc/proto/proposal.proto
     @go run ./scripts/fix-vtproto-capability-length.go
 
+# Generate the standalone public gRPC client without touching server protobufs
+generate-public-client:
+    @bash scripts/generate-public-client.sh
+
 test-rpcauth-generator:
     go -C tools/protoc-gen-rpcauth test ./...
 
