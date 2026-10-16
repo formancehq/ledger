@@ -31,4 +31,4 @@ protoc \
 	"${public[@]/%/.proto}"
 
 go -C pkg/client/v3 mod tidy
-python3 scripts/update-client-contract.py
+python3 scripts/generate-client-protocol.py
