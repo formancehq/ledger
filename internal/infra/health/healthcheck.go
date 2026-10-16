@@ -38,6 +38,16 @@ type WriteGate interface {
 	CheckWritesAllowed() error
 }
 
+// peerPersistedIndexReporter is implemented by the Raft node to provide the
+// leader's WAL compaction fence with durable Pebble cursors observed from
+// remote voters. It remains optional so health tests do not need a Raft node.
+type peerPersistedIndexReporter interface {
+	VoterIDs() []uint64
+	RecordPeerPersistedIndex(peerID, index uint64)
+	ForgetPeerPersistedIndex(peerID uint64)
+	ResetPeerPersistedIndexes()
+}
+
 // gateState is the write-gate verdict published as one atomic value so
 // CheckWritesAllowed observes both block reasons consistently — no torn read
 // between separate stores during a block-reason transition (e.g. disk recovers
@@ -165,6 +175,9 @@ func (hc *HealthChecker) CheckWritesAllowed() error {
 func (hc *HealthChecker) OnLeadershipChange(bool) {
 	hc.leadershipEpoch.Add(1)
 	hc.gate.Store(nil)
+	if reporter, ok := hc.node.(peerPersistedIndexReporter); ok {
+		reporter.ResetPeerPersistedIndexes()
+	}
 	// The LeadershipChangeEvent is emitted before node.IsLeader observes the
 	// new SoftState. LeaderReady triggers the first poll after that publication.
 }
@@ -214,6 +227,13 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 		return
 	}
 	leadershipEpoch := hc.leadershipEpoch.Load()
+	persistedReporter, _ := hc.node.(peerPersistedIndexReporter)
+	voters := make(map[uint64]struct{})
+	if persistedReporter != nil {
+		for _, voterID := range persistedReporter.VoterIDs() {
+			voters[voterID] = struct{}{}
+		}
+	}
 
 	// Create a base context that cancels on shutdown. Each gRPC call gets
 	// its own child context with a per-call timeout (healthCheckCallTimeout).
@@ -275,6 +295,10 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 		if peerID == localNodeID {
 			continue
 		}
+		_, isVoter := voters[peerID]
+		if isVoter && persistedReporter != nil {
+			persistedReporter.ForgetPeerPersistedIndex(peerID)
+		}
 
 		// Abort early if shutting down.
 		select {
@@ -321,6 +345,19 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 			// must prevent an existing state from being cleared without evidence.
 			samples = append(samples, VolumeSample{})
 		} else {
+			if isVoter {
+				stateCtx, stateCancel := context.WithTimeout(baseCtx, healthCheckCallTimeout)
+				state, stateErr := client.GetClusterState(stateCtx, &clusterpb.GetClusterStateRequest{NodeId: uint32(peerID)})
+				stateCancel()
+				if stateErr != nil {
+					if persistedReporter != nil {
+						persistedReporter.ForgetPeerPersistedIndex(peerID)
+					}
+					hc.logger.WithFields(map[string]any{"node_id": peerID, "error": stateErr}).Infof("Failed to get peer persisted index")
+				} else if persistedReporter != nil && hc.leadershipEpoch.Load() == leadershipEpoch && hc.node.IsLeader() {
+					persistedReporter.RecordPeerPersistedIndex(peerID, state.GetRaftStatus().GetLastPersistedIndex())
+				}
+			}
 			walVolume := resp.GetWalVolume()
 			dataVolume := resp.GetDataVolume()
 			walUsed := walVolume.GetUsedBytes()

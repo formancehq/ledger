@@ -361,6 +361,10 @@ type Node struct {
 	lastObservedTerm atomic.Uint64
 	observer         *Observer
 	applier          *Applier
+	// peerPersistedIndexes contains durable Pebble cursors reported by remote
+	// voters. Missing entries are treated as unknown by the leader's fence.
+	peerPersistedIndexesMu sync.Mutex
+	peerPersistedIndexes   map[uint64]uint64
 
 	readies         chan raft.Ready
 	readyTerminated chan readyResult
@@ -674,27 +678,28 @@ func NewNode(
 	}
 
 	node := &Node{
-		logger:           logger,
-		wal:              wal,
-		transport:        transport,
-		config:           cfg,
-		proposeCh:        make(chan *Proposal, cfg.ProposeQueueCapacity),
-		clusterCommandCh: make(chan *clusterCommand, 1),
-		fsm:              fsm,
-		recovery:         recovery,
-		synchronizer:     synchronizer,
-		applier:          applier,
-		readies:          make(chan raft.Ready, 1),
-		readyTerminated:  make(chan readyResult, 1),
-		localResponseCh:  localResponses,
-		tasks:            newTaskSet(),
-		stopChannel:      make(chan struct{}),
-		terminalCh:       make(chan struct{}),
-		pendingReads:     &SyncMap[uint64, *readIndexRequest]{},
-		membership:       membership,
-		lastAutoPromote:  make(map[uint64]time.Time),
-		indexTracker:     NewIndexTracker(initialIndex(wal)),
-		observer:         NewNoOpObserver(),
+		logger:               logger,
+		wal:                  wal,
+		transport:            transport,
+		config:               cfg,
+		proposeCh:            make(chan *Proposal, cfg.ProposeQueueCapacity),
+		clusterCommandCh:     make(chan *clusterCommand, 1),
+		fsm:                  fsm,
+		recovery:             recovery,
+		synchronizer:         synchronizer,
+		applier:              applier,
+		readies:              make(chan raft.Ready, 1),
+		readyTerminated:      make(chan readyResult, 1),
+		localResponseCh:      localResponses,
+		tasks:                newTaskSet(),
+		stopChannel:          make(chan struct{}),
+		terminalCh:           make(chan struct{}),
+		pendingReads:         &SyncMap[uint64, *readIndexRequest]{},
+		membership:           membership,
+		lastAutoPromote:      make(map[uint64]time.Time),
+		indexTracker:         NewIndexTracker(initialIndex(wal)),
+		observer:             NewNoOpObserver(),
+		peerPersistedIndexes: make(map[uint64]uint64),
 	}
 
 	// Start ready: no leadership transition is in progress yet.
@@ -986,9 +991,19 @@ func (node *Node) doMaintenance() error {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create WAL snapshot")
 		}
 	} else if capturedIndex > node.applier.CompactionMargin() {
-		compactIdx := capturedIndex - node.applier.CompactionMargin()
-		if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
-			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
+		fence := node.fsm.LastPersistedIndex()
+		if node.IsLeader() {
+			fence = node.CompactionFence()
+		}
+		if fence > node.applier.CompactionMargin() {
+			compactIdx := min(capturedIndex, fence) - node.applier.CompactionMargin()
+			if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
+				node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
+			}
+		} else if node.IsLeader() {
+			node.logger.WithFields(map[string]any{
+				"capturedIndex": capturedIndex,
+			}).Infof("Background maintenance: compaction fenced until every voter reports durable Pebble progress")
 		}
 	}
 
@@ -2401,6 +2416,19 @@ func (node *Node) MemberIDs() []uint64 {
 	return ids
 }
 
+// VoterIDs returns the voters in the committed Raft configuration. Learners
+// are excluded from the durability fence because they cannot take leadership.
+func (node *Node) VoterIDs() []uint64 {
+	confState := node.confState.Load()
+	if confState == nil {
+		return nil
+	}
+
+	voters := append([]uint64(nil), confState.GetVoters()...)
+	slices.Sort(voters)
+	return voters
+}
+
 // Logger returns the node's logger.
 func (node *Node) Logger() logging.Logger {
 	return node.logger
@@ -2445,6 +2473,52 @@ func (node *Node) WaitLeaderReady(ctx context.Context) error {
 // LastPersistedIndex returns the FSM's last persisted Raft index.
 func (node *Node) LastPersistedIndex() uint64 {
 	return node.fsm.LastPersistedIndex()
+}
+
+// RecordPeerPersistedIndex publishes a peer's durable Pebble cursor for WAL
+// compaction fencing. Values are replaced because a peer may restart from an
+// older checkpoint.
+func (node *Node) RecordPeerPersistedIndex(peerID, index uint64) {
+	node.peerPersistedIndexesMu.Lock()
+	if node.peerPersistedIndexes == nil {
+		node.peerPersistedIndexes = make(map[uint64]uint64)
+	}
+	node.peerPersistedIndexes[peerID] = index
+	node.peerPersistedIndexesMu.Unlock()
+}
+
+// ForgetPeerPersistedIndex removes a report that was not refreshed during the
+// current health poll. Unknown peers are a hard fence.
+func (node *Node) ForgetPeerPersistedIndex(peerID uint64) {
+	node.peerPersistedIndexesMu.Lock()
+	delete(node.peerPersistedIndexes, peerID)
+	node.peerPersistedIndexesMu.Unlock()
+}
+
+// ResetPeerPersistedIndexes drops reports from a previous leadership epoch.
+func (node *Node) ResetPeerPersistedIndexes() {
+	node.peerPersistedIndexesMu.Lock()
+	clear(node.peerPersistedIndexes)
+	node.peerPersistedIndexesMu.Unlock()
+}
+
+// CompactionFence returns the highest index known durable in every voter. A
+// missing remote report returns zero and prevents WAL deletion.
+func (node *Node) CompactionFence() uint64 {
+	minPersisted := node.fsm.LastPersistedIndex()
+	node.peerPersistedIndexesMu.Lock()
+	defer node.peerPersistedIndexesMu.Unlock()
+	for _, voterID := range node.VoterIDs() {
+		if voterID == node.config.NodeID {
+			continue
+		}
+		persisted, ok := node.peerPersistedIndexes[voterID]
+		if !ok {
+			return 0
+		}
+		minPersisted = min(minPersisted, persisted)
+	}
+	return minPersisted
 }
 
 // GetConfiguredPeers returns the leader's configured members with their
