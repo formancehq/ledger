@@ -1,0 +1,750 @@
+package grpc
+
+import (
+	"encoding/json/jsontext"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger/pkg/client/v3/internal/json"
+)
+
+// protoFieldJSON marshals a proto.Message field to json.RawValue using protojson,
+// preserving camelCase field names. Returns nil for nil/zero messages.
+func protoFieldJSON(msg proto.Message) json.RawValue {
+	if msg == nil {
+		return nil
+	}
+
+	b, err := protojson.Marshal(msg)
+	if err != nil {
+		return nil
+	}
+
+	return b
+}
+
+// Note: Transaction.MarshalJSON is already implemented in transaction.go
+
+// MarshalJSON implements json.Marshaler for Log (global log).
+func (x *Log) MarshalJSON() ([]byte, error) {
+	value, err := x.jsonValue()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(value)
+}
+
+// MarshalJSONTo preserves request-scoped options through the public projection.
+func (x *Log) MarshalJSONTo(enc *jsontext.Encoder) error {
+	value, err := x.jsonValue()
+	if err != nil {
+		return err
+	}
+
+	return json.MarshalEncode(enc, value)
+}
+
+func (x *Log) jsonValue() (any, error) {
+	type Aux struct {
+		Sequence          uint64        `json:"sequence,omitempty"`
+		Payload           *LogPayload   `json:"payload,omitempty"`
+		ResponseSignature json.RawValue `json:"responseSignature,omitempty"`
+	}
+
+	aux := Aux{
+		Sequence:          x.GetSequence(),
+		Payload:           x.GetPayload(),
+		ResponseSignature: protoFieldJSON(x.GetResponseSignature()),
+	}
+
+	return aux, nil
+}
+
+// MarshalJSON implements json.Marshaler for LogPayload (oneof dispatch).
+func (x *LogPayload) MarshalJSON() ([]byte, error) {
+	value, err := x.jsonValue()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(value)
+}
+
+// MarshalJSONTo preserves request-scoped options through the public projection.
+func (x *LogPayload) MarshalJSONTo(enc *jsontext.Encoder) error {
+	value, err := x.jsonValue()
+	if err != nil {
+		return err
+	}
+
+	return json.MarshalEncode(enc, value)
+}
+
+func (x *LogPayload) jsonValue() (any, error) {
+	switch p := x.GetType().(type) {
+	case *LogPayload_CreateLedger:
+		return &struct {
+			CreateLedger *CreatedLedgerLog `json:"createLedger,omitempty"`
+		}{CreateLedger: p.CreateLedger}, nil
+	case *LogPayload_DeleteLedger:
+		return &struct {
+			DeleteLedger *DeletedLedgerLog `json:"deleteLedger,omitempty"`
+		}{DeleteLedger: p.DeleteLedger}, nil
+	case *LogPayload_Apply:
+		return &struct {
+			Apply *ApplyLedgerLog `json:"apply,omitempty"`
+		}{Apply: p.Apply}, nil
+	default:
+		// Other variants (signing, sinks, etc.) — use protojson for camelCase
+		raw, err := protojson.Marshal(x)
+
+		return json.RawValue(raw), err
+	}
+}
+
+// MarshalJSON implements json.Marshaler for CreatedLedgerLog.
+func (x *CreatedLedgerLog) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Name                   string                  `json:"name,omitempty"`
+		CreatedAt              *Timestamp              `json:"createdAt,omitempty"`
+		MetadataSchema         *MetadataSchema         `json:"metadataSchema,omitempty"`
+		Mode                   LedgerMode              `json:"mode,omitempty"`
+		MirrorSource           *MirrorSourceConfig     `json:"mirrorSource,omitempty"`
+		AccountTypes           map[string]*AccountType `json:"accountTypes,omitempty"`
+		DefaultEnforcementMode ChartEnforcementMode    `json:"defaultEnforcementMode,omitempty"`
+	}{
+		Name:                   x.GetName(),
+		CreatedAt:              x.GetCreatedAt(),
+		MetadataSchema:         x.GetMetadataSchema(),
+		Mode:                   x.GetMode(),
+		MirrorSource:           x.GetMirrorSource(),
+		AccountTypes:           x.GetAccountTypes(),
+		DefaultEnforcementMode: x.GetDefaultEnforcementMode(),
+	})
+}
+
+// MarshalJSON implements json.Marshaler for DeletedLedgerLog.
+func (x *DeletedLedgerLog) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Name      string     `json:"name,omitempty"`
+		DeletedAt *Timestamp `json:"deletedAt,omitempty"`
+	}{
+		Name:      x.GetName(),
+		DeletedAt: x.GetDeletedAt(),
+	})
+}
+
+// MarshalJSON implements json.Marshaler for ApplyLedgerLog.
+func (x *ApplyLedgerLog) MarshalJSON() ([]byte, error) {
+	value, err := x.jsonValue()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(value)
+}
+
+// MarshalJSONTo preserves request-scoped options through the public projection.
+func (x *ApplyLedgerLog) MarshalJSONTo(enc *jsontext.Encoder) error {
+	value, err := x.jsonValue()
+	if err != nil {
+		return err
+	}
+
+	return json.MarshalEncode(enc, value)
+}
+
+func (x *ApplyLedgerLog) jsonValue() (any, error) {
+	return &struct {
+		LedgerName string     `json:"ledgerName,omitempty"`
+		Log        *LedgerLog `json:"log,omitempty"`
+	}{
+		LedgerName: x.GetLedgerName(),
+		Log:        x.GetLog(),
+	}, nil
+}
+
+// jsonMessage returns the selected payload without its protobuf oneof envelope.
+func (x *LedgerLogPayload) jsonMessage() (proto.Message, error) {
+	if x == nil || x.GetPayload() == nil {
+		return nil, errors.New("missing log payload")
+	}
+	message := x.ProtoReflect()
+	field := message.WhichOneof(message.Descriptor().Oneofs().Get(0))
+	if field == nil || !message.Get(field).Message().IsValid() {
+		return nil, errors.New("missing log payload")
+	}
+
+	return message.Get(field).Message().Interface(), nil
+}
+
+// MarshalJSON emits the direct data object; LedgerLog.type identifies its variant.
+func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
+	message, err := x.jsonMessage()
+	if err != nil {
+		return nil, err
+	}
+	if custom, ok := message.(interface{ MarshalJSON() ([]byte, error) }); ok {
+		return custom.MarshalJSON()
+	}
+
+	return protojson.Marshal(message)
+}
+
+// MarshalJSONTo dispatches without hiding nested postings behind an opaque
+// MarshalJSON boundary. Unrelated protobuf variants retain protojson output.
+func (x *LedgerLogPayload) MarshalJSONTo(enc *jsontext.Encoder) error {
+	message, err := x.jsonMessage()
+	if err != nil {
+		return err
+	}
+	if _, ok := message.(interface{ MarshalJSON() ([]byte, error) }); ok {
+		return json.MarshalEncode(enc, message)
+	}
+	raw, err := protojson.Marshal(message)
+	if err != nil {
+		return err
+	}
+
+	return enc.WriteValue(jsontext.Value(raw))
+}
+
+// MarshalJSON implements json.Marshaler for OrderSkippedLog. Renders the
+// ErrorReason as the SHORT identifier (e.g. "TRANSACTION_REFERENCE_CONFLICT")
+// matching the wire convention used by the REST API surface
+// (skippableReasons, OrderSkippedResponse.reason, gRPC ErrorInfo.reason).
+// Default struct encoding would emit the integer enum value instead of
+// the public reason identifier.
+func (x *OrderSkippedLog) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Reason string            `json:"reason"`
+		Code   string            `json:"code"`
+		Facts  map[string]string `json:"facts,omitempty"`
+	}{
+		Reason: strings.TrimPrefix(x.GetReason().String(), "ERROR_REASON_"),
+		Code:   x.GetCode(),
+		Facts:  x.GetFacts(),
+	})
+}
+
+// UnmarshalJSON implements json.Unmarshaler for OrderSkippedLog. It rebuilds
+// typed details from code and facts and checks any supplied public reason
+// against the reason derived from those details.
+func (x *OrderSkippedLog) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		Reason string            `json:"reason"`
+		Code   string            `json:"code"`
+		Facts  map[string]string `json:"facts"`
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	if aux.Code == "" {
+		return errors.New("skipped failure requires a code")
+	}
+	details, err := NewFailureDetails(aux.Code, aux.Facts)
+	if err != nil {
+		return err
+	}
+	if err := ValidateRequiredFailureFacts(details); err != nil {
+		return err
+	}
+	if aux.Reason != "" && aux.Reason != strings.TrimPrefix(FailureDetailsReason(details).String(), "ERROR_REASON_") {
+		return fmt.Errorf("failure reason %q does not match code %q", aux.Reason, aux.Code)
+	}
+	x.Details = details
+
+	return nil
+}
+
+// MarshalJSON implements json.Marshaler for PostCommitVolumes. The wire shape
+// is a flat `{"addr": [{asset, color, input, output}]}` map — one array of
+// (asset, color) tuples per account. protojson would otherwise emit the raw
+// proto wrappers (`{"volumesByAccount": {"addr": {"volumes": [...]}}}`) two
+// levels deep. This replaces the pre-color EN-1465 `{"addr": {"asset": Volumes}}`
+// map shape, which can no longer key a bucket uniquely once a color dimension
+// exists, while keeping the flatten intent (no protojson wrappers).
+func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.jsonValue())
+}
+
+func (x *PostCommitVolumes) MarshalJSONTo(enc *jsontext.Encoder) error {
+	return json.MarshalEncode(enc, x.jsonValue())
+}
+
+func (x *PostCommitVolumes) jsonValue() map[string][]*VolumeEntry {
+	byAccount := x.GetVolumesByAccount()
+	if len(byAccount) == 0 {
+		return map[string][]*VolumeEntry{}
+	}
+
+	flat := make(map[string][]*VolumeEntry, len(byAccount))
+	for addr, va := range byAccount {
+		flat[addr] = va.GetVolumes()
+	}
+
+	return flat
+}
+
+// (No custom UnmarshalJSON for PostCommitVolumes.) The type is response-only:
+// the server emits it, no request payload ever carries it, so there is no
+// production caller for reverse conversion. Client-side consumers wanting to
+// parse the flat shape can decode straight into a
+// `map[string][]VolumeEntry` — the same structure MarshalJSON emits, where each
+// VolumeEntry is `{asset, color, input, output}`.
+
+// MarshalJSON implements json.Marshaler for VolumeEntry. Color is always
+// emitted (even when empty) so clients can distinguish the uncolored bucket
+// from an older response shape — same contract as accountVolumeJSON and
+// aggregatedVolumeJSON in the REST handler layer. Input/output are flattened
+// onto the tuple (not nested under a `volumes` key) so a post-commit-volume
+// entry reads as one flat `{asset, color, input, output}` row.
+func (x *VolumeEntry) MarshalJSON() ([]byte, error) {
+	value, err := x.jsonValue()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(value)
+}
+
+func (x *VolumeEntry) MarshalJSONTo(enc *jsontext.Encoder) error {
+	value, err := x.jsonValue()
+	if err != nil {
+		return err
+	}
+
+	return json.MarshalEncode(enc, value)
+}
+
+type postCommitVolumeEntryJSON struct {
+	Asset  string `json:"asset"`
+	Color  string `json:"color"`
+	Input  string `json:"input"`
+	Output string `json:"output"`
+}
+
+func (x *VolumeEntry) jsonValue() (*postCommitVolumeEntryJSON, error) {
+	vols := x.GetVolumes()
+	if vols == nil {
+		return nil, errors.New("VolumeEntry.MarshalJSON: missing Volumes container")
+	}
+	if err := vols.Validate(); err != nil {
+		return nil, fmt.Errorf("VolumeEntry.MarshalJSON: %w", err)
+	}
+
+	input, output, err := vols.toBigInts()
+	if err != nil {
+		return nil, fmt.Errorf("VolumeEntry.MarshalJSON: %w", err)
+	}
+	return &postCommitVolumeEntryJSON{Asset: x.GetAsset(), Color: x.GetColor(), Input: input.String(), Output: output.String()}, nil
+}
+
+// accountVolumeJSON is the JSON shape for AccountVolume. Color is always
+// emitted (even empty) because the API treats the empty bucket as a
+// first-class entry and clients cannot otherwise tell "uncolored bucket"
+// from "field absent in an older response shape".
+type accountVolumeJSON struct {
+	Asset   string              `json:"asset"`
+	Color   string              `json:"color"`
+	Volumes *VolumesWithBalance `json:"volumes,omitempty"`
+}
+
+// MarshalJSON implements json.Marshaler for Account.
+func (x *Account) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.jsonValue())
+}
+
+func (x *Account) MarshalJSONTo(enc *jsontext.Encoder) error {
+	return json.MarshalEncode(enc, x.jsonValue())
+}
+
+type accountJSON struct {
+	Address       string               `json:"address,omitempty"`
+	Metadata      map[string]any       `json:"metadata,omitempty"`
+	Volumes       []*accountVolumeJSON `json:"volumes"`
+	FirstUsage    *Timestamp           `json:"firstUsage,omitempty"`
+	InsertionDate *Timestamp           `json:"insertionDate,omitempty"`
+	UpdatedAt     *Timestamp           `json:"updatedAt,omitempty"`
+}
+
+func (x *Account) jsonValue() *accountJSON {
+	volumes := make([]*accountVolumeJSON, 0, len(x.GetVolumes()))
+	for _, v := range x.GetVolumes() {
+		volumes = append(volumes, &accountVolumeJSON{
+			Asset:   v.GetAsset(),
+			Color:   v.GetColor(),
+			Volumes: v.GetVolumes(),
+		})
+	}
+
+	return &accountJSON{
+		Address: x.GetAddress(), Metadata: MetadataToAnyMap(x.GetMetadata()), Volumes: volumes,
+		FirstUsage: x.GetFirstUsage(), InsertionDate: x.GetInsertionDate(), UpdatedAt: x.GetUpdatedAt(),
+	}
+}
+
+// Note: Log.MarshalJSON is already implemented in log.go
+
+// MarshalJSON implements json.Marshaler for CreatedTransaction. Post-commit
+// volumes ride on the embedded Transaction, so they surface via the
+// "transaction" field rather than as a sibling here.
+func (x *CreatedTransaction) MarshalJSON() ([]byte, error) {
+	value, err := x.jsonValue()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(value)
+}
+
+// MarshalJSONTo preserves request-scoped options through the public projection.
+func (x *CreatedTransaction) MarshalJSONTo(enc *jsontext.Encoder) error {
+	value, err := x.jsonValue()
+	if err != nil {
+		return err
+	}
+
+	return json.MarshalEncode(enc, value)
+}
+
+func (x *CreatedTransaction) jsonValue() (any, error) {
+	return &struct {
+		Transaction     *Transaction              `json:"transaction,omitempty"`
+		AccountMetadata map[string]map[string]any `json:"accountMetadata,omitempty"`
+	}{
+		Transaction:     x.GetTransaction(),
+		AccountMetadata: AccountMetadataToAnyMap(x.GetAccountMetadata()),
+	}, nil
+}
+
+// MarshalJSON implements json.Marshaler for RevertedTransaction. Post-commit
+// volumes ride on the embedded revert Transaction, so they surface via the
+// "revertTransaction" field rather than as a sibling here.
+func (x *RevertedTransaction) MarshalJSON() ([]byte, error) {
+	value, err := x.jsonValue()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(value)
+}
+
+// MarshalJSONTo preserves request-scoped options through the public projection.
+func (x *RevertedTransaction) MarshalJSONTo(enc *jsontext.Encoder) error {
+	value, err := x.jsonValue()
+	if err != nil {
+		return err
+	}
+
+	return json.MarshalEncode(enc, value)
+}
+
+func (x *RevertedTransaction) jsonValue() (any, error) {
+	return &struct {
+		RevertedTransactionID uint64       `json:"revertedTransactionId,omitempty"`
+		RevertTransaction     *Transaction `json:"revertTransaction,omitempty"`
+	}{
+		RevertedTransactionID: x.GetRevertedTransactionId(),
+		RevertTransaction:     x.GetRevertTransaction(),
+	}, nil
+}
+
+// MarshalJSON emits the v2 targetType/targetId layout with v3 typed metadata.
+func (x *SavedMetadata) MarshalJSON() ([]byte, error) {
+	targetID, err := logMetadataTargetID(x.GetTarget())
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(&struct {
+		TargetType string         `json:"targetType"`
+		TargetID   any            `json:"targetId"`
+		Metadata   map[string]any `json:"metadata,omitempty"`
+	}{TargetType: x.GetTarget().AsConst(), TargetID: targetID, Metadata: MetadataToAnyMap(x.GetMetadata())})
+}
+
+// MarshalJSON emits the v2 targetType/targetId layout.
+func (x *DeletedMetadata) MarshalJSON() ([]byte, error) {
+	targetID, err := logMetadataTargetID(x.GetTarget())
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(&struct {
+		TargetType string `json:"targetType"`
+		TargetID   any    `json:"targetId"`
+		Key        string `json:"key,omitempty"`
+	}{TargetType: x.GetTarget().AsConst(), TargetID: targetID, Key: x.GetKey()})
+}
+
+func logMetadataTargetID(target *Target) (any, error) {
+	switch v := target.GetTarget().(type) {
+	case *Target_Account:
+		if v == nil || v.Account == nil {
+			return nil, errors.New("missing metadata account target")
+		}
+
+		return v.Account.GetAddr(), nil
+	case *Target_TransactionId:
+		if v == nil {
+			return nil, errors.New("missing metadata transaction target")
+		}
+
+		return v.TransactionId, nil
+	default:
+		return nil, errors.New("missing metadata target")
+	}
+}
+
+// UnmarshalJSON implements json.Unmarshaler for DeletedMetadata
+// Handles the special case where TargetID can be either a string (for ACCOUNT) or uint64 (for TRANSACTION).
+func (dm *DeletedMetadata) UnmarshalJSON(data []byte) error {
+	type X struct {
+		TargetType string        `json:"targetType"`
+		TargetID   json.RawValue `json:"targetId"`
+		Key        string        `json:"key"`
+	}
+
+	x := X{}
+
+	err := json.Unmarshal(data, &x)
+	if err != nil {
+		return err
+	}
+
+	dm.Key = x.Key
+
+	switch strings.ToUpper(x.TargetType) {
+	case strings.ToUpper(MetaTargetTypeAccount):
+		var accountID string
+
+		err = json.Unmarshal(x.TargetID, &accountID)
+		if err == nil {
+			dm.Target = &Target{
+				Target: &Target_Account{
+					Account: &TargetAccount{
+						Addr: accountID,
+					},
+				},
+			}
+		}
+	case strings.ToUpper(MetaTargetTypeTransaction):
+		var txID uint64
+
+		txID, err = strconv.ParseUint(string(x.TargetID), 10, 64)
+		if err == nil {
+			dm.Target = &Target{
+				Target: &Target_TransactionId{TransactionId: txID},
+			}
+		}
+	default:
+		return fmt.Errorf("unknown type '%s'", x.TargetType)
+	}
+
+	return err
+}
+
+// UnmarshalJSON implements json.Unmarshaler for SavedMetadata
+// Handles the special case where TargetID can be either a string (for ACCOUNT) or uint64 (for TRANSACTION).
+func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
+	type X struct {
+		TargetType string         `json:"targetType"`
+		TargetID   json.RawValue  `json:"targetId"`
+		Metadata   map[string]any `json:"metadata"`
+	}
+
+	x := X{}
+
+	err := json.UnmarshalUseNumber(data, &x)
+	if err != nil {
+		return err
+	}
+
+	md, err := MetadataFromAnyMap(x.Metadata)
+	if err != nil {
+		return fmt.Errorf("invalid metadata: %w", err)
+	}
+
+	sm.Metadata = md
+
+	switch strings.ToUpper(x.TargetType) {
+	case strings.ToUpper(MetaTargetTypeAccount):
+		var accountID string
+
+		err = json.Unmarshal(x.TargetID, &accountID)
+		if err == nil {
+			sm.Target = &Target{
+				Target: &Target_Account{
+					Account: &TargetAccount{
+						Addr: accountID,
+					},
+				},
+			}
+		}
+	case strings.ToUpper(MetaTargetTypeTransaction):
+		var txID uint64
+
+		txID, err = strconv.ParseUint(string(x.TargetID), 10, 64)
+		if err == nil {
+			sm.Target = &Target{
+				Target: &Target_TransactionId{TransactionId: txID},
+			}
+		}
+	default:
+		return fmt.Errorf("unknown type '%s'", x.TargetType)
+	}
+
+	return err
+}
+
+// MarshalJSON implements json.Marshaler for PreparedQuery.
+//
+// PreparedQuery embeds a *QueryFilter (a protobuf oneof) and exposes a
+// QueryTarget enum. We deliberately do NOT route through protojson: that would
+// leak the protobuf-internal oneof/wrapper names of QueryFilter onto the public
+// REST surface (see the codec in query_filter.go). Instead the filter is
+// encoded through QueryFilter's own hand-written MarshalJSON (canonical flat
+// shape) and the target is emitted as the bare string enum.
+//
+// REST can create ACCOUNTS / TRANSACTIONS / LOGS prepared queries (see
+// parsePreparedQueryTarget); the map covers all three proto values so the
+// listed target is emitted faithfully regardless of how the query was created
+// (REST or gRPC/CLI).
+func (x *PreparedQuery) MarshalJSON() ([]byte, error) {
+	target, ok := queryTargetToJSON[x.GetTarget()]
+	if !ok {
+		return nil, fmt.Errorf("prepared query: unknown target %v", x.GetTarget())
+	}
+
+	return json.Marshal(&struct {
+		Name   string       `json:"name"`
+		Target string       `json:"target"`
+		Filter *QueryFilter `json:"filter,omitempty"`
+	}{
+		Name:   x.GetName(),
+		Target: target,
+		Filter: x.GetFilter(),
+	})
+}
+
+// queryTargetToJSON maps the QueryTarget proto enum to the public string enum
+// documented in openapi.yml. Kept local so the public contract never inherits
+// the QUERY_TARGET_* proto prefixes.
+var queryTargetToJSON = map[QueryTarget]string{
+	QueryTarget_QUERY_TARGET_ACCOUNTS:     "ACCOUNTS",
+	QueryTarget_QUERY_TARGET_TRANSACTIONS: "TRANSACTIONS",
+	QueryTarget_QUERY_TARGET_LOGS:         "LOGS",
+}
+
+// MarshalJSON implements json.Marshaler for PreparedQueryCursor.
+//
+// The cursor carries exactly one populated data field per query target:
+// accountData (ACCOUNTS), transactionData (TRANSACTIONS) or logData (LOGS).
+func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
+	value, err := x.jsonValue()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(value)
+}
+
+// MarshalJSONTo preserves request-scoped options through the public projection.
+func (x *PreparedQueryCursor) MarshalJSONTo(enc *jsontext.Encoder) error {
+	value, err := x.jsonValue()
+	if err != nil {
+		return err
+	}
+
+	return json.MarshalEncode(enc, value)
+}
+
+func (x *PreparedQueryCursor) jsonValue() (any, error) {
+	return &struct {
+		PageSize        uint32         `json:"pageSize"`
+		HasMore         bool           `json:"hasMore"`
+		Next            string         `json:"next,omitempty"`
+		Previous        string         `json:"previous,omitempty"`
+		AccountData     []*Account     `json:"accountData,omitempty"`
+		TransactionData []*Transaction `json:"transactionData,omitempty"`
+		LogData         []*Log         `json:"logData,omitempty"`
+	}{
+		PageSize:        x.GetPageSize(),
+		HasMore:         x.GetHasMore(),
+		Next:            x.GetNext(),
+		Previous:        x.GetPrevious(),
+		AccountData:     x.GetAccountData(),
+		TransactionData: x.GetTransactionData(),
+		LogData:         x.GetLogData(),
+	}, nil
+}
+
+// MarshalJSON implements json.Marshaler for NumscriptInfo.
+//
+// The protoc-gen-go struct tags use snake_case (created_at), so a default
+// encoding/json marshal would emit `created_at` and break the camelCase REST
+// contract that every other endpoint follows. Same class of bug as #459 for
+// CreatedTransaction / RevertedTransaction / RevertTransactionPayload.
+func (x *NumscriptInfo) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Name      string     `json:"name,omitempty"`
+		Content   string     `json:"content,omitempty"`
+		Version   string     `json:"version,omitempty"`
+		CreatedAt *Timestamp `json:"createdAt,omitempty"`
+		Ledger    string     `json:"ledger,omitempty"`
+	}{
+		Name:      x.GetName(),
+		Content:   x.GetContent(),
+		Version:   x.GetVersion(),
+		CreatedAt: x.GetCreatedAt(),
+		Ledger:    x.GetLedger(),
+	})
+}
+
+// ParseTarget parses targetType and targetId/targetReference into a Target.
+// Returns an error when the inputs cannot be parsed instead of silently
+// returning nil — the caller should surface this to the client.
+func ParseTarget(targetType string, targetID json.RawValue) (*Target, error) {
+	switch strings.ToUpper(targetType) {
+	case MetaTargetTypeAccount:
+		if len(targetID) == 0 {
+			return nil, errors.New("account target requires targetId")
+		}
+
+		var addr string
+		if err := json.Unmarshal(targetID, &addr); err != nil {
+			return nil, fmt.Errorf("account targetId must be a string: %w", err)
+		}
+
+		return &Target{
+			Target: &Target_Account{
+				Account: &TargetAccount{Addr: addr},
+			},
+		}, nil
+
+	case MetaTargetTypeTransaction:
+		if len(targetID) == 0 {
+			return nil, errors.New("transaction target requires targetId")
+		}
+
+		var id uint64
+		if err := json.Unmarshal(targetID, &id); err != nil {
+			return nil, fmt.Errorf("transaction targetId must be a uint64: %w", err)
+		}
+
+		return &Target{
+			Target: &Target_TransactionId{TransactionId: id},
+		}, nil
+	}
+
+	return nil, fmt.Errorf("unsupported targetType %q", targetType)
+}
