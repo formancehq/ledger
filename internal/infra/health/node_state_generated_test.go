@@ -37,6 +37,18 @@ func (m *MocknodeState) EXPECT() *MocknodeStateMockRecorder {
 	return m.recorder
 }
 
+// ForgetPeerPersistedIndex mocks base method.
+func (m *MocknodeState) ForgetPeerPersistedIndex(peerID uint64) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ForgetPeerPersistedIndex", peerID)
+}
+
+// ForgetPeerPersistedIndex indicates an expected call of ForgetPeerPersistedIndex.
+func (mr *MocknodeStateMockRecorder) ForgetPeerPersistedIndex(peerID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ForgetPeerPersistedIndex", reflect.TypeOf((*MocknodeState)(nil).ForgetPeerPersistedIndex), peerID)
+}
+
 // GetLeader mocks base method.
 func (m *MocknodeState) GetLeader() uint64 {
 	m.ctrl.T.Helper()
@@ -105,4 +117,42 @@ func (m *MocknodeState) MemberIDs() []uint64 {
 func (mr *MocknodeStateMockRecorder) MemberIDs() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MemberIDs", reflect.TypeOf((*MocknodeState)(nil).MemberIDs))
+}
+
+// RecordPeerPersistedIndex mocks base method.
+func (m *MocknodeState) RecordPeerPersistedIndex(peerID, index uint64) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RecordPeerPersistedIndex", peerID, index)
+}
+
+// RecordPeerPersistedIndex indicates an expected call of RecordPeerPersistedIndex.
+func (mr *MocknodeStateMockRecorder) RecordPeerPersistedIndex(peerID, index any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPeerPersistedIndex", reflect.TypeOf((*MocknodeState)(nil).RecordPeerPersistedIndex), peerID, index)
+}
+
+// ResetPeerPersistedIndexes mocks base method.
+func (m *MocknodeState) ResetPeerPersistedIndexes() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ResetPeerPersistedIndexes")
+}
+
+// ResetPeerPersistedIndexes indicates an expected call of ResetPeerPersistedIndexes.
+func (mr *MocknodeStateMockRecorder) ResetPeerPersistedIndexes() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetPeerPersistedIndexes", reflect.TypeOf((*MocknodeState)(nil).ResetPeerPersistedIndexes))
+}
+
+// VoterIDs mocks base method.
+func (m *MocknodeState) VoterIDs() []uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "VoterIDs")
+	ret0, _ := ret[0].([]uint64)
+	return ret0
+}
+
+// VoterIDs indicates an expected call of VoterIDs.
+func (mr *MocknodeStateMockRecorder) VoterIDs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "VoterIDs", reflect.TypeOf((*MocknodeState)(nil).VoterIDs))
 }
