@@ -1024,7 +1024,7 @@ func (node *Node) compactWAL(snapshotIndex uint64) {
 		if node.IsLeader() {
 			node.logger.WithFields(map[string]any{
 				"snapshotIndex": snapshotIndex,
-			}).Infof("Background maintenance: compaction fenced until every voter reports durable Pebble progress")
+			}).Infof("Background maintenance: compaction fenced until a voter quorum reports durable Pebble progress")
 		}
 		return
 	}
@@ -2427,24 +2427,56 @@ func (node *Node) ResetPeerPersistedIndexes() {
 	node.peerPersistedIndexesMu.Unlock()
 }
 
-// CompactionFence returns the highest index known durable in every voter. A
-// missing remote report returns zero and prevents WAL deletion.
+// CompactionFence returns the highest index known durable in a quorum of voters.
+// Missing remote reports contribute zero, but do not block compaction when the
+// remaining reports still form a quorum. During joint consensus, both the
+// incoming and outgoing voter configurations must independently have a quorum.
 func (node *Node) CompactionFence() uint64 {
-	minPersisted := node.fsm.LastPersistedIndex()
-	node.peerPersistedIndexesMu.Lock()
-	defer node.peerPersistedIndexesMu.Unlock()
-	for _, voterID := range node.VoterIDs() {
-		if voterID == node.config.NodeID {
-			continue
-		}
-		persisted, ok := node.peerPersistedIndexes[voterID]
-		if !ok {
-			return 0
-		}
-		minPersisted = min(minPersisted, persisted)
+	confState := node.confState.Load()
+	if confState == nil {
+		return 0
 	}
 
-	return minPersisted
+	node.peerPersistedIndexesMu.Lock()
+	defer node.peerPersistedIndexesMu.Unlock()
+
+	fence := quorumPersistedIndex(confState.GetVoters(), node.config.NodeID, node.fsm.LastPersistedIndex(), node.peerPersistedIndexes)
+	if fence == 0 {
+		return 0
+	}
+	if outgoing := confState.GetVotersOutgoing(); len(outgoing) > 0 {
+		fence = min(fence, quorumPersistedIndex(outgoing, node.config.NodeID, node.fsm.LastPersistedIndex(), node.peerPersistedIndexes))
+	}
+
+	return fence
+}
+
+// quorumPersistedIndex returns the k-th highest durable cursor, where k is the
+// majority size of voters. A missing report is represented by zero.
+func quorumPersistedIndex(voters []uint64, localID, localIndex uint64, reports map[uint64]uint64) uint64 {
+	if len(voters) == 0 {
+		return 0
+	}
+
+	indexes := make([]uint64, 0, len(voters))
+	for _, voterID := range voters {
+		if voterID == localID {
+			indexes = append(indexes, localIndex)
+			continue
+		}
+		indexes = append(indexes, reports[voterID])
+	}
+	slices.SortFunc(indexes, func(a, b uint64) int {
+		if a > b {
+			return -1
+		}
+		if a < b {
+			return 1
+		}
+		return 0
+	})
+
+	return indexes[len(indexes)/2]
 }
 
 // GetConfiguredPeers returns the leader's configured members with their
