@@ -2,10 +2,12 @@
 
 ## Current v3 Support Boundary
 
-Ledger v3 is pre-GA and does not yet promise persisted-storage or wire-format
-compatibility between development revisions. Do not assume that an in-place,
-mixed-binary rolling upgrade is supported merely because Kubernetes can perform
-a rolling update.
+Ledger v3 is pre-GA. Since `v3.0.0-rc.1`, updates on `release/v3.0` must
+preserve the client-facing contract for published RC clients, including the
+service protocol revision. This promise does not cover persisted storage or
+mixed-version server upgrades. Do not assume that an in-place rolling upgrade
+is supported merely because Kubernetes can perform one. See the
+[RC client compatibility rules](../technical/architecture/subsystems/api/protocol-compatibility.md#release-candidate-client-compatibility).
 
 Every target revision must explicitly identify one of these upgrade classes:
 

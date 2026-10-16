@@ -16,6 +16,10 @@ protocol, but mixed wire-format rolling upgrades are not guaranteed. See the
 [service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
 for scope and failure behavior.
 
+Since `v3.0.0-rc.1`, changes on `release/v3.0` preserve the client-facing
+contract and continue to accept the RC's protocol revision 40. This does not
+establish support for mixed-version server clusters or persisted-state upgrades.
+
 ## Local Deployment
 
 ### Prerequisites

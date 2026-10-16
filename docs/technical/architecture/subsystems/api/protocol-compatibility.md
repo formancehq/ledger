@@ -3,11 +3,11 @@
 ## Requirement and decision (EN-1851)
 
 [EN-1851](https://formance-team.atlassian.net/browse/EN-1851) requires detecting
-an incompatible `ledgerctl` before it executes a business operation. Ledger v3
-is unreleased: its protobuf fields may be renumbered between development
-revisions, and a mismatched request can decode with a different meaning rather
-than fail to decode. Build versions and commit IDs do not establish protocol
-compatibility.
+an incompatible `ledgerctl` before it executes a business operation. Before
+`v3.0.0-rc.1`, protobuf fields could be renumbered between development
+revisions, and a mismatched request could decode with a different meaning
+rather than fail to decode. Build versions and commit IDs do not establish
+protocol compatibility.
 
 The approved decision is to **block requests with a different or missing
 protocol revision**, using a revision independent of the software release.
@@ -16,6 +16,32 @@ format support, or bypass flag. An advisory warning would not enforce the
 requirement; exact commit matching would also reject builds whose service
 contract has not changed. Release SemVer does not currently encode the
 compatibility of development revisions.
+
+## Release candidate client compatibility
+
+`v3.0.0-rc.1` published service protocol revision 40. From that release
+candidate onward, changes targeting `release/v3.0` must keep published v3
+clients working for their existing operations. This includes `ledgerctl`, SDKs,
+and other service clients, as well as the public HTTP contract. The server must
+continue to accept revision 40 business RPCs. A revision bump would reject all
+such calls, including operations unrelated to the changed field.
+
+Preserve the field numbers, wire types, and meanings used by published clients.
+An additive protobuf field is acceptable only if an older client and server
+still interpret their existing operations correctly in both directions. In
+particular, do not rely on an old `uint32` decoder to consume a widened `uint64`
+identity: it can truncate a high value without a decoding error. If the old
+operation cannot represent a new value safely, keep its established behavior
+for representable values and fail clearly for the new case. Add a distinct
+field or operation for the new behavior when that can preserve the old contract.
+Test against the published RC client and server, not only two newly built
+binaries.
+
+If a fix cannot meet this boundary, defer it or obtain an explicit release
+decision to break RC clients. A protocol increment identifies the break but
+does not make it acceptable. This client boundary does not promise persisted
+state compatibility or mixed-version server upgrades; see
+[server upgrades](../../../../ops/upgrades.md).
 
 ## Wire contract and failure behavior
 
@@ -349,23 +375,19 @@ must implement the same revision; there is no compatibility fallback.
 
 The author of a service contract change must determine whether an existing
 client or server would interpret requests, responses, or operations differently.
-Increment the decimal counter `pkg/grpcprotocol.Version` by one in the same PR
-for an incompatible wire or semantic change (for example, `"1"` to `"2"`), and
-rebuild every service client and server that will communicate. This includes
-renumbering or changing the interpretation of exposed
-protobuf fields, and incompatible semantics even when the `.proto` text stays
-unchanged. Reviewers must check this classification; the revision is not inferred
-from a release tag or automatically negotiated from a schema hash.
+On `release/v3.0`, preserve the published RC contract and revision 40. Do not
+use a revision increment to ship an incompatible wire or semantic change.
+Renumbering an exposed protobuf field or changing its interpretation remains
+incompatible even when generated code compiles. Reviewers must check both the
+wire and the behavior; the revision is not inferred from a release tag or
+automatically negotiated from a schema hash.
 
-This obligation applies to AI agents throughout pre-release development, even
-though older Ledger versions and storage formats are not supported. Before
-publication, and again after a rebase or target-branch update, compare the
-revision with the target branch. If another PR has already consumed the planned
-number, increment from the target branch's current value so a newly incompatible
-contract does not reuse that number. Keep examples of the current revision in
-sync. State the compatibility assessment and the old/new revision in the PR;
-when no increment is needed, explain why. Documentation-only changes do not
-increment the counter.
+Before publication, and again after a rebase or target-branch update, compare
+the revision and service contract with the target branch and `v3.0.0-rc.1`.
+State the compatibility assessment in the PR and identify the published-client
+tests run. If an incompatible change is explicitly approved for a later
+compatibility line, increment from that line's current revision and update its
+examples. Documentation-only changes do not increment the counter.
 
 Compatible additions need not bump the revision only when both directions remain
 compatible under the declared service contract. A change confined to a persisted

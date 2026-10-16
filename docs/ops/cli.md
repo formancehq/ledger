@@ -41,6 +41,11 @@ blocks business RPCs when the revision is absent, invalid, or different, returni
 `FailedPrecondition` before executing the operation. This includes streaming and
 restore commands. There is no flag to bypass the check.
 
+`v3.0.0-rc.1` published revision 40. Updates on `release/v3.0` must continue
+to accept that revision and preserve existing CLI operations. A protocol bump
+would reject the published RC client even for unrelated commands. See the
+[RC client compatibility rules](../technical/architecture/subsystems/api/protocol-compatibility.md#release-candidate-client-compatibility).
+
 Run `ledgerctl version` locally to see the CLI's protocol revision. In normal
 server mode, `GET /_info` and gRPC Discovery expose the server's `protocolVersion`.
 Discovery, gRPC health, and reflection are exempt from the gate. Restore mode has
@@ -48,9 +53,10 @@ no Discovery service; a rejected restore call reports the required protocol
 revision and metadata key directly.
 
 On a mismatch, use the CLI distributed with the server or build a client that
-implements the same protocol. A newer release is not necessarily compatible with
-an older server. Release versions and commit IDs can differ when the protocol
-matches; source builds reporting `dev` still carry a defined protocol revision.
+implements the same protocol. This guidance applies to development revisions
+outside the RC compatibility boundary. Release versions and commit IDs can
+differ when the protocol matches; source builds reporting `dev` still carry a
+defined protocol revision.
 See the [service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
 for SDKs, custom gRPC clients, and internal forwarding.
 

@@ -2,20 +2,30 @@
 
 This file is the always-loaded entry point for AI agents working on Ledger v3. Keep it short. Detailed technical knowledge belongs in `docs/`; load only the documentation relevant to the task.
 
-## Release status — v3 is unreleased
+## Release status — v3 release candidate
 
-**CRITICAL:** Ledger v3 has not been released and state is wiped on pushes to `release/v3.0`. There is no backward-compatibility burden between v3 development revisions.
+**CRITICAL:** `v3.0.0-rc.1` has been published. Changes targeting
+`release/v3.0` must preserve the client-facing contract of published v3 release
+candidates. Do not break an existing `ledgerctl`, SDK, or other service client
+to fix a server bug. The service protocol revision in `rc.1` is 40; changing it
+would make every existing business RPC from that client fail admission. See the
+[RC compatibility rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#release-candidate-client-compatibility).
 
-- Do not add migrations, compatibility shims, version guards, or fallback paths for old v3 wire/storage formats.
-- When removing protobuf fields, delete them and realign field numbers sequentially. The EN-1551 cleanup removed every existing `reserved` declaration from `misc/proto/`; do not reintroduce any.
+Persisted state is still wiped on pushes to `release/v3.0`. Client compatibility
+does not imply persisted-format compatibility or support for mixed-version
+server upgrades. See [server upgrades](docs/ops/upgrades.md).
+
+- Do not add migrations, compatibility shims, version guards, or fallback paths for old v3 persisted formats.
+- Preserve published service protobuf field numbers, types, and meanings. Do not remove or renumber them during the RC. The EN-1551 cleanup removed existing `reserved` declarations from `misc/proto/`; do not reintroduce them as a substitute for compatibility.
 - Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
 
-### Service protocol revision — required during pre-release
+### Service protocol revision — release candidate freeze
 
-Every incompatible service gRPC contract change must increment
-`pkg/grpcprotocol.Version` in the same PR, including during pre-release. Read the
+Keep `pkg/grpcprotocol.Version` at the published RC revision for changes on
+`release/v3.0`. A change that requires an increment is a client break and must
+be redesigned or deferred, not shipped with a version bump alone. Read the
 [protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
-before modifying this contract.
+before modifying the service contract.
 
 ## Configuration safety checks
 

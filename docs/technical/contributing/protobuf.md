@@ -62,18 +62,21 @@ go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.1-0.
 ## Modifying Protocol Definitions
 
 The service API has a compiled protocol revision independent of release versions.
-For every exposed wire or semantic change, assess client/server compatibility and
-bump `pkg/grpcprotocol.Version` in the same change when the contract breaks.
-Renumbering exposed fields is a breaking change even if the generated code still
-compiles. Internal persisted/Raft-only changes require an impact assessment of
-shared service types rather than an automatic service revision bump. See the
+For every exposed wire or semantic change, assess compatibility with published
+RC clients and servers. On `release/v3.0`, preserve their existing operations
+and the published protocol revision. A revision bump rejects old clients; it
+does not make a breaking change acceptable. Do not remove or renumber exposed
+fields, even if the generated code still compiles. Additive fields or operations
+must be checked in both directions against the published RC binaries. Internal
+persisted/Raft-only changes require an impact assessment of shared service
+types rather than an automatic service revision bump. See the
 [service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
-for the gate, client obligations, and review criteria. This does not change the
-unreleased-v3 rule: remove obsolete fields and realign their numbers; do not add
-migrations, reserved fields, or support for older v3 formats.
+for the gate, client obligations, and review criteria. The published service
+contract is separate from older v3 persisted formats; do not add migrations or
+fallback paths for those formats.
 
 1. Edit the `.proto` file in `misc/proto/`
-2. **Realign field numbers sequentially** when adding/removing fields (no gaps, remove obsolete `reserved` entries)
+2. For client-facing messages, preserve published RC field numbers and meanings. Realign numbers only in messages outside the published service contract.
 3. **Audit the hand-rolled wire sites** before renumbering — see below
 4. Run `just generate-proto` **immediately**
 5. Update Go code that uses the generated types
