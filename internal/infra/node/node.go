@@ -948,9 +948,14 @@ func (node *Node) doMaintenance() error {
 		return nil
 	}
 
-	// Early skip: nothing new since the previous tick. Avoids paying for an
-	// fsync on idle clusters.
-	if node.fsm.LastPersistedIndex() <= lastSnap.GetMetadata().GetIndex() {
+	lastSnapIndex := lastSnap.GetMetadata().GetIndex()
+	// On an idle leader, a previously fenced snapshot may become compactable
+	// after the next peer durability report. Retry the compaction against the
+	// existing snapshot instead of permanently short-circuiting maintenance.
+	if node.fsm.LastPersistedIndex() <= lastSnapIndex {
+		if node.IsLeader() {
+			node.compactWAL(lastSnapIndex)
+		}
 		return nil
 	}
 
@@ -984,20 +989,7 @@ func (node *Node) doMaintenance() error {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create WAL snapshot")
 		}
 	} else if capturedIndex > node.applier.CompactionMargin() {
-		fence := node.fsm.LastPersistedIndex()
-		if node.IsLeader() {
-			fence = node.CompactionFence()
-		}
-		if fence > node.applier.CompactionMargin() {
-			compactIdx := min(capturedIndex, fence) - node.applier.CompactionMargin()
-			if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
-				node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
-			}
-		} else if node.IsLeader() {
-			node.logger.WithFields(map[string]any{
-				"capturedIndex": capturedIndex,
-			}).Infof("Background maintenance: compaction fenced until every voter reports durable Pebble progress")
-		}
+		node.compactWAL(capturedIndex)
 	}
 
 	// 2. Pebble checkpoint (for cold-restart DR — operator k8s bootstrap detection).
@@ -1016,6 +1008,31 @@ func (node *Node) doMaintenance() error {
 	node.lastCheckpointPersistedIndex = capturedIndex
 
 	return nil
+}
+
+// compactWAL advances the Raft WAL compaction boundary, respecting the
+// leader's cross-voter durability fence. snapshotIndex must identify a WAL
+// snapshot already persisted on disk; it may be the snapshot from a previous
+// maintenance tick when no new entries were applied.
+func (node *Node) compactWAL(snapshotIndex uint64) {
+	margin := node.applier.CompactionMargin()
+	fence := node.fsm.LastPersistedIndex()
+	if node.IsLeader() {
+		fence = node.CompactionFence()
+	}
+	if fence <= margin {
+		if node.IsLeader() {
+			node.logger.WithFields(map[string]any{
+				"snapshotIndex": snapshotIndex,
+			}).Infof("Background maintenance: compaction fenced until every voter reports durable Pebble progress")
+		}
+		return
+	}
+
+	compactIdx := min(snapshotIndex, fence) - margin
+	if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
+		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
+	}
 }
 
 func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
@@ -2337,8 +2354,9 @@ func (node *Node) MemberIDs() []uint64 {
 	return ids
 }
 
-// VoterIDs returns the voters in the committed Raft configuration. Learners
-// are excluded from the durability fence because they cannot take leadership.
+// VoterIDs returns the voters in the committed Raft configuration, including
+// both sides of a joint-consensus transition. Learners are excluded from the
+// durability fence because they cannot take leadership.
 func (node *Node) VoterIDs() []uint64 {
 	confState := node.confState.Load()
 	if confState == nil {
@@ -2346,7 +2364,9 @@ func (node *Node) VoterIDs() []uint64 {
 	}
 
 	voters := append([]uint64(nil), confState.GetVoters()...)
+	voters = append(voters, confState.GetVotersOutgoing()...)
 	slices.Sort(voters)
+	voters = slices.Compact(voters)
 
 	return voters
 }

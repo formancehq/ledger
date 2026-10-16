@@ -6,11 +6,15 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"path/filepath"
 	"time"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	raftwal "github.com/formancehq/ledger/v3/internal/storage/wal"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -230,9 +234,25 @@ var _ = Describe("Simple cluster", func() {
 				g.Expect(err).To(Succeed())
 
 				targetIndex = leaderState.GetRaftStatus().GetLastPersistedIndex()
-				g.Expect(targetIndex).To(BeNumerically(">", followerLastIndex),
-					"offline writes must advance beyond the stopped follower's last index")
+				g.Expect(targetIndex).To(BeNumerically(">=", followerLastIndex+raftCompactionMargin+1),
+					"offline writes must advance beyond the stopped follower's recoverable log range")
 			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+
+			By("Waiting for leader maintenance to snapshot beyond the follower's retained range")
+			leaderSnapshotter, err := raftwal.NewSnapshotter(
+				filepath.Join(servers[lid-1].WalDir, "snap"),
+				logging.FromContext(ctx),
+			)
+			Expect(err).To(Succeed())
+			defer func() { Expect(leaderSnapshotter.Close()).To(Succeed()) }()
+
+			Eventually(func(g Gomega) uint64 {
+				snapshot, err := leaderSnapshotter.Load()
+				g.Expect(err).To(Succeed())
+				g.Expect(snapshot).NotTo(BeNil())
+
+				return snapshot.GetMetadata().GetIndex()
+			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeNumerically(">=", targetIndex))
 
 			By("Recording Raft messages while the follower catches up from the retained WAL")
 			snapshotSent := make(chan uint64, 1)
