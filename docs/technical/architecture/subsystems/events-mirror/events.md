@@ -407,7 +407,7 @@ dotted names. Existing filters using dotted names
 as a hierarchy must be updated: `events.a.*.created_ledger` does not select the
 ledger `a.b`; use `events.a%2Eb.created_ledger`. `events.*.created_ledger` now
 matches exactly one ledger token, and `events.>` continues to capture all events.
-This is the unreleased v3 routing contract; no old-subject dual publication or
+This routing contract was set before `v3.0.0-rc.1`; no old-subject dual publication or
 fallback is provided. The configured topic remains the operator's subject prefix.
 
 Publication still waits for each JetStream acknowledgement. On failure, the

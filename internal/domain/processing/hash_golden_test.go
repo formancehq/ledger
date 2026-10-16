@@ -29,7 +29,7 @@ import (
 // verifiable.
 //
 // Future algorithm changes require a new HashAlgorithm value; the key input
-// changed for this unreleased-v3 audit-key cutover.
+// changed before the v3.0.0-rc.1 audit-key baseline.
 
 const goldenAuditKey = "0123456789abcdef0123456789abcdef"
 

@@ -1,18 +1,30 @@
 # Server Binary Upgrades
 
-## Current v3 Support Boundary
+## Release requirement from v3.0.0-rc.1
 
-Ledger v3 is in its release-candidate phase. Later RC builds must keep existing
-persisted and audited data readable. A format change needs a safe migration;
-do not require a data wipe to adopt a later RC build. Client-visible behavior
-and configuration may change when the impact and upgrade steps are documented.
-The service gRPC revision stays at 40; see the
+`v3.0.0-rc.1` is the first supported v3 persisted-state baseline. Every later
+v3 release, including another RC and the stable release, must provide a tested
+forward upgrade from the preceding released version. Preserve committed
+business data, audit history, and the state needed to resume the cluster. Ship
+and test a safe migration when a format changes. A full data wipe or external
+reconstruction is not an acceptable release upgrade. Beta and development
+revisions before `v3.0.0-rc.1` remain outside this guarantee.
+
+During the RC line, keep the service gRPC revision at 40 and document the client
+impact and upgrade steps of behavior or configuration changes. See the
 [protocol policy](../technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision).
-Updates within the RC line must also support a direct rolling server upgrade
-from every earlier published RC in that line, including when an operator skips
-one or more RCs. Old and new voters must communicate and apply each committed
-entry identically while they coexist. A change that cannot meet this requirement
-needs a staged rollout design or must wait for a different compatibility line.
+Every RC update must also support a direct rolling server upgrade from every
+earlier published RC in the line, including skipped RCs. Old and new voters must
+communicate and apply each committed entry identically while they coexist. A
+change that cannot meet this requirement needs a staged rollout design or must
+wait for a different compatibility line.
+
+Before tagging a new release, verify the upgrade with state created by the
+supported source releases. Cover affected Pebble records, Raft log and snapshot
+state, backup and restore formats, audit verification, and rebuildable
+projections. Document the upgrade procedure and rollback boundary in the
+release notes. Delay the release if the target cannot read or migrate the source
+state.
 
 The upgrade classes below describe existing procedures. RC changes must use the
 rolling class; coordinated restart and rebuild or restore are retained for
@@ -21,8 +33,8 @@ earlier development revisions and explicitly separate compatibility lines.
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
 | Rolling | Required between builds on the same RC line. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
-| Coordinated restart | Earlier development revisions or a separate compatibility line that cannot mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart the cluster without a mixed-version window. |
-| Rebuild or restore | Earlier development revisions or a separate compatibility line with incompatible persisted or backup formats. | Follow the revision-specific reset instructions and rebuild from the declared source of truth or a backup explicitly supported by the target revision. |
+| Coordinated restart | A separate compatibility line that cannot safely mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart without a mixed-version window. Preserve or migrate the released data. |
+| Migrate or restore | A separate line with a changed persisted or backup format, or development state before the first RC. | Follow a tested migration or restore a backup supported by the target release. A wipe or external rebuild is permitted only for unsupported pre-RC development state. Verify the complete state before serving writes. |
 
 Before publishing an RC update, demonstrate the rolling class separately from
 each earlier published RC binary to the target binary in one cluster, including
@@ -35,7 +47,8 @@ documented under
 [Upgrading from pre-#400 clusters](./deployment.md#upgrading-from-pre-400-clusters)
 and
 [Upgrading across an FSM error-identity change](./deployment.md#upgrading-across-an-fsm-error-identity-change)
-take precedence over this RC workflow.
+describe development upgrades before `v3.0.0-rc.1`. Their reset instructions
+do not apply to upgrades from the RC or any later release.
 
 ## Preflight
 

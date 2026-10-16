@@ -125,7 +125,7 @@ For example, a node-local limit on live query checkpoints may reject `CreateQuer
 
 Admission-side count checks are soft unless the admission path also serializes or reserves the constrained resource. Two concurrent requests can both observe `count = limit - 1`, both be proposed, and leave the live count above the configured limit until an item is deleted. If that overshoot is operationally acceptable, document it as a deliberate consequence of the design. If the limit must be strict, use an explicit leader-side serialization/reservation design or a replicated protocol whose rollout semantics have been reviewed; do not quietly turn a local setting into an FSM input.
 
-Replicating a setting is not, by itself, proof that a change is safe across mixed binaries: every binary participating in a rolling-upgrade window must understand the resulting command semantics identically. Since `v3.0.0-rc.1`, each RC update must support that window. A change to apply semantics needs an explicit staged rollout design that keeps old and new voters deterministic together; an implicit version-dependent default is not sufficient.
+Replicating a setting is not, by itself, proof that a change is safe across mixed binaries: every binary participating in a rolling-upgrade window must understand the resulting command semantics identically. Since `v3.0.0-rc.1`, each RC update must support that window and preserve or migrate existing data. A change to apply semantics needs an explicit staged rollout design that keeps old and new voters deterministic together; an implicit version-dependent default is not sufficient.
 
 Before allowing configuration to influence a write path, answer:
 

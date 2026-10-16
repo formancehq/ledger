@@ -7,7 +7,7 @@
   "invariants": [
     "A removed feature leaves no production code path, wire field, enum value, error reason, HTTP/OpenAPI property, CLI flag, server flag/env, operator CRD field/secret wiring, DI binding, or testserver option behind.",
     "Surviving behavior that previously shared code with the removed feature must keep working from its authoritative source (e.g. revert planning resolves postings from TransactionState after receipt removal).",
-    "Protobuf removals realign field and enum numbering sequentially with regenerated bindings and hand-written marshal helpers in agreement; no reserved declarations are introduced (pre-release policy).",
+    "Protobuf removals preserve published field and enum numbers from v3.0.0-rc.1 onward, reserve removed numbers and names, and migrate persisted data when required; regenerated bindings and hand-written marshal helpers must agree.",
     "Documentation, API comparison tables, sales material, and dashboards must not describe removed behavior as current.",
     "Tests and Antithesis workloads retain the coverage the removed feature's tests used to piggyback on (e.g. revert success/force/effective-date/already-reverted paths), and no test remains green only because its assertions became vacuous after the removal.",
     "Unrelated uses of a removed feature's vocabulary (e.g. the English word 'receipt' meaning acknowledgement) must not be collateral-removed."

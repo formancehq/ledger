@@ -230,9 +230,9 @@ entity-first layout grouped all metadata for one entity but forced schema
 rewrite, old-version GC, and field removal to scan the whole namespace.
 Field/version-first makes those operations proportional to the affected field
 and version. The ingestion benchmarks cover 1, 4, and 12 indexed fields so the
-lost per-entity write locality remains measurable. Ledger v3 is unreleased, so
-the format changes directly without migration, dual-format writes, or fallback
-reads.
+lost per-entity write locality remains measurable. This format change preceded
+`v3.0.0-rc.1`; later releases must preserve or migrate existing data under the
+[upgrade policy](../../../../ops/upgrades.md#release-requirement-from-v300-rc1).
 
 ### Value encoding
 

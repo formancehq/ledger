@@ -68,42 +68,6 @@ var _ = time.Second
 	require.Empty(t, findings)
 }
 
-func TestCheckProtoSourceDetectsMultilineAndInlineDeclarations(t *testing.T) {
-	t.Parallel()
-
-	source := []byte(`syntax = "proto3";
-
-message Example {
-	reserved
-		2,
-		4;
-	string value = 1; reserved "old_value";
-}
-`)
-
-	findings := checkProtoSource("misc/proto/example.proto", source)
-	require.Len(t, findings, 2)
-	require.Equal(t, 4, findings[0].line)
-	require.Equal(t, 7, findings[1].line)
-}
-
-func TestCheckProtoSourceIgnoresCommentsAndStrings(t *testing.T) {
-	t.Parallel()
-
-	source := []byte(`syntax = "proto3";
-
-// reserved 1;
-/*
-reserved 2;
-*/
-message Example {
-	string note = 1 [default = "reserved 3;"];
-}
-`)
-
-	require.Empty(t, checkProtoSource("misc/proto/example.proto", source))
-}
-
 func TestIsDeterministicFSMPathIncludesNestedPackages(t *testing.T) {
 	t.Parallel()
 

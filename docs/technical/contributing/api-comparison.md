@@ -1315,7 +1315,8 @@ same contract, and `ClusterBootstrapService.GetPeers` returns each member's 16-b
 in `PeerInfo.instance_id` (distinct from the numeric `PeerInfo.id` node identifier). Missing or incorrectly sized registration identities
 are rejected with gRPC `InvalidArgument`. Peer discovery aborts startup when a
 returned member has an invalid identity, rather than retrying a malformed
-response. There is no identity-less compatibility path because v3 is unreleased.
+response. This requirement predates `v3.0.0-rc.1`; no release contains an
+identity-less membership format.
 
 ### BucketService Methods
 
