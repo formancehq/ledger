@@ -11,10 +11,11 @@ service clients to declare the protocol they implement. Servers implementing
 EN-1851 reject business RPCs with a missing or different protocol revision.
 Servers predating EN-1851 do not enforce this gate: the new CLI sends a protocol
 declaration without a preflight, so it cannot protect calls to an older, ungated
-server. Different builds may communicate when they implement the same service
-protocol, but mixed wire-format rolling upgrades are not guaranteed. See the
+server. Updates within the RC line keep the service wire contract at revision
+40 and must support mixed-binary rolling upgrades. The protocol match alone
+does not prove that Raft apply and persisted data remain compatible. See the
 [service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
-for scope and failure behavior.
+and [server upgrades](upgrades.md) for the required validation.
 
 ## Local Deployment
 
@@ -87,6 +88,15 @@ named in the diagnostic; Ledger does not open its service listeners or report
 readiness. When the same flag is explicitly supplied on the command line, that
 higher-precedence value is used and the lower-precedence environment value is
 ignored.
+
+Byte-size flags accept non-negative integer bytes or an integer with a binary
+suffix (`Ki`, `Mi`, `Gi`, `Ti`, `Pi`, `Ei`) or decimal suffix (`k`, `M`, `G`,
+`T`, `P`, `E`). The expanded byte count must not exceed 9223372036854775807
+(`MaxInt64`); negative values and overflow fail parsing before configuration
+conversion or defaulting. For example, `--raft-max-size-per-msg=16Ei` is rejected.
+Explicit zero retains each flag's documented sentinel meaning, including the
+1 MiB default for `--raft-max-size-per-msg=0`. Individual consumers may impose
+smaller limits.
 
 Example with environment variables:
 ```bash
@@ -815,14 +825,13 @@ a rollback reverses the versions. A store checker can replay an affected audit
 entry differently from the stored outcome, and a locally consistent audit
 chain does not by itself prove that replicas agree with each other.
 
-For a library change that can alter script outcomes, do not use a mixed-version
-rolling upgrade. During unreleased v3 development, state is wiped on pushes
-to `release/v3.0`; a clean cluster restart with reset state is the supported
-boundary for such a change. Before a stable release, maintaining data across
-such an upgrade would require a separately designed, replicated semantic
-version boundary covering in-flight Raft entries and audit replay. Merely
-stopping all nodes does not establish that boundary when unapplied entries or
-replayable history remain.
+For a library change that can alter script outcomes, design a staged rollout
+that keeps old and new voters deterministic while they coexist and preserves
+replay of existing audited entries. Before `v3.0.0-rc.1`, state was wiped on
+pushes to `release/v3.0`; a clean cluster restart with reset state was the
+supported boundary for such a change. During the RC line, that reset is no
+longer an upgrade path. Merely stopping all nodes does not establish a safe
+boundary when unapplied entries or replayable history remain.
 
 ### Audit hash keying — threat model
 

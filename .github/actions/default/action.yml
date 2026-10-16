@@ -29,3 +29,10 @@ runs:
           ${{ steps.go-env.outputs.GOCACHE }}
           ${{ steps.go-env.outputs.GOMODCACHE }}
           ~/.cache/golangci-lint
+    # Namespace keeps the last commit per node and never merges commits, so a
+    # job that only needs a few modules would drop the modules other jobs need.
+    # Downloading every module here makes each commit carry the full set; on a
+    # warm cache this is a no-op. Must run after the cache mount above.
+    - name: Download Go modules
+      shell: bash
+      run: nix develop .#ci --command just go-mod-download

@@ -20,6 +20,7 @@ type lifecycleNode interface {
 
 func nodeHook(node lifecycleNode, logger logging.Logger) fx.Hook {
 	var cancelRun context.CancelFunc
+	var runDone chan struct{}
 
 	return fx.Hook{
 		OnStart: func(ctx context.Context) error {
@@ -30,7 +31,7 @@ func nodeHook(node lifecycleNode, logger logging.Logger) fx.Hook {
 			var runCtx context.Context
 			runCtx, cancelRun = context.WithCancel(context.Background())
 
-			runDone := make(chan struct{})
+			runDone = make(chan struct{})
 			otlplogs.Go(func() {
 				defer close(runDone)
 				err := node.Run(runCtx, ready)
@@ -96,18 +97,16 @@ func nodeHook(node lifecycleNode, logger logging.Logger) fx.Hook {
 			// pool error" from Node.Run, panics the bootstrap
 			// goroutine, and crashes the process mid-shutdown
 			// instead of returning a clean nil (#345).
-			// Cancel only after Stop returns, preserving the run
-			// context through successful task/commit drain. Stop
+			// Cancel only after Run exits, preserving the run
+			// context through task/commit drain even on timeout. Stop
 			// publishes its shutdown request even if ctx expires
 			// during transfer or before Run reaches its stop select.
-			// On timeout, cancellation can interrupt context-aware
-			// work, but does not join Run or terminate idle tasks;
-			// Run's explicit stop path still owns their termination.
-			// A timeout is not proof that infrastructure is safe to
-			// close. Only successful Stop confirms the drain/join.
+			// A timeout is not a join: retain ownership until Run
+			// finishes before dependencies can safely be closed.
 			defer cancelRun()
 
 			err := node.Stop(ctx)
+			<-runDone
 			if err != nil {
 				return fmt.Errorf("shutting down raft cluster: %w", err)
 			}

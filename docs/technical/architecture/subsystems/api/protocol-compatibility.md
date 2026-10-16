@@ -3,11 +3,10 @@
 ## Requirement and decision (EN-1851)
 
 [EN-1851](https://formance-team.atlassian.net/browse/EN-1851) requires detecting
-an incompatible `ledgerctl` before it executes a business operation. Ledger v3
-is unreleased: its protobuf fields may be renumbered between development
-revisions, and a mismatched request can decode with a different meaning rather
-than fail to decode. Build versions and commit IDs do not establish protocol
-compatibility.
+an incompatible `ledgerctl` before it executes a business operation. Before
+`v3.0.0-rc.1`, protobuf fields could be renumbered between development revisions,
+and a mismatched request could decode with a different meaning rather than fail
+to decode. Build versions and commit IDs do not establish protocol compatibility.
 
 The approved decision is to **block requests with a different or missing
 protocol revision**, using a revision independent of the software release.
@@ -15,7 +14,8 @@ Each server supports exactly one revision. There is no negotiation, historical
 format support, or bypass flag. An advisory warning would not enforce the
 requirement; exact commit matching would also reject builds whose service
 contract has not changed. Release SemVer does not currently encode the
-compatibility of development revisions.
+compatibility of development revisions. During the RC line, revision 40 is
+frozen and the published gRPC wire contract must remain compatible.
 
 ## Wire contract and failure behavior
 
@@ -98,9 +98,10 @@ server-specific compatibility repair.
 HTTP consumers do not send this gRPC metadata. Internal forwarding from HTTP
 uses the server's service client and is subject to the same gate at the peer.
 Nodes with different service revisions can therefore fail forwarded requests;
-this mechanism does not establish support for mixed-version clusters or rolling
-wire-format upgrades. The separate Raft transport and snapshot server retain
-their own contracts.
+the revision-40 wire contract alone does not prove a rolling upgrade safe. RC
+updates must also preserve peer communication, Raft apply, and persisted-state
+compatibility while old and new servers coexist. The separate Raft transport and
+snapshot server retain their own contracts. See [server upgrades](../../../../ops/upgrades.md).
 
 ## Apply execution provenance (revision 7)
 
@@ -348,24 +349,26 @@ must implement the same revision; there is no compatibility fallback.
 ## Maintaining the revision
 
 Ledger v3 is in its release-candidate phase. The revision is frozen at `"40"`:
-do not increment `pkg/grpcprotocol.Version`. Every service contract change must
-stay compatible instead. An existing client and server at the same revision must
-interpret requests, responses, and operations the same way, in both directions.
+do not increment `pkg/grpcprotocol.Version`. Preserve published gRPC service
+and method names, request and response types, protobuf field numbers, wire
+types, field identity, and enum numbers so existing clients can call and decode
+the service. The revision identifies this wire contract; it does not freeze
+every behavior or configuration setting for the release-candidate phase.
 
-The author of a service contract change must determine whether an existing
-client or server would interpret requests, responses, or operations differently.
-Renumbering or changing the interpretation of exposed protobuf fields is
-incompatible, and so are incompatible semantics even when the `.proto` text
-stays unchanged. Such a change is not allowed during the release-candidate
-phase. Make the change compatible, or escalate it to the team before
-publication; do not bump the revision to work around it. Reviewers must check
-this classification. State the compatibility assessment in the PR.
-Documentation-only changes need no assessment.
+The author of a service change must identify its effect on published clients.
+Removing or renaming a published RPC, changing its request or response type,
+or removing, renumbering, or repurposing a published field or enum value is not
+allowed during the RC. Behavior changes, such as a bounded page with a next
+cursor, and configuration changes can ship when their effect and upgrade steps
+are documented in the PR and user guidance. Reviewers must check whether a
+client can still decode the response and how it must handle any changed result.
+Do not bump the revision to avoid this assessment. Documentation-only changes
+need no client assessment.
 
-A compatible addition is acceptable only when both directions remain compatible
-under the declared service contract. A change confined to a persisted
-or Raft message does not automatically change the service protocol; inspect any
-shared types exposed through the service API. See
+An additive service field must preserve decoding in both directions. A change
+confined to a persisted or Raft message does not automatically change the service
+protocol; inspect any shared types exposed through the service API. Existing
+persisted and audited data must remain readable, or have a safe migration. See
 [protobuf contributor rules](../../../contributing/protobuf.md).
 
 ### Automated enforcement
@@ -633,6 +636,7 @@ This status change requires revision 40 clients and servers together.
 EN-2946 caps `InspectIndexRequest.page_size` at 10000 in the read store, which
 HTTP and gRPC share. A request for more than 10000 values or facets returns
 10000, `has_more`, and a next cursor. Earlier builds returned the full requested
-page. The protobuf text changes only by a comment. A client that follows the
-cursor reads the same values, so the change keeps revision 40: the service
-protocol revision is frozen during the v3 release-candidate phase.
+page. The protobuf text changes only by a comment. Clients that previously
+treated the requested page as complete must now follow the cursor to read all
+results. This response behavior changes under revision 40 by the RC policy;
+the revision is frozen, and the client impact must be documented.

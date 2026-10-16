@@ -54,6 +54,14 @@ matches; source builds reporting `dev` still carry a defined protocol revision.
 See the [service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
 for SDKs, custom gRPC clients, and internal forwarding.
 
+## Server byte-size flags
+
+Server byte-size flags accept non-negative integer bytes with optional binary
+(`Ki` through `Ei`) or decimal (`k`, `M`, `G`, `T`, `P`, `E`) suffixes. The
+expanded size must fit in an int64. Negative values and overflow are rejected;
+zero keeps the flag's documented default or disabled meaning. See the
+[server configuration contract](deployment.md#configuration) for details.
+
 ## Global Flags
 
 These flags are available for all commands:
