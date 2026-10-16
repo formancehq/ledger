@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
+	"github.com/formancehq/go-libs/v5/pkg/service"
 
 	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -233,6 +235,87 @@ func TestLoadConfigByteSizeDefaults(t *testing.T) {
 				expected = 1 << 20
 			}
 			require.Equal(t, expected, cfg.RaftConfig.MaxSizePerMsg)
+		})
+	}
+}
+
+func TestLoadConfig_RejectsUnknownHashAlgorithm(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewRunCommand()
+	require.NoError(t, cmd.ParseFlags([]string{"--node-id=1", "--cluster-id=hash-test", "--hash-algorithm=xxh33"}))
+
+	cfg, err := LoadConfig(context.Background(), cmd)
+	require.EqualError(t, err, `invalid --hash-algorithm "xxh33": must be blake3 or xxh3`)
+	require.Nil(t, cfg)
+}
+
+func TestLoadConfig_HashAlgorithm(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name    string
+		args    []string
+		want    commonpb.HashAlgorithm
+		invalid string
+	}{
+		{name: "default", want: commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
+		{name: "empty retains default", args: []string{"--hash-algorithm="}, want: commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
+		{name: "blake3", args: []string{"--hash-algorithm=blake3"}, want: commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
+		{name: "xxh3", args: []string{"--hash-algorithm=xxh3"}, want: commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3},
+		{name: "unsupported", args: []string{"--hash-algorithm=sha256"}, invalid: "sha256"},
+		{name: "case sensitive", args: []string{"--hash-algorithm=BLAKE3"}, invalid: "BLAKE3"},
+		{name: "whitespace", args: []string{"--hash-algorithm= xxh3 "}, invalid: " xxh3 "},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := NewRunCommand()
+			require.NoError(t, cmd.ParseFlags(append([]string{"--node-id=1", "--cluster-id=hash-test"}, test.args...)))
+			cfg, err := LoadConfig(context.Background(), cmd)
+			if test.invalid != "" {
+				require.EqualError(t, err, fmt.Sprintf("invalid --hash-algorithm %q: must be blake3 or xxh3", test.invalid))
+				require.Nil(t, cfg)
+
+				return
+			}
+			require.NoError(t, err)
+			require.NoError(t, cfg.Validate())
+			require.Equal(t, test.want, cfg.BloomConfig.GetHashAlgorithm())
+		})
+	}
+}
+
+func TestLoadConfig_HashAlgorithmEnvironment(t *testing.T) {
+	// The production binder reads process environment; these cases must be serial.
+	for _, test := range []struct {
+		name    string
+		env     string
+		args    []string
+		want    commonpb.HashAlgorithm
+		invalid bool
+	}{
+		{name: "empty retains default", want: commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
+		{name: "blake3", env: "blake3", want: commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
+		{name: "xxh3", env: "xxh3", want: commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3},
+		{name: "invalid", env: "xxh33", invalid: true},
+		{name: "flag overrides invalid environment", env: "xxh33", args: []string{"--hash-algorithm=xxh3"}, want: commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3},
+		{name: "invalid flag overrides valid environment", env: "blake3", args: []string{"--hash-algorithm=xxh33"}, invalid: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("HASH_ALGORITHM", test.env)
+			cmd := NewRunCommand()
+			require.NoError(t, cmd.ParseFlags(append([]string{"--node-id=1", "--cluster-id=hash-test"}, test.args...)))
+			require.NoError(t, service.BindEnvToCommandWithError(cmd))
+			cfg, err := LoadConfig(context.Background(), cmd)
+			if test.invalid {
+				require.EqualError(t, err, `invalid --hash-algorithm "xxh33": must be blake3 or xxh3`)
+				require.Nil(t, cfg)
+
+				return
+			}
+			require.NoError(t, err)
+			require.NoError(t, cfg.Validate())
+			require.Equal(t, test.want, cfg.BloomConfig.GetHashAlgorithm())
 		})
 	}
 }
