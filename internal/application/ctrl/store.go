@@ -200,5 +200,17 @@ func scanAccount(
 		}).Tracef("scanAccount complete")
 	}
 
-	return assembleAccount(address, volEntries, metaEntries, collapseColors)
+	account, err := assembleAccount(address, volEntries, metaEntries, collapseColors)
+	if err != nil {
+		return nil, err
+	}
+	inventory, err := attrs.AccountInventory.Get(reader, (domain.AccountKey{LedgerName: ledgerName, Account: address}).Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("reading account creation date: %w", err)
+	}
+	if inventory != nil {
+		account.InsertionDate = &commonpb.Timestamp{Data: inventory.GetCreatedAt()}
+	}
+
+	return account, nil
 }

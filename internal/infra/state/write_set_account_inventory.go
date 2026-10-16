@@ -111,14 +111,17 @@ func (b *WriteSet) writeAccountInventories(
 			continue
 		}
 		birth := b.fsm.State.LastAppliedIndex
+		createdAt := b.Date.GetData()
 		if old != nil {
 			birth = old.GetBirthIndex()
+			createdAt = old.GetCreatedAt()
 		}
 		_, _, err = b.fsm.Registry.AccountInventories.PutWithCache(batch, genByte, account.Bytes(), &raftcmdpb.AccountInventoryState{
 			BirthIndex:        birth,
 			InventoryRevision: b.fsm.State.LastAppliedIndex,
 			VolumeCount:       uint32(volumes),
 			MetadataCount:     uint32(metadata),
+			CreatedAt:         createdAt,
 		})
 		if err != nil {
 			return fmt.Errorf("writing account inventory %q: %w", account.Account, err)

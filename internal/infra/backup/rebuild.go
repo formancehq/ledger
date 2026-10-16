@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"math/big"
 	"sort"
 	"strings"
@@ -59,25 +60,27 @@ func rebuildDelta(
 	batch := store.OpenWriteSession()
 
 	writer := &attributeReplayWriter{
-		store:                  store,
-		batch:                  batch,
-		volume:                 attrs.Volume,
-		metadata:               attrs.Metadata,
-		tx:                     attrs.Transaction,
-		ledger:                 attrs.Ledger,
-		references:             attrs.References,
-		boundary:               attrs.Boundary,
-		index:                  attrs.Index,
-		pendingVolumes:         make(map[string]*raftcmdpb.VolumePair),
-		pendingMetadata:        make(map[string]*commonpb.MetadataValue),
-		pendingTx:              make(map[string]*commonpb.TransactionState),
-		pendingIndexes:         make(map[string]*commonpb.Index),
-		purgedVolumePrefixes:   make(map[string]struct{}),
-		purgedMetadataPrefixes: make(map[string]struct{}),
-		ledgerInfos:            make(map[string]*commonpb.LedgerInfo),
-		boundaries:             make(map[string]*raftcmdpb.LedgerBoundaries),
-		reversions:             make(map[string]*bitset.Bitset),
-		dirtyReversions:        make(map[string]struct{}),
+		store:                     store,
+		batch:                     batch,
+		volume:                    attrs.Volume,
+		metadata:                  attrs.Metadata,
+		accountInventory:          attrs.AccountInventory,
+		tx:                        attrs.Transaction,
+		ledger:                    attrs.Ledger,
+		references:                attrs.References,
+		boundary:                  attrs.Boundary,
+		index:                     attrs.Index,
+		pendingVolumes:            make(map[string]*raftcmdpb.VolumePair),
+		pendingMetadata:           make(map[string]*commonpb.MetadataValue),
+		pendingAccountInventories: make(map[domain.AccountKey]*raftcmdpb.AccountInventoryState),
+		pendingTx:                 make(map[string]*commonpb.TransactionState),
+		pendingIndexes:            make(map[string]*commonpb.Index),
+		purgedVolumePrefixes:      make(map[string]struct{}),
+		purgedMetadataPrefixes:    make(map[string]struct{}),
+		ledgerInfos:               make(map[string]*commonpb.LedgerInfo),
+		boundaries:                make(map[string]*raftcmdpb.LedgerBoundaries),
+		reversions:                make(map[string]*bitset.Bitset),
+		dirtyReversions:           make(map[string]struct{}),
 	}
 
 	sinkConfig := attrs.SinkConfig
@@ -240,6 +243,7 @@ func rebuildDelta(
 				storedPurges[domain.AccountKey{LedgerName: ledgerName, Account: account}] = struct{}{}
 			}
 
+			writer.accountDate = p.Apply.GetLog().GetDate().GetData()
 			if err := replay.ReplayLedgerLog(ledgerName, seq, p.Apply.GetLog().GetData(), nil, p.Apply.GetLog().GetDate(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 				_ = batch.Cancel()
 
@@ -617,6 +621,7 @@ func rebuildDelta(
 			writer.batch = batch
 			clear(writer.pendingVolumes)
 			clear(writer.pendingMetadata)
+			clear(writer.pendingAccountInventories)
 			clear(writer.pendingTx)
 			clear(writer.pendingIndexes)
 			clear(preparedQueries)
@@ -1020,18 +1025,21 @@ func (w *attributeReplayWriter) RemoveAccountType(ledger string, name string) er
 // overlays make in-batch state visible to same-batch reads; both maps are
 // cleared on every batch commit alongside the batch itself.
 type attributeReplayWriter struct {
-	store           *dal.Store
-	batch           *dal.WriteSession
-	volume          *attributes.Attribute[*raftcmdpb.VolumePair]
-	metadata        *attributes.Attribute[*commonpb.MetadataValue]
-	tx              *attributes.Attribute[*commonpb.TransactionState]
-	ledger          *attributes.Attribute[*commonpb.LedgerInfo]
-	references      *attributes.Attribute[*commonpb.TransactionReferenceValue]
-	boundary        *attributes.Attribute[*raftcmdpb.LedgerBoundaries]
-	index           *attributes.Attribute[*commonpb.Index]
-	pendingVolumes  map[string]*raftcmdpb.VolumePair
-	pendingMetadata map[string]*commonpb.MetadataValue
-	pendingTx       map[string]*commonpb.TransactionState
+	store                     *dal.Store
+	batch                     *dal.WriteSession
+	volume                    *attributes.Attribute[*raftcmdpb.VolumePair]
+	metadata                  *attributes.Attribute[*commonpb.MetadataValue]
+	accountInventory          *attributes.Attribute[*raftcmdpb.AccountInventoryState]
+	tx                        *attributes.Attribute[*commonpb.TransactionState]
+	ledger                    *attributes.Attribute[*commonpb.LedgerInfo]
+	references                *attributes.Attribute[*commonpb.TransactionReferenceValue]
+	boundary                  *attributes.Attribute[*raftcmdpb.LedgerBoundaries]
+	index                     *attributes.Attribute[*commonpb.Index]
+	pendingVolumes            map[string]*raftcmdpb.VolumePair
+	pendingMetadata           map[string]*commonpb.MetadataValue
+	pendingAccountInventories map[domain.AccountKey]*raftcmdpb.AccountInventoryState
+	accountDate               uint64
+	pendingTx                 map[string]*commonpb.TransactionState
 	// Purge range tombstones are invisible to reads through the non-indexed
 	// write batch. These canonical prefixes shadow checkpoint rows until the
 	// batch commits; exact pending entries take precedence when the account is
@@ -1466,6 +1474,11 @@ func (w *attributeReplayWriter) deleteLedger(name string, deletedAt *commonpb.Ti
 			delete(w.pendingVolumes, k)
 		}
 	}
+	for account := range w.pendingAccountInventories {
+		if account.LedgerName == name {
+			delete(w.pendingAccountInventories, account)
+		}
+	}
 
 	for k := range w.pendingTx {
 		if strings.HasPrefix(k, prefix) {
@@ -1634,6 +1647,54 @@ func (w *attributeReplayWriter) flushBoundaries() error {
 	return nil
 }
 
+// updateAccountInventory derives account birth from actual replayed key-set
+// transitions. The pending overlay keeps non-indexed batch writes visible to
+// later logs; checkpoints provide the seed for incremental replay.
+func (w *attributeReplayWriter) updateAccountInventory(account domain.AccountKey, volumes, metadata int64) error {
+	if w.accountInventory == nil {
+		w.accountInventory = attributes.New().AccountInventory
+	}
+	if w.pendingAccountInventories == nil {
+		w.pendingAccountInventories = make(map[domain.AccountKey]*raftcmdpb.AccountInventoryState)
+	}
+	current, seen := w.pendingAccountInventories[account]
+	if !seen {
+		var err error
+		current, err = w.accountInventory.Get(w.store, account.Bytes())
+		if err != nil {
+			return err
+		}
+	}
+	next := &raftcmdpb.AccountInventoryState{}
+	if current != nil {
+		next = current.CloneVT()
+	}
+	newVolumes := int64(next.GetVolumeCount()) + volumes
+	newMetadata := int64(next.GetMetadataCount()) + metadata
+	if newVolumes < 0 || newMetadata < 0 || newVolumes > math.MaxUint32 || newMetadata > math.MaxUint32 {
+		return fmt.Errorf("invalid replayed account inventory for %q: volumes=%d metadata=%d", account.Account, newVolumes, newMetadata)
+	}
+	if newVolumes == 0 && newMetadata == 0 {
+		if err := w.accountInventory.Delete(w.batch, account.Bytes()); err != nil {
+			return err
+		}
+		w.pendingAccountInventories[account] = nil
+
+		return nil
+	}
+	if current == nil {
+		next.CreatedAt = w.accountDate
+	}
+	next.VolumeCount = uint32(newVolumes)
+	next.MetadataCount = uint32(newMetadata)
+	if _, err := w.accountInventory.Set(w.batch, account.Bytes(), next); err != nil {
+		return err
+	}
+	w.pendingAccountInventories[account] = next
+
+	return nil
+}
+
 func (w *attributeReplayWriter) AddVolumeDelta(canonicalKey []byte, inputDelta, outputDelta *big.Int) error {
 	existing, err := w.GetVolume(canonicalKey)
 	if err != nil {
@@ -1667,6 +1728,14 @@ func (w *attributeReplayWriter) AddVolumeDelta(canonicalKey []byte, inputDelta, 
 	_, err = w.volume.Set(w.batch, canonicalKey, pair)
 	if err == nil {
 		w.pendingVolumes[string(canonicalKey)] = pair
+		if existing == nil {
+			var key domain.VolumeKey
+			if err := key.Unmarshal(canonicalKey); err != nil {
+				return err
+			}
+
+			return w.updateAccountInventory(key.AccountKey, 1, 0)
+		}
 	}
 
 	return err
@@ -1684,9 +1753,21 @@ func (w *attributeReplayWriter) GetVolume(canonicalKey []byte) (*raftcmdpb.Volum
 }
 
 func (w *attributeReplayWriter) DeleteVolume(canonicalKey []byte) error {
-	err := w.volume.Delete(w.batch, canonicalKey)
+	existing, err := w.GetVolume(canonicalKey)
+	if err != nil {
+		return err
+	}
+	err = w.volume.Delete(w.batch, canonicalKey)
 	if err == nil {
 		w.pendingVolumes[string(canonicalKey)] = nil
+		if existing != nil {
+			var key domain.VolumeKey
+			if err := key.Unmarshal(canonicalKey); err != nil {
+				return err
+			}
+
+			return w.updateAccountInventory(key.AccountKey, -1, 0)
+		}
 	}
 
 	return err
@@ -1713,18 +1794,42 @@ func (w *attributeReplayWriter) MoveVolume(oldKey, newKey []byte) error {
 }
 
 func (w *attributeReplayWriter) SetMetadata(canonicalKey []byte, value *commonpb.MetadataValue) error {
-	_, err := w.metadata.Set(w.batch, canonicalKey, value)
+	old, err := w.getMetadata(canonicalKey)
+	if err != nil {
+		return err
+	}
+	_, err = w.metadata.Set(w.batch, canonicalKey, value)
 	if err == nil {
 		w.pendingMetadata[string(canonicalKey)] = value
+		if old == nil {
+			var key domain.MetadataKey
+			if err := key.Unmarshal(canonicalKey); err != nil {
+				return err
+			}
+
+			return w.updateAccountInventory(key.AccountKey, 0, 1)
+		}
 	}
 
 	return err
 }
 
 func (w *attributeReplayWriter) DeleteMetadata(canonicalKey []byte) error {
-	err := w.metadata.Delete(w.batch, canonicalKey)
+	old, err := w.getMetadata(canonicalKey)
+	if err != nil {
+		return err
+	}
+	err = w.metadata.Delete(w.batch, canonicalKey)
 	if err == nil {
 		w.pendingMetadata[string(canonicalKey)] = nil
+		if old != nil {
+			var key domain.MetadataKey
+			if err := key.Unmarshal(canonicalKey); err != nil {
+				return err
+			}
+
+			return w.updateAccountInventory(key.AccountKey, 0, -1)
+		}
 	}
 
 	return err
@@ -1752,6 +1857,17 @@ func hasCanonicalPrefix(prefixes map[string]struct{}, canonicalKey []byte) bool 
 }
 
 func (w *attributeReplayWriter) PurgeAccount(ledger, account string, _ replay.ExclusionCollector) error {
+	if w.accountInventory == nil {
+		w.accountInventory = attributes.New().AccountInventory
+	}
+	key := domain.AccountKey{LedgerName: ledger, Account: account}
+	if err := w.accountInventory.Delete(w.batch, key.Bytes()); err != nil {
+		return err
+	}
+	if w.pendingAccountInventories == nil {
+		w.pendingAccountInventories = make(map[domain.AccountKey]*raftcmdpb.AccountInventoryState)
+	}
+	w.pendingAccountInventories[key] = nil
 	if w.derivedPurges == nil {
 		w.derivedPurges = make(map[domain.AccountKey]struct{})
 	}

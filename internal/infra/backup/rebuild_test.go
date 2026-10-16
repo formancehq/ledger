@@ -368,13 +368,13 @@ func TestRebuildDelta_ReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger",
 		addAccountTypePayload("orders", "orders:{id}", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
 	)))
-	require.NoError(t, batch.SetProto(coldLogKey(3), applyLedgerLog(3, "ledger",
+	require.NoError(t, batch.SetProto(coldLogKey(3), applyLedgerLogAt(3, "ledger", 100,
 		createdTransactionPayload(1, rebuildTestPosting("world", "orders:1", "USD", 5)),
 	)))
-	require.NoError(t, batch.SetProto(coldLogKey(4), applyLedgerLog(4, "ledger",
+	require.NoError(t, batch.SetProto(coldLogKey(4), applyLedgerLogAt(4, "ledger", 200,
 		createdTransactionPayload(2, rebuildTestPosting("orders:1", "world", "USD", 5)),
 	)))
-	require.NoError(t, batch.SetProto(coldLogKey(5), applyLedgerLog(5, "ledger",
+	require.NoError(t, batch.SetProto(coldLogKey(5), applyLedgerLogAt(5, "ledger", 300,
 		createdTransactionPayload(3, rebuildTestPosting("world", "orders:1", "USD", 3)),
 	)))
 	require.NoError(t, batch.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
@@ -397,6 +397,9 @@ func TestRebuildDelta_ReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 	require.NotNil(t, pair)
 	require.Equal(t, "8", pair.GetInput().ToBigInt().String())
 	require.Equal(t, "5", pair.GetOutput().ToBigInt().String())
+	inventory, err := attrs.AccountInventory.Get(handle, domain.AccountKey{LedgerName: "ledger", Account: "orders:1"}.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, uint64(100), inventory.GetCreatedAt())
 
 	// Boundaries are rebuilt into the attribute zone with the id fields. Log
 	// ids here equal the log sequence (test fixture), so NextLogId is
@@ -1104,6 +1107,8 @@ func TestRebuildDelta_PurgesCheckpointEraEphemeralAccountState(t *testing.T) {
 	_, err := attrs.Volume.Set(batch, volumeKey.Bytes(), &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(5)})
 	require.NoError(t, err)
 	_, err = attrs.Metadata.Set(batch, metadataKey.Bytes(), commonpb.NewStringValue("hold-1"))
+	require.NoError(t, err)
+	_, err = attrs.AccountInventory.Set(batch, volumeKey.AccountKey.Bytes(), &raftcmdpb.AccountInventoryState{VolumeCount: 1, MetadataCount: 1, CreatedAt: 1})
 	require.NoError(t, err)
 	purge := applyLedgerLog(2, "ledger",
 		createdTransactionPayload(2, rebuildTestPosting("orders:1", "world", "USD", 5)),

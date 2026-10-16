@@ -80,12 +80,31 @@ func rebuildAccountInventories(store *dal.Store) error {
 		}
 	}
 	staleKeys := make([][]byte, 0)
+	attr := attributes.New().AccountInventory
 	iter, err := dal.NewBoundedIter(reader, []byte{dal.ZoneAttributes, dal.SubAttrAccountInventory}, []byte{dal.ZoneAttributes, dal.SubAttrAccountInventory + 1})
 	if err != nil {
 		return err
 	}
 	for iter.First(); iter.Valid(); iter.Next() {
-		staleKeys = append(staleKeys, append([]byte(nil), iter.Key()[2:]...))
+		keyBytes := append([]byte(nil), iter.Key()[2:]...)
+		staleKeys = append(staleKeys, keyBytes)
+		var account domain.AccountKey
+		if err := account.Unmarshal(keyBytes); err != nil {
+			_ = iter.Close()
+
+			return err
+		}
+		if state := counts[account]; state != nil {
+			old, err := attr.Get(reader, keyBytes)
+			if err != nil {
+				_ = iter.Close()
+
+				return err
+			}
+			if old != nil {
+				state.CreatedAt = old.GetCreatedAt()
+			}
+		}
 	}
 	if err := iter.Error(); err != nil {
 		_ = iter.Close()
@@ -100,7 +119,6 @@ func rebuildAccountInventories(store *dal.Store) error {
 		return err
 	}
 	batch := store.OpenWriteSession()
-	attr := attributes.New().AccountInventory
 	for _, key := range staleKeys {
 		if err := attr.Delete(batch, key); err != nil {
 			_ = batch.Cancel()

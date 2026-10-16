@@ -1882,6 +1882,7 @@ func (m *AccountInventoryState) CloneVT() *AccountInventoryState {
 	r.InventoryRevision = m.InventoryRevision
 	r.VolumeCount = m.VolumeCount
 	r.MetadataCount = m.MetadataCount
+	r.CreatedAt = m.CreatedAt
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5454,6 +5455,9 @@ func (this *AccountInventoryState) EqualVT(that *AccountInventoryState) bool {
 		return false
 	}
 	if this.MetadataCount != that.MetadataCount {
+		return false
+	}
+	if this.CreatedAt != that.CreatedAt {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -10606,6 +10610,12 @@ func (m *AccountInventoryState) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.CreatedAt != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CreatedAt))
+		i--
+		dAtA[i] = 0x29
+	}
 	if m.MetadataCount != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MetadataCount))
 		i--
@@ -13601,6 +13611,9 @@ func (m *AccountInventoryState) SizeVT() (n int) {
 	}
 	if m.MetadataCount != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.MetadataCount))
+	}
+	if m.CreatedAt != 0 {
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -24634,6 +24647,16 @@ func (m *AccountInventoryState) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 5:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CreatedAt", wireType)
+			}
+			m.CreatedAt = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.CreatedAt = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

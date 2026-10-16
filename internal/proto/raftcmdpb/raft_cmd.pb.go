@@ -4833,8 +4833,10 @@ type AccountInventoryState struct {
 	InventoryRevision uint64                 `protobuf:"fixed64,2,opt,name=inventory_revision,json=inventoryRevision,proto3" json:"inventory_revision,omitempty"`
 	VolumeCount       uint32                 `protobuf:"varint,3,opt,name=volume_count,json=volumeCount,proto3" json:"volume_count,omitempty"`
 	MetadataCount     uint32                 `protobuf:"varint,4,opt,name=metadata_count,json=metadataCount,proto3" json:"metadata_count,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// HLC timestamp of the first surviving persistent account attribute.
+	CreatedAt     uint64 `protobuf:"fixed64,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AccountInventoryState) Reset() {
@@ -4891,6 +4893,13 @@ func (x *AccountInventoryState) GetVolumeCount() uint32 {
 func (x *AccountInventoryState) GetMetadataCount() uint32 {
 	if x != nil {
 		return x.MetadataCount
+	}
+	return 0
+}
+
+func (x *AccountInventoryState) GetCreatedAt() uint64 {
+	if x != nil {
+		return x.CreatedAt
 	}
 	return 0
 }
@@ -6002,13 +6011,15 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\n" +
 	"VolumePair\x12%\n" +
 	"\x05input\x18\x01 \x01(\v2\x0f.common.Uint256R\x05input\x12'\n" +
-	"\x06output\x18\x02 \x01(\v2\x0f.common.Uint256R\x06output\"\xb1\x01\n" +
+	"\x06output\x18\x02 \x01(\v2\x0f.common.Uint256R\x06output\"\xd0\x01\n" +
 	"\x15AccountInventoryState\x12\x1f\n" +
 	"\vbirth_index\x18\x01 \x01(\x06R\n" +
 	"birthIndex\x12-\n" +
 	"\x12inventory_revision\x18\x02 \x01(\x06R\x11inventoryRevision\x12!\n" +
 	"\fvolume_count\x18\x03 \x01(\rR\vvolumeCount\x12%\n" +
-	"\x0emetadata_count\x18\x04 \x01(\rR\rmetadataCount\"\xf1\x03\n" +
+	"\x0emetadata_count\x18\x04 \x01(\rR\rmetadataCount\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\x06R\tcreatedAt\"\xf1\x03\n" +
 	"\rExecutionPlan\x12.\n" +
 	"\x12lastPersistedIndex\x18\x01 \x01(\x06R\x12lastPersistedIndex\x12\x1f\n" +
 	"\vcache_epoch\x18\x02 \x01(\x06R\n" +

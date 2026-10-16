@@ -5139,6 +5139,7 @@ type AccountInventoryStateReader interface {
 	GetInventoryRevision() uint64
 	GetVolumeCount() uint32
 	GetMetadataCount() uint32
+	GetCreatedAt() uint64
 	Mutate() *AccountInventoryState
 }
 
@@ -5158,6 +5159,10 @@ func (r *accountInventoryStateReadonly) GetVolumeCount() uint32 {
 
 func (r *accountInventoryStateReadonly) GetMetadataCount() uint32 {
 	return (*AccountInventoryState)(r).GetMetadataCount()
+}
+
+func (r *accountInventoryStateReadonly) GetCreatedAt() uint64 {
+	return (*AccountInventoryState)(r).GetCreatedAt()
 }
 
 func (r *accountInventoryStateReadonly) Mutate() *AccountInventoryState {

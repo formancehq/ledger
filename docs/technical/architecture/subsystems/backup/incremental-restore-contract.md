@@ -48,6 +48,9 @@ those keys and replaces every account inventory row. Restored birth and
 revision tokens start at zero in the destination Raft domain; its first
 membership change assigns a new Raft index. The count projection is therefore
 rebuilt from the final attributes rather than copied from the source domain.
+The account `created_at` HLC timestamp survives: audit replay updates it when
+the first persistent attribute appears, removes it when the last disappears,
+and final inventory reconstruction preserves it for surviving accounts.
 
 The audit secret is **preserved** checkpoint state, not a rebuilt projection:
 it is initialized once before the first audit entry and cannot be changed by

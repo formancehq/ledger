@@ -44,6 +44,10 @@ metadata and persists `LedgerLog.purged_accounts`.
 The key set is protected by a per-account inventory projection stored under
 `SubAttrAccountInventory`. It records the account's birth Raft index, the last
 key-set revision, and the number of persistent volume and metadata keys.
+It also records `created_at`, the HLC time at which the first persistent
+attribute of this account incarnation survived. The account read path exposes
+that value as `insertion_date`. Removing every persistent attribute clears the
+inventory; a later creation at the same address receives a new date.
 Admission reads the inventory, all candidate keys, and the ledger type rules
 from one Pebble snapshot. The proposal carries that observation and the cache
 generation. Before any preload seed or order mutation, each replica rejects a

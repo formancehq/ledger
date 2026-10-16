@@ -1173,7 +1173,7 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 					current = nil
 				}
 				expected := observation.GetExpected()
-				if (current == nil) != (expected == nil) || current != nil && (current.GetBirthIndex() != expected.GetBirthIndex() || current.GetInventoryRevision() != expected.GetInventoryRevision() || current.GetVolumeCount() != expected.GetVolumeCount() || current.GetMetadataCount() != expected.GetMetadataCount()) {
+				if (current == nil) != (expected == nil) || current != nil && (current.GetBirthIndex() != expected.GetBirthIndex() || current.GetInventoryRevision() != expected.GetInventoryRevision() || current.GetVolumeCount() != expected.GetVolumeCount() || current.GetMetadataCount() != expected.GetMetadataCount() || current.GetCreatedAt() != expected.GetCreatedAt()) {
 					return domain.ErrStaleProposal
 				}
 			}

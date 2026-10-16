@@ -80,9 +80,11 @@ is deliberately deferred.
 verifies underlying volume and metadata rows and independently replays account
 purges, but does not yet verify stored inventory counts or Raft incarnation
 and revision tokens. Admission checks counts against a point-in-time scan
-before proposing, and restore rebuilds them from final attributes. Corruption
-of an inventory row is therefore an explicit checker gap; the affected
-account's next admission detects the mismatch and stops the proposal.
+before proposing, and restore rebuilds them from final attributes. Inventory
+corruption is therefore an explicit checker gap. The affected account's next
+admission detects count mismatches and stops the proposal, but does not
+independently verify `created_at` or the Raft tokens. Backup replay derives
+`created_at` from actual attribute key-set transitions.
 
 ## Related
 

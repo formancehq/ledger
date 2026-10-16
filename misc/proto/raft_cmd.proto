@@ -705,6 +705,8 @@ message AccountInventoryState {
   fixed64 inventory_revision = 2;
   uint32 volume_count = 3;
   uint32 metadata_count = 4;
+  // HLC timestamp of the first surviving persistent account attribute.
+  fixed64 created_at = 5;
 }
 
 // ExecutionPlan is the apply-time recipe admission attaches to a proposal:
