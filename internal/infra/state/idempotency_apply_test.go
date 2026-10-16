@@ -527,10 +527,29 @@ func TestApplyProposal_ReplayDoesNotExtendAuditChain(t *testing.T) {
 	require.Equal(t, hashAfterCommit, machine.State.LastAuditHash,
 		"a success replay must not advance the audit hash chain")
 
+	// A conflicting body is a new audited failure, not a replay. The
+	// original success remains the stored outcome for the key.
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 4, withKey(4, "k1",
+		createTransactionOrder(ledgerName, true, newPosting("world", "bob", "EUR", 5)))))
+	require.NoError(t, err)
+	var conflict *domain.ErrIdempotencyKeyConflict
+	require.ErrorAs(t, r.Results[0].Error, &conflict)
+	require.False(t, r.Results[0].Replayed)
+	require.True(t, r.Results[0].AuditEntryWritten)
+	require.Greater(t, machine.State.NextAuditSequenceID, seqAfterCommit)
+
+	// The first success still replays after the conflict was audited.
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 5, withKey(5, "k1", fundAlice())))
+	require.NoError(t, err)
+	require.NoError(t, r.Results[0].Error)
+	require.True(t, r.Results[0].Replayed)
+	require.Equal(t, firstSeq, r.Results[0].Logs[0].GetReferenceSequence())
+	require.False(t, r.Results[0].AuditEntryWritten)
+
 	// Fresh frozen failure (revert of a non-existent tx) writes one audit entry.
 	badRevert := func() *raftcmdpb.Order { return revertTransactionOrder(ledgerName, 9999) }
 
-	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 4, withKey(4, "k2", badRevert())))
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 6, withKey(6, "k2", badRevert())))
 	require.NoError(t, err)
 	require.Error(t, r.Results[0].Error)
 
@@ -539,7 +558,7 @@ func TestApplyProposal_ReplayDoesNotExtendAuditChain(t *testing.T) {
 	require.Greater(t, seqAfterFailure, seqAfterCommit, "a fresh failure must append an audit entry")
 
 	// Duplicate replays the frozen failure without auditing.
-	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 5, withKey(5, "k2", badRevert())))
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 7, withKey(7, "k2", badRevert())))
 	require.NoError(t, err)
 	var replayed *domain.ReplayedFailure
 	require.ErrorAs(t, r.Results[0].Error, &replayed, "frozen failure is replayed")
