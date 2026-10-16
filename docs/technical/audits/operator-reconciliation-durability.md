@@ -59,6 +59,36 @@ Subsequent container starts resolve current Secret values; existing process
 environments do not change on Secret updates. Check these transitions separately
 from confidentiality, which is owned by `sensitive-data-exposure-boundaries`.
 
+## TLS disable recovery boundary
+
+Removing `spec.tls`, or setting `enabled: false` while clearing `secretName`,
+is a supported disable request. Optional mode must retain the previous
+certificate Secret and CA references. Trace `status.tlsRollout` persistence
+before StatefulSet mutation or orphan deletion, then reconstruct a fresh
+reconciler from each persisted prefix. A failed recovery-status write must
+leave the workload untouched. A missing StatefulSet with retained rollout state
+is interrupted reconciliation, not evidence of a new plaintext bootstrap.
+New backup Jobs must resolve mode and certificate/CA references from one
+current owned StatefulSet template, rather than mixing observed mode with
+already-cleared desired TLS. Missing workloads during recreation must cause
+retry without creating a plaintext Job; foreign ownership must reject creation.
+An existing Job's persisted template remains its configuration source. Prove a
+real missing-workload failure followed by successful provisioning after owned
+workload recovery, and preserve prior backup error/response-loss regressions.
+The certificate Secret remains user-owned and available until disable finishes;
+its lifetime differs from the operator-managed inter-node bearer Secret.
+
+Prove both omitted TLS and a cleared certificate reference through the real
+StatefulSet reconcile path. Interrupt after recovery-state persistence and
+after orphan deletion, replace the reconciler, and assert optional-mode
+certificate/CA continuity, the recovered mode, unchanged desired spec and final
+disabled-template convergence before recovery-state cleanup. Selecting a
+disabled template or reporting `tlsMigrationPhase: disabled` alone does not
+establish that every Pod has rolled. Use non-empty pre/post transaction data
+as the availability/data oracle in the TLS-disable Chainsaw fixture. Fake
+clients establish API-write ordering, not StatefulSet adoption, admission,
+rolling-update behavior or real peer/CLI connectivity; disclose those limits.
+
 ## Severity
 
 Use the native P0–P3 scale with demonstrated impact and explicit preconditions:
