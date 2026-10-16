@@ -2347,6 +2347,7 @@ func (node *Node) VoterIDs() []uint64 {
 
 	voters := append([]uint64(nil), confState.GetVoters()...)
 	slices.Sort(voters)
+
 	return voters
 }
 
@@ -2422,6 +2423,7 @@ func (node *Node) CompactionFence() uint64 {
 		}
 		minPersisted = min(minPersisted, persisted)
 	}
+
 	return minPersisted
 }
 
