@@ -190,7 +190,10 @@ var _ = Describe("Out-of-sync election", func() {
 					actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 				}, nil, nil)))
 				return status.Code(err)
-			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Equal(codes.Unavailable))
+			// The recovery gate is refreshed by the periodic leader health poll
+			// (30s by default), so allow one complete interval after the second
+			// follower becomes non-checkpointable before asserting the verdict.
+			}).Within(45 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Equal(codes.Unavailable))
 
 			By("Stopping the leader so the syncing followers elect among themselves")
 			var oldLeaderLastIndex uint64
