@@ -15,7 +15,6 @@ class ReleaseContractTest(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name) / "release"
         self.published = Path(self.directory.name) / "published"
-        (self.root / "misc/release").mkdir(parents=True)
         (self.root / "pkg/client/v3/proto").mkdir(parents=True)
         (self.root / "pkg/client/v3/grpc").mkdir(parents=True)
         (self.root / "pkg/grpcprotocol").mkdir(parents=True)
@@ -32,14 +31,6 @@ class ReleaseContractTest(unittest.TestCase):
         (self.root / "pkg/client/v3/grpc/client.go").write_text(client_source)
         (self.published / "grpc/client.go").write_text(client_source)
         (self.root / "pkg/grpcprotocol/protocol.go").write_text('package grpcprotocol\nconst Version = "14"\n')
-        self.server = {
-            "serverVersion": "v3.0.0-beta.6",
-            "clientModule": "github.com/formancehq/ledger/pkg/client/v3",
-            "clientVersion": "v3.0.0-beta.6",
-            "contractDescriptorSHA256": self.digest,
-            "protocolVersion": "14",
-            "compatibilityBasis": "identical-contract-and-protocol",
-        }
         self.client = {
             "clientModule": "github.com/formancehq/ledger/pkg/client/v3",
             "clientVersion": "v3.0.0-beta.6",
@@ -66,7 +57,6 @@ class ReleaseContractTest(unittest.TestCase):
         return "h1:" + base64.b64encode(hashlib.sha256(content.encode()).digest()).decode()
 
     def save(self):
-        (self.root / "misc/release/public-client.json").write_text(json.dumps(self.server))
         (self.root / "pkg/client/v3/contract.json").write_text(json.dumps(self.client))
         (self.published / "contract.json").write_text(json.dumps(self.client))
 
@@ -88,18 +78,18 @@ class ReleaseContractTest(unittest.TestCase):
         self.assertEqual(provenance["contractDescriptorSHA256"], self.digest)
 
     def test_server_only_release_reuses_immutable_client(self):
-        self.server["serverVersion"] = "v3.0.0-beta.7"
+        self.client["compatibleServerVersions"].append("v3.0.0-beta.7")
         self.save()
         provenance = self.check("v3.0.0-beta.7", "server-commit")
         self.assertEqual(provenance["serverTag"], "v3.0.0-beta.7")
         self.assertEqual(provenance["clientTag"], "pkg/client/v3.0.0-beta.6")
         self.assertNotEqual(provenance["clientCommit"], provenance["serverCommit"])
-        self.assertEqual(self.client["compatibleServerVersions"], ["v3.0.0-beta.6"])
+        self.assertEqual(self.client["compatibleServerVersions"],
+                         ["v3.0.0-beta.6", "v3.0.0-beta.7"])
 
     def test_client_version_can_advance_independently(self):
-        self.server["serverVersion"] = "v3.0.0-beta.7"
-        self.server["clientVersion"] = "v3.0.0-beta.8"
         self.client["clientVersion"] = "v3.0.0-beta.8"
+        self.client["compatibleServerVersions"].append("v3.0.0-beta.7")
         self.save()
         self.assertEqual(self.check("v3.0.0-beta.7")["clientTag"],
                          "pkg/client/v3.0.0-beta.8")
@@ -130,10 +120,11 @@ class ReleaseContractTest(unittest.TestCase):
         self.assertEqual(self.check()["clientTag"], "pkg/client/v3.0.0-beta.6")
 
     def test_rejects_incorrect_server_compatibility(self):
-        self.server["serverVersion"] = "v3.0.0-beta.7"
-        self.server["protocolVersion"] = "15"
+        self.client["compatibleServerVersions"].append("v3.0.0-beta.7")
+        (self.root / "pkg/grpcprotocol/protocol.go").write_text(
+            'package grpcprotocol\nconst Version = "15"\n')
         self.save()
-        with self.assertRaisesRegex(ValueError, "server protocol revision differs"):
+        with self.assertRaisesRegex(ValueError, "tagged client protocol revision differs"):
             self.check("v3.0.0-beta.7")
 
     def test_rejects_invalid_client_compatibility_list(self):
@@ -142,20 +133,12 @@ class ReleaseContractTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no valid published server compatibility list"):
             self.check()
 
-    def test_rejects_unverified_compatibility_basis(self):
-        self.server["compatibilityBasis"] = "unspecified"
-        self.save()
-        with self.assertRaisesRegex(ValueError, "no verified basis"):
-            self.check()
-
     def test_matching_version_does_not_require_prior_client_listing(self):
-        self.server["serverVersion"] = "v3.0.0-beta.8"
-        self.server["clientVersion"] = "v3.0.0-beta.8"
         self.client["clientVersion"] = "v3.0.0-beta.8"
         self.client["compatibleServerVersions"] = ["v3.0.0-beta.7"]
         self.save()
-        self.assertEqual(self.check("v3.0.0-beta.8")["clientTag"],
-                         "pkg/client/v3.0.0-beta.8")
+        with self.assertRaisesRegex(ValueError, "not published as compatible"):
+            self.check("v3.0.0-beta.8")
 
 
 if __name__ == "__main__":
