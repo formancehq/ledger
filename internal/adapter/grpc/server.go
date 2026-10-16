@@ -891,7 +891,7 @@ func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPl
 //
 // This is a transport backstop, not the metadata contract. What a caller may
 // store as metadata is bounded by the replicated cluster policy
-// (domain.MetadataLimits), enforced identically for HTTP, public gRPC, bulk and
+// (metadatalimits.MetadataLimits), enforced identically for HTTP, public gRPC, bulk and
 // mirror admission — a transport cap cannot express per-entry or per-entity
 // bounds, and a caller under this cap can still be rejected by those ceilings.
 //

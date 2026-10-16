@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/pkg/metadatalimits"
 )
 
 func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
@@ -185,7 +186,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// (invariant #2).
 	limits := domain.MetadataLimitsFromPolicy(s.GetClusterPolicy())
 
-	if metaErr := limits.ValidateMap(finalMetadata); metaErr != nil {
+	if metaErr := domain.ValidateMetadataMap(limits, finalMetadata); metaErr != nil {
 		return nil, metaErr
 	}
 
@@ -244,7 +245,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		ctx.metadataBudget = &commandMetadataBudget{bytes: inputBytes}
 	}
 	total := ctx.metadataBudget.bytes + transactionMetadataSize(finalMetadata, accountMetadata) - inputBytes
-	if metaErr := limits.ValidateCommandBytes(total); metaErr != nil {
+	if metaErr := domain.ValidateMetadataCommandBytes(limits, total); metaErr != nil {
 		return nil, metaErr
 	}
 
@@ -312,7 +313,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 // hash-bound into the audit chain.
 func validateMergedAccountMetadata(
 	accountMetadata map[string]*commonpb.MetadataMap,
-	limits domain.MetadataLimits,
+	limits metadatalimits.MetadataLimits,
 ) domain.SerializableError {
 	var (
 		worstAccount string
@@ -320,7 +321,7 @@ func validateMergedAccountMetadata(
 	)
 
 	for account, mm := range accountMetadata {
-		err := limits.ValidateMap(mm.GetValues())
+		err := domain.ValidateMetadataMap(limits, mm.GetValues())
 		if err == nil {
 			continue
 		}

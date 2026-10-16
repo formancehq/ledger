@@ -14,7 +14,7 @@ func validateMetadataAtApply(metadata map[string]*commonpb.MetadataValue, ctx *C
 		return nil
 	}
 	limits := domain.MetadataLimitsFromPolicy(ctx.Scope.GetClusterPolicy())
-	if err := limits.ValidateMap(metadata); err != nil {
+	if err := domain.ValidateMetadataMap(limits, metadata); err != nil {
 		return err
 	}
 	var total uint64
@@ -27,14 +27,14 @@ func validateMetadataAtApply(metadata map[string]*commonpb.MetadataValue, ctx *C
 		total = domain.MetadataMapSize(metadata)
 	}
 
-	return limits.ValidateCommandBytes(total)
+	return domain.ValidateMetadataCommandBytes(limits, total)
 }
 
 // validateMetadataKeyAtApply bounds bare caller keys against the committed
 // policy before a delete or schema change mutates state.
 func validateMetadataKeyAtApply(key string, ctx *Context) domain.SerializableError {
 	limits := domain.MetadataLimitsFromPolicy(ctx.Scope.GetClusterPolicy())
-	if err := limits.ValidateKey(key); err != nil {
+	if err := domain.ValidateMetadataLimitKey(limits, key); err != nil {
 		return err
 	}
 	// The command budget already includes every caller key and any earlier
@@ -46,5 +46,5 @@ func validateMetadataKeyAtApply(key string, ctx *Context) domain.SerializableErr
 		total = uint64(len(key))
 	}
 
-	return limits.ValidateCommandBytes(total)
+	return domain.ValidateMetadataCommandBytes(limits, total)
 }

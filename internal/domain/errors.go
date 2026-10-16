@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/pkg/metadatalimits"
 )
 
 // ErrNotFound is a sentinel error for missing records in storage lookups. It
@@ -1565,7 +1566,7 @@ func (*ErrCheckpointLimitReached) Reason() string  { return ErrReasonCheckpointL
 
 // ErrMetadataLimitExceeded — metadata carried by a command, or produced by a
 // Numscript program, exceeded a ceiling of the canonical metadata size contract
-// (see MetadataLimits). Dimension names which ceiling was hit so a client can
+// (see metadatalimits.MetadataLimits). Dimension names which ceiling was hit so a client can
 // tell "too many entries" from "one value too large" without parsing the
 // message. KindValidation: the caller must send less metadata, so retrying the
 // same payload cannot succeed.
@@ -1583,11 +1584,7 @@ type ErrMetadataLimitExceeded struct {
 }
 
 func (e *ErrMetadataLimitExceeded) Error() string {
-	if e.Dimension == MetadataLimitDimensionEntries {
-		return fmt.Sprintf("metadata carries %d entries, limit is %d per entity", e.Actual, e.Limit)
-	}
-
-	return fmt.Sprintf("metadata %s size is %d bytes, limit is %d", e.Dimension, e.Actual, e.Limit)
+	return (&metadatalimits.ErrMetadataLimitExceeded{Dimension: e.Dimension, Limit: e.Limit, Actual: e.Actual}).Error()
 }
 func (*ErrMetadataLimitExceeded) Kind() ErrorKind { return KindValidation }
 func (*ErrMetadataLimitExceeded) Reason() string  { return ErrReasonMetadataLimitExceeded }
@@ -1606,7 +1603,7 @@ func (*ErrMetadataLimitExceeded) Reason() string  { return ErrReasonMetadataLimi
 type errMetadataLimitsUnconfigured struct{}
 
 func (errMetadataLimitsUnconfigured) Error() string {
-	return "the committed cluster policy carries no metadata size limits; bump --cluster-policy-revision to commit one"
+	return metadatalimits.ErrMetadataLimitsUnconfigured.Error()
 }
 func (errMetadataLimitsUnconfigured) Kind() ErrorKind { return KindValidation }
 func (errMetadataLimitsUnconfigured) Reason() string  { return ErrReasonClusterPolicyInvalid }
@@ -1663,7 +1660,7 @@ type ErrMetadataKeyValidation struct {
 }
 
 func (e *ErrMetadataKeyValidation) Error() string {
-	return fmt.Sprintf("metadata key %q value: %s", e.Key, e.Cause.Error())
+	return (&metadatalimits.ErrMetadataKeyValidation{Key: e.Key, Cause: e.Cause}).Error()
 }
 func (e *ErrMetadataKeyValidation) Unwrap() error   { return e.Cause }
 func (e *ErrMetadataKeyValidation) Kind() ErrorKind { return e.Cause.Kind() }

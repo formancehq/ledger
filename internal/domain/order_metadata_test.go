@@ -7,6 +7,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/pkg/metadatalimits"
 )
 
 func TestValidateOrderMetadataMirrorVariants(t *testing.T) {
@@ -56,7 +57,7 @@ func TestValidateCommandMetadataCountsMapsAndBareKeys(t *testing.T) {
 		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{Metadata: map[string]*commonpb.MetadataValue{"key": commonpb.NewStringValue("value")}}}}}},
 		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{Data: &raftcmdpb.MirrorLogEntry_DeletedMetadata{DeletedMetadata: &raftcmdpb.MirrorDeletedMetadata{Key: "bare"}}}}}}}},
 	}
-	limits := MetadataLimits{MaxEntriesPerEntity: 2, MaxKeyBytes: 4, MaxValueBytes: 5, MaxTotalBytesPerEntity: 8, MaxTotalBytesPerCommand: 12}
+	limits := metadatalimits.MetadataLimits{MaxEntriesPerEntity: 2, MaxKeyBytes: 4, MaxValueBytes: 5, MaxTotalBytesPerEntity: 8, MaxTotalBytesPerCommand: 12}
 	require.NoError(t, ValidateCommandMetadata(orders, limits))
 	limits.MaxTotalBytesPerCommand = 11
 	for _, order := range orders {
@@ -70,7 +71,7 @@ func TestValidateCommandMetadataCountsMapsAndBareKeys(t *testing.T) {
 
 func TestCreateLedgerMetadataValidation(t *testing.T) {
 	t.Parallel()
-	limits := MetadataLimits{MaxEntriesPerEntity: 2, MaxKeyBytes: 8, MaxValueBytes: 16, MaxTotalBytesPerEntity: 40, MaxTotalBytesPerCommand: 60}
+	limits := metadatalimits.MetadataLimits{MaxEntriesPerEntity: 2, MaxKeyBytes: 8, MaxValueBytes: 16, MaxTotalBytesPerEntity: 40, MaxTotalBytesPerCommand: 60}
 	create := func(m map[string]*commonpb.MetadataValue) *raftcmdpb.Order {
 		return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "main", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Metadata: m}}}}}
 	}

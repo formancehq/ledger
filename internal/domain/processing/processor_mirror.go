@@ -131,7 +131,7 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 		// Direct handler callers execute a single mirror entry.
 		total = domain.OrderMetadataSize(wrapped)
 	}
-	if err := limits.ValidateCommandBytes(total); err != nil {
+	if err := domain.ValidateMetadataCommandBytes(limits, total); err != nil {
 		return nil, err
 	}
 

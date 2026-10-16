@@ -7,12 +7,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/pkg/metadatalimits"
 )
 
 // testLimits is a small, easy-to-reason-about contract: the boundary cases below
 // state their intent in numbers rather than leaning on the production defaults.
-func testLimits() MetadataLimits {
-	return MetadataLimits{
+func testLimits() metadatalimits.MetadataLimits {
+	return metadatalimits.MetadataLimits{
 		MaxEntriesPerEntity:     3,
 		MaxKeyBytes:             8,
 		MaxValueBytes:           16,
@@ -53,22 +54,22 @@ func TestMetadataValueSize(t *testing.T) {
 		{
 			name:  "int is a fixed scalar width",
 			value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: -1}},
-			want:  metadataScalarValueBytes,
+			want:  metadatalimits.MetadataScalarValueBytes,
 		},
 		{
 			name:  "uint is a fixed scalar width",
 			value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_UintValue{UintValue: 1 << 62}},
-			want:  metadataScalarValueBytes,
+			want:  metadatalimits.MetadataScalarValueBytes,
 		},
 		{
 			name:  "datetime is a fixed scalar width",
 			value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_DatetimeValue{DatetimeValue: 1_700_000_000_000_000}},
-			want:  metadataScalarValueBytes,
+			want:  metadatalimits.MetadataScalarValueBytes,
 		},
 		{
 			name:  "bool is one byte",
 			value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_BoolValue{BoolValue: true}},
-			want:  metadataBoolValueBytes,
+			want:  metadatalimits.MetadataBoolValueBytes,
 		},
 	}
 
@@ -102,16 +103,16 @@ func TestMetadataLimitsConfigured(t *testing.T) {
 	require.True(t, DefaultMetadataLimits.Configured())
 	require.True(t, testLimits().Configured())
 
-	// A zero MetadataLimits is the absence of configuration, never "unlimited".
-	require.False(t, MetadataLimits{}.Configured())
+	// A zero metadatalimits.MetadataLimits is the absence of configuration, never "unlimited".
+	require.False(t, metadatalimits.MetadataLimits{}.Configured())
 
 	// One missing ceiling is enough to make the contract unusable.
-	for _, mutate := range []func(*MetadataLimits){
-		func(l *MetadataLimits) { l.MaxEntriesPerEntity = 0 },
-		func(l *MetadataLimits) { l.MaxKeyBytes = 0 },
-		func(l *MetadataLimits) { l.MaxValueBytes = 0 },
-		func(l *MetadataLimits) { l.MaxTotalBytesPerEntity = 0 },
-		func(l *MetadataLimits) { l.MaxTotalBytesPerCommand = 0 },
+	for _, mutate := range []func(*metadatalimits.MetadataLimits){
+		func(l *metadatalimits.MetadataLimits) { l.MaxEntriesPerEntity = 0 },
+		func(l *metadatalimits.MetadataLimits) { l.MaxKeyBytes = 0 },
+		func(l *metadatalimits.MetadataLimits) { l.MaxValueBytes = 0 },
+		func(l *metadatalimits.MetadataLimits) { l.MaxTotalBytesPerEntity = 0 },
+		func(l *metadatalimits.MetadataLimits) { l.MaxTotalBytesPerCommand = 0 },
 	} {
 		limits := testLimits()
 		mutate(&limits)
@@ -125,7 +126,7 @@ func TestMetadataLimitsConsistent(t *testing.T) {
 	require.True(t, DefaultMetadataLimits.Consistent())
 
 	// Equality is allowed: the ceilings may coincide.
-	require.True(t, MetadataLimits{
+	require.True(t, metadatalimits.MetadataLimits{
 		MaxEntriesPerEntity:     1,
 		MaxKeyBytes:             10,
 		MaxValueBytes:           10,
@@ -135,11 +136,11 @@ func TestMetadataLimitsConsistent(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		mutate func(*MetadataLimits)
+		mutate func(*metadatalimits.MetadataLimits)
 	}{
-		{"key above entity", func(l *MetadataLimits) { l.MaxKeyBytes = l.MaxTotalBytesPerEntity + 1 }},
-		{"value above entity", func(l *MetadataLimits) { l.MaxValueBytes = l.MaxTotalBytesPerEntity + 1 }},
-		{"entity above command", func(l *MetadataLimits) { l.MaxTotalBytesPerEntity = l.MaxTotalBytesPerCommand + 1 }},
+		{"key above entity", func(l *metadatalimits.MetadataLimits) { l.MaxKeyBytes = l.MaxTotalBytesPerEntity + 1 }},
+		{"value above entity", func(l *metadatalimits.MetadataLimits) { l.MaxValueBytes = l.MaxTotalBytesPerEntity + 1 }},
+		{"entity above command", func(l *metadatalimits.MetadataLimits) { l.MaxTotalBytesPerEntity = l.MaxTotalBytesPerCommand + 1 }},
 	}
 
 	for _, tc := range tests {
@@ -163,7 +164,7 @@ func TestMetadataLimitsFromPolicy(t *testing.T) {
 		MetadataMaxEntityBytes:      4,
 		MetadataMaxCommandBytes:     5,
 	})
-	require.Equal(t, MetadataLimits{
+	require.Equal(t, metadatalimits.MetadataLimits{
 		MaxEntriesPerEntity:     1,
 		MaxKeyBytes:             2,
 		MaxValueBytes:           3,
@@ -258,7 +259,7 @@ func TestMetadataLimitsValidateMapBoundaries(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := limits.ValidateMap(tc.metadata)
+			err := ValidateMetadataMap(limits, tc.metadata)
 
 			if tc.wantDimension == "" {
 				require.Nil(t, err, "the boundary itself must be accepted")
@@ -282,8 +283,8 @@ func TestMetadataLimitsValidateMapBoundaries(t *testing.T) {
 func TestMetadataLimitsValidateMapEmpty(t *testing.T) {
 	t.Parallel()
 
-	require.Nil(t, testLimits().ValidateMap(nil))
-	require.Nil(t, testLimits().ValidateMap(map[string]*commonpb.MetadataValue{}))
+	require.Nil(t, ValidateMetadataMap(testLimits(), nil))
+	require.Nil(t, ValidateMetadataMap(testLimits(), map[string]*commonpb.MetadataValue{}))
 }
 
 // A per-entry failure names the offending key, so operator logs and the gRPC
@@ -291,7 +292,7 @@ func TestMetadataLimitsValidateMapEmpty(t *testing.T) {
 func TestMetadataLimitsValidateMapNamesOffendingKey(t *testing.T) {
 	t.Parallel()
 
-	err := testLimits().ValidateMap(map[string]*commonpb.MetadataValue{
+	err := ValidateMetadataMap(testLimits(), map[string]*commonpb.MetadataValue{
 		"ok":  commonpb.NewStringValue("fine"),
 		"bad": commonpb.NewStringValue(strings.Repeat("v", 17)),
 	})
@@ -314,7 +315,7 @@ func TestMetadataLimitsValidateMapIsDeterministic(t *testing.T) {
 		"mm-too-long-value": commonpb.NewStringValue(strings.Repeat("v", 17)),
 	}
 
-	limits := MetadataLimits{
+	limits := metadatalimits.MetadataLimits{
 		MaxEntriesPerEntity:     10,
 		MaxKeyBytes:             64,
 		MaxValueBytes:           16,
@@ -322,11 +323,11 @@ func TestMetadataLimitsValidateMapIsDeterministic(t *testing.T) {
 		MaxTotalBytesPerCommand: 1 << 20,
 	}
 
-	first := limits.ValidateMap(metadata)
+	first := ValidateMetadataMap(limits, metadata)
 	require.NotNil(t, first)
 
 	for range 100 {
-		again := limits.ValidateMap(metadata)
+		again := ValidateMetadataMap(limits, metadata)
 		require.NotNil(t, again)
 		require.Equal(t, first.Error(), again.Error())
 		require.Equal(t, FailureFactsOf(first).Facts, FailureFactsOf(again).Facts)
@@ -341,7 +342,7 @@ func TestMetadataLimitsValidateMapIsDeterministic(t *testing.T) {
 func TestMetadataLimitsValidateEntryPrefersKeyOverValue(t *testing.T) {
 	t.Parallel()
 
-	err := testLimits().ValidateMap(map[string]*commonpb.MetadataValue{
+	err := ValidateMetadataMap(testLimits(), map[string]*commonpb.MetadataValue{
 		strings.Repeat("k", 9): commonpb.NewStringValue(strings.Repeat("v", 17)),
 	})
 
@@ -355,10 +356,10 @@ func TestMetadataLimitsValidateCommandBytes(t *testing.T) {
 
 	limits := testLimits()
 
-	require.Nil(t, limits.ValidateCommandBytes(0))
-	require.Nil(t, limits.ValidateCommandBytes(100), "the boundary itself must be accepted")
+	require.Nil(t, ValidateMetadataCommandBytes(limits, 0))
+	require.Nil(t, ValidateMetadataCommandBytes(limits, 100), "the boundary itself must be accepted")
 
-	err := limits.ValidateCommandBytes(101)
+	err := ValidateMetadataCommandBytes(limits, 101)
 	require.NotNil(t, err)
 	require.Equal(t, MetadataLimitDimensionCommand, FailureFactsOf(err).Facts["dimension"])
 	require.Equal(t, "100", FailureFactsOf(err).Facts["limit"])
@@ -371,9 +372,9 @@ func TestMetadataLimitsValidateKey(t *testing.T) {
 
 	limits := testLimits()
 
-	require.Nil(t, limits.ValidateKey(strings.Repeat("k", 8)))
+	require.Nil(t, ValidateMetadataLimitKey(limits, strings.Repeat("k", 8)))
 
-	err := limits.ValidateKey(strings.Repeat("k", 9))
+	err := ValidateMetadataLimitKey(limits, strings.Repeat("k", 9))
 	require.NotNil(t, err)
 	require.Equal(t, MetadataLimitDimensionKey, FailureFactsOf(err).Facts["dimension"])
 	require.Equal(t, strings.Repeat("k", 9), FailureFactsOf(err).Facts["key"])
@@ -385,13 +386,13 @@ func TestMetadataLimitsValidateKey(t *testing.T) {
 func TestMetadataLimitsUnconfiguredRejects(t *testing.T) {
 	t.Parallel()
 
-	var unconfigured MetadataLimits
+	var unconfigured metadatalimits.MetadataLimits
 
 	for name, err := range map[string]Describable{
-		"ValidateMap":          unconfigured.ValidateMap(map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("v")}),
-		"ValidateMap empty":    unconfigured.ValidateMap(nil),
-		"ValidateCommandBytes": unconfigured.ValidateCommandBytes(0),
-		"ValidateKey":          unconfigured.ValidateKey("k"),
+		"ValidateMap":          ValidateMetadataMap(unconfigured, map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("v")}),
+		"ValidateMap empty":    ValidateMetadataMap(unconfigured, nil),
+		"ValidateCommandBytes": ValidateMetadataCommandBytes(unconfigured, 0),
+		"ValidateKey":          ValidateMetadataLimitKey(unconfigured, "k"),
 	} {
 		require.NotNilf(t, err, "%s must reject an unconfigured contract", name)
 		require.ErrorIsf(t, err, ErrMetadataLimitsUnconfigured, "%s", name)
@@ -403,4 +404,30 @@ func TestMetadataLimitsUnconfiguredRejects(t *testing.T) {
 // into every case.
 func uint64ToString(v uint64) string {
 	return FailureFactsOf(&ErrMetadataLimitExceeded{Limit: v}).Facts["limit"]
+}
+
+// Public validation must preserve the exact persisted failures at Ledger's adapter.
+func TestMetadataPublicFailureParity(t *testing.T) {
+	t.Parallel()
+	limits := testLimits()
+	cases := []struct {
+		metadata map[string]*commonpb.MetadataValue
+		want     SerializableError
+	}{
+		{map[string]*commonpb.MetadataValue{"a": nil, "b": nil, "c": nil, "d": nil}, &ErrMetadataLimitExceeded{Dimension: MetadataLimitDimensionEntries, Limit: 3, Actual: 4}},
+		{map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue(strings.Repeat("v", 40))}, &ErrMetadataLimitExceeded{Dimension: MetadataLimitDimensionEntity, Limit: 40, Actual: 41}},
+		{map[string]*commonpb.MetadataValue{"long-key!": nil}, &ErrMetadataKeyValidation{Key: "long-key!", Cause: &ErrMetadataLimitExceeded{Dimension: MetadataLimitDimensionKey, Limit: 8, Actual: 9}}},
+		{map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue(strings.Repeat("v", 17))}, &ErrMetadataKeyValidation{Key: "k", Cause: &ErrMetadataLimitExceeded{Dimension: MetadataLimitDimensionValue, Limit: 16, Actual: 17}}},
+	}
+	for _, tc := range cases {
+		got := ValidateMetadataMap(limits, tc.metadata)
+		require.Equal(t, tc.want.Error(), got.Error())
+		require.Equal(t, tc.want.Kind(), got.Kind())
+		require.Equal(t, tc.want.Reason(), got.Reason())
+		wantBytes, err := tc.want.FailureDetails().MarshalVT()
+		require.NoError(t, err)
+		gotBytes, err := got.FailureDetails().MarshalVT()
+		require.NoError(t, err)
+		require.Equal(t, wantBytes, gotBytes)
+	}
 }

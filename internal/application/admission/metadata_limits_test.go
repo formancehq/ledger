@@ -12,12 +12,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/pkg/metadatalimits"
 )
 
 // metadataTestLimits is small enough to make the boundaries readable, and
 // consistent (key/value <= entity <= command) like any committed policy.
-func metadataTestLimits() domain.MetadataLimits {
-	return domain.MetadataLimits{
+func metadataTestLimits() metadatalimits.MetadataLimits {
+	return metadatalimits.MetadataLimits{
 		MaxEntriesPerEntity:     2,
 		MaxKeyBytes:             8,
 		MaxValueBytes:           16,
@@ -344,12 +345,12 @@ func TestValidateCommandMetadata_UnconfiguredLimitsReject(t *testing.T) {
 	order := metadataAddOrder(map[string]*commonpb.MetadataValue{"k": metadataStringValue("v")})
 
 	require.ErrorIs(t,
-		validateCommandMetadata([]*raftcmdpb.Order{order}, domain.MetadataLimits{}),
+		validateCommandMetadata([]*raftcmdpb.Order{order}, metadatalimits.MetadataLimits{}),
 		domain.ErrMetadataLimitsUnconfigured,
 	)
 
 	require.ErrorIs(t,
-		validateCommandMetadata(nil, domain.MetadataLimits{}),
+		validateCommandMetadata(nil, metadatalimits.MetadataLimits{}),
 		domain.ErrMetadataLimitsUnconfigured,
 	)
 }

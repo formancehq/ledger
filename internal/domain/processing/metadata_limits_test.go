@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/metadatalimits"
 )
 
 // tightMetadataPolicy is a committed policy whose entity ceiling is small
@@ -226,7 +227,7 @@ func TestProcessSetClusterPolicy_RejectsInconsistentMetadataLimits(t *testing.T)
 func TestValidateMergedAccountMetadataIsDeterministic(t *testing.T) {
 	t.Parallel()
 
-	limits := domain.MetadataLimits{
+	limits := metadatalimits.MetadataLimits{
 		MaxEntriesPerEntity:     10,
 		MaxKeyBytes:             64,
 		MaxValueBytes:           4,

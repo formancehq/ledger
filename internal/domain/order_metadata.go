@@ -6,6 +6,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/pkg/metadatalimits"
 )
 
 // MetadataWalk carries the visitors WalkOrderMetadata invokes. Declared before
@@ -150,19 +151,19 @@ func OrderMetadataSize(order *raftcmdpb.Order) uint64 {
 
 // ValidateOrderMetadata checks the shape and size of every metadata payload.
 // Account and key traversal is sorted so replicated rejection details are stable.
-func ValidateOrderMetadata(order *raftcmdpb.Order, limits MetadataLimits) SerializableError {
+func ValidateOrderMetadata(order *raftcmdpb.Order, limits metadatalimits.MetadataLimits) SerializableError {
 	return validateOrderMetadata(order, func(metadata map[string]*commonpb.MetadataValue) SerializableError {
 		if err := validateMetadataShape(metadata); err != nil {
 			return err
 		}
 
-		return limits.ValidateMap(metadata)
+		return ValidateMetadataMap(limits, metadata)
 	}, func(key string) SerializableError {
 		if err := ValidateMetadataKey(key); err != nil {
 			return err
 		}
 
-		return limits.ValidateKey(key)
+		return ValidateMetadataLimitKey(limits, key)
 	})
 }
 
@@ -202,7 +203,7 @@ func validateMetadataShape(metadata map[string]*commonpb.MetadataValue) Serializ
 // ValidateCommandMetadata validates every order's shape and entity ceilings,
 // then bounds their combined maps and bare keys by the command ceiling.
 // Callers wrap the returned domain error at their application boundary.
-func ValidateCommandMetadata(orders []*raftcmdpb.Order, limits MetadataLimits) SerializableError {
+func ValidateCommandMetadata(orders []*raftcmdpb.Order, limits metadatalimits.MetadataLimits) SerializableError {
 	var total uint64
 	for _, order := range orders {
 		if err := ValidateOrderMetadata(order, limits); err != nil {
@@ -211,5 +212,5 @@ func ValidateCommandMetadata(orders []*raftcmdpb.Order, limits MetadataLimits) S
 		total += OrderMetadataSize(order)
 	}
 
-	return limits.ValidateCommandBytes(total)
+	return ValidateMetadataCommandBytes(limits, total)
 }

@@ -5,7 +5,8 @@ transport-sized payload (HTTP 4 MiB, gRPC 64 MiB) replicates through Raft into
 the audit chain, the FSM cache, the primary-store projections and every
 downstream event — none of which can drop it afterwards.
 
-The contract is `domain.MetadataLimits` (`internal/domain/metadata_limits.go`).
+The contract is `metadatalimits.MetadataLimits`
+(`pkg/metadatalimits/limits.go`).
 It is one contract for every entry path: direct HTTP, public gRPC, bulk, mirror
 ingest, and the metadata a Numscript program produces.
 
@@ -45,7 +46,7 @@ intentional; closing it is separate work.
 
 ## Measurement
 
-`domain.MetadataEntrySize` is the single measurement rule: the key's UTF-8 bytes
+`metadatalimits.MetadataEntrySize` is the single measurement rule: the key's UTF-8 bytes
 plus the value's measured bytes.
 
 | Value variant | Measured as |
@@ -272,3 +273,36 @@ can move without changing how peers replicate. HTTP caps bodies at 4 MiB
 Both are backstops. A transport cap cannot express per-entry or per-entity
 bounds, and a request comfortably under one can still be rejected by these
 ceilings.
+
+## Importable semantic contract
+
+Go consumers import `github.com/formancehq/ledger/v3/pkg/metadatalimits` from
+Ledger's root module. The package owns `MetadataLimits`, the dimension names,
+default proposal ceilings, fixed scalar/bool weights, entry/map measurement,
+and key, entry, map and command-byte validation. It has no dependency on
+Ledger's internal protobufs, no new module and no separate metadata DTO.
+
+`MetadataMapSize` and `ValidateMap` accept the caller's existing map and a pure
+`func(V) uint64` value measurer. The measurer must use the table above: string
+and null original text use byte length, integer/unsigned/datetime use
+`MetadataScalarValueBytes`, bool uses `MetadataBoolValueBytes`, and absent or
+unknown values use zero. Ledger's `domain.MetadataValueSize` adapts its
+existing protobuf values to those weights. Entry and map validation use the
+same public algorithm internally and externally; Ledger translates public
+failures into its existing serializable domain errors at the audit boundary.
+No serialized failure variant, diagnostic text, validation order or default
+changes in this extraction.
+
+The public errors expose dimension, limit, actual and offending-key context.
+Map validation checks count, entity total, then the smallest offending key;
+entry validation checks key before value. `ValidateEntry` takes the measured
+value bytes; a value-only failure is unkeyed, while `ValidateMap` adds its key.
+These size checks do not validate key grammar, value shape or coercion. Existing
+`invariants` and domain shape validation remain required. Callers must derive
+limits from the effective discovered policy and handle Ledger rejection; this
+package neither discovers policy nor supplies defaults for an absent policy.
+
+At this revision Ledger has no `pkg/client` or other public metadata-value type
+owner. The generic map API avoids inventing a replacement for the canonical
+protobuf values. Public generated bindings, their release pin and any consuming
+protocol's policy-revision handling remain separate integration work.

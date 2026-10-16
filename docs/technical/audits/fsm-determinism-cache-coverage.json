@@ -4,6 +4,9 @@
   "purpose": "Find reachable correctness failures where the same committed proposal and prior committed state can produce different apply results, cache state, audit evidence, or durable writes across replicas because apply depends on node-local state, undeclared reads, cache history, unsafe mutation, non-deterministic iteration, or storage reads. Apply the companion evidence and ownership contract; exclude accounting arithmetic, Raft quorum, persistence recovery, read projections, generic lifecycle, and API translation unless they are direct evidence for an apply/cache root cause.",
   "paths": [
     "internal/domain/processing/**",
+    "internal/domain/metadata_limits.go",
+    "internal/domain/metadata_limits_test.go",
+    "pkg/metadatalimits/**",
     "internal/infra/state/**",
     "internal/infra/plan/**",
     "internal/infra/preload/**",
@@ -35,6 +38,7 @@
     "docs/technical/architecture/subsystems/api/atomic-ledger-creation.md"
   ],
   "invariants": [
+    "Metadata limits use the shared pkg/metadatalimits algorithm and committed policy. The protobuf semantic measurer preserves UTF-8/null-original bytes, scalar weight 8, bool weight 1 and absent/unknown weight zero. Error adaptation preserves rejection precedence, smallest offending key, diagnostic text and typed audited failure bytes; public client preflight never replaces the apply-side check.",
     "An UncommittedFailure is a deterministic unaudited transition: staged business writes are discarded, no audit/item/log or frozen idempotency row is emitted, the prior HLC is restored, and replicas agree on the technical error and next corrected outcome.",
     "Post-commit sentinel expectations must follow successful ordered effects, including same-proposal and cross-entry ledger deletion and ephemeral purge. Captured expectations must own reused WriteSet data; legitimate removal must not fail live apply or WAL replay, while missing or changed surviving volumes and any rows left by a deleted ledger's cascade must remain fatal, even if their aggregate is balanced or deletion is the only order in a batch.",
     "For a fixed committed proposal, Raft index, and prior committed state, every replica and replay must produce the same apply outcome, audit bytes, counters, cache mutations, and durable writes. Wall clock, randomness, goroutine scheduling, map iteration, process identity, host resources, and node-local configuration must not affect that transition.",

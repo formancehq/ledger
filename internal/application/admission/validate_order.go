@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/pkg/metadatalimits"
 )
 
 // validateOrder validates storage-safety invariants on a fully-constructed order
@@ -518,7 +519,7 @@ func validateOrderSigningKey(order *raftcmdpb.Order) domain.Describable {
 
 // validateCommandMetadata applies the shared admission and mirror metadata
 // contract using the committed policy, preserving the application error wrapper.
-func validateCommandMetadata(orders []*raftcmdpb.Order, limits domain.MetadataLimits) error {
+func validateCommandMetadata(orders []*raftcmdpb.Order, limits metadatalimits.MetadataLimits) error {
 	if err := domain.ValidateCommandMetadata(orders, limits); err != nil {
 		return &domain.BusinessError{Err: err}
 	}

@@ -391,3 +391,16 @@ CreateLedger stages initial metadata in the canonical ledger-metadata keyspace i
 For normal and mirror creation, do rejection, proposal rollback and idempotent replay preserve initial metadata atomically without a second save, new metadata read dependency, duplicate allocation or order mutation?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## Shared metadata limit validation
+
+Include `pkg/metadatalimits` and the domain protobuf/error adapters when tracing
+metadata checks reachable from apply. The shared algorithm uses committed
+ceilings, checks count before entity total before per-entry limits, and selects
+the smallest offending key. The protobuf measurer preserves UTF-8 string and
+null-original byte lengths, scalar weight 8, bool weight 1, and absent/unknown
+weight zero. Compare diagnostic text and typed failure bytes across the public
+error-to-domain conversion, including keyed failures and unconfigured policy.
+Existing metadata boundary, deterministic-map, policy-change and failure-facts
+tests remain the evidence oracles. External preflight is advisory and never
+removes the FSM's committed-policy check.

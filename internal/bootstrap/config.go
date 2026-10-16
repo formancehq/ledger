@@ -8,12 +8,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
+	"github.com/formancehq/ledger/v3/pkg/metadatalimits"
 )
 
 // AuthFlagConfig captures the authentication flag values without runtime objects.
@@ -202,7 +202,7 @@ type Config struct {
 	// in the replicated cluster policy.
 	QueryCheckpointLimit uint64
 	// Metadata size ceilings, carried in the replicated cluster policy. They are
-	// the configurable form of domain.MetadataLimits: admission enforces them on
+	// the configurable form of metadatalimits.MetadataLimits: admission enforces them on
 	// every public entry path and FSM apply enforces them on the metadata a
 	// Numscript program merges in. Node-local here only to shape the policy the
 	// leader proposes — apply never reads these fields (invariant #2).
@@ -220,8 +220,8 @@ type Config struct {
 // MetadataLimits is the metadata size contract this node would propose in the
 // cluster policy. It is the desired configuration, not the effective one: the
 // effective ceilings are whatever the committed policy carries.
-func (c Config) MetadataLimits() domain.MetadataLimits {
-	return domain.MetadataLimits{
+func (c Config) MetadataLimits() metadatalimits.MetadataLimits {
+	return metadatalimits.MetadataLimits{
 		MaxEntriesPerEntity:     c.MetadataMaxEntriesPerEntity,
 		MaxKeyBytes:             c.MetadataMaxKeyBytes,
 		MaxValueBytes:           c.MetadataMaxValueBytes,
