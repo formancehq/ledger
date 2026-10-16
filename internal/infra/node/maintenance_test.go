@@ -28,6 +28,7 @@ func newTestMaintenanceNode(t *testing.T) (*Node, *testApplierSetup) {
 		wal:        setup.wal,
 		fsm:        setup.fsm,
 		applier:    setup.applier,
+		config:     NodeConfig{NodeID: 1},
 		membership: newTestMembership(t),
 	}
 	node.confState.Store(setup.confState)

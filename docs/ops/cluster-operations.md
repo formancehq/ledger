@@ -321,6 +321,18 @@ Two mechanisms prevent a syncing node from becoming leader prematurely:
 
 These protections ensure a node that is still restoring its Pebble checkpoint will not become leader, even if it appears active from Raft's perspective.
 
+### WAL compaction fence
+
+Background maintenance applies a durability fence before deleting any Raft WAL
+prefix. The leader records each voter's `LastPersistedIndex` from the peer's
+cluster-state response and compacts only below the lowest cursor reported by
+every voter in the committed configuration, minus the configured compaction
+margin. A missing or unreachable report is treated as unknown and blocks
+further WAL compaction until a fresh report arrives. The fence is reset on a
+leadership change, so a new leader never relies on observations from a previous
+term. Followers continue to compact against their own durable store because
+their WAL is not the replication history being retained for other voters.
+
 ## Automatic Learner Promotion
 
 The leader periodically checks whether any learner is caught up and eligible for promotion to voter.
