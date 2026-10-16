@@ -233,10 +233,10 @@ After joining, a node may need to catch up with the cluster's state. The synchro
 
 ### Startup Check
 
-When the node starts, `NewNode` checks whether the data store is up to date with the FSM snapshot:
+When the node starts, `NewNode` compares the store's last applied index with the WAL snapshot index (`IsStoreUpToDate`):
 
-- **Store up to date**: status stays `statusNormal`, spool entries are replayed
-- **Store behind**: status is set to `statusOutOfSync`
+- **Store at or above the WAL snapshot index**: status stays `statusNormal`. Every entry the store lacks is still in the local WAL, so the node catches up by replaying it and the spool, with no checkpoint transfer.
+- **Store below the WAL snapshot index**: status is set to `statusOutOfSync`. The entries between the store and the snapshot are no longer in the local WAL, so only a checkpoint from a donor can close the gap.
 
 ### Out-of-Sync State
 
