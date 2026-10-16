@@ -8,8 +8,9 @@ do not require a data wipe to adopt a later RC build. Client-visible behavior
 and configuration may change when the impact and upgrade steps are documented.
 The service gRPC revision stays at 40; see the
 [protocol policy](../technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision).
-Updates within the RC line must also support a rolling server upgrade from the
-previous RC build. Old and new voters must communicate and apply each committed
+Updates within the RC line must also support a direct rolling server upgrade
+from every earlier published RC in that line, including when an operator skips
+one or more RCs. Old and new voters must communicate and apply each committed
 entry identically while they coexist. A change that cannot meet this requirement
 needs a staged rollout design or must wait for a different compatibility line.
 
@@ -23,10 +24,11 @@ earlier development revisions and explicitly separate compatibility lines.
 | Coordinated restart | Earlier development revisions or a separate compatibility line that cannot mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart the cluster without a mixed-version window. |
 | Rebuild or restore | Earlier development revisions or a separate compatibility line with incompatible persisted or backup formats. | Follow the revision-specific reset instructions and rebuild from the declared source of truth or a backup explicitly supported by the target revision. |
 
-For an RC update, demonstrate the rolling class with old and new binaries in
-one cluster, including leadership transfer, writes, replay, and restart. If the
-target cannot pass, fix the change before release. Do not infer support from a
-successful single-node restart.
+Before publishing an RC update, demonstrate the rolling class separately from
+each earlier published RC binary to the target binary in one cluster, including
+leadership transfer, writes, replay, and restart. Record the source and target
+builds and the results in the release validation. If any path fails, fix the
+change before release. Do not infer support from a successful single-node restart.
 
 For upgrades from builds before `v3.0.0-rc.1`, the change-specific constraints
 documented under

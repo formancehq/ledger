@@ -10,13 +10,15 @@ or configuration, including pagination, can ship during the RC when their client
 impact and upgrade steps are documented. Do not silently reinterpret existing
 data or require a wipe to adopt a later RC build.
 
-Each RC update must also support a rolling server upgrade: old and new voters
-must communicate and apply the same committed entries identically while they
-coexist. Read [server upgrades](docs/ops/upgrades.md) before changing a shared
-service, Raft, FSM, or persisted-state contract.
+Each RC update must also support a rolling server upgrade from every earlier
+published RC in the same line: old and new voters must communicate and apply
+the same committed entries identically while they coexist. Read
+[server upgrades](docs/ops/upgrades.md) before changing a shared service, Raft,
+FSM, or persisted-state contract.
 
-- Preserve the numbers, wire types, and identity of published service protobuf
-  fields. Do not remove, renumber, or repurpose them during the RC. Internal-only
+- Preserve the published gRPC service and method names, request and response
+  types, protobuf field numbers, wire types, field identity, and enum numbers.
+  Do not remove, renumber, or repurpose them during the RC. Internal-only
   messages may be cleaned up when existing persisted data remains readable or a
   safe migration is supplied.
 - The EN-1551 cleanup removed every existing `reserved` declaration from `misc/proto/`; do not reintroduce any as a substitute for compatibility.

@@ -64,9 +64,10 @@ go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.1-0.
 The service API has a compiled protocol revision independent of release versions.
 For every exposed wire or behavior change, assess its effect on published clients.
 During the v3 release-candidate phase the revision is frozen: do not bump
-`pkg/grpcprotocol.Version`. Preserve published service field numbers, wire
-types, and identity. Behavior and configuration changes can ship when their
-client impact and upgrade steps are documented. Internal persisted/Raft-only
+`pkg/grpcprotocol.Version`. Preserve published gRPC service and method names,
+request and response types, field numbers, wire types, field identity, and enum
+numbers. Behavior and configuration changes can ship when their client impact
+and upgrade steps are documented. Internal persisted/Raft-only
 changes require an impact assessment of existing data and shared service types
 rather than an automatic service revision bump. See the
 [service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
@@ -74,7 +75,8 @@ for the gate, client obligations, and review criteria. Existing persisted data
 must remain readable, with a safe migration when a format change requires one.
 
 1. Edit the `.proto` file in `misc/proto/`
-2. Preserve published service field numbers, wire types, and identity. Realign
+2. Preserve published service and method names, request and response types,
+   field numbers, wire types, field identity, and enum numbers. Realign
    fields only in internal-only messages when existing persisted data remains
    readable or has a safe migration.
 3. **Audit the hand-rolled wire sites** before renumbering — see below

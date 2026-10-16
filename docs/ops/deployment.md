@@ -825,14 +825,13 @@ a rollback reverses the versions. A store checker can replay an affected audit
 entry differently from the stored outcome, and a locally consistent audit
 chain does not by itself prove that replicas agree with each other.
 
-For a library change that can alter script outcomes, do not use a mixed-version
-rolling upgrade. During unreleased v3 development, state is wiped on pushes
-to `release/v3.0`; a clean cluster restart with reset state is the supported
-boundary for such a change. Before a stable release, maintaining data across
-such an upgrade would require a separately designed, replicated semantic
-version boundary covering in-flight Raft entries and audit replay. Merely
-stopping all nodes does not establish that boundary when unapplied entries or
-replayable history remain.
+For a library change that can alter script outcomes, design a staged rollout
+that keeps old and new voters deterministic while they coexist and preserves
+replay of existing audited entries. Before `v3.0.0-rc.1`, state was wiped on
+pushes to `release/v3.0`; a clean cluster restart with reset state was the
+supported boundary for such a change. During the RC line, that reset is no
+longer an upgrade path. Merely stopping all nodes does not establish a safe
+boundary when unapplied entries or replayable history remain.
 
 ### Audit hash keying — threat model
 

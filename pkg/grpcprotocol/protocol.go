@@ -10,7 +10,7 @@ import (
 
 const (
 	// Version is frozen during the v3 release-candidate phase: published
-	// service field numbers, wire types, and identity stay stable.
+	// service methods, message types, fields, and enum numbers stay stable.
 	// Behavior changes require a documented client impact assessment.
 	// See docs/technical/architecture/subsystems/api/protocol-compatibility.md.
 	// A compiled constant also identifies local builds without release ldflags.

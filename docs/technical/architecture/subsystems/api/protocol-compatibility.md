@@ -3,11 +3,10 @@
 ## Requirement and decision (EN-1851)
 
 [EN-1851](https://formance-team.atlassian.net/browse/EN-1851) requires detecting
-an incompatible `ledgerctl` before it executes a business operation. Ledger v3
-is unreleased: its protobuf fields may be renumbered between development
-revisions, and a mismatched request can decode with a different meaning rather
-than fail to decode. Build versions and commit IDs do not establish protocol
-compatibility.
+an incompatible `ledgerctl` before it executes a business operation. Before
+`v3.0.0-rc.1`, protobuf fields could be renumbered between development revisions,
+and a mismatched request could decode with a different meaning rather than fail
+to decode. Build versions and commit IDs do not establish protocol compatibility.
 
 The approved decision is to **block requests with a different or missing
 protocol revision**, using a revision independent of the software release.
@@ -15,7 +14,8 @@ Each server supports exactly one revision. There is no negotiation, historical
 format support, or bypass flag. An advisory warning would not enforce the
 requirement; exact commit matching would also reject builds whose service
 contract has not changed. Release SemVer does not currently encode the
-compatibility of development revisions.
+compatibility of development revisions. During the RC line, revision 40 is
+frozen and the published gRPC wire contract must remain compatible.
 
 ## Wire contract and failure behavior
 
@@ -349,14 +349,16 @@ must implement the same revision; there is no compatibility fallback.
 ## Maintaining the revision
 
 Ledger v3 is in its release-candidate phase. The revision is frozen at `"40"`:
-do not increment `pkg/grpcprotocol.Version`. Preserve published field numbers,
-wire types, and identity so existing clients can decode the service messages. The
-revision identifies this wire contract; it does not freeze every behavior or
-configuration setting for the rest of the release-candidate phase.
+do not increment `pkg/grpcprotocol.Version`. Preserve published gRPC service
+and method names, request and response types, protobuf field numbers, wire
+types, field identity, and enum numbers so existing clients can call and decode
+the service. The revision identifies this wire contract; it does not freeze
+every behavior or configuration setting for the release-candidate phase.
 
 The author of a service change must identify its effect on published clients.
-Renumbering or changing the wire type or identity of an exposed protobuf field
-is not allowed during the RC. Behavior changes, such as a bounded page with a next
+Removing or renaming a published RPC, changing its request or response type,
+or removing, renumbering, or repurposing a published field or enum value is not
+allowed during the RC. Behavior changes, such as a bounded page with a next
 cursor, and configuration changes can ship when their effect and upgrade steps
 are documented in the PR and user guidance. Reviewers must check whether a
 client can still decode the response and how it must handle any changed result.
