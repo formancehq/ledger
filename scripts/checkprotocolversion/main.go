@@ -25,7 +25,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -482,9 +481,11 @@ func qualify(prefix, name string) string {
 
 // declSpan is the source range of one message, enum or service declaration.
 type declSpan struct {
-	name      string
-	startLine int // 1-based, inclusive
-	endLine   int // 1-based, inclusive
+	name        string
+	startLine   int // 1-based, inclusive
+	startColumn int // 1-based, inclusive
+	endLine     int // 1-based, inclusive
+	endColumn   int // 1-based, exclusive on endLine
 }
 
 // spanIndex maps a file to its type declarations so a buf finding location
@@ -538,9 +539,15 @@ func newSpanIndex(image *descriptorpb.FileDescriptorSet) spanIndex {
 			span := location.GetSpan()
 			switch len(span) {
 			case sourceSpanWithEndLine:
-				spans = append(spans, declSpan{name: name, startLine: int(span[0]) + 1, endLine: int(span[2]) + 1})
+				spans = append(spans, declSpan{
+					name: name, startLine: int(span[0]) + 1, startColumn: int(span[1]) + 1,
+					endLine: int(span[2]) + 1, endColumn: int(span[3]) + 1,
+				})
 			case sourceSpanSameLineWidth:
-				spans = append(spans, declSpan{name: name, startLine: int(span[0]) + 1, endLine: int(span[0]) + 1})
+				spans = append(spans, declSpan{
+					name: name, startLine: int(span[0]) + 1, startColumn: int(span[1]) + 1,
+					endLine: int(span[0]) + 1, endColumn: int(span[2]) + 1,
+				})
 			}
 		}
 		index[file.GetName()] = spans
@@ -565,22 +572,29 @@ func pathKey(path []int32) string {
 	return strings.Join(parts, ".")
 }
 
-// innermost returns the smallest declaration enclosing line.
-func (s spanIndex) innermost(file string, line int) (string, bool) {
-	candidates := make([]declSpan, 0, 4)
+// innermost returns the smallest declaration enclosing a source position.
+func (s spanIndex) innermost(file string, line, column int) (string, bool) {
+	var best *declSpan
 	for _, span := range s[file] {
-		if span.startLine <= line && line <= span.endLine {
-			candidates = append(candidates, span)
+		if line < span.startLine || line > span.endLine ||
+			(line == span.startLine && column < span.startColumn) ||
+			(line == span.endLine && column >= span.endColumn) {
+			continue
+		}
+		if best == nil ||
+			span.startLine > best.startLine ||
+			(span.startLine == best.startLine && span.startColumn > best.startColumn) ||
+			(span.startLine == best.startLine && span.startColumn == best.startColumn && span.endLine < best.endLine) ||
+			(span.startLine == best.startLine && span.startColumn == best.startColumn && span.endLine == best.endLine && span.endColumn < best.endColumn) {
+			current := span
+			best = &current
 		}
 	}
-	if len(candidates) == 0 {
+	if best == nil {
 		return "", false
 	}
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].endLine-candidates[i].startLine < candidates[j].endLine-candidates[j].startLine
-	})
 
-	return candidates[0].name, true
+	return best.name, true
 }
 
 // isGated decides whether a finding can change what a gated-service peer
@@ -589,7 +603,7 @@ func (s spanIndex) innermost(file string, line int) (string, bool) {
 // over-reporting costs a revision bump, under-reporting a silent mis-decode.
 func isGated(item bufFinding, index spanIndex, gated gatedSet) bool {
 	file := strings.TrimPrefix(filepath.ToSlash(item.Path), protoDir+"/")
-	if name, ok := index.innermost(file, item.StartLine); ok {
+	if name, ok := index.innermost(file, item.StartLine, item.StartColumn); ok {
 		return gated.names[name]
 	}
 

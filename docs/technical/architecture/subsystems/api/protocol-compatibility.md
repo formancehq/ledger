@@ -389,9 +389,10 @@ base. `agent-check-pr` runs it when `misc/proto/**` or
    `protoc`.
 3. The check keeps a finding only when its innermost enclosing declaration is
    a gated service (`BucketService`, `ClusterService`, `RestoreService`) or a
-   message or enum transitively reachable from one of their RPCs. A finding it
-   cannot attribute to a declaration counts when its file declares a gated
-   type. Raft-only and persisted-only messages are not counted.
+   message or enum transitively reachable from one of their RPCs. It uses source
+   line and column to distinguish nested declarations on the same line. A
+   finding it cannot attribute to a declaration counts when its file declares a
+   gated type. Raft-only and persisted-only messages are not counted.
 4. Any kept finding fails the check. A revision bump does not excuse it.
 
 The check does not detect semantic changes that keep the `.proto` text

@@ -195,6 +195,46 @@ func TestCheckerRejectsUnknownGatedService(t *testing.T) {
 	require.ErrorContains(t, err, "gated service api.Missing is not declared")
 }
 
+func TestCheckerClassifiesSameLineNestedMessages(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name         string
+		requestType  string
+		wantGated    int
+		wantInternal int
+	}{
+		{name: "nested message is gated", requestType: "Outer.Inner", wantGated: 1},
+		{name: "nested message is internal", requestType: "Outer", wantInternal: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := newFixtureRepo(t)
+			baseProto := `syntax = "proto3";
+package api;
+service Api { rpc Get(` + tc.requestType + `) returns (GetResponse); }
+message Outer { message Inner { string value = 1; } }
+message GetResponse { string result = 1; }
+`
+			writeFixture(t, repo, "misc/proto/api.proto", baseProto)
+			runGit(t, repo, "add", ".")
+			runGit(t, repo, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "compact base")
+			writeFixture(t, repo, "misc/proto/api.proto", strings.Replace(baseProto, "string value = 1;", "int64 value = 1;", 1))
+
+			res, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}}.run()
+			require.NoError(t, err)
+			require.Len(t, res.clientFindings, tc.wantGated)
+			require.Equal(t, tc.wantInternal, res.otherFindings)
+			if tc.wantGated > 0 {
+				require.ErrorContains(t, res.verdict(), "wire-incompatible change(s) reach a gated service")
+			} else {
+				require.NoError(t, res.verdict())
+			}
+		})
+	}
+}
+
 func newFixtureRepo(t *testing.T) string {
 	t.Helper()
 
