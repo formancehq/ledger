@@ -103,6 +103,7 @@ var _ = Describe("Simple cluster", func() {
 		var (
 			ctx        context.Context
 			servers    []*testutil.ServiceWithClient
+			gateway    *testserver.Gateway
 			leaderID   *uint64
 			followerID uint64
 		)
@@ -114,10 +115,11 @@ var _ = Describe("Simple cluster", func() {
 					i,
 					testserver.WithRaftCompactionMargin(raftCompactionMargin),
 					testserver.WithMaintenanceInterval(maintenanceInterval),
+					testserver.WithHealthCheckInterval(100*time.Millisecond),
 				))
 			}
 
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
+			ctx, servers, gateway, leaderID = testutil.SetupMultiNodeCluster(
 				countInstances,
 				clusterOptions...,
 			)
@@ -253,8 +255,36 @@ var _ = Describe("Simple cluster", func() {
 				return snapshot.GetMetadata().GetIndex()
 			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeNumerically(">=", targetIndex))
 
-			By("Starting the follower and waiting for it to catch up")
+			By("Starting the follower and requiring snapshot transfer evidence")
+			snapshotSent := make(chan uint64, 1)
+			gateway.SetInterceptor(testserver.MessageInterceptorFunc(func(msg *raftpb.Message) bool {
+				if msg.GetTo() != followerID {
+					return true
+				}
+
+				if msg.GetType() == raftpb.MsgApp {
+					return false
+				}
+
+				if msg.GetType() == raftpb.MsgSnap {
+					select {
+					case snapshotSent <- msg.GetSnapshot().GetMetadata().GetIndex():
+					default:
+					}
+				}
+
+				return true
+			}))
+			DeferCleanup(gateway.RemoveInterceptor)
 			testutil.RestartNode(ctx, servers[followerID-1])
+
+			var sentSnapshotIndex uint64
+			Eventually(snapshotSent).
+				WithTimeout(15 * time.Second).
+				WithPolling(100 * time.Millisecond).
+				Should(Receive(&sentSnapshotIndex))
+			Expect(sentSnapshotIndex).To(BeNumerically(">=", targetIndex))
+			gateway.RemoveInterceptor()
 
 			By("Waiting for the follower's applied and durable indexes to catch up")
 			Eventually(func(g Gomega) {
