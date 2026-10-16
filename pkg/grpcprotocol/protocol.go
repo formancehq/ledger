@@ -9,10 +9,12 @@ import (
 )
 
 const (
-	// Version must change when the client-facing wire format or semantics break.
+	// Version is frozen during the v3 release-candidate phase: published
+	// service methods, message types, fields, and enum numbers stay stable.
+	// Behavior changes require a documented client impact assessment.
 	// See docs/technical/architecture/subsystems/api/protocol-compatibility.md.
 	// A compiled constant also identifies local builds without release ldflags.
-	Version = "41"
+	Version = "40"
 	// MetadataKey carries the protocol version, not authentication credentials.
 	MetadataKey = "ledger-protocol-version"
 )
