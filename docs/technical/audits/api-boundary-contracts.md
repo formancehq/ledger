@@ -240,7 +240,7 @@ See [the creation contract](../architecture/subsystems/api/atomic-ledger-creatio
 ## HTTP event sink mutations
 
 Trace POST and DELETE under `/v3/_/events-sinks` through the registered
-`ledger:OpsWrite` route guards and unsigned Apply requests. POST accepts a
+`ledger:WriteOps` route guards and unsigned Apply requests. POST accepts a
 direct protobuf JSON configuration with a name and one sink variant; verify
 full-body limits, strict JSON decoding and field preservation for all five
 variants. Its acknowledgement includes only the committed name. GET retains

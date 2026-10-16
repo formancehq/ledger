@@ -454,7 +454,7 @@ func TestAuthenticate_GranularScopePassThrough(t *testing.T) {
 	cfg := testAuthConfig(t, keySet)
 
 	// Token has granular scope directly (identity pass-through)
-	token := signToken(t, privKey, newTestClaims("ledger:TransactionRead"))
+	token := signToken(t, privKey, newTestClaims("ledger:ReadTransaction"))
 	ctx := ctxWithBearer(token)
 
 	newCtx, err := authenticate(ctx, cfg, ScopeTransactionsRead)

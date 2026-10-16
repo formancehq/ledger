@@ -66,7 +66,7 @@ schemas and credential-safe responses.
 ### Authentication
 
 Saving or deleting ledger, account or transaction metadata, and setting or
-removing metadata field types, requires the granular `ledger:MetadataWrite`
+removing metadata field types, requires the granular `ledger:WriteMetadata`
 scope. The aggregate `ledger:write` grants it under the default mapping;
 custom mappings can differ.
 
@@ -76,8 +76,8 @@ without a token use configured anonymous scopes and can succeed when those scope
 permit the operation. Authentication-disabled mode bypasses credential and scope
 checks. See [Authentication Guide](../../../../ops/authentication.md) for configuration details.
 
-Numscript library reads require `ledger:LedgerRead`; saving a version requires
-`ledger:LedgerWrite`. All five operations declare optional `BearerAuth` and their
+Numscript library reads require `ledger:ReadLedger`; saving a version requires
+`ledger:WriteLedger`. All five operations declare optional `BearerAuth` and their
 401/403 responses. Missing credentials with insufficient anonymous scopes and
 invalid tokens return 401; a valid token lacking the required scope returns 403.
 These middleware failures use `text/plain; charset=utf-8`. The response wrapper
@@ -98,7 +98,7 @@ scope each one requires, and it enforces the table two ways:
 
 - **Reconciliation** against `chi.Walk`, in both directions — a route with no table row fails ("no
   scope decision"), and a table row matching no route fails ("stale row"). This is what stops a new
-  route under the `/v3/_/…` subtree from silently inheriting `ledger:OpsRead`.
+  route under the `/v3/_/…` subtree from silently inheriting `ledger:ReadOps`.
 - **End-to-end probes** — for each guarded route, a token carrying the declared scope must be
   admitted, and a token carrying **every** other granular scope must be refused with 403. That proves
   exactly one scope opens each route.
@@ -113,7 +113,7 @@ Two properties of this test are load-bearing and easy to break by "simplifying" 
   tokenless request. All `RequireScope` closures also share one code pointer, so reflection cannot
   tell them apart. Only a real request through `ServeHTTP` reveals the scope.
 - **Probes use granular scopes only, never the aggregate `ledger:read`.** The aggregate expands to
-  both `ledger:LedgerRead` and `ledger:OpsRead`, which is precisely what hid the EN-1508 drift from
+  both `ledger:ReadLedger` and `ledger:ReadOps`, which is precisely what hid the EN-1508 drift from
   every caller not using granular scopes.
 
 The same asymmetry noted above has a second consequence worth knowing: because a `Route` sub-mux
@@ -963,7 +963,7 @@ Audit reads expose the tamper-evident audit trail over HTTP (mirroring the gRPC
 `BucketService.ListAuditEntries` / `GetAuditEntry`). Audit reads are
 **bucket-wide, not ledger-scoped** — a single proposal can touch several ledgers
 — so these routes sit at the top level (no `{ledgerName}`) and ledger scope is
-expressed as a filter condition. Both require the `ledger:AuditRead` scope.
+expressed as a filter condition. Both require the `ledger:ReadAudit` scope.
 
 #### List Audit Entries
 
@@ -1104,11 +1104,11 @@ there is no HTTP-specific storage or controller path.
 
 | Method and path | Scope | Success |
 |---|---|---|
-| `GET /v3/_/events-sinks` | `ledger:OpsRead` | `200`, existing `{data: {sinks, sinkStatuses}}` envelope |
-| `POST /v3/_/events-sinks` | `ledger:OpsWrite` | `201`, `{data: {name}}` |
-| `DELETE /v3/_/events-sinks/{sinkName}` | `ledger:OpsWrite` | `204`, no body |
+| `GET /v3/_/events-sinks` | `ledger:ReadOps` | `200`, existing `{data: {sinks, sinkStatuses}}` envelope |
+| `POST /v3/_/events-sinks` | `ledger:WriteOps` | `201`, `{data: {name}}` |
+| `DELETE /v3/_/events-sinks/{sinkName}` | `ledger:WriteOps` | `204`, no body |
 
-Under the default scope mapping, `ledger:write` grants `ledger:OpsWrite`.
+Under the default scope mapping, `ledger:write` grants `ledger:WriteOps`.
 Custom mappings can differ. Route guards apply before request decoding or
 backend execution. Authentication failures use the standard `401`/`403` errors.
 

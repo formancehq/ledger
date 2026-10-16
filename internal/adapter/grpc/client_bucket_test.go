@@ -1085,7 +1085,7 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 					Subject: "original-user",
 					Source:  &commonpb.CallerIdentity_KeyId{KeyId: "ed25519-7"},
 				},
-				Scopes: []string{"ledger:TransactionWrite"},
+				Scopes: []string{"ledger:WriteTransaction"},
 			},
 		},
 	}
@@ -1101,7 +1101,7 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 	require.NotNil(t, fc)
 	require.Equal(t, "original-user", fc.GetAuthenticated().GetIdentity().GetSubject())
 	require.Equal(t, "ed25519-7", fc.GetAuthenticated().GetIdentity().GetKeyId())
-	require.Equal(t, []string{"ledger:TransactionWrite"}, fc.GetAuthenticated().GetScopes())
+	require.Equal(t, []string{"ledger:WriteTransaction"}, fc.GetAuthenticated().GetScopes())
 }
 
 func TestApply_RequiresLeaderExecutionProvenance(t *testing.T) {
