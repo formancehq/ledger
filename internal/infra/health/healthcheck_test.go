@@ -20,6 +20,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 )
 
+func allowPersistedIndexReporting(ns *MocknodeState) {
+	ns.EXPECT().VoterIDs().Return([]uint64{8}).AnyTimes()
+	ns.EXPECT().RecordPeerPersistedIndex(gomock.Any(), gomock.Any()).AnyTimes()
+	ns.EXPECT().ForgetPeerPersistedIndex(gomock.Any()).AnyTimes()
+	ns.EXPECT().ResetPeerPersistedIndexes().AnyTimes()
+}
+
 type diskUsageTestServer struct {
 	clusterpb.UnimplementedClusterServiceServer
 
@@ -64,7 +71,9 @@ func (s *diskUsageTestServer) GetDiskUsage(context.Context, *clusterpb.GetDiskUs
 func TestHealthChecker_LeadershipChangeInvalidatesWriteGate(t *testing.T) {
 	t.Parallel()
 
-	hc := &HealthChecker{checkNow: make(chan struct{}, 1)}
+	ns := NewMocknodeState(gomock.NewController(t))
+	allowPersistedIndexReporting(ns)
+	hc := &HealthChecker{node: ns, checkNow: make(chan struct{}, 1)}
 	hc.gate.Store(&gateState{leadershipEpoch: hc.leadershipEpoch.Load()})
 	require.NoError(t, hc.CheckWritesAllowed())
 
@@ -109,6 +118,7 @@ func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
 	require.NoError(t, pool.AddPeer(8, listener.Addr().String()))
 
 	ns := NewMocknodeState(gomock.NewController(t))
+	allowPersistedIndexReporting(ns)
 	ns.EXPECT().IsLeader().Return(true)
 	ns.EXPECT().GetNodeID().Return(uint64(7))
 	ns.EXPECT().MemberIDs().Return([]uint64{7, 8})
@@ -148,6 +158,7 @@ func TestHealthChecker_NewLeaderCanOpenWithUnavailablePeer(t *testing.T) {
 	require.NoError(t, err)
 
 	ns := NewMocknodeState(gomock.NewController(t))
+	allowPersistedIndexReporting(ns)
 	ns.EXPECT().IsLeader().Return(true)
 	ns.EXPECT().GetNodeID().Return(uint64(7))
 	ns.EXPECT().MemberIDs().Return([]uint64{7, 8})
@@ -178,6 +189,7 @@ func TestHealthChecker_NewLeaderRequiresFreshLocalSample(t *testing.T) {
 
 	collector := &diskusage.Collector{}
 	ns := NewMocknodeState(gomock.NewController(t))
+	allowPersistedIndexReporting(ns)
 	ns.EXPECT().IsLeader().Return(true)
 	ns.EXPECT().GetNodeID().Return(uint64(7))
 	ns.EXPECT().MemberIDs().Return([]uint64{7})
@@ -205,7 +217,9 @@ func TestHealthChecker_NewLeaderRequiresFreshLocalSample(t *testing.T) {
 func TestHealthChecker_OldLeadershipEpochCannotPublish(t *testing.T) {
 	t.Parallel()
 
-	hc := &HealthChecker{}
+	ns := NewMocknodeState(gomock.NewController(t))
+	allowPersistedIndexReporting(ns)
+	hc := &HealthChecker{node: ns}
 	oldEpoch := hc.leadershipEpoch.Load()
 	hc.OnLeadershipChange(false)
 	hc.OnLeadershipChange(true)
@@ -214,6 +228,18 @@ func TestHealthChecker_OldLeadershipEpochCannotPublish(t *testing.T) {
 	// synchronous transition callbacks.
 	hc.gate.Store(&gateState{leadershipEpoch: oldEpoch})
 	require.ErrorIs(t, hc.CheckWritesAllowed(), errGateNotReady)
+}
+
+func TestHealthChecker_DropsPersistedReportFromPreviousEpoch(t *testing.T) {
+	t.Parallel()
+
+	ns := NewMocknodeState(gomock.NewController(t))
+	ns.EXPECT().ResetPeerPersistedIndexes()
+	hc := &HealthChecker{node: ns}
+
+	oldEpoch := hc.leadershipEpoch.Load()
+	hc.OnLeadershipChange(true)
+	hc.recordPeerPersistedIndex(oldEpoch, 2, 42)
 }
 
 func TestHealthChecker_MissingCommittedPeerCannotClearDiskGate(t *testing.T) {
@@ -230,6 +256,7 @@ func TestHealthChecker_MissingCommittedPeerCannotClearDiskGate(t *testing.T) {
 	require.NoError(t, err)
 
 	ns := NewMocknodeState(gomock.NewController(t))
+	allowPersistedIndexReporting(ns)
 	ns.EXPECT().IsLeader().Return(true)
 	ns.EXPECT().GetNodeID().Return(uint64(7))
 	ns.EXPECT().MemberIDs().Return([]uint64{7, 8})

@@ -179,6 +179,28 @@ authority gates. General checkpoint/restore content correctness belongs to
 `persistence-restore-replay`; filesystem containment belongs to
 `filesystem-confinement-contracts`.
 
+### Durable WAL compaction fence
+
+Leader WAL deletion is safe only below the durable index covered by a quorum of
+the committed voters. During joint consensus, the incoming and outgoing voter
+sets each need their own quorum. Peer durability observations are term-local and
+are discarded on leadership change; an unavailable report contributes zero, but
+does not prevent compaction when the remaining voters still form a quorum.
+
+The audit must distinguish the two recovery paths:
+
+- a follower whose retained WAL still covers the missing suffix must recover by
+  `MsgApp`, and the test must prove that the leader did not compact past that
+  voter's durable range while another voter was live but lagging;
+- a follower below the retained boundary must receive a real `MsgSnap`, and the
+  test must record the message and then prove applied and durable catch-up.
+
+Startup and follower-local compaction are explicit exceptions to the leader
+fence. They compact only at the local applied index, which is no newer than the
+committed index; since commit is present on a quorum, at most a minority can
+need snapshot recovery after a restart or election. The audit should verify the
+documented ordering rather than treating those paths as leader compaction.
+
 ## Ownership and deduplication
 
 One finding represents one root cause and required correction, even when it

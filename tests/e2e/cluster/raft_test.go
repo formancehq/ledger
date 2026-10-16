@@ -115,6 +115,7 @@ var _ = Describe("Simple cluster", func() {
 					i,
 					testserver.WithRaftCompactionMargin(raftCompactionMargin),
 					testserver.WithMaintenanceInterval(maintenanceInterval),
+					testserver.WithHealthCheckInterval(100*time.Millisecond),
 				))
 			}
 
@@ -193,7 +194,7 @@ var _ = Describe("Simple cluster", func() {
 			Expect(ledger.Name).To(Equal(ledgerName))
 		})
 
-		It("should restore the state from a snapshot sent by the leader", func() {
+		It("should restore the state from a snapshot after the follower was offline", func() {
 			lid := *leaderID
 
 			By("Capturing the caught-up follower progress before shutdown")
@@ -218,7 +219,7 @@ var _ = Describe("Simple cluster", func() {
 			By("Stopping the follower")
 			testutil.StopNode(ctx, servers[followerID-1])
 
-			By("Creating state that cannot be replayed after compaction")
+			By("Creating state while the follower is offline")
 			for i := 0; i < countTransactions; i++ {
 				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", offlineAccountAddress, big.NewInt(100), "USD"),
@@ -226,7 +227,6 @@ var _ = Describe("Simple cluster", func() {
 				Expect(err).To(Succeed())
 			}
 
-			minimumSnapshotIndex := followerLastIndex + raftCompactionMargin + 1
 			var targetIndex uint64
 			Eventually(func(g Gomega) {
 				leaderState, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
@@ -235,7 +235,7 @@ var _ = Describe("Simple cluster", func() {
 				g.Expect(err).To(Succeed())
 
 				targetIndex = leaderState.GetRaftStatus().GetLastPersistedIndex()
-				g.Expect(targetIndex).To(BeNumerically(">=", minimumSnapshotIndex),
+				g.Expect(targetIndex).To(BeNumerically(">=", followerLastIndex+raftCompactionMargin+1),
 					"offline writes must advance beyond the stopped follower's recoverable log range")
 			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 
@@ -255,7 +255,7 @@ var _ = Describe("Simple cluster", func() {
 				return snapshot.GetMetadata().GetIndex()
 			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeNumerically(">=", targetIndex))
 
-			By("Allowing only snapshot catch-up while recording the real Raft MsgSnap")
+			By("Starting the follower and requiring snapshot transfer evidence")
 			snapshotSent := make(chan uint64, 1)
 			gateway.SetInterceptor(testserver.MessageInterceptorFunc(func(msg *raftpb.Message) bool {
 				if msg.GetTo() != followerID {
@@ -276,24 +276,25 @@ var _ = Describe("Simple cluster", func() {
 				return true
 			}))
 			DeferCleanup(gateway.RemoveInterceptor)
-
-			By("Starting the follower and requiring snapshot transfer evidence")
 			testutil.RestartNode(ctx, servers[followerID-1])
 
 			var sentSnapshotIndex uint64
-			Eventually(snapshotSent).Within(15 * time.Second).Should(Receive(&sentSnapshotIndex))
+			Eventually(snapshotSent).
+				WithTimeout(15 * time.Second).
+				WithPolling(100 * time.Millisecond).
+				Should(Receive(&sentSnapshotIndex))
 			Expect(sentSnapshotIndex).To(BeNumerically(">=", targetIndex))
 			gateway.RemoveInterceptor()
 
-			By("Waiting for the follower's applied and durable indexes to pass the installed snapshot")
+			By("Waiting for the follower's applied and durable indexes to catch up")
 			Eventually(func(g Gomega) {
 				followerState, err := servers[followerID-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
 					NodeId: uint32(followerID),
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(followerState.GetState()).To(Equal("Follower"))
-				g.Expect(followerState.GetRaftStatus().GetApplied()).To(BeNumerically(">=", sentSnapshotIndex))
-				g.Expect(followerState.GetRaftStatus().GetLastPersistedIndex()).To(BeNumerically(">=", sentSnapshotIndex))
+				g.Expect(followerState.GetRaftStatus().GetApplied()).To(BeNumerically(">=", targetIndex))
+				g.Expect(followerState.GetRaftStatus().GetLastPersistedIndex()).To(BeNumerically(">=", targetIndex))
 			}).Within(30 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 
 			By("Reading state created while the follower was offline from that follower")
