@@ -74,6 +74,12 @@ rather than an automatic service revision bump. See the
 for the gate, client obligations, and review criteria. Existing persisted data
 must remain readable, with a safe migration when a format change requires one.
 
+CI enforces the wire part of the service protocol freeze with
+`PROTOCOL_BASE_SHA=<target-sha> just check-protocol-version`. It fails if the
+revision changes or `buf breaking` finds a wire-incompatible change in a type
+reachable from a gated service. Run it locally before pushing a `.proto`
+change; review behavior changes separately for client impact.
+
 1. Edit the `.proto` file in `misc/proto/`
 2. Preserve published service and method names, request and response types,
    field numbers, wire types, field identity, and enum numbers. Realign

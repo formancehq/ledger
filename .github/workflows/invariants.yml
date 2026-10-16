@@ -3,7 +3,7 @@ name: Repository Invariants
 on:
   merge_group:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited]
   push:
     branches:
       - main
@@ -31,3 +31,10 @@ jobs:
         uses: ./.github/actions/default
       - name: Check repository invariants
         run: nix develop .#ci --command bash scripts/check-repo-invariants
+      - name: Check service protocol revision
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        env:
+          # pull_request checks out the merge commit, so comparing with the
+          # current target tip also catches a revision another PR consumed.
+          PROTOCOL_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: nix develop .#ci --command just check-protocol-version
