@@ -542,7 +542,7 @@ Raft logs grow indefinitely. Snapshots allow:
 
 ### Snapshot Creation
 
-Snapshots are created automatically by a periodic background maintenance timer (`--maintenance-interval`, default 30s). On each tick, if `lastPersistedIndex` has advanced since the last snapshot, a new snapshot is created, followed by WAL compaction and Pebble checkpoint creation.
+Snapshots are created automatically by a periodic background maintenance timer (`--maintenance-interval`, default 30s). On each tick, if `lastPersistedIndex` has advanced since the last snapshot, a new snapshot is created, followed by a fenced WAL compaction and Pebble checkpoint creation. A leader may compact only below the highest durable index reported by a quorum of the committed voters (and below the corresponding quorum in both sides of a joint configuration); missing reports contribute zero. The fence is term-local and resets on leadership change.
 
 #### Missing directories
 
