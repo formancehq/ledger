@@ -18,4 +18,12 @@ type nodeState interface {
 	IsHealthy() bool
 	// GetLeader returns the current leader's node ID, or 0 if none is elected.
 	GetLeader() uint64
+	// VoterIDs returns the IDs in the committed Raft voter configuration.
+	VoterIDs() []uint64
+	// RecordPeerPersistedIndex publishes a peer's durable Pebble cursor.
+	RecordPeerPersistedIndex(peerID, index uint64)
+	// ForgetPeerPersistedIndex removes a peer's stale or unavailable report.
+	ForgetPeerPersistedIndex(peerID uint64)
+	// ResetPeerPersistedIndexes drops reports from a previous leadership epoch.
+	ResetPeerPersistedIndexes()
 }
