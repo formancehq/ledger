@@ -159,6 +159,14 @@ func WithMaintenanceInterval(interval time.Duration) testservice.Instrumentation
 	}
 }
 
+func WithHealthCheckInterval(interval time.Duration) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--health-check-interval", interval.String())
+
+		return nil
+	}
+}
+
 // withHealthDiskThresholds configures the WAL and data disk-pressure block and
 // resume marks shared by the default test nodes.
 func withHealthDiskThresholds(block, resume float64) testservice.InstrumentationFunc {
