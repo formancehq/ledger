@@ -57,6 +57,18 @@ func TestCapabilityFreezesAndClonesSnapshot(t *testing.T) {
 	require.Equal(t, []string{"ledger:Read", "ledger:Write"}, second.GetAuthenticated().GetScopes())
 }
 
+func TestHistoricalScopeNamesRemainValidAttribution(t *testing.T) {
+	t.Parallel()
+
+	snapshot := &commonpb.CallerSnapshot{Principal: &commonpb.CallerSnapshot_Anonymous{
+		Anonymous: &commonpb.AnonymousCaller{Scopes: []string{"ledger:TransactionRead", "ledger:TransactionWrite"}},
+	}}
+	require.NoError(t, Validate(snapshot))
+	capability, err := New(snapshot)
+	require.NoError(t, err)
+	require.Equal(t, snapshot.GetAnonymous().GetScopes(), capability.Snapshot().GetAnonymous().GetScopes())
+}
+
 func TestAllowlistedSystemPrincipal(t *testing.T) {
 	t.Parallel()
 

@@ -44,23 +44,43 @@ The ledger accepts virtual scopes in JWTs and expands them to granular Ledger sc
 
 | Scope | Operations |
 |-------|------------|
-| `ledger:read` | All read operations (GET HTTP, List*/Get* gRPC RPCs). Also covers `Barrier`, which is read-after-write tooling but proposes a no-op through Raft, so it is authenticated and requires the `ledger:OpsRead` granular scope (included in the read bundle). |
+| `ledger:read` | All read operations (GET HTTP, List*/Get* gRPC RPCs). Also covers `Barrier`, which is read-after-write tooling but proposes a no-op through Raft, so it is authenticated and requires the `ledger:ReadOps` granular scope (included in the read bundle). |
 | `ledger:write` | All write operations (Apply: create/revert transactions, save/delete metadata, create/delete ledgers, set maintenance mode, etc.) |
 | `ledger:admin` | Cluster operations (GetClusterState, TransferLeadership, Backup, AddLearner, PromoteLearner, RemoveNode, GetDiskUsage, GetNodeTime) |
 
 If `--auth-service=myapp`, the scopes become `myapp:read`, `myapp:write`, `myapp:admin`.
 
-Granular scopes use the Ledger application namespace with the `ledger:<Resource><Action>` shape:
+Granular scopes use the Ledger application namespace with the `ledger:<Action><Resource>` shape:
 
 ```
-ledger:LedgerRead       ledger:LedgerWrite
-ledger:TransactionRead  ledger:TransactionWrite
-ledger:AccountRead      ledger:MetadataWrite
-ledger:AuditRead        ledger:AuditWrite
-ledger:OpsRead          ledger:OpsWrite
-ledger:QueryRead        ledger:QueryWrite
-ledger:ClusterRead      ledger:ClusterWrite
+ledger:ReadLedger       ledger:WriteLedger
+ledger:ReadTransaction  ledger:WriteTransaction
+ledger:ReadAccount      ledger:WriteMetadata
+ledger:ReadAudit        ledger:WriteAudit
+ledger:ReadOps          ledger:WriteOps
+ledger:ReadQuery        ledger:WriteQuery
+ledger:ReadCluster      ledger:WriteCluster
 ```
+
+### Migration from RC.1 granular labels
+
+RC.1 used `ledger:<Resource><Action>` (for example,
+`ledger:TransactionRead`). Replace those labels with
+`ledger:<Action><Resource>` (for example, `ledger:ReadTransaction`) in issued
+tokens, Ed25519 key allowlists, custom `AUTH_SCOPE_MAPPING` or
+`--auth-scope-mapping-file` values, and `--auth-anonymous-scopes`. The old
+granular labels are not recognized as effective rights by the new default
+mapping. The aggregate token labels `ledger:read`, `ledger:write`, and
+`ledger:admin` are unchanged and continue to map to the corresponding new
+granular rights. Custom mapping files replace the default mapping, so update
+their values before deploying this revision. Ledger-local `*:read` and
+`*:write` values still expand to all matching rights.
+
+This change does not alter a business storage key or protobuf field. Effective
+scope strings are captured in persisted audit `CallerSnapshot` records and
+bound into their hashes. Historical records retain their original strings;
+verification reads and hashes those stored strings without translating them.
+Do not rewrite historical audit entries during the rollout.
 
 ## Configuration Invariants
 
@@ -131,7 +151,7 @@ Both forms are supported — the CLI flag is shorthand for the JSON entry.
 
 When neither is set, the behavior is identical to before (every request must authenticate, no regression possible).
 
-Note: `/debug/pprof/*` endpoints require the `ledger:OpsRead` scope when authentication is enabled.
+Note: `/debug/pprof/*` endpoints require the `ledger:ReadOps` scope when authentication is enabled.
 
 ## gRPC Authentication
 

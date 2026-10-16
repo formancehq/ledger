@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -65,7 +66,7 @@ func TestExpandScopes_IdentityPassThrough(t *testing.T) {
 
 	m := DefaultMapping("ledger")
 	// Token has a granular scope directly
-	effective := m.ExpandScopes([]string{"ledger:TransactionRead"})
+	effective := m.ExpandScopes([]string{"ledger:ReadTransaction"})
 
 	assert.Contains(t, effective, ScopeTransactionsRead)
 	// Should NOT expand to other scopes
@@ -76,7 +77,7 @@ func TestExpandScopes_MixedVirtualAndGranular(t *testing.T) {
 	t.Parallel()
 
 	m := DefaultMapping("ledger")
-	effective := m.ExpandScopes([]string{"ledger:admin", "ledger:TransactionRead"})
+	effective := m.ExpandScopes([]string{"ledger:admin", "ledger:ReadTransaction"})
 
 	// From virtual scope
 	assert.Contains(t, effective, ScopeClusterRead)
@@ -94,6 +95,25 @@ func TestExpandScopes_UnknownScope(t *testing.T) {
 	effective := m.ExpandScopes([]string{"unknown:scope"})
 
 	assert.Empty(t, effective)
+}
+
+func TestExpandScopes_LegacyGranularScopeDoesNotPassThrough(t *testing.T) {
+	t.Parallel()
+
+	m := DefaultMapping("ledger")
+	assert.Empty(t, m.ExpandScopes([]string{"ledger:TransactionRead"}))
+	assert.Contains(t, m.ExpandScopes([]string{"ledger:ReadTransaction"}), ScopeTransactionsRead)
+}
+
+func TestAllGranularScopesUseActionResourceOrder(t *testing.T) {
+	t.Parallel()
+
+	for scope := range AllGranularScopes {
+		_, name, ok := strings.Cut(string(scope), ":")
+		assert.True(t, ok, "scope %q has no namespace", scope)
+		assert.True(t, strings.HasPrefix(name, "Read") || strings.HasPrefix(name, "Write"),
+			"scope %q does not start with its action", scope)
+	}
 }
 
 func TestHasScope(t *testing.T) {
@@ -168,7 +188,7 @@ func TestExpandWildcardScope_Unknown(t *testing.T) {
 	_, ok := ExpandWildcardScope("*:admin")
 	assert.False(t, ok)
 
-	_, ok = ExpandWildcardScope("ledger:LedgerRead")
+	_, ok = ExpandWildcardScope("ledger:ReadLedger")
 	assert.False(t, ok)
 }
 

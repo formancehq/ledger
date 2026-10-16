@@ -18,23 +18,23 @@ const (
 )
 
 // Granular scopes — 14 total, grouped by resource category.
-// Canonical Ledger scopes use the app namespace followed by ResourceAction,
-// matching the Membership scope style (for example, ledger:ClusterRead).
+// Canonical Ledger scopes use the app namespace followed by ActionResource,
+// matching the Membership scope style (for example, ledger:ReadCluster).
 var (
-	ScopeLedgersRead       Scope = "ledger:LedgerRead"
-	ScopeLedgersWrite      Scope = "ledger:LedgerWrite"
-	ScopeTransactionsRead  Scope = "ledger:TransactionRead"
-	ScopeTransactionsWrite Scope = "ledger:TransactionWrite"
-	ScopeAccountsRead      Scope = "ledger:AccountRead"
-	ScopeMetadataWrite     Scope = "ledger:MetadataWrite"
-	ScopeAuditRead         Scope = "ledger:AuditRead"
-	ScopeAuditWrite        Scope = "ledger:AuditWrite"
-	ScopeOpsRead           Scope = "ledger:OpsRead"
-	ScopeOpsWrite          Scope = "ledger:OpsWrite"
-	ScopeQueriesRead       Scope = "ledger:QueryRead"
-	ScopeQueriesWrite      Scope = "ledger:QueryWrite"
-	ScopeClusterRead       Scope = "ledger:ClusterRead"
-	ScopeClusterWrite      Scope = "ledger:ClusterWrite"
+	ScopeLedgersRead       Scope = "ledger:ReadLedger"
+	ScopeLedgersWrite      Scope = "ledger:WriteLedger"
+	ScopeTransactionsRead  Scope = "ledger:ReadTransaction"
+	ScopeTransactionsWrite Scope = "ledger:WriteTransaction"
+	ScopeAccountsRead      Scope = "ledger:ReadAccount"
+	ScopeMetadataWrite     Scope = "ledger:WriteMetadata"
+	ScopeAuditRead         Scope = "ledger:ReadAudit"
+	ScopeAuditWrite        Scope = "ledger:WriteAudit"
+	ScopeOpsRead           Scope = "ledger:ReadOps"
+	ScopeOpsWrite          Scope = "ledger:WriteOps"
+	ScopeQueriesRead       Scope = "ledger:ReadQuery"
+	ScopeQueriesWrite      Scope = "ledger:WriteQuery"
+	ScopeClusterRead       Scope = "ledger:ReadCluster"
+	ScopeClusterWrite      Scope = "ledger:WriteCluster"
 )
 
 // AllGranularScopes is the complete set of valid granular scopes for validation.
@@ -124,25 +124,26 @@ func (m ScopeMapping) AnonymousScopes() map[Scope]struct{} {
 }
 
 // ExpandWildcardScope expands a wildcard token (e.g. "*:read", "*:write") into
-// the list of granular scopes with a matching action suffix. Returns (nil, false)
+// the list of granular scopes with a matching action prefix. Returns (nil, false)
 // when the input is not a recognized wildcard.
 func ExpandWildcardScope(s string) ([]Scope, bool) {
 	switch s {
 	case WildcardRead:
-		return scopesWithSuffix("Read"), true
+		return scopesWithAction("Read"), true
 	case WildcardWrite:
-		return scopesWithSuffix("Write"), true
+		return scopesWithAction("Write"), true
 	default:
 		return nil, false
 	}
 }
 
-// scopesWithSuffix returns every granular scope whose name ends with the given
-// action suffix (e.g. "Read", "Write"). Order is not stable.
-func scopesWithSuffix(suffix string) []Scope {
+// scopesWithAction returns every granular scope with the given action after the
+// namespace separator (e.g. "Read", "Write"). Order is not stable.
+func scopesWithAction(action string) []Scope {
 	out := make([]Scope, 0, len(AllGranularScopes))
 	for s := range AllGranularScopes {
-		if strings.HasSuffix(string(s), suffix) {
+		_, name, ok := strings.Cut(string(s), ":")
+		if ok && strings.HasPrefix(name, action) {
 			out = append(out, s)
 		}
 	}

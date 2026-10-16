@@ -61,16 +61,16 @@ The lack of cache is deliberate at this stage — JWKS lookups are local to the 
 `internal/adapter/auth/scopes.go:21-36` defines 14 granular scopes:
 
 ```
-ledger:LedgerRead       ledger:LedgerWrite
-ledger:TransactionRead  ledger:TransactionWrite
-ledger:AccountRead      ledger:MetadataWrite
-ledger:AuditRead        ledger:AuditWrite
-ledger:OpsRead          ledger:OpsWrite
-ledger:QueryRead        ledger:QueryWrite
-ledger:ClusterRead      ledger:ClusterWrite
+ledger:ReadLedger       ledger:WriteLedger
+ledger:ReadTransaction  ledger:WriteTransaction
+ledger:ReadAccount      ledger:WriteMetadata
+ledger:ReadAudit        ledger:WriteAudit
+ledger:ReadOps          ledger:WriteOps
+ledger:ReadQuery        ledger:WriteQuery
+ledger:ReadCluster      ledger:WriteCluster
 ```
 
-Tokens may carry either **granular** scopes (used as-is) or **virtual** scopes (for example `ledger:read`, `ledger:write`, `ledger:admin`) that expand into a granular set via a configurable mapping (`scopes.go:56-89`). Granular scopes are always in the Ledger application namespace with the `ledger:<Resource><Action>` shape, matching the Membership scope convention. The mapping can be a JSON file, an environment variable, or a built-in default. Once expanded, only the granular form is consulted at authorization time.
+Tokens may carry either **granular** scopes (used as-is) or **virtual** scopes (for example `ledger:read`, `ledger:write`, `ledger:admin`) that expand into a granular set via a configurable mapping (`scopes.go:58-113`). Granular scopes are always in the Ledger application namespace with the `ledger:<Action><Resource>` shape, matching the Membership scope convention. The mapping can be a JSON file, an environment variable, or a built-in default. Once expanded, only the granular form is consulted at authorization time. [RC.1 migration details](../../../../ops/authentication.md#migration-from-rc1-granular-labels) cover tokens, custom mappings, anonymous grants, and historical audit records.
 
 ### Authorization enforcement
 
@@ -106,7 +106,7 @@ Failures are structured-logged with reason, key ID, remote address, and an OTel 
 |------------|--------|
 | `""` (default) | Every request must be authenticated. |
 | `"*:read"` | Public reads, authenticated writes. |
-| `"ledger:LedgerRead,ledger:TransactionRead"` | Specific anonymous reads, nothing else. |
+| `"ledger:ReadLedger,ledger:ReadTransaction"` | Specific anonymous reads, nothing else. |
 
 This is the right setting to relax for embedded / dev deployments without disabling auth altogether.
 

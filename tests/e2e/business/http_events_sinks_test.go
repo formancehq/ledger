@@ -279,7 +279,7 @@ var _ = Describe("HTTP events sinks mutations", func() {
 })
 
 var _ = Describe("HTTP events sinks mutation scopes", func() {
-	It("requires ledger:OpsWrite for both mutations on an authenticated node", func() {
+	It("requires ledger:WriteOps for both mutations on an authenticated node", func() {
 		ctx := GinkgoT().Context()
 		dir := GinkgoT().TempDir()
 		public, private, err := ed25519.GenerateKey(rand.Reader)
@@ -288,7 +288,7 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 		Expect(os.WriteFile(publicPath, fmt.Appendf(nil, "%x\n", public), 0600)).To(Succeed())
 		config, err := json.Marshal(internalauth.Ed25519KeysConfig{Keys: []internalauth.Ed25519KeyEntry{{
 			KeyID: "http-sinks-scope-key", PublicKeyFile: publicPath,
-			Scopes: []string{"ledger:admin", "ledger:OpsRead", "ledger:OpsWrite", "ledger:TransactionWrite", "ledger:LedgerWrite"},
+			Scopes: []string{"ledger:admin", "ledger:ReadOps", "ledger:WriteOps", "ledger:WriteTransaction", "ledger:WriteLedger"},
 		}}})
 		Expect(err).To(Succeed())
 		configPath := filepath.Join(dir, "auth.json")
@@ -387,7 +387,7 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 		sink := newTestSinkConfig("http-sinks-scopes", "http.events.scopes")
 		body, err := protojson.Marshal(sink)
 		Expect(err).To(Succeed())
-		for _, scope := range []string{"", "ledger:OpsRead", "ledger:TransactionWrite"} {
+		for _, scope := range []string{"", "ledger:ReadOps", "ledger:WriteTransaction"} {
 			code, raw := request(http.MethodPost, "", scope, body)
 			expected := http.StatusForbidden
 			if scope == "" {
@@ -395,10 +395,10 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 			}
 			Expect(code).To(Equal(expected), "scope=%q body=%s", scope, raw)
 		}
-		code, raw := request(http.MethodPost, "", "ledger:OpsWrite", body)
+		code, raw := request(http.MethodPost, "", "ledger:WriteOps", body)
 		Expect(code).To(Equal(http.StatusCreated), string(raw))
 		Expect(string(raw)).To(MatchJSON(`{"data":{"name":"http-sinks-scopes"}}`))
-		for _, scope := range []string{"", "ledger:OpsRead", "ledger:TransactionWrite"} {
+		for _, scope := range []string{"", "ledger:ReadOps", "ledger:WriteTransaction"} {
 			code, raw := request(http.MethodDelete, "/"+sink.GetName(), scope, nil)
 			expected := http.StatusForbidden
 			if scope == "" {
@@ -406,13 +406,13 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 			}
 			Expect(code).To(Equal(expected), "scope=%q body=%s", scope, raw)
 		}
-		code, raw = request(http.MethodGet, "", "ledger:OpsRead", nil)
+		code, raw = request(http.MethodGet, "", "ledger:ReadOps", nil)
 		Expect(code).To(Equal(http.StatusOK), string(raw))
 		Expect(configuredSinks(raw)).To(ContainElement(HaveField("Name", sink.GetName())))
-		code, raw = request(http.MethodDelete, "/"+sink.GetName(), "ledger:OpsWrite", nil)
+		code, raw = request(http.MethodDelete, "/"+sink.GetName(), "ledger:WriteOps", nil)
 		Expect(code).To(Equal(http.StatusNoContent), string(raw))
 		Expect(raw).To(BeEmpty())
-		code, raw = request(http.MethodGet, "", "ledger:OpsRead", nil)
+		code, raw = request(http.MethodGet, "", "ledger:ReadOps", nil)
 		Expect(code).To(Equal(http.StatusOK), string(raw))
 		Expect(configuredSinks(raw)).NotTo(ContainElement(HaveField("Name", sink.GetName())))
 	})
