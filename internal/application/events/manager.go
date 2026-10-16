@@ -299,7 +299,23 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig, generation uint64) *managed
 		}
 	}
 
-	sink, err := m.createSink(sc)
+	ctx, current := m.currentLeaderContext(generation)
+	if !current {
+		return nil
+	}
+
+	sink, err := m.createSink(ctx, sc)
+	// Construction may finish after loss or Stop, even when a driver ignores
+	// cancellation. Do not start an emitter or retry an obsolete attempt.
+	if !m.isCurrentLeader(generation) {
+		if err == nil {
+			if closeErr := sink.Close(); closeErr != nil {
+				m.logger.Errorf("Failed to close sink %q after leadership loss: %v", sc.GetName(), closeErr)
+			}
+		}
+
+		return nil
+	}
 	if err != nil {
 		m.logger.Errorf("Failed to create sink %q: %v", sc.GetName(), err)
 		m.reportStartupError(sc.GetName(), err, generation)
@@ -519,9 +535,9 @@ func (m *Manager) teardown() {
 }
 
 // createSink creates a single Sink from a SinkConfig entry.
-// HTTP sinks are always available. Other sink types (Kafka, NATS, ClickHouse)
+// HTTP sinks are always available. Other sink types (Kafka, NATS, ClickHouse, Databricks)
 // are only available when compiled with their respective build tags.
-func (m *Manager) createSink(sc *commonpb.SinkConfig) (Sink, error) {
+func (m *Manager) createSink(ctx context.Context, sc *commonpb.SinkConfig) (Sink, error) {
 	format := Format(sc.GetFormat())
 	if format == "" {
 		format = FormatJSON
@@ -544,5 +560,5 @@ func (m *Manager) createSink(sc *commonpb.SinkConfig) (Sink, error) {
 		return nil, fmt.Errorf("unsupported events sink type: %s (not compiled in this build)", typeName)
 	}
 
-	return factory(sc, format)
+	return factory(ctx, sc, format)
 }
