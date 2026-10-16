@@ -45,6 +45,7 @@ type WriteGate interface {
 type gateState struct {
 	diskBlocked     bool
 	skewBlocked     bool
+	recoveryBlocked bool
 	leadershipEpoch uint64
 }
 
@@ -156,7 +157,14 @@ func (hc *HealthChecker) CheckWritesAllowed() error {
 		return errGateNotReady
 	}
 
-	return writeGateErrorForState(s.diskBlocked, s.skewBlocked)
+	if err := writeGateErrorForState(s.diskBlocked, s.skewBlocked); err != nil {
+		return err
+	}
+	if s.recoveryBlocked {
+		return domain.ErrWritesBlockedRecovery
+	}
+
+	return nil
 }
 
 // OnLeadershipChange invalidates the node-local verdict before any admission
@@ -231,6 +239,8 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	var reports []nodeUsageReport
 	var samples []VolumeSample
 	skewExceeded := false
+	checkpointableVoters := 0
+	peerVoters := 0
 
 	now := time.Now()
 	localWAL := hc.collector.WALVolume.Load()
@@ -271,10 +281,11 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	// Raft membership is authoritative: a committed peer that failed to enter
 	// the service pool is still an unreachable sample and cannot clear an
 	// existing disk write gate.
-	for _, peerID := range hc.node.MemberIDs() {
+	for _, peerID := range hc.node.VoterIDs() {
 		if peerID == localNodeID {
 			continue
 		}
+		peerVoters++
 
 		// Abort early if shutting down.
 		select {
@@ -354,6 +365,24 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				dataAge:     time.Duration(dataVolume.GetSampleAgeMs()) * time.Millisecond,
 				dataError:   dataError,
 			})
+
+			// Disk health alone is not enough to donate a checkpoint. A voter
+			// whose FSM is syncing or out of sync cannot serve the checkpoint
+			// needed to recover another voter. Treat any missing or stale state
+			// as non-checkpointable; this gate is intentionally fail-closed.
+			stateCtx, stateCancel := context.WithTimeout(baseCtx, healthCheckCallTimeout)
+			clusterState, stateErr := client.GetClusterState(stateCtx, &clusterpb.GetClusterStateRequest{
+				NodeId: uint32(peerID),
+			})
+			stateCancel()
+			if stateErr != nil {
+				hc.logger.WithFields(map[string]any{
+					"node_id": peerID,
+					"error":   stateErr,
+				}).Infof("Failed to get peer recovery state")
+			} else if clusterState.GetSyncProgress().GetStatus() == "normal" {
+				checkpointableVoters++
+			}
 		}
 
 		// Check clock skew
@@ -400,6 +429,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	hc.gate.Store(&gateState{
 		diskBlocked:     diskBlocked,
 		skewBlocked:     skewExceeded,
+		recoveryBlocked: peerVoters > 0 && checkpointableVoters == 0,
 		leadershipEpoch: leadershipEpoch,
 	})
 

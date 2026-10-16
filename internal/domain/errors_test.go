@@ -429,6 +429,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"errPreloadUnavailable":         errPreloadUnavailable{},
 		"errWritesBlockedDiskFull":      errWritesBlockedDiskFull{},
 		"errWritesBlockedClockSkew":     errWritesBlockedClockSkew{},
+		"errWritesBlockedRecovery":      errWritesBlockedRecovery{},
 	}
 
 	// Walk the AST to discover every type declaration that starts with

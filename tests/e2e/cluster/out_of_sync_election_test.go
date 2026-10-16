@@ -25,6 +25,8 @@ import (
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Two voters hold the newest log but restart with their store behind their WAL
@@ -164,10 +166,10 @@ var _ = Describe("Out-of-sync election", func() {
 
 			gateway.SetPrepareSnapshotInterceptor(func(*snapshotpb.PrepareSnapshotRequest) bool { return false })
 			desyncFollower(lid, followers[0], []uint64{lid, followers[0], followers[1]})
-			desyncFollower(lid, followers[1], []uint64{lid, followers[1]})
 
-			// Both followers append this entry to their log and spool it: it
-			// reaches their stores only inside the checkpoint they fetch.
+			// F1 is already syncing, but F2 is still a checkpointable voter, so
+			// this write is allowed. Both followers append the entry and it
+			// reaches their stores only inside the checkpoints they fetch.
 			By("Creating an event sink while the followers' stores are behind")
 			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
 				Name:         "checkpointed-sink",
@@ -179,6 +181,16 @@ var _ = Describe("Out-of-sync election", func() {
 				},
 			})))
 			Expect(err).To(Succeed())
+
+			desyncFollower(lid, followers[1], []uint64{lid, followers[1]})
+
+			By("Rejecting writes once no other voter can provide a checkpoint")
+			Eventually(func() codes.Code {
+				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("recovery-gate-probe", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
+				}, nil, nil)))
+				return status.Code(err)
+			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Equal(codes.Unavailable))
 
 			By("Stopping the leader so the syncing followers elect among themselves")
 			var oldLeaderLastIndex uint64

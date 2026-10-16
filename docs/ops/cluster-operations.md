@@ -326,6 +326,23 @@ What needs the store waits for the store instead:
 
 An out-of-sync leader therefore serves nothing until its store is current, and it fetches its checkpoint from another voter (see [Donor Selection](../technical/architecture/data-flows.md#donor-selection)).
 
+### Recovery write gate
+
+The leader also holds new business writes when no other voter is currently
+checkpointable. A voter is checkpointable only when its cluster-state report
+shows `sync_progress.status=normal`; an unreachable, stale, syncing, or
+`out_of_sync` voter is treated as unavailable. This prevents the leader from
+continuing to grow followers' spools after the last possible checkpoint donor
+has disappeared. Elections and checkpoint recovery continue while writes are
+rejected with a retryable `Unavailable` error (`CLUSTER_UNHEALTHY`). Writes
+resume after a voter has returned to `normal` and the leader's next health
+poll observes it.
+
+The gate is deliberately conservative rather than a transactional guarantee:
+an election or peer failure can race a health poll. Its purpose is to apply
+backpressure before recovery becomes impossible, while Raft remains the source
+of truth for commit and durability.
+
 ## Automatic Learner Promotion
 
 The leader periodically checks whether any learner is caught up and eligible for promotion to voter.

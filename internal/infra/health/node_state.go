@@ -13,6 +13,8 @@ type nodeState interface {
 	GetNodeID() uint64
 	// MemberIDs returns the IDs in the committed Raft configuration.
 	MemberIDs() []uint64
+	// VoterIDs returns only voters in the committed Raft configuration.
+	VoterIDs() []uint64
 	// IsHealthy reports whether this node is a connected cluster member
 	// (leader or follower).
 	IsHealthy() bool

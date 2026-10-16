@@ -2401,6 +2401,21 @@ func (node *Node) MemberIDs() []uint64 {
 	return ids
 }
 
+// VoterIDs returns the voters in the committed Raft configuration. Learners
+// are deliberately excluded: the recovery write gate and checkpoint donor
+// selection must agree on which peers can take over after the leader fails.
+func (node *Node) VoterIDs() []uint64 {
+	confState := node.confState.Load()
+	if confState == nil {
+		return nil
+	}
+
+	voters := append([]uint64(nil), confState.GetVoters()...)
+	slices.Sort(voters)
+
+	return voters
+}
+
 // Logger returns the node's logger.
 func (node *Node) Logger() logging.Logger {
 	return node.logger
