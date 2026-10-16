@@ -373,9 +373,11 @@ persisted and audited data must remain readable, or have a safe migration. See
 
 ### Automated enforcement
 
-`scripts/checkprotocolversion --base <commit>` enforces the wire part of the
-freeze. CI runs it on every pull request and merge-queue entry against the
-target tip; `agent-check-pr` runs it when `misc/proto/**` or
+`PROTOCOL_BASE_SHA=<commit> just check-protocol-version` enforces the wire part
+of the freeze.
+The required `Dirty` check and the `invariants` check run it on pull requests
+and merge-queue entries against the target tip, including after a PR changes
+base. `agent-check-pr` runs it when `misc/proto/**` or
 `pkg/grpcprotocol/**` changes.
 
 1. The check reads `Version` at the base and in the worktree. Any change fails.

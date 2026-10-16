@@ -291,7 +291,7 @@ fi
 echo "==> agent-check-pr: selected local gates: ${gates[*]}"
 if [[ "$needs_protocol" == true ]]; then
     # Cheap and decisive: run before the long suites.
-    go run ./scripts/checkprotocolversion --base "$base_sha"
+    PROTOCOL_BASE_SHA="$base_sha" just check-protocol-version
 fi
 if [[ "$needs_full" == true ]]; then
     bash "$SCRIPT_DIR/agent-check-full"

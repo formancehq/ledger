@@ -3,7 +3,7 @@ name: Repository Invariants
 on:
   merge_group:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited]
   push:
     branches:
       - main
@@ -37,4 +37,4 @@ jobs:
           # pull_request checks out the merge commit, so comparing with the
           # current target tip also catches a revision another PR consumed.
           PROTOCOL_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-        run: nix develop .#ci --command go run ./scripts/checkprotocolversion --base "$PROTOCOL_BASE_SHA"
+        run: nix develop .#ci --command just check-protocol-version
