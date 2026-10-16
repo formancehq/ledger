@@ -2464,6 +2464,7 @@ func quorumPersistedIndex(voters []uint64, localID, localIndex uint64, reports m
 	for _, voterID := range voters {
 		if voterID == localID {
 			indexes = append(indexes, localIndex)
+
 			continue
 		}
 		indexes = append(indexes, reports[voterID])
