@@ -7,8 +7,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 def snapshot():
-    paths = [root / "pkg/client/v3/go.mod", root / "pkg/client/v3/go.sum",
-             root / "pkg/client/v3/contract.json"]
+    paths = [root / "pkg/client/v3/go.mod", root / "pkg/client/v3/go.sum"]
     paths.extend((root / "pkg/client/v3/grpc").glob("*.go"))
     paths.extend((root / "pkg/client/v3/proto").glob("*"))
     paths.extend((root / "internal/proto").rglob("*.pb.go"))
