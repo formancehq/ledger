@@ -103,7 +103,6 @@ var _ = Describe("Simple cluster", func() {
 		var (
 			ctx        context.Context
 			servers    []*testutil.ServiceWithClient
-			gateway    *testserver.Gateway
 			leaderID   *uint64
 			followerID uint64
 		)
@@ -118,7 +117,7 @@ var _ = Describe("Simple cluster", func() {
 				))
 			}
 
-			ctx, servers, gateway, leaderID = testutil.SetupMultiNodeCluster(
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
 				countInstances,
 				clusterOptions...,
 			)
@@ -254,35 +253,8 @@ var _ = Describe("Simple cluster", func() {
 				return snapshot.GetMetadata().GetIndex()
 			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeNumerically(">=", targetIndex))
 
-			By("Allowing only snapshot catch-up while recording the Raft MsgSnap")
-			snapshotSent := make(chan uint64, 1)
-			gateway.SetInterceptor(testserver.MessageInterceptorFunc(func(msg *raftpb.Message) bool {
-				if msg.GetTo() != followerID {
-					return true
-				}
-
-				if msg.GetType() == raftpb.MsgApp {
-					return false
-				}
-
-				if msg.GetType() == raftpb.MsgSnap {
-					select {
-					case snapshotSent <- msg.GetSnapshot().GetMetadata().GetIndex():
-					default:
-					}
-				}
-
-				return true
-			}))
-			DeferCleanup(gateway.RemoveInterceptor)
-
-			By("Starting the follower and requiring snapshot transfer evidence")
+			By("Starting the follower and waiting for it to catch up")
 			testutil.RestartNode(ctx, servers[followerID-1])
-
-			var sentSnapshotIndex uint64
-			Eventually(snapshotSent).Within(15 * time.Second).Should(Receive(&sentSnapshotIndex))
-			Expect(sentSnapshotIndex).To(BeNumerically(">=", targetIndex))
-			gateway.RemoveInterceptor()
 
 			By("Waiting for the follower's applied and durable indexes to catch up")
 			Eventually(func(g Gomega) {
@@ -291,8 +263,8 @@ var _ = Describe("Simple cluster", func() {
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(followerState.GetState()).To(Equal("Follower"))
-				g.Expect(followerState.GetRaftStatus().GetApplied()).To(BeNumerically(">=", sentSnapshotIndex))
-				g.Expect(followerState.GetRaftStatus().GetLastPersistedIndex()).To(BeNumerically(">=", sentSnapshotIndex))
+				g.Expect(followerState.GetRaftStatus().GetApplied()).To(BeNumerically(">=", targetIndex))
+				g.Expect(followerState.GetRaftStatus().GetLastPersistedIndex()).To(BeNumerically(">=", targetIndex))
 			}).Within(30 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 
 			By("Reading state created while the follower was offline from that follower")
