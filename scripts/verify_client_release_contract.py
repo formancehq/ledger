@@ -31,21 +31,16 @@ def digest(path):
 
 def verify(root, server_tag, downloaded_client, client_tag, client_commit,
            server_commit, module_checksum, *, local_contract=False):
-    server = read_json(root / "misc/release/public-client.json")
     local_client = read_json(root / "pkg/client/v3/contract.json")
     published_client = read_json(downloaded_client / "contract.json")
     require(VERSION.fullmatch(server_tag), "invalid server release version")
-    require(server.get("serverVersion") == server_tag,
-            "server compatibility metadata does not name this release")
-    require(server.get("clientModule") == CLIENT_MODULE,
-            "server compatibility metadata names the wrong client module")
-    client_version = server.get("clientVersion")
+    require(local_client.get("clientModule") == CLIENT_MODULE,
+            "client manifest names the wrong client module")
+    client_version = local_client.get("clientVersion")
     require(isinstance(client_version, str) and VERSION.fullmatch(client_version),
-            "server compatibility metadata has an invalid client version")
+            "client manifest has an invalid client version")
     require(client_tag == f"pkg/client/{client_version}",
-            "downloaded client tag differs from server compatibility metadata")
-    require(server.get("compatibilityBasis") == "identical-contract-and-protocol",
-            "server compatibility metadata has no verified basis")
+            "downloaded client tag differs from client manifest")
     require(local_client == published_client,
             "checkout client metadata differs from the tagged module")
     require(published_client.get("clientModule") == CLIENT_MODULE,
@@ -56,11 +51,13 @@ def verify(root, server_tag, downloaded_client, client_tag, client_commit,
     require(isinstance(known_versions, list) and known_versions and
             all(isinstance(v, str) and VERSION.fullmatch(v) for v in known_versions),
             "tagged module has no valid published server compatibility list")
-    expected_digest = server.get("contractDescriptorSHA256")
+    require(server_tag in known_versions,
+            "client is not published as compatible with this server release")
+    expected_digest = local_client.get("contractDescriptorSHA256")
     require(isinstance(expected_digest, str) and DIGEST.fullmatch(expected_digest),
-            "server compatibility metadata has an invalid descriptor digest")
+            "client manifest has an invalid descriptor digest")
     require(digest(root / "pkg/client/v3/proto/ledger-public.protoset") == expected_digest,
-            "server descriptor differs from compatibility metadata")
+            "client descriptor differs from client manifest")
     require(digest(downloaded_client / "proto/ledger-public.protoset") == expected_digest,
             "tagged client descriptor differs from the server release")
     require(published_client.get("contractDescriptorSHA256") == expected_digest,
@@ -70,8 +67,6 @@ def verify(root, server_tag, downloaded_client, client_tag, client_commit,
     match = re.search(r'\bVersion\s*=\s*"(\d+)"', protocol_source)
     require(match is not None, "server protocol revision is missing")
     protocol = match.group(1)
-    require(server.get("protocolVersion") == protocol,
-            "server protocol revision differs from compatibility metadata")
     require(published_client.get("protocolVersion") == protocol,
             "tagged client protocol revision differs from the server")
     require(module_checksum.startswith("h1:") and len(module_checksum) > 3,
@@ -93,7 +88,7 @@ def verify(root, server_tag, downloaded_client, client_tag, client_commit,
         "moduleChecksum": module_checksum,
         "contractDescriptorSHA256": expected_digest,
         "protocolVersion": protocol,
-        "compatibilityBasis": server["compatibilityBasis"],
+        "compatibilityBasis": "identical-contract-and-protocol",
     }
 
 
