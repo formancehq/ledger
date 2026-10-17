@@ -12,18 +12,18 @@ runs:
     # Nix, so `nix develop .#ci` reuses the CI dev-shell closure instead of re-fetching
     # it from cache.nixos.org on every run. Must run before Install Nix.
     - name: Set up Nix store cache
-      uses: namespacelabs/nscloud-cache-action@58bf6e08898e88803c098e2b522668541cd3b2e3 # v1.6.0
+      uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
       with:
         path: /nix
     - name: Install Nix
-      uses: cachix/install-nix-action@a49548c11d9846ad46ecc0115273879b045f001c # v31.10.7
+      uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
     - name: go env
       id: go-env
       shell: bash
       run: |
         nix develop .#ci --command bash -c "go env | sed -E \"s/^([^=]+)='(.*)'\$/\1=\2/\"" >> "$GITHUB_OUTPUT"
     # Dirty uses the linter's default cache directory; keep it aligned with this path.
-    - uses: namespacelabs/nscloud-cache-action@58bf6e08898e88803c098e2b522668541cd3b2e3 # v1.6.0
+    - uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
       with:
         path: |
           ${{ steps.go-env.outputs.GOCACHE }}
