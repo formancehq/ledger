@@ -80,8 +80,19 @@ func runLogs(cmd *cobra.Command, opts *cmdutil.Options, f *logsFlags, args []str
 		return streamAllPods(ctx, cs, ns, name, logOpts)
 	}
 
+	// The pod name derives from the Cluster base name, which spec.resourceName
+	// may override, so it cannot be computed from the CR name alone.
+	crdClient, err := opts.CRDClient()
+	if err != nil {
+		return fmt.Errorf("creating CRD client: %w", err)
+	}
+	ledger, err := cmdutil.GetCluster(ctx, crdClient, ns, name)
+	if err != nil {
+		return fmt.Errorf("getting ledger %q: %w", name, err)
+	}
+
 	ordinal := max(f.pod, 0)
-	podName := cmdutil.ClusterPodName(name, ordinal)
+	podName := cmdutil.ClusterPodName(ledger, ordinal)
 	pterm.Info.Printfln("Streaming logs from %s", pterm.Cyan(podName))
 
 	return streamPodLogs(ctx, cs, ns, podName, "", logOpts)

@@ -1412,7 +1412,7 @@ func TestBuildEnvVars_LedgerctlConnection(t *testing.T) {
 			require.NotNil(t, authToken)
 			require.NotNil(t, authToken.ValueFrom)
 			require.NotNil(t, authToken.ValueFrom.SecretKeyRef)
-			require.Equal(t, clusterSecretName(ls.Name), authToken.ValueFrom.SecretKeyRef.Name)
+			require.Equal(t, clusterSecretName(ls), authToken.ValueFrom.SecretKeyRef.Name)
 			require.Equal(t, clusterSecretKey, authToken.ValueFrom.SecretKeyRef.Key)
 		})
 	}
@@ -1433,7 +1433,7 @@ func TestBuildEnvVars_LedgerctlConnection(t *testing.T) {
 		require.NotNil(t, authToken)
 		require.NotNil(t, authToken.ValueFrom)
 		require.NotNil(t, authToken.ValueFrom.SecretKeyRef)
-		require.Equal(t, clusterSecretName(ls.Name), authToken.ValueFrom.SecretKeyRef.Name)
+		require.Equal(t, clusterSecretName(ls), authToken.ValueFrom.SecretKeyRef.Name)
 		require.Equal(t, clusterSecretKey, authToken.ValueFrom.SecretKeyRef.Key)
 	})
 }

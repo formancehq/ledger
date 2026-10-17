@@ -46,7 +46,7 @@ func TestReconcileScaleDownReplacementMembership(t *testing.T) {
 					Config: testEnv.Config, Clientset: clientset,
 				}
 				fixture := &scaleDownReconcileMembership{
-					t: t, namespace: namespace, pod0: podName(ledger.Name, 0),
+					t: t, namespace: namespace, pod0: podName(ledger, 0),
 					members: map[int]bool{1: true, 2: true, 3: true},
 					outcome: outcome, forceThird: replacement == "missing",
 				}
@@ -55,10 +55,10 @@ func TestReconcileScaleDownReplacementMembership(t *testing.T) {
 				require.Empty(t, fixture.commands, "initial creation must not remove established members")
 
 				for ordinal := range 3 {
-					createScaleDownReconcilePod(t, clientset, namespace, podName(ledger.Name, ordinal), corev1.PodRunning)
+					createScaleDownReconcilePod(t, clientset, namespace, podName(ledger, ordinal), corev1.PodRunning)
 					for _, volume := range []string{"wal", "data"} {
 						_, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Create(ctx, &corev1.PersistentVolumeClaim{
-							ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s-%d", volume, resourceName(ledger.Name), ordinal)},
+							ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s-%d", volume, clusterBaseName(ledger), ordinal)},
 							Spec: corev1.PersistentVolumeClaimSpec{
 								AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 								Resources:   corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")}},
@@ -67,7 +67,7 @@ func TestReconcileScaleDownReplacementMembership(t *testing.T) {
 						require.NoError(t, err)
 					}
 				}
-				oldPod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName(ledger.Name, 2), metav1.GetOptions{})
+				oldPod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName(ledger, 2), metav1.GetOptions{})
 				require.NoError(t, err)
 				require.NoError(t, clientset.CoreV1().Pods(namespace).Delete(ctx, oldPod.Name, metav1.DeleteOptions{GracePeriodSeconds: new(int64(0))}))
 				if replacement == "pending" {
@@ -81,7 +81,7 @@ func TestReconcileScaleDownReplacementMembership(t *testing.T) {
 				_, err = reconciler.reconcileStatefulSetWithExec(ctx, ledger, "scaled", nil, fixture.exec)
 				if outcome == "failure_then_retry" || outcome == "later_failure_then_retry" {
 					require.ErrorContains(t, err, "injected removal failure")
-					requireScaleDownReconcileState(t, clientset, namespace, resourceName(ledger.Name), 3)
+					requireScaleDownReconcileState(t, clientset, namespace, clusterBaseName(ledger), 3)
 					t.Logf("failed removal preserved replicas=3 and all PVCs; membership=%v; removal attempts=%v", fixture.members, fixture.removals)
 					if outcome == "failure_then_retry" {
 						require.Equal(t, []int{3}, fixture.removals, "failure must stop before the next ordinal")
@@ -100,7 +100,7 @@ func TestReconcileScaleDownReplacementMembership(t *testing.T) {
 					_, err = reconciler.reconcileStatefulSetWithExec(ctx, ledger, "scaled", nil, fixture.exec)
 				}
 				require.NoError(t, err)
-				requireScaleDownReconcileState(t, clientset, namespace, resourceName(ledger.Name), 1)
+				requireScaleDownReconcileState(t, clientset, namespace, clusterBaseName(ledger), 1)
 				t.Logf("successful reconcile persisted replicas=1 and requested PVC deletion for ordinals 1 and 2; membership=%v; removal attempts=%v", fixture.members, fixture.removals)
 				require.Equal(t, map[int]bool{1: true}, fixture.members, "every removed ordinal must be absent before replicas decrease")
 				expectedRemovals := []int{3, 2}

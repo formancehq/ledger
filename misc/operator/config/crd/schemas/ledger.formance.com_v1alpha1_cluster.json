@@ -3433,6 +3433,18 @@
           "minimum": 1,
           "type": "integer"
         },
+        "resourceName": {
+          "description": "ResourceName overrides the base name of every Kubernetes object the\noperator derives from this Cluster. When omitted, the base name is\n\"ledger-\u003cmetadata.name\u003e\". When set, it replaces that whole base name\n(the \"ledger-\" prefix is not added), so the StatefulSet and the ClusterIP\nService are named \"\u003cresourceName\u003e\", pods \"\u003cresourceName\u003e-\u003cordinal\u003e\", the\nheadless Service \"\u003cresourceName\u003e-headless\", the gRPC Service and Ingress\n\"\u003cresourceName\u003e-grpc\", the auth-keys ConfigMap \"\u003cresourceName\u003e-auth-keys\",\nthe cluster Secret \"\u003cresourceName\u003e-cluster-secret\", DNSEndpoints\n\"\u003cresourceName\u003e-\u003centry\u003e\", the default ServiceAccount \"\u003cresourceName\u003e\" and\nPVCs \"\u003cvolume\u003e-\u003cresourceName\u003e-\u003cordinal\u003e\". Every in-cluster address (Raft\npeers, bootstrap, ledgerctl, backups, status endpoints) follows.\n\nIt is create-time only: it cannot be changed, added or removed after the\nCluster exists, because that would orphan the StatefulSet and its PVCs\nand change every Raft peer address. It must be a DNS-1035 label of at\nmost 52 characters: the StatefulSet controller labels every pod with\ncontroller-revision-hash=\u003cstatefulset\u003e-\u003chash\u003e (up to 10 chars), and a\nlabel value cannot exceed 63 characters (kubernetes#64023).\nThe operator never adopts an existing object it did not create under a\nderived name (another Cluster's, or an unrelated object without a\ncontroller reference): such a Cluster is not reconciled and reports\nResourceNamesAvailable=False until the conflict is removed.",
+          "maxLength": 52,
+          "pattern": "^[a-z]([-a-z0-9]*[a-z0-9])?$",
+          "type": "string",
+          "x-kubernetes-validations": [
+            {
+              "message": "resourceName is immutable",
+              "rule": "self == oldSelf"
+            }
+          ]
+        },
         "resources": {
           "additionalProperties": false,
           "description": "Resources for the ledger container.",
@@ -4075,7 +4087,13 @@
           ]
         }
       },
-      "type": "object"
+      "type": "object",
+      "x-kubernetes-validations": [
+        {
+          "message": "resourceName can only be set at creation: it cannot be added or removed afterwards",
+          "rule": "has(self.resourceName) == has(oldSelf.resourceName)"
+        }
+      ]
     },
     "status": {
       "additionalProperties": false,
