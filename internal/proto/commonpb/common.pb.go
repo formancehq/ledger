@@ -664,10 +664,9 @@ func (MirrorSyncState) EnumDescriptor() ([]byte, []int) {
 // (domain.ReasonCode / domain.ReasonString) with no hand-maintained table.
 // FailureDetails declares this on each variant so the error kind can be
 // re-derived from the reason (domain.KindForReason) at replay and check time.
-// While v3 remains unreleased and its state is wiped between revisions,
-// removing a value also realigns the remaining numbers sequentially, per the
-// repository protobuf policy. After release these persisted values become
-// append-only and must never be renumbered or removed. Completeness against
+// Since v3.0.0-rc.1, these persisted values are append-only. Never renumber or
+// reuse a published number; reserve removed values and migrate stored data when
+// required. Completeness against
 // domain errors is enforced by TestEveryDomainErrorImplementsDescribable.
 type ErrorReason int32
 

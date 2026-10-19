@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -146,8 +145,6 @@ func checkFile(path string) ([]finding, error) {
 		return checkModelWorkloadTestReachability(path, source)
 	case strings.HasSuffix(path, ".go"):
 		return checkGoSource(path, source)
-	case isProtoPath(path):
-		return checkProtoSource(path, source), nil
 	default:
 		return nil, nil
 	}
@@ -438,108 +435,6 @@ func goFinding(fileSet *token.FileSet, path string, position token.Pos, message 
 	}
 }
 
-func checkProtoSource(path string, source []byte) []finding {
-	masked := maskProtoCommentsAndStrings(source)
-	declaration := regexp.MustCompile(`(?m)(?:^|[;{}])[ \t\r\n]*reserved(?:[ \t\r\n]|$)`)
-
-	var findings []finding
-
-	for _, indexes := range declaration.FindAllIndex(masked, -1) {
-		segment := masked[indexes[0]:indexes[1]]
-		relative := bytes.Index(segment, []byte("reserved"))
-		if relative < 0 {
-			continue
-		}
-
-		offset := indexes[0] + relative
-		line, column := lineAndColumn(source, offset)
-		findings = append(findings, finding{
-			path:    path,
-			line:    line,
-			column:  column,
-			message: "Ledger v3 is unreleased; protobuf reserved declarations are intentionally forbidden by AGENTS.md",
-		})
-	}
-
-	return findings
-}
-
-func maskProtoCommentsAndStrings(source []byte) []byte {
-	masked := append([]byte(nil), source...)
-
-	const (
-		stateCode = iota
-		stateLineComment
-		stateBlockComment
-		stateString
-	)
-
-	state := stateCode
-	var quote byte
-
-	for index := 0; index < len(masked); index++ {
-		current := masked[index]
-
-		switch state {
-		case stateCode:
-			switch {
-			case current == '/' && index+1 < len(masked) && masked[index+1] == '/':
-				masked[index] = ' '
-				masked[index+1] = ' '
-				index++
-				state = stateLineComment
-			case current == '/' && index+1 < len(masked) && masked[index+1] == '*':
-				masked[index] = ' '
-				masked[index+1] = ' '
-				index++
-				state = stateBlockComment
-			case current == '\'' || current == '"':
-				quote = current
-				masked[index] = ' '
-				state = stateString
-			}
-		case stateLineComment:
-			if current == '\n' {
-				state = stateCode
-			} else {
-				masked[index] = ' '
-			}
-		case stateBlockComment:
-			if current == '*' && index+1 < len(masked) && masked[index+1] == '/' {
-				masked[index] = ' '
-				masked[index+1] = ' '
-				index++
-				state = stateCode
-			} else if current != '\n' {
-				masked[index] = ' '
-			}
-		case stateString:
-			switch {
-			case current == '\\' && index+1 < len(masked):
-				masked[index] = ' '
-				index++
-				if masked[index] != '\n' {
-					masked[index] = ' '
-				}
-			case current == quote:
-				masked[index] = ' '
-				state = stateCode
-			case current != '\n':
-				masked[index] = ' '
-			}
-		}
-	}
-
-	return masked
-}
-
-func lineAndColumn(source []byte, offset int) (int, int) {
-	line := bytes.Count(source[:offset], []byte{'\n'}) + 1
-	lastNewline := bytes.LastIndex(source[:offset], []byte{'\n'})
-
-	return line, offset - lastNewline
-}
-
 // apierrPackage is the API boundary representation of a failure decoded from a
 // peer. It is legitimate at an adapter boundary and nowhere else.
 const apierrPackage = "github.com/formancehq/ledger/v3/internal/adapter/apierr"
@@ -584,8 +479,4 @@ func isDeterministicFSMPath(path string) bool {
 	}
 
 	return false
-}
-
-func isProtoPath(path string) bool {
-	return strings.HasPrefix(path, "misc/proto/") && strings.HasSuffix(path, ".proto")
 }

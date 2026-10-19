@@ -1,5 +1,7 @@
 package node
 
+import "context"
+
 // LeadershipChangeEvent is emitted when the node's leadership status changes.
 // Emitted synchronously in the Raft processing loop, BEFORE the FSM catches up.
 type LeadershipChangeEvent struct {
@@ -9,7 +11,12 @@ type LeadershipChangeEvent struct {
 // LeaderReadyEvent is emitted after a node becomes leader AND the FSM has
 // caught up with all committed entries. At this point, the Pebble state is
 // up to date and it is safe to read persisted config and propose updates.
-type LeaderReadyEvent struct{}
+type LeaderReadyEvent struct {
+	// Context is cancelled on leadership loss or terminal node shutdown.
+	// Synchronous observers must use it for blocking work so the generation
+	// can join them before releasing their dependencies.
+	Context context.Context
+}
 
 // EventHandler is a callback invoked synchronously for each emitted event.
 // Consumers use a type switch on the event to handle concrete types.

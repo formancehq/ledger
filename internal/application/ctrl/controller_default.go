@@ -37,10 +37,10 @@ import (
 
 const (
 	// DefaultPageSize is used when callers pass pageSize=0 (unspecified).
-	DefaultPageSize uint32 = 100
+	DefaultPageSize uint32 = query.DefaultPageSize
 	// MaxPageSize is the hard server-side upper bound for user-visible list
 	// queries (number of items rendered per page).
-	MaxPageSize uint32 = 1000
+	MaxPageSize uint32 = query.MaxPageSize
 	// MaxFetchSize is the internal cap on what the controller can fetch from
 	// the read store. It is MaxPageSize+1 to give the gRPC handler one extra
 	// item for peek-ahead — sendPagedToStream uses that extra item to decide
@@ -48,10 +48,6 @@ const (
 	// the client.
 	MaxFetchSize uint32 = MaxPageSize + 1
 )
-
-// ClampPageSize applies default and maximum bounds to a USER-VISIBLE page
-// size value. gRPC handlers feed it the value the client sent in
-// ListOptions.page_size and use the result as the rendered-page limit.
 
 // releasingCloser closes a read handle and drops the reclamation hold taken
 // with it (see query.OpenQueryHandle), so a cursor that outlives the
@@ -78,16 +74,9 @@ func (c releasingCloser) Close() error {
 	return c.handle.Close()
 }
 
+// ClampPageSize applies the shared default and maximum to a user-visible page.
 func ClampPageSize(pageSize uint32) uint32 {
-	if pageSize == 0 {
-		return DefaultPageSize
-	}
-
-	if pageSize > MaxPageSize {
-		return MaxPageSize
-	}
-
-	return pageSize
+	return query.ClampPageSize(pageSize)
 }
 
 // ClampFetchSize is the internal variant used by controllers to size their

@@ -909,7 +909,7 @@ func Module() fx.Option {
 						// Recorded before the cluster-config proposal, which
 						// can block on its own commit.
 						handleLeaderReadyEvent(eventsManager, mirrorManager, logger)
-						proposeClusterConfigIfNeeded(n, builder, store, cfg, logger)
+						proposeClusterConfigIfNeeded(e.Context, n, builder, store, cfg, logger)
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
@@ -1485,7 +1485,7 @@ func generateAuditKey() ([]byte, error) {
 // proposeClusterConfigIfNeeded reads the persisted cluster state from Pebble
 // and proposes an update if the CLI-desired config differs. Called when the
 // node becomes leader and the FSM is caught up (LeaderReadyEvent).
-func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *dal.Store, cfg Config, logger logging.Logger) {
+func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, builder *plan.Builder, store *dal.Store, cfg Config, logger logging.Logger) {
 	clusterState, _ := query.ReadClusterState(store)
 
 	// Clone before mutating: cfg.BloomConfig is the process-wide fx-provided
@@ -1515,11 +1515,10 @@ func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *da
 		Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{ClusterConfig: desiredCfg},
 	}}
 
-	// Bounded timeout: the observer event handler runs without a
-	// stop-derived context, and a shutdown / leadership loss landing
-	// between Raft acceptance and FSM apply would otherwise pin this
-	// goroutine forever on result.FSMFuture.WaitContext.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Keep the proposal bounded during normal operation, but cancel it as soon
+	// as this readiness generation ends. Shutdown and leadership loss join
+	// the synchronous observer, even if Raft can no longer apply the proposal.
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 
 	// applyClusterConfig reads cache-level configuration (Cache.GenerationThreshold,

@@ -18,7 +18,7 @@ import (
 )
 
 func init() {
-	registerSinkFactory("kafka", func(sc *commonpb.SinkConfig, format Format) (Sink, error) {
+	registerSinkFactory("kafka", func(_ context.Context, sc *commonpb.SinkConfig, format Format) (Sink, error) {
 		s := sc.GetType().(*commonpb.SinkConfig_Kafka)
 
 		return NewKafkaSink(KafkaSinkConfig{

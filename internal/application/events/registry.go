@@ -1,11 +1,13 @@
 package events
 
 import (
+	"context"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// sinkFactory creates a Sink from a SinkConfig and a format.
-type sinkFactory func(*commonpb.SinkConfig, Format) (Sink, error)
+// sinkFactory creates a Sink using its captured leadership-generation context.
+type sinkFactory func(context.Context, *commonpb.SinkConfig, Format) (Sink, error)
 
 // sinkFactories maps sink type names to their factory functions.
 // Optional sinks (Kafka, NATS, ClickHouse, Databricks) register themselves

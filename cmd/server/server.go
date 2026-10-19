@@ -667,11 +667,13 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	loadBloomConfig(cmd, cfg.BloomConfig)
 
 	// Hash algorithm for log chain
-	switch getString("hash-algorithm", "blake3") {
+	switch algorithm := getString("hash-algorithm", "blake3"); algorithm {
 	case "xxh3":
 		cfg.BloomConfig.HashAlgorithm = commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3
-	default:
+	case "blake3":
 		cfg.BloomConfig.HashAlgorithm = commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
+	default:
+		return nil, fmt.Errorf("invalid --hash-algorithm %q: must be blake3 or xxh3", algorithm)
 	}
 
 	// Read index configuration

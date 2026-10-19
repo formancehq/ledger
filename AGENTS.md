@@ -4,34 +4,36 @@ This file is the always-loaded entry point for AI agents working on Ledger v3. K
 
 ## Release status — v3 release candidate
 
-**CRITICAL:** Ledger v3 has published a release candidate. Keep existing
-persisted and audited data readable across later v3 builds. Changes to behavior
-or configuration, including pagination, can ship during the RC when their client
-impact and upgrade steps are documented. Do not silently reinterpret existing
-data or require a wipe to adopt a later RC build.
+**CRITICAL:** `v3.0.0-rc.1` is the first supported v3 persisted-state baseline.
+Every later v3 release must preserve committed business data, audit history,
+and cluster state from the preceding released version. Ship and test a migration
+when a format changes; a wipe or external reconstruction is not an upgrade.
+Changes to behavior or configuration can ship when client impact and upgrade
+steps are documented. Follow [the upgrade policy](docs/ops/upgrades.md#release-requirement-from-v300-rc1).
 
-Each RC update must also support a rolling server upgrade from every earlier
-published RC in the same line: old and new voters must communicate and apply
-the same committed entries identically while they coexist. Read
-[server upgrades](docs/ops/upgrades.md) before changing a shared service, Raft,
-FSM, or persisted-state contract.
+Each RC update must also support a direct rolling server upgrade from every
+earlier published RC in the same line. Old and new voters must communicate and
+apply the same committed entries identically while they coexist.
 
-- Do not remove or rename published gRPC services or methods, or change their
-  request and response types. Do not remove, renumber, or repurpose published
-  protobuf fields or enum values during the RC. Internal-only
-  messages may be cleaned up when existing persisted data remains readable or a
-  safe migration is supplied.
-- The EN-1551 cleanup removed every existing `reserved` declaration from `misc/proto/`; do not reintroduce any as a substitute for compatibility.
+- Classify persisted, Raft, snapshot, backup, and audit changes against the RC
+  baseline. Include a tested migration or prove existing data remains valid.
+- Compatibility with beta or development revisions before `v3.0.0-rc.1` is
+  not required.
+- Preserve published gRPC services, methods, request and response types, field
+  numbers, wire types, field identity, and enum numbers during the RC.
+- Preserve field and enum numbers stored in released Raft, snapshots, backups,
+  and audit records. Internal-only format changes require a safe migration and
+  a mixed-version rollout design. Reserve removed numbers and names when they
+  must not be reused; a reservation does not migrate data.
 - Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
 
 ### Service protocol revision — frozen during the release-candidate phase
 
 Do not increment `pkg/grpcprotocol.Version`; it stays at `"40"` during the v3
-release-candidate phase. Preserve the published service wire format. Assess and
-document the effect of any behavior or configuration change on existing clients;
-the revision freeze does not forbid such changes. Escalate a wire change that
-cannot preserve existing client decoding instead of bumping the revision. Read
-the [protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
+release-candidate phase. Assess and document the effect of behavior or
+configuration changes on existing clients. Escalate a wire change that cannot
+preserve client decoding instead of bumping the revision. Read the
+[protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
 before modifying this contract.
 
 ## Configuration safety checks

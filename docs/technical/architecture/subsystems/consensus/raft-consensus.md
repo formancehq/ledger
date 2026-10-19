@@ -131,9 +131,13 @@ wait for the same `Run` completion.
 `Run` owns task termination: it closes the task stop channels and joins the
 orchestrator, ready processor, maintenance loop, and applier. During applier
 exit, any pending commit is drained, the commit queue is closed, the committer
-is joined, and the decoder is cancelled and joined. `Run` then stops FSM
-background tasks and publishes completion. A successful `Stop` waits for this
-whole sequence. This preserves the existing pending-commit drain; it does not
+is joined, and the decoder is cancelled and joined. Once the ready processor
+has exited and can no longer replace the readiness generation, `Run` cancels
+and joins the final leader-ready waiter, including any synchronous observer
+callback already executing. It then stops FSM background tasks and publishes
+completion. The same readiness join precedes FSM cleanup on task failure.
+A successful `Stop` waits for this whole sequence. This preserves the existing
+pending-commit drain; it does not
 promise to apply every queued entry before shutdown.
 
 Bootstrap retains its own `Run` completion channel across startup and stop.
@@ -192,7 +196,16 @@ observer callback finish before the loss transition is published. The join
 provides this ordering; `cancelAndWait` does not acquire the publication lock.
 The leadership-loss signal wakes requests already waiting on that generation
 with `ErrNotLeader`. A later acquisition always installs a new independent
-generation.
+generation. Terminal node shutdown cancels and joins the final generation
+after the task pool exits. Cancellation is idempotent so this also works after
+a processed leadership loss. A callback already executing must return before
+`Run` completes; generation cancellation does not interrupt arbitrary observer
+code. `LeaderReadyEvent.Context` carries generation cancellation into blocking
+observer work. The bootstrap cluster-config observer derives its 30-second
+proposal timeout from that context, so shutdown or leadership loss interrupts
+its Raft-acceptance/FSM-apply wait rather than waiting for the timeout. Store
+reads and lock acquisition still precede that wait; cancellation is not a hard
+bound on arbitrary observer code or storage operations.
 
 A failed FSM wait completes the background waiter without marking the
 generation ready, so admission remains blocked until its request context is
@@ -753,7 +766,7 @@ not a consistency proof. With `CheckQuorum` disabled, an isolated former leader
 can temporarily keep its local leader role and serve old local state if that
 route shortcuts `ReadIndex`.
 
-Because v3 is unreleased, EN-1946 removes the `x-consistency: leader` selector
+Before `v3.0.0-rc.1`, EN-1946 removed the `x-consistency: leader` selector
 instead of preserving that ambiguous contract. The default route always uses
 `ReadIndexAndWait`; `stale` remains the sole explicit opt-out and says exactly
 that it skips quorum confirmation.

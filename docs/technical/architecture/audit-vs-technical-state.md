@@ -254,10 +254,10 @@ skipped. The absent-row check is suppressed only for a ledger audited as
 removes the boundary row on deletion, so its missing row is legitimate, not
 corruption. Present-row equality still applies to every ledger.
 
-There is **no** legacy / no-backfill leniency: existing pre-field clusters are
-**unsupported** — we do not ship a compat shim, and a store that predates
-`last_mirror_v2_log_id` would fail this equality (and simply re-mirror), which is
-acceptable pre-GA.
+There is **no** legacy / no-backfill leniency for development clusters before
+`v3.0.0-rc.1`. A store that predates `last_mirror_v2_log_id` would fail this
+equality and re-mirror. Later releases must preserve or migrate this boundary
+under the [upgrade policy](../../ops/upgrades.md#release-requirement-from-v300-rc1).
 
 ## Readstore and Indexes
 

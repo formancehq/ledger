@@ -6,12 +6,13 @@ import (
 )
 
 type leaderReadyGeneration struct {
-	ready  chan struct{}
-	lost   chan struct{}
-	done   chan struct{}
-	ctx    context.Context
-	cancel context.CancelFunc
-	mu     sync.Mutex
+	ready    chan struct{}
+	lost     chan struct{}
+	done     chan struct{}
+	ctx      context.Context
+	cancel   context.CancelFunc
+	stopOnce sync.Once
+	mu       sync.Mutex
 }
 
 func newLeaderReadyGeneration(parent context.Context) *leaderReadyGeneration {
@@ -46,7 +47,7 @@ func (generation *leaderReadyGeneration) run(
 
 	// Recheck cancellation after the FSM wait, before publishing readiness.
 	// cancelAndWait joins done, ensuring publication and its synchronous
-	// callback finish before the leadership-loss transition is published.
+	// callback finish before leadership loss or terminal node shutdown completes.
 	generation.mu.Lock()
 	defer generation.mu.Unlock()
 
@@ -61,10 +62,12 @@ func (generation *leaderReadyGeneration) run(
 }
 
 func (generation *leaderReadyGeneration) cancelAndWait() {
-	generation.cancel()
-	close(generation.lost)
+	generation.stopOnce.Do(func() {
+		generation.cancel()
+		close(generation.lost)
+	})
 	// run closes done only after publication and its synchronous callback
-	// finish. This join orders them before the leadership-loss transition;
+	// finish. This join orders them before leadership loss or terminal shutdown;
 	// cancelAndWait does not acquire the publication lock.
 	<-generation.done
 }

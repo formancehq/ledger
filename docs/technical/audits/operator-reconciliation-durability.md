@@ -119,8 +119,8 @@ corrections; explain their dependency.
   Explicit volume-retention choices, admission exemptions and intermediate TLS
   modes must be assessed against their actual contracts.
 - Rollback means compensating an interrupted operation or reverting a supported
-  desired-state edit. It does not require wire/storage compatibility between
-  unreleased v3 revisions or safe arbitrary binary downgrade.
+  desired-state edit. Upgrades from `v3.0.0-rc.1` onward must preserve data;
+  safe arbitrary binary downgrade is outside scope.
 - Dynamic scenarios in the manifest are optional evidence strategies, not
   authorization to mutate an external cluster or add a reproducer during an
   audit. The native audit and challenge remain read-only. Report diagnostics

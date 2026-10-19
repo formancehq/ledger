@@ -71,31 +71,36 @@ and upgrade steps are documented. Internal persisted/Raft-only
 changes require an impact assessment of existing data and shared service types
 rather than an automatic service revision bump. See the
 [service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
-for the gate, client obligations, and review criteria. Existing persisted data
-must remain readable, with a safe migration when a format change requires one.
+for the gate, client obligations, and review criteria. Starting with
+`v3.0.0-rc.1`, existing persisted data must remain readable or have a safe
+migration. Follow the [upgrade policy](../../ops/upgrades.md#release-requirement-from-v300-rc1).
 
-CI enforces the wire part of the service protocol freeze with
+CI enforces the service wire freeze with
 `PROTOCOL_BASE_SHA=<target-sha> just check-protocol-version`. It fails if the
 revision changes or `buf breaking` finds a wire-incompatible change in a type
 reachable from a gated service. Run it locally before pushing a `.proto`
 change; review behavior changes separately for client impact.
 
-1. Edit the `.proto` file in `misc/proto/`
+1. Edit the `.proto` file in `misc/proto/`.
 2. Preserve published service and method names, request and response types,
-   field numbers, wire types, field identity, and enum numbers. Realign
-   fields only in internal-only messages when existing persisted data remains
-   readable or has a safe migration.
-3. **Audit the hand-rolled wire sites** before renumbering — see below
+   field numbers, wire types, field identity, and enum numbers. Internal-only
+   fields may change only when existing persisted data remains readable or has
+   a safe migration, and the RC rolling-upgrade contract remains satisfied.
+   Reserve removed numbers and names when they must not be reused; a
+   reservation does not replace migration.
+3. **Audit the hand-rolled wire sites** before changing a field's encoding or
+   adding a new field — see below.
 4. Run `just generate-proto` **immediately**
 5. Update Go code that uses the generated types
 6. Rebuild: `go build ./...`
 
-### Renumbering: audit the hand-rolled wire sites first
+### Wire changes: audit the hand-rolled wire sites first
 
-Most code goes through the generated marshallers and follows a renumbering automatically. A few
-hot paths bypass them and encode or decode protobuf by hand, and those break **silently** — the
-compiler sees nothing, and a wrong field number is not a decode error, just a field that never
-matches. Grep **both** directions before you renumber:
+Most code goes through the generated marshallers and follows a permitted
+internal-only renumbering automatically. A few hot paths bypass them and
+encode or decode protobuf by hand, and those break **silently**: the compiler
+sees nothing, and a wrong field number is not a decode error. Grep **both**
+directions before changing an internal-only field number or wire type:
 
 ```bash
 # write side
@@ -113,8 +118,8 @@ The two known sites behave differently, and only one of them is self-healing:
 
 `protowire_postings.go` decodes `Log`, `LogPayload`, `ApplyLedgerLog`, `LedgerLog`,
 `CreatedTransaction`, `RevertedTransaction`, `Transaction`, `TouchedVolume` and `Posting`. If you
-renumber any field of those messages, update the corresponding `case num == N` arm in the same
-commit.
+change an internal-only field number in those messages, update the corresponding
+`case num == N` arm in the same commit and prove the upgrade contract.
 
 ## vtprotobuf (Fast Serialization)
 

@@ -15,7 +15,7 @@ The bug this addresses is tracked as [EN-1045](https://formance-team.atlassian.n
 - The guarantee is authoritative on the leader side — it does not rely on the removed peer behaving correctly (which is precisely the trust we are revoking).
 - The check is deterministic across leader changes (any elected leader enforces the same registry).
 - No new coupling from the ledger to Kubernetes — the operator does not need to inform the leader of intent beyond the existing `remove-node` call.
-- `instance_id` is **mandatory** on every membership-creation and discovery path: `JoinAsLearner`, administrative `AddLearner`, `PeerInfo`, the ConfChange registration payload, and the persisted peer row. Mixed-format state is rejected by design — v3 is unreleased and has no compatibility burden.
+- `instance_id` is **mandatory** on every membership-creation and discovery path: `JoinAsLearner`, administrative `AddLearner`, `PeerInfo`, the ConfChange registration payload, and the persisted peer row. This format change preceded `v3.0.0-rc.1`; later changes must provide a supported migration from the preceding release.
 
 ## Non-Goals
 
