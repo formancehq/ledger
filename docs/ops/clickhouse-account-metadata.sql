@@ -37,14 +37,10 @@ SELECT throwIf(count() > 0, 'Migration destination must be empty')
 FROM ledger_events_nested;
 -- END empty-target
 
--- BEGIN copy
-INSERT INTO ledger_events_nested (log_sequence, type, ledger, date, data)
-SELECT log_sequence, type, ledger, date,
-    concat('{', arrayStringConcat(arrayMap(pair -> concat(toJSONString(pair.1), ':',
-        if(pair.1 = 'accountMetadata',
-            toJSONString(mapApply((account, metadata) ->
-                (account, JSONExtract(metadata, 'Map(String, String)')), data.accountMetadata)),
-            pair.2)), JSONExtractKeysAndValuesRaw(toJSONString(data))), ','), '}')
+-- BEGIN export
+-- Export data as a string so the converter can retain every numeric token.
+SELECT log_sequence, type, ledger, date, toJSONString(data) AS data
 FROM ledger_events
-SETTINGS output_format_json_quote_64bit_integers = 0;
--- END copy
+SETTINGS output_format_json_quote_64bit_integers = 0
+FORMAT JSONEachRow;
+-- END export

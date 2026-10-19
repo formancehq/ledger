@@ -5418,3 +5418,13 @@ ledgerctl query-checkpoint get-schedule
 # Output (no schedule):
 #  SUCCESS  No query checkpoint schedule configured (automatic creation disabled)
 ```
+
+## ClickHouse legacy account metadata conversion
+
+The standalone `scripts/clickhouse-account-metadata` utility reads the migration's
+JSONEachRow export from stdin and writes converted rows to stdout. Run it with
+`nix develop --command go run ./scripts/clickhouse-account-metadata` from the
+repository root. It exits nonzero on invalid input or an output error; discard
+partial output after any failure. It does not connect to ClickHouse.
+Follow the complete [migration procedure](clickhouse-account-metadata.md),
+including preflights, backup, source preservation, import and verification.

@@ -30,7 +30,8 @@ same nested event payload and can publish to the corrected table.
    maintenance alone does not stop an event emitter from draining its backlog.
    Keep writers quiesced through verification and cutover.
 
-A migration requires enough free disk for both copies. Preserve custom table
+A migration requires enough free disk for both table copies and both local
+export files. Preserve custom table
 settings, indexes, partitioning, TTLs, grants, and dependent views explicitly;
 the example below covers the sink's default schema. Stop for a deployment-specific
 migration design when the existing table differs materially.
@@ -68,7 +69,9 @@ and [24.8 examples](https://presentations.clickhouse.com/2024-release-24.8/).
 Run [the migration statements](clickhouse-account-metadata.sql) in order,
 **stopping on the first error**, in the prepared session. Replace both table
 identifiers first. Run every preflight before the copy; do not invoke the
-`INSERT` independently. Keep the source unchanged for the entire operation.
+export independently. Keep the source unchanged for the entire operation.
+Save the final `SELECT` result as `legacy.jsonl` using `clickhouse-client`.
+The export includes `data` as a JSON string, not a parsed JSON object.
 
 Rows with missing or empty account metadata need no reconstruction. For
 non-empty legacy maps, the statements accept only values containing valid JSON
@@ -79,17 +82,45 @@ coercion already lost information, this procedure cannot recover it: preserve
 the source and stop for a separate recovery plan. Do not substitute empty maps
 for unrepresentable values.
 
-The copy rebuilds the top-level JSON object from raw key/value slices and
-replaces only `accountMetadata`. Other values, including large `UInt256`
-posting amounts, retain their raw JSON representation. This avoids reparsing
-all numeric values through a generic floating-point JSON representation.
-The SQL relies on documented [raw JSON extraction and typed conversion](https://clickhouse.com/docs/reference/functions/regular-functions/json-functions)
-and [map transformation](https://clickhouse.com/docs/reference/functions/regular-functions/tuple-map-functions#mapapply).
-Typed JSON extraction can return default values on conversion failure, which
-is why the preceding validation is mandatory.
+From the repository root, use the pinned Go environment to convert the export:
 
-Preflight errors leave both the source and empty destination unchanged. A
-failed copy can leave a partial destination; the source remains intact. Do
+```bash
+nix develop --command go run ./scripts/clickhouse-account-metadata < legacy.jsonl > nested.jsonl
+```
+
+Continue only if the command exits successfully. Retain both files for
+verification; a failed conversion can leave partial output, which must never
+be imported. The converter validates legacy objects and unique string-valued
+keys again, decodes `accountMetadata`, and retains other JSON tokens without
+floating-point conversion. It uses memory proportional to one exported row.
+
+ClickHouse 24.x's generic JSON parser cannot preserve arbitrary `UInt256`
+numbers through whole-document `JSONExtractKeysAndValuesRaw`, even though the
+function is named "Raw". Do not use it on the complete event. The converter
+quotes only `transaction.postings[].amount` and
+`revertTransaction.postings[].amount` for transport: the destination's explicit
+`UInt256` hints restore their numeric types and exact values on import. Other
+numeric tokens retain their original representation, including unknown fields.
+This also avoids the nested JSON parser's unquoted-large-integer limitation
+when constructing source fixtures or importing into ClickHouse 24.x.
+See the [24.x JSON function implementation](https://github.com/ClickHouse/ClickHouse/blob/v24.12.6.70-stable/src/Functions/FunctionsJSON.cpp)
+for the generic parser and reserialization used by raw extraction.
+
+After successful conversion, recheck that the destination is empty and import
+with the same session settings used above:
+
+```bash
+clickhouse-client --allow_experimental_json_type=1 --allow_experimental_variant_type=1 \
+  --date_time_input_format=best_effort \
+  --query 'INSERT INTO ledger_events_nested FORMAT JSONEachRow' < nested.jsonl
+```
+
+Use the actual database-qualified destination identifier and your existing
+ClickHouse connection configuration. `clickhouse-client` is the operational
+client for the deployed server; Go is provided by the pinned development shell.
+
+Preflight and conversion errors leave the source and empty destination unchanged.
+A failed copy can leave a partial destination; the source remains intact. Do
 not retry into that destination: retain it for diagnosis and prepare a fresh
 empty destination before rerunning all preflights. No step deletes the source.
 

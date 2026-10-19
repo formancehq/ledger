@@ -3,9 +3,14 @@
 package events_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -58,16 +63,21 @@ func TestClickHouseSinkIntegration_AccountMetadataMigration(t *testing.T) {
 			require.NoError(t, err)
 			date := time.Date(2026, 1, 1, 0, 0, 0, 123456000, time.UTC)
 			require.NoError(t, batch.Append(uint64(1), "committed_transaction", "orders", date,
-				`{"transaction":{"id":1,"postings":[{"source":"world","destination":"users:001","amount":18446744073709551617,"asset":"USD"}]}}`))
+				`{"transaction":{"id":1,"postings":[{"source":"world","destination":"users:001","amount":"18446744073709551617","asset":"USD"}]}}`))
 			metadataJSON := `{"accountMetadata":{"users:001":` + quoteMigrationJSONString(t, fixture.metadata) + `}}`
 			require.NoError(t, batch.Append(uint64(2), "committed_transaction", "orders", date, metadataJSON))
+			require.NoError(t, batch.Append(uint64(3), "reverted_transaction", "orders", date,
+				`{"accountMetadata":{"users:001":`+quoteMigrationJSONString(t, fixture.metadata)+`},`+
+					`"revertTransaction":{"id":2,"postings":[{"source":"users:001","destination":"world",`+
+					`"amount":"115792089237316195423570985008687907853269984665640564039457584007913129639935","asset":"USD"}]},`+
+					`"unknown":{"integer":18446744073709551615,"text":"accountMetadata"}}`))
 			require.NoError(t, batch.Send())
 			before := queryClickHouseEvents(t, sharedClickHouseDSN, source)
-			require.Len(t, before, 2)
+			require.Len(t, before, 3)
 
 			statements := accountMetadataMigrationStatements(t, source, target)
 			var migrationErr error
-			for _, statement := range statements {
+			for _, statement := range statements[:5] {
 				if strings.HasPrefix(statement, "SELECT") {
 					var result uint8
 					migrationErr = conn.QueryRow(ctx, statement).Scan(&result)
@@ -86,8 +96,18 @@ func TestClickHouseSinkIntegration_AccountMetadataMigration(t *testing.T) {
 				return
 			}
 			require.NoError(t, migrationErr)
+			// Execute the documented export and converter, then import through
+			// the same typed destination schema. The source stores an exact
+			// UInt256; quoting its fixture input only lets 24.x ingest it.
+			exported := clickHouseMigrationHTTP(t, ctx, statements[5], nil)
+			command := exec.CommandContext(ctx, "go", "run", "../../../scripts/clickhouse-account-metadata")
+			command.Stdin = bytes.NewReader(exported)
+			var converted, stderr bytes.Buffer
+			command.Stdout, command.Stderr = &converted, &stderr
+			require.NoError(t, command.Run(), stderr.String())
+			clickHouseMigrationHTTP(t, ctx, "INSERT INTO "+target+" FORMAT JSONEachRow", &converted)
 			after := queryClickHouseEvents(t, sharedClickHouseDSN, target)
-			require.Len(t, after, 2)
+			require.Len(t, after, 3)
 			for i := range before {
 				require.Equal(t, before[i].LogSequence, after[i].LogSequence)
 				require.Equal(t, before[i].Type, after[i].Type)
@@ -99,6 +119,8 @@ func TestClickHouseSinkIntegration_AccountMetadataMigration(t *testing.T) {
 			require.Equal(t, "Alice", name)
 			require.NoError(t, conn.QueryRow(ctx, "SELECT toString(data.transaction.postings.amount[1]) FROM "+target+" WHERE log_sequence = 1").Scan(&amount))
 			require.Equal(t, "18446744073709551617", amount)
+			require.NoError(t, conn.QueryRow(ctx, "SELECT toString(data.revertTransaction.postings.amount[1]) FROM "+target+" WHERE log_sequence = 3").Scan(&amount))
+			require.Equal(t, "115792089237316195423570985008687907853269984665640564039457584007913129639935", amount)
 			require.JSONEq(t, before[0].Data, after[0].Data, "row without account metadata preserves every field")
 			for i := range before {
 				var original, migrated map[string]json.RawMessage
@@ -113,6 +135,30 @@ func TestClickHouseSinkIntegration_AccountMetadataMigration(t *testing.T) {
 			require.ErrorContains(t, conn.QueryRow(ctx, statements[4]).Scan(&preflight), "destination must be empty")
 		})
 	}
+}
+
+func clickHouseMigrationHTTP(t *testing.T, ctx context.Context, query string, input io.Reader) []byte {
+	t.Helper()
+
+	endpoint, err := url.Parse(sharedClickHouseHTTPURL)
+	require.NoError(t, err)
+	values := endpoint.Query()
+	values.Set("query", query)
+	values.Set("allow_experimental_json_type", "1")
+	values.Set("allow_experimental_variant_type", "1")
+	values.Set("date_time_input_format", "best_effort")
+	endpoint.RawQuery = values.Encode()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), input)
+	require.NoError(t, err)
+	client := &http.Client{Timeout: time.Minute}
+	response, err := client.Do(request)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, response.Body.Close()) }()
+	data, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, response.StatusCode, string(data))
+
+	return data
 }
 
 func accountMetadataMigrationStatements(t *testing.T, source, target string) []string {

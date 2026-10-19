@@ -23,7 +23,8 @@
     "misc/proto/common.proto",
     "misc/proto/raft_cmd.proto",
     "tests/e2e/cluster/events_sinks*_test.go",
-    "docs/ops/clickhouse-account-metadata.sql"
+    "docs/ops/clickhouse-account-metadata.sql",
+    "scripts/clickhouse-account-metadata/**"
   ],
   "related_docs": [
     "AGENTS.md",
@@ -76,6 +77,6 @@
     "For optional sinks, inspect build tags and TestMain before selecting tests. NATS uses the nats tag and embedded-server fixtures; Kafka and ClickHouse use kafka/clickhouse tags and Docker-backed package setup even with a narrow -run. The clickhouse_data_test.go projection tests (TestEventToClickHouseJSON and color/target conversion tests) also require the clickhouse tag and Docker package setup. Existing sink_*_integration_test.go tests establish publication/routing and ClickHouse replacement behavior only under that infrastructure. Do not represent an untagged build or a skipped setup as coverage of these implementations.",
     "Databricks has tagged constructor/configuration tests in sink_databricks_test.go, not an existing end-to-end Publish test. A proposed isolated driver fixture may capture statement/arguments and inject completion/errors, but cannot prove SQL Warehouse durability or insertion semantics. Credentialed warehouse writes require separate authorization; leave that proof limit explicit.",
     "For an acknowledgement hypothesis, first inspect the pinned dependency source selected by go.mod/go.sum and the sink's effective settings. Propose a controlled failure before acknowledgement and an unknown-outcome failure after an external effect, observing return values, per-message outcomes, external rows/messages and cursor proposals. Inspect shared technical-proposal tests to disprove a claim, but route generic submitter retry defects to idempotency-retries-partial-failures. Same-process emitter restart is cursor-resume evidence, not OS crash or cross-cluster restore proof.",
-    "For ClickHouse account metadata, inspect TestClickHouseCreateTableDDL and TestClickHouseSinkIntegration_PublishAndConsume for the nested hint, JSON object shape, typed leaf query and applied healthy cursor. Inspect TestClickHouseSinkIntegration_AccountMetadataMigration, which executes docs/ops/clickhouse-account-metadata.sql, for source preservation, malformed/non-object/non-string/duplicate-key refusal, empty-target enforcement and exact UInt256 preservation. These Docker-backed server tests belong to CI; a file-selected DDL/projection test or compile-only tagged build is not server execution evidence."
+    "For ClickHouse account metadata, inspect TestClickHouseCreateTableDDL and TestClickHouseSinkIntegration_PublishAndConsume for the nested hint, JSON object shape, typed leaf query and applied healthy cursor. Inspect TestClickHouseSinkIntegration_AccountMetadataMigration, which executes docs/ops/clickhouse-account-metadata.sql and scripts/clickhouse-account-metadata, for source preservation, malformed/non-object/non-string/duplicate-key refusal, empty-target enforcement and exact UInt256 preservation. Converter unit tests must preserve raw unknown numeric tokens and quote only the typed posting amounts for transport, including reverted transactions. These Docker-backed server tests belong to CI; converter-only tests, a file-selected DDL/projection test or compile-only tagged build are not server execution evidence."
   ]
 }

@@ -838,7 +838,12 @@ Existing tables are unchanged by `CREATE TABLE IF NOT EXISTS`. Tables created
 with the former flat account-metadata hint require the explicit, non-destructive
 [ClickHouse table migration](../../../../ops/clickhouse-account-metadata.md)
 before delivery resumes. The sink does not automatically alter customer-owned
-tables. This changes the external analytical schema only; Ledger persisted
+tables. The migration exports rows, converts metadata with the raw-token Go
+converter, and imports only after conversion succeeds. Typed UInt256 posting
+amounts travel as quoted decimal strings to bypass ClickHouse 24.x's generic
+JSON number parser, then recover their numeric types through the destination
+hints. No generic JSON extraction runs on the full event. This changes the
+external analytical schema only; Ledger persisted
 business data, audit history, Raft entries, and protocol revision are unchanged.
 
 NATS diagnostic credential extraction follows the driver's whitespace and
