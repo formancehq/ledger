@@ -100,6 +100,75 @@ Two concrete implementations:
 
 Both adapters return v2 log entries in their native shape; translation to v3 orders happens upstream of the source interface.
 
+### PostgreSQL visibility and permanent gaps
+
+A live migration must retain every committed source log, including a lower ID
+that commits after a higher ID becomes visible. Sequence allocation order is
+not commit order. A plain ascending query cannot establish that a missing row
+is permanently absent, and an arbitrary delay cannot establish it either.
+
+The PostgreSQL source first reads a bounded ascending page. Contiguous pages
+use this single query, even while later source writes are uncommitted. When a
+page skips an expected ID, the adapter discards that speculative page and
+rereads from the same boundary in an explicit `READ COMMITTED` transaction,
+after acquiring `SHARE` on the bucket's logs table with `NOWAIT`. The lock
+conflicts with source inserts. If a writer is still active, acquisition fails
+immediately, the transaction is rolled back, and the fetch returns an error
+without rows. The worker retries from its applied boundary on a later tick.
+This avoids queuing a lock that would hold up new source writers.
+
+Once acquired, the lock excludes pending and new inserts while the fresh query
+runs. Holes that remain can therefore become `FillGap`, including IDs consumed
+by rolled-back transactions. The adapter reads the complete bounded page and
+commits the source transaction before returning any rows. A query, decode or
+commit failure returns no batch. No source lock is held during translation,
+preload, Raft submission or FSM application. The destination boundary is only
+written when the resulting orders apply successfully; the worker's cached
+position advances after application is confirmed. A failed fetch changes
+neither position, and a restarted worker reads the durable boundary again.
+
+Source requirements are checked during PostgreSQL source construction:
+
+- A writable PostgreSQL primary connection; recovery/standby and read-only
+  sessions are rejected.
+- `SELECT` access to `_system.ledgers` and the source logs table, plus table
+  ownership or an effective `UPDATE`, `DELETE` or `TRUNCATE` privilege on the
+  logs table, as required for `SHARE` locks. The adapter never modifies source
+  rows.
+- The upstream per-ledger `log_id_<ledger ID>` sequence with increment one,
+  `CACHE 1` and no cycling. Keep these settings unchanged while mirroring.
+- Ordinary append-only source writes. Concurrent imports with explicit IDs,
+  historical backfills and sequence reseeding are unsupported: they can insert
+  an old ID after a synchronized read has already completed.
+
+The lock covers the bucket, including other ledgers sharing it, and lasts only
+for the bounded reread and transaction completion. A gap adds one discarded
+page and one locked reread, each bounded by `batch_size + 1`; contiguous pages
+add no transaction or stronger lock. With the upstream `(ledger, id)` index,
+each read costs an indexed seek plus the selected rows; decoding also scales
+with their payload bytes. The worker bounds fetching with its 30-second context,
+and cancelled transaction cleanup has a separate five-second timeout. This adds
+no destination proposal or WAL amplification beyond the intended imported logs.
+Long-running or continuously overlapping
+source writers can delay progress across a gap. Reduce source write activity
+or finish the outstanding transaction if repeated lock conflicts prevent
+catch-up. Never replace this proof with a timeout-based synthetic gap.
+
+The source's reported head remains observational and may include a higher
+committed ID while ingestion is waiting for a lower one. HTTP sources do not
+gain this PostgreSQL synchronization guarantee.
+
+This changes leader-side source fetching only. It changes no persisted format,
+accepted order interpretation or service protocol revision, so old and new
+servers still apply the same committed orders identically. Upgrade all possible
+leaders to obtain the protection; an old leader can still synthesize an unsafe
+gap. Before rolling the servers, point each PostgreSQL source at its primary,
+grant the required logs-table privileges and verify the sequence settings.
+New leaders reject unsupported sources at construction instead of ingesting
+from them. Previously consumed gaps are not repaired automatically. If a mirror has
+already skipped committed source history, rebuild it from the source into a
+fresh destination ledger rather than rewinding its immutable audit history.
+
 ### HTTP URL parsing diagnostics
 
 At creation, admission parses `mirrorSource.http.baseUrl` and requires an

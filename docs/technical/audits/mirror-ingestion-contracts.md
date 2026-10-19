@@ -93,6 +93,43 @@ authorization to fix adjacent documentation in this manifest PR.
 
 ## Translation, progression and cutover
 
+### PostgreSQL source visibility
+
+The PostgreSQL source must not turn an uncommitted lower source row into an
+irreversible synthetic gap. Its live source contract requires a writable
+primary, effective relation-lock privileges and the upstream increment-one,
+noncycling `CACHE 1` per-ledger log sequence. Concurrent explicit-ID imports,
+historical backfills, sequence reseeding and changes to those sequence settings
+are excluded. Source construction checks the database/session, privileges and
+sequence before ingestion starts; these checks do not establish that an
+operator will refrain from an unsupported concurrent import.
+
+Contiguous pages use one bounded query. A page with a hole is discarded and
+reread from the applied boundary under a bucket-wide `SHARE` lock in an explicit
+`READ COMMITTED` transaction. `NOWAIT` conflicts fail immediately and cause no
+data proposal or boundary advance. Successful locked reads end the transaction
+before returning rows, so no source lock survives into translation or Raft.
+The resulting holes may represent rolled-back sequence allocations. A
+transaction-snapshot-only test is insufficient: sequence allocation can precede
+transaction-ID assignment, so absence from an active-XID list is not proof that
+a source writer cannot later insert a lower ID.
+
+`TestWorker_PostgresGapCommitAndRollback` holds the lower source transaction
+open, commits the higher one, exercises real fetching and the production
+worker/FSM path, then commits or rolls back the lower row and recreates the
+source/worker from durable progress. Check both account metadata and source
+entry identity; a final cursor alone could conceal a lost row. Source cases
+also cover rejected prerequisites, transaction cleanup after a lock conflict,
+and the contiguous fast path while a later writer remains active. The CI Tests
+job selects PostgreSQL integration tests with race detection. Native execution
+uses a supplied disposable administrator URI; Docker-backed execution remains
+subject to the caller's explicit local restrictions.
+
+The fix is prospective. Old leaders retain the source-read defect until
+upgraded, while interpretation of already committed orders is unchanged.
+Previously consumed gaps cannot be repaired by rewinding an audited ledger.
+The public HTTP source has no equivalent synchronization proof in this change.
+
 `TranslateBatch` converts `NEW_TRANSACTION`, `SET_METADATA`,
 `REVERTED_TRANSACTION` and `DELETE_METADATA`. Missing source log IDs are explicit
 synthetic `FillGap` orders; unknown log types currently also become `FillGap`
