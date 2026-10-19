@@ -26,6 +26,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
@@ -2362,7 +2363,11 @@ func (node *Node) handleProposal(p *Proposal) {
 		}
 	}
 	if err == nil {
-		err = node.rawNode.Propose(p.data)
+		if validationErr := capabilities.ValidateFinalProposal(p.data, p.declaredCapabilities); validationErr != nil {
+			err = validationErr
+		} else {
+			err = node.rawNode.Propose(p.data)
+		}
 	}
 	if err != nil {
 		// The IndexTracker was optimistically incremented in Propose().
