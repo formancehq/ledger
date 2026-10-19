@@ -2,7 +2,6 @@ package plan
 
 import (
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -16,7 +15,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-var errCacheEpochChanged = errors.New("cache epoch changed during preload admission")
+// A changed epoch is retryable even if the bounded build retries exhaust or
+// the proposal guard's rebuild encounters another reset.
+var errCacheEpochChanged = fmt.Errorf("%w: cache epoch changed during preload admission", ErrCacheHorizonExceeded)
 
 // ErrTombstoneActivationRequired prevents an unsafe mixed-version proposal.
 // EN-3046 will provide the capability decision that permits this seed.
