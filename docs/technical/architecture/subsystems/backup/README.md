@@ -29,6 +29,13 @@ See the [operational contract](../../../../ops/backup-restore.md#s3-credentials-
 for configuration, failure behavior and Secret update timing. This changes
 Kubernetes runtime delivery only, not audit state or incremental restore parity.
 
+## Operator result recovery
+
+Completed Jobs retain their Running reservation while result acquisition retries.
+Only a parsed result persisted on the run enables successful parent accounting and
+incremental scheduling. See [the recovery ordering](operator-scheduling.md#completed-job-result-recovery)
+for observation failures, terminal payload failures and history pruning.
+
 ## How a backup is taken
 
 A Pebble *checkpoint* is the engine primitive: hard-link every live SST file into a separate directory at a point in time. The checkpoint is **quasi-free** (no copy), and writes to the live database keep going untouched.
