@@ -9491,6 +9491,10 @@ func (m *TechnicalUpdate_DrainMarker) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x4a
+	} else {
+		i = protohelpers.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x4a
 	}
 	return len(dAtA) - i, nil
 }
@@ -9508,6 +9512,10 @@ func (m *TechnicalUpdate_DrainRelease) MarshalToSizedBufferVT(dAtA []byte) (int,
 		}
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x52
+	} else {
+		i = protohelpers.EncodeVarint(dAtA, i, 0)
 		i--
 		dAtA[i] = 0x52
 	}
@@ -13046,6 +13054,8 @@ func (m *TechnicalUpdate_DrainMarker) SizeVT() (n int) {
 	if m.DrainMarker != nil {
 		l = m.DrainMarker.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	} else {
+		n += 3
 	}
 	return n
 }
@@ -13058,6 +13068,8 @@ func (m *TechnicalUpdate_DrainRelease) SizeVT() (n int) {
 	if m.DrainRelease != nil {
 		l = m.DrainRelease.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	} else {
+		n += 3
 	}
 	return n
 }
