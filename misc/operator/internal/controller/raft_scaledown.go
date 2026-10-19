@@ -15,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -485,10 +486,24 @@ const (
 	annotationScaledDownFrom = "ledger.formance.com/scaled-down-from"
 
 	// conditionScaleDownPVCsRetained is True while PVCs of removed ordinals are
-	// kept because the Cluster's StatefulSet did not create them (reason
-	// PVCsRetained), or while such claims make the operator refuse a scale-up
-	// (reason ScaleUpBlocked). It is removed once none is left.
+	// kept because they are not proven to be the Cluster's own claims
+	// (scaledDownPVCMismatch: no provenance stamp of this Cluster, foreign
+	// selector labels or owner; reason PVCsRetained), or while such claims make
+	// the operator refuse a scale-up (reason ScaleUpBlocked). It is removed once
+	// none is left.
 	conditionScaleDownPVCsRetained = "ScaleDownPVCsRetained"
+
+	// annotationClusterUID, on a PVC, is the provenance stamp scale-down
+	// cleanup relies on: the UID of the Cluster whose StatefulSet pod was
+	// observed Ready on the claim (stampOwnedClaims). Labels cannot serve: the
+	// selector labels the StatefulSet controller copies onto its claims come
+	// from the Cluster spec (spec.additionalLabels overrides even
+	// app.kubernetes.io/instance), so two Clusters sharing a resourceName can
+	// produce identical ones. No Cluster field reaches a PVC's annotations
+	// (VolumeClaimTemplates carry none), so a Cluster editor cannot forge it;
+	// the trust boundary is RBAC on PVCs: whoever may patch PVCs in the
+	// namespace can write it, as they can delete the claim outright.
+	annotationClusterUID = "ledger.formance.com/cluster-uid"
 )
 
 // statefulSetReplicas returns sts.spec.replicas, defaulting to 1 like the API
@@ -574,12 +589,13 @@ func scaleUpBlockingClaims(ctx context.Context, clientset kubernetes.Interface, 
 // A PVC is looked up by its derived name "<volume>-<base>-<ordinal>", which
 // proves nothing: with spec.resourceName that name can belong to someone else.
 // sts is the live StatefulSet the Cluster controls, and a PVC is deleted only
-// when scaledDownPVCMismatch finds it is one that StatefulSet's controller
-// created for that ordinal. A PVC that does not match is never deleted: it is
-// logged and returned in retained, for the caller to report. The delete
-// carries a UID precondition, so a PVC replaced after it was inspected is
-// retained too. An API error on one claim does not stop the others; the
-// errors are returned joined, and the caller retries the whole range.
+// when scaledDownPVCMismatch finds it carries this Cluster's provenance stamp
+// and is consistent with a claim that StatefulSet's controller created for
+// that ordinal. A PVC that does not match is never deleted: it is logged and
+// returned in retained, for the caller to report. The delete carries a UID
+// precondition, so a PVC replaced after it was inspected is retained too. An
+// API error on one claim does not stop the others; the errors are returned
+// joined, and the caller retries the whole range.
 func deleteScaledDownPVCs(ctx context.Context, clientset kubernetes.Interface,
 	cluster *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, previousReplicas, currentReplicas int32,
 	volumeNames []string,
@@ -603,8 +619,8 @@ func deleteScaledDownPVCs(ctx context.Context, clientset kubernetes.Interface,
 
 				continue
 			}
-			if reason := scaledDownPVCMismatch(pvc, sts, podName(cluster, int(ordinal))); reason != "" {
-				logger.Info("not deleting PVC of removed replica: not created by this Cluster's StatefulSet",
+			if reason := scaledDownPVCMismatch(pvc, cluster, sts, podName(cluster, int(ordinal))); reason != "" {
+				logger.Info("not deleting PVC of removed replica: not proven to be this Cluster's claim",
 					"pvc", claimName, "ordinal", ordinal, "reason", reason)
 				retained = append(retained, claimName+" ("+reason+")")
 
@@ -632,25 +648,34 @@ func deleteScaledDownPVCs(ctx context.Context, clientset kubernetes.Interface,
 }
 
 // scaledDownPVCMismatch returns why pvc, found under the derived name of
-// ordinalPod's claim, is not a claim that sts created for that ordinal, or ""
-// when it is. The policy follows what the StatefulSet controller writes on the
-// claims it creates from a VolumeClaimTemplate:
+// ordinalPod's claim, is not proven to be a claim of cluster that sts created
+// for that ordinal, or "" when it is. Three gates, all required:
 //
-//   - labels: it copies sts.spec.selector.matchLabels onto every claim, and the
-//     selector is immutable, so the claim must carry all of them. They include
-//     app.kubernetes.io/instance=<Cluster name>, so a claim of another
-//     Cluster's StatefulSet does not match even under the same base name.
+//   - labels (consistency, not provenance): the StatefulSet controller copies
+//     sts.spec.selector.matchLabels onto every claim it creates, and the
+//     selector is immutable, so the claim must carry all of them. They come
+//     from the Cluster spec — spec.additionalLabels can override even
+//     app.kubernetes.io/instance — so two Clusters sharing a resourceName can
+//     have identical selectors: a match never proves the claim is this
+//     Cluster's. The gate only rejects claims that are certainly not.
 //   - ownerReferences: with persistentVolumeClaimRetentionPolicy Retain/Retain
 //     (the default) the claim has none; whenDeleted=Delete adds sts itself and
 //     whenScaled=Delete adds the condemned Pod. Any other reference, such as
 //     another StatefulSet's UID, means another owner.
+//   - provenance: the claim carries annotationClusterUID with cluster's UID,
+//     which stampOwnedClaims writes only after a pod controlled by the
+//     Cluster's StatefulSet was Ready with the claim mounted. No Cluster field
+//     can set it. A claim without the stamp, or stamped by another Cluster
+//     UID, has an origin the operator cannot establish and is kept.
 //
-// A retained, ownerless claim left by an earlier StatefulSet of a Cluster with
-// the same name and selector labels matches, which keeps a recreated Cluster's
-// reuse of its retained PVCs intact, scale-down cleanup included. A retained
-// claim from a Cluster with another name or other selector labels does not:
-// the StatefulSet still mounts it, but scale-down never deletes it.
-func scaledDownPVCMismatch(pvc *corev1.PersistentVolumeClaim, sts *appsv1.StatefulSet, ordinalPod string) string {
+// A recreated Cluster (same name, new UID) reusing its predecessor's retained
+// claims re-stamps them once its own pods are Ready on them (the persisted
+// cluster ID check accepted the data), and can then delete them on
+// scale-down. A retained claim that no pod of this Cluster became Ready on —
+// left by a deleted Cluster under the same resourceName, even with matching
+// selector labels, and typically crash-looping on its foreign cluster ID — is
+// never deleted by scale-down.
+func scaledDownPVCMismatch(pvc *corev1.PersistentVolumeClaim, cluster *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, ordinalPod string) string {
 	if sts.Spec.Selector == nil || len(sts.Spec.Selector.MatchLabels) == 0 {
 		return "the StatefulSet has no selector labels to match"
 	}
@@ -670,6 +695,138 @@ func scaledDownPVCMismatch(pvc *corev1.PersistentVolumeClaim, sts *appsv1.Statef
 			return fmt.Sprintf("owned by %s/%s (uid %s)", ref.Kind, ref.Name, ref.UID)
 		}
 	}
+	switch stamp, ok := pvc.Annotations[annotationClusterUID]; {
+	case !ok:
+		return fmt.Sprintf("origin cannot be established: no %s stamp, no pod of this Cluster was observed running on it", annotationClusterUID)
+	case stamp != string(cluster.UID):
+		return fmt.Sprintf("origin cannot be established: %s is %q, not this Cluster's uid %q", annotationClusterUID, stamp, cluster.UID)
+	}
 
 	return ""
+}
+
+// stampOwnedClaims records annotationClusterUID=<cluster UID> on every claim
+// that a Ready pod of sts, the live StatefulSet the Cluster controls, mounts
+// under its derived name "<volume>-<base>-<ordinal>", for ordinals below sts's
+// replica count. It is the only writer of the provenance stamp that
+// scaledDownPVCMismatch requires before a scale-down deletes a claim.
+//
+// For each ordinal the claims are read first, then the pod through
+// podControlledBy (uncached, controlled by sts's UID). A claim is stamped only
+// when that pod lists it in spec.volumes, is not in a terminal phase, and is
+// Ready (PodReady=True, or its ledger container Ready). Mounting proves
+// nothing about whose data the claim holds: a claim retained from another
+// Cluster fails the server's persisted cluster ID check at boot, so its pod
+// mounts it, starts and crash-loops without ever becoming Ready. A missing,
+// foreign, terminal or never-Ready pod stamps nothing. Stamps are never
+// removed, so a replica stamped while healthy stays deletable after a later
+// crash. While the pod uses the claim, pvc-protection keeps it from being
+// deleted and replaced; the merge patch also carries the claim's
+// resourceVersion, so a claim changed or replaced since it was read is not
+// stamped and the Conflict is returned for a retry. A claim stamped by
+// another Cluster UID (a same-name recreated Cluster reusing retained claims)
+// is re-stamped.
+//
+// The caller runs it before it writes the StatefulSet in a pass, so a
+// template rollout or a scale-down condemns only claims stamped while their
+// pods were still there. A claim whose pod never became Ready, or was gone
+// before any pass saw it Ready (deleted, evicted, or rescheduled while the
+// operator was down), stays unstamped and is kept and reported, never
+// deleted.
+func stampOwnedClaims(ctx context.Context, clientset kubernetes.Interface, cluster *ledgerv1alpha1.Cluster,
+	sts *appsv1.StatefulSet, volumeNames []string,
+) error {
+	if cluster.UID == "" {
+		return fmt.Errorf("invariant: stamping PVC provenance for Cluster %s/%s without its UID", cluster.Namespace, cluster.Name)
+	}
+	logger := log.FromContext(ctx)
+	pvcs := clientset.CoreV1().PersistentVolumeClaims(cluster.Namespace)
+	for ordinal := range statefulSetReplicas(sts) {
+		var unstamped []*corev1.PersistentVolumeClaim
+		for _, vol := range volumeNames {
+			claimName := pvcName(cluster, vol, ordinal)
+			pvc, err := pvcs.Get(ctx, claimName, metav1.GetOptions{})
+			if kerrors.IsNotFound(err) {
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("getting PVC %s: %w", claimName, err)
+			}
+			if pvc.Annotations[annotationClusterUID] != string(cluster.UID) {
+				unstamped = append(unstamped, pvc)
+			}
+		}
+		if len(unstamped) == 0 {
+			continue
+		}
+		pod, err := podControlledBy(ctx, clientset, sts, cluster.Namespace, podName(cluster, int(ordinal)))
+		if errors.Is(err, errPodNotOwned) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !podReadyOnClaims(pod) {
+			continue
+		}
+		for _, pvc := range unstamped {
+			if !podMountsClaim(pod, pvc.Name) {
+				continue
+			}
+			if pvc.ResourceVersion == "" {
+				return fmt.Errorf("invariant: PVC %s/%s read without a resourceVersion", pvc.Namespace, pvc.Name)
+			}
+			patch, err := json.Marshal(map[string]any{"metadata": map[string]any{
+				"resourceVersion": pvc.ResourceVersion,
+				"annotations":     map[string]string{annotationClusterUID: string(cluster.UID)},
+			}})
+			if err != nil {
+				return fmt.Errorf("building provenance patch for PVC %s: %w", pvc.Name, err)
+			}
+			_, err = pvcs.Patch(ctx, pvc.Name, types.MergePatchType, patch, metav1.PatchOptions{})
+			switch {
+			case err == nil:
+				logger.Info("stamped PVC provenance", "pvc", pvc.Name, "pod", pod.Name, "previous", pvc.Annotations[annotationClusterUID])
+			case kerrors.IsConflict(err):
+				return fmt.Errorf("PVC %s changed or was replaced after it was read, stamping its provenance on retry: %w", pvc.Name, err)
+			default:
+				return fmt.Errorf("stamping provenance on PVC %s: %w", pvc.Name, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// podReadyOnClaims reports whether pod proves the server accepted its
+// volumes: it is not in a terminal phase (a finished pod can linger after its
+// claim was replaced) and it is Ready, by the PodReady condition or the ledger
+// container's readiness.
+func podReadyOnClaims(pod *corev1.Pod) bool {
+	if pod.Status.Phase == corev1.PodFailed || pod.Status.Phase == corev1.PodSucceeded {
+		return false
+	}
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.Name == ledgerContainer && status.Ready {
+			return true
+		}
+	}
+
+	return false
+}
+
+// podMountsClaim reports whether pod lists claimName in spec.volumes.
+func podMountsClaim(pod *corev1.Pod, claimName string) bool {
+	for _, volume := range pod.Spec.Volumes {
+		if source := volume.PersistentVolumeClaim; source != nil && source.ClaimName == claimName {
+			return true
+		}
+	}
+
+	return false
 }

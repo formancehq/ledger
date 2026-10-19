@@ -209,7 +209,10 @@ spec:
 
 Raft peer, bootstrap and `ledgerctl` addresses, backup Jobs, the status
 endpoints (`ledger-v3.<namespace>.svc.cluster.local`) and the `kubectl ledger`
-plugin follow the same base name. `spec.serviceAccount.name` still overrides
+plugin follow the same base name. The plugin's `logs`, `port-forward` and
+`get` reach only pods controlled by the StatefulSet `<base>` that the Cluster
+controls; for a Cluster whose base name is taken by another owner, `logs` and
+`port-forward` fail with an error naming that owner. `spec.serviceAccount.name` still overrides
 the ServiceAccount name. Labels (`app.kubernetes.io/instance`) keep the CR name,
 so `metadata.name` is limited to 63 characters (the label value limit) even
 with a short `resourceName`; the operator reports a longer one as
@@ -263,15 +266,29 @@ Rules:
 - PVCs retained from a deleted Cluster with the same base name are reused by
   the new StatefulSet, exactly as when a Cluster is recreated with the same
   name; the persisted cluster ID check rejects mismatched data on boot.
-- On scale-down the operator deletes the PVC of a removed ordinal only if the
-  Cluster's StatefulSet created it: the PVC carries all the StatefulSet's
-  selector labels (`app.kubernetes.io/name`, `app.kubernetes.io/instance=<metadata.name>`
-  and any selector `additionalLabels`), and has no owner other than that
-  StatefulSet or the removed pod. Any other PVC under the derived name,
-  including one retained from a Cluster with another `metadata.name` and
-  reused through the same `resourceName`, is kept. The Cluster then reports
+- On scale-down the operator deletes the PVC of a removed ordinal only if it
+  can prove the PVC is this Cluster's own. Labels are not proof:
+  `spec.additionalLabels` can override even `app.kubernetes.io/instance`, so
+  two Clusters sharing a `resourceName` can produce identical labels. The
+  proof is a provenance annotation, `ledger.formance.com/cluster-uid`, that
+  only the operator writes: on every reconcile, before it changes the replica
+  count, it stamps the Cluster UID on each `<volume>-<base>-<n>` PVC that a
+  Ready pod controlled by the Cluster's StatefulSet mounts. Mounting alone
+  proves nothing: a pod on another Cluster's data fails the persisted cluster
+  ID check and crash-loops without becoming Ready. A recreated Cluster
+  re-stamps the retained PVCs its own pods become Ready on. A PVC is deleted
+  only when it carries this Cluster's UID stamp, all the StatefulSet's
+  selector labels (`app.kubernetes.io/name`,
+  `app.kubernetes.io/instance=<metadata.name>` and any selector
+  `additionalLabels`), and no owner other than that StatefulSet or the removed
+  pod. Any other PVC under the derived name is kept: one retained from another
+  Cluster under the same `resourceName` that no pod of this Cluster ran on (even
+  with matching labels), one stamped by another Cluster UID, or one of a
+  replica that never became Ready (or was gone before a reconcile saw it
+  Ready). The Cluster then reports
   the condition `ScaleDownPVCsRetained=True` (reason `PVCsRetained`, listing
-  the kept PVCs) with a `ScaleDownPVCNotDeleted` warning event, and keeps
+  each kept PVC with why, for example `origin cannot be established`) with a
+  `ScaleDownPVCNotDeleted` warning event, and keeps
   re-checking them until they are gone. Delete them once you have checked
   them. Until then the operator refuses any scale-up that would bring their
   ordinal back, since the StatefulSet would remount them: the replica count
@@ -296,7 +313,7 @@ Upgrading the operator from `v3.0.0-rc.1`: upgrade the CRDs (the chart's
 Cluster without `spec.resourceName` keeps its `ledger-<metadata.name>` object
 names, addresses and pod-template hash, so the upgrade renames nothing and does
 not roll its pods. The server binary and its persisted state are not involved.
-Check two behaviour changes before upgrading:
+Check three behaviour changes before upgrading:
 
 - Every object the operator manages for an existing Cluster already carries
   that Cluster's controller reference, so the stricter ownership rule changes
@@ -304,6 +321,31 @@ Check two behaviour changes before upgrading:
   example after `--cascade=orphan`) or a ServiceAccount shared through
   `spec.serviceAccount.name` with `create` left at its default now reports
   `NameConflict` instead of being adopted; follow the rules above.
+- Scale-down deletes a removed replica's PVCs only when they carry the new
+  `ledger.formance.com/cluster-uid` provenance stamp. `v3.0.0-rc.1` wrote no
+  stamp, so the first reconcile after the upgrade stamps the PVCs of every
+  Ready pod before it changes anything, and a scale-down requested together
+  with the upgrade still cleans up. A replica that is not Ready at that point
+  keeps unstamped PVCs; a later scale-down keeps and reports them
+  (`ScaleDownPVCsRetained`). The annotation is ignored by `v3.0.0-rc.1`, so a
+  rollback of the operator is unaffected.
+
+  `v3.0.0-rc.1` also kept no record of a scale-down: PVCs it failed to delete
+  are invisible to this release, neither deleted nor reported, and a scale-up
+  over their ordinal remounts them (a removed Raft node's state). Before
+  upgrading, or at least before scaling up, list the PVCs of ordinals at or
+  above `spec.replicas` and delete the stale ones:
+
+  ```bash
+  NS=ledger CLUSTER=my-ledger
+  BASE=$(kubectl get clusters.ledger.formance.com "$CLUSTER" -n "$NS" -o jsonpath='{.spec.resourceName}')
+  BASE=${BASE:-ledger-$CLUSTER}
+  REPLICAS=$(kubectl get clusters.ledger.formance.com "$CLUSTER" -n "$NS" -o jsonpath='{.spec.replicas}')
+  kubectl get pvc -n "$NS" -o json | jq -r --arg base "$BASE" --argjson replicas "${REPLICAS:-3}" \
+    '.items[].metadata.name | select(test("^(wal|data)-" + $base + "-[0-9]+$"))
+     | select((ltrimstr("wal-") | ltrimstr("data-") | ltrimstr($base + "-") | tonumber) >= $replicas)'
+  ```
+
 - A Cluster whose `metadata.name` exceeds 45 characters is no longer
   reconciled. `v3.0.0-rc.1` accepted 46 and 47 characters, and such Clusters
   can be healthy: the 53- or 54-character StatefulSet name fits the

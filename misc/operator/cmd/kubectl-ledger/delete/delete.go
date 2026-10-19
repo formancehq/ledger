@@ -61,7 +61,7 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		if err != nil {
 			return fmt.Errorf("creating clientset: %w", err)
 		}
-		pvcs, err := cmdutil.ClusterPVCs(ctx, cs, ns, name)
+		pvcs, err := cmdutil.ClusterPVCs(ctx, cs, ledger)
 		if err != nil {
 			return fmt.Errorf("listing PVCs: %w", err)
 		}

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -11,6 +12,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,6 +56,18 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		rolloutConverged(existingForTLS),
 	)
 	ledger.Status.TLSMigrationPhase = tlsMigrationPhase(desiredTLSMode(ledger), targetTLSMode)
+
+	// Stamp the claims the Ready pods of the owned StatefulSet run on with the
+	// Cluster UID before this pass writes anything to it: a scale-down deletes
+	// only stamped claims, the template update below can roll (replace) the
+	// highest ordinal first, and the condemned pods are gone once the replicas
+	// drop. A StatefulSet the Cluster does not control is left to the
+	// ownership checks below, which refuse it.
+	if r.Clientset != nil && existingForTLS != nil && !notControlledBy(existingForTLS, ledger) {
+		if err := stampOwnedClaims(ctx, r.Clientset, ledger, existingForTLS, pvcVolumeNames(&ledger.Spec.Persistence)); err != nil {
+			return ctrl.Result{}, fmt.Errorf("stamping PVC provenance: %w", err)
+		}
+	}
 
 	desiredReplicas := int32(3)
 	if ledger.Spec.Replicas != nil {
@@ -201,7 +215,9 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 
 	// Delete the PVCs of removed ordinals, resuming any earlier unfinished
 	// cleanup, and report the claims kept. sts is the live StatefulSet the
-	// Cluster controls: its UID and selector identify the PVCs it created.
+	// Cluster controls; a claim is deleted only if it carries the Cluster's
+	// provenance stamp (stampOwnedClaims, above) and matches sts's selector
+	// and owner references.
 	if r.Clientset != nil {
 		if err := r.reconcileScaledDownPVCs(ctx, ledger, sts, desiredReplicas, blockedScaleUp); err != nil {
 			return ctrl.Result{}, fmt.Errorf("deleting PVCs after scale-down: %w", err)
@@ -265,18 +281,53 @@ func (r *ClusterReconciler) reconcileScaledDownPVCs(ctx context.Context, ledger 
 	if cleanupErr != nil || len(retained) > 0 || from == 0 {
 		return cleanupErr
 	}
-	patch := client.MergeFrom(sts.DeepCopy())
-	delete(sts.Annotations, annotationScaledDownFrom)
-	if err := r.Patch(ctx, sts, patch); err != nil {
+	// The JSON patch removes the record only while the live object is still
+	// the StatefulSet that was evaluated (same UID) holding the same record
+	// value: a StatefulSet replaced under the name, or a record raised by a
+	// newer scale-down, keeps it. It deliberately does not pin the
+	// resourceVersion, which every StatefulSet status write changes. A failed
+	// test (the API server answers 422 Invalid) is returned so the next pass
+	// re-reads and re-evaluates the record.
+	patch, err := clearScaledDownFromPatch(sts)
+	if err != nil {
+		return err
+	}
+	if err := r.Patch(ctx, sts, client.RawPatch(types.JSONPatchType, patch)); err != nil {
+		if apierrors.IsInvalid(err) || apierrors.IsConflict(err) {
+			return fmt.Errorf("StatefulSet %s was replaced or its %s record changed after it was evaluated, re-evaluating on retry: %w",
+				sts.Name, annotationScaledDownFrom, err)
+		}
+
 		return fmt.Errorf("clearing %s on StatefulSet %s: %w", annotationScaledDownFrom, sts.Name, err)
 	}
 
 	return nil
 }
 
+// clearScaledDownFromPatch returns the JSON patch removing
+// annotationScaledDownFrom from sts, guarded by "test" operations on the UID
+// and the record value read from sts.
+func clearScaledDownFromPatch(sts *appsv1.StatefulSet) ([]byte, error) {
+	if sts.UID == "" {
+		return nil, fmt.Errorf("invariant: clearing %s on StatefulSet %s/%s without its UID", annotationScaledDownFrom, sts.Namespace, sts.Name)
+	}
+	path := "/metadata/annotations/" + strings.NewReplacer("~", "~0", "/", "~1").Replace(annotationScaledDownFrom)
+	patch, err := json.Marshal([]map[string]any{
+		{"op": "test", "path": "/metadata/uid", "value": string(sts.UID)},
+		{"op": "test", "path": path, "value": sts.Annotations[annotationScaledDownFrom]},
+		{"op": "remove", "path": path},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("building the %s removal patch: %w", annotationScaledDownFrom, err)
+	}
+
+	return patch, nil
+}
+
 // reportScaleDownPVCs sets or clears conditionScaleDownPVCsRetained from this
-// pass's evaluation: the claims of removed ordinals kept because the Cluster's
-// StatefulSet did not create them, and the claims that made it refuse a
+// pass's evaluation: the claims of removed ordinals kept because they are not
+// proven to be the Cluster's (scaledDownPVCMismatch: foreign labels or owner,
+// or no provenance stamp of this Cluster), and the claims that made it refuse a
 // scale-up. A Warning event (ScaleDownPVCNotDeleted, or ScaleUpBlocked)
 // accompanies every change of the condition.
 func (r *ClusterReconciler) reportScaleDownPVCs(ctx context.Context, ledger *ledgerv1alpha1.Cluster,
@@ -296,7 +347,7 @@ func (r *ClusterReconciler) reportScaleDownPVCs(ctx context.Context, ledger *led
 			desiredReplicas, strings.Join(blockedScaleUp, ", ")))
 	}
 	if len(retained) > 0 {
-		messages = append(messages, "kept PVCs of removed replicas that this Cluster's StatefulSet did not create; delete them once checked: "+
+		messages = append(messages, "kept PVCs of removed replicas not proven to be this Cluster's own claims; delete them once checked: "+
 			strings.Join(retained, "; "))
 	}
 	message := strings.Join(messages, ". ")

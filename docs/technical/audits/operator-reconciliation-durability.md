@@ -75,13 +75,31 @@ not a defect by itself.
 
 Ownership is checked per object, not inherited by name: an exec must establish
 that the target pod is controlled by the Cluster's StatefulSet UID
-(`ownedPodExec`), a scale-down PVC delete that the Cluster's StatefulSet created
-the claim (`scaledDownPVCMismatch`), and a backup Job that the Service it dials
-is controlled by the Cluster. The UID delete precondition guarantees identity
-only; an ownerReference change on the same object between the read and the
-delete is a documented, accepted race, and so is a pod replaced between its
-ownership read and the exec stream. A finding about either must show more than
-that window.
+(`ownedPodExec`; the kubectl plugin's `logs`, `port-forward` and pod listing
+follow the same Cluster -> StatefulSet -> pod chain in `cmdutil.ClusterPod` and
+`ClusterPods`), a scale-down PVC delete that the claim carries the Cluster UID
+provenance stamp and matches the StatefulSet's selector and owners
+(`scaledDownPVCMismatch`), and a backup Job that the Service it dials is
+controlled by the Cluster. Selector labels are spec-controlled
+(`spec.additionalLabels` overrides `app.kubernetes.io/instance`) and are never
+provenance; the operator writes the stamp only in `stampOwnedClaims`, for
+claims a Ready, non-terminal pod controlled by the Cluster's StatefulSet
+mounts (mounting or crash-looping proves nothing: a pod on foreign data fails
+the persisted cluster ID check), before the pass writes the StatefulSet. Its
+trust boundary is RBAC on PVCs. The provenance stamp patch carries the
+claim's `resourceVersion`; the `scaled-down-from` clear is a JSON patch that
+tests the evaluated UID and record value, deliberately not the
+`resourceVersion`. Other PVC patches, such as the deletion-protection labels
+in `pv_protection.go`, are unconditional merge patches. The UID
+delete precondition guarantees identity only; an ownerReference change on the
+same object between the read and the delete is a documented, accepted race,
+and so is a pod replaced between its ownership read and the exec, log or
+port-forward stream. A finding about either must show more than that window.
+An unstamped claim of a replica no pass saw Ready is kept and reported by
+design. Claims that a `v3.0.0-rc.1` scale-down failed to delete have no
+`scaled-down-from` record and are neither deleted nor reported; the upgrade
+note documents removing them before a scale-up, and they are not a defect of
+this release unless a path makes them worse.
 
 ## Severity
 

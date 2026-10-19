@@ -49,6 +49,10 @@ const (
 // template labels, so accepting a user override would leak into pods and
 // contradict the documented non-overridable ownership label that commonLabels
 // guarantees on top-level objects.
+//
+// Because the spec controls every selector label, two Clusters sharing a
+// resourceName can have identical selectors: these labels never prove which
+// Cluster created an object (see annotationClusterUID for PVCs).
 func selectorLabels(ledger *ledgerv1alpha1.Cluster) map[string]string {
 	labels := map[string]string{
 		labelName:     "ledger",

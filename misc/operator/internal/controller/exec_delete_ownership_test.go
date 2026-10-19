@@ -23,6 +23,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -46,12 +47,58 @@ func scaleDownOwnershipFixture() (*ledgerv1alpha1.Cluster, *appsv1.StatefulSet) 
 }
 
 // scaledDownPVC is the claim "data-payments-<ordinal>" as the StatefulSet
-// controller creates it: the StatefulSet selector labels, no owner reference.
+// controller creates it (the StatefulSet selector labels, no owner reference)
+// once stampOwnedClaims has seen a pod of the Cluster run on it (the Cluster
+// UID provenance stamp).
 func scaledDownPVC(cluster *ledgerv1alpha1.Cluster, ordinal int32, uid types.UID) *corev1.PersistentVolumeClaim {
 	return &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
-		Name: pvcName(cluster, "data", ordinal), Namespace: cluster.Namespace, UID: uid,
-		Labels: selectorLabels(cluster),
+		Name: pvcName(cluster, "data", ordinal), Namespace: cluster.Namespace, UID: uid, ResourceVersion: "1",
+		Labels:      selectorLabels(cluster),
+		Annotations: map[string]string{annotationClusterUID: string(cluster.UID)},
 	}}
+}
+
+// readyPod is the pod <base>-<ordinal> as the StatefulSet controller and the
+// kubelet leave it once the ledger accepted its volumes: controlled by sts,
+// mounting the ordinal's wal and data claims, Running and Ready.
+func readyPod(cluster *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, ordinal int32) *corev1.Pod {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: podName(cluster, int(ordinal)), Namespace: sts.Namespace, UID: types.UID(podName(cluster, int(ordinal)) + "-uid"),
+			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(sts, appsv1.SchemeGroupVersion.WithKind("StatefulSet"))},
+		},
+		Status: corev1.PodStatus{
+			Phase:      corev1.PodRunning,
+			Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}},
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "ledger", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+			}},
+		},
+	}
+	for _, volume := range []string{"wal", "data"} {
+		pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{Name: volume, VolumeSource: corev1.VolumeSource{
+			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvcName(cluster, volume, ordinal)},
+		}})
+	}
+
+	return pod
+}
+
+// crashLooping turns pod into one whose ledger container started on its
+// volumes and keeps exiting (for instance on a foreign persisted cluster ID):
+// Running, never Ready.
+func crashLooping(pod *corev1.Pod) *corev1.Pod {
+	pod.Status = corev1.PodStatus{
+		Phase:      corev1.PodRunning,
+		Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionFalse, Reason: "ContainersNotReady"}},
+		ContainerStatuses: []corev1.ContainerStatus{{
+			Name: "ledger", RestartCount: 5,
+			State:                corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff"}},
+			LastTerminationState: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1}},
+		}},
+	}
+
+	return pod
 }
 
 // deletedPVCs lists the PVC deletes the clientset received, with the UID
@@ -136,6 +183,26 @@ func TestDeleteScaledDownPVCsOwnershipPolicy(t *testing.T) {
 				return pvc
 			},
 			wantReason: "owned by Pod/payments-1 (uid pod-1-uid)",
+		},
+		{
+			name: "claim without the provenance stamp is kept",
+			pvc: func() *corev1.PersistentVolumeClaim {
+				pvc := scaledDownPVC(cluster, 2, "unstamped-uid")
+				pvc.Annotations = nil
+
+				return pvc
+			},
+			wantReason: "origin cannot be established: no ledger.formance.com/cluster-uid stamp",
+		},
+		{
+			name: "claim stamped by another Cluster UID is kept",
+			pvc: func() *corev1.PersistentVolumeClaim {
+				pvc := scaledDownPVC(cluster, 2, "foreign-uid")
+				pvc.Annotations[annotationClusterUID] = "old-cluster-uid"
+
+				return pvc
+			},
+			wantReason: `origin cannot be established: ledger.formance.com/cluster-uid is "old-cluster-uid", not this Cluster's uid "cluster-uid"`,
 		},
 		{
 			name: "claim owned by another StatefulSet is kept",
@@ -297,7 +364,7 @@ func TestScaledDownPVCMismatchWithoutSelectorLabels(t *testing.T) {
 			withoutLabels := sts.DeepCopy()
 			withoutLabels.Spec.Selector = selector
 
-			require.Equal(t, "the StatefulSet has no selector labels to match", scaledDownPVCMismatch(pvc, withoutLabels, "payments-2"))
+			require.Equal(t, "the StatefulSet has no selector labels to match", scaledDownPVCMismatch(pvc, cluster, withoutLabels, "payments-2"))
 		})
 	}
 }
@@ -319,34 +386,74 @@ func TestRequirePodControlledByRejectsPodWithoutController(t *testing.T) {
 // scaleDownReconcileFixture is a Cluster ("payments" StatefulSet, scaled from
 // 3 replicas) wired to a ClusterReconciler over fake clients: the
 // controller-runtime client holds the Cluster and its StatefulSet (whose spec
-// matches the desired one, so no recreate), the clientset holds pod-0
-// (controlled by the StatefulSet) and the given claims.
+// matches the desired one, so no recreate), the clientset holds the started
+// pods of the live ordinals (controlled by the StatefulSet, mounting their
+// claims, as the StatefulSet controller and the kubelet leave them) and the
+// given claims.
 type scaleDownReconcileFixture struct {
 	cluster   *ledgerv1alpha1.Cluster
 	client    client.Client
 	clientset *k8sfake.Clientset
 	recorder  *record.FakeRecorder
+	// writes logs StatefulSet updates and PVC patches and deletes, in order.
+	writes []string
 }
 
 func newScaleDownReconcileFixture(t *testing.T, liveReplicas, desiredReplicas int32, annotations map[string]string, claims ...*corev1.PersistentVolumeClaim) *scaleDownReconcileFixture {
 	t.Helper()
-	cluster, sts := scaleDownOwnershipFixture()
+	cluster, _ := scaleDownOwnershipFixture()
+
+	return newScaleDownReconcileFixtureFor(t, cluster, liveReplicas, desiredReplicas, annotations, claims...)
+}
+
+// newScaleDownReconcileFixtureFor is newScaleDownReconcileFixture for a given
+// Cluster (namespace "ns", with a UID); its StatefulSet has UID "sts-uid".
+func newScaleDownReconcileFixtureFor(t *testing.T, cluster *ledgerv1alpha1.Cluster, liveReplicas, desiredReplicas int32,
+	annotations map[string]string, claims ...*corev1.PersistentVolumeClaim,
+) *scaleDownReconcileFixture {
+	t.Helper()
+	sts := controlledByCluster(&appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterBaseName(cluster), Namespace: cluster.Namespace, UID: "sts-uid"},
+	}, cluster)
 	cluster.Spec.Persistence.DeletionProtection = new(false)
 	sts.Spec = buildStatefulSetSpec(cluster, "hash", nil, tlsModeDisabled)
 	sts.Spec.Replicas = new(liveReplicas)
 	sts.Annotations = annotations
 	cluster.Spec.Replicas = new(desiredReplicas)
-	objects := []runtime.Object{pod0ControlledBy(sts)}
+	var objects []runtime.Object
+	for ordinal := range liveReplicas {
+		objects = append(objects, readyPod(cluster, sts, ordinal))
+	}
 	for _, claim := range claims {
 		objects = append(objects, claim)
 	}
 
-	return &scaleDownReconcileFixture{
-		cluster:   cluster,
-		client:    fake.NewClientBuilder().WithScheme(resourceNameTestScheme(t)).WithObjects(cluster, sts).Build(),
-		clientset: k8sfake.NewClientset(objects...),
-		recorder:  record.NewFakeRecorder(10),
-	}
+	f := &scaleDownReconcileFixture{cluster: cluster, recorder: record.NewFakeRecorder(10)}
+	// Every StatefulSet update and PVC patch or delete is logged in order, so
+	// tests can check what the pass wrote before what.
+	f.client = fake.NewClientBuilder().WithScheme(resourceNameTestScheme(t)).WithObjects(cluster, sts).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Update: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+				if updated, ok := obj.(*appsv1.StatefulSet); ok {
+					f.writes = append(f.writes, fmt.Sprintf("update statefulset replicas=%d", statefulSetReplicas(updated)))
+				}
+
+				return cl.Update(ctx, obj, opts...)
+			},
+		}).Build()
+	f.clientset = k8sfake.NewClientset(objects...)
+	f.clientset.PrependReactor("*", "persistentvolumeclaims", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		switch a := action.(type) {
+		case k8stesting.PatchAction:
+			f.writes = append(f.writes, "patch "+a.GetName())
+		case k8stesting.DeleteAction:
+			f.writes = append(f.writes, "delete "+a.GetName())
+		}
+
+		return false, nil, nil
+	})
+
+	return f
 }
 
 // reconcile runs one StatefulSet pass with a fresh reconciler, as a new
@@ -369,7 +476,7 @@ func (f *scaleDownReconcileFixture) reconcile(t *testing.T) (ctrl.Result, error)
 func (f *scaleDownReconcileFixture) statefulSet(t *testing.T) *appsv1.StatefulSet {
 	t.Helper()
 	sts := &appsv1.StatefulSet{}
-	require.NoError(t, f.client.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "payments"}, sts))
+	require.NoError(t, f.client.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: clusterBaseName(f.cluster)}, sts))
 
 	return sts
 }
@@ -398,13 +505,17 @@ func (f *scaleDownReconcileFixture) drainEvents() []string {
 	}
 }
 
+// ownedClaims are the wal and data claims of ordinals as the StatefulSet
+// controller creates them: its selector labels, no owner reference, and no
+// provenance stamp yet (stampOwnedClaims adds it once a started pod of the
+// Cluster mounts them).
 func ownedClaims(cluster *ledgerv1alpha1.Cluster, ordinals ...int32) []*corev1.PersistentVolumeClaim {
 	var claims []*corev1.PersistentVolumeClaim
 	for _, ordinal := range ordinals {
 		for _, volume := range []string{"wal", "data"} {
 			claims = append(claims, &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
 				Name: pvcName(cluster, volume, ordinal), Namespace: "ns", UID: types.UID(pvcName(cluster, volume, ordinal) + "-uid"),
-				Labels: selectorLabels(cluster),
+				ResourceVersion: "1", Labels: selectorLabels(cluster),
 			}})
 		}
 	}

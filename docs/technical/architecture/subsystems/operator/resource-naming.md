@@ -34,7 +34,19 @@ Cluster before deriving anything:
   neither does another Cluster's StatefulSet that took the default name through
   `spec.resourceName` and the deleted Cluster's `instance` label.
 
-The kubectl plugin mirrors the rule in `cmdutil.ClusterBaseName`.
+The kubectl plugin mirrors the rule in `cmdutil.ClusterBaseName`, and the
+ownership chain in `cmdutil.ClusterStatefulSet`, `ClusterPod` and
+`ClusterPods`: it reaches a pod only when the Cluster (as read, with its UID)
+controls the StatefulSet `<base>` and that StatefulSet controls the pod
+(`metav1.IsControlledBy` at both links), and lists only pods that StatefulSet
+controls (selected by its selector). `logs` and `port-forward` fail with
+`cmdutil.ErrNotOwned`, naming the actual controller, for a Cluster whose base
+name another Cluster holds or for a pod still controlled by an older
+StatefulSet UID; `get` shows the error instead of the pods. The pod is read
+just before the log stream or port-forward opens; a pod replaced in between is
+not detected, as for the operator's execs. `cmdutil.ClusterPVCs` (the `get`
+listing and the `delete` confirmation) selects claims by derived name
+`<wal|data>-<base>-<ordinal>`, not by the overridable `instance` label.
 
 `spec.resourceName` is create-time only. The CRD enforces a DNS-1035 pattern,
 `maxLength: 52`, a field-level `self == oldSelf` rule and a
@@ -111,17 +123,59 @@ Ownership is enforced at three layers:
   re-inspects ownership; NotFound is not an error.
 - **Scale-down PVCs.** `deleteScaledDownPVCs` reads each removed ordinal's
   claim `<volume>-<base>-<ordinal>` and deletes it only when
-  `scaledDownPVCMismatch` finds that the Cluster's live StatefulSet created it:
-  the claim carries every label of the StatefulSet's (immutable)
-  `spec.selector.matchLabels`, which the StatefulSet controller copies onto
-  each claim it creates, and its only ownerReferences are that StatefulSet's
-  UID or the ordinal's Pod (the references `persistentVolumeClaimRetentionPolicy`
-  `Delete` adds). The delete carries the claim's UID precondition. A claim that
-  does not match, or that is replaced before the delete (Conflict), is kept
-  and logged. A retained claim reused by a recreated Cluster with the same
-  name and selector labels matches; one retained from a Cluster with another
-  `metadata.name` under the same `resourceName` is mounted but never deleted
-  by scale-down.
+  `scaledDownPVCMismatch` passes three gates:
+  - *Provenance.* The claim carries `ledger.formance.com/cluster-uid` equal to
+    the Cluster UID. Selector labels cannot prove origin: they come from the
+    spec (`spec.additionalLabels` overrides even `app.kubernetes.io/instance`),
+    so two Clusters sharing a `resourceName` can have identical selectors, and
+    a claim retained ownerless (default Retain policy) by one would pass a
+    label and owner check for the other. The operator writes the annotation
+    only in `stampOwnedClaims`, and no Cluster field reaches a PVC's
+    annotations (VolumeClaimTemplates carry no user annotations), so a Cluster
+    editor cannot forge it; the trust boundary is RBAC on PVCs, whose holders
+    can delete a claim outright anyway. Every StatefulSet pass runs
+    `stampOwnedClaims` on the owned StatefulSet it read first, before the pass
+    writes the StatefulSet at all: before the template update, which can roll
+    the highest ordinal first, before the Raft removal and before the replica
+    drop, while the condemned pods still exist. For each ordinal below the live
+    replica count it reads the derived claims, then the pod through
+    `podControlledBy` (uncached, `IsControlledBy(pod, sts)`), and stamps a
+    claim only if that pod lists it in `spec.volumes`, is not in a terminal
+    phase (`Failed`, `Succeeded`) and is Ready (`PodReady=True`, or its
+    `ledger` container Ready). Mounting is not proof: a claim retained from
+    another Cluster fails the server's persisted cluster ID check at boot, so
+    its pod mounts it, starts and crash-loops without ever becoming Ready. A
+    Pending, crash-looping, terminal or missing pod stamps nothing. Stamping
+    runs every pass and a stamp is never removed, so a replica stamped while
+    healthy stays deletable after a later crash. The merge patch carries the
+    claim's `resourceVersion`; a Conflict is returned and retried. A claim
+    stamped by another UID (a same-name recreated Cluster whose pods became
+    Ready on retained claims) is re-stamped.
+  - *Selector labels* (consistency, not provenance): every label of the
+    StatefulSet's immutable `spec.selector.matchLabels`, which the StatefulSet
+    controller copies onto each claim it creates. Kept as an extra gate: it
+    can only reject.
+  - *Owners:* its only ownerReferences are that StatefulSet's UID or the
+    ordinal's Pod (the references `persistentVolumeClaimRetentionPolicy`
+    `Delete` adds).
+
+  The delete carries the claim's UID precondition. A claim that fails a gate,
+  or that is replaced before the delete (Conflict), is kept and logged. A
+  claim retained from another Cluster under the same `resourceName` is mounted
+  by this Cluster's StatefulSet; it becomes deletable only once a pod of this
+  Cluster has been Ready on it, meaning the server accepted its data (and its
+  labels match), which is the documented reuse. A replica that never became
+  Ready, or whose pod was gone before any pass saw it Ready, keeps unstamped
+  claims: a scale-down keeps and reports them (fail safe).
+
+  `v3.0.0-rc.1` wrote no stamp and no `scaled-down-from` record. The first
+  pass after the operator upgrade stamps the claims of every Ready pod before
+  it changes anything, so a scale-down requested with the upgrade still cleans
+  up. Claims that an `v3.0.0-rc.1` scale-down failed to delete are not tracked
+  by any record: they are neither deleted nor reported, and a later scale-up
+  over their ordinal remounts them as retained-claim reuse. The upgrade note
+  in [`docs/ops/deployment.md`](../../../../ops/deployment.md#resource-names)
+  tells users to find and remove them first.
 
   The removed range is persisted, not derived: the update that lowers
   `spec.replicas` also records the previous count in the StatefulSet
@@ -131,7 +185,14 @@ Ownership is enforced at three layers:
   joined, so the pass is retried) and sets `ScaleDownPVCsRetained=True`
   (reason `PVCsRetained`) for the kept ones, with a `ScaleDownPVCNotDeleted`
   event on each change. The annotation and the condition are removed once no
-  claim of the range is left. Deriving the range from whatever claims exist
+  claim of the range is left. The annotation is removed with a JSON patch
+  whose `test` operations require the evaluated StatefulSet's UID and record
+  value (`clearScaledDownFromPatch`): a StatefulSet replaced under the name, or
+  a record raised by a newer scale-down, keeps its record, and the failed test
+  (422 Invalid) is returned so the next pass re-evaluates. The patch does not
+  pin the `resourceVersion`, which every StatefulSet status write changes, so
+  the status updates that follow a replica change do not make it fail.
+  Deriving the range from whatever claims exist
   instead would delete PVCs retained from a deleted Cluster that a recreated,
   smaller Cluster never used. Before raising `spec.replicas`,
   `scaleUpBlockingClaims` refuses to bring back an ordinal of that range whose

@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/cmdutil"
 )
 
@@ -76,12 +77,9 @@ func runLogs(cmd *cobra.Command, opts *cmdutil.Options, f *logsFlags, args []str
 		logOpts.SinceSeconds = &seconds
 	}
 
-	if f.all {
-		return streamAllPods(ctx, cs, ns, name, logOpts)
-	}
-
-	// The pod name derives from the Cluster base name, which spec.resourceName
-	// may override, so it cannot be computed from the CR name alone.
+	// Pod names derive from the Cluster base name, which spec.resourceName may
+	// override (and another Cluster may share), so the pods are resolved from
+	// the Cluster object and must be controlled by its StatefulSet.
 	crdClient, err := opts.CRDClient()
 	if err != nil {
 		return fmt.Errorf("creating CRD client: %w", err)
@@ -91,30 +89,37 @@ func runLogs(cmd *cobra.Command, opts *cmdutil.Options, f *logsFlags, args []str
 		return fmt.Errorf("getting ledger %q: %w", name, err)
 	}
 
-	ordinal := max(f.pod, 0)
-	podName := cmdutil.ClusterPodName(ledger, ordinal)
-	pterm.Info.Printfln("Streaming logs from %s", pterm.Cyan(podName))
+	if f.all {
+		return streamAllPods(ctx, cs, ledger, logOpts)
+	}
 
-	return streamPodLogs(ctx, cs, ns, podName, "", logOpts)
+	pod, err := cmdutil.ClusterPod(ctx, cs, ledger, max(f.pod, 0))
+	if err != nil {
+		return err
+	}
+	pterm.Info.Printfln("Streaming logs from %s", pterm.Cyan(pod.Name))
+
+	return streamPodLogs(ctx, cs, ns, pod.Name, "", logOpts)
 }
 
-func streamAllPods(ctx context.Context, cs kubernetes.Interface, ns, name string, logOpts *corev1.PodLogOptions) error {
-	pods, err := cmdutil.ClusterPods(ctx, cs, ns, name)
+func streamAllPods(ctx context.Context, cs kubernetes.Interface, ledger *ledgerv1alpha1.Cluster, logOpts *corev1.PodLogOptions) error {
+	pods, err := cmdutil.ClusterPods(ctx, cs, ledger)
 	if err != nil {
 		return fmt.Errorf("listing pods: %w", err)
 	}
 
-	if len(pods.Items) == 0 {
-		pterm.Error.Printfln("No pods found for Cluster %s", pterm.Cyan(name))
+	if len(pods) == 0 {
+		pterm.Error.Printfln("No pods found for Cluster %s", pterm.Cyan(ledger.Name))
 
-		return fmt.Errorf("no pods found for ledger %q", name)
+		return fmt.Errorf("no pods found for ledger %q", ledger.Name)
 	}
 
-	pterm.Info.Printfln("Streaming logs from %d pods", len(pods.Items))
+	pterm.Info.Printfln("Streaming logs from %d pods", len(pods))
 
+	ns := ledger.Namespace
 	var wg sync.WaitGroup
-	for i := range pods.Items {
-		podName := pods.Items[i].Name
+	for i := range pods {
+		podName := pods[i].Name
 		wg.Go(func() {
 			if err := streamPodLogs(ctx, cs, ns, podName, podName, logOpts); err != nil {
 				pterm.Error.Printfln("[%s] %v", podName, err)

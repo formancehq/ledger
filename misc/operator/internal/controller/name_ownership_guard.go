@@ -277,11 +277,20 @@ func deleteInspected(ctx context.Context, c client.Client, obj client.Object, op
 // whose ownership was just checked, is its controller. The read is uncached so
 // it observes a pod replaced since the StatefulSet read.
 func requirePodControlledBy(ctx context.Context, clientset kubernetes.Interface, sts *appsv1.StatefulSet, namespace, name string) error {
+	_, err := podControlledBy(ctx, clientset, sts, namespace, name)
+
+	return err
+}
+
+// podControlledBy is requirePodControlledBy returning the pod it read, for
+// callers that act on the pod's spec or status (the claim provenance stamp)
+// rather than exec into it.
+func podControlledBy(ctx context.Context, clientset kubernetes.Interface, sts *appsv1.StatefulSet, namespace, name string) (*corev1.Pod, error) {
 	if sts == nil || sts.UID == "" {
-		return fmt.Errorf("invariant: refusing to exec into pod %s/%s without the UID of the inspected Cluster StatefulSet", namespace, name)
+		return nil, fmt.Errorf("invariant: refusing to use pod %s/%s without the UID of the inspected Cluster StatefulSet", namespace, name)
 	}
 	if clientset == nil {
-		return fmt.Errorf("invariant: refusing to exec into pod %s/%s without a client to verify its controller", namespace, name)
+		return nil, fmt.Errorf("invariant: refusing to use pod %s/%s without a client to verify its controller", namespace, name)
 	}
 	// Bounded like the exec it guards, so a stuck read cannot hold the reconcile.
 	readCtx, cancel := context.WithTimeout(ctx, ledgerExecTimeout)
@@ -291,19 +300,19 @@ func requirePodControlledBy(ctx context.Context, clientset kubernetes.Interface,
 	case apierrors.IsNotFound(err):
 		// Deliberately not phrased "not found": ledgerctl callers match that
 		// text to recognise an absent ledger.
-		return fmt.Errorf("%w: pod %s/%s does not exist", errPodNotOwned, namespace, name)
+		return nil, fmt.Errorf("%w: pod %s/%s does not exist", errPodNotOwned, namespace, name)
 	case err != nil:
-		return fmt.Errorf("reading pod %s/%s before exec: %w", namespace, name, err)
+		return nil, fmt.Errorf("reading pod %s/%s to verify its controller: %w", namespace, name, err)
 	}
 	if metav1.IsControlledBy(pod, sts) {
-		return nil
+		return pod, nil
 	}
 	if ref := metav1.GetControllerOf(pod); ref != nil {
-		return fmt.Errorf("%w: pod %s/%s is controlled by %s/%s (uid %s), not StatefulSet %s (uid %s)",
+		return nil, fmt.Errorf("%w: pod %s/%s is controlled by %s/%s (uid %s), not StatefulSet %s (uid %s)",
 			errPodNotOwned, namespace, name, ref.Kind, ref.Name, ref.UID, sts.Name, sts.UID)
 	}
 
-	return fmt.Errorf("%w: pod %s/%s has no controller, expected StatefulSet %s (uid %s)",
+	return nil, fmt.Errorf("%w: pod %s/%s has no controller, expected StatefulSet %s (uid %s)",
 		errPodNotOwned, namespace, name, sts.Name, sts.UID)
 }
 

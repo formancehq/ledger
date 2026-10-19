@@ -36,8 +36,10 @@ recovers committed removals whose response was lost, without matching CLI error
 substrings.
 
 Only after all removed ordinals satisfy that postcondition does the operator
-persist the reduced StatefulSet replica count and issue PVC deletions, for the
-PVCs the Cluster's StatefulSet created only (see
+persist the reduced StatefulSet replica count and issue PVC deletions, only for
+PVCs proven to be the Cluster's own: stamped with its UID
+(`ledger.formance.com/cluster-uid`) once a Ready pod of its StatefulSet
+mounted them, and matching that StatefulSet's selector labels and owners (see
 [Resource names](../../docs/ops/deployment.md#resource-names)). Every exec into
 pod-0 first checks that the Cluster's StatefulSet controls that pod. The
 StatefulSet update requests Pod termination; it does not wait for termination to
@@ -463,6 +465,12 @@ kubectl ledger credentials create <name>  # Create credentials with API key
 kubectl ledger credentials get-key <name> # Retrieve credentials API key
 kubectl ledger version                    # Print version info
 ```
+
+`logs`, `port-forward` and the pod list of `get` reach only pods controlled by
+the StatefulSet that the Cluster controls. When another Cluster holds the same
+base name (`spec.resourceName`), or a pod under the derived name still belongs
+to an older StatefulSet, `logs` and `port-forward` fail with an error naming the
+actual owner instead of reaching that pod.
 
 ### Examples
 
