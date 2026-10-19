@@ -50,6 +50,17 @@ Restore mode does not register Discovery: its service gate provides the
 compatibility error without requiring a preliminary Discovery call, while
 health and reflection remain exempt.
 
+The prepared-query `LIST` pagination correction retains revision 40 and the
+published protobuf wire contract. Every entry point now defaults zero to 100
+and clamps values above 1,000 before pagination and enrichment. Existing clients
+that requested oversized pages receive at most 1,000 items and the effective
+size in the cursor; they must follow continuation tokens to retrieve remaining
+results. No client rebuild or protocol metadata change is required. During a
+rolling upgrade, an older server can still return oversized pages until all
+servers are upgraded; clients must tolerate either page length. This read-only
+correction changes no committed entries, persisted data or Raft apply semantics.
+`AGGREGATE_VOLUMES` remains independent of the `LIST` page-size limit.
+
 Revision 6 (EN-2009) makes fresh `CreateIndex` requests strict: an existing
 ledger/canonical index identity returns `INDEX_ALREADY_EXISTS` (`AlreadyExists`)
 instead of overwriting the registry. Retained batch idempotency retries still

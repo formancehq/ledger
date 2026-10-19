@@ -21,8 +21,6 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
-const defaultPageSize = 100
-
 // EntityEnricher provides functions to hydrate raw entity IDs into full objects.
 type EntityEnricher struct {
 	EnrichAccount     func(reader dal.PebbleReader, ledgerName string, address string) (*commonpb.Account, error)
@@ -247,10 +245,7 @@ func executeList(
 	ledgerName string,
 	enricher *EntityEnricher,
 ) (*servicepb.ExecutePreparedQueryResponse, error) {
-	pageSize := req.GetPageSize()
-	if pageSize == 0 {
-		pageSize = defaultPageSize
-	}
+	pageSize := ClampPageSize(req.GetPageSize())
 
 	afterEntity, err := entityFromCursorKey(target, page)
 	if err != nil {

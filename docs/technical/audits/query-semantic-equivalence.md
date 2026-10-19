@@ -27,6 +27,19 @@ assuming exact historical account membership from a certificate alone.
 | Prepared/direct | `internal/query/executor.go` loads the stored predicate, binds parameters through compilation and selects LIST or account aggregation. Direct callers normalize their own ordering: transaction list defaults cannot be equated with prepared traversal defaults. Compare effective ordering or full membership first, then verify each ordered window against its own documented direction. |
 | Aggregation strategies | `executor.go` routes exactly nil filters through `AggregateAllVolumes`; non-nil filters enumerate candidates for `AggregateVolumes` in `aggregate.go`. Compare equivalent options and complete bucket identities/values, including metadata-only accounts and zero buckets. Do not assume a non-nil empty filter takes the nil shortcut. |
 
+Prepared-query `LIST` executor inputs use the shared page-size policy: zero
+selects 100 and values above 1000 clamp to 1000 before ID collection, enrichment
+and response materialization. The cursor reports the effective size. Prove this
+through real `query.Execute` calls, including direct/controller callers, with
+more than 1000 known matches and sizes 0, 1000, 1001 and uint32 maximum. Assert
+exact independently ordered windows, bounded enrichment and next/previous
+continuations in both directions. Aggregation must retain all matching accounts
+regardless of page size. Adapter normalization and HTTP body/query precedence
+belong to `api-boundary-contracts`; this domain owns the executor bound and
+fixed-state traversal after canonical typed input. Performance alone remains
+excluded, but enforcing the established result-size policy is a correctness
+requirement.
+
 Metadata filtering requires a declared field and a registered locally ready
 index. There is no general index-free metadata filter plan. An independent
 scan/evaluator is an **oracle**, not a promised server fallback. LOGS also uses
@@ -86,7 +99,8 @@ A same-total aggregate comparison is insufficient without bucket identities.
 
 Existing `internal/query/compile_reverse_parity_test.go`,
 `compile_error_parity_test.go`, `compile_bounds_test.go`,
-`compile_and_merge_test.go`, `params_test.go`, `executor_aggregate_test.go` and
+`compile_and_merge_test.go`, `params_test.go`, `executor_page_size_test.go`,
+`executor_aggregate_test.go` and
 `internal/storage/readstore/iterator_conformance_test.go` are starting points,
 not evidence that the whole matrix ran. A future report records exact commands,
 SHA, fixture/state, plan selection, expected/actual output and limitations. Label
