@@ -1418,6 +1418,10 @@
       "additionalProperties": false,
       "description": "Image configuration for the ledger container.",
       "properties": {
+        "digest": {
+          "description": "Digest pins the image used by a coordinated upgrade. It must be an\nimmutable digest (for example sha256:...).",
+          "type": "string"
+        },
         "pullPolicy": {
           "description": "PullPolicy for the container image.",
           "type": "string"
@@ -4041,6 +4045,20 @@
     "unsafeSkipConfigValidation": {
       "description": "UnsafeSkipConfigValidation skips startup configuration safety checks.\nDANGEROUS: allows node-id/cluster-id changes on existing data.",
       "type": "boolean"
+    },
+    "upgrade": {
+      "additionalProperties": false,
+      "description": "Upgrade selects how an image change is rolled out. Coordinated requires\nan immutable image digest and performs a maintenance-barrier restart;\nRolling is retained for revisions explicitly certified as compatible.",
+      "enum": [
+        "Rolling",
+        "Coordinated"
+      ],
+      "properties": {
+        "strategy": {
+          "type": "string"
+        }
+      },
+      "type": "object"
     },
     "walDir": {
       "default": "/data/raft",

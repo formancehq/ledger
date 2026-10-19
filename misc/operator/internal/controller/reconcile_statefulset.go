@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -96,7 +97,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
 				sts.Labels = commonLabels(ledger)
 				if sts.CreationTimestamp.IsZero() {
-					return fmt.Errorf("invariant: scale-down StatefulSet disappeared during reconciliation")
+					return errors.New("invariant: scale-down StatefulSet disappeared during reconciliation")
 				}
 				retain := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 				sts.Spec.PersistentVolumeClaimRetentionPolicy = &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{

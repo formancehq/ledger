@@ -46,6 +46,45 @@ func TestHandleGetIndexStatus_Success(t *testing.T) {
 	require.True(t, strings.HasPrefix(strings.TrimSpace(body), `{"data":`), "response must be wrapped in the data envelope, got: %s", body)
 }
 
+func TestHandleGetIndexStatus_ExposesLocalBuildTransition(t *testing.T) {
+	t.Parallel()
+
+	states := [][2]uint32{{0, 1}, {1, 0}, {1, 2}}
+	call := 0
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().GetIndexStatus(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+			state := states[call]
+			call++
+			return &servicepb.GetIndexStatusResponse{Indexes: []*servicepb.IndexEntry{{
+				Ledger:         "ledger1",
+				CurrentVersion: state[0],
+				PendingVersion: state[1],
+			}}}, nil
+		}).Times(len(states))
+	srv := newTestServer(t, backend)
+
+	for i, expected := range []struct {
+		present string
+		absent  string
+	}{
+		{`"pendingVersion":1`, `"currentVersion"`},
+		{`"currentVersion":1`, `"pendingVersion"`},
+		{`"pendingVersion":2`, `"buildStatus"`},
+	} {
+		w := httptest.NewRecorder()
+		r := newRequest(t, http.MethodGet, "/indexes/status?ledger=ledger1", nil, nil)
+		srv.handleGetIndexStatus(w, r)
+		require.Equal(t, http.StatusOK, w.Code)
+		require.Contains(t, w.Body.String(), expected.present)
+		require.NotContains(t, w.Body.String(), expected.absent)
+		require.NotContains(t, w.Body.String(), "buildStatus")
+		if i == 2 {
+			require.Contains(t, w.Body.String(), `"currentVersion":1`)
+		}
+	}
+}
+
 func TestHandleGetIndexStatus_NoLedgerFilter(t *testing.T) {
 	t.Parallel()
 

@@ -40,6 +40,7 @@ func TestHandleListLedgerIndexes_Success(t *testing.T) {
 	require.NotNil(t, capturedReq)
 	require.Equal(t, servicepb.ListIndexesRequest_SCOPE_LEDGER, capturedReq.GetScope())
 	require.Equal(t, "ledger1", capturedReq.GetLedger())
+	require.NotContains(t, w.Body.String(), "buildStatus")
 }
 
 func TestHandleListLedgerIndexes_MissingLedgerName(t *testing.T) {

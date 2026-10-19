@@ -1439,6 +1439,10 @@
           "additionalProperties": false,
           "description": "Image configuration for the ledger container.",
           "properties": {
+            "digest": {
+              "description": "Digest pins the image used by a coordinated upgrade. It must be an\nimmutable digest (for example sha256:...).",
+              "type": "string"
+            },
             "pullPolicy": {
               "description": "PullPolicy for the container image.",
               "type": "string"
@@ -4063,6 +4067,20 @@
           "description": "UnsafeSkipConfigValidation skips startup configuration safety checks.\nDANGEROUS: allows node-id/cluster-id changes on existing data.",
           "type": "boolean"
         },
+        "upgrade": {
+          "additionalProperties": false,
+          "description": "Upgrade selects how an image change is rolled out. Coordinated requires\nan immutable image digest and performs a maintenance-barrier restart;\nRolling is retained for revisions explicitly certified as compatible.",
+          "enum": [
+            "Rolling",
+            "Coordinated"
+          ],
+          "properties": {
+            "strategy": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
         "walDir": {
           "default": "/data/raft",
           "description": "WalDir is the WAL data directory.",
@@ -4178,6 +4196,33 @@
         "tlsMigrationPhase": {
           "description": "TLSMigrationPhase reflects the operator's current TLS rollout phase.\nOne of \"disabled\", \"required\", \"transitioning-to-required\",\n\"transitioning-to-disabled\". Set by the controller's TLS state\nmachine; users observe the user-facing tls.enabled bool, this field\nexposes the intermediate \"optional\" mode used during a toggle.",
           "type": "string"
+        },
+        "upgrade": {
+          "additionalProperties": false,
+          "description": "Upgrade records the durable coordinated-upgrade state machine. It is\nintentionally status-owned so a restarted operator resumes from observed\nKubernetes state without reopening writes.",
+          "properties": {
+            "barrierIndex": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "error": {
+              "type": "string"
+            },
+            "expectedReplicas": {
+              "format": "int32",
+              "type": "integer"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "targetImage": {
+              "type": "string"
+            },
+            "targetSpecHash": {
+              "type": "string"
+            }
+          },
+          "type": "object"
         }
       },
       "type": "object"

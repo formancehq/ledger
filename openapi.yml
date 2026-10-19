@@ -2929,6 +2929,11 @@ paths:
         Returns the aggregated index registry status: per-index backfill cursor,
         per-replica IndexVersionState (current/pending), and cluster-wide
         counters (LastIndexedSequence, LastLogSequence, Lag, IndexFileSize).
+        For each index, `currentVersion == 0` means the initial build is not
+        locally ready; `currentVersion > 0` means a queryable version exists.
+        `pendingVersion != 0` means an initial build or rewrite is in flight.
+        A completed build has `currentVersion > 0` and `pendingVersion == 0`.
+        The registry returned by the list endpoints has no `buildStatus` field.
         The optional `ledger` query parameter narrows the per-index entries to
         a single ledger; the aggregated counters always cover the bucket.
         Requires `ledger:OpsRead` scope.
@@ -2973,6 +2978,8 @@ paths:
       description: |
         Streams the indexes registered on a specific ledger. Requires
         `ledger:LedgerRead` scope.
+        These are registry definitions, not local build status. For local
+        readiness and rewrite progress, use `GET /v3/_/indexes/status?ledger=`.
       operationId: listLedgerIndexes
       tags:
         - Indexes

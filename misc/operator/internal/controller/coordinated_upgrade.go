@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -49,11 +50,13 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 	if status.TargetImage != "" && status.TargetImage != target && status.Phase != upgradePhaseComplete {
 		status.Phase = upgradePhaseFailed
 		status.Error = "coordinated upgrade target changed while an upgrade was active; restore the pinned target before retrying"
+
 		return true, ctrl.Result{}, nil
 	}
 	if status.TargetSpecHash != "" && status.TargetSpecHash != computeSpecHash(&ledger.Spec) && status.Phase != upgradePhaseComplete {
 		status.Phase = upgradePhaseFailed
 		status.Error = "Cluster spec changed while a coordinated upgrade was active; restore the original spec before retrying"
+
 		return true, ctrl.Result{}, nil
 	}
 	status.TargetImage = target
@@ -64,10 +67,12 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 	case "", upgradePhaseMaintenance, upgradePhaseFailed:
 		if _, err := exec(ctx, r.Config, r.Clientset, ledger.Namespace, pod0, "ledger", ledgerctlCommand(serverAddr, currentTLSModeFromStatefulSet(sts), "cluster", "maintenance", "enable")); err != nil {
 			status.Phase, status.Error = upgradePhaseFailed, fmt.Sprintf("enabling maintenance: %v", err)
+
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
 		status.Error = ""
 		status.Phase = upgradePhaseBarrier
+
 		return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 	case upgradePhaseBarrier:
 		barrier := status.BarrierIndex
@@ -76,6 +81,7 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 			barrier, err = readCommitBarrier(ctx, r.Config, r.Clientset, ledger, sts, currentTLSModeFromStatefulSet(sts), exec)
 			if err != nil {
 				status.Phase, status.Error = upgradePhaseFailed, err.Error()
+
 				return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 			}
 			status.BarrierIndex = barrier
@@ -83,6 +89,7 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 		ready, err := allMembersPersistedThrough(ctx, r.Config, r.Clientset, ledger, sts, currentTLSModeFromStatefulSet(sts), exec, barrier)
 		if err != nil {
 			status.Phase, status.Error = upgradePhaseFailed, err.Error()
+
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
 		if !ready {
@@ -90,19 +97,23 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 		}
 		if err := r.detachStatefulSetPVCOwners(ctx, ledger.Namespace, sts); err != nil {
 			status.Phase, status.Error = upgradePhaseFailed, err.Error()
+
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
 		if err := r.suspendStatefulSetForUpgrade(ctx, sts); err != nil {
 			status.Phase, status.Error = upgradePhaseFailed, err.Error()
+
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
 		status.Error = ""
 		status.Phase = upgradePhaseStopping
+
 		return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 	case upgradePhaseStopping:
 		pods := &corev1.PodList{}
 		if err := r.List(ctx, pods, client.InNamespace(ledger.Namespace), client.MatchingLabels(selectorLabels(ledger))); err != nil {
 			status.Error = fmt.Sprintf("listing old pods: %v", err)
+
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
 		if sts.Status.Replicas != 0 || sts.Status.CurrentReplicas != 0 || sts.Status.ReadyReplicas != 0 || len(pods.Items) != 0 {
@@ -110,9 +121,11 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 		}
 		if err := r.publishTargetStatefulSet(ctx, ledger, sts, target); err != nil {
 			status.Phase, status.Error = upgradePhaseFailed, err.Error()
+
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
 		status.Phase = upgradePhaseStarting
+
 		return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 	case upgradePhaseStarting:
 		if sts.Spec.Replicas == nil || *sts.Spec.Replicas != status.ExpectedReplicas || sts.Status.ReadyReplicas != status.ExpectedReplicas {
@@ -129,9 +142,11 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 		}
 		if _, err := exec(ctx, r.Config, r.Clientset, ledger.Namespace, pod0, "ledger", ledgerctlCommand(serverAddr, currentTLSModeFromStatefulSet(sts), "cluster", "maintenance", "disable")); err != nil {
 			status.Phase, status.Error = upgradePhaseFailed, fmt.Sprintf("disabling maintenance after target verification: %v", err)
+
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
 		status.Phase = upgradePhaseComplete
+
 		return true, ctrl.Result{}, nil
 	case upgradePhaseComplete:
 		if current == target {
@@ -141,8 +156,10 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 		status.TargetSpecHash = computeSpecHash(&ledger.Spec)
 		status.ExpectedReplicas = *sts.Spec.Replicas
 		status.BarrierIndex = 0
+
 		return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 	}
+
 	return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 }
 
@@ -152,6 +169,7 @@ func statefulSetImage(ledger *ledgerv1alpha1.Cluster) string {
 	if ledger.Spec.Image.Digest != "" {
 		return ledger.Spec.Image.Repository + "@" + ledger.Spec.Image.Digest
 	}
+
 	return ledger.Spec.Image.Repository + ":" + ledger.Spec.Image.Tag
 }
 
@@ -160,6 +178,7 @@ func (r *ClusterReconciler) suspendStatefulSetForUpgrade(ctx context.Context, st
 	sts.Spec.Replicas = &zero
 	retain := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 	sts.Spec.PersistentVolumeClaimRetentionPolicy = &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{WhenScaled: retain, WhenDeleted: retain}
+
 	return r.Update(ctx, sts)
 }
 
@@ -170,7 +189,7 @@ func (r *ClusterReconciler) suspendStatefulSetForUpgrade(ctx context.Context, st
 // race the suspension and delete a disk before the new policy is observed.
 func (r *ClusterReconciler) detachStatefulSetPVCOwners(ctx context.Context, namespace string, sts *appsv1.StatefulSet) error {
 	if sts.UID == "" {
-		return fmt.Errorf("invariant: StatefulSet UID is required before detaching PVC owners")
+		return errors.New("invariant: StatefulSet UID is required before detaching PVC owners")
 	}
 	pvcs := &corev1.PersistentVolumeClaimList{}
 	if err := r.List(ctx, pvcs, client.InNamespace(namespace)); err != nil {
@@ -183,6 +202,7 @@ func (r *ClusterReconciler) detachStatefulSetPVCOwners(ctx context.Context, name
 		for _, owner := range pvc.OwnerReferences {
 			if owner.UID == sts.UID && owner.Kind == "StatefulSet" {
 				changed = true
+
 				continue
 			}
 			owners = append(owners, owner)
@@ -194,6 +214,7 @@ func (r *ClusterReconciler) detachStatefulSetPVCOwners(ctx context.Context, name
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -207,6 +228,7 @@ func (r *ClusterReconciler) publishTargetStatefulSet(ctx context.Context, ledger
 	// deletion request on Kubernetes versions that reconcile retention eagerly.
 	retain := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 	sts.Spec.PersistentVolumeClaimRetentionPolicy = &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{WhenScaled: retain, WhenDeleted: retain}
+
 	return r.Update(ctx, sts)
 }
 
@@ -232,6 +254,7 @@ func readUpgradeStatus(ctx context.Context, cfg *rest.Config, cs kubernetes.Inte
 	if err := json.Unmarshal([]byte(result.Stdout), &status); err != nil {
 		return status, fmt.Errorf("decoding member %d status: %w", nodeID, err)
 	}
+
 	return status, nil
 }
 
@@ -241,19 +264,20 @@ func readCommitBarrier(ctx context.Context, cfg *rest.Config, cs kubernetes.Inte
 		return 0, err
 	}
 	if status.State != "Leader" && status.State != "leader" {
-		return 0, fmt.Errorf("maintenance barrier was not observed on a leader")
+		return 0, errors.New("maintenance barrier was not observed on a leader")
 	}
 	if status.RaftStatus.Commit == 0 {
-		return 0, fmt.Errorf("leader returned an empty commit index")
+		return 0, errors.New("leader returned an empty commit index")
 	}
+
 	return status.RaftStatus.Commit, nil
 }
 
 func allMembersPersistedThrough(ctx context.Context, cfg *rest.Config, cs kubernetes.Interface, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, tlsMode string, exec ledgerctlExec, barrier uint64) (bool, error) {
 	if sts.Spec.Replicas == nil {
-		return false, fmt.Errorf("StatefulSet has no replica count")
+		return false, errors.New("StatefulSet has no replica count")
 	}
-	for ordinal := int32(0); ordinal < *sts.Spec.Replicas; ordinal++ {
+	for ordinal := range int32(*sts.Spec.Replicas) {
 		status, err := readUpgradeStatus(ctx, cfg, cs, ledger, podName(ledger.Name, int(ordinal)), ordinal+1, tlsMode, exec)
 		if err != nil {
 			return false, err
@@ -262,5 +286,6 @@ func allMembersPersistedThrough(ctx context.Context, cfg *rest.Config, cs kubern
 			return false, nil
 		}
 	}
+
 	return true, nil
 }
