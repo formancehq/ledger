@@ -324,12 +324,13 @@ These protections ensure a node that is still restoring its Pebble checkpoint wi
 ### WAL compaction fence
 
 Background maintenance applies a durability fence before deleting any Raft WAL
-prefix. The leader records each voter's `LastPersistedIndex` from the peer's
-cluster-state response and compacts only below the quorum cursor: the
+prefix. Each peer reports a separate `SyncedPersistedIndex` captured before a
+successful Pebble WAL fsync. The leader compacts only below the quorum cursor: the
 quorum-sized highest cursor among voters in the committed configuration, minus
 the configured compaction margin. During a joint-consensus transition, both
 the incoming and outgoing configurations must independently have a quorum.
-Missing or unreachable reports contribute zero, but do not block compaction when
+Missing or unreachable reports, including older peers that do not provide the
+fsync-backed field, contribute zero, but do not block compaction when
 the remaining reports still form a quorum. The fence is reset on a leadership
 change, so a new leader never relies on observations from a previous term.
 The same health poll records learners' durable indexes. A learner may become a

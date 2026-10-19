@@ -99,8 +99,10 @@ func TestDoMaintenance_AdvancesSnapshotAndCheckpoint(t *testing.T) {
 
 	persisted := node.fsm.LastPersistedIndex()
 	require.Equal(t, uint64(1), persisted)
+	require.Zero(t, node.syncedPersistedIndex.Load(), "NoSync application must not be reported as fsync-backed")
 
 	require.NoError(t, node.doMaintenance())
+	require.Equal(t, persisted, node.syncedPersistedIndex.Load())
 
 	snapAfter, err := node.wal.Snapshot()
 	require.NoError(t, err)
@@ -156,6 +158,7 @@ func TestDoMaintenance_SyncWALFailure_SkipsSnapshotAndCheckpoint(t *testing.T) {
 
 	persisted := node.fsm.LastPersistedIndex()
 	require.Equal(t, uint64(1), persisted)
+	require.Zero(t, node.syncedPersistedIndex.Load(), "NoSync application must not be reported as fsync-backed")
 
 	snapBefore, err := node.wal.Snapshot()
 	require.NoError(t, err)
@@ -174,6 +177,7 @@ func TestDoMaintenance_SyncWALFailure_SkipsSnapshotAndCheckpoint(t *testing.T) {
 		"WAL snapshot must not advance when SyncWAL fails")
 	require.Zero(t, node.lastCheckpointPersistedIndex,
 		"lastCheckpointPersistedIndex must not advance when SyncWAL fails")
+	require.Zero(t, node.syncedPersistedIndex.Load(), "a failed fsync must not publish progress")
 }
 
 // TestBackgroundMaintenance_WALDirectoryMissing_StopsTheLoop exercises the one

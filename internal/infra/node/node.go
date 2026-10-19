@@ -376,6 +376,7 @@ type Node struct {
 	// voters. Missing entries are treated as unknown by the leader's fence.
 	peerPersistedIndexesMu sync.Mutex
 	peerPersistedIndexes   map[uint64]uint64
+	syncedPersistedIndex   atomic.Uint64
 	compactionFenced       atomic.Bool
 	durabilityRefreshCh    chan struct{}
 	lastDurabilityRefresh  time.Time // orchestrate loop only
@@ -988,6 +989,7 @@ func (node *Node) doMaintenance() error {
 
 		return nil
 	}
+	node.syncedPersistedIndex.Store(capturedIndex)
 	// Post-condition: every FSM batch with Raft index <= capturedIndex is
 	// durable on disk. It is now safe to advance the Raft WAL snapshot and
 	// to compact the Raft WAL up to capturedIndex - margin — even on power
@@ -2695,15 +2697,16 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 	// too now, but couples the reader to a Raft-consensus cursor when the
 	// semantic they want is "is Pebble caught up".
 	raftStatus := &clusterpb.RaftStatus{
-		State:              stateStr,
-		Term:               hardState.GetTerm(),
-		Leader:             leaderID,
-		Applied:            status.Applied,
-		Commit:             hardState.GetCommit(),
-		LastIndex:          lastIndex,
-		Vote:               hardState.GetVote(),
-		Progress:           progress,
-		LastPersistedIndex: lastPersistedIndex,
+		State:                stateStr,
+		Term:                 hardState.GetTerm(),
+		Leader:               leaderID,
+		Applied:              status.Applied,
+		Commit:               hardState.GetCommit(),
+		LastIndex:            lastIndex,
+		Vote:                 hardState.GetVote(),
+		Progress:             progress,
+		LastPersistedIndex:   lastPersistedIndex,
+		SyncedPersistedIndex: node.syncedPersistedIndex.Load(),
 	}
 
 	clusterState := &clusterpb.ClusterState{

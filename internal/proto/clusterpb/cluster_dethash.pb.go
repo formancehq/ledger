@@ -74,6 +74,12 @@ func (m *RaftStatus) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.SyncedPersistedIndex != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.SyncedPersistedIndex))
+		i--
+		dAtA[i] = 0x51
+	}
 	if m.LastPersistedIndex != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastPersistedIndex))

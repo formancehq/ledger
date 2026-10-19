@@ -99,6 +99,7 @@ func (m *RaftStatus) CloneVT() *RaftStatus {
 	r.LastIndex = m.LastIndex
 	r.Vote = m.Vote
 	r.LastPersistedIndex = m.LastPersistedIndex
+	r.SyncedPersistedIndex = m.SyncedPersistedIndex
 	if rhs := m.Progress; rhs != nil {
 		tmpContainer := make(map[uint64]*ProgressInfo, len(rhs))
 		for k, v := range rhs {
@@ -857,6 +858,9 @@ func (this *RaftStatus) EqualVT(that *RaftStatus) bool {
 		}
 	}
 	if this.LastPersistedIndex != that.LastPersistedIndex {
+		return false
+	}
+	if this.SyncedPersistedIndex != that.SyncedPersistedIndex {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -1865,6 +1869,12 @@ func (m *RaftStatus) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.SyncedPersistedIndex != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.SyncedPersistedIndex))
+		i--
+		dAtA[i] = 0x51
 	}
 	if m.LastPersistedIndex != 0 {
 		i -= 8
@@ -3570,6 +3580,9 @@ func (m *RaftStatus) SizeVT() (n int) {
 	if m.LastPersistedIndex != 0 {
 		n += 9
 	}
+	if m.SyncedPersistedIndex != 0 {
+		n += 9
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -4948,6 +4961,16 @@ func (m *RaftStatus) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.LastPersistedIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 10:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SyncedPersistedIndex", wireType)
+			}
+			m.SyncedPersistedIndex = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SyncedPersistedIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex

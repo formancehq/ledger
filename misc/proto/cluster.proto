@@ -144,6 +144,7 @@ message RaftStatus {
   uint64 vote = 7;              // ID of the node that received the vote (0 if no vote)
   map<uint64, ProgressInfo> progress = 8;  // Progress information for each node
   fixed64 last_persisted_index = 9; // FSM-layer durable cursor: bumped by Machine.publishApplied on the committer goroutine, inside CommitPreparedBatch after pb.batch.Commit() returns. Reads served from Pebble (stale-consistency GetAccount, cross-node identity oracles, audit reads) SHOULD gate on this because it is what "Pebble has the data" means by definition — no need to reason about the Raft state machine at all. Under AsyncStorageWrites the two cursors advance in lockstep (publishApplied fires just before runCommitter emits MsgStorageApplyResp, so `last_persisted_index` reaches N a few µs before `applied` does), but keep this field distinct: it names an FSM-durability property, not a Raft-consensus one, and remains the correct entry point for anything that assumes the Pebble batch is on disk.
+  fixed64 synced_persisted_index = 10; // Highest FSM index captured before a successful Pebble WAL fsync. Zero from older peers means unknown for compaction and promotion.
 }
 
 // ClusterState represents the state of the Raft cluster

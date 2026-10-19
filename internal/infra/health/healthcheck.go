@@ -358,7 +358,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				hc.forgetPeerPersistedIndex(leadershipEpoch, peerID)
 				hc.logger.WithFields(map[string]any{"node_id": peerID, "error": stateErr}).Infof("Failed to get peer persisted index")
 			} else {
-				hc.recordPeerPersistedIndex(leadershipEpoch, peerID, state.GetRaftStatus().GetLastPersistedIndex())
+				hc.recordPeerPersistedIndex(leadershipEpoch, peerID, state.GetRaftStatus().GetSyncedPersistedIndex())
 			}
 			walVolume := resp.GetWalVolume()
 			dataVolume := resp.GetDataVolume()
