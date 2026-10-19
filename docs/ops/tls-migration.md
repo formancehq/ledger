@@ -100,6 +100,15 @@ can prevent replacement optional-mode pods from starting; restore that Secret
 and let reconciliation continue. Remove it yourself only after the disabled
 rollout has converged and `status.tlsRollout` has been cleared.
 
+### In-pod ledgerctl during workload recreation
+
+Ledger and EventSink reconciliation read the current StatefulSet TLS mode
+before executing ledgerctl. If the StatefulSet is temporarily absent during
+orphan/recreate, they return a lookup error and retry through their normal
+reconciliation paths without executing a command. Surviving pods may still
+require TLS, so absence must not select plaintext. Once the StatefulSet
+returns, the next attempt reads its current TLS mode.
+
 ### Backup Jobs during migration
 
 When provisioning a new backup Job, the operator reads TLS mode and

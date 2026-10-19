@@ -72,6 +72,10 @@ New backup Jobs must resolve mode and certificate/CA references from one
 current owned StatefulSet template, rather than mixing observed mode with
 already-cleared desired TLS. Missing workloads during recreation must cause
 retry without creating a plaintext Job; foreign ownership must reject creation.
+In-pod ledgerctl calls from Ledger and EventSink reconciliation must also
+return a retryable lookup error before exec while the StatefulSet is absent,
+then read the recreated workload mode on retry. Cover both callers separately
+and exercise missing-then-recreated optional, required and disabled workloads.
 An existing Job's persisted template remains its configuration source. Prove a
 real missing-workload failure followed by successful provisioning after owned
 workload recovery, and preserve prior backup error/response-loss regressions.

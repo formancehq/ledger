@@ -46,17 +46,12 @@ func desiredTLSMode(ledger *ledgerv1alpha1.Cluster) string {
 
 // fetchTLSMode returns the TLS_MODE currently in effect on the running pods of
 // the named Cluster, by reading the TLS_MODE env var from the
-// StatefulSet pod template. Returns an empty string (and no error) if the
-// StatefulSet does not exist yet; the caller's exec is meaningless in that
-// case and will fail on the pod lookup, but this keeps the bootstrap path
-// from masking the original error.
+// StatefulSet pod template. A missing StatefulSet returns its lookup error so
+// callers retry before exec: orphaned pods may still require TLS during
+// StatefulSet recreation, so absence cannot safely select plaintext.
 func fetchTLSMode(ctx context.Context, c client.Client, namespace, name string) (string, error) {
 	sts := &appsv1.StatefulSet{}
 	if err := c.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, sts); err != nil {
-		if apierrors.IsNotFound(err) {
-			return "", nil
-		}
-
 		return "", err
 	}
 

@@ -80,6 +80,8 @@ New backup Jobs resolve TLS mode and certificate/CA references from the same
 owned StatefulSet template, so removing desired TLS cannot strip trust from a
 Job targeting the optional phase. Missing workloads retry provisioning; foreign
 owners are rejected. Existing Jobs retain their own persisted templates.
+In-pod ledgerctl calls from Ledger and EventSink reconciliation also retry
+without exec when the StatefulSet is absent, then read its mode after recreation.
 See [TLS migration](../../docs/ops/tls-migration.md) for phases, interruption
 boundaries and recovery guidance.
 
