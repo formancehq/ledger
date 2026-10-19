@@ -113,6 +113,29 @@ func TestDoMaintenance_AdvancesSnapshotAndCheckpoint(t *testing.T) {
 		"lastCheckpointPersistedIndex must be updated after a successful Pebble checkpoint")
 }
 
+func TestDoMaintenance_PublishesRecoveredIdleCursor(t *testing.T) {
+	t.Parallel()
+
+	node, setup := newTestMaintenanceNode(t)
+	entry, _ := makeCreateLedgerEntry(t, 1, "test-ledger")
+	require.NoError(t, setup.wal.Append(&raftpb.HardState{
+		Term: proto.Uint64(1), Vote: proto.Uint64(1), Commit: proto.Uint64(1),
+	}, []*raftpb.Entry{entry}))
+	setup.applyEntry(t, logging.TestingContext(), entry)
+	require.NoError(t, node.doMaintenance())
+
+	snapshot, err := node.wal.Snapshot()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), snapshot.GetMetadata().GetIndex())
+	require.Equal(t, uint64(1), node.fsm.LastPersistedIndex())
+
+	// The atomic is process-local. Model a restart with a recovered Pebble
+	// cursor equal to the existing WAL snapshot and no subsequent writes.
+	node.syncedPersistedIndex.Store(0)
+	require.NoError(t, node.doMaintenance())
+	require.Equal(t, uint64(1), node.syncedPersistedIndex.Load())
+}
+
 func TestDoMaintenance_RetriesFencedCompactionWhenIdle(t *testing.T) {
 	t.Parallel()
 

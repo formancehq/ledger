@@ -969,6 +969,18 @@ func (node *Node) doMaintenance() error {
 	// after the next peer durability report. Retry the compaction against the
 	// existing snapshot instead of permanently short-circuiting maintenance.
 	if node.fsm.LastPersistedIndex() <= lastSnapIndex {
+		// A recovered store can already be at its WAL snapshot without receiving
+		// another entry. Publish that cursor only after proving it is fsynced;
+		// otherwise an idle learner could remain ineligible for promotion forever.
+		if node.syncedPersistedIndex.Load() < node.fsm.LastPersistedIndex() {
+			capturedIndex := node.fsm.LastPersistedIndex()
+			if err := store.SyncWAL(); err != nil {
+				node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to sync recovered Pebble WAL")
+
+				return nil
+			}
+			node.syncedPersistedIndex.Store(capturedIndex)
+		}
 		if node.IsLeader() {
 			node.compactWAL(lastSnapIndex)
 		}
