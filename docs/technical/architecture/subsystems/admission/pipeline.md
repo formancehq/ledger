@@ -84,7 +84,18 @@ cluster-secret-authenticated connection.
 
 ### 2. Maintenance mode
 
-If the cluster is in maintenance mode, only `SetMaintenanceMode` requests are allowed through (`allRequestsAreMaintenanceMode()`). Any other request type in the batch fails the whole batch atomically — there is no partial admission.
+If the cluster is in maintenance mode, only a client batch made entirely of
+`SetMaintenanceMode` requests is allowed through (`allRequestsAreMaintenanceMode()`).
+System-actor requests are rejected even when they contain that order: internal
+producers must stop at the same barrier as clients. Any other request type in
+the batch fails the whole batch atomically — there is no partial admission.
+
+The FSM repeats this as a mutation barrier before preload and technical-update
+application. A proposal is admissible during maintenance only when it has no
+technical updates, contains only `SetMaintenanceMode` orders, and is not
+attributed to a system actor. This ordering is part of the invariant: checking
+after technical updates would allow background producers to write replicated
+state while maintenance is active.
 
 ### 3. Signature verification
 

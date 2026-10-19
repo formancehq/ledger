@@ -86,6 +86,26 @@ func TestAllOrdersAreMaintenanceMode(t *testing.T) {
 	})
 }
 
+func TestProposalMutationsAllowedInMaintenanceMode(t *testing.T) {
+	t.Parallel()
+
+	maintenanceOrder := &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
+		Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{Enabled: false}},
+	}}}
+
+	require.True(t, proposalMutationsAllowedInMaintenanceMode(&raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{maintenanceOrder}}))
+	require.False(t, proposalMutationsAllowedInMaintenanceMode(&raftcmdpb.Proposal{
+		Orders:           []*raftcmdpb.Order{maintenanceOrder},
+		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_EventsSink{EventsSink: &raftcmdpb.EventsSinkUpdate{}}}},
+	}))
+	require.False(t, proposalMutationsAllowedInMaintenanceMode(&raftcmdpb.Proposal{
+		Orders: []*raftcmdpb.Order{maintenanceOrder},
+		CallerSnapshot: &commonpb.CallerSnapshot{Principal: &commonpb.CallerSnapshot_System{
+			System: &commonpb.SystemCaller{Component: "events-sink"},
+		}},
+	}))
+}
+
 func TestMachineLastPersistedIndex(t *testing.T) {
 	t.Parallel()
 

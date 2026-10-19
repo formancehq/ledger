@@ -1110,6 +1110,19 @@ func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 	return true
 }
 
+// proposalMutationsAllowedInMaintenanceMode is the FSM-side mutation barrier.
+// It must run before preload and before technical updates: both paths can
+// mutate replicated state without producing business orders. Maintenance mode
+// therefore admits only a pure batch of SetMaintenanceMode orders, and never a
+// proposal carrying technical updates or a system-producer attribution.
+func proposalMutationsAllowedInMaintenanceMode(proposal *raftcmdpb.Proposal) bool {
+	if proposal == nil || len(proposal.GetTechnicalUpdates()) != 0 || !authorizedInMaintenanceMode(proposal.GetOrders()) {
+		return false
+	}
+
+	return proposal.GetCallerSnapshot().GetSystem() == nil
+}
+
 // checkStaleProposal rejects proposals whose predicted index or cache epoch
 // doesn't match the current state. This detects stale proposals admitted with
 // an inflated IndexTracker or before a cache reset.
@@ -1194,6 +1207,17 @@ func planInvariantFailure(err error) domain.SerializableError {
 }
 
 func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.WriteSession, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
+	// This is the source-of-truth mutation barrier. It is intentionally before
+	// preload and applyTechnicalUpdates so a proposal admitted before the flag
+	// flipped, or an internal technical producer that bypassed Admission, cannot
+	// mutate any replicated state while maintenance is active.
+	if fsm.sharedState.MaintenanceMode() && !proposalMutationsAllowedInMaintenanceMode(proposal) {
+		return &ApplyResult{
+			ProposalID: proposal.GetId(),
+			Error:      &domain.BusinessError{Err: domain.ErrMaintenanceMode},
+		}, nil
+	}
+
 	// FSM-level safety net mirroring the admission check: a checkpoint trigger
 	// (CreateQueryCheckpoint) must be the last order. The
 	// applier relies on this so it can place a Pebble-batch boundary at this

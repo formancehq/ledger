@@ -39,6 +39,13 @@ type ClusterSpec struct {
 	// +optional
 	Image ImageSpec `json:"image,omitempty"`
 
+	// Upgrade selects how an image change is rolled out. Coordinated requires
+	// an immutable image digest and performs a maintenance-barrier restart;
+	// Rolling is retained for revisions explicitly certified as compatible.
+	// +kubebuilder:validation:Enum=Rolling;Coordinated
+	// +optional
+	Upgrade *UpgradeSpec `json:"upgrade,omitempty"`
+
 	// ImagePullSecrets for private registries.
 	// +optional
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
@@ -377,6 +384,16 @@ type ImageSpec struct {
 	// PullPolicy for the container image.
 	// +optional
 	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
+
+	// Digest pins the image used by a coordinated upgrade. It must be an
+	// immutable digest (for example sha256:...).
+	// +optional
+	Digest string `json:"digest,omitempty"`
+}
+
+// UpgradeSpec controls the compatibility class of a server image change.
+type UpgradeSpec struct {
+	Strategy string `json:"strategy,omitempty"`
 }
 
 // ServiceAccountSpec defines service account configuration.
@@ -1361,6 +1378,21 @@ type ClusterStatus struct {
 	// exposes the intermediate "optional" mode used during a toggle.
 	// +optional
 	TLSMigrationPhase string `json:"tlsMigrationPhase,omitempty"`
+
+	// Upgrade records the durable coordinated-upgrade state machine. It is
+	// intentionally status-owned so a restarted operator resumes from observed
+	// Kubernetes state without reopening writes.
+	// +optional
+	Upgrade *UpgradeStatus `json:"upgrade,omitempty"`
+}
+
+type UpgradeStatus struct {
+	Phase            string `json:"phase,omitempty"`
+	TargetImage      string `json:"targetImage,omitempty"`
+	TargetSpecHash   string `json:"targetSpecHash,omitempty"`
+	BarrierIndex     uint64 `json:"barrierIndex,omitempty"`
+	ExpectedReplicas int32  `json:"expectedReplicas,omitempty"`
+	Error            string `json:"error,omitempty"`
 }
 
 // EndpointsStatus contains the resolved endpoints for a Cluster.

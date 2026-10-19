@@ -613,6 +613,12 @@ func (a *Admission) prepareAdmission(ctx context.Context, buildPlan func(context
 	if err != nil {
 		return nil, err
 	}
+	// Internal producers are never allowed to use the maintenance carve-out:
+	// their technical work must stop at the same cluster-wide barrier as client
+	// writes.
+	if auth.IsSystemActor(ctx) {
+		admPlan.allowInMaintenance = false
+	}
 
 	// Check maintenance mode: block all requests except SetMaintenanceMode.
 	if a.sharedState.MaintenanceMode() && !admPlan.allowInMaintenance {

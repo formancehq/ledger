@@ -1509,6 +1509,11 @@ spec:
               image:
                 description: Image configuration for the ledger container.
                 properties:
+                  digest:
+                    description: |-
+                      Digest pins the image used by a coordinated upgrade. It must be an
+                      immutable digest (for example sha256:...).
+                    type: string
                   pullPolicy:
                     description: PullPolicy for the container image.
                     type: string
@@ -4096,6 +4101,18 @@ spec:
                   UnsafeSkipConfigValidation skips startup configuration safety checks.
                   DANGEROUS: allows node-id/cluster-id changes on existing data.
                 type: boolean
+              upgrade:
+                description: |-
+                  Upgrade selects how an image change is rolled out. Coordinated requires
+                  an immutable image digest and performs a maintenance-barrier restart;
+                  Rolling is retained for revisions explicitly certified as compatible.
+                enum:
+                - Rolling
+                - Coordinated
+                properties:
+                  strategy:
+                    type: string
+                type: object
               walDir:
                 default: /data/raft
                 description: WalDir is the WAL data directory.
@@ -4205,6 +4222,27 @@ spec:
                   machine; users observe the user-facing tls.enabled bool, this field
                   exposes the intermediate "optional" mode used during a toggle.
                 type: string
+              upgrade:
+                description: |-
+                  Upgrade records the durable coordinated-upgrade state machine. It is
+                  intentionally status-owned so a restarted operator resumes from observed
+                  Kubernetes state without reopening writes.
+                properties:
+                  barrierIndex:
+                    format: int64
+                    type: integer
+                  error:
+                    type: string
+                  expectedReplicas:
+                    format: int32
+                    type: integer
+                  phase:
+                    type: string
+                  targetImage:
+                    type: string
+                  targetSpecHash:
+                    type: string
+                type: object
             type: object
         type: object
     served: true

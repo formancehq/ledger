@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -450,6 +451,7 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 	latest.Status.ObservedGeneration = latest.Generation
 	latest.Status.Endpoints = ledger.Status.Endpoints
 	latest.Status.TLSMigrationPhase = ledger.Status.TLSMigrationPhase
+	latest.Status.Upgrade = ledger.Status.Upgrade
 
 	// Set condition
 	condition := metav1.Condition{
@@ -614,6 +616,11 @@ func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
 
 	if err := validateClusterConfig(&ledger.Spec); err != nil {
 		return err
+	}
+	if ledger.Spec.Upgrade != nil && ledger.Spec.Upgrade.Strategy == "Coordinated" {
+		if !strings.HasPrefix(ledger.Spec.Image.Digest, "sha256:") {
+			return errors.New("upgrade.strategy=Coordinated requires image.digest pinned to an immutable sha256 digest")
+		}
 	}
 
 	// Validate hostPath / PVC mutual exclusion and automatic expansion for each volume.

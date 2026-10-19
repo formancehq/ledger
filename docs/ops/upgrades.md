@@ -111,3 +111,30 @@ When persisted storage is compatible but mixed binaries are not:
 `ledgerctl upgrade` upgrades the `ledgerctl` client binary only. It does not
 upgrade Ledger servers or decide whether a server revision is storage- or
 wire-compatible.
+
+## Operator-coordinated upgrades
+
+For a target revision that is compatible with persisted storage but cannot
+coexist with the current binary, set `spec.upgrade.strategy: Coordinated` and
+pin `spec.image.digest` to an immutable `sha256:` digest. The operator persists
+the phase and barrier in `Cluster.status`, enables maintenance, waits until
+every voter has durably applied the same commit index, and temporarily scales
+the StatefulSet to zero while both PVC retention policies are forced to
+`Retain`. It proves the StatefulSet status and Pod list are empty before
+publishing the target template, then restores the requested replica count and
+verifies every Pod image and readiness before disabling maintenance.
+
+The zero-replica step is not treated as proof by itself: the operator waits for
+`status.replicas`, `status.currentReplicas`, `status.readyReplicas`, and the
+label-selected Pod list all to reach zero. A failed or interrupted phase keeps
+maintenance enabled and is resumed from the observed StatefulSet/Pod state;
+the operator never removes Raft members or PVCs as part of this upgrade.
+
+```yaml
+spec:
+  upgrade:
+    strategy: Coordinated
+  image:
+    repository: ghcr.io/formancehq/ledger
+    digest: sha256:<immutable-target-digest>
+```

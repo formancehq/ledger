@@ -43,7 +43,7 @@ Write operations are rejected at **two levels** for safety:
 
 1. **Admission layer**: Rejects write requests before they enter the Raft pipeline. This is the primary gate and prevents unnecessary Raft round-trips.
 
-2. **FSM level**: Rejects proposals containing non-maintenance orders during `applyProposal()`. This catches the Raft batching race condition where entries admitted before maintenance mode was enabled can be batched into a Raft entry applied after the maintenance mode flag is set by a preceding entry in the same batch.
+2. **FSM level**: Rejects proposals containing non-maintenance orders during `applyProposal()`. The check runs before preload and technical-update handlers, so internal producers and technical-only proposals cannot mutate replicated state during the window. This also catches the Raft batching race condition where entries admitted before maintenance mode was enabled can be applied after the flag is set by a preceding entry.
 
 ### Data Flow
 

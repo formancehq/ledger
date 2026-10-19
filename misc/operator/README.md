@@ -21,8 +21,11 @@ missing, or have no container status while its stable node ID is still a voter;
 none of those Pod states proves absence from Raft. Skipping such an ordinal can
 leave a one-replica StatefulSet with a two-voter membership and no write quorum.
 
-The operator first updates the StatefulSet template while retaining the current
-replica count, then transfers leadership to node 1 (pod-0). Pod health selects
+The operator first arms a durable scale-down phase without changing the
+StatefulSet pod template. This prevents a mixed old/new binary set while Raft
+membership is being changed and forces both PVC retention policies to `Retain`
+before any replica reduction. It then transfers leadership to node 1 (pod-0).
+Pod health selects
 only the removal mode: crashed or missing Pods use the existing force-removal
 path first. Other Pods, including Pending or running Pods without a crash
 indicator, use normal consensus removal in descending ordinal order. Before
@@ -36,11 +39,13 @@ recovers committed removals whose response was lost, without matching CLI error
 substrings.
 
 Only after all removed ordinals satisfy that postcondition does the operator
-persist the reduced StatefulSet replica count and issue PVC deletions. The
-StatefulSet update requests Pod termination; it does not wait for termination to
-finish. If a membership check or removal fails, replicas and PVCs are retained,
-although the template update and earlier membership removals may already have
-succeeded. A later reconciliation checks membership again and skips ordinals
+apply the new template and persist the reduced StatefulSet replica count. PVCs
+are explicitly deleted only after that successful transition; the intermediate
+`Retain` policy prevents Kubernetes' `whenScaled: Delete` controller behavior
+from racing the membership checks. The StatefulSet update requests Pod
+termination; it does not wait for termination to finish. If a membership check
+or removal fails, the old template, replica count, Raft identities and PVCs are
+retained. A later reconciliation checks membership again and skips ordinals
 already removed.
 
 ## Declarative ledger indexes

@@ -45,6 +45,11 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("fetching StatefulSet for TLS state: %w", err)
 	}
+	if existingForTLS != nil {
+		if handled, result, upgradeErr := r.reconcileCoordinatedUpgrade(ctx, ledger, existingForTLS, exec); handled || upgradeErr != nil {
+			return result, upgradeErr
+		}
+	}
 
 	targetTLSMode := computeTargetTLSMode(
 		desiredTLSMode(ledger),
@@ -74,37 +79,35 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			previousReplicas = *existing.Spec.Replicas
 			scalingDown = true
 
-			// Update the StatefulSet with the current replica count first
-			// so that the image, env vars, etc. are applied. This allows
-			// pods to start (e.g. after an image change) before we attempt
-			// the Raft scale-down which requires running containers.
+			// Establish a durable scale-down phase before touching the pod
+			// template. Updating the template here starts a rolling upgrade while
+			// the old Raft membership is still present, creating a mixed-binary
+			// cluster and making crash recovery ambiguous. It can also let the
+			// StatefulSet controller delete PVCs before the membership postcondition
+			// is known when whenScaled=Delete. The intermediate object therefore
+			// changes only the retention policy (forced to Retain) and leaves the
+			// current template and replica count untouched.
 			sts := &appsv1.StatefulSet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
 					Namespace: ledger.Namespace,
 				},
 			}
-			savedReplicas := ledger.Spec.Replicas
-			ledger.Spec.Replicas = &previousReplicas
 			_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
 				sts.Labels = commonLabels(ledger)
-				desired := buildStatefulSetSpec(ledger, specHash, credentials, targetTLSMode)
-
 				if sts.CreationTimestamp.IsZero() {
-					sts.Spec = desired
-				} else {
-					sts.Spec.Replicas = desired.Replicas
-					sts.Spec.Template = withKubectlRestartedAt(sts.Spec.Template, desired.Template)
-					sts.Spec.UpdateStrategy = desired.UpdateStrategy
-					sts.Spec.PersistentVolumeClaimRetentionPolicy = desired.PersistentVolumeClaimRetentionPolicy
-					sts.Spec.MinReadySeconds = desired.MinReadySeconds
+					return fmt.Errorf("invariant: scale-down StatefulSet disappeared during reconciliation")
+				}
+				retain := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
+				sts.Spec.PersistentVolumeClaimRetentionPolicy = &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{
+					WhenScaled:  retain,
+					WhenDeleted: retain,
 				}
 
 				return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
 			})
-			ledger.Spec.Replicas = savedReplicas
 			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("updating StatefulSet spec before scale-down: %w", err)
+				return ctrl.Result{}, fmt.Errorf("arming StatefulSet scale-down safety phase: %w", err)
 			}
 
 			logger.Info("scale-down detected, removing Raft nodes",
@@ -425,9 +428,13 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 		))
 	}
 
+	image := fmt.Sprintf("%s:%s", ledger.Spec.Image.Repository, ledger.Spec.Image.Tag)
+	if ledger.Spec.Image.Digest != "" {
+		image = fmt.Sprintf("%s@%s", ledger.Spec.Image.Repository, ledger.Spec.Image.Digest)
+	}
 	container := corev1.Container{
 		Name:            "ledger",
-		Image:           fmt.Sprintf("%s:%s", ledger.Spec.Image.Repository, ledger.Spec.Image.Tag),
+		Image:           image,
 		ImagePullPolicy: pullPolicy,
 		Ports:           ports,
 		Env:             envVars,
