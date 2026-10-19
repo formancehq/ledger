@@ -80,21 +80,21 @@ func (s *KeyStore[K, T]) Put(canonical []byte, value T) (oldValue kv.Optional[T]
 
 	newEntry := Entry[T]{Tag: tag, Data: value}
 
+	// The FSM is the sole writer; admission may read concurrently. Check the
+	// visible entry before publishing, so a rejected collision is never seen
+	// by admission between a write and a rollback.
+	if existing, existed := s.M.Get(id); existed && existing.Tag != tag {
+		return kv.None[T](), IDWithTag{}, newErrCollisionDetected(canonical, existing.Tag, tag)
+	}
+
 	existing, existed := s.M.GetAndPut(id, newEntry)
 	if existed {
 		if existing.Deleted {
-			// Tombstone: overwrite without collision check.
+			// Matching tombstone: revive without an old value.
 			return kv.None[T](), IDWithTag{
 				ID:  id,
 				Tag: tag,
 			}, nil
-		}
-
-		if existing.Tag != tag {
-			// Collision: roll back by restoring the old entry.
-			s.M.Put(id, existing)
-
-			return kv.None[T](), IDWithTag{}, newErrCollisionDetected(canonical, existing.Tag, tag)
 		}
 
 		return kv.Some(existing.Data), IDWithTag{
@@ -116,7 +116,7 @@ func (s *KeyStore[K, T]) Get(canonical []byte) (value T, id U128, err error) {
 	id, tag := s.hasher.MakeKey(canonical)
 
 	entry, ok := s.M.Get(id)
-	if !ok || entry.Deleted {
+	if !ok {
 		var zero T
 
 		return zero, id, domain.ErrNotFound
@@ -126,6 +126,11 @@ func (s *KeyStore[K, T]) Get(canonical []byte) (value T, id U128, err error) {
 		var zero T
 
 		return zero, id, newErrCollisionDetected(canonical, entry.Tag, tag)
+	}
+	if entry.Deleted {
+		var zero T
+
+		return zero, id, domain.ErrNotFound
 	}
 
 	return entry.Data, id, nil
