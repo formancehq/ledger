@@ -17,7 +17,14 @@ type testKey struct {
 func (k testKey) AppendBytes(dst []byte) []byte { return append(dst, k.name...) }
 
 func newTestKeyStore() *KeyStore[testKey, string] {
-	return NewKeyStore[testKey, string](kv.NewTaggedShardedMap[U128, Entry[string]](func(k U128) uint64 { return k.Hi() }, func(e Entry[string]) uint64 { return e.Tag }))
+	return NewKeyStore[testKey, string](kv.NewValidatedShardedMap[U128, Entry[string]](func(k U128) uint64 { return k.Hi() }, func(old, next Entry[string]) bool { return old.Tag == next.Tag }))
+}
+
+func TestNewKeyStoreRequiresWriteValidator(t *testing.T) {
+	t.Parallel()
+	require.Panics(t, func() {
+		NewKeyStore[testKey, string](kv.NewShardedMap[U128, Entry[string]](func(k U128) uint64 { return k.Hi() }))
+	})
 }
 
 func BenchmarkKeyStorePutExisting(b *testing.B) {
@@ -35,28 +42,28 @@ func BenchmarkKeyStorePutExisting(b *testing.B) {
 }
 
 type publishBarrierKV struct {
-	entryKV[string]
+	kv.KV[U128, Entry[string]]
 
 	published chan struct{}
 	release   chan struct{}
 }
 
-func (m *publishBarrierKV) GetAndPut(id U128, entry Entry[string]) (Entry[string], bool) {
-	old, existed := m.entryKV.GetAndPut(id, entry)
+func (m *publishBarrierKV) Put(id U128, entry Entry[string]) (Entry[string], bool, bool) {
+	old, existed, written := m.KV.Put(id, entry)
 	close(m.published)
 	<-m.release
 
-	return old, existed
+	return old, existed, written
 }
 
 func TestKeyStorePutRejectsBeforePublication(t *testing.T) {
 	t.Parallel()
 	canonical := []byte("publication-window")
 	id, tag := MakeKey(canonical)
-	raw := kv.NewTaggedShardedMap[U128, Entry[string]](func(k U128) uint64 { return k.Hi() }, func(e Entry[string]) uint64 { return e.Tag })
+	raw := kv.NewValidatedShardedMap[U128, Entry[string]](func(k U128) uint64 { return k.Hi() }, func(old, next Entry[string]) bool { return old.Tag == next.Tag })
 	raw.Put(id, Entry[string]{Tag: tag + 1, Data: "original"})
 	barrier := &publishBarrierKV{
-		entryKV:   raw,
+		KV:        raw,
 		published: make(chan struct{}),
 		release:   make(chan struct{}),
 	}

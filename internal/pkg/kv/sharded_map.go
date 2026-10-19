@@ -21,10 +21,10 @@ type shard[K comparable, V any] struct {
 // Readers (Get) take a shared RLock; writers (Put, Del) take an exclusive Lock.
 // With 64 shards the probability of a reader being blocked by a writer is ~1.6%.
 type ShardedMap[K comparable, V any] struct {
-	shards [numShards]shard[K, V]
-	hashFn func(K) uint64
-	tagFn  func(V) uint64
-	size   atomic.Int64
+	shards          [numShards]shard[K, V]
+	hashFn          func(K) uint64
+	validateReplace func(old, next V) bool
+	size            atomic.Int64
 }
 
 // NewShardedMap creates a ShardedMap with the given hash function.
@@ -40,13 +40,13 @@ func NewShardedMap[K comparable, V any](hashFn func(K) uint64) *ShardedMap[K, V]
 	return sm
 }
 
-// NewTaggedShardedMap configures collision-tag checks for conditional writes.
-func NewTaggedShardedMap[K comparable, V any](hashFn func(K) uint64, tagFn func(V) uint64) *ShardedMap[K, V] {
-	if tagFn == nil {
-		panic("kv.NewTaggedShardedMap: tag function is required")
+// NewValidatedShardedMap applies validateReplace to every replacement.
+func NewValidatedShardedMap[K comparable, V any](hashFn func(K) uint64, validateReplace func(old, next V) bool) *ShardedMap[K, V] {
+	if validateReplace == nil {
+		panic("kv.NewValidatedShardedMap: validator is required")
 	}
 	sm := NewShardedMap[K, V](hashFn)
-	sm.tagFn = tagFn
+	sm.validateReplace = validateReplace
 
 	return sm
 }
@@ -64,43 +64,17 @@ func (s *ShardedMap[K, V]) Get(k K) (V, bool) {
 	return v, ok
 }
 
-func (s *ShardedMap[K, V]) Put(k K, v V) {
-	sh := s.shard(k)
-	sh.mu.Lock()
-	_, exists := sh.m[k]
-	sh.m[k] = v
-	sh.mu.Unlock()
-
-	if !exists {
-		s.size.Add(1)
-	}
+func (s *ShardedMap[K, V]) Put(k K, v V) (old V, existed, written bool) {
+	return s.PutWithSecondary(k, v, nil)
 }
 
-func (s *ShardedMap[K, V]) GetAndPut(k K, v V) (old V, existed bool) {
-	sh := s.shard(k)
-	sh.mu.Lock()
-	old, existed = sh.m[k]
-	sh.m[k] = v
-	sh.mu.Unlock()
-
-	if !existed {
-		s.size.Add(1)
-	}
-
-	return old, existed
+func (s *ShardedMap[K, V]) HasWriteValidator() bool {
+	return s.validateReplace != nil
 }
 
-// GetAndPutIfTag checks the current value's tag under the shard write lock.
-func (s *ShardedMap[K, V]) GetAndPutIfTag(k K, v V, tag uint64) (old V, existed, published bool) {
-	return s.GetAndPutIfTagWithSecondary(k, v, tag, nil)
-}
-
-// GetAndPutIfTagWithSecondary checks the secondary map if the primary misses.
-// It holds the primary shard lock through the decision and optional write.
-func (s *ShardedMap[K, V]) GetAndPutIfTagWithSecondary(k K, v V, tag uint64, secondary *ShardedMap[K, V]) (old V, existed, published bool) {
-	if s.tagFn == nil {
-		panic("kv.ShardedMap.GetAndPutIfTag: map has no tag function")
-	}
+// PutWithSecondary consults secondary when the primary misses. The primary
+// shard remains locked through validation and publication.
+func (s *ShardedMap[K, V]) PutWithSecondary(k K, v V, secondary *ShardedMap[K, V]) (old V, existed, written bool) {
 	sh := s.shard(k)
 	sh.mu.Lock()
 	old, primaryExisted := sh.m[k]
@@ -108,7 +82,7 @@ func (s *ShardedMap[K, V]) GetAndPutIfTagWithSecondary(k K, v V, tag uint64, sec
 	if !existed && secondary != nil {
 		old, existed = secondary.Get(k)
 	}
-	if existed && s.tagFn(old) != tag {
+	if existed && s.validateReplace != nil && !s.validateReplace(old, v) {
 		sh.mu.Unlock()
 
 		return old, true, false

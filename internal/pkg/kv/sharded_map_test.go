@@ -90,6 +90,28 @@ func TestShardedMap_PutOverwrite(t *testing.T) {
 	require.Equal(t, uint64(1), sm.Size())
 }
 
+func TestShardedMap_PutValidator(t *testing.T) {
+	t.Parallel()
+	sm := NewValidatedShardedMap[string, int](stringHash, func(old, next int) bool {
+		return old%2 == next%2
+	})
+	_, existed, written := sm.Put("a", 2)
+	require.False(t, existed)
+	require.True(t, written)
+	old, existed, written := sm.Put("a", 4)
+	require.Equal(t, 2, old)
+	require.True(t, existed)
+	require.True(t, written)
+	old, existed, written = sm.Put("a", 3)
+	require.Equal(t, 4, old)
+	require.True(t, existed)
+	require.False(t, written)
+	value, ok := sm.Get("a")
+	require.True(t, ok)
+	require.Equal(t, 4, value)
+	require.Equal(t, uint64(1), sm.Size())
+}
+
 func TestShardedMap_Iter(t *testing.T) {
 	t.Parallel()
 

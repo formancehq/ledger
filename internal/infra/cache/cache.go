@@ -26,7 +26,7 @@ func u128Hash(k attributes.U128) uint64 {
 
 // newShardedMap creates a ShardedMap keyed by U128 with the standard hash function.
 func newShardedMap[T any]() *kv.ShardedMap[attributes.U128, attributes.Entry[T]] {
-	return kv.NewTaggedShardedMap[attributes.U128, attributes.Entry[T]](u128Hash, func(entry attributes.Entry[T]) uint64 { return entry.Tag })
+	return kv.NewValidatedShardedMap[attributes.U128, attributes.Entry[T]](u128Hash, func(old, next attributes.Entry[T]) bool { return old.Tag == next.Tag })
 }
 
 // AttributeCache is a dual-generation cache for attribute values.
@@ -70,23 +70,13 @@ func (a *AttributeCache[T]) Get(k attributes.U128) (attributes.Entry[T], bool) {
 	return a.gen1.Load().Get(k)
 }
 
-func (a *AttributeCache[T]) Put(k attributes.U128, v attributes.Entry[T]) {
-	a.gen0.Load().Put(k, v)
+// Put validates the visible entry in Gen0 or Gen1 before publishing to Gen0.
+func (a *AttributeCache[T]) Put(k attributes.U128, v attributes.Entry[T]) (attributes.Entry[T], bool, bool) {
+	return a.gen0.Load().PutWithSecondary(k, v, a.gen1.Load())
 }
 
-func (a *AttributeCache[T]) GetAndPut(k attributes.U128, v attributes.Entry[T]) (attributes.Entry[T], bool) {
-	old, existed := a.gen0.Load().GetAndPut(k, v)
-	if existed {
-		return old, true
-	}
-
-	// New value is already in gen0. Check gen1 for the old value.
-	return a.gen1.Load().Get(k)
-}
-
-// GetAndPutIfTag checks the visible generation before publishing into Gen0.
-func (a *AttributeCache[T]) GetAndPutIfTag(k attributes.U128, v attributes.Entry[T], tag uint64) (attributes.Entry[T], bool, bool) {
-	return a.gen0.Load().GetAndPutIfTagWithSecondary(k, v, tag, a.gen1.Load())
+func (a *AttributeCache[T]) HasWriteValidator() bool {
+	return true
 }
 
 func (a *AttributeCache[T]) Size() uint64 {

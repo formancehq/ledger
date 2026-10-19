@@ -46,6 +46,25 @@ func TestKeyStoreForcedCollision(t *testing.T) {
 	}
 }
 
+func TestAttributeCachePutRejectsGen1Collision(t *testing.T) {
+	t.Parallel()
+	c, err := New(10, nil)
+	require.NoError(t, err)
+	ac := c.LedgerMetadata
+	id := attributes.NewU128(1, 2)
+	original := attributes.Entry[*commonpb.MetadataValue]{Tag: 11, Data: commonpb.NewStringValue("original")}
+	ac.Gen1().Put(id, original)
+	old, existed, written := ac.Put(id, attributes.Entry[*commonpb.MetadataValue]{Tag: 12, Data: commonpb.NewStringValue("candidate")})
+	require.True(t, existed)
+	require.False(t, written)
+	require.Equal(t, original, old)
+	_, ok := ac.Gen0().Get(id)
+	require.False(t, ok)
+	visible, ok := ac.Get(id)
+	require.True(t, ok)
+	require.Equal(t, original, visible)
+}
+
 func TestKeyStoreCollisionNeverPublishedToAdmission(t *testing.T) {
 	t.Parallel()
 	c, err := New(10, nil)

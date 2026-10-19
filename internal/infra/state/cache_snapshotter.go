@@ -73,14 +73,25 @@ func putAttributeIfAbsent[V any](
 	id attributes.U128,
 	tag uint64,
 	value V,
-) (V, bool) {
-	if existing, ok := store.Get(id); ok && !existing.Deleted {
-		return existing.Data, false
+) (V, bool, error) {
+	if existing, ok := store.Get(id); ok {
+		if existing.Tag != tag {
+			var zero V
+
+			return zero, false, fmt.Errorf("preload collision for %v: existing tag %d, incoming tag %d", id, existing.Tag, tag)
+		}
+		if !existing.Deleted {
+			return existing.Data, false, nil
+		}
 	}
 
-	store.Put(id, attributes.Entry[V]{Tag: tag, Data: value})
+	if existing, _, written := store.Put(id, attributes.Entry[V]{Tag: tag, Data: value}); !written {
+		var zero V
 
-	return value, true
+		return zero, false, fmt.Errorf("preload collision for %v: existing tag %d, incoming tag %d", id, existing.Tag, tag)
+	}
+
+	return value, true, nil
 }
 
 // cacheSnapshotSlot captures the persist/restore logic for a single cache type.
@@ -165,6 +176,12 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 
 	id := attributes.U128FromBytes(attrID.GetId())
 	tag := attrID.GetTag()
+	// Check both generations before mutating either one.
+	for _, generation := range []kv.KV[attributes.U128, attributes.Entry[V]]{s.ac.Gen0(), s.ac.Gen1()} {
+		if existing, ok := generation.Get(id); ok && existing.Tag != tag {
+			return fmt.Errorf("MirrorPreload collision for %v: existing tag %d, incoming tag %d", id, existing.Tag, tag)
+		}
+	}
 
 	// Preserve tombstones. A delete that landed in Raft order after the
 	// preload was scanned writes a tombstone here; overwriting it with
@@ -187,8 +204,14 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 
 	// gen1 wins if it already has a (post-rotation, possibly fresher)
 	// value; otherwise the preload value populates both gens.
-	effective, gen1Set := putAttributeIfAbsent(s.ac.Gen1(), id, tag, typed)
-	_, gen0Set := putAttributeIfAbsent(s.ac.Gen0(), id, tag, effective)
+	effective, gen1Set, err := putAttributeIfAbsent(s.ac.Gen1(), id, tag, typed)
+	if err != nil {
+		return err
+	}
+	_, gen0Set, err := putAttributeIfAbsent(s.ac.Gen0(), id, tag, effective)
+	if err != nil {
+		return err
+	}
 
 	if !gen0Set && !gen1Set {
 		return nil
@@ -264,7 +287,9 @@ func (s *protoSnapshotSlot[V]) RestoreEntry(genIndex int) func(u128 attributes.U
 		// (EN-1377).
 		if deleted {
 			var zero V
-			store.Put(u128, attributes.Entry[V]{Tag: tag, Data: zero, Deleted: true})
+			if existing, _, written := store.Put(u128, attributes.Entry[V]{Tag: tag, Data: zero, Deleted: true}); !written {
+				return fmt.Errorf("restoring tombstone for %v: existing tag %d, incoming tag %d", u128, existing.Tag, tag)
+			}
 
 			return nil
 		}
@@ -275,7 +300,9 @@ func (s *protoSnapshotSlot[V]) RestoreEntry(genIndex int) func(u128 attributes.U
 			return err
 		}
 
-		store.Put(u128, attributes.Entry[V]{Tag: tag, Data: v})
+		if existing, _, written := store.Put(u128, attributes.Entry[V]{Tag: tag, Data: v}); !written {
+			return fmt.Errorf("restoring value for %v: existing tag %d, incoming tag %d", u128, existing.Tag, tag)
+		}
 
 		return nil
 	}

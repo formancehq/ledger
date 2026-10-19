@@ -47,22 +47,20 @@ func (kh *KeyHasher) MakeKey(canonical []byte) (U128, uint64) {
 	return NewU128(u.Hi, u.Lo), tag
 }
 
-type entryKV[T any] interface {
-	kv.KV[U128, Entry[T]]
-	// GetAndPutIfTag compares the visible entry before any publication.
-	GetAndPutIfTag(U128, Entry[T], uint64) (Entry[T], bool, bool)
-}
-
 // Store is a thin wrapper around map[U128]Entry[T] that enforces
 // the (u128, tag64) collision check on Get/Put.
 type KeyStore[K Key, T any] struct {
 	hasher  *KeyHasher
-	M       entryKV[T]
+	M       kv.KV[U128, Entry[T]]
 	scratch []byte // reusable buffer for GetKey — single-goroutine use only
 }
 
 // NewKeyStore requires a store configured for collision-tag conditional writes.
-func NewKeyStore[K Key, T any](m entryKV[T]) *KeyStore[K, T] {
+func NewKeyStore[K Key, T any](m kv.KV[U128, Entry[T]]) *KeyStore[K, T] {
+	if !m.HasWriteValidator() {
+		panic("attributes.NewKeyStore: write validator is required")
+	}
+
 	return &KeyStore[K, T]{
 		hasher: NewKeyHasher(),
 		M:      m,
@@ -87,7 +85,7 @@ func (s *KeyStore[K, T]) Put(canonical []byte, value T) (oldValue kv.Optional[T]
 
 	newEntry := Entry[T]{Tag: tag, Data: value}
 
-	existing, existed, published := s.M.GetAndPutIfTag(id, newEntry, tag)
+	existing, existed, published := s.M.Put(id, newEntry)
 	if !published {
 		return kv.None[T](), IDWithTag{}, newErrCollisionDetected(canonical, existing.Tag, tag)
 	}
@@ -194,7 +192,9 @@ func (s *KeyStore[K, T]) Tombstone(canonical []byte) (id U128, tag uint64, err e
 	}
 
 	var zero T
-	s.M.Put(id, Entry[T]{Tag: tag, Data: zero, Deleted: true})
+	if existing, _, written := s.M.Put(id, Entry[T]{Tag: tag, Data: zero, Deleted: true}); !written {
+		return id, tag, newErrCollisionDetected(canonical, existing.Tag, tag)
+	}
 
 	return id, tag, nil
 }
