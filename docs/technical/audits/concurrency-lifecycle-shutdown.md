@@ -109,6 +109,23 @@ construction can register concurrently, require synchronization and idempotent
 identity; do not classify immutable generated tables or sentinel errors as
 lifecycle state merely because they are global variables.
 
+Event sink construction receives the captured leadership-generation context
+through the factory registry. Loss or terminal Stop must cancel that context
+before reconciliation is joined. Verify independent blocked-constructor loss/
+regain and direct-Stop cases, as well as successful obsolete returns: the latter
+must close exactly once before emitter startup, and obsolete errors must not
+report status or schedule retries. Constructor failure cleanup remains owned by
+the constructor; successful-result cleanup transfers to the Manager. Preserve
+the independent emitter delivery/cursor drain lifetime.
+
+The oracle proves context propagation and cooperative cancellation, not prompt
+termination of all driver work. Inspect real adapters as well as controlled
+Ping/DDL connections: native ClickHouse dial/handshake/Ping reads may wait for
+driver timeouts, and Databricks polling/operation/session cleanup can detach
+cancellation. Record these limits rather than treating a cooperative fake or
+resource-close count as evidence of a whole-constructor shutdown bound. See the
+[events initialization contract](../architecture/subsystems/events-mirror/events.md#sink-initialization-and-cancellation-en-2921).
+
 ## Concurrent transition scenarios
 
 At minimum, attempt to falsify these sequences with deterministic barriers:

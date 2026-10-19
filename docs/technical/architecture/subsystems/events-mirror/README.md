@@ -17,6 +17,10 @@ Mirror [source initialization and cancellation](mirror.md#source-initialization-
 documents generation ownership, shutdown ordering, and source cleanup when
 PostgreSQL startup is blocked.
 
+Events [sink initialization and cancellation](events.md#sink-initialization-and-cancellation-en-2921)
+documents generation-scoped construction, cleanup ownership, and the remaining
+driver cancellation limits during leadership loss and shutdown.
+
 ## Related
 
 - [Consensus](../consensus/) — both workers tail the Raft log, both checkpoint via Raft.

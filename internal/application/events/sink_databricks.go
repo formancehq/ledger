@@ -17,7 +17,7 @@ import (
 )
 
 func init() {
-	registerSinkFactory("databricks", func(sc *commonpb.SinkConfig, _ Format) (Sink, error) {
+	registerSinkFactory("databricks", func(ctx context.Context, sc *commonpb.SinkConfig, _ Format) (Sink, error) {
 		s := sc.GetType().(*commonpb.SinkConfig_Databricks)
 
 		cfg, err := databricksConfigFromProto(s.Databricks)
@@ -25,7 +25,7 @@ func init() {
 			return nil, err
 		}
 
-		return NewDatabricksSink(context.Background(), cfg)
+		return NewDatabricksSink(ctx, cfg)
 	})
 }
 
@@ -147,8 +147,17 @@ func NewDatabricksSink(ctx context.Context, cfg DatabricksSinkConfig) (_ *Databr
 		return nil, err
 	}
 
-	db := sql.OpenDB(connector)
+	sink, err := initializeDatabricksSink(ctx, sql.OpenDB(connector), cfg)
+	if err != nil {
+		return nil, err
+	}
+	sink.errors = sanitizer
 
+	return sink, nil
+}
+
+// initializeDatabricksSink owns db until Ping and table creation succeed.
+func initializeDatabricksSink(ctx context.Context, db *sql.DB, cfg DatabricksSinkConfig) (*DatabricksSink, error) {
 	// Deferred close covers every error path between OpenDB and the successful
 	// return. Without this any post-Open failure (Ping, DDL, future steps)
 	// leaks the connection pool plus the OAuth token-refresh goroutines.
@@ -179,7 +188,6 @@ func NewDatabricksSink(ctx context.Context, cfg DatabricksSinkConfig) (_ *Databr
 	success = true
 
 	return &DatabricksSink{
-		errors:         sanitizer,
 		db:             db,
 		qualifiedTable: qualifiedTable,
 	}, nil
