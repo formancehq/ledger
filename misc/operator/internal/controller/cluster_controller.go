@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -618,7 +619,11 @@ func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
 		return err
 	}
 	if ledger.Spec.Upgrade != nil && ledger.Spec.Upgrade.Strategy == "Coordinated" {
-		if !strings.HasPrefix(ledger.Spec.Image.Digest, "sha256:") {
+		digest := strings.TrimPrefix(ledger.Spec.Image.Digest, "sha256:")
+		if len(digest) != 64 {
+			return errors.New("upgrade.strategy=Coordinated requires image.digest pinned to an immutable sha256 digest")
+		}
+		if _, err := hex.DecodeString(digest); err != nil {
 			return errors.New("upgrade.strategy=Coordinated requires image.digest pinned to an immutable sha256 digest")
 		}
 	}

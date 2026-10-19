@@ -44,9 +44,9 @@ are explicitly deleted only after that successful transition; the intermediate
 `Retain` policy prevents Kubernetes' `whenScaled: Delete` controller behavior
 from racing the membership checks. The StatefulSet update requests Pod
 termination; it does not wait for termination to finish. If a membership check
-or removal fails, the old template, replica count, Raft identities and PVCs are
-retained. A later reconciliation checks membership again and skips ordinals
-already removed.
+or removal fails, the old template, replica count and PVCs are retained. Earlier
+Raft removals that were already committed remain in effect; a later
+reconciliation checks membership again and skips ordinals already removed.
 
 ## Declarative ledger indexes
 

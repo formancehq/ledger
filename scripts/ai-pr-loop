@@ -66,7 +66,7 @@ done
 
 invocation_checkout=$(git rev-parse --show-toplevel)
 worktree_listing=$(git -C "$invocation_checkout" worktree list --porcelain)
-trusted_root_checkout=$(printf '%s\n' "$worktree_listing" | sed -n 's/^worktree //p' | head -n 1)
+trusted_root_checkout=$(printf '%s\n' "$worktree_listing" | sed -n 's/^worktree //p' | sed -n '1p')
 trusted_root_checkout=$(cd "$trusted_root_checkout" && pwd -P)
 repo_root=$trusted_root_checkout
 cd "$trusted_root_checkout"
