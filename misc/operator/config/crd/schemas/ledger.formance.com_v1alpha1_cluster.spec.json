@@ -4049,12 +4049,12 @@
     "upgrade": {
       "additionalProperties": false,
       "description": "Upgrade selects how an image change is rolled out. Coordinated requires\nan immutable image digest and performs a maintenance-barrier restart;\nRolling is retained for revisions explicitly certified as compatible.",
-      "enum": [
-        "Rolling",
-        "Coordinated"
-      ],
       "properties": {
         "strategy": {
+          "enum": [
+            "Rolling",
+            "Coordinated"
+          ],
           "type": "string"
         }
       },

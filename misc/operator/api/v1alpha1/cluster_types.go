@@ -42,7 +42,6 @@ type ClusterSpec struct {
 	// Upgrade selects how an image change is rolled out. Coordinated requires
 	// an immutable image digest and performs a maintenance-barrier restart;
 	// Rolling is retained for revisions explicitly certified as compatible.
-	// +kubebuilder:validation:Enum=Rolling;Coordinated
 	// +optional
 	Upgrade *UpgradeSpec `json:"upgrade,omitempty"`
 
@@ -393,6 +392,7 @@ type ImageSpec struct {
 
 // UpgradeSpec controls the compatibility class of a server image change.
 type UpgradeSpec struct {
+	// +kubebuilder:validation:Enum=Rolling;Coordinated
 	Strategy string `json:"strategy,omitempty"`
 }
 
