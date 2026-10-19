@@ -179,8 +179,10 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 		if sts.Spec.Replicas == nil || *sts.Spec.Replicas != status.ExpectedReplicas || len(sts.Spec.Template.Spec.Containers) == 0 || sts.Spec.Template.Spec.Containers[0].Image != target {
 			if err := r.publishTargetStatefulSet(ctx, ledger, sts, target, credentials, status.ExpectedReplicas); err != nil {
 				status.Error = err.Error()
+
 				return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 			}
+
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
 		if sts.Spec.Replicas == nil || *sts.Spec.Replicas != status.ExpectedReplicas || sts.Status.ReadyReplicas != status.ExpectedReplicas {
