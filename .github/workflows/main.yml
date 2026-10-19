@@ -79,11 +79,7 @@ jobs:
           nix develop .#ci --command just test-internal-coverage
       - name: Run PostgreSQL mirror integration regressions
         run: >
-          nix develop .#ci --command scripts/go-test-coverage
-          build/coverage/postgres-mirror.out -race -tags integration
-          -coverpkg=github.com/formancehq/ledger/v3/internal/...
-          -run Postgres -count=1 -timeout 5m
-          ./internal/adapter/v2 ./internal/application/mirror
+          nix develop .#ci --command just test-postgres-mirror-coverage
       - name: Run Antithesis assertion-emission contract tests
         run: >
           nix develop .#ci --command just test-antithesis-assertions
