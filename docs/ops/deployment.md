@@ -6,13 +6,22 @@ This document describes the different deployment methods for Ledger v3, from loc
 
 ### Cluster status consumers
 
-Cluster node ID fields widen to uint64 while retaining protocol revision 40.
-`ledgerctl cluster status --json` encodes node IDs as decimal strings, including ordinary ordinal IDs. Deploy the
-operator with its corresponding updated status reader when deploying these
-server/CLI builds: scale-down membership observations depend on this wire shape.
-Older gRPC clients preserve IDs through 2^32-1 but truncate larger IDs; upgrade
-cluster-management clients before using nodes above that limit. Consumers of
-structured CLI output must accept decimal strings.
+ClusterService retains its published uint32 identity fields and adds separately
+numbered uint64 fields while keeping protocol revision 40.
+`ledgerctl cluster status --json` emits numeric node IDs through 2^32-1 and
+decimal strings above that limit. Structured-output consumers must accept both
+forms. The updated operator accepts both without losing uint64 precision;
+existing small-ID clusters support operator-first or server/CLI-first rollout.
+
+Keep node IDs within the uint32 range until all servers and cluster-management
+clients are upgraded. New servers reject legacy status requests whose responses
+would contain larger IDs instead of returning truncated identities. New clients
+reject unsupported high-ID status responses, and high-ID leadership transfers
+to older servers are rejected safely. Older servers retain their pre-existing
+reporting defect; existing high-ID clusters need upgraded servers and clients
+for exact management. See the
+[full-width identity contract](../technical/architecture/subsystems/api/protocol-compatibility.md#full-width-cluster-identities)
+for the request and response compatibility rules.
 
 ### Service protocol compatibility
 
