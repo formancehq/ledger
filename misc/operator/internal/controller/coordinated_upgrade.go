@@ -84,14 +84,17 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 		if sts.Spec.Replicas != nil && *sts.Spec.Replicas == 0 {
 			status.Phase = upgradePhaseStopping
 			status.Error = ""
+
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
 		if _, err := exec(ctx, r.Config, r.Clientset, ledger.Namespace, pod0, "ledger", ledgerctlCommand(serverAddr, currentTLSModeFromStatefulSet(sts), "cluster", "maintenance", "enable")); err != nil {
 			status.Error = fmt.Sprintf("enabling maintenance: %v", err)
+
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
 		status.Error = ""
 		status.Phase = upgradePhaseBarrier
+
 		return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 	case upgradePhaseBarrier:
 		barrier := status.BarrierIndex
@@ -136,16 +139,20 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 		if sts.Spec.Replicas == nil || *sts.Spec.Replicas != 0 {
 			if err := r.detachStatefulSetPVCOwners(ctx, ledger.Namespace, sts); err != nil {
 				status.Error = err.Error()
+
 				return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 			}
 			if err := r.suspendStatefulSetForUpgrade(ctx, sts); err != nil {
 				status.Error = err.Error()
+
 				return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 			}
+
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
 		if sts.Spec.Replicas != nil && *sts.Spec.Replicas == status.ExpectedReplicas && len(sts.Spec.Template.Spec.Containers) > 0 && sts.Spec.Template.Spec.Containers[0].Image == target {
 			status.Phase = upgradePhaseStarting
+
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
 		pods := &corev1.PodList{}
@@ -166,6 +173,7 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
+
 		return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 	case upgradePhaseStarting:
 		if sts.Spec.Replicas == nil || *sts.Spec.Replicas != status.ExpectedReplicas || sts.Status.ReadyReplicas != status.ExpectedReplicas {
