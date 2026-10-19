@@ -8,6 +8,8 @@ import (
 	"math/big"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -193,19 +195,20 @@ var _ = Describe("Learner node", func() {
 			testutil.StopServers(ctx, servers)
 		})
 
-		It("should promote the learner to voter", func() {
+		It("should reject promotion without a durable learner report", func() {
 			lid := *leaderID
 			_, err := servers[lid-1].ClusterClient.PromoteLearner(ctx, &clusterpb.PromoteLearnerRequest{
 				NodeId: 4,
 			})
-			Expect(err).To(Succeed())
+			Expect(err).To(HaveOccurred())
+			Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))
 
 			Eventually(func(g Gomega) {
 				state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 				for _, n := range state.Nodes {
 					if n.Id == 4 {
-						g.Expect(n.Suffrage).To(Equal("Voter"))
+						g.Expect(n.Suffrage).To(Equal("Learner"))
 						return
 					}
 				}
@@ -213,7 +216,7 @@ var _ = Describe("Learner node", func() {
 			}).Should(Succeed())
 		})
 
-		It("should have 4 voters after promotion", func() {
+		It("should retain the original voter quorum", func() {
 			lid := *leaderID
 			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 			Expect(err).To(Succeed())
@@ -224,10 +227,10 @@ var _ = Describe("Learner node", func() {
 					voterCount++
 				}
 			}
-			Expect(voterCount).To(Equal(4), "should have 4 voters after promotion")
+			Expect(voterCount).To(Equal(3), "an unverified learner must not change the voter quorum")
 		})
 
-		It("should forward promote-learner from follower to leader", func() {
+		It("should forward the unsafe-promotion rejection from follower to leader", func() {
 			lid := *leaderID
 
 			raftAddr, serviceAddr, instanceID := phantomPeer()
@@ -245,14 +248,15 @@ var _ = Describe("Learner node", func() {
 			_, err = servers[followerID-1].ClusterClient.PromoteLearner(ctx, &clusterpb.PromoteLearnerRequest{
 				NodeId: 5,
 			})
-			Expect(err).To(Succeed())
+			Expect(err).To(HaveOccurred())
+			Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))
 
 			Eventually(func(g Gomega) {
 				state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 				for _, n := range state.Nodes {
 					if n.Id == 5 {
-						g.Expect(n.Suffrage).To(Equal("Voter"))
+						g.Expect(n.Suffrage).To(Equal("Learner"))
 						return
 					}
 				}

@@ -25,6 +25,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
@@ -39,6 +40,16 @@ const (
 	statusOutOfSync          // node needs leader sync
 	statusInstallingSnapshot // processReadies is installing a snapshot, Run must not touch FSM
 )
+
+// ErrLearnerStoreNotCovered keeps an unsafe promotion out of the voter set.
+// The caller can retry once the learner has durably restored the snapshot.
+type ErrLearnerStoreNotCovered struct{ NodeID uint64 }
+
+func (e ErrLearnerStoreNotCovered) Error() string {
+	return fmt.Sprintf("learner %d has not durably covered the leader WAL snapshot", e.NodeID)
+}
+
+func (ErrLearnerStoreNotCovered) Kind() domain.ErrorKind { return domain.KindPrecondition }
 
 // gatingReason constants — stored in an atomic.Int32 for race-free observability.
 const (
@@ -3129,7 +3140,8 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 		}
 		if !covered {
 			node.requestDurabilityRefresh(time.Now())
-			return fmt.Errorf("learner %d has not durably covered the leader WAL snapshot", nodeID)
+
+			return ErrLearnerStoreNotCovered{NodeID: nodeID}
 		}
 
 		ccCtx, err := node.promotionContext(nodeID, proposalID)
@@ -3587,6 +3599,7 @@ func (node *Node) checkAndPromoteLearners() error {
 			}
 			if !covered {
 				node.requestDurabilityRefresh(now)
+
 				continue
 			}
 			if lastAttempt, ok := node.lastAutoPromote[id]; ok {
