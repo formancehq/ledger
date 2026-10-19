@@ -16,11 +16,6 @@ type testKey struct {
 
 func (k testKey) AppendBytes(dst []byte) []byte { return append(dst, k.name...) }
 
-// newTestKV creates a simple KV store for tests using ShardedMap with a hash function for U128.
-func newTestKV[V any]() kv.KV[U128, V] {
-	return kv.NewShardedMap[U128, V](func(k U128) uint64 { return k.Hi() })
-}
-
 func newTestKeyStore() *KeyStore[testKey, string] {
 	return NewKeyStore[testKey, string](kv.NewTaggedShardedMap[U128, Entry[string]](func(k U128) uint64 { return k.Hi() }, func(e Entry[string]) uint64 { return e.Tag }))
 }
@@ -41,6 +36,7 @@ func BenchmarkKeyStorePutExisting(b *testing.B) {
 
 type publishBarrierKV struct {
 	entryKV[string]
+
 	published chan struct{}
 	release   chan struct{}
 }
@@ -49,6 +45,7 @@ func (m *publishBarrierKV) GetAndPut(id U128, entry Entry[string]) (Entry[string
 	old, existed := m.entryKV.GetAndPut(id, entry)
 	close(m.published)
 	<-m.release
+
 	return old, existed
 }
 
