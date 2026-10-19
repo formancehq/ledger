@@ -47,6 +47,7 @@ func NewTaggedShardedMap[K comparable, V any](hashFn func(K) uint64, tagFn func(
 	}
 	sm := NewShardedMap[K, V](hashFn)
 	sm.tagFn = tagFn
+
 	return sm
 }
 
@@ -109,6 +110,7 @@ func (s *ShardedMap[K, V]) GetAndPutIfTagWithSecondary(k K, v V, tag uint64, sec
 	}
 	if existed && s.tagFn(old) != tag {
 		sh.mu.Unlock()
+
 		return old, true, false
 	}
 	sh.m[k] = v
@@ -116,6 +118,7 @@ func (s *ShardedMap[K, V]) GetAndPutIfTagWithSecondary(k K, v V, tag uint64, sec
 		s.size.Add(1)
 	}
 	sh.mu.Unlock()
+
 	return old, existed, true
 }
 
