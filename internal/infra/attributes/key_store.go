@@ -83,11 +83,12 @@ func (s *KeyStore[K, T]) Put(canonical []byte, value T) (oldValue kv.Optional[T]
 	// The FSM is the sole writer; admission may read concurrently. Check the
 	// visible entry before publishing, so a rejected collision is never seen
 	// by admission between a write and a rollback.
-	if existing, existed := s.M.Get(id); existed && existing.Tag != tag {
+	existing, existed := s.M.Get(id)
+	if existed && existing.Tag != tag {
 		return kv.None[T](), IDWithTag{}, newErrCollisionDetected(canonical, existing.Tag, tag)
 	}
 
-	existing, existed := s.M.GetAndPut(id, newEntry)
+	s.M.Put(id, newEntry)
 	if existed {
 		if existing.Deleted {
 			// Matching tombstone: revive without an old value.

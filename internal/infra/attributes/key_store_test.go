@@ -46,12 +46,10 @@ type publishBarrierKV struct {
 	release   chan struct{}
 }
 
-func (m *publishBarrierKV) GetAndPut(id U128, entry Entry[string]) (Entry[string], bool) {
-	old, existed := m.KV.GetAndPut(id, entry)
+func (m *publishBarrierKV) Put(id U128, entry Entry[string]) {
+	m.KV.Put(id, entry)
 	close(m.published)
 	<-m.release
-
-	return old, existed
 }
 
 func TestKeyStorePutRejectsBeforePublication(t *testing.T) {
