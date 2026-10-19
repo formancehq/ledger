@@ -24,6 +24,17 @@ presence, command flags, implementation comments and tests at the audited SHA.
 A stale table is not proof of a missing route. Conflicting sources or unspecified
 null/unknown-field/trailing-input policies become **questions**, not assumed bugs.
 
+Prepared-query `LIST` page-size evidence must reach the registered HTTP execute
+route and service gRPC handler. Capture downstream requests for 0, 1000, 1001
+and uint32 maximum in both directions: zero selects 100, oversized values select
+1000, and the response reports the effective size. Supplied HTTP query values
+override the body, including empty/zero; overflowing uint32 values reject before
+the backend. Preserve caller-owned inputs and unchanged `AGGREGATE_VOLUMES`
+requests. This domain owns adapter normalization and response presentation;
+`query-semantic-equivalence` owns executor enforcement before ID collection and
+enrichment, with exact fixed-state windows and continuation. Neither claims
+snapshot stability across live requests.
+
 Establish which error tier a failure belongs to before asserting that its
 presentation is wrong. The three contracts in `internal/domain` — `Classifiable`,
 `Describable`, `SerializableError` — are described in the "Three Error Contract

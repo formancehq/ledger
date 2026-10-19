@@ -3,6 +3,10 @@ set dotenv-load
 pre-commit: fuzz-inventory-check generate generate-proto test-rpcauth-generator operator-generate test-dashboards tidy lint
 pc: pre-commit
 
+# Compare the service contract with the current PR or merge-queue target.
+check-protocol-version:
+    go run ./scripts/checkprotocolversion --base "$PROTOCOL_BASE_SHA"
+
 # Regenerate the Grafana dashboards (otel + prom variants) from Jsonnet
 # sources under misc/devenv/monitoring-dashboards/jsonnet/. The output
 # is written under misc/devenv/monitoring-dashboards/config/dashboards/

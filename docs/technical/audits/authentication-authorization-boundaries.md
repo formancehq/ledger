@@ -96,6 +96,20 @@ not authorization for a repository-wide E2E or lifecycle campaign.
 
 ## Ownership and exclusions
 
+Static Ed25519 IDs must be nonempty and unique by exact string equality, even
+for identical entries. Duplicate rejection precedes that entry's public-key
+file read; an earlier invalid-file error can fail first. Inspect
+`LoadEd25519KeySet` and `TestLoadEd25519KeySet_DuplicateKeyID` for the exact
+named-ID error and zero result. `TestBuildAuthConfig_DuplicateEd25519KeyIDs`
+proves propagation before static/composite keyset and scope/superuser map
+publication. The startup predicate belongs to `configuration-startup-contracts`;
+this domain owns whether verified keys retain their own per-request policy.
+Pair real signed unique-ID credentials with installed public-service interceptor
+controls and valid protocol metadata: rejected claims are `Unauthenticated`
+with zero backend entries; valid insufficient scopes are `PermissionDenied`
+with zero entries; authorized scope and superuser controls enter exactly once.
+Constructor evidence alone proves neither process exit nor listener readiness.
+
 Deduplicate by **root cause and required correction**, not endpoint count,
 transport, symptom or ticket title. Use stable finding ids
 `authentication-authorization-boundaries/<root-cause-name>`. If a correction is

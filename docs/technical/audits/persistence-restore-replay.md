@@ -1,5 +1,10 @@
 # Persistence, incremental restore, and replay evidence contract
 
+From `v3.0.0-rc.1` onward, each release must read or migrate state produced by
+the preceding released version. Reject corrupt input before activation, and
+verify that the migration preserves business and audit history. Development
+formats before the RC are outside this upgrade guarantee.
+
 The [native manifest](persistence-restore-replay.json) audits whether durable
 Ledger state survives persistence, backup, checkpoint plus incremental restore,
 and committed-history replay. Its central oracle is the repository's

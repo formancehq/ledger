@@ -302,6 +302,35 @@ buffered notification coalesces both transitions. `Stop` closes the leadership
 gate before draining the loop so a late transition cannot recreate emitters
 during Fx teardown.
 
+### Sink initialization and cancellation (EN-2921)
+
+Sink construction belongs to the captured leadership generation. Before calling
+a factory, the Manager obtains that generation's context and passes it through
+the optional sink registry. ClickHouse and Databricks forward it to their
+existing Ping and table-creation operations. Leadership loss cancels the old
+context synchronously; `Stop` publishes its terminal generation and cancels the
+context before joining the reconciliation worker. Construction stays on that
+worker, so joining also waits for construction and its cleanup to finish.
+
+A failed constructor owns cleanup of resources it acquired. If construction
+returns after its generation has ended, the Manager discards the error without
+reporting startup status or scheduling a retry; a successful obsolete result is
+closed before an emitter starts. Later generation checks still fence emitter
+installation and startup status. Initialization cancellation is separate from
+the emitter runtime and does not shorten successful delivery/cursor drain.
+Cancellation does not roll back external table creation that already completed.
+
+This is cooperative cancellation, not a universal shutdown deadline. Kafka and
+NATS keep their existing context-free constructors. The pinned ClickHouse native
+driver uses timeout-based dialing/handshake and native Ping socket reads that
+may not observe cancellation promptly (default dial/read timeouts are 30/300
+seconds). Databricks polling uses detached status/cancel requests, and operation
+and session cleanup can use background contexts; those driver-owned calls can
+delay return even after the generation context is canceled. Constructor cleanup
+ownership therefore does not prove cleanup responsiveness. Native transport and
+driver cancellation improvements require separate work; no detached constructor
+goroutine or early-returning Stop bypasses the existing synchronous join.
+
 ## Sink Interface
 
 The sink is the pluggable transport layer for event delivery:
@@ -407,7 +436,7 @@ dotted names. Existing filters using dotted names
 as a hierarchy must be updated: `events.a.*.created_ledger` does not select the
 ledger `a.b`; use `events.a%2Eb.created_ledger`. `events.*.created_ledger` now
 matches exactly one ledger token, and `events.>` continues to capture all events.
-This is the unreleased v3 routing contract; no old-subject dual publication or
+This routing contract was set before `v3.0.0-rc.1`; no old-subject dual publication or
 fallback is provided. The configured topic remains the operator's subject prefix.
 
 Publication still waits for each JetStream acknowledgement. On failure, the

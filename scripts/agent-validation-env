@@ -121,53 +121,6 @@ mkdir -p "$go_cache_generations"
 }
 go_cache_namespace_marker="$go_cache_namespace/.ledger-ai-go-build"
 
-process_identity() {
-    local pid=$1 boot_id start_ticks identity
-    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
-    kill -0 "$pid" 2>/dev/null || return 1
-
-    if [[ -r "/proc/$pid/stat" && -r /proc/sys/kernel/random/boot_id ]]; then
-        boot_id=$(</proc/sys/kernel/random/boot_id)
-        start_ticks=$(sed 's/^.*) //' "/proc/$pid/stat" | awk '{print $20}')
-        [[ -n "$boot_id" && "$start_ticks" =~ ^[0-9]+$ ]] || return 1
-        printf 'linux:%s:%s\n' "$boot_id" "$start_ticks"
-        return
-    fi
-
-    identity=$(LC_ALL=C ps -o lstart= -p "$pid" 2>/dev/null || true)
-    [[ -n "$identity" ]] || return 1
-    printf 'ps:%s\n' "$identity"
-}
-
-lease_is_live() {
-    local lease=$1 pid expected_identity actual_identity
-    IFS= read -r pid <"$lease" || return 1
-    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
-    kill -0 "$pid" 2>/dev/null || return 1
-    expected_identity=$(sed -n '2p' "$lease")
-    actual_identity=$(process_identity "$pid" 2>/dev/null || true)
-    [[ -z "$expected_identity" || -z "$actual_identity" || "$expected_identity" == "$actual_identity" ]]
-}
-
-write_process_identity() {
-    local target=$1 identity temporary_identity
-    identity=$(process_identity "$$" 2>/dev/null || true)
-    # Keep staging files outside lock/retirement directories so interrupted
-    # publication cannot prevent their later removal with rmdir.
-    temporary_identity="$go_cache_namespace/process-$$-${RANDOM}"
-    printf '%s\n%s\n' "$$" "$identity" >"$temporary_identity"
-    mv -f -- "$temporary_identity" "$target"
-}
-
-release_go_cache_lock() {
-    local owner_pid
-    [[ -d "$go_cache_lock" && ! -L "$go_cache_lock" && -f "$go_cache_lock/owner" && ! -L "$go_cache_lock/owner" ]] || return
-    IFS= read -r owner_pid <"$go_cache_lock/owner" 2>/dev/null || return
-    [[ "$owner_pid" == "$$" ]] || return
-    rm -f -- "$go_cache_lock/owner"
-    rmdir -- "$go_cache_lock" 2>/dev/null || true
-}
-
 acquire_go_cache_lock() {
     local attempt
     for ((attempt = 0; attempt < 200; attempt++)); do
@@ -176,16 +129,22 @@ acquire_go_cache_lock() {
             exit 1
         }
         if mkdir "$go_cache_lock" 2>/dev/null; then
-            write_process_identity "$go_cache_lock/owner"
-            return
+            # A delayed creator can lose its empty directory to stale-lock
+            # recovery. Anchor publication to the directory we enter, and
+            # claim without replacing an owner another creator published.
+            if claim_go_cache_lock; then
+                return
+            fi
+            continue
         fi
         if [[ -L "$go_cache_lock/owner" ]]; then
             echo "agent-validation-env: refusing symlinked Go cache generation lock owner" >&2
             exit 1
         fi
-        if [[ -f "$go_cache_lock/owner" ]] && ! lease_is_live "$go_cache_lock/owner" 2>/dev/null; then
-            rm -f -- "$go_cache_lock/owner"
-            rmdir -- "$go_cache_lock" 2>/dev/null || true
+        # Keep stale-owner reads and removal relative to one directory inode.
+        # Another cleaner may remove it and a successor may acquire the public
+        # path while we are checking the departed owner's process identity.
+        if reap_go_cache_lock; then
             continue
         fi
         # A creator can be between mkdir and the owner write. Only reap an

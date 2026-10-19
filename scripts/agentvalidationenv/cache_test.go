@@ -185,6 +185,89 @@ func TestConcurrentGoCacheInitializersShareOneGeneration(t *testing.T) {
 	}
 }
 
+func TestGoCacheLeaseIdentityUsesOneOwnerSnapshot(t *testing.T) {
+	t.Parallel()
+
+	command := testenv.Command(t, "bash", "-euc", `
+source "$1"
+lease="$2/owner"
+printf '%s\noriginal\n' "$$" >"$lease"
+printf '%s\nreplacement\n' "$$" >"$lease.next"
+# Publish a successor after the PID is read, before its identity is checked.
+kill() { mv -- "$lease.next" "$lease"; }
+process_identity() { printf 'original\n'; }
+lease_is_live "$lease"
+[[ "$(sed -n '2p' "$lease")" == replacement ]]
+`, "lease-snapshot", filepath.Join(filepath.Dir(validationEnvPath(t)), "agent-cache-contract"), t.TempDir())
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, string(output))
+}
+
+func TestGoCacheDisappearingLeaseDefersRecovery(t *testing.T) {
+	t.Parallel()
+
+	command := testenv.Command(t, "bash", "-euc", `
+source "$1"
+# The owner can disappear after the acquisition loop checks its existence.
+# Defer recovery so that a successor published at the same path stays intact.
+lease_is_live "$2/missing-owner"
+`, "lease-release", filepath.Join(filepath.Dir(validationEnvPath(t)), "agent-cache-contract"), t.TempDir())
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, string(output))
+}
+
+func TestGoCacheStaleCleanerPreservesSuccessorOwner(t *testing.T) {
+	t.Parallel()
+
+	command := testenv.Command(t, "bash", "-euc", `
+source "$1"
+go_cache_namespace="$2"
+go_cache_lock="$2/lock"
+mkdir "$go_cache_lock"
+printf 'stale\n' >"$go_cache_lock/owner"
+lease_is_live() {
+    # Another cleaner retires this directory and a successor claims the path
+    # while this cleaner is still checking the stale owner's process identity.
+    rm -- "$go_cache_lock/owner"
+    rmdir -- "$go_cache_lock"
+    mkdir "$go_cache_lock"
+    printf 'successor\n' >"$go_cache_lock/owner"
+    return 1
+}
+reap_go_cache_lock
+[[ "$(cat "$go_cache_lock/owner")" == successor ]]
+`, "stale-cleaner", filepath.Join(filepath.Dir(validationEnvPath(t)), "agent-cache-contract"), t.TempDir())
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, string(output))
+}
+
+func TestGoCacheCreatorPreservesSuccessorOwner(t *testing.T) {
+	t.Parallel()
+
+	command := testenv.Command(t, "bash", "-euc", `
+source "$1"
+go_cache_namespace="$2"
+go_cache_lock="$2/lock"
+mkdir "$go_cache_lock"
+write_process_identity() {
+    # Ownerless-lock recovery removes a delayed creator's directory before
+    # publication, then a successor acquires the same public path.
+    rmdir -- "$go_cache_lock"
+    mkdir "$go_cache_lock"
+    printf 'successor\n' >"$go_cache_lock/owner"
+    printf 'creator\n' >"$1"
+}
+if claim_go_cache_lock; then
+    echo 'creator unexpectedly claimed a replacement directory' >&2
+    exit 1
+fi
+[[ "$(cat "$go_cache_lock/owner")" == successor ]]
+[[ ! -e "$go_cache_namespace/claim-$$" ]]
+`, "delayed-creator", filepath.Join(filepath.Dir(validationEnvPath(t)), "agent-cache-contract"), t.TempDir())
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, string(output))
+}
+
 func TestGoCacheRecoversStaleLockAndRejectsInvalidConfiguration(t *testing.T) {
 	t.Parallel()
 

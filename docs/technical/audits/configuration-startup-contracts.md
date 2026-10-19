@@ -38,7 +38,8 @@ Keep the existing unsafe identity/TTL override distinct from non-bypassable
 schema rejection and the explicit restore-mode branch. Trace in-memory mutation,
 write order and residual persisted bytes on each error; validation rejection does
 not imply no prior writes. Existing historical backfill branches are evidence to
-inspect, not authorization to add v3 compatibility shims or migrations.
+inspect. From `v3.0.0-rc.1` onward, assess whether the target release needs a
+tested migration from the preceding release.
 
 The current layout relocates the persisted-config anchor to
 `ZoneClusterPersistent`. The loader checks the old physical `ZoneGlobal` anchor
@@ -65,7 +66,31 @@ updates must preserve the prior value. Literal zero remains valid and keeps
 its consumer-specific meaning. These tests cover direct CLI parsing and
 `LoadConfig`; they do not establish environment binding or listener behavior.
 
+## Hash algorithm input evidence
+
+For the log-chain hash algorithm, `LoadConfig` must reject unsupported selected
+strings before returning a usable configuration. `blake3` and `xxh3` are the
+supported values; omission and empty values retain the BLAKE3 default. Use
+`TestLoadConfig_RejectsUnknownHashAlgorithm` and the `TestLoadConfig_HashAlgorithm`
+cases as evidence. Environment cases must use the production binder and cover
+`HASH_ALGORITHM`, including a valid CLI selection over an invalid environment
+value; direct loader calls alone do not establish that precedence.
+
 ## Ownership and exclusions
+
+For static Ed25519 authentication, follow `LoadEd25519KeySet` into
+`buildAuthConfig`: every nonempty key ID must be unique by exact string equality,
+including identical entries. Duplicate rejection must precede reading that
+duplicate's public-key file, while an earlier invalid-file error can still fail
+first. The loader returns no keyset or policy maps on failure, and bootstrap
+propagates the named-ID error before installing static/composite authentication
+or scope/superuser maps. Use
+`TestBuildAuthConfig_DuplicateEd25519KeyIDs` with valid synthetic key files to
+assert the exact wrapped error and nil `KeySet`, `Ed25519AllowedScopes` and
+`Ed25519SuperuserKeys`; loader duplicate cases distinguish ordering and zero
+results. This is constructor evidence, not production binding, TLS validation,
+process exit or listener/readiness proof. Per-request signature-to-policy
+binding remains owned by `authentication-authorization-boundaries`.
 
 | Domain | Ownership |
 | --- | --- |

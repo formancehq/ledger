@@ -65,8 +65,9 @@ This ordering protects controller-managed history deletion; it does not make
 external deletion of execution evidence transactional with reconciliation.
 
 The CRD schema and generated deepcopy code must carry both cursor fields,
-including the Helm CRD copy. This pre-release API change has no migration or
-legacy-format fallback. It changes no Ledger service RPC or protocol revision.
+including the Helm CRD copy. This API change preceded `v3.0.0-rc.1` and had no
+migration from earlier development formats. It changes no Ledger service RPC or
+protocol revision.
 
 ## Regression evidence
 
