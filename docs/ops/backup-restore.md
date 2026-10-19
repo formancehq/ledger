@@ -107,13 +107,20 @@ ownership or remove that Job before provisioning can resume. The controller neve
 adopts or deletes a foreign Job automatically. Retryable provisioning errors are
 persisted in the message without rewriting unchanged diagnostics. If that status
 write fails, the run stays nonterminal and reconciliation retries. The message is
-cleared after the owned Job becomes available, before processing its outcome.
+cleared when the owned Job is observed still running or its result is captured.
 Definitive local construction errors and API
 `Invalid`/`BadRequest` creation rejections mark the run Failed; other provisioning
 errors retry. Transient reads of the parent Backup or Cluster also retry rather
 than ending the run during recovery. Once the owned Job completes, its outcome
 and valid result payload are persisted on the run, including after a controller
-restart.
+restart. Pod listing, temporarily absent Pods, and fallback log opening or reading
+errors leave the run Running with a diagnostic and return an error for controller
+backoff. The same owned Job is reused, siblings remain blocked, and history pruning
+cannot remove the nonterminal run. Unchanged diagnostics do not cause status writes.
+Acquired malformed summaries and failed Jobs still mark the run Failed. A missing
+result that never becomes available requires operator intervention; no new timeout
+or automatic backup resubmission is introduced. Runs already marked Failed by an
+older operator remain terminal.
 
 The run history limits retain Kubernetes `BackupRun` resources only. They do
 not retain historical backup artifacts or restore points in object storage.
