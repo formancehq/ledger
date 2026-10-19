@@ -55,7 +55,7 @@ func (m *publishBarrierKV) Put(id U128, entry Entry[string]) {
 // GetAndPut also traps the original publish-before-validation path. It is
 // deliberately present even though the current KV interface no longer uses it.
 func (m *publishBarrierKV) GetAndPut(id U128, entry Entry[string]) (Entry[string], bool) {
-	old, existed := m.KV.Get(id)
+	old, existed := m.Get(id)
 	m.KV.Put(id, entry)
 	m.pauseAfterCandidate(entry)
 
