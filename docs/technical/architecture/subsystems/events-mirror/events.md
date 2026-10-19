@@ -826,6 +826,21 @@ The HTTP sink sends each event as an individual HTTP POST request with the follo
 
 The ClickHouse sink auto-creates the target table using the experimental JSON type with Variant support (ClickHouse 24.x-25.x compatibility). The `format` setting is ignored — events are always inserted as ClickHouse-native JSON for optimal query performance.
 
+Committed transactions preserve account metadata as account address → metadata
+key → string value. The typed JSON hint is
+`accountMetadata Map(String, Map(String, String))`, so queries such as
+`data.accountMetadata['users:001']['name']` return the metadata value directly.
+This matches the shared analytical projection; encoding each account's map as
+a JSON string would lose its queryable structure. Ordinary transaction metadata
+and metadata-update events retain their separate `Map(String, String)` fields.
+
+Existing tables are unchanged by `CREATE TABLE IF NOT EXISTS`. Tables created
+with the former flat account-metadata hint require the explicit, non-destructive
+[ClickHouse table migration](../../../../ops/clickhouse-account-metadata.md)
+before delivery resumes. The sink does not automatically alter customer-owned
+tables. This changes the external analytical schema only; Ledger persisted
+business data, audit history, Raft entries, and protocol revision are unchanged.
+
 NATS diagnostic credential extraction follows the driver's whitespace and
 implicit-scheme handling. ClickHouse diagnostics also register decoded
 `http_proxy` URLs, including malformed proxies whose parse errors are embedded
