@@ -77,6 +77,13 @@ jobs:
       - name: Run internal tests with optional features and coverage
         run: >
           nix develop .#ci --command just test-internal-coverage
+      - name: Run PostgreSQL mirror integration regressions
+        run: >
+          nix develop .#ci --command scripts/go-test-coverage
+          build/coverage/postgres-mirror.out -race -tags integration
+          -coverpkg=github.com/formancehq/ledger/v3/internal/...
+          -run Postgres -count=1 -timeout 5m
+          ./internal/adapter/v2 ./internal/application/mirror
       - name: Run Antithesis assertion-emission contract tests
         run: >
           nix develop .#ci --command just test-antithesis-assertions
@@ -89,6 +96,7 @@ jobs:
             build/coverage/unit.out
             build/coverage/internal.out
             build/coverage/antithesis.out
+            build/coverage/postgres-mirror.out
           retention-days: 7
           if-no-files-found: ignore
 
@@ -234,7 +242,7 @@ jobs:
         run: |
           nix develop .#ci --command bash -c '
             cd build/coverage
-            required_profiles=(internal.out e2e-business.out e2e-cluster.out)
+            required_profiles=(internal.out postgres-mirror.out e2e-business.out e2e-cluster.out)
             for f in "${required_profiles[@]}"; do
               if [ ! -s "$f" ]; then
                 echo "Missing required coverage profile: $f"

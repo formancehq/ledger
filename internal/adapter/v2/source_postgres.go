@@ -27,6 +27,8 @@ var mirrorTracer = otel.Tracer("mirror.v2.postgres")
 // PostgreSQL database. In v2, the _system.ledgers table maps each ledger
 // to a bucket (PostgreSQL schema). The logs table lives in that schema
 // and uses a ledger column to distinguish between ledgers sharing a bucket.
+// Live ingestion requires a writable primary, SHARE-lock privileges, and the
+// upstream CACHE 1 sequence. Concurrent explicit-ID imports are unsupported.
 type PostgresSource struct {
 	pool       *pgxpool.Pool
 	ledgerName string
@@ -62,23 +64,113 @@ func NewPostgresSource(ctx context.Context, cfg *commonpb.PostgresMirrorSourceCo
 		return nil, fmt.Errorf("looking up bucket for ledger %q: %w", ledgerName, err)
 	}
 
-	return &PostgresSource{
+	source := &PostgresSource{
 		pool:       pool,
 		ledgerName: ledgerName,
 		bucket:     bucket,
-	}, nil
+	}
+	if err := source.validateSource(ctx); err != nil {
+		pool.Close()
+
+		return nil, err
+	}
+
+	return source, nil
+}
+
+// validateSource checks prerequisites before any source rows can be consumed.
+// Permissions are checked without acquiring a lock, so startup does not queue
+// behind or interrupt live source writers.
+func (s *PostgresSource) validateSource(ctx context.Context) error {
+	var primary, canSelect, canLock, sequenceOK bool
+	err := s.pool.QueryRow(ctx, `SELECT
+NOT pg_is_in_recovery() AND current_setting('transaction_read_only') = 'off',
+has_table_privilege($1, 'SELECT'),
+has_table_privilege($1, 'UPDATE,DELETE,TRUNCATE'),
+EXISTS (SELECT 1 FROM pg_catalog.pg_sequences seq JOIN _system.ledgers l
+ ON seq.schemaname = l.bucket AND seq.sequencename = 'log_id_' || l.id::text
+ WHERE l.name = $2 AND seq.increment_by = 1 AND seq.cache_size = 1 AND NOT seq.cycle)`,
+		pgx.Identifier{s.bucket, "logs"}.Sanitize(), s.ledgerName,
+	).Scan(&primary, &canSelect, &canLock, &sequenceOK)
+	if err != nil {
+		return fmt.Errorf("checking PostgreSQL mirror source requirements: %w", err)
+	}
+	if !primary {
+		return errors.New("PostgreSQL mirror requires a writable PostgreSQL primary")
+	}
+	if !canSelect || !canLock {
+		return errors.New("PostgreSQL mirror requires SELECT and SHARE lock privilege on the source logs table (ownership or UPDATE, DELETE or TRUNCATE)")
+	}
+	if !sequenceOK {
+		return errors.New("PostgreSQL mirror requires the upstream log sequence with increment 1, CACHE 1 and NO CYCLE")
+	}
+
+	return nil
 }
 
 // FetchLogs reads logs from the v2 PostgreSQL log table.
 // afterID is the last known log ID (0 to start from the beginning).
 // Returns logs (oldest first), whether there are more, and any error.
 func (s *PostgresSource) FetchLogs(ctx context.Context, afterID uint64, pageSize int) ([]V2Log, bool, error) {
+	logs, more, err := s.fetchLogs(ctx, s.pool.Query, afterID, pageSize)
+	if err != nil {
+		return nil, false, err
+	}
+	previous := afterID
+	for _, log := range logs {
+		if log.ID <= previous || log.ID-previous != 1 {
+			// A visible higher ID does not prove the missing INSERT committed or
+			// rolled back. Discard this page before translation can fill its gap.
+			return s.fetchStableLogs(ctx, afterID, pageSize)
+		}
+		previous = log.ID
+	}
+
+	return logs, more, nil
+}
+
+func (s *PostgresSource) fetchStableLogs(ctx context.Context, afterID uint64, pageSize int) (logs []V2Log, more bool, err error) {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadWrite})
+	if err != nil {
+		return nil, false, fmt.Errorf("starting synchronized source read: %w", err)
+	}
+	defer func() {
+		// Cleanup must work even when the caller cancelled its fetch. A failed
+		// rollback closes the pgx connection rather than returning a live
+		// transaction to the pool.
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if rollbackErr := tx.Rollback(cleanupCtx); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
+			err = errors.Join(err, fmt.Errorf("rolling back synchronized source read: %w", rollbackErr))
+		}
+	}()
+
+	// NOWAIT avoids queuing behind active inserts and thereby blocking new
+	// writers. On conflict, return no rows and let the worker retry later.
+	// READ COMMITTED gives the following SELECT a fresh snapshot after the
+	// lock proves there are no outstanding writers on the bucket logs table.
+	if _, err := tx.Exec(ctx, "LOCK TABLE "+pgx.Identifier{s.bucket, "logs"}.Sanitize()+" IN SHARE MODE NOWAIT"); err != nil {
+		return nil, false, fmt.Errorf("synchronizing source log gap: %w", err)
+	}
+	logs, more, err = s.fetchLogs(ctx, tx.Query, afterID, pageSize)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, false, fmt.Errorf("completing synchronized source read: %w", err)
+	}
+
+	// No source lock survives into translation, preloading or Raft apply.
+	return logs, more, nil
+}
+
+func (s *PostgresSource) fetchLogs(ctx context.Context, queryRows func(context.Context, string, ...any) (pgx.Rows, error), afterID uint64, pageSize int) ([]V2Log, bool, error) {
 	// Fetch pageSize+1 rows to determine if there are more.
 	// COALESCE on hash: v2 ledgers with LEDGER_FEATURE_HASH_LOGS disabled leave
 	// logs.hash NULL, which would fail the scan into V2Log.Hash (string).
 	query := postgresFetchLogsQuery(s.bucket)
 
-	rows, err := s.pool.Query(ctx, query, s.ledgerName, afterID, pageSize+1)
+	rows, err := queryRows(ctx, query, s.ledgerName, afterID, pageSize+1)
 	if err != nil {
 		return nil, false, fmt.Errorf("querying logs: %w", err)
 	}
@@ -120,8 +212,8 @@ func (s *PostgresSource) FetchLogs(ctx context.Context, afterID uint64, pageSize
 
 func postgresFetchLogsQuery(bucket string) string {
 	return fmt.Sprintf(
-		`SELECT id, type, date, data, COALESCE(encode(hash, 'hex'), '') FROM %q.logs WHERE ledger = $1 AND id > $2 ORDER BY id ASC LIMIT $3`,
-		bucket,
+		`SELECT id, type, date, data, COALESCE(encode(hash, 'hex'), '') FROM %s WHERE ledger = $1 AND id > $2 ORDER BY id ASC LIMIT $3`,
+		pgx.Identifier{bucket, "logs"}.Sanitize(),
 	)
 }
 
@@ -133,8 +225,8 @@ func formatPostgresLogDate(date time.Time) string {
 // Returns 0 if the table is empty.
 func (s *PostgresSource) GetLatestLogID(ctx context.Context) (uint64, error) {
 	query := fmt.Sprintf(
-		`SELECT COALESCE(MAX(id), 0) FROM %q.logs WHERE ledger = $1`,
-		s.bucket,
+		`SELECT COALESCE(MAX(id), 0) FROM %s WHERE ledger = $1`,
+		pgx.Identifier{s.bucket, "logs"}.Sanitize(),
 	)
 
 	var maxID uint64
