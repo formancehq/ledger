@@ -123,16 +123,17 @@ older-than-one-minute samples.
 
 ## Cluster node identities
 
-ClusterService status and leadership-transfer identities are `uint64`, matching
-server configuration, membership and Raft. `GetClusterStateRequest.node_id = 0`
-routes to the current leader; a nonzero value selects that exact node. The
-response preserves full-width `NodeInfo.id`, `ClusterState.leader/local_node`
-and nested Raft identities. Peer addresses, progress and version are attributed
-by that same identity, so nodes 1 and 4294967297 remain distinct. A transfer
-request requires a nonzero `transferee` and returns the full `new_leader`.
-`ledgerctl cluster status --json` uses protobuf JSON: the widened identity
-fields are decimal strings, including small IDs. The operator membership
-reader parses this exact uint64 string representation before scale-down.
+ClusterService preserves uint64 Raft identities using additive full-width fields
+while retaining the published uint32 fields. New status requests set optional
+`node_id64`, including zero for leader routing; a nonzero value selects the
+exact node. Responses expose `id64`, `leader64`, and `local_node64`. Transfer
+uses `transferee64` and returns `new_leader64`. Readers fall back to legacy
+fields for old peers. Conflicting request fields are rejected, legacy clients
+receive an error rather than truncated high-ID status, and directed high-ID
+reads reject old responses missing the exact full-width local identity.
+See [the mixed-version rollout contract](protocol-compatibility.md#full-width-cluster-identities).
+CLI status retains numeric IDs through MaxUint32 and uses decimal strings for
+larger IDs; the operator accepts both forms.
 
 BucketService primary/secondary metrics selectors retain their separate
 `uint32` contract; widening them is outside EN-2904.

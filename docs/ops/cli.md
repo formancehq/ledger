@@ -2676,10 +2676,14 @@ and displayed cluster identities. Values above 18446744073709551615 are
 rejected. Status/watch retain zero as the leader-routing selector; transfer
 requires a nonzero ID.
 
-Structured status output (`--json`/`--yaml`) follows protobuf JSON: `leader`,
-`localNode`, and each node's `id` are decimal strings, including small IDs.
-Consumers must preserve the string value or parse it as an unsigned 64-bit
-integer; the operator scale-down reader uses the same contract.
+Structured status output (`--json`/`--yaml`) retains numeric `leader`,
+`localNode`, and node `id` values through 4294967295. Larger IDs are decimal
+strings. Consumers must accept both forms without floating-point conversion;
+the operator scale-down reader does so. Small-ID JSON remains compatible with
+older operators in either rollout order. New clients reject high-target status
+responses from older servers, and older servers reject high-target transfers.
+Upgrade every server and management client before introducing high IDs; see
+[the rollout contract](../technical/architecture/subsystems/api/protocol-compatibility.md#full-width-cluster-identities).
 
 **Aliases:** `cl`
 

@@ -27,7 +27,7 @@ func main() {
 	client := clusterpb.NewClusterServiceClient(conn)
 
 	// 1. Get current cluster state to find leader and a non-leader voter.
-	state, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+	state, err := client.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 	if err != nil {
 		if internal.IsTransient(err) {
 			return
@@ -38,7 +38,7 @@ func main() {
 		return
 	}
 
-	currentLeader := state.GetLeader()
+	currentLeader := state.LeaderID()
 	if currentLeader == 0 {
 		log.Println("no leader elected, skipping transfer")
 
@@ -49,8 +49,8 @@ func main() {
 	var targetID uint64
 
 	for _, node := range state.GetNodes() {
-		if node.GetId() != currentLeader && node.GetSuffrage() == "Voter" {
-			targetID = node.GetId()
+		if node.NodeID() != currentLeader && node.GetSuffrage() == "Voter" {
+			targetID = node.NodeID()
 
 			break
 		}
@@ -68,9 +68,7 @@ func main() {
 	}
 
 	// 2. Transfer leadership to the target node.
-	resp, err := client.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-		Transferee: targetID,
-	})
+	resp, err := client.TransferLeadership(ctx, clusterpb.NewTransferRequest(targetID))
 
 	assert.Sometimes(internal.IsTolerated(err),
 		"should be able to transfer leadership", details.With(internal.Details{"error": err}))
@@ -78,9 +76,9 @@ func main() {
 		return
 	}
 
-	assert.AlwaysOrUnreachable(resp.GetNewLeader() == targetID,
+	assert.AlwaysOrUnreachable(resp.ConfirmedLeaderID() == targetID,
 		"new leader should be the requested target",
-		details.With(internal.Details{"newLeader": resp.GetNewLeader()}))
+		details.With(internal.Details{"newLeader": resp.ConfirmedLeaderID()}))
 
 	assert.Reachable("leadership transfer completed", details)
 
@@ -93,21 +91,21 @@ func main() {
 			time.Sleep(200 * time.Millisecond)
 		}
 
-		stateAfter, err = client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		stateAfter, err = client.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 		if err != nil {
 			internal.LogCleanupError("get cluster state after leadership transfer", err)
 
 			return
 		}
 
-		if stateAfter.GetLeader() != 0 {
+		if stateAfter.LeaderID() != 0 {
 			break
 		}
 	}
 
-	assert.AlwaysOrUnreachable(stateAfter.GetLeader() != 0,
+	assert.AlwaysOrUnreachable(stateAfter.LeaderID() != 0,
 		"cluster should have a leader after transfer", details)
 
 	log.Printf("Leadership transferred: %d -> %d (confirmed leader: %d)",
-		currentLeader, targetID, stateAfter.GetLeader())
+		currentLeader, targetID, stateAfter.LeaderID())
 }

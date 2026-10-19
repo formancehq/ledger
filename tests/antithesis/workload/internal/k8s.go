@@ -150,7 +150,7 @@ func pollForVoters(parentCtx context.Context, clusterClient clusterpb.ClusterSer
 		case <-time.After(5 * time.Second):
 		}
 
-		state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 		if err != nil {
 			log.Printf("scaling: cluster state unavailable: %s", err)
 
@@ -160,7 +160,7 @@ func pollForVoters(parentCtx context.Context, clusterClient clusterpb.ClusterSer
 			return false
 		}
 
-		if state.GetLeader() == 0 {
+		if state.LeaderID() == 0 {
 			continue
 		}
 
@@ -172,12 +172,12 @@ func pollForVoters(parentCtx context.Context, clusterClient clusterpb.ClusterSer
 		}
 
 		if voterCount == expected {
-			log.Printf("scaling: cluster converged (%d voters, leader=%d)", voterCount, state.GetLeader())
+			log.Printf("scaling: cluster converged (%d voters, leader=%d)", voterCount, state.LeaderID())
 
 			return true
 		}
 
-		log.Printf("scaling: %d/%d voters (leader=%d)", voterCount, expected, state.GetLeader())
+		log.Printf("scaling: %d/%d voters (leader=%d)", voterCount, expected, state.LeaderID())
 	}
 }
 
@@ -374,11 +374,11 @@ func GetPodUID(ctx context.Context, clientset kubernetes.Interface, name string)
 // GetLeaderPodName returns the pod name hosting the current Raft leader,
 // or an empty string if no leader is known.
 func GetLeaderPodName(ctx context.Context, clusterClient clusterpb.ClusterServiceClient) (string, uint64, error) {
-	state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+	state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 	if err != nil {
 		return "", 0, err
 	}
-	leader := state.GetLeader()
+	leader := state.LeaderID()
 	if leader == 0 {
 		return "", 0, nil
 	}
@@ -388,14 +388,14 @@ func GetLeaderPodName(ctx context.Context, clusterClient clusterpb.ClusterServic
 
 // GetNonLeaderVoter returns the node ID of a non-leader voter, or 0 if none.
 func GetNonLeaderVoter(ctx context.Context, clusterClient clusterpb.ClusterServiceClient) (uint64, error) {
-	state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+	state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 	if err != nil {
 		return 0, err
 	}
-	leader := state.GetLeader()
+	leader := state.LeaderID()
 	for _, n := range state.GetNodes() {
-		if n.GetId() != leader && n.GetSuffrage() == "Voter" {
-			return n.GetId(), nil
+		if n.NodeID() != leader && n.GetSuffrage() == "Voter" {
+			return n.NodeID(), nil
 		}
 	}
 
@@ -405,7 +405,7 @@ func GetNonLeaderVoter(ctx context.Context, clusterClient clusterpb.ClusterServi
 // GetClusterConfig returns the ClusterConfig observed by the given node
 // (0 = route to leader).
 func GetClusterConfig(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, nodeID uint64) (*commonpb.ClusterConfig, error) {
-	state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: nodeID})
+	state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(nodeID))
 	if err != nil {
 		return nil, err
 	}

@@ -58,13 +58,13 @@ func TestGetClusterStatePreservesNodeIDs(t *testing.T) {
 			state, err := n.GetClusterState(ctx)
 			<-done
 			require.NoError(t, err)
-			require.Equal(t, localID, state.GetLocalNode())
-			require.Equal(t, localID, state.GetLeader())
+			require.Equal(t, localID, state.LocalNodeID())
+			require.Equal(t, localID, state.LeaderID())
 			require.Equal(t, localID, state.GetRaftStatus().GetLeader())
 			ids := make([]uint64, 0, len(state.GetNodes()))
 			for _, info := range state.GetNodes() {
-				ids = append(ids, info.GetId())
-				require.Equal(t, state.GetRaftStatus().GetProgress()[info.GetId()], info.GetProgress())
+				ids = append(ids, info.NodeID())
+				require.Equal(t, state.GetRaftStatus().GetProgress()[info.NodeID()], info.GetProgress())
 			}
 			require.ElementsMatch(t, voters, ids)
 		})

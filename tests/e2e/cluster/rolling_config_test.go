@@ -51,24 +51,22 @@ func rollingUpdateThreshold(
 		}
 	}
 
-	resp, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-		Transferee: uint64(targetID),
-	})
+	resp, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, clusterpb.NewTransferRequest(uint64(targetID)))
 	Expect(err).To(Succeed())
-	Expect(resp.NewLeader).To(Equal(uint64(targetID)))
+	Expect(resp.ConfirmedLeaderID()).To(Equal(uint64(targetID)))
 	*leaderID = targetID
 
 	for i := range len(servers) {
 		Eventually(func(g Gomega) uint64 {
-			state, err := servers[i].ClusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{NodeId: servers[i].NodeID})
+			state, err := servers[i].ClusterClient.GetClusterState(context.Background(), clusterpb.NewStateRequest(servers[i].NodeID))
 			g.Expect(err).To(Succeed())
-			return uint64(state.Leader)
+			return uint64(state.LeaderID())
 		}).Should(Equal(targetID))
 	}
 
 	for i := range len(servers) {
 		Eventually(func(g Gomega) uint64 {
-			state, err := servers[i].ClusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{NodeId: servers[i].NodeID})
+			state, err := servers[i].ClusterClient.GetClusterState(context.Background(), clusterpb.NewStateRequest(servers[i].NodeID))
 			g.Expect(err).To(Succeed())
 			return state.GetClusterConfig().GetRotationThreshold()
 		}).
@@ -89,7 +87,7 @@ func rollingUpdateThreshold(
 
 func expectThreshold(ctx context.Context, servers []*testutil.ServiceWithClient, expected uint64) {
 	for i, srv := range servers {
-		state, err := srv.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: srv.NodeID})
+		state, err := srv.ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(srv.NodeID))
 		Expect(err).To(Succeed())
 		Expect(state.GetClusterConfig().GetRotationThreshold()).To(Equal(expected), fmt.Sprintf("node %d", i+1))
 	}

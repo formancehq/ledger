@@ -146,14 +146,14 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 	// routes to that node), so a connection whose ID cannot be resolved is left
 	// at 0 and callers skip it rather than compare at the leader's index.
 	for _, c := range conns {
-		state, err := c.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := c.Cluster.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 		if err != nil {
 			continue
 		}
 
 		for _, n := range state.GetNodes() {
 			if n.GetServiceAddress() == c.Addr {
-				c.NodeID = n.GetId()
+				c.NodeID = n.NodeID()
 
 				break
 			}
@@ -164,7 +164,7 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 		if len(state.GetNodes()) > 0 {
 			byAddr := make(map[string]uint64, len(state.GetNodes()))
 			for _, n := range state.GetNodes() {
-				byAddr[n.GetServiceAddress()] = n.GetId()
+				byAddr[n.GetServiceAddress()] = n.NodeID()
 			}
 
 			for _, other := range conns {

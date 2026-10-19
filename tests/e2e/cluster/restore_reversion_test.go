@@ -170,9 +170,9 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
-				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 				g.Expect(err).To(Succeed())
-				return state.Leader != 0
+				return state.LeaderID() != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
 			// Full checkpoint on the EMPTY store: everything after it lands in
@@ -320,9 +320,9 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
-				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 				g.Expect(err).To(Succeed())
-				return state.Leader != 0
+				return state.LeaderID() != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 		})
 

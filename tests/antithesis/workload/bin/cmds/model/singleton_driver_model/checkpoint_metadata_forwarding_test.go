@@ -97,7 +97,7 @@ func (s *checkpointFenceFollower) Barrier(ctx context.Context, req *servicepb.Ba
 
 func (s *checkpointFenceFollower) GetClusterState(_ context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
 	// A zero/default request routes to the leader, and cannot fence this node.
-	if req.GetNodeId() != 2 {
+	if req.TargetID() != 2 {
 		return &clusterpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*clusterpb.NodeInfo{{Id: 2, ServiceAddress: "node"}}, RaftStatus: &clusterpb.RaftStatus{LastPersistedIndex: 1992}}, nil
 	}
 	persisted := uint64(995)
@@ -247,7 +247,7 @@ func (s *checkpointFenceProbe) Barrier(context.Context, *servicepb.BarrierReques
 }
 
 func (s *checkpointFenceProbe) GetClusterState(_ context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
-	if req.GetNodeId() == 0 {
+	if req.TargetID() == 0 {
 		return s.topology, nil
 	}
 	polls := s.localPolls.Add(1)

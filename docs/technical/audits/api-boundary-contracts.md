@@ -298,7 +298,10 @@ are shared routed-response and generated SDK operation inputs. Marshal failure m
 headers. The confidentiality oracle belongs to sensitive-data-exposure-boundaries.
 See [LedgerInfo](../architecture/subsystems/api/ledger-info.md).
 
-## Full-width cluster identities (EN-2904)
+## Full-width cluster identities
+
+Include the compatibility readers, request constructors and legacy range guards
+in `internal/proto/clusterpb/identity.go` as part of this boundary.
 
 Follow each admitted uint64 Raft identity through Node.GetClusterState,
 ClusterService status routing and peer enrichment, leadership transfer, and
@@ -307,14 +310,18 @@ plus 4294967296 to distinguish loss into the zero sentinel. Assert exact local,
 leader and progress IDs, correct address/version/sync/index attribution, and
 the outgoing transfer target and returned leader. Preserve small-ID controls,
 status zero routing, transfer zero rejection and overflow above MaxUint64.
-Revision 40 is retained because the widening preserves varint wire encoding.
-Older clients still truncate IDs above MaxUint32; upgrade those clients before
-using high node IDs.
+Revision 40 retains all six published uint32 fields and adds separately
+numbered full-width fields. Pin their descriptor types/numbers. Test both
+client/server upgrade orders: small targets retain their exact legacy values;
+high-target reads reject old responses, high-target transfers send legacy zero
+and fail on old servers, and legacy status fails on new high-ID membership.
+Reject conflicting legacy/full targets before routing. Follow the rollout
+requirements in protocol-compatibility.md.
 This evidence covers identity preservation at the service/CLI boundary; it does
 not change persisted membership, transfer readiness or quorum semantics.
 
-Structured CLI status uses protobuf JSON decimal strings for these identities,
-including small IDs. Exercise the actual Cobra stdout contract and the operator
+Structured CLI status retains numeric IDs through MaxUint32 and uses decimal
+strings above it. Exercise the actual Cobra stdout contract and the operator
 scale-down membership reader; string parsing must preserve high values and must
 not mistake node 4294967297 for node 1. The operator reconciliation domain owns
 the later removal/retry/StatefulSet/PVC sequence.

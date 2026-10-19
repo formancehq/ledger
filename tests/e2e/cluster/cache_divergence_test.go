@@ -93,9 +93,9 @@ var _ = Describe("Cache divergence under chaos", func() {
 
 				// Wait for follower to rejoin
 				Eventually(func(g Gomega) {
-					state, err := servers[followerIdx].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+					state, err := servers[followerIdx].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 					g.Expect(err).To(Succeed())
-					g.Expect(state.GetLeader()).NotTo(BeZero())
+					g.Expect(state.LeaderID()).NotTo(BeZero())
 				}).Within(30 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 				// Now send MORE transactions through the leader while follower catches up

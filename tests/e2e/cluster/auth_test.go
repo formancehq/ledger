@@ -190,9 +190,9 @@ var _ = Describe("Auth", Ordered, func() {
 			g.Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			state, err := clusterClient.GetClusterState(authCtx, &clusterpb.GetClusterStateRequest{})
+			state, err := clusterClient.GetClusterState(authCtx, clusterpb.NewStateRequest(0))
 			g.Expect(err).To(Succeed())
-			return state.Leader != 0
+			return state.LeaderID() != 0
 		}).Within(30 * time.Second).ProbeEvery(200 * time.Millisecond).Should(BeTrue())
 	})
 
@@ -279,7 +279,7 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			_, err = clusterClient.GetClusterState(authCtx, &clusterpb.GetClusterStateRequest{})
+			_, err = clusterClient.GetClusterState(authCtx, clusterpb.NewStateRequest(0))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -291,9 +291,9 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			state, err := clusterClient.GetClusterState(authCtx, &clusterpb.GetClusterStateRequest{})
+			state, err := clusterClient.GetClusterState(authCtx, clusterpb.NewStateRequest(0))
 			Expect(err).To(Succeed())
-			Expect(state.Leader).NotTo(BeZero())
+			Expect(state.LeaderID()).NotTo(BeZero())
 		})
 
 		It("should reject GetNumscript without token", func() {

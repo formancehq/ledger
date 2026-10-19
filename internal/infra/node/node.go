@@ -2578,7 +2578,8 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 			}
 
 			nodeInfo := &clusterpb.NodeInfo{
-				Id:       id,
+				Id:       clusterpb.LegacyNodeID(id),
+				Id64:     id,
 				Suffrage: suffrage,
 			}
 
@@ -2635,11 +2636,13 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 	}
 
 	clusterState := &clusterpb.ClusterState{
-		State:      stateStr,
-		Leader:     leaderID,
-		Nodes:      nodes,
-		LocalNode:  node.config.NodeID,
-		RaftStatus: raftStatus,
+		State:       stateStr,
+		Leader:      clusterpb.LegacyNodeID(leaderID),
+		Leader64:    new(leaderID),
+		Nodes:       nodes,
+		LocalNode:   clusterpb.LegacyNodeID(node.config.NodeID),
+		LocalNode64: new(node.config.NodeID),
+		RaftStatus:  raftStatus,
 	}
 
 	// Populate local sync progress

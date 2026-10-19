@@ -75,7 +75,7 @@ func TestRoutedController_GetLedgerFallbackDoesNotFenceCheckpointMetadata(t *tes
 	require.False(t, follower.IsLeader())
 	followerState, err := follower.GetClusterState(ctx)
 	require.NoError(t, err)
-	require.Equal(t, uint64(2), followerState.GetLocalNode())
+	require.Equal(t, uint64(2), followerState.LocalNodeID())
 	require.Equal(t, uint64(155), followerState.GetRaftStatus().GetLastPersistedIndex())
 	require.Empty(t, followerState.GetNodes(), "followers report their local cursor without leader topology")
 	routed := NewRoutedController(followerController, follower, pool)
@@ -167,17 +167,17 @@ func TestClusterService_CheckpointFenceIdentityAndLocalProgress(t *testing.T) {
 	topology, err := pinned.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 	require.NoError(t, err)
 	require.Equal(t, "Leader", topology.GetState())
-	require.Equal(t, uint64(1), topology.GetLocalNode())
+	require.Equal(t, uint64(1), topology.LocalNodeID())
 	require.GreaterOrEqual(t, topology.GetRaftStatus().GetLastPersistedIndex(), uint64(521))
 	require.Len(t, topology.GetNodes(), 2)
 	var resolvedID uint64
 	for _, peer := range topology.GetNodes() {
-		switch peer.GetId() {
+		switch peer.NodeID() {
 		case 1:
 			require.Equal(t, leaderAddr, peer.GetServiceAddress(), "the local leader advertises its serving endpoint")
 		case 2:
 			require.Equal(t, followerAddr, peer.GetServiceAddress(), "remote addresses come from the real service pool")
-			resolvedID = peer.GetId()
+			resolvedID = peer.NodeID()
 		}
 	}
 	require.Equal(t, uint64(2), resolvedID)
@@ -185,10 +185,10 @@ func TestClusterService_CheckpointFenceIdentityAndLocalProgress(t *testing.T) {
 	// The explicit discovered ID selects the follower's own durable cursor.
 	// Reusing the leader response, or requiring topology on this local response,
 	// would confuse leader progress with the metadata replica's progress.
-	local, err := pinned.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: resolvedID})
+	local, err := pinned.GetClusterState(ctx, clusterpb.NewStateRequest(resolvedID))
 	require.NoError(t, err)
 	require.Equal(t, "Follower", local.GetState())
-	require.Equal(t, resolvedID, local.GetLocalNode())
+	require.Equal(t, resolvedID, local.LocalNodeID())
 	require.Equal(t, uint64(155), local.GetRaftStatus().GetLastPersistedIndex())
 	require.Equal(t, "normal", local.GetSyncProgress().GetStatus())
 	require.Empty(t, local.GetNodes())

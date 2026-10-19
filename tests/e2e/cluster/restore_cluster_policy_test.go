@@ -207,9 +207,9 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
-				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 				g.Expect(err).To(Succeed())
-				return state.Leader != 0
+				return state.LeaderID() != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
 			// Full checkpoint before the post-checkpoint revision exists: the
@@ -242,9 +242,9 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			cancel()
 			startSource(postCheckpointRevision, postCheckpointLimit)
 			Eventually(func(g Gomega) bool {
-				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 				g.Expect(err).To(Succeed())
-				return state.Leader != 0
+				return state.LeaderID() != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
 			postCheckpointPolicyAuditSequence = waitForClusterPolicyAudit(client, postCheckpointRevision, postCheckpointLimit)
@@ -344,9 +344,9 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
-				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 				g.Expect(err).To(Succeed())
-				return state.Leader != 0
+				return state.LeaderID() != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 		})
 

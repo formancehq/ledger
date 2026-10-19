@@ -82,12 +82,12 @@ func fenceCheckpointMetadata(ctx context.Context, node *internal.PerNodeConn) er
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		state, err := node.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: nodeID})
+		state, err := node.Cluster.GetClusterState(ctx, clusterpb.NewStateRequest(nodeID))
 		if err != nil {
 			return err
 		}
-		if state.GetLocalNode() != nodeID || state.GetRaftStatus() == nil {
-			return fmt.Errorf("checkpoint metadata node %q: expected state for node %d with durable progress, got node %d", node.Addr, nodeID, state.GetLocalNode())
+		if state.LocalNodeID() != nodeID || state.GetRaftStatus() == nil {
+			return fmt.Errorf("checkpoint metadata node %q: expected state for node %d with durable progress, got node %d", node.Addr, nodeID, state.LocalNodeID())
 		}
 		persisted := state.GetRaftStatus().GetLastPersistedIndex()
 		syncStatus := state.GetSyncProgress().GetStatus()
@@ -110,7 +110,7 @@ func checkpointMetadataNodeID(ctx context.Context, node *internal.PerNodeConn) (
 	if node.Addr == "" {
 		return 0, errors.New("checkpoint metadata node has no pinned address")
 	}
-	topology, err := node.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+	topology, err := node.Cluster.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 	if err != nil {
 		return 0, err
 	}
@@ -124,14 +124,14 @@ func checkpointMetadataNodeID(ctx context.Context, node *internal.PerNodeConn) (
 		return 0, fmt.Errorf("checkpoint metadata discovery returned invalid node state %q", topology.GetState())
 	}
 	for _, peer := range topology.GetNodes() {
-		if peer.GetServiceAddress() != node.Addr || peer.GetId() == 0 {
+		if peer.GetServiceAddress() != node.Addr || peer.NodeID() == 0 {
 			continue
 		}
-		if node.NodeID != 0 && node.NodeID != peer.GetId() {
-			return 0, fmt.Errorf("checkpoint metadata node %q is not advertised as node %d (got %d)", node.Addr, node.NodeID, peer.GetId())
+		if node.NodeID != 0 && node.NodeID != peer.NodeID() {
+			return 0, fmt.Errorf("checkpoint metadata node %q is not advertised as node %d (got %d)", node.Addr, node.NodeID, peer.NodeID())
 		}
 
-		return peer.GetId(), nil
+		return peer.NodeID(), nil
 	}
 
 	return 0, fmt.Errorf("checkpoint metadata node %q has unresolved identity in leader topology", node.Addr)

@@ -505,13 +505,13 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 		It("replays a deleted checkpoint through the "+route+" without recreating it", func() {
 			ctx, cancelCase := context.WithTimeout(ctx, 2*time.Minute)
 			defer cancelCase()
-			state, err := servers[0].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := servers[0].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 			Expect(err).To(Succeed())
-			Expect(state.GetLeader()).NotTo(BeZero())
+			Expect(state.LeaderID()).NotTo(BeZero())
 
 			var servingNode *testutil.ServiceWithClient
 			for _, node := range servers {
-				if (node.NodeID == state.GetLeader()) == (route == "leader") {
+				if (node.NodeID == state.LeaderID()) == (route == "leader") {
 					servingNode = node
 					break
 				}

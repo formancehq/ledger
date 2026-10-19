@@ -3,15 +3,18 @@ package cluster
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 )
@@ -22,10 +25,16 @@ type clusterIdentityServer struct {
 	requests chan uint64
 	cancel   context.CancelFunc
 	state    *clusterpb.ClusterState
+	legacy   bool
 }
 
 func (s *clusterIdentityServer) GetClusterState(_ context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
-	s.requests <- req.GetNodeId()
+	if s.legacy {
+		s.requests <- uint64(req.GetNodeId())
+
+		return &clusterpb.ClusterState{LocalNode: req.GetNodeId()}, nil
+	}
+	s.requests <- req.TargetID()
 	if s.cancel != nil {
 		s.cancel()
 	}
@@ -34,13 +43,21 @@ func (s *clusterIdentityServer) GetClusterState(_ context.Context, req *clusterp
 		return s.state, nil
 	}
 
-	return &clusterpb.ClusterState{}, nil
+	return &clusterpb.ClusterState{LocalNode64: new(req.TargetID())}, nil
 }
 
 func (s *clusterIdentityServer) TransferLeadership(_ context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
-	s.requests <- req.GetTransferee()
+	if s.legacy {
+		s.requests <- uint64(req.GetTransferee())
+		if req.GetTransferee() == 0 {
+			return nil, errors.New("transferee node ID must be non-zero")
+		}
 
-	return &clusterpb.TransferLeadershipResponse{NewLeader: req.GetTransferee()}, nil
+		return &clusterpb.TransferLeadershipResponse{NewLeader: req.GetTransferee()}, nil
+	}
+	s.requests <- req.TargetID()
+
+	return &clusterpb.TransferLeadershipResponse{NewLeader64: req.TargetID()}, nil
 }
 
 func clusterIdentityCommand(t *testing.T, cmd *cobra.Command, server *clusterIdentityServer) {
@@ -168,13 +185,13 @@ func TestClusterCommandsRejectInvalidNodeID(t *testing.T) {
 func TestClusterStatusDisplaysFullNodeIDs(t *testing.T) {
 	t.Parallel()
 	output := renderClusterStatus(&clusterpb.ClusterState{
-		Leader:    4294967297,
-		LocalNode: 4294967296,
+		Leader64:    proto.Uint64(4294967297),
+		LocalNode64: proto.Uint64(4294967296),
 		Nodes: []*clusterpb.NodeInfo{
 			{Id: 1, Suffrage: "Voter"},
-			{Id: 4294967296, Suffrage: "Voter"},
-			{Id: 4294967297, Suffrage: "Voter"},
-			{Id: 18446744073709551615, Suffrage: "Learner"},
+			{Id64: 4294967296, Suffrage: "Voter"},
+			{Id64: 4294967297, Suffrage: "Voter"},
+			{Id64: 18446744073709551615, Suffrage: "Learner"},
 		},
 	}, false)
 	require.Regexp(t, `Local Node ID:[^\n]*4294967296`, output)
@@ -187,11 +204,11 @@ func TestClusterStatusDisplaysFullNodeIDs(t *testing.T) {
 // Stdout is process-global; this command-output test must run serially.
 func TestStatusJSONPreservesDecimalStringNodeIDs(t *testing.T) {
 	server := &clusterIdentityServer{requests: make(chan uint64, 1), state: &clusterpb.ClusterState{
-		Leader: 4294967297, LocalNode: 4294967296, Nodes: []*clusterpb.NodeInfo{{Id: 1}, {Id: 4294967297}, {Id: 18446744073709551615}},
+		Leader64: proto.Uint64(4294967297), LocalNode64: proto.Uint64(4294967296), Nodes: []*clusterpb.NodeInfo{{Id: 1}, {Id64: 4294967297}, {Id64: 18446744073709551615}},
 	}}
 	cmd := NewStatusCommand()
 	clusterIdentityCommand(t, cmd, server)
-	cmd.SetArgs([]string{"--node-id", "4294967297", "--json"})
+	cmd.SetArgs([]string{"--node-id", "4294967296", "--json"})
 	reader, writer, err := os.Pipe()
 	require.NoError(t, err)
 	original := os.Stdout
@@ -206,7 +223,7 @@ func TestStatusJSONPreservesDecimalStringNodeIDs(t *testing.T) {
 		Leader    string `json:"leader"`
 		LocalNode string `json:"localNode"`
 		Nodes     []struct {
-			ID string `json:"id"`
+			ID json.RawMessage `json:"id"`
 		} `json:"nodes"`
 	}
 	require.NoError(t, json.Unmarshal(data, &output))
@@ -214,7 +231,52 @@ func TestStatusJSONPreservesDecimalStringNodeIDs(t *testing.T) {
 	require.Equal(t, "4294967296", output.LocalNode)
 	ids := make([]string, 0, len(output.Nodes))
 	for _, info := range output.Nodes {
-		ids = append(ids, info.ID)
+		ids = append(ids, string(info.ID))
 	}
-	require.Equal(t, []string{"1", "4294967297", "18446744073709551615"}, ids)
+	require.Equal(t, []string{`1`, `"4294967297"`, `"18446744073709551615"`}, ids)
+}
+
+func TestClusterCommandsAgainstLegacyServer(t *testing.T) {
+	// Transfer command output uses process-global pterm state.
+	for _, id := range []uint64{1, 4294967296, 4294967297} {
+		for _, command := range []string{"status", "transfer"} {
+			t.Run(command+strconv.FormatUint(id, 10), func(t *testing.T) {
+				server := &clusterIdentityServer{requests: make(chan uint64, 1), legacy: true}
+				var cmd *cobra.Command
+				if command == "status" {
+					cmd = NewStatusCommand()
+					cmd.SetArgs([]string{"--node-id", strconv.FormatUint(id, 10), "--json"})
+				} else {
+					cmd = NewTransferLeaderCommand()
+					cmd.SetArgs([]string{strconv.FormatUint(id, 10)})
+				}
+				clusterIdentityCommand(t, cmd, server)
+				err := cmd.Execute()
+				if id == 1 {
+					require.NoError(t, err)
+				} else {
+					require.Error(t, err)
+				}
+				require.Equal(t, uint64(clusterpb.LegacyNodeID(id)), <-server.requests)
+			})
+		}
+	}
+}
+
+func TestStatusOutputRemainsReadableByLegacyOperator(t *testing.T) {
+	t.Parallel()
+	state := &clusterpb.ClusterState{Leader64: proto.Uint64(1), LocalNode64: proto.Uint64(1), Nodes: []*clusterpb.NodeInfo{{Id64: 1}, {Id64: 3}}}
+	data, err := json.Marshal(statusOutput{state})
+	require.NoError(t, err)
+	var legacy struct {
+		Leader    uint32 `json:"leader"`
+		LocalNode uint32 `json:"localNode"`
+		Nodes     []struct {
+			ID uint32 `json:"id"`
+		} `json:"nodes"`
+	}
+	require.NoError(t, json.Unmarshal(data, &legacy))
+	require.Equal(t, uint32(1), legacy.Leader)
+	require.Equal(t, uint32(1), legacy.LocalNode)
+	require.Equal(t, uint32(3), legacy.Nodes[1].ID)
 }

@@ -225,27 +225,27 @@ func (f *oracleLifecycleFixture) clusterState(_ context.Context, req *clusterpb.
 
 		return nil, status.Error(codes.Unavailable, "configured pod slot is not a cluster member")
 	}
-	if req.GetNodeId() != 0 {
+	if req.TargetID() != 0 {
 		f.readinessReads.Add(1)
-		f.readinessNodeIDs = append(f.readinessNodeIDs, req.GetNodeId())
+		f.readinessNodeIDs = append(f.readinessNodeIDs, req.TargetID())
 	}
 	if f.unavailable[addr] {
 		return nil, status.Error(codes.Unavailable, "active replica is unreachable")
 	}
-	if req.GetNodeId() != 0 && req.GetNodeId() != id {
+	if req.TargetID() != 0 && req.TargetID() != id {
 		return nil, status.Error(codes.NotFound, "readiness used a stale replica ID")
 	}
 	var members []*clusterpb.NodeInfo
-	if req.GetNodeId() == 0 {
+	if req.TargetID() == 0 {
 		f.membershipReads.Add(1)
 		for address, memberID := range f.members {
-			members = append(members, &clusterpb.NodeInfo{Id: memberID, ServiceAddress: address})
+			members = append(members, &clusterpb.NodeInfo{Id: clusterpb.LegacyNodeID(memberID), Id64: memberID, ServiceAddress: address})
 		}
-		sort.Slice(members, func(i, j int) bool { return members[i].GetId() < members[j].GetId() })
+		sort.Slice(members, func(i, j int) bool { return members[i].NodeID() < members[j].NodeID() })
 	}
 
 	return &clusterpb.ClusterState{
-		LocalNode: id, Nodes: members, SyncProgress: &clusterpb.SyncProgress{Status: "normal"},
+		LocalNode: clusterpb.LegacyNodeID(id), LocalNode64: new(id), Nodes: members, SyncProgress: &clusterpb.SyncProgress{Status: "normal"},
 		RaftStatus: &clusterpb.RaftStatus{LastPersistedIndex: f.index},
 	}, nil
 }

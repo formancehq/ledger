@@ -92,9 +92,10 @@ func pollClusterStatus(
 	reqCtx, cancel := context.WithTimeout(ctx, reqTimeout)
 	defer cancel()
 
-	state, err := client.GetClusterState(reqCtx, &clusterpb.GetClusterStateRequest{
-		NodeId: nodeID,
-	})
+	state, err := client.GetClusterState(reqCtx, clusterpb.NewStateRequest(nodeID))
+	if err == nil {
+		err = clusterpb.ValidateStateTarget(nodeID, state)
+	}
 
 	now := time.Now().Format("15:04:05")
 

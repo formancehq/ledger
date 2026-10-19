@@ -39,9 +39,9 @@ type identityPeerServer struct {
 }
 
 func (s *identityPeerServer) GetClusterState(_ context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
-	s.requests <- req.GetNodeId()
+	s.requests <- req.TargetID()
 
-	return &clusterpb.ClusterState{NodeVersion: fmt.Sprintf("node-%d", s.id),
+	return &clusterpb.ClusterState{LocalNode64: new(s.id), NodeVersion: fmt.Sprintf("node-%d", s.id),
 		SyncProgress:  &clusterpb.SyncProgress{Status: fmt.Sprintf("sync-%d", s.id)},
 		IndexProgress: &clusterpb.IndexProgress{LastIndexedSequence: s.id},
 	}, nil
@@ -85,7 +85,7 @@ func TestGetClusterStateRoutesDistinctUint64Identities(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	_, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+	_, err := client.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 	require.ErrorContains(t, err, "no leader")
 	for _, id := range []uint64{1, 4294967297, 4294967296, ^uint64(0)} {
 		t.Run(strconv.FormatUint(id, 10), func(t *testing.T) {
@@ -93,9 +93,13 @@ func TestGetClusterStateRoutesDistinctUint64Identities(t *testing.T) {
 			defer cancel()
 			// Decode the full-width wire value so this regression also detects an
 			// accidentally narrowed generated request contract.
-			wire := protowire.AppendTag(nil, 1, protowire.VarintType)
+			wire := protowire.AppendTag(nil, 2, protowire.VarintType)
 			wire = protowire.AppendVarint(wire, id)
-			request := &clusterpb.GetClusterStateRequest{}
+			if legacy := clusterpb.LegacyNodeID(id); legacy != 0 {
+				wire = protowire.AppendTag(wire, 1, protowire.VarintType)
+				wire = protowire.AppendVarint(wire, uint64(legacy))
+			}
+			request := clusterpb.NewStateRequest(0)
 			require.NoError(t, proto.Unmarshal(wire, request))
 			response, err := client.GetClusterState(ctx, request)
 			require.NoError(t, err)
@@ -218,13 +222,13 @@ func TestGetClusterStateEnrichesExactUint64PeerIdentities(t *testing.T) {
 	client := identityRPCClient(t, impl)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	response, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: 1})
+	response, err := client.GetClusterState(ctx, clusterpb.NewStateRequest(1))
 	require.NoError(t, err)
-	require.Equal(t, uint64(1), response.GetLocalNode())
-	require.Equal(t, uint64(1), response.GetLeader())
+	require.Equal(t, uint64(1), response.LocalNodeID())
+	require.Equal(t, uint64(1), response.LeaderID())
 	nodes := make(map[uint64]*clusterpb.NodeInfo)
 	for _, info := range response.GetNodes() {
-		nodes[info.GetId()] = info
+		nodes[info.NodeID()] = info
 	}
 	require.Len(t, nodes, 3)
 	local := nodes[1]
@@ -259,17 +263,55 @@ func TestTransferLeadershipPreservesHighLocalIdentity(t *testing.T) {
 	client := identityRPCClient(t, impl)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	_, err := client.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{})
+	_, err := client.TransferLeadership(ctx, clusterpb.NewTransferRequest(0))
 	require.ErrorContains(t, err, "transferee node ID must be non-zero")
-	response, err := client.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{Transferee: 4294967296})
+	response, err := client.TransferLeadership(ctx, clusterpb.NewTransferRequest(4294967296))
 	require.NoError(t, err)
-	require.Equal(t, uint64(4294967296), response.GetNewLeader())
-	local, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: 4294967296})
+	require.Equal(t, uint64(4294967296), response.ConfirmedLeaderID())
+	local, err := client.GetClusterState(ctx, clusterpb.NewStateRequest(4294967296))
 	require.NoError(t, err)
-	require.Equal(t, uint64(4294967296), local.GetLocalNode())
+	require.Equal(t, uint64(4294967296), local.LocalNodeID())
 	require.Equal(t, "local-version", local.GetNodeVersion())
-	leader, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+	leader, err := client.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 	require.NoError(t, err)
-	require.Equal(t, uint64(4294967296), leader.GetLeader())
-	require.Equal(t, uint64(4294967296), leader.GetLocalNode())
+	require.Equal(t, uint64(4294967296), leader.LeaderID())
+	require.Equal(t, uint64(4294967296), leader.LocalNodeID())
+}
+
+func TestLegacyStatusRejectsUnrepresentableMembership(t *testing.T) {
+	t.Parallel()
+	server := newIdentityClusterServer(t, 4294967297, nil)
+	client := identityRPCClient(t, server)
+	_, err := client.GetClusterState(t.Context(), &clusterpb.GetClusterStateRequest{})
+	require.ErrorContains(t, err, "exceed legacy client range")
+	state, err := client.GetClusterState(t.Context(), clusterpb.NewStateRequest(0))
+	require.NoError(t, err)
+	require.Equal(t, uint64(4294967297), state.LocalNodeID())
+	require.Zero(t, state.GetLocalNode(), "legacy fields must not wrap to node 1")
+	require.Zero(t, state.GetLeader(), "legacy fields must not wrap to node 1")
+	require.Equal(t, uint64(4294967297), state.GetNodes()[0].NodeID())
+	require.Zero(t, state.GetNodes()[0].GetId())
+}
+
+func TestStatusRejectsConflictingIdentityFields(t *testing.T) {
+	t.Parallel()
+	client := identityRPCClient(t, &ClusterServiceServerImpl{})
+	req := clusterpb.NewStateRequest(4294967297)
+	req.NodeId = 1
+	_, err := client.GetClusterState(t.Context(), req)
+	require.ErrorContains(t, err, "conflicting cluster node identities")
+	transfer := clusterpb.NewTransferRequest(4294967297)
+	transfer.Transferee = 1
+	_, err = client.TransferLeadership(t.Context(), transfer)
+	require.ErrorContains(t, err, "conflicting transferee identities")
+}
+
+func TestLegacyStatusPreservesRepresentableMembership(t *testing.T) {
+	t.Parallel()
+	client := identityRPCClient(t, newIdentityClusterServer(t, 1, nil))
+	state, err := client.GetClusterState(t.Context(), &clusterpb.GetClusterStateRequest{NodeId: 1})
+	require.NoError(t, err)
+	require.Equal(t, uint32(1), state.GetLocalNode())
+	require.Equal(t, uint32(1), state.GetLeader())
+	require.Equal(t, uint32(1), state.GetNodes()[0].GetId())
 }

@@ -251,10 +251,10 @@ func SetupMultiNodeCluster(
 	// Wait for node 0 to become leader before joining other nodes
 	var leaderID uint64
 	Eventually(func(g Gomega) {
-		state, err := servers[0].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := servers[0].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 		g.Expect(err).To(Succeed())
-		g.Expect(state.GetLeader()).NotTo(BeZero())
-		leaderID = state.GetLeader()
+		g.Expect(state.LeaderID()).NotTo(BeZero())
+		leaderID = state.LeaderID()
 	}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 
 	// Nodes 1..N-1: join the bootstrap node via the RaftServer port.
@@ -269,7 +269,7 @@ func SetupMultiNodeCluster(
 	// Wait for all nodes to be promoted to voters
 	if countInstances > 1 {
 		Eventually(func(g Gomega) {
-			state, err := servers[0].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := servers[0].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 			g.Expect(err).To(Succeed())
 			voterCount := 0
 			for _, n := range state.GetNodes() {
@@ -389,10 +389,10 @@ func SetupSingleNode(extra ...testservice.Instrumentation) (context.Context, *Se
 
 	// Wait for leader election (single node elects itself)
 	Eventually(func(g Gomega) bool {
-		state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 		g.Expect(err).To(Succeed())
 
-		return state.GetLeader() != 0
+		return state.LeaderID() != 0
 	}).Within(5 * time.Second).To(BeTrue())
 
 	return ctx, &ServiceWithClient{

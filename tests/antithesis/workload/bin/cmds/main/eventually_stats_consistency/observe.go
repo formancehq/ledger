@@ -111,9 +111,9 @@ func awaitReplica(ctx context.Context, conn *internal.PerNodeConn, horizon uint6
 	}
 	for {
 		callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		state, err := conn.Cluster.GetClusterState(callCtx, &clusterpb.GetClusterStateRequest{NodeId: conn.NodeID})
+		state, err := conn.Cluster.GetClusterState(callCtx, clusterpb.NewStateRequest(conn.NodeID))
 		cancel()
-		if err == nil && state.GetLocalNode() == conn.NodeID && state.GetSyncProgress().GetStatus() == "normal" && state.GetRaftStatus().GetLastPersistedIndex() >= horizon {
+		if err == nil && state.LocalNodeID() == conn.NodeID && state.GetSyncProgress().GetStatus() == "normal" && state.GetRaftStatus().GetLastPersistedIndex() >= horizon {
 			return awaitUsage(ctx, conn.Bucket, witness, expected, wait)
 		}
 		if err != nil && !internal.IsTransient(err) && !internal.IsCanceled(err) {

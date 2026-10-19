@@ -102,7 +102,9 @@ service ClusterService {
 
 message GetClusterStateRequest {
   // node_id indicates which node to query for cluster state (0 = route to leader)
-  uint64 node_id = 1;
+  uint32 node_id = 1;
+  // Presence opts into full-width responses. Set the legacy field too when it fits.
+  optional uint64 node_id64 = 2;
 }
 
 // ============================================================================
@@ -111,13 +113,14 @@ message GetClusterStateRequest {
 
 // NodeInfo represents information about a node in the cluster
 message NodeInfo {
-  uint64 id = 1;
+  uint32 id = 1;
   string suffrage = 2;  // Voter or Learner
   ProgressInfo progress = 3;  // Progress information (only available when querying leader)
   string raft_address = 4;  // Raft transport address
   string service_address = 5;  // Service API address
   SyncProgress sync_progress = 6;  // Checkpoint sync progress (populated by leader querying each node)
   IndexProgress index_progress = 7;  // Index builder progress (populated by leader querying each node)
+  uint64 id64 = 9; // Full Raft identity; legacy id is zero when it cannot fit.
   string version = 8;  // Build version reported by this node (for skew detection)
 }
 
@@ -149,14 +152,16 @@ message RaftStatus {
 // ClusterState represents the state of the Raft cluster
 message ClusterState {
   string state = 1;             // Leader, Follower, Candidate, Shutdown
-  uint64 leader = 2;            // ID of the current leader (0 if no leader)
+  uint32 leader = 2;            // ID of the current leader (0 if no leader)
   repeated NodeInfo nodes = 3;  // List of all nodes in the cluster
-  uint64 local_node = 4;        // ID of the local node
+  uint32 local_node = 4;        // ID of the local node
   RaftStatus raft_status = 5;   // Complete Raft status information
   bool maintenance_mode = 6;    // Whether maintenance mode is active
   SyncProgress sync_progress = 7; // Local node checkpoint sync progress
   IndexProgress index_progress = 8; // Local index builder progress
   common.ClusterConfig cluster_config = 9; // Raft-replicated mutable cluster configuration
+  optional uint64 leader64 = 11; // Presence identifies a full-width server response.
+  optional uint64 local_node64 = 12;
   string node_version = 10;  // Build version of the responding (local) node
 }
 
@@ -178,11 +183,13 @@ message SyncProgress {
 // ============================================================================
 
 message TransferLeadershipRequest {
-  uint64 transferee = 1;  // Target node ID
+  uint32 transferee = 1;  // Legacy target node ID
+  uint64 transferee64 = 2; // Full target; legacy zero makes older servers reject large targets.
 }
 
 message TransferLeadershipResponse {
-  uint64 new_leader = 1;  // Confirmed new leader ID
+  uint32 new_leader = 1;  // Legacy confirmed leader ID
+  uint64 new_leader64 = 2; // Full confirmed leader ID
 }
 
 message GetDiskUsageRequest {}
