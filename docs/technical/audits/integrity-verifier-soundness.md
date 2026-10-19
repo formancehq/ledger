@@ -196,3 +196,14 @@ Ledger metadata expectations fold successful chain-bound audited creation, save,
 Can missing, injected or altered creation metadata evade detection, or can later saves/deletes produce false mismatches? Does a truncated audit chain cause misleading metadata errors based on an incomplete prefix?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## Malformed account metadata and transaction keys
+
+`checker_malformed_keys_test.go` exercises full `Check` on stores created through
+real FSM apply. Preserve legitimate rows and their audit/log witnesses, then add
+a surplus account-metadata key without its account/key separator or a transaction
+key with an incorrect separator, each holding a valid protobuf value. Inspect
+all corruption callbacks and terminal status: require `METADATA_MISMATCH` or
+`TRANSACTION_UPDATE_MISMATCH` with raw-key/decoding evidence and unset identity
+fields, while terminal completion succeeds. Healthy controls must emit no
+corruption events. Malformed keys must not silently disappear from comparison.

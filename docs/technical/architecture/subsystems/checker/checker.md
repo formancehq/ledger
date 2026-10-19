@@ -51,6 +51,8 @@ Each pass takes a persisted projection, re-derives the expected value by replayi
 
 Notes:
 
+- **Account metadata and transaction projection keys must decode.** A surplus row with a valid protobuf value but a malformed canonical key emits `METADATA_MISMATCH` or `TRANSACTION_UPDATE_MISMATCH`, respectively. The event includes the raw key and decoding error; identity fields remain unset because partial decoding is not authoritative. Each malformed key counts as an error, and checking continues over the remaining rows.
+
 - **`compareIndexes` covers presence + identity** (`IndexID` match), **not `IndexVersionState`** — that state is by design local and may legitimately differ across nodes mid-rewrite (see [indexer / indexes.md](../indexer/indexes.md)).
 - **`compareIndexes` has no unmatched-row tolerance.** Expected = the replayed registry state, and an unmatched stored entry is a hard mismatch. A tolerated stale or tampered registry row is what makes `compareReverseMapOrphans`' registry term treat orphaned reverse-map rows as legitimate — two corrupted projections could mask each other and leave `Check()` clean; do not introduce a tolerance without replacing that coverage.
 - **`compareNumscripts`** re-derives both numscript projections from the audit chain. The library is immutable and append-only: a `SavedNumscript` writes an immutable content entry and advances the per-name latest pointer to the greatest stored semver (versions may be saved out of order). It catches altered/missing/extra content and a latest pointer that is not the greatest saved semver. A stored row the replay never produced is flagged as surplus.

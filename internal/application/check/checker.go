@@ -1946,6 +1946,11 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		var mk domain.MetadataKey
 
 		if err := mk.Unmarshal([]byte(key)); err != nil {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+				fmt.Sprintf("unparseable metadata projection key %x: %v", key, err), 0, "", "", ""))
+
+			errorCount++
+
 			continue
 		}
 
@@ -2095,6 +2100,10 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 
 		var tk domain.TransactionKey
 		if err := tk.Unmarshal([]byte(key)); err != nil {
+			emitErr(fmt.Sprintf("unparseable transaction projection key %x: %v", key, err))
+
+			errorCount++
+
 			continue
 		}
 
