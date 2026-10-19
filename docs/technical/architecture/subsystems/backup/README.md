@@ -178,6 +178,27 @@ pre-release stores. In-cluster snapshot installation retains the local zone.
 4. Reconstruct post-checkpoint derived state from the exported log and audit streams (`RebuildDelta`).
 5. Boot the node against the restored directory.
 
+Offline `ledgerctl store bootstrap` downloads checkpoint files through
+`downloadBootstrapCheckpoint` in `cmd/ledgerctl/store/bootstrap.go`. It creates
+or opens the operator-selected data directory, creates `restore-staging` through
+that root, then uses rooted `Lstat` to require a real staging directory before
+opening a staging root. All staging-root symlinks are rejected, including targets
+inside the data directory, because later finalization walks the staging path
+without following a root symlink. Staging is acquired even when the manifest
+contains exports only.
+
+For each checkpoint map key, the downloader applies `filepath.FromSlash` and
+`filepath.IsLocal` before rooted parent creation, remote lookup by the separate
+content key, and rooted file creation. `os.Root` confines the final create even
+when a parent or leaf is a symlink. Downloads remain sequential and use
+`CheckpointFile.CopyVerified`; locality does not replace size/hash verification.
+This is a per-entry boundary, not a whole-manifest transaction. On failure,
+earlier files and partial file bytes can remain in staging; offline bootstrap
+does not automatically wipe failed downloads. Directory handles close before
+export replay, preview, optional Checker validation, confirmation and
+finalization; a download failure reaches none of those steps. This change does
+not alter backup formats, replay semantics or persisted business state.
+
 Each export object must terminate with its explicit stream footer and contain
 the complete sequence range advertised by the manifest. A physical EOF, an
 empty segment, or missing range boundary fails the download before the staging
