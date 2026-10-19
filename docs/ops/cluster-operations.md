@@ -332,6 +332,11 @@ the incoming and outgoing configurations must independently have a quorum.
 Missing or unreachable reports contribute zero, but do not block compaction when
 the remaining reports still form a quorum. The fence is reset on a leadership
 change, so a new leader never relies on observations from a previous term.
+The same health poll records learners' durable indexes. A learner may become a
+voter only after its reported Pebble index covers the leader's current WAL
+snapshot; Raft replication progress alone is insufficient. This applies to
+automatic and manual promotion. If the report is missing or behind, promotion
+waits for the learner's store to catch up.
 Followers continue to compact against their own durable store because their WAL
 is not the replication history being retained for other voters. This local path
 is safe because the applied index is at or below the committed index, and a

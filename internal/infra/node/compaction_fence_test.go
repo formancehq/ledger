@@ -59,3 +59,26 @@ func TestCompactionFenceRequiresQuorumsDuringJointConsensus(t *testing.T) {
 	node.RecordPeerPersistedIndex(3, 1)
 	require.Equal(t, uint64(1), node.CompactionFence())
 }
+
+func TestLearnerPromotionRequiresDurableSnapshotCoverage(t *testing.T) {
+	t.Parallel()
+
+	node, setup := newTestMaintenanceNode(t)
+	entry, _ := makeCreateLedgerEntry(t, 1, "test-ledger")
+	setup.applyEntry(t, context.Background(), entry)
+	require.NoError(t, node.wal.CreateSnapshot(1, node.confState.Load(), nil))
+
+	covered, err := node.learnerCoversWALSnapshot(2)
+	require.NoError(t, err)
+	require.False(t, covered, "Raft replication alone does not prove learner store durability")
+
+	node.RecordPeerPersistedIndex(2, 0)
+	covered, err = node.learnerCoversWALSnapshot(2)
+	require.NoError(t, err)
+	require.False(t, covered)
+
+	node.RecordPeerPersistedIndex(2, 1)
+	covered, err = node.learnerCoversWALSnapshot(2)
+	require.NoError(t, err)
+	require.True(t, covered)
+}

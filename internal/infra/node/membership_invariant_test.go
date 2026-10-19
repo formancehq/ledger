@@ -68,6 +68,7 @@ func TestCheckAndPromoteLearnersRejectsMissingRowBeforeAttempt(t *testing.T) {
 	before := n.rawNode.Status()
 	require.True(t, before.Progress[2].RecentActive)
 	require.Equal(t, uint64(1), before.Progress[2].Match)
+	n.RecordPeerPersistedIndex(2, 1)
 
 	require.ErrorContains(t, n.checkAndPromoteLearners(), "invariant: learner 2 has no membership row")
 	require.Equal(t, before, n.rawNode.Status())

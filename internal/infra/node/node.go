@@ -365,6 +365,7 @@ type Node struct {
 	// voters. Missing entries are treated as unknown by the leader's fence.
 	peerPersistedIndexesMu sync.Mutex
 	peerPersistedIndexes   map[uint64]uint64
+	compactionFenced       atomic.Bool
 
 	readies         chan raft.Ready
 	readyTerminated chan readyResult
@@ -1022,13 +1023,16 @@ func (node *Node) compactWAL(snapshotIndex uint64) {
 		fence = node.CompactionFence()
 	}
 	if fence <= margin {
-		if node.IsLeader() {
+		if node.IsLeader() && node.compactionFenced.CompareAndSwap(false, true) {
 			node.logger.WithFields(map[string]any{
 				"snapshotIndex": snapshotIndex,
 			}).Infof("Background maintenance: compaction fenced until a voter quorum reports durable Pebble progress")
 		}
 
 		return
+	}
+	if node.compactionFenced.Swap(false) {
+		node.logger.Infof("Background maintenance: voter durability fence cleared")
 	}
 
 	compactIdx := min(snapshotIndex, fence) - margin
@@ -2427,6 +2431,7 @@ func (node *Node) ResetPeerPersistedIndexes() {
 	node.peerPersistedIndexesMu.Lock()
 	clear(node.peerPersistedIndexes)
 	node.peerPersistedIndexesMu.Unlock()
+	node.compactionFenced.Store(false)
 }
 
 // CompactionFence returns the highest index known durable in a quorum of voters.
@@ -3091,6 +3096,13 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 		if !prog.IsLearner {
 			return fmt.Errorf("node %d is already a voter", nodeID)
 		}
+		covered, err := node.learnerCoversWALSnapshot(nodeID)
+		if err != nil {
+			return err
+		}
+		if !covered {
+			return fmt.Errorf("learner %d has not durably covered the leader WAL snapshot", nodeID)
+		}
 
 		ccCtx, err := node.promotionContext(nodeID, proposalID)
 		if err != nil {
@@ -3493,8 +3505,21 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 	})
 }
 
+// learnerCoversWALSnapshot requires direct evidence that a learner's Pebble
+// store covers the history the leader has already removed from its WAL.
+func (node *Node) learnerCoversWALSnapshot(id uint64) (bool, error) {
+	snapshot, err := node.wal.Snapshot()
+	if err != nil {
+		return false, fmt.Errorf("read WAL snapshot before promoting learner %d: %w", id, err)
+	}
+	node.peerPersistedIndexesMu.Lock()
+	reported, ok := node.peerPersistedIndexes[id]
+	node.peerPersistedIndexesMu.Unlock()
+	return ok && reported >= snapshot.GetMetadata().GetIndex(), nil
+}
+
 // checkAndPromoteLearners checks all learner nodes and promotes those that are
-// caught up (within AutoPromoteThreshold of the commit index).
+// caught up in both Raft replication and durable Pebble state.
 // Must be called from the orchestrate loop (rawNode is not thread-safe).
 func (node *Node) checkAndPromoteLearners() error {
 	// Skip if an external ConfChange operation (AddLearner, RemoveNode, etc.)
@@ -3527,6 +3552,13 @@ func (node *Node) checkAndPromoteLearners() error {
 		}
 
 		if prog.Match+node.config.AutoPromoteThreshold >= status.GetCommit() {
+			covered, err := node.learnerCoversWALSnapshot(id)
+			if err != nil {
+				return err
+			}
+			if !covered {
+				continue
+			}
 			if lastAttempt, ok := node.lastAutoPromote[id]; ok {
 				if now.Sub(lastAttempt) < autoPromoteRetryInterval {
 					continue

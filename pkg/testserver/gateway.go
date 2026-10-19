@@ -45,14 +45,15 @@ func (f MessageInterceptorFunc) InterceptRequest(msg *raftpb.Message) bool {
 type Gateway struct {
 	logger logging.Logger
 	// ports are filled in by Start, which binds one loopback port per node.
-	ports         []int
-	nodes         []string // node addresses (e.g., "127.0.0.1:8000")
-	servers       []*grpc.Server
-	listeners     []net.Listener
-	conns         []*grpc.ClientConn // client connections to backend nodes
-	interceptor   MessageInterceptor
-	interceptorMu sync.RWMutex
-	wg            sync.WaitGroup
+	ports                      []int
+	nodes                      []string // node addresses (e.g., "127.0.0.1:8000")
+	servers                    []*grpc.Server
+	listeners                  []net.Listener
+	conns                      []*grpc.ClientConn // client connections to backend nodes
+	interceptor                MessageInterceptor
+	interceptorMu              sync.RWMutex
+	prepareSnapshotInterceptor func(context.Context, *snapshotpb.PrepareSnapshotRequest) error
+	wg                         sync.WaitGroup
 }
 
 // NewGateway creates a new gateway that forwards to the given node addresses.
@@ -99,6 +100,20 @@ func (g *Gateway) RemoveInterceptor() {
 	defer g.interceptorMu.Unlock()
 
 	g.interceptor = nil
+}
+
+// SetPrepareSnapshotInterceptor controls checkpoint preparation in cluster tests.
+// The callback runs without the gateway lock so a test may hold a request.
+func (g *Gateway) SetPrepareSnapshotInterceptor(interceptor func(context.Context, *snapshotpb.PrepareSnapshotRequest) error) {
+	g.interceptorMu.Lock()
+	defer g.interceptorMu.Unlock()
+	g.prepareSnapshotInterceptor = interceptor
+}
+
+func (g *Gateway) getPrepareSnapshotInterceptor() func(context.Context, *snapshotpb.PrepareSnapshotRequest) error {
+	g.interceptorMu.RLock()
+	defer g.interceptorMu.RUnlock()
+	return g.prepareSnapshotInterceptor
 }
 
 // Address returns the loopback address allocated for the proxy in front of the
@@ -160,7 +175,8 @@ func (g *Gateway) Start(ctx context.Context) error {
 				"gateway_port": port,
 				"node_addr":    nodeAddr,
 			}),
-			client: snapshotpb.NewSnapshotServiceClient(conn),
+			client:  snapshotpb.NewSnapshotServiceClient(conn),
+			gateway: g,
 		})
 
 		clusterbootstrappb.RegisterClusterBootstrapServiceServer(server, &clusterBootstrapServiceGateway{
@@ -402,11 +418,17 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 type snapshotServiceGateway struct {
 	snapshotpb.UnimplementedSnapshotServiceServer
 
-	logger logging.Logger
-	client snapshotpb.SnapshotServiceClient
+	logger  logging.Logger
+	client  snapshotpb.SnapshotServiceClient
+	gateway *Gateway
 }
 
 func (g *snapshotServiceGateway) PrepareSnapshot(ctx context.Context, req *snapshotpb.PrepareSnapshotRequest) (*snapshotpb.PrepareSnapshotResponse, error) {
+	if interceptor := g.gateway.getPrepareSnapshotInterceptor(); interceptor != nil {
+		if err := interceptor(ctx, req); err != nil {
+			return nil, err
+		}
+	}
 	return g.client.PrepareSnapshot(forwardIncomingMetadata(ctx), req)
 }
 

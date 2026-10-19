@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -14,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 	raftwal "github.com/formancehq/ledger/v3/internal/storage/wal"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -315,6 +317,138 @@ var _ = Describe("Simple cluster", func() {
 			testutil.RestartNode(ctx, servers[followerID-1])
 			Eventually(servers[followerID-1], 15*time.Second).Should(BeFollower(), "Timed out waiting for node to become follower")
 		})
+	})
+
+	It("keeps WAL for an offline voter while a live voter is restoring its store", func() {
+		const margin = uint64(1)
+		clusterOptions := []testutil.MultiNodeOption{testutil.WithGateway()}
+		for i := range countInstances {
+			clusterOptions = append(clusterOptions, testutil.WithNodeInstruments(i,
+				testserver.WithRaftCompactionMargin(margin),
+				testserver.WithMaintenanceInterval(250*time.Millisecond),
+				testserver.WithHealthCheckInterval(100*time.Millisecond)))
+		}
+		ctx, servers, gateway, leaderID := testutil.SetupMultiNodeCluster(countInstances, clusterOptions...)
+		DeferCleanup(func() { testutil.StopServers(ctx, servers) })
+		leader := *leaderID
+		lagging := leader%countInstances + 1
+		offline := lagging%countInstances + 1
+		if offline == leader {
+			offline = offline%countInstances + 1
+		}
+		const ledger = "live-lagging-voter"
+		_, err := servers[leader-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
+		Expect(err).To(Succeed())
+
+		// First make the future live voter require a snapshot while the other
+		// follower still provides the quorum needed for leader compaction.
+		testutil.StopNode(ctx, servers[lagging-1])
+		for i := 0; i < 3; i++ {
+			_, err := servers[leader-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledger,
+				[]*commonpb.Posting{actions.NewPosting("world", "initial", big.NewInt(1), "USD")}, nil, nil)))
+			Expect(err).To(Succeed())
+		}
+		var initialTarget uint64
+		Eventually(func(g Gomega) {
+			state, err := servers[leader-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: uint32(leader)})
+			g.Expect(err).To(Succeed())
+			initialTarget = state.GetRaftStatus().GetLastPersistedIndex()
+		}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+		snapshotter, err := raftwal.NewSnapshotter(filepath.Join(servers[leader-1].WalDir, "snap"), logging.FromContext(ctx))
+		Expect(err).To(Succeed())
+		DeferCleanup(func() { Expect(snapshotter.Close()).To(Succeed()) })
+		Eventually(func(g Gomega) uint64 {
+			snapshot, err := snapshotter.Load()
+			g.Expect(err).To(Succeed())
+			return snapshot.GetMetadata().GetIndex()
+		}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeNumerically(">=", initialTarget))
+
+		prepareStarted := make(chan struct{}, 1)
+		releasePrepare := make(chan struct{})
+		DeferCleanup(func() { close(releasePrepare); gateway.SetPrepareSnapshotInterceptor(nil) })
+		gateway.SetPrepareSnapshotInterceptor(func(callCtx context.Context, _ *snapshotpb.PrepareSnapshotRequest) error {
+			select {
+			case prepareStarted <- struct{}{}:
+			default:
+			}
+			select {
+			case <-releasePrepare:
+				return nil
+			case <-callCtx.Done():
+				return callCtx.Err()
+			}
+		})
+		var snapshotToLagging atomic.Bool
+		gateway.SetInterceptor(testserver.MessageInterceptorFunc(func(msg *raftpb.Message) bool {
+			if msg.GetTo() == lagging {
+				if msg.GetType() == raftpb.MsgSnap {
+					snapshotToLagging.Store(true)
+				}
+				if msg.GetType() == raftpb.MsgApp && !snapshotToLagging.Load() {
+					return false
+				}
+			}
+			return true
+		}))
+		DeferCleanup(gateway.RemoveInterceptor)
+		testutil.RestartNode(ctx, servers[lagging-1])
+		Eventually(snapshotToLagging.Load).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
+		Eventually(prepareStarted).Within(15 * time.Second).Should(Receive())
+
+		var offlineLast, laggingPersisted uint64
+		Eventually(func(g Gomega) {
+			a, err := servers[lagging-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: uint32(lagging)})
+			g.Expect(err).To(Succeed())
+			b, err := servers[offline-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: uint32(offline)})
+			g.Expect(err).To(Succeed())
+			laggingPersisted = a.GetRaftStatus().GetLastPersistedIndex()
+			offlineLast = b.GetRaftStatus().GetLastIndex()
+			g.Expect(laggingPersisted).To(BeNumerically("<", offlineLast))
+		}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+		testutil.StopNode(ctx, servers[offline-1])
+
+		for i := 0; i < 3; i++ {
+			_, err := servers[leader-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledger,
+				[]*commonpb.Posting{actions.NewPosting("world", "retained", big.NewInt(1), "USD")}, nil, nil)))
+			Expect(err).To(Succeed())
+		}
+		var target uint64
+		Eventually(func(g Gomega) {
+			state, err := servers[leader-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: uint32(leader)})
+			g.Expect(err).To(Succeed())
+			target = state.GetRaftStatus().GetLastPersistedIndex()
+			g.Expect(target).To(BeNumerically(">", offlineLast+margin))
+		}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+		Eventually(func(g Gomega) uint64 {
+			snapshot, err := snapshotter.Load()
+			g.Expect(err).To(Succeed())
+			return snapshot.GetMetadata().GetIndex()
+		}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeNumerically(">=", target))
+
+		var replayed, sentSnapshot atomic.Bool
+		gateway.SetInterceptor(testserver.MessageInterceptorFunc(func(msg *raftpb.Message) bool {
+			if msg.GetTo() == offline {
+				if msg.GetType() == raftpb.MsgSnap {
+					sentSnapshot.Store(true)
+				}
+				if msg.GetType() == raftpb.MsgApp {
+					for _, entry := range msg.GetEntries() {
+						if entry.GetIndex() > offlineLast {
+							replayed.Store(true)
+						}
+					}
+				}
+			}
+			return true
+		}))
+		testutil.RestartNode(ctx, servers[offline-1])
+		Eventually(func(g Gomega) {
+			state, err := servers[offline-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: uint32(offline)})
+			g.Expect(err).To(Succeed())
+			g.Expect(state.GetRaftStatus().GetLastPersistedIndex()).To(BeNumerically(">=", target))
+		}).Within(30 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+		Expect(replayed.Load()).To(BeTrue(), "the offline voter must replay retained WAL entries")
+		Expect(sentSnapshot.Load()).To(BeFalse(), "the fence must prevent snapshot recovery for this voter")
 	})
 
 	Context("Gateway interceptor tests", func() {

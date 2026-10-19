@@ -239,10 +239,6 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 		return
 	}
 	leadershipEpoch := hc.leadershipEpoch.Load()
-	voters := make(map[uint64]struct{})
-	for _, voterID := range hc.node.VoterIDs() {
-		voters[voterID] = struct{}{}
-	}
 
 	// Create a base context that cancels on shutdown. Each gRPC call gets
 	// its own child context with a per-call timeout (healthCheckCallTimeout).
@@ -304,7 +300,6 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 		if peerID == localNodeID {
 			continue
 		}
-		_, isVoter := voters[peerID]
 
 		// Abort early if shutting down.
 		select {
@@ -323,9 +318,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 			hc.pollFailures.Add(context.Background(), 1, metric.WithAttributes(attribute.String("peer", strconv.FormatUint(peerID, 10))))
 			reports = append(reports, nodeUsageReport{nodeID: peerID, fetchErr: err})
 			samples = append(samples, VolumeSample{})
-			if isVoter {
-				hc.forgetPeerPersistedIndex(leadershipEpoch, peerID)
-			}
+			hc.forgetPeerPersistedIndex(leadershipEpoch, peerID)
 
 			continue
 		}
@@ -353,20 +346,16 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 			// A missing peer sample cannot establish a new disk-full state, but it
 			// must prevent an existing state from being cleared without evidence.
 			samples = append(samples, VolumeSample{})
-			if isVoter {
-				hc.forgetPeerPersistedIndex(leadershipEpoch, peerID)
-			}
+			hc.forgetPeerPersistedIndex(leadershipEpoch, peerID)
 		} else {
-			if isVoter {
-				stateCtx, stateCancel := context.WithTimeout(baseCtx, healthCheckCallTimeout)
-				state, stateErr := client.GetClusterState(stateCtx, &clusterpb.GetClusterStateRequest{NodeId: uint32(peerID)})
-				stateCancel()
-				if stateErr != nil {
-					hc.forgetPeerPersistedIndex(leadershipEpoch, peerID)
-					hc.logger.WithFields(map[string]any{"node_id": peerID, "error": stateErr}).Infof("Failed to get peer persisted index")
-				} else {
-					hc.recordPeerPersistedIndex(leadershipEpoch, peerID, state.GetRaftStatus().GetLastPersistedIndex())
-				}
+			stateCtx, stateCancel := context.WithTimeout(baseCtx, healthCheckCallTimeout)
+			state, stateErr := client.GetClusterState(stateCtx, &clusterpb.GetClusterStateRequest{NodeId: uint32(peerID)})
+			stateCancel()
+			if stateErr != nil {
+				hc.forgetPeerPersistedIndex(leadershipEpoch, peerID)
+				hc.logger.WithFields(map[string]any{"node_id": peerID, "error": stateErr}).Infof("Failed to get peer persisted index")
+			} else {
+				hc.recordPeerPersistedIndex(leadershipEpoch, peerID, state.GetRaftStatus().GetLastPersistedIndex())
 			}
 			walVolume := resp.GetWalVolume()
 			dataVolume := resp.GetDataVolume()

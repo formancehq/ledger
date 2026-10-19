@@ -186,6 +186,9 @@ the committed voters. During joint consensus, the incoming and outgoing voter
 sets each need their own quorum. Peer durability observations are term-local and
 are discarded on leadership change; an unavailable report contributes zero, but
 does not prevent compaction when the remaining voters still form a quorum.
+Before either automatic or manual learner promotion, verify a current durability
+report covering the leader's WAL snapshot. A Raft match index does not prove
+the learner's Pebble store covers that snapshot.
 
 The audit must distinguish the two recovery paths:
 

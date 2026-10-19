@@ -49,6 +49,7 @@ func TestPromoteLearner_ProposesCompleteRegisteredIdentity(t *testing.T) {
 	n.logger = logging.Testing()
 	setup := newTestApplierSetupWithConfChangeHandler(t, make(LocalResponses, 1024), n.membership.WriteConfChange)
 	n.fsm = setup.fsm
+	n.RecordPeerPersistedIndex(2, 0)
 	results := make(chan error, 1)
 	go func() {
 		results <- n.PromoteLearner(t.Context(), 2)
@@ -90,6 +91,7 @@ func TestCheckAndPromoteLearners_ProposesCompleteRegisteredIdentity(t *testing.T
 	require.True(t, progress.IsLearner)
 	require.True(t, progress.RecentActive)
 	require.Equal(t, uint64(1), progress.Match)
+	n.RecordPeerPersistedIndex(2, 1)
 	require.NoError(t, n.checkAndPromoteLearners())
 	_, cc := requireCompletePromotion(t, n)
 	payload, err := membership.UnmarshalConfChangeContext(cc.GetContext())
@@ -164,6 +166,7 @@ func TestCheckAndPromoteLearnersMissingRowStopsRun(t *testing.T) {
 				return nil
 			}
 			n.membership.Remove(2)
+			n.RecordPeerPersistedIndex(2, status.Progress[1].Match)
 			ack := msgWithIndex(raftpb.MsgAppResp, 2, 1, status.Progress[1].Match)
 			ack.Term = new(status.GetTerm())
 			armed = true
@@ -215,6 +218,7 @@ func TestPromoteLearner_CommitsLeaderCachedAddresses(t *testing.T) {
 	ack.Term = new(n.rawNode.Status().GetTerm())
 	require.NoError(t, n.rawNode.Step(ack))
 	require.True(t, n.rawNode.Status().Progress[2].IsLearner)
+	n.RecordPeerPersistedIndex(2, 1)
 	require.NoError(t, n.checkAndPromoteLearners())
 	ready := n.rawNode.Ready()
 	var entries []*raftpb.Entry
