@@ -899,7 +899,7 @@ The default Nix shell provides `setup-envtest`, and its shell hook exports `KUBE
 ```bash
 nix develop .#operator-tests --command bash -ec 'unset GOROOT;
   KUBEBUILDER_ASSETS=$(setup-envtest use 1.32.x -p path); export KUBEBUILDER_ASSETS;
-  cd misc/operator && go test -tags integration ./internal/controller \
+  cd misc/operator && go test -race -tags integration ./internal/controller \
     -run "^TestLedgerAdmission" -count=1 -timeout 3m'
 ```
 
