@@ -47,7 +47,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		return ctrl.Result{}, fmt.Errorf("fetching StatefulSet for TLS state: %w", err)
 	}
 	if existingForTLS != nil {
-		if handled, result, upgradeErr := r.reconcileCoordinatedUpgrade(ctx, ledger, existingForTLS, exec); handled || upgradeErr != nil {
+		if handled, result, upgradeErr := r.reconcileCoordinatedUpgrade(ctx, ledger, existingForTLS, credentials, exec); handled || upgradeErr != nil {
 			return result, upgradeErr
 		}
 	}

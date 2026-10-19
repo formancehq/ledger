@@ -30,7 +30,7 @@ const (
 // reconcileCoordinatedUpgrade owns the explicit, resumable stop-the-world
 // protocol. It returns handled=true while the operation is active so the
 // normal StatefulSet reconciler cannot publish a rolling template update.
-func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec) (handled bool, result ctrl.Result, err error) {
+func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, credentials []credentialsKeyInfo, exec ledgerctlExec) (handled bool, result ctrl.Result, err error) {
 	if ledger.Spec.Upgrade == nil || ledger.Spec.Upgrade.Strategy != "Coordinated" || r.Config == nil || r.Clientset == nil || sts == nil || sts.Spec.Replicas == nil {
 		return false, ctrl.Result{}, nil
 	}
@@ -64,7 +64,11 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 	pod0 := podName(ledger.Name, 0)
 	serverAddr := podSelfServerAddr(headlessServiceName(ledger.Name), ledger.Spec.GrpcPort)
 	switch status.Phase {
-	case "", upgradePhaseMaintenance, upgradePhaseFailed:
+	case "", upgradePhaseMaintenance:
+		status.Phase = upgradePhaseMaintenance
+		if err := r.persistUpgradeStatus(ctx, ledger); err != nil {
+			return true, ctrl.Result{}, err
+		}
 		if _, err := exec(ctx, r.Config, r.Clientset, ledger.Namespace, pod0, "ledger", ledgerctlCommand(serverAddr, currentTLSModeFromStatefulSet(sts), "cluster", "maintenance", "enable")); err != nil {
 			status.Phase, status.Error = upgradePhaseFailed, fmt.Sprintf("enabling maintenance: %v", err)
 
@@ -73,6 +77,21 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 		status.Error = ""
 		status.Phase = upgradePhaseBarrier
 
+		return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
+	case upgradePhaseFailed:
+		// A failure after suspension must be recoverable without pod-0. The
+		// StatefulSet itself is the durable source of truth for this boundary.
+		if sts.Spec.Replicas != nil && *sts.Spec.Replicas == 0 {
+			status.Phase = upgradePhaseStopping
+			status.Error = ""
+			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
+		}
+		if _, err := exec(ctx, r.Config, r.Clientset, ledger.Namespace, pod0, "ledger", ledgerctlCommand(serverAddr, currentTLSModeFromStatefulSet(sts), "cluster", "maintenance", "enable")); err != nil {
+			status.Error = fmt.Sprintf("enabling maintenance: %v", err)
+			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
+		}
+		status.Error = ""
+		status.Phase = upgradePhaseBarrier
 		return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 	case upgradePhaseBarrier:
 		barrier := status.BarrierIndex
@@ -95,6 +114,10 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 		if !ready {
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
+		status.Phase = upgradePhaseStopping
+		if err := r.persistUpgradeStatus(ctx, ledger); err != nil {
+			return true, ctrl.Result{}, err
+		}
 		if err := r.detachStatefulSetPVCOwners(ctx, ledger.Namespace, sts); err != nil {
 			status.Phase, status.Error = upgradePhaseFailed, err.Error()
 
@@ -110,6 +133,21 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 
 		return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 	case upgradePhaseStopping:
+		if sts.Spec.Replicas == nil || *sts.Spec.Replicas != 0 {
+			if err := r.detachStatefulSetPVCOwners(ctx, ledger.Namespace, sts); err != nil {
+				status.Error = err.Error()
+				return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
+			}
+			if err := r.suspendStatefulSetForUpgrade(ctx, sts); err != nil {
+				status.Error = err.Error()
+				return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
+			}
+			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
+		}
+		if sts.Spec.Replicas != nil && *sts.Spec.Replicas == status.ExpectedReplicas && len(sts.Spec.Template.Spec.Containers) > 0 && sts.Spec.Template.Spec.Containers[0].Image == target {
+			status.Phase = upgradePhaseStarting
+			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
+		}
 		pods := &corev1.PodList{}
 		if err := r.List(ctx, pods, client.InNamespace(ledger.Namespace), client.MatchingLabels(selectorLabels(ledger))); err != nil {
 			status.Error = fmt.Sprintf("listing old pods: %v", err)
@@ -119,13 +157,15 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 		if sts.Status.Replicas != 0 || sts.Status.CurrentReplicas != 0 || sts.Status.ReadyReplicas != 0 || len(pods.Items) != 0 {
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
-		if err := r.publishTargetStatefulSet(ctx, ledger, sts, target); err != nil {
+		status.Phase = upgradePhaseStarting
+		if err := r.persistUpgradeStatus(ctx, ledger); err != nil {
+			return true, ctrl.Result{}, err
+		}
+		if err := r.publishTargetStatefulSet(ctx, ledger, sts, target, credentials, status.ExpectedReplicas); err != nil {
 			status.Phase, status.Error = upgradePhaseFailed, err.Error()
 
 			return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 		}
-		status.Phase = upgradePhaseStarting
-
 		return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
 	case upgradePhaseStarting:
 		if sts.Spec.Replicas == nil || *sts.Spec.Replicas != status.ExpectedReplicas || sts.Status.ReadyReplicas != status.ExpectedReplicas {
@@ -161,6 +201,10 @@ func (r *ClusterReconciler) reconcileCoordinatedUpgrade(ctx context.Context, led
 	}
 
 	return true, ctrl.Result{RequeueAfter: upgradeRetryInterval}, nil
+}
+
+func (r *ClusterReconciler) persistUpgradeStatus(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
+	return r.Status().Update(ctx, ledger)
 }
 
 const upgradeRetryInterval = 2 * time.Second
@@ -218,10 +262,10 @@ func (r *ClusterReconciler) detachStatefulSetPVCOwners(ctx context.Context, name
 	return nil
 }
 
-func (r *ClusterReconciler) publishTargetStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, image string) error {
-	desired := buildStatefulSetSpec(ledger, computeSpecHash(&ledger.Spec), nil, currentTLSModeFromStatefulSet(sts))
+func (r *ClusterReconciler) publishTargetStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, image string, credentials []credentialsKeyInfo, expectedReplicas int32) error {
+	desired := buildStatefulSetSpec(ledger, computeSpecHash(&ledger.Spec), credentials, currentTLSModeFromStatefulSet(sts))
 	sts.Spec.Template = desired.Template
-	sts.Spec.Replicas = ledger.Spec.Replicas
+	sts.Spec.Replicas = &expectedReplicas
 	// Keep Retain through the entire coordinated operation. Switching back to
 	// Delete in the same API update that restores replicas would let the
 	// StatefulSet controller interpret the earlier zero-replica state as a
@@ -235,8 +279,8 @@ func (r *ClusterReconciler) publishTargetStatefulSet(ctx context.Context, ledger
 type upgradeStatusJSON struct {
 	State      string `json:"state"`
 	RaftStatus struct {
-		Commit             uint64 `json:"commit"`
-		LastPersistedIndex uint64 `json:"lastPersistedIndex"`
+		Commit             uint64 `json:"commit,string"`
+		LastPersistedIndex uint64 `json:"lastPersistedIndex,string"`
 	} `json:"raftStatus"`
 }
 
