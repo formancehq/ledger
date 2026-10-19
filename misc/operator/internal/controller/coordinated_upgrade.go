@@ -277,7 +277,7 @@ func allMembersPersistedThrough(ctx context.Context, cfg *rest.Config, cs kubern
 	if sts.Spec.Replicas == nil {
 		return false, errors.New("StatefulSet has no replica count")
 	}
-	for ordinal := range int32(*sts.Spec.Replicas) {
+	for ordinal := range *sts.Spec.Replicas {
 		status, err := readUpgradeStatus(ctx, cfg, cs, ledger, podName(ledger.Name, int(ordinal)), ordinal+1, tlsMode, exec)
 		if err != nil {
 			return false, err
