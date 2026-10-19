@@ -75,10 +75,6 @@ func (a *AttributeCache[T]) Put(k attributes.U128, v attributes.Entry[T]) (attri
 	return a.gen0.Load().PutWithSecondary(k, v, a.gen1.Load())
 }
 
-func (a *AttributeCache[T]) HasWriteValidator() bool {
-	return true
-}
-
 func (a *AttributeCache[T]) Size() uint64 {
 	return a.gen0.Load().Size() + a.gen1.Load().Size()
 }

@@ -142,7 +142,6 @@ var attrs map[U128]Entry[T]
 For `KeyStore.Get`, the tag check precedes tombstone handling. A tombstone
 with another key's tag is a collision, while a matching tombstone is absent.
 The attribute cache configures a replacement validator that compares tags.
-`NewKeyStore` requires a store with write validation enabled.
 Every `Put` checks the currently visible Gen0 entry, or Gen1 when Gen0 is
 empty, while holding Gen0's shard write lock. The check and optional Gen0
 publication are one operation. `Put` returns the previous entry and whether

@@ -55,12 +55,8 @@ type KeyStore[K Key, T any] struct {
 	scratch []byte // reusable buffer for GetKey — single-goroutine use only
 }
 
-// NewKeyStore requires a store configured for collision-tag conditional writes.
+// NewKeyStore requires a store configured to reject replacements with a different tag.
 func NewKeyStore[K Key, T any](m kv.KV[U128, Entry[T]]) *KeyStore[K, T] {
-	if !m.HasWriteValidator() {
-		panic("attributes.NewKeyStore: write validator is required")
-	}
-
 	return &KeyStore[K, T]{
 		hasher: NewKeyHasher(),
 		M:      m,

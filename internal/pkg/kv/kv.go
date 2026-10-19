@@ -9,8 +9,6 @@ type KV[K any, V any] interface {
 	// Put returns the previous value, whether it existed, and whether the write
 	// was accepted. A rejected write leaves the store unchanged.
 	Put(K, V) (old V, existed, written bool)
-	// HasWriteValidator reports whether replacements are checked before writing.
-	HasWriteValidator() bool
 	Size() uint64
 	Iter() iter.Seq2[K, V]
 }

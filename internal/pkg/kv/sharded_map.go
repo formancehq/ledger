@@ -68,10 +68,6 @@ func (s *ShardedMap[K, V]) Put(k K, v V) (old V, existed, written bool) {
 	return s.PutWithSecondary(k, v, nil)
 }
 
-func (s *ShardedMap[K, V]) HasWriteValidator() bool {
-	return s.validateReplace != nil
-}
-
 // PutWithSecondary consults secondary when the primary misses. The primary
 // shard remains locked through validation and publication.
 func (s *ShardedMap[K, V]) PutWithSecondary(k K, v V, secondary *ShardedMap[K, V]) (old V, existed, written bool) {

@@ -20,13 +20,6 @@ func newTestKeyStore() *KeyStore[testKey, string] {
 	return NewKeyStore[testKey, string](kv.NewValidatedShardedMap[U128, Entry[string]](func(k U128) uint64 { return k.Hi() }, func(old, next Entry[string]) bool { return old.Tag == next.Tag }))
 }
 
-func TestNewKeyStoreRequiresWriteValidator(t *testing.T) {
-	t.Parallel()
-	require.Panics(t, func() {
-		NewKeyStore[testKey, string](kv.NewShardedMap[U128, Entry[string]](func(k U128) uint64 { return k.Hi() }))
-	})
-}
-
 func BenchmarkKeyStorePutExisting(b *testing.B) {
 	store := newTestKeyStore()
 	canonical := []byte("benchmark-key")
