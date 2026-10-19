@@ -55,7 +55,6 @@ type KeyStore[K Key, T any] struct {
 	scratch []byte // reusable buffer for GetKey — single-goroutine use only
 }
 
-// NewKeyStore requires a store configured to reject replacements with a different tag.
 func NewKeyStore[K Key, T any](m kv.KV[U128, Entry[T]]) *KeyStore[K, T] {
 	return &KeyStore[K, T]{
 		hasher: NewKeyHasher(),
@@ -81,10 +80,14 @@ func (s *KeyStore[K, T]) Put(canonical []byte, value T) (oldValue kv.Optional[T]
 
 	newEntry := Entry[T]{Tag: tag, Data: value}
 
-	existing, existed, published := s.M.Put(id, newEntry)
-	if !published {
+	// The FSM is the sole writer; admission may read concurrently. Check the
+	// visible entry before publishing, so a rejected collision is never seen
+	// by admission between a write and a rollback.
+	if existing, existed := s.M.Get(id); existed && existing.Tag != tag {
 		return kv.None[T](), IDWithTag{}, newErrCollisionDetected(canonical, existing.Tag, tag)
 	}
+
+	existing, existed := s.M.GetAndPut(id, newEntry)
 	if existed {
 		if existing.Deleted {
 			// Matching tombstone: revive without an old value.
@@ -188,9 +191,7 @@ func (s *KeyStore[K, T]) Tombstone(canonical []byte) (id U128, tag uint64, err e
 	}
 
 	var zero T
-	if existing, _, written := s.M.Put(id, Entry[T]{Tag: tag, Data: zero, Deleted: true}); !written {
-		return id, tag, newErrCollisionDetected(canonical, existing.Tag, tag)
-	}
+	s.M.Put(id, Entry[T]{Tag: tag, Data: zero, Deleted: true})
 
 	return id, tag, nil
 }

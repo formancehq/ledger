@@ -130,7 +130,7 @@ Coverage bits for technical updates are computed by the runner's per-`WriteOpera
 - **`state.WriteSet`** (`internal/infra/state/write_set.go`). The engine — the inner that `gatedScope` wraps. Raw overlay/merge: read methods read directly from `Derived` with no inline coverage check; write methods queue in `Derived` for the eventual `Merge()`.
 - **`DerivedKeyStore[K,T]`** (`internal/infra/attributes/key_store.go`). The in-batch overlay used by every handler. Reads check `deletions` first (`ErrNotFound` for an in-batch delete), then `values` (in-batch Put), then fall through to the parent `KeyStore`. This is what lets handler *N* read a value that handler *N-1* wrote within the same proposal. Coverage is gated upstream by `gatedScope`, so the overlay never serves a value the reader didn't declare.
 - **`KeyStore[K,T]`** (`internal/infra/attributes/key_store.go`). Wraps a `kv.KV[U128, Entry[T]]`. The `Entry.Tag` field carries the xxh3 collision tag; `Entry.Deleted` carries the tombstone bit. For the FSM hot path, the underlying KV *is* the AttributeCache's gen0+gen1, so a KeyStore read is a cache read.
-- **`AttributeCache[T]`** (`internal/infra/cache/cache.go`). The terminal layer. Two `ShardedMap[U128, Entry[T]]` instances, Gen0 and Gen1, configured to reject replacements with a different tag. `Put` checks the visible entry in Gen0 or Gen1 before publishing to Gen0. `Get` checks Gen0 first, falls back to Gen1. Rotation is driven by Raft index thresholds — see [deterministic-fsm.md](deterministic-fsm.md).
+- **`AttributeCache[T]`** (`internal/infra/cache/cache.go`). The terminal layer. Two `ShardedMap[U128, Entry[T]]` instances, Gen0 and Gen1. `Get` checks Gen0 first, falls back to Gen1. Rotation is driven by Raft index thresholds — see [deterministic-fsm.md](deterministic-fsm.md).
 
 A read at the handler level therefore travels: `Scope` (gate) → overlay → underlying KeyStore → cache, with **no Pebble Get** anywhere on the path.
 
@@ -198,8 +198,8 @@ Each layer enforces exactly one invariant that the layer above doesn't have to t
 | `state.gatedScope` (decorator) | Coverage enforcement. `CheckCoverage(kind, canonical)` runs once at the top of every cache-attribute read, against a dense `coverageSlots` array selected by the `coverageSlotIndex` sub-attribute-byte lookup; an undeclared read returns `*ErrCoverageMiss`. The engine below stays ignorant of the gate. |
 | `state.WriteSet` (engine) | One proposal = one read/write context. Overlay/Merge mechanics, counters. No gate logic — pure engine. |
 | `DerivedKeyStore` | Same-batch read-your-own-writes. Handler *N* sees what handler *N-1* wrote without going through the view. |
-| `KeyStore` | Collision errors + tombstone visibility. `Entry.Tag` distinguishes U128 collisions; `Entry.Deleted` propagates deletes. |
-| `AttributeCache` | Generation isolation and validated writes. Gen0 = current epoch, Gen1 = previous epoch retained for in-flight proposals. |
+| `KeyStore` | Collision safety + tombstone visibility. `Entry.Tag` distinguishes U128 collisions; `Entry.Deleted` propagates deletes. |
+| `AttributeCache` | Generation isolation. Gen0 = current epoch, Gen1 = previous epoch retained for in-flight proposals. |
 
 If you find yourself wanting to bypass a layer (e.g. read from Pebble inside a handler, or skip Scope "just for this one read"), the answer is always to declare the key in the ExecutionPlan upstream and let the existing layering carry the read. The layers are not optional — every one of them is load-bearing for at least one safety property.
 

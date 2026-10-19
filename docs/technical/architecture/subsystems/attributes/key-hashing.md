@@ -141,13 +141,9 @@ var attrs map[U128]Entry[T]
 
 For `KeyStore.Get`, the tag check precedes tombstone handling. A tombstone
 with another key's tag is a collision, while a matching tombstone is absent.
-The attribute cache configures a replacement validator that compares tags.
-Every `Put` checks the currently visible Gen0 entry, or Gen1 when Gen0 is
-empty, while holding Gen0's shard write lock. The check and optional Gen0
-publication are one operation. `Put` returns the previous entry and whether
-the write was accepted, so `KeyStore.Put` can report a collision without a
-second read. Admission readers cannot see a rejected value.
-It publishes to Gen0 only when the tags match or the key is absent.
+`KeyStore.Put` checks the currently visible Gen0 entry, or Gen1 when Gen0 is
+empty, before writing. The FSM is the sole writer; admission may read in
+parallel. It publishes to Gen0 only when the tags match or the key is absent.
 A matching tombstone can be revived; a
 different-tag tombstone cannot be claimed by another canonical key. A rejected
 write leaves both generations unchanged, so concurrent admission cannot observe

@@ -21,40 +21,16 @@ type shard[K comparable, V any] struct {
 // Readers (Get) take a shared RLock; writers (Put, Del) take an exclusive Lock.
 // With 64 shards the probability of a reader being blocked by a writer is ~1.6%.
 type ShardedMap[K comparable, V any] struct {
-	shards          [numShards]shard[K, V]
-	hashFn          func(K) uint64
-	validateReplace func(old, next V) bool
-	size            atomic.Int64
+	shards [numShards]shard[K, V]
+	hashFn func(K) uint64
+	size   atomic.Int64
 }
 
-type shardedMapOptions[V any] struct {
-	validateReplace func(old, next V) bool
-}
-
-// ShardedMapOption configures optional behavior at construction.
-type ShardedMapOption[V any] func(*shardedMapOptions[V])
-
-// WithReplaceValidator rejects replacements for which validateReplace returns false.
-func WithReplaceValidator[V any](validateReplace func(old, next V) bool) ShardedMapOption[V] {
-	if validateReplace == nil {
-		panic("kv.WithReplaceValidator: validator is required")
-	}
-
-	return func(options *shardedMapOptions[V]) {
-		options.validateReplace = validateReplace
-	}
-}
-
-// NewShardedMap creates a ShardedMap with the given hash function and options.
+// NewShardedMap creates a ShardedMap with the given hash function.
 // hashFn must return a well-distributed uint64 for shard selection.
-func NewShardedMap[K comparable, V any](hashFn func(K) uint64, options ...ShardedMapOption[V]) *ShardedMap[K, V] {
-	config := shardedMapOptions[V]{}
-	for _, option := range options {
-		option(&config)
-	}
+func NewShardedMap[K comparable, V any](hashFn func(K) uint64) *ShardedMap[K, V] {
 	sm := &ShardedMap[K, V]{
-		hashFn:          hashFn,
-		validateReplace: config.validateReplace,
+		hashFn: hashFn,
 	}
 	for i := range sm.shards {
 		sm.shards[i].m = make(map[K]V)
@@ -76,32 +52,30 @@ func (s *ShardedMap[K, V]) Get(k K) (V, bool) {
 	return v, ok
 }
 
-func (s *ShardedMap[K, V]) Put(k K, v V) (old V, existed, written bool) {
-	return s.PutWithSecondary(k, v, nil)
-}
-
-// PutWithSecondary consults secondary when the primary misses. The primary
-// shard remains locked through validation and publication.
-func (s *ShardedMap[K, V]) PutWithSecondary(k K, v V, secondary *ShardedMap[K, V]) (old V, existed, written bool) {
+func (s *ShardedMap[K, V]) Put(k K, v V) {
 	sh := s.shard(k)
 	sh.mu.Lock()
-	old, primaryExisted := sh.m[k]
-	existed = primaryExisted
-	if !existed && secondary != nil {
-		old, existed = secondary.Get(k)
-	}
-	if existed && s.validateReplace != nil && !s.validateReplace(old, v) {
-		sh.mu.Unlock()
-
-		return old, true, false
-	}
+	_, exists := sh.m[k]
 	sh.m[k] = v
-	if !primaryExisted {
-		s.size.Add(1)
-	}
 	sh.mu.Unlock()
 
-	return old, existed, true
+	if !exists {
+		s.size.Add(1)
+	}
+}
+
+func (s *ShardedMap[K, V]) GetAndPut(k K, v V) (old V, existed bool) {
+	sh := s.shard(k)
+	sh.mu.Lock()
+	old, existed = sh.m[k]
+	sh.m[k] = v
+	sh.mu.Unlock()
+
+	if !existed {
+		s.size.Add(1)
+	}
+
+	return old, existed
 }
 
 // Del removes k. ShardedMap has no notion of a primary store, so the contract

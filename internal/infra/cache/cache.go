@@ -26,7 +26,7 @@ func u128Hash(k attributes.U128) uint64 {
 
 // newShardedMap creates a ShardedMap keyed by U128 with the standard hash function.
 func newShardedMap[T any]() *kv.ShardedMap[attributes.U128, attributes.Entry[T]] {
-	return kv.NewShardedMap[attributes.U128, attributes.Entry[T]](u128Hash, kv.WithReplaceValidator(func(old, next attributes.Entry[T]) bool { return old.Tag == next.Tag }))
+	return kv.NewShardedMap[attributes.U128, attributes.Entry[T]](u128Hash)
 }
 
 // AttributeCache is a dual-generation cache for attribute values.
@@ -70,9 +70,18 @@ func (a *AttributeCache[T]) Get(k attributes.U128) (attributes.Entry[T], bool) {
 	return a.gen1.Load().Get(k)
 }
 
-// Put validates the visible entry in Gen0 or Gen1 before publishing to Gen0.
-func (a *AttributeCache[T]) Put(k attributes.U128, v attributes.Entry[T]) (attributes.Entry[T], bool, bool) {
-	return a.gen0.Load().PutWithSecondary(k, v, a.gen1.Load())
+func (a *AttributeCache[T]) Put(k attributes.U128, v attributes.Entry[T]) {
+	a.gen0.Load().Put(k, v)
+}
+
+func (a *AttributeCache[T]) GetAndPut(k attributes.U128, v attributes.Entry[T]) (attributes.Entry[T], bool) {
+	old, existed := a.gen0.Load().GetAndPut(k, v)
+	if existed {
+		return old, true
+	}
+
+	// New value is already in gen0. Check gen1 for the old value.
+	return a.gen1.Load().Get(k)
 }
 
 func (a *AttributeCache[T]) Size() uint64 {
