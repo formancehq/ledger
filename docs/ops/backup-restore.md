@@ -665,7 +665,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 ### How It Works
 
 1. **Fresh directory guard**: Scans the target data directory's `checkpoints/` subdirectory for existing checkpoints using `ScanLatestCheckpointID()`. Refuses to overwrite.
-2. **Download**: Reads the manifest from the configured backend, downloads all checkpoint files and export segments into `{data-dir}/restore-staging/`. Each checkpoint file is verified against its manifest size and the sha256 in its object key; a mismatch aborts bootstrap and names the file.
+2. **Download**: Reads the manifest from the configured backend, creates or opens the selected data directory, then creates `restore-staging/` through that directory's filesystem root. Staging must be a real directory: a staging-root symlink is rejected even when its target is inside the data directory. Downloads checkpoint files sequentially through a filesystem root opened on staging. Each manifest filename is converted from slash-separated form and must be lexically local before parent creation, object lookup or file creation for that entry. Rooted parent and file creation reject symlink escapes. Each checkpoint file is verified against its manifest size and the sha256 in its object key; a mismatch aborts bootstrap and names the file. Staging is created even for an export-only manifest.
 3. **Apply exports**: If the manifest contains incremental export segments, applies them to the staging database and rebuilds derived state.
 4. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
 5. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`. Execution failures or reported integrity errors abort bootstrap before confirmation, preparation, and finalization. Without this flag, bootstrap skips Checker entirely.
@@ -673,6 +673,14 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 7. **Prepare**: Prepares attributes for backup (Global-zone resets: applied index preserved as the genesis boundary — the restored genesis' WAL-snapshot index — persisted config stripped, persisted bloom blocks dropped); the attribute zone is left intact.
 8. **Finalize**: Hard-links staging to `{data-dir}/checkpoints/0`, writes the `RESTORED` marker JSON.
 9. **Cleanup**: Removes the staging directory.
+
+The download roots are closed before export replay, preview, validation,
+confirmation and finalization. Download rejection is per entry, rather than an
+atomic check of the whole manifest: earlier files and a partially written failing
+file can remain in staging after an error. Failed downloads do not reach those
+later steps, and do not automatically remove staging. Size/hash verification
+detects object corruption; it does not authenticate manifest filenames or
+replace destination confinement.
 
 Use `--validate` for recovery and restore drills so integrity checks succeed
 before the data is finalized. Its default of `false` makes it opt-in; successful

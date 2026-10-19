@@ -38,6 +38,7 @@ name-to-filesystem chain, loading the routed authoritative documentation.
 | Peer `FetchFileRequest.path` | `internal/bootstrap/module.go` registers SnapshotService on the peer server; `server_snapshot.go: FetchFile` acquires the session, checks `filepath.IsLocal`, then calls `file_streaming.go: streamOneFile`, which opens through the checkpoint `os.Root`. `AGENTS.md` and follower-sync's Filesystem confinement section require the rooted final operation. Check the actual installed peer guard, not a hypothetical public HTTP endpoint. |
 | Peer `PrepareSnapshotResponse.manifest.files[].path` | `snapshot_fetcher.go: fetchWithSession` obtains the manifest and calls `validateSnapshotManifest` before starting parallel downloads. `file_fetcher.go: fetchFileOnce` checks locality again and uses rooted parent creation, temporary creation, removal and rename. Follower-sync's Manifest path uniqueness section establishes cleaned duplicates and destination versus raw-path-plus-`.tmp` collisions. |
 | Backup checkpoint manifest map keys | Restore-mode registration in `internal/bootstrap/module_restore.go` reaches `server_restore_download.go: StartDownloadBackup`, `prepareDownload`, `executeDownload`, `downloadCheckpointFiles` and `downloadOneFile`. `backup.DecodeManifest` supplies checkpoint filenames; `safeStagingPath` in `server_restore.go` precedes `os.MkdirAll` and `os.Create`. The global AGENTS path rule applies; `docs/ops/backup-restore.md` describes staging recreation and cleanup. A lexical helper is not evidence of final symlink containment. Establish how any claimed malicious namespace state survives recreation or can arise afterward before reporting a defect. |
+| Offline backup checkpoint manifest map keys | `cmd/ledgerctl/store/bootstrap.go: runBootstrap` decodes the backend manifest and passes its checkpoint file map to `downloadBootstrapCheckpoint`. The helper acquires staging through the selected data-directory root, requires a real directory with rooted `Lstat`, and opens the staging root. Each filename passes `filepath.FromSlash` and `filepath.IsLocal` before rooted parent creation, object lookup by the separate content key and rooted file creation. Reject staging-root symlinks both outside and inside the data directory; later finalization does not follow a root symlink. This CLI consumer has separate acquisition and failure behavior from the gRPC restore job. |
 | Conditional archive seed | Whole-repository Go caller search at the preparation base found `tarutil.ExtractTar` only in its own tests and `internal/infra/attributes/prepare_test.go`. No production caller was established. Its `header.Name` to `filepath.Join` to `MkdirAll`/`OpenFile` chain is a helper observation, not a reachable product vulnerability. Recheck callers at the later audited SHA before promoting this seed. |
 
 The backup storage abstraction has no filesystem driver. Remote object keys and
@@ -68,6 +69,17 @@ filesystem semantics, provenance and attacker influence before extending a
 claim to that case. Preserve allowed nested paths and do not impose a blanket
 symlink, archive-type or filename policy absent from the contract.
 
+For offline bootstrap, root acquisition and final writes form one authority
+chain. The operator selects the data root; manifest filenames select only
+entries within its real `restore-staging` directory. Staging is created even for
+export-only manifests. Downloads remain sequential and verified by content
+key/size/hash. Rejection is per entry: earlier files and partial failing files
+may remain, and errors stop before replay, preview, Checker, confirmation and
+finalization. The download roots close before those later steps. Do not turn
+this into a whole-manifest preflight, automatic cleanup or hardlink-isolation
+requirement. Trace the actual `runBootstrap` caller separately from tests of its
+production download helper.
+
 A supported archive consumer, if later found, must be inspected for acted-on
 header types, pre-existing symlinks, repeated names, partial extraction and
 cleanup ownership. The current extractor handles directories and regular files;
@@ -91,6 +103,7 @@ manifest preparation. Use pinned Nix tools and shared cache generations normally
 | Follower | `TestFileFetcher_FetchFileOnceRejectsNonLocalPath`, `TestGRPCSnapshotFetcher_RejectsNonLocalManifestPath`, `TestGRPCSnapshotFetcher_RejectsSymlinkEscape` | No outside write; final bytes for valid control; observe rooted creation/rename/cleanup, not merely string rejection. |
 | Whole peer manifest | `TestValidateSnapshotManifest_RejectsCollidingEntries`, `TestGRPCSnapshotFetcher_RejectsStagingPathCollision`, `TestGRPCSnapshotFetcher_RejectsDuplicateManifestPath` | Rejection before any FetchFile; retain valid distinct staging names. Other aliases require a concrete supported-filesystem interleaving. |
 | Restore destinations | Existing `TestSafeStagingPath_*` and `server_restore_download_test.go` injected `storageFactory`; synthetic manifest plus local content | Trace admission through actual download and staging recreation. Lexical tests alone do not prove final containment. No live S3 or cloud credentials. |
+| Offline bootstrap destinations | `TestDownloadBootstrapCheckpoint*` in `cmd/ledgerctl/store/bootstrap_test.go`, generated `backup.Storage` mocks and one owned temporary parent | Valid root/nested verified bytes and export-only staging; traversal, absolute/empty names; escaping parent/leaf symlinks; staging-root symlinks inside/outside dataDir. Require no object reads for lexical/root rejection, unchanged outside bytes and directory inventory, and retained missing-object/size/hash error coverage. Establish `runBootstrap` reachability by code; helper tests do not exercise full CLI admission, replay or finalization. |
 | Retry/cleanup | Existing `TestGRPCSnapshotFetcher_RetryRewritesPartialFile`; bounded failure then success and sibling sentinels | Attempt count, correct final bytes, temporary-file cleanup, unrelated state unchanged. No assertion of durable restart parity. |
 | Namespace races | Temporary synchronized replacement at the precise validation/use or staging/publication boundary | Owned parent containing separate root and sentinel directories; deterministic barrier, bounded cleanup, no sleeps or arbitrary host paths. If no feasible influence is established, report the limitation. |
 | Archive seed | Caller search first; optional isolated tar helper characterization | Clearly label helper-only results. No product finding without an actual production consumer. |
