@@ -55,14 +55,8 @@ func New(dir string, logger logging.Logger, cfg pebblecfg.Config) (*Store, error
 
 	dbPath := filepath.Join(dir, "usagedb")
 
-	var fileSize int64
-	if info, _ := os.Stat(dbPath); info != nil {
-		fileSize = info.Size()
-	}
-
 	logger.WithFields(map[string]any{
-		"path":     dbPath,
-		"fileSize": fileSize,
+		"path": dbPath,
 	}).Infof("Opening Pebble usage store")
 
 	openStart := time.Now()
