@@ -13,3 +13,16 @@ managed_go_cache_valid() {
     marker="$generation_root/.ledger-ai-go-cache-generation"
     [[ -f "$marker" && ! -L "$marker" && "$(<"$marker")" == "$go_cache_generation_marker" ]]
 }
+
+# Validation inherits TMPDIR unchanged; it only has to be an absolute existing
+# directory outside the candidate worktree, so temporary files never land in
+# the checkout under review.
+validation_tmpdir_valid() {
+    local tmpdir=$1 candidate_root=$2 resolved
+    [[ "$tmpdir" = /* ]] || return 1
+    resolved=$(cd "$tmpdir" 2>/dev/null && pwd -P) || return 1
+    [[ -z "$candidate_root" ]] && return 0
+    case "$resolved/" in
+        "$candidate_root/"*) return 1 ;;
+    esac
+}
