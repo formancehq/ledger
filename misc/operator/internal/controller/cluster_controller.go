@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
@@ -625,8 +626,8 @@ func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
 	return nil
 }
 
-// validateClusterConfig validates cluster-wide cache and bloom parameters that
-// flow to the server via env vars. Defaults are server-side (loadBloomConfig);
+// validateClusterConfig validates cluster-wide parameters that
+// flow to the server via env vars. Defaults are server-side;
 // this only rejects values that would either be silently ignored or that the
 // server would refuse.
 func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
@@ -647,6 +648,15 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 
 	if spec.Cache != nil && spec.Cache.RotationThreshold != nil && *spec.Cache.RotationThreshold <= 0 {
 		return fmt.Errorf("cache.rotationThreshold must be > 0, got %d", *spec.Cache.RotationThreshold)
+	}
+	if spec.Health != nil && spec.Health.Interval != "" {
+		interval, err := time.ParseDuration(spec.Health.Interval)
+		if err != nil {
+			return fmt.Errorf("health.interval %q is not a valid duration: %w", spec.Health.Interval, err)
+		}
+		if interval <= 0 {
+			return fmt.Errorf("health.interval must be greater than zero, got %q", spec.Health.Interval)
+		}
 	}
 	if spec.Bloom == nil {
 		return nil
@@ -681,7 +691,7 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 		if err != nil {
 			return fmt.Errorf("bloom.%s.fpRate %q is not a valid float: %w", b.name, b.spec.FPRate, err)
 		}
-		if f <= 0 || f >= 1 {
+		if !(f > 0 && f < 1) {
 			return fmt.Errorf("bloom.%s.fpRate must be in (0,1), got %v", b.name, f)
 		}
 	}

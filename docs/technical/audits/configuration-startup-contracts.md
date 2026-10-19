@@ -141,3 +141,44 @@ removes the source operational identity while preserving the key. A destination
 may then persist its own cluster ID and extend the source chain. Inspect the
 startup and follower-recovery paths separately; the checker owns full-history
 verification, and the persistence domain owns checkpoint/delta preservation.
+
+## EN-2923 bloom rate validation
+
+Trace desired bloom settings through CLI loading into `Config.Validate` before
+Fx construction of `NewFilterSet`. Enabled rates must be finite and strictly in
+`(0,1)` for every server slot, including indexes. CLI rate zero normalizes to
+`0.01`; zero expected keys disables the type and ignores its rate. The operator
+retains empty-rate defaulting and explicit-zero rejection, while rejecting
+`NaN` as well as infinities. The server `TestLoadConfigBloomRates` and bootstrap
+`TestConfigValidateBloom` exercise accepted/invalid/disabled inputs; operator
+`TestValidateClusterConfig_RejectsInvalidFPRate` independently covers non-finite
+spec rates. A constructor panic is the original failure signal, not an accepted
+startup rejection. No persisted or committed configuration semantics change.
+
+## Health polling interval
+
+`--health-check-interval` / selected `HEALTH_CHECK_INTERVAL` must parse to a
+strictly positive Go duration before the health worker starts. Zero does not
+disable it; `health-clock-skew-threshold=0` has a separate disable meaning.
+The default remains `30s`. Include negative, zero, malformed, overflow and
+fractional values rounding to zero, along with smallest-positive values, in the
+input evidence. Check explicit CLI precedence over invalid environment values.
+
+For the typed operator `spec.health.interval`, nil/empty retains omission and
+nonempty values must parse to a positive duration before workload reconciliation.
+Rejected configuration records `ConfigValid=False`, `ValidationFailed`, and
+`Phase=Error`, without creating or updating workloads or deleting an existing
+StatefulSet. Cluster identity generation/persistence can precede validation;
+failure status is written afterward. Correcting the spec clears the validation
+failure and resumes reconciliation. `extraEnv` can override the typed field, so
+the server remains the final validator for selected runtime configuration.
+
+The server's config validation occurs after config loading/printing and possible
+join discovery, but before Fx bootstrap. Do not claim it prevents all prior I/O.
+`TestValidateHealthCheckInterval` exercises the otherwise-valid config boundary;
+`TestHealthCheckIntervalStartup` uses the real service binder in subprocesses.
+Its positive/default cases deliberately stop at a later threshold error, proving
+interval acceptance without starting a cluster. Operator regressions must
+exercise both first creation and existing-workload preservation, followed by a
+real invalid-to-valid reconcile sequence. These checks do not prove recovery
+across process death or Kubernetes admission rejection.

@@ -115,6 +115,20 @@ a number/string schema union alone cannot prove the selected mode.
 
 ## Boundaries
 
+For index inspection (EN-2905), HTTP omission selects summary and preserves
+the backend's page-size default of 100 for paginated modes. Accept `summary`,
+`distinctValues`, its `distinct-values` alias, and `facets`. Reject explicitly
+empty or unsupported modes with `400`/`INVALID_REQUEST`; reject supplied page
+sizes outside 1..10000, empty/malformed values and uint32 overflow with
+`400`/`INVALID_PAGE_SIZE`, including for summary. The routed
+`TestHandleInspectIndex_InvalidModeRouting`, `InvalidPageSizeRouting`, and
+`QueryOptionsRouting` cases use a valid metadata canonical, prove rejection
+without backend invocation, and capture exact accepted modes, sizes, identity
+and cursor, including omission and boundary controls. Retain canonical-ID and
+builtin rejection coverage. The HTTP range alone is not evidence of a service
+gRPC cap; proto3 zero is unspecified and the omitted enum selects distinct
+values. Service scan policy and query correctness belong to the read path.
+
 EN-2783 pins HTTP auth response media types and reachable write-exhaustion
 declarations. Use `TestOpenAPI_NumscriptAuthentication` and
 `TestOpenAPI_WriteResourceExhaustion` as registered-router oracles, including
