@@ -42,12 +42,30 @@ func BenchmarkKeyStorePutExisting(b *testing.B) {
 type publishBarrierKV struct {
 	kv.KV[U128, Entry[string]]
 
-	published chan struct{}
-	release   chan struct{}
+	candidateTag uint64
+	published    chan struct{}
+	release      chan struct{}
 }
 
 func (m *publishBarrierKV) Put(id U128, entry Entry[string]) {
 	m.KV.Put(id, entry)
+	m.pauseAfterCandidate(entry)
+}
+
+// GetAndPut also traps the original publish-before-validation path. It is
+// deliberately present even though the current KV interface no longer uses it.
+func (m *publishBarrierKV) GetAndPut(id U128, entry Entry[string]) (Entry[string], bool) {
+	old, existed := m.KV.Get(id)
+	m.KV.Put(id, entry)
+	m.pauseAfterCandidate(entry)
+
+	return old, existed
+}
+
+func (m *publishBarrierKV) pauseAfterCandidate(entry Entry[string]) {
+	if entry.Tag != m.candidateTag {
+		return
+	}
 	close(m.published)
 	<-m.release
 }
@@ -59,9 +77,10 @@ func TestKeyStorePutRejectsBeforePublication(t *testing.T) {
 	raw := newTestKV[Entry[string]]()
 	raw.Put(id, Entry[string]{Tag: tag + 1, Data: "original"})
 	barrier := &publishBarrierKV{
-		KV:        raw,
-		published: make(chan struct{}),
-		release:   make(chan struct{}),
+		KV:           raw,
+		candidateTag: tag,
+		published:    make(chan struct{}),
+		release:      make(chan struct{}),
 	}
 	store := NewKeyStore[testKey, string](barrier)
 	done := make(chan error, 1)
