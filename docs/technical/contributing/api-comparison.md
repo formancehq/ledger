@@ -1273,7 +1273,9 @@ Prepared-query LIST limits apply before ID collection and enrichment, for both
 HTTP and service gRPC. Input values retain the uint32 range: values above 1000
 are clamped, while negative, fractional or overflowing inputs are invalid.
 `AGGREGATE_VOLUMES` ignores page size and includes every matching account.
-Prepared queries have no v2 endpoint equivalent; the LIST policy follows the
+Prepared queries replace schema-defined v2 query templates, executed through
+`POST /v2/{ledger}/queries/{id}/run`. Their explicit targets, execution modes and
+cursor envelopes retain intentional v3 semantics. The LIST policy follows the
 existing v3 paged-list default/cap rather than introducing a rejection limit.
 
 A page token is relative to the requested order, so every page of a walk

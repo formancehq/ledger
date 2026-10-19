@@ -21,7 +21,7 @@ frozen and the published gRPC wire contract must remain compatible.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"41"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"40"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -50,11 +50,15 @@ Restore mode does not register Discovery: its service gate provides the
 compatibility error without requiring a preliminary Discovery call, while
 health and reflection remain exempt.
 
-Revision 41 (EN-2906) enforces the existing prepared-query `LIST` page-size
-policy on every entry point: zero defaults to 100 and values above 1,000 are
-clamped before pagination and enrichment. Oversized service requests previously
-returned larger pages and reported the requested size, so this observable
-semantic correction requires matching service clients and servers.
+The prepared-query `LIST` pagination correction retains revision 40 and the
+published protobuf wire contract. Every entry point now defaults zero to 100
+and clamps values above 1,000 before pagination and enrichment. Existing clients
+that requested oversized pages receive at most 1,000 items and the effective
+size in the cursor; they must follow continuation tokens to retrieve remaining
+results. No client rebuild or protocol metadata change is required. During a
+rolling upgrade, an older server can still return oversized pages until all
+servers are upgraded; clients must tolerate either page length. This read-only
+correction changes no committed entries, persisted data or Raft apply semantics.
 `AGGREGATE_VOLUMES` remains independent of the `LIST` page-size limit.
 
 Revision 6 (EN-2009) makes fresh `CreateIndex` requests strict: an existing
@@ -85,10 +89,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 41:
+leader. For example, with a schema implementing revision 40:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 41' \
+grpcurl -plaintext -H 'ledger-protocol-version: 40' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
