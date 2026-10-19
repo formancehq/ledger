@@ -262,6 +262,26 @@ Rules:
   they are gone. Deleting the orphaned StatefulSet with `--cascade=orphan`
   keeps its pods running until the new StatefulSet replaces them.
 
+Upgrading the operator from `v3.0.0-rc.1`: upgrade the CRDs (the chart's
+`ledger-operator-crds` dependency) before or together with the operator. A
+Cluster without `spec.resourceName` keeps its `ledger-<metadata.name>` object
+names, addresses and pod-template hash, so the upgrade renames nothing and does
+not roll its pods. The server binary and its persisted state are not involved.
+Check two behaviour changes before upgrading:
+
+- Every object the operator manages for an existing Cluster already carries
+  that Cluster's controller reference, so the stricter ownership rule changes
+  nothing for it. A derived object that lost its controller reference (for
+  example after `--cascade=orphan`) or a ServiceAccount shared through
+  `spec.serviceAccount.name` with `create` left at its default now reports
+  `NameConflict` instead of being adopted; follow the rules above.
+- A Cluster whose `metadata.name` exceeds 45 characters now reports
+  `ConfigValid=False`, and the operator stops reconciling it; its existing
+  objects keep running. `v3.0.0-rc.1` accepted 46 and 47 characters, but the
+  resulting 53- and 54-character StatefulSet names can fail pod creation on the
+  `controller-revision-hash` label. Move such a Cluster to a new Cluster with a
+  shorter name, restoring from a backup.
+
 ### Main Configuration
 
 #### Number of Replicas
