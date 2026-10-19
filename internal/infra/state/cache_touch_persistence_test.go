@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -42,6 +43,25 @@ func TestPreload_RejectsMalformedAttributeCoverage(t *testing.T) {
 	var invalid *domain.ErrInvalidExecutionPlan
 	require.ErrorAs(t, err, &invalid)
 	require.Contains(t, invalid.Reason_, "16-byte AttributeID")
+}
+
+func TestPreloadRejectsTombstonePayloadBeforeMutation(t *testing.T) {
+	t.Parallel()
+	machine, store, _ := newTestMachine(t)
+	id := attributes.HashU128([]byte("invalid-tombstone"))
+	plan := &raftcmdpb.ExecutionPlan{
+		LastPersistedIndex: machine.Registry.Cache.BaseIndex.Gen0,
+		Attributes: []*raftcmdpb.AttributeCoverage{{
+			Id:       &raftcmdpb.AttributeID{Id: id[:], Tag: 42},
+			AttrCode: uint32(dal.SubAttrBoundary),
+			Value:    &raftcmdpb.AttributeValue{Deleted: true, RawValue: []byte{1}},
+		}},
+	}
+	batch := store.OpenWriteSession()
+	defer func() { _ = batch.Cancel() }()
+	require.ErrorContains(t, machine.Preload(plan, batch, 0), "tombstone carries raw value")
+	_, ok := machine.Registry.Cache.Boundaries.Gen0().Get(id)
+	require.False(t, ok)
 }
 
 // TestPreload_RejectsUnknownAttrCode pins that a forged ExecutionPlan
@@ -278,10 +298,44 @@ func TestPreload_FullPreloadSkipsWhenGen0HasFreshValue(t *testing.T) {
 
 	gen1Key := []byte{dal.ZoneCache, gen1Byte, dal.SubAttrNumscriptContent}
 	gen1Key = append(gen1Key, hash[:]...)
-	gen1Val, gen1Closer, err := dataStore.Get(gen1Key)
-	require.NoError(t, err, "0xFF gen1 row should still be populated from the preload")
-	require.NotEmpty(t, gen1Val)
-	require.NoError(t, gen1Closer.Close())
+	_, _, err = dataStore.Get(gen1Key)
+	require.ErrorIs(t, err, pebble.ErrNotFound, "Gen0 precedence leaves Gen1 unchanged")
+}
+
+func TestPreloadPromotesNewerGen1ReferenceInsteadOfStaleSeed(t *testing.T) {
+	t.Parallel()
+	machine, store, _ := newTestMachine(t)
+	id := attributes.HashU128([]byte("reference:delayed-commit"))
+	const tag uint64 = 72
+	newer := &commonpb.TransactionReferenceValue{TransactionId: 2}
+	machine.Registry.Cache.References.Gen1().Put(id, attributes.Entry[*commonpb.TransactionReferenceValue]{Tag: tag, Data: newer})
+	stale := &commonpb.TransactionReferenceValue{TransactionId: 1}
+	raw, err := stale.MarshalVT()
+	require.NoError(t, err)
+	plan := &raftcmdpb.ExecutionPlan{
+		LastPersistedIndex: machine.Registry.Cache.BaseIndex.Gen0,
+		Attributes: []*raftcmdpb.AttributeCoverage{{
+			Id:       &raftcmdpb.AttributeID{Id: id[:], Tag: tag},
+			AttrCode: uint32(dal.SubAttrReference),
+			Value:    &raftcmdpb.AttributeValue{RawValue: raw},
+		}},
+	}
+	batch := store.OpenWriteSession()
+	require.NoError(t, machine.Preload(plan, batch, 0))
+	require.NoError(t, batch.Commit())
+	got, ok := machine.Registry.Cache.References.Gen0().Get(id)
+	require.True(t, ok)
+	require.Equal(t, uint64(2), got.Data.GetTransactionId())
+	key := append([]byte{dal.ZoneCache, 0, dal.SubAttrReference}, id[:]...)
+	persisted, closer, err := store.Get(key)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, closer.Close()) }()
+	_, deleted, value, err := parseLeanValue(persisted)
+	require.NoError(t, err)
+	require.False(t, deleted)
+	var decoded commonpb.TransactionReferenceValue
+	require.NoError(t, decoded.UnmarshalVT(value))
+	require.Equal(t, uint64(2), decoded.GetTransactionId())
 }
 
 // Asserts a full preload (CacheMiss path) lands at both 0xFF byte positions

@@ -122,6 +122,74 @@ func (a *AttributeCache[T]) Reset() {
 // CacheStatus describes the result of checking a key against the dual-generation cache.
 type CacheStatus int
 
+// AdmissionObservation binds the horizon decision to the entry and epoch
+// observed under the same cache rotation lock. Source is set only for a
+// Gen1-only entry that would otherwise be lost at the next rotation.
+type AdmissionObservation[T any] struct {
+	Status           CacheStatus
+	Source           attributes.Entry[T]
+	HasSource        bool
+	SourceGeneration int
+	Epoch            uint64
+}
+
+// ObserveAdmission validates and captures a cache source without allowing a
+// rotation or reset between classification and the Gen1 lookup.
+func (a *AttributeCache[T]) ObserveAdmission(at uint64, k attributes.U128, tag uint64) (AdmissionObservation[T], error) {
+	a.Cache.mu.RLock()
+	defer a.Cache.mu.RUnlock()
+
+	result := AdmissionObservation[T]{Status: CacheMiss, Epoch: a.Cache.epoch.Load()}
+	future := Gen(at, a.Cache.GenerationThreshold())
+	current := a.Cache.currentGeneration.Load()
+	if future < current {
+		return result, nil
+	}
+	if future-current >= 2 {
+		result.Status = CacheUnreachable
+		a.Cache.RecordPreloadEvent("horizon_rejection")
+
+		return result, nil
+	}
+	validate := func(entry attributes.Entry[T]) error {
+		if entry.Tag != tag {
+			a.Cache.RecordPreloadEvent("collision")
+
+			return fmt.Errorf("cache %s: U128 collision with different tag", a.cacheType)
+		}
+		var zero T
+		if !entry.Deleted && any(entry.Data) == any(zero) {
+			a.Cache.RecordPreloadEvent("invalid_live_entry")
+
+			return fmt.Errorf("cache %s: live entry has nil data", a.cacheType)
+		}
+
+		return nil
+	}
+	if entry, ok := a.gen0.Load().Get(k); ok {
+		if err := validate(entry); err != nil {
+			return result, err
+		}
+		result.Status = CacheHit
+
+		return result, nil
+	}
+	if entry, ok := a.gen1.Load().Get(k); ok {
+		if err := validate(entry); err != nil {
+			return result, err
+		}
+		if future == current {
+			result.Status = CacheHit
+		} else {
+			result.Source = entry
+			result.HasSource = true
+			result.SourceGeneration = 1
+		}
+	}
+
+	return result, nil
+}
+
 const (
 	// CacheHit means the key is in cache somewhere within the reachable
 	// horizon (Gen0 hit now, or Gen1 hit that AttributeCache.Get's gen0→gen1
@@ -285,6 +353,7 @@ type Cache struct {
 
 	// Metrics (nil if not initialized)
 	rotations       metric.Int64Counter
+	preloadEvents   metric.Int64Counter
 	generationGauge metric.Int64Gauge
 	// sizeRegistration holds the callback registration for size metrics
 	sizeRegistration metric.Registration
@@ -429,6 +498,15 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 		return err
 	}
 
+	preloadEvents, err := m.Int64Counter(
+		"cache.preload_events",
+		metric.WithDescription("Preload source selections and rejections"),
+		metric.WithUnit("{event}"),
+	)
+	if err != nil {
+		return err
+	}
+
 	generation, err := m.Int64Gauge(
 		"cache.generation",
 		metric.WithDescription("Current cache generation number"),
@@ -467,10 +545,18 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 	}
 
 	c.rotations = rotations
+	c.preloadEvents = preloadEvents
 	c.generationGauge = generation
 	c.sizeRegistration = registration
 
 	return nil
+}
+
+// RecordPreloadEvent records a fixed, low-cardinality preload event.
+func (c *Cache) RecordPreloadEvent(event string) {
+	if c.preloadEvents != nil {
+		c.preloadEvents.Add(context.Background(), 1, metric.WithAttributes(attribute.String("event", event)))
+	}
 }
 
 // recordRotation records a cache generation rotation.

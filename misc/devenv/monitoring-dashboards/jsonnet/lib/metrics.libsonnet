@@ -48,6 +48,7 @@
   cache:: {
     rotations: 'cache.rotations',
     generation: 'cache.generation',
+    preload_events: 'cache.preload_events',
     size: 'cache.size',
   },
 

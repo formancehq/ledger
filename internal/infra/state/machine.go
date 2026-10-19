@@ -956,6 +956,8 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 	}]struct{}, len(executionPlan.GetAttributes()))
 	for i, plan := range executionPlan.GetAttributes() {
 		if err := validatePlan(plan, i); err != nil {
+			fsm.Registry.Cache.RecordPreloadEvent("invalid_payload")
+
 			return err
 		}
 		id := attributes.U128FromBytes(plan.GetId().GetId())
@@ -964,11 +966,15 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 			id   attributes.U128
 		}{plan.GetAttrCode(), id}
 		if _, duplicate := seen[key]; duplicate {
+			fsm.Registry.Cache.RecordPreloadEvent("invalid_payload")
+
 			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("plans[%d]: duplicate attribute coverage", i)}
 		}
 		seen[key] = struct{}{}
 		if plan.GetValue() != nil {
 			if err := fsm.cacheSnapshotter.ValidatePreload(plan.GetId(), byte(plan.GetAttrCode()), plan.GetValue()); err != nil {
+				fsm.Registry.Cache.RecordPreloadEvent("invalid_payload")
+
 				return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("plans[%d]: invalid preload: %v", i, err)}
 			}
 		}
@@ -1042,10 +1048,8 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 
 		attrCode := byte(plan.GetAttrCode())
 
-		// Seed: MirrorPreload writes gen0+gen1 with the Pebble-loaded
-		// payload. Gen1-wins semantics preserve any fresher value a
-		// concurrent write may have already populated between admission's
-		// Pebble scan and apply.
+		// Seed: MirrorPreload preserves the freshest local entry (Gen0,
+		// then Gen1) and persists any changed generation in this batch.
 		if err := fsm.cacheSnapshotter.MirrorPreload(batch, genByte, gen1Byte, plan.GetId(), attrCode, value); err != nil {
 			return err
 		}

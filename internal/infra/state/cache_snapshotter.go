@@ -65,24 +65,6 @@ func parseLeanValue(value []byte) (tag uint64, deleted bool, valueBytes []byte, 
 	return tag, deleted, value[cacheValueHeaderLen:], nil
 }
 
-// putAttributeIfAbsent puts value at id only if store doesn't already have
-// an entry. Returns the resulting in-store value (existing data on a no-op,
-// or value when the put happened) and whether the put occurred.
-func putAttributeIfAbsent[V any](
-	store kv.KV[attributes.U128, attributes.Entry[V]],
-	id attributes.U128,
-	tag uint64,
-	value V,
-) (V, bool) {
-	if existing, ok := store.Get(id); ok && !existing.Deleted {
-		return existing.Data, false
-	}
-
-	store.Put(id, attributes.Entry[V]{Tag: tag, Data: value})
-
-	return value, true
-}
-
 // cacheSnapshotSlot captures the persist/restore logic for a single cache type.
 // Implemented by protoSnapshotSlot[V] for proto-backed caches.
 type cacheSnapshotSlot interface {
@@ -92,13 +74,10 @@ type cacheSnapshotSlot interface {
 	Persist(batch *dal.WriteSession, genByte byte, genIndex int) error
 	// RestoreEntry returns a function that restores a single entry into the given generation.
 	RestoreEntry(genIndex int) func(u128 attributes.U128, rawValue []byte) error
-	// MirrorPreload puts value into both in-memory generations and mirrors
-	// to 0xFF at both byte positions. rawValue is the vtproto-marshaled
-	// blob carried by Preload.raw_value; the concrete implementation
-	// unmarshals it into its V before applying the tombstone/Gen1-wins
-	// rules.
-	MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1Byte byte, attrID *raftcmdpb.AttributeID, rawValue []byte) error
-	ValidatePreload(attrID *raftcmdpb.AttributeID, rawValue []byte) error
+	// MirrorPreload resolves Gen0 > Gen1 > incoming seed and persists
+	// every newly written generation in the proposal batch.
+	MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1Byte byte, attrID *raftcmdpb.AttributeID, value *raftcmdpb.AttributeValue) error
+	ValidatePreload(attrID *raftcmdpb.AttributeID, value *raftcmdpb.AttributeValue) error
 	// IterKeys iterates all U128 keys in the given generation.
 	IterKeys(genIndex int) iter.Seq[attributes.U128]
 }
@@ -149,87 +128,75 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 	batch *dal.WriteSession,
 	gen0Byte, gen1Byte byte,
 	attrID *raftcmdpb.AttributeID,
-	rawValue []byte,
+	value *raftcmdpb.AttributeValue,
 ) error {
-	// rawValue is the vtproto-marshaled blob of the (live) attribute value.
-	// It can legitimately be empty — a presence-only marker or an all-default
-	// proto marshals to zero bytes (EN-1377). The tombstone signal lives in
-	// the on-disk lean format's flag byte, not in len(rawValue); admission
-	// emits a Declare plan for absent keys (EN-1378) and never reaches this
-	// code path for tombstones. Unmarshal unconditionally: vtproto produces
-	// a valid zero-value proto from an empty buffer.
-	typed := s.newValue()
-	if err := typed.UnmarshalVT(rawValue); err != nil {
-		return fmt.Errorf("MirrorPreload: unmarshal cacheType=0x%x (%d bytes): %w", s.cacheType, len(rawValue), err)
+	if err := s.ValidatePreload(attrID, value); err != nil {
+		return err
 	}
-
 	id := attributes.U128FromBytes(attrID.GetId())
 	tag := attrID.GetTag()
-
-	// Preserve tombstones. A delete that landed in Raft order after the
-	// preload was scanned writes a tombstone here; overwriting it with
-	// the stale scanned value would silently resurrect metadata the
-	// user deleted. This was surfaced by a former background-update race
-	// on #359; the tombstone rule remains general to every preload mirror.
-	//
-	// The tag check matters in the (improbable but non-zero) case of a
-	// U128 collision: a tombstone for canonical-key A would otherwise
-	// suppress the preload for canonical-key B that hashes to the same
-	// U128 id. With the tag check, only a tombstone for THIS key
-	// short-circuits.
-	if existing, ok := s.ac.Gen1().Get(id); ok && existing.Deleted && existing.Tag == tag {
+	if _, ok := s.ac.Gen0().Get(id); ok {
 		return nil
 	}
+	if existing, ok := s.ac.Gen1().Get(id); ok {
+		// The Gen1 entry is newer than the incoming seed. Promote it
+		// without changing Gen1, including when it is a tombstone.
+		var raw []byte
+		if !existing.Deleted {
+			var err error
+			raw, err = s.marshalValue(existing.Data)
+			if err != nil {
+				return fmt.Errorf("marshaling preloaded value: %w", err)
+			}
+		}
+		s.ac.Gen0().Put(id, existing)
 
-	if existing, ok := s.ac.Gen0().Get(id); ok && existing.Deleted && existing.Tag == tag {
-		return nil
+		return writeCacheRaw(batch, gen0Byte, s.cacheType, id, tag, existing.Deleted, raw)
 	}
-
-	// gen1 wins if it already has a (post-rotation, possibly fresher)
-	// value; otherwise the preload value populates both gens.
-	effective, gen1Set := putAttributeIfAbsent(s.ac.Gen1(), id, tag, typed)
-	_, gen0Set := putAttributeIfAbsent(s.ac.Gen0(), id, tag, effective)
-
-	if !gen0Set && !gen1Set {
-		return nil
-	}
-
-	// Common path (Gen1 was empty, effective == typed): reuse the rawValue
-	// bytes that arrived on the wire instead of re-marshaling. The cold
-	// path (Gen1 won, effective is its older entry) re-serializes.
-	valueBytes := rawValue
-	if !gen1Set {
-		var err error
-		valueBytes, err = s.marshalValue(effective)
-		if err != nil {
-			return fmt.Errorf("marshaling preloaded value: %w", err)
+	entry := attributes.Entry[V]{Tag: tag, Deleted: value.GetDeleted()}
+	if !entry.Deleted {
+		entry.Data = s.newValue()
+		if err := entry.Data.UnmarshalVT(value.GetRawValue()); err != nil {
+			return fmt.Errorf("MirrorPreload: unmarshal cacheType=0x%x: %w", s.cacheType, err)
 		}
 	}
-
-	if gen0Set {
-		if err := writeCacheRaw(batch, gen0Byte, s.cacheType, id, tag, false, valueBytes); err != nil {
-			return fmt.Errorf("persisting preloaded gen0 value: %w", err)
-		}
+	s.ac.Gen1().Put(id, entry)
+	s.ac.Gen0().Put(id, entry)
+	if err := writeCacheRaw(batch, gen0Byte, s.cacheType, id, tag, entry.Deleted, value.GetRawValue()); err != nil {
+		return fmt.Errorf("persisting preloaded gen0 value: %w", err)
 	}
-
-	if gen1Set {
-		if err := writeCacheRaw(batch, gen1Byte, s.cacheType, id, tag, false, valueBytes); err != nil {
-			return fmt.Errorf("persisting preloaded gen1 value: %w", err)
-		}
+	if err := writeCacheRaw(batch, gen1Byte, s.cacheType, id, tag, entry.Deleted, value.GetRawValue()); err != nil {
+		return fmt.Errorf("persisting preloaded gen1 value: %w", err)
 	}
 
 	return nil
 }
 
-func (s *protoSnapshotSlot[V]) ValidatePreload(attrID *raftcmdpb.AttributeID, rawValue []byte) error {
-	typed := s.newValue()
-	if err := typed.UnmarshalVT(rawValue); err != nil {
-		return fmt.Errorf("unmarshal cacheType=0x%x: %w", s.cacheType, err)
+func (s *protoSnapshotSlot[V]) ValidatePreload(attrID *raftcmdpb.AttributeID, value *raftcmdpb.AttributeValue) error {
+	if value.GetDeleted() {
+		if len(value.GetRawValue()) != 0 {
+			return fmt.Errorf("cacheType=0x%x: tombstone carries raw value", s.cacheType)
+		}
+	} else {
+		typed := s.newValue()
+		if err := typed.UnmarshalVT(value.GetRawValue()); err != nil {
+			return fmt.Errorf("unmarshal cacheType=0x%x: %w", s.cacheType, err)
+		}
 	}
 	id := attributes.U128FromBytes(attrID.GetId())
 	for _, generation := range []kv.KV[attributes.U128, attributes.Entry[V]]{s.ac.Gen0(), s.ac.Gen1()} {
-		if existing, ok := generation.Get(id); ok && existing.Tag != attrID.GetTag() {
-			return fmt.Errorf("cacheType=0x%x: U128 collision with different tag", s.cacheType)
+		if existing, ok := generation.Get(id); ok {
+			if existing.Tag != attrID.GetTag() {
+				s.ac.Cache.RecordPreloadEvent("collision")
+
+				return fmt.Errorf("cacheType=0x%x: U128 collision with different tag", s.cacheType)
+			}
+			var zero V
+			if !existing.Deleted && any(existing.Data) == any(zero) {
+				s.ac.Cache.RecordPreloadEvent("invalid_live_entry")
+
+				return fmt.Errorf("cacheType=0x%x: live entry has nil data", s.cacheType)
+			}
 		}
 	}
 
@@ -366,30 +333,32 @@ func NewCacheSnapshotter(logger logging.Logger, registry *StateRegistry, bloomFi
 	}
 }
 
-// MirrorPreload populates both in-memory generations and mirrors to 0xFF
-// at both byte positions. attrCode (from the parent AttributeCoverage) picks
-// the slot; value.raw_value carries the typed value bytes (vtproto-
-// marshaled), and attrID carries the U128 + the xxh3 collision tag.
+// MirrorPreload applies the validated Gen0 > Gen1 > incoming precedence.
+// Changed generations are mirrored to 0xFF in the same proposal batch.
+// attrCode selects the slot and attrID carries the U128 and collision tag.
 func (s *CacheSnapshotter) MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1Byte byte, attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.AttributeValue) error {
 	if attrID == nil || value == nil {
-		return nil
+		return errors.New("missing preload attribute ID or value")
 	}
 
-	slot, ok := s.slotByAttrCode[attrCode]
-	if !ok {
-		return nil
-	}
-
-	return slot.MirrorPreload(batch, gen0Byte, gen1Byte, attrID, value.GetRawValue())
-}
-
-func (s *CacheSnapshotter) ValidatePreload(attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.AttributeValue) error {
 	slot, ok := s.slotByAttrCode[attrCode]
 	if !ok {
 		return fmt.Errorf("unknown preload attr_code 0x%x", attrCode)
 	}
 
-	return slot.ValidatePreload(attrID, value.GetRawValue())
+	return slot.MirrorPreload(batch, gen0Byte, gen1Byte, attrID, value)
+}
+
+func (s *CacheSnapshotter) ValidatePreload(attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.AttributeValue) error {
+	if attrID == nil || len(attrID.GetId()) != 16 || value == nil {
+		return errors.New("missing or malformed preload attribute ID or value")
+	}
+	slot, ok := s.slotByAttrCode[attrCode]
+	if !ok {
+		return fmt.Errorf("unknown preload attr_code 0x%x", attrCode)
+	}
+
+	return slot.ValidatePreload(attrID, value)
 }
 
 // persistLeanProtoEntries writes all entries from a KV store to 0xFF in lean format.

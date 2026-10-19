@@ -4990,6 +4990,7 @@ func (x *AttributeCoverage) GetValue() *AttributeValue {
 type AttributeValue struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RawValue      []byte                 `protobuf:"bytes,1,opt,name=raw_value,json=rawValue,proto3" json:"raw_value,omitempty"`
+	Deleted       bool                   `protobuf:"varint,2,opt,name=deleted,proto3" json:"deleted,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5029,6 +5030,13 @@ func (x *AttributeValue) GetRawValue() []byte {
 		return x.RawValue
 	}
 	return nil
+}
+
+func (x *AttributeValue) GetDeleted() bool {
+	if x != nil {
+		return x.Deleted
+	}
+	return false
 }
 
 // ReloadIdempotencyKey rides on ExecutionPlan.idempotency_keys, not on the
@@ -5723,9 +5731,10 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x11AttributeCoverage\x12!\n" +
 	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x12\x1b\n" +
 	"\tattr_code\x18\x02 \x01(\rR\battrCode\x12*\n" +
-	"\x05value\x18\x03 \x01(\v2\x14.raft.AttributeValueR\x05value\"-\n" +
+	"\x05value\x18\x03 \x01(\v2\x14.raft.AttributeValueR\x05value\"G\n" +
 	"\x0eAttributeValue\x12\x1b\n" +
-	"\traw_value\x18\x01 \x01(\fR\brawValue\"[\n" +
+	"\traw_value\x18\x01 \x01(\fR\brawValue\x12\x18\n" +
+	"\adeleted\x18\x02 \x01(\bR\adeleted\"[\n" +
 	"\x14ReloadIdempotencyKey\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
 	"\x05value\x18\x02 \x01(\v2\x1b.common.IdempotencyKeyValueR\x05value\"4\n" +

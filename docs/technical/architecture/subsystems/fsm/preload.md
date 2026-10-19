@@ -4,7 +4,7 @@
 
 The FSM apply path is forbidden from reading Pebble (see [CLAUDE.md invariant #3](../../../../../AGENTS.md)). Every attribute it consults during apply must therefore already be resident in the in-memory **attribute cache** by the time the proposal lands. The job of preload is to make that true.
 
-Preload **resolves** at propose time, before the proposer acquires the proposal guard: it reads the cache first and falls back to Pebble on a miss. What it produces is not a cache mutation but a set of `AttributeCoverage` entries carried on the proposal's `ExecutionPlan` (`internal/infra/plan/resolve.go` only appends values). Those entries come in two kinds — **seeds**, carrying a value the resolver had to fetch from Pebble, and **coverage-only**, carrying no value because the cache already holds the key or it is confirmed absent. Only seeds are written into the cache; coverage-only entries just authorise the gated read. The distinction is spelled out under [seed vs coverage-only](#attributecoverage--seed-vs-coverage-only).
+Preload **resolves** at propose time, before the proposer acquires the proposal guard: it observes the cache first and falls back to Pebble on a genuine miss. What it produces is not a cache mutation but a set of `AttributeCoverage` entries carried on the proposal's `ExecutionPlan`. A seed can contain a directly captured Gen1 value or a Pebble value. Coverage-only entries carry no value because the cache retains the key at the predicted apply index or it is confirmed absent. Only seeds are written into the cache; coverage-only entries authorise the gated read.
 
 The cache write happens later, on the **FSM apply path**: `CacheSnapshotter.MirrorPreload`, called from `Machine.Preload` strictly after `checkStaleProposal` has passed. That ordering is what makes the mechanism deterministic — every replica seeds from the same committed bytes, and a stale proposal is rejected before it can touch the cache — so the FSM sees the same value on every replica when it later does `Scope.GetX(...)`.
 
@@ -138,7 +138,7 @@ The bloom filter is consulted **here**, at the resolution layer, not below it: `
 
 This is the surviving typed shape, and `loader.go` (plus its test) is the entire package — the loaders are the only thing `internal/infra/preload` contains. Everything upstream of them, including the parallel resolution that drives them, lives in `internal/infra/plan`.
 
-The division of labour between the two layers is easy to get wrong: **the loader never touches the attribute cache.** The hit/miss verdict is taken above it, in the `plan` package — `resolveCoverage` asks `AttributeCache.CheckCache(nextIndex, id)` (`internal/infra/plan/resolve.go`) and only on a miss hands the loader a Pebble-`Get` closure. `loader.go` holds no cache reference at all; the only cache-derived thing it sees is a `cacheEpoch` scalar.
+The division of labour between the two layers is easy to get wrong: **the loader never touches the attribute cache.** The source decision is taken above it, in the `plan` package. `resolveCoverage` calls `AttributeCache.ObserveAdmission`, which holds the cache rotation read lock while it classifies the predicted horizon and copies a Gen1-only source header. The resolver sends only genuine misses to the Pebble loader. A tag collision or live entry with nil data fails admission. The observation also carries the cache epoch; a changed epoch causes a rebuild.
 
 Each loader then:
 
@@ -186,10 +186,18 @@ The discriminator between them: **only the `CacheSnapshotter` method takes `attr
 
 `AttributeCoverage` (`misc/proto/raft_cmd.proto:793`) carries `AttributeID id = 1`, `uint32 attr_code = 2` and an **optional** `AttributeValue value = 3`. That optionality is the whole distinction:
 
-- **`value` set ⇒ seed.** The key was a cache miss at admission and the Pebble load hit, so the entry carries the value and the FSM seeds the cache through `MirrorPreload`.
+- **`value` set ⇒ seed.** The key was a one-rotation Gen1-only hit or a Pebble load hit, so the entry carries the value and the FSM seeds the cache through `MirrorPreload`.
 - **`value` nil ⇒ coverage-only.** The entry authorises the read but writes nothing. No preemptive promote pass is needed: `AttributeCache.Get`'s gen0→gen1 fallback handles the read, and `KeyStore.Tombstone`'s lazy Gen0-tombstone fabrication handles the delete.
 
-`AttributeValue` holds a single `bytes raw_value = 1` — the value is type-erased on the wire, and the FSM dispatches the typed unmarshal via the parent entry's `attr_code`.
+`AttributeValue` has `bytes raw_value = 1` and `bool deleted = 2`. An empty live value remains a valid zero-byte proto. A tombstone has `deleted = true` and an empty raw value; any tombstone with payload is rejected before preload mutates state. Existing live plans still decode and apply.
+
+The apply precedence for every seed is Gen0, then Gen1, then the incoming value. Both local generations are checked for tag collisions and invalid live nil data before mutation. If Gen0 exists, no cache row changes. If only Gen1 exists, it is copied into Gen0 and the matching 0xFF cache row is staged in the proposal's Pebble batch. If neither exists, the seed populates both generations and both 0xFF rows. The rule applies to live values and tombstones and does not read Pebble in apply. A failed batch commit is fail-stop; serving must not resume from the mutated memory.
+
+EN-3046 owns the mixed-version activation signal. Until it is available, admission rejects a Gen1-only tombstone source as a transient horizon error and emits no tombstone plan. The FSM can already decode and apply an explicitly committed tombstone seed. This gate is an admission rule only; committed-plan application does not consult node-local configuration.
+
+The `cache.preload_events` counter records direct live seeds, Pebble fallbacks, epoch retries, horizon rejections, blocked tombstone seeds, malformed payloads, invalid live entries, and tag collisions. Tombstone seed emission has no active counter path until EN-3046 enables it.
+
+For incremental restore, the 0xFF generation rows are cache state and are discarded when a destination prepares the source checkpoint. No new primary projection or audit effect is created by a preload seed. A non-empty post-checkpoint business delta still rebuilds its volume and reference projections from the exported history; the cache is seeded again by destination admission. The preload change therefore does not add a `RebuildDelta` fold.
 
 ### `coverage_bits`, computed per operation at marshal time
 

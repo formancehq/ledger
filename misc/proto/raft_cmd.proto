@@ -749,6 +749,7 @@ message AttributeCoverage {
 // this message to avoid carrying the kind in two places.
 message AttributeValue {
   bytes raw_value = 1;
+  bool deleted = 2;
 }
 
 // ReloadIdempotencyKey rides on ExecutionPlan.idempotency_keys, not on the

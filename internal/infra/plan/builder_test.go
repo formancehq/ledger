@@ -287,8 +287,9 @@ func TestBuildPreloads_EmitsDeclareOnCacheHit(t *testing.T) {
 		AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"},
 		Key:        "label",
 	}
-	id, _ := attributes.MakeKey(metaKey.Bytes())
+	id, tag := attributes.MakeKey(metaKey.Bytes())
 	c.AccountMetadata.Put(id, attributes.Entry[*commonpb.MetadataValue]{
+		Tag:  tag,
 		Data: &commonpb.MetadataValue{},
 	})
 
@@ -309,6 +310,79 @@ func TestBuildPreloads_EmitsDeclareOnCacheHit(t *testing.T) {
 	require.True(t, isCoverageOnly, "CacheHit must emit a coverage-only entry (value nil) — cache already has the value, no seed needed")
 	require.Equal(t, uint32(dal.SubAttrMetadata), plan.GetAttrCode())
 	require.Equal(t, id[:], plan.GetId().GetId())
+}
+
+func TestBuildPreloadsCapturesGen1InsteadOfStalePebble(t *testing.T) {
+	t.Parallel()
+	logger := logging.Testing()
+	meter := noop.NewMeterProvider().Meter("test")
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	c, err := cache.New(10, meter)
+	require.NoError(t, err)
+	key := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"},
+		Key:        "label",
+	}
+	id, tag := attributes.MakeKey(key.Bytes())
+	live := &commonpb.MetadataValue{}
+	c.AccountMetadata.Gen1().Put(id, attributes.Entry[*commonpb.MetadataValue]{Tag: tag, Data: live})
+	needs := NewCoverage()
+	needs.Add(dal.SubAttrMetadata, key.Bytes())
+	builder := NewBuilder(node.NewIndexTracker(11), c, attributes.New(), store, nil, logger, 0)
+	build, err := builder.Build(needs, []WriteOperation{{Coverage: needs}})
+	require.NoError(t, err)
+	defer build.ReleaseLoaders()
+	require.Len(t, build.ExecutionPlan.GetAttributes(), 1)
+	value := build.ExecutionPlan.GetAttributes()[0].GetValue()
+	require.NotNil(t, value, "Gen1-only value must be seeded directly")
+	require.False(t, value.GetDeleted())
+	require.Empty(t, value.GetRawValue(), "a live zero-byte proto stays live")
+
+	c.AccountMetadata.Gen1().Put(id, attributes.Entry[*commonpb.MetadataValue]{Tag: tag, Deleted: true})
+	blocked, err := builder.Build(needs, nil)
+	if blocked != nil {
+		blocked.ReleaseLoaders()
+	}
+	require.ErrorIs(t, err, ErrTombstoneActivationRequired)
+}
+
+func TestBuildPreloadsUsesUncommittedReferenceStateAcrossRotation(t *testing.T) {
+	t.Parallel()
+	logger := logging.Testing()
+	meter := noop.NewMeterProvider().Meter("test")
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	attrs := attributes.New()
+	c, err := cache.New(10, meter)
+	require.NoError(t, err)
+	key := domain.TransactionReferenceKey{LedgerName: "test", Reference: "refrace"}
+	id, tag := attributes.MakeKey(key.Bytes())
+
+	// Admission's durable snapshot still has the old reference. A prepared
+	// batch has published the newer value in cache but has not committed.
+	old := &commonpb.TransactionReferenceValue{TransactionId: 1}
+	batch := store.OpenWriteSession()
+	_, err = attrs.References.Set(batch, key.Bytes(), old)
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+	newer := &commonpb.TransactionReferenceValue{TransactionId: 2}
+	c.References.Gen1().Put(id, attributes.Entry[*commonpb.TransactionReferenceValue]{Tag: tag, Data: newer})
+
+	needs := NewCoverage()
+	needs.Add(dal.SubAttrReference, key.Bytes())
+	builder := NewBuilder(node.NewIndexTracker(11), c, attrs, store, nil, logger, 0)
+	build, err := builder.Build(needs, []WriteOperation{{Coverage: needs}})
+	require.NoError(t, err)
+	defer build.ReleaseLoaders()
+	require.Len(t, build.ExecutionPlan.GetAttributes(), 1)
+	value := build.ExecutionPlan.GetAttributes()[0].GetValue()
+	require.NotNil(t, value)
+	var decoded commonpb.TransactionReferenceValue
+	require.NoError(t, decoded.UnmarshalVT(value.GetRawValue()))
+	require.Equal(t, uint64(2), decoded.GetTransactionId(), "direct Gen1 capture must win over stale Pebble")
 }
 
 // TestBuildPreloads_EmitsDeclareOnMissingKey confirms the CacheMiss

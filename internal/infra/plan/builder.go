@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -194,7 +195,25 @@ func (p *Builder) Build(aggregate *Coverage, operations []WriteOperation) (*Buil
 	snap := p.cache.Snapshot()
 	nextIndexGen := cache.Gen(nextIndex, snap.GenerationThreshold)
 
-	executionPlan, token, err := p.buildPreloadsAt(nextIndex, snap, aggregate)
+	var executionPlan *raftcmdpb.ExecutionPlan
+	var token *preload.CleanupToken
+	var err error
+	for attempt := range 3 {
+		executionPlan, token, err = p.buildPreloadsAt(nextIndex, snap, aggregate)
+		if !errors.Is(err, errCacheEpochChanged) {
+			break
+		}
+		p.cache.RecordPreloadEvent("epoch_retry")
+		if token != nil {
+			token.Release()
+			token = nil
+		}
+		if attempt == 2 {
+			break
+		}
+		snap = p.cache.Snapshot()
+		nextIndexGen = cache.Gen(nextIndex, snap.GenerationThreshold)
+	}
 	if err != nil {
 		return &BuildResult{token: token, nextIndex: nextIndex, nextIndexGen: nextIndexGen, operations: operations, aggregate: aggregate}, err
 	}
@@ -237,7 +256,7 @@ func (p *Builder) AcquireProposalGuard(build *BuildResult) (*raftcmdpb.Execution
 	nextIndexAfter := p.tracker.Next()
 	nextIndexGenAfter := cache.Gen(nextIndexAfter, snap.GenerationThreshold)
 
-	if build.nextIndexGen == nextIndexGenAfter {
+	if build.nextIndexGen == nextIndexGenAfter && build.ExecutionPlan.GetCacheEpoch() == snap.Epoch {
 		return nil, &ProposalGuard{p: p, token: build.token}, nil
 	}
 

@@ -1,6 +1,8 @@
 package cache
 
 import (
+	"fmt"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -250,6 +252,172 @@ func TestAttributeCache_CheckCache_NextGeneration(t *testing.T) {
 		"Gen0-hit at next-gen horizon still reaches apply via the gen0→gen1 fallback")
 	assert.Equal(t, CacheMiss, ac.CheckCache(15, keyInGen1),
 		"Gen1-only at next-gen horizon is discarded by rotation")
+}
+
+func TestObserveAdmissionCapturesGen1AndRejectsInvalidEntries(t *testing.T) {
+	t.Parallel()
+	c, err := New(10, nil)
+	require.NoError(t, err)
+	id := attributes.NewU128(4, 5)
+	live := attributes.Entry[*raftcmdpb.VolumePair]{Tag: 7, Data: &raftcmdpb.VolumePair{}}
+	c.Volumes.Gen1().Put(id, live)
+
+	observation, err := c.Volumes.ObserveAdmission(11, id, 7)
+	require.NoError(t, err)
+	require.Equal(t, CacheMiss, observation.Status)
+	require.True(t, observation.HasSource)
+	require.Equal(t, 1, observation.SourceGeneration)
+	require.Same(t, live.Data, observation.Source.Data)
+	require.Equal(t, c.Epoch(), observation.Epoch)
+
+	observation, err = c.Volumes.ObserveAdmission(10, id, 7)
+	require.NoError(t, err)
+	require.Equal(t, CacheHit, observation.Status)
+	require.False(t, observation.HasSource)
+
+	_, err = c.Volumes.ObserveAdmission(11, id, 8)
+	require.ErrorContains(t, err, "collision")
+	c.Volumes.Gen1().Put(id, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 7})
+	_, err = c.Volumes.ObserveAdmission(11, id, 7)
+	require.ErrorContains(t, err, "nil data")
+
+	c.Volumes.Gen1().Put(id, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 7, Deleted: true})
+	_, err = c.Volumes.ObserveAdmission(11, id, 8)
+	require.ErrorContains(t, err, "collision", "a mismatched tombstone is a collision")
+	observation, err = c.Volumes.ObserveAdmission(11, id, 7)
+	require.NoError(t, err)
+	require.True(t, observation.Source.Deleted)
+	c.Volumes.Gen0().Put(id, live)
+	observation, err = c.Volumes.ObserveAdmission(11, id, 7)
+	require.NoError(t, err)
+	require.Equal(t, CacheHit, observation.Status)
+	require.False(t, observation.HasSource)
+
+	observation, err = c.Volumes.ObserveAdmission(21, id, 7)
+	require.NoError(t, err)
+	require.Equal(t, CacheUnreachable, observation.Status)
+	c.SetCurrentGeneration(2)
+	observation, err = c.Volumes.ObserveAdmission(10, id, 7)
+	require.NoError(t, err)
+	require.Equal(t, CacheMiss, observation.Status, "a stale-behind index remains a miss")
+	c.SetCurrentGeneration(0)
+}
+
+func TestObserveAdmissionBetweenGenerationWrites(t *testing.T) {
+	t.Parallel()
+	c, err := New(10, nil)
+	require.NoError(t, err)
+	id := attributes.NewU128(11, 12)
+	first := &raftcmdpb.VolumePair{}
+	second := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(2)}
+	c.Volumes.Gen1().Put(id, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 9, Data: first})
+	captured, err := c.Volumes.ObserveAdmission(11, id, 9)
+	require.NoError(t, err)
+	require.True(t, captured.HasSource)
+	c.Volumes.Gen0().Put(id, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 9, Data: second})
+	require.Same(t, first, captured.Source.Data)
+	later, err := c.Volumes.ObserveAdmission(11, id, 9)
+	require.NoError(t, err)
+	require.Equal(t, CacheHit, later.Status)
+	require.False(t, later.HasSource)
+}
+
+func BenchmarkAdmissionHotGen0(b *testing.B) {
+	c, err := New(1000, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	id := attributes.NewU128(4, 5)
+	c.Volumes.Gen0().Put(id, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 7, Data: &raftcmdpb.VolumePair{}})
+	b.ReportAllocs()
+	b.Run("CheckCache", func(b *testing.B) {
+		for b.Loop() {
+			_ = c.Volumes.CheckCache(5, id)
+		}
+	})
+	b.Run("ObserveAdmission", func(b *testing.B) {
+		for b.Loop() {
+			if _, err := c.Volumes.ObserveAdmission(5, id, 7); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
+
+func BenchmarkAdmissionSources(b *testing.B) {
+	for _, threshold := range []uint64{10, 1000} {
+		c, err := New(threshold, nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+		gen0ID := attributes.NewU128(1, 1)
+		gen1ID := attributes.NewU128(2, 2)
+		missID := attributes.NewU128(3, 3)
+		c.Volumes.Gen0().Put(gen0ID, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 1, Data: &raftcmdpb.VolumePair{}})
+		c.Volumes.Gen1().Put(gen1ID, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 2, Data: &raftcmdpb.VolumePair{}})
+		cases := []struct {
+			name  string
+			id    attributes.U128
+			tag   uint64
+			index uint64
+		}{
+			{"gen0", gen0ID, 1, threshold + 1},
+			{"gen1_same_generation", gen1ID, 2, 1},
+			{"gen1_direct_seed", gen1ID, 2, threshold + 1},
+			{"pebble_candidate", missID, 3, threshold + 1},
+		}
+		for _, tc := range cases {
+			b.Run(fmt.Sprintf("threshold_%d/%s", threshold, tc.name), func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					if _, err := c.Volumes.ObserveAdmission(tc.index, tc.id, tc.tag); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkAdmissionManyAccounts(b *testing.B) {
+	for _, threshold := range []uint64{10, 1000} {
+		c, err := New(threshold, nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+		ids := make([]attributes.U128, 1024)
+		for i := range ids {
+			ids[i] = attributes.NewU128(uint64(i), uint64(i))
+			c.Volumes.Gen0().Put(ids[i], attributes.Entry[*raftcmdpb.VolumePair]{
+				Tag: uint64(i), Data: &raftcmdpb.VolumePair{},
+			})
+		}
+		b.Run(fmt.Sprintf("threshold_%d/serial", threshold), func(b *testing.B) {
+			b.ReportAllocs()
+			i := 0
+			for b.Loop() {
+				j := i % len(ids)
+				if _, err := c.Volumes.ObserveAdmission(1, ids[j], uint64(j)); err != nil {
+					b.Fatal(err)
+				}
+				i++
+			}
+		})
+		b.Run(fmt.Sprintf("threshold_%d/concurrent", threshold), func(b *testing.B) {
+			b.ReportAllocs()
+			var next atomic.Uint64
+			b.RunParallel(func(pb *testing.PB) {
+				i := next.Add(1)
+				for pb.Next() {
+					j := int(i % uint64(len(ids)))
+					if _, err := c.Volumes.ObserveAdmission(1, ids[j], uint64(j)); err != nil {
+						b.Fatal(err)
+					}
+					i++
+				}
+			})
+		})
+	}
 }
 
 func TestAttributeCache_CheckCache_TwoGenerationsAhead(t *testing.T) {
