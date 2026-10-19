@@ -22,7 +22,7 @@ func newTestKV[V any]() kv.KV[U128, V] {
 }
 
 func newTestKeyStore() *KeyStore[testKey, string] {
-	return NewKeyStore[testKey, string](newTestKV[Entry[string]]())
+	return NewKeyStore[testKey, string](kv.NewTaggedShardedMap[U128, Entry[string]](func(k U128) uint64 { return k.Hi() }, func(e Entry[string]) uint64 { return e.Tag }))
 }
 
 func BenchmarkKeyStorePutExisting(b *testing.B) {
@@ -40,13 +40,13 @@ func BenchmarkKeyStorePutExisting(b *testing.B) {
 }
 
 type publishBarrierKV struct {
-	kv.KV[U128, Entry[string]]
+	entryKV[string]
 	published chan struct{}
 	release   chan struct{}
 }
 
 func (m *publishBarrierKV) GetAndPut(id U128, entry Entry[string]) (Entry[string], bool) {
-	old, existed := m.KV.GetAndPut(id, entry)
+	old, existed := m.entryKV.GetAndPut(id, entry)
 	close(m.published)
 	<-m.release
 	return old, existed
@@ -56,10 +56,10 @@ func TestKeyStorePutRejectsBeforePublication(t *testing.T) {
 	t.Parallel()
 	canonical := []byte("publication-window")
 	id, tag := MakeKey(canonical)
-	raw := newTestKV[Entry[string]]()
+	raw := kv.NewTaggedShardedMap[U128, Entry[string]](func(k U128) uint64 { return k.Hi() }, func(e Entry[string]) uint64 { return e.Tag })
 	raw.Put(id, Entry[string]{Tag: tag + 1, Data: "original"})
 	barrier := &publishBarrierKV{
-		KV:        raw,
+		entryKV:   raw,
 		published: make(chan struct{}),
 		release:   make(chan struct{}),
 	}

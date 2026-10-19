@@ -13,7 +13,7 @@ import (
 
 func newTestLedgerKeyStore() *attributes.KeyStore[domain.LedgerKey, *commonpb.LedgerInfo] {
 	return attributes.NewKeyStore[domain.LedgerKey, *commonpb.LedgerInfo](
-		kv.NewShardedMap[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]](func(k attributes.U128) uint64 { return k.Hi() }),
+		kv.NewTaggedShardedMap[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]](func(k attributes.U128) uint64 { return k.Hi() }, func(e attributes.Entry[*commonpb.LedgerInfo]) uint64 { return e.Tag }),
 	)
 }
 

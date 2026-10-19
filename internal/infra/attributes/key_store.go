@@ -47,15 +47,22 @@ func (kh *KeyHasher) MakeKey(canonical []byte) (U128, uint64) {
 	return NewU128(u.Hi, u.Lo), tag
 }
 
+type entryKV[T any] interface {
+	kv.KV[U128, Entry[T]]
+	// GetAndPutIfTag compares the visible entry before any publication.
+	GetAndPutIfTag(U128, Entry[T], uint64) (Entry[T], bool, bool)
+}
+
 // Store is a thin wrapper around map[U128]Entry[T] that enforces
 // the (u128, tag64) collision check on Get/Put.
 type KeyStore[K Key, T any] struct {
 	hasher  *KeyHasher
-	M       kv.KV[U128, Entry[T]]
+	M       entryKV[T]
 	scratch []byte // reusable buffer for GetKey — single-goroutine use only
 }
 
-func NewKeyStore[K Key, T any](m kv.KV[U128, Entry[T]]) *KeyStore[K, T] {
+// NewKeyStore requires a store configured for collision-tag conditional writes.
+func NewKeyStore[K Key, T any](m entryKV[T]) *KeyStore[K, T] {
 	return &KeyStore[K, T]{
 		hasher: NewKeyHasher(),
 		M:      m,
@@ -80,14 +87,10 @@ func (s *KeyStore[K, T]) Put(canonical []byte, value T) (oldValue kv.Optional[T]
 
 	newEntry := Entry[T]{Tag: tag, Data: value}
 
-	// The FSM is the sole writer; admission may read concurrently. Check the
-	// visible entry before publishing, so a rejected collision is never seen
-	// by admission between a write and a rollback.
-	if existing, existed := s.M.Get(id); existed && existing.Tag != tag {
+	existing, existed, published := s.M.GetAndPutIfTag(id, newEntry, tag)
+	if !published {
 		return kv.None[T](), IDWithTag{}, newErrCollisionDetected(canonical, existing.Tag, tag)
 	}
-
-	existing, existed := s.M.GetAndPut(id, newEntry)
 	if existed {
 		if existing.Deleted {
 			// Matching tombstone: revive without an old value.
