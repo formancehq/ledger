@@ -1514,6 +1514,15 @@ func (m *Proposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.RequiredCapabilities) > 0 {
+		i -= 4 * len(m.RequiredCapabilities)
+		for iNdEx, v := range m.RequiredCapabilities {
+			binary.LittleEndian.PutUint32(dAtA[i+iNdEx*4:], uint32(v))
+		}
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(4*len(m.RequiredCapabilities)))
+		i--
+		dAtA[i] = 0x52
+	}
 	if len(m.TechnicalUpdates) > 0 {
 		for iNdEx := len(m.TechnicalUpdates) - 1; iNdEx >= 0; iNdEx-- {
 			size, _ := m.TechnicalUpdates[iNdEx].MarshalToSizedBufferVT(dAtA[:i])

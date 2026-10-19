@@ -10,6 +10,7 @@ The replication and ordering layer (`internal/infra/node`, `internal/infra/trans
 | [global-log.md](global-log.md) | Two-level log architecture enabling system-level atomic bulk operations. |
 | [hybrid-logical-clock.md](hybrid-logical-clock.md) | Monotonic HLC timestamps across leader changes and clock skew. |
 | [removed-member-registry.md](removed-member-registry.md) | Universal member-identity invariant, committed-only peer routing, and replicated `(nodeID, instanceID)` set that prevents a removed member from silently rejoining and being auto-promoted; force-removal write ordering and durable restart states. |
+| [capabilities.md](capabilities.md) | Stable capability declarations, persisted activation policy and replay floor, membership evidence, and mixed-version rollout boundaries. |
 
 ## Related
 

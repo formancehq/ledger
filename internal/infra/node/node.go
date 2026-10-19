@@ -25,6 +25,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
@@ -2310,6 +2311,19 @@ func (node *Node) rejectQueuedProposal(proposal *Proposal, err error) {
 // if Raft drops the proposal (e.g. the node is no longer leader).
 // Must be called from the readyLoop goroutine.
 func (node *Node) handleProposal(p *Proposal) {
+	if err := capabilities.ValidateFinalProposal(p.data, p.declaredCapabilities); err != nil {
+		prev := node.indexTracker.Next()
+		node.indexTracker.Decrement(1)
+		node.applier.ResolveDroppedFuture(p.commandID, err)
+		p.Resolve(nil, err)
+		node.logger.WithFields(map[string]any{
+			"error":         err,
+			"trackerBefore": prev,
+			"trackerAfter":  node.indexTracker.Next(),
+		}).Errorf("Proposal capability declaration rejected")
+		return
+	}
+
 	err := node.rawNode.Propose(p.data)
 	if err != nil {
 		// The IndexTracker was optimistically incremented in Propose().
