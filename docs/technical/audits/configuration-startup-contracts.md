@@ -66,6 +66,16 @@ updates must preserve the prior value. Literal zero remains valid and keeps
 its consumer-specific meaning. These tests cover direct CLI parsing and
 `LoadConfig`; they do not establish environment binding or listener behavior.
 
+## Hash algorithm input evidence
+
+For the log-chain hash algorithm, `LoadConfig` must reject unsupported selected
+strings before returning a usable configuration. `blake3` and `xxh3` are the
+supported values; omission and empty values retain the BLAKE3 default. Use
+`TestLoadConfig_RejectsUnknownHashAlgorithm` and the `TestLoadConfig_HashAlgorithm`
+cases as evidence. Environment cases must use the production binder and cover
+`HASH_ALGORITHM`, including a valid CLI selection over an invalid environment
+value; direct loader calls alone do not establish that precedence.
+
 ## Ownership and exclusions
 
 For static Ed25519 authentication, follow `LoadEd25519KeySet` into
