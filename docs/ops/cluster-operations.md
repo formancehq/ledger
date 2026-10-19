@@ -361,20 +361,26 @@ For each node in status.Progress:
     ├─ Is it recently active?        → No: skip
     ├─ Has it replicated anything?   → No: skip (Match == 0)
     │
-    └─ Is it caught up?
-       Match + AutoPromoteThreshold >= Commit  → Yes: promote
+    ├─ Is Raft replication caught up?
+    │  Match + AutoPromoteThreshold >= Commit  → No: skip
+    └─ Does its fsynced Pebble index cover the leader's WAL snapshot?
+       Reported SyncedPersistedIndex >= WAL snapshot index  → Yes: promote
+       Missing or behind report  → request a health poll and defer promotion
 ```
 
 The **promotion condition** is:
 
 ```
 prog.Match + threshold >= commitIndex
+    && reportedSyncedPersistedIndex >= walSnapshotIndex
 ```
 
 Where:
 - `prog.Match`: the highest log index the leader knows is replicated on this learner
 - `threshold`: the `--learner-promotion-threshold` flag value (default: 100)
 - `commitIndex`: the current commit index of the cluster
+- `reportedSyncedPersistedIndex`: the learner's index reported after a successful Pebble WAL fsync; a missing report does not satisfy the condition
+- `walSnapshotIndex`: the leader's current Raft WAL snapshot index
 
 When eligible, the leader proposes a `ConfChangeV2` with `ConfChangeAddNode`, which promotes the learner to a full voter. This ConfChange goes through normal Raft consensus.
 
