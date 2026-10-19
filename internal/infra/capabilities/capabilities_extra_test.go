@@ -1,0 +1,21 @@
+package capabilities
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestMembershipRevisionAndIncarnationValidation(t *testing.T) {
+	require.Error(t, ValidateMembershipRevision(8, 7))
+	require.Error(t, ValidateMembers([]Member{{NodeID: 4, InstanceID: []byte("a"), Role: Voter}, {NodeID: 4, InstanceID: []byte("b"), Role: Learner}}))
+	require.NoError(t, ValidateMembers([]Member{{NodeID: 4, InstanceID: []byte("a"), Role: Voter}, {NodeID: 5, InstanceID: []byte("b"), Role: Learner}}))
+}
+
+func TestReplayFloorIsMonotonic(t *testing.T) {
+	floor, err := AdvanceReplayFloor(3, 4)
+	require.NoError(t, err)
+	require.Equal(t, uint32(4), floor)
+	_, err = AdvanceReplayFloor(floor, 2)
+	require.Error(t, err)
+}
