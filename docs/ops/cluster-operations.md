@@ -336,7 +336,9 @@ The same health poll records learners' durable indexes. A learner may become a
 voter only after its reported Pebble index covers the leader's current WAL
 snapshot; Raft replication progress alone is insufficient. This applies to
 automatic and manual promotion. If the report is missing or behind, promotion
-waits for the learner's store to catch up.
+waits for the learner's store to catch up. An eligible learner with no covering
+report prompts an immediate health poll rather than waiting for the regular
+health-check interval.
 Followers continue to compact against their own durable store because their WAL
 is not the replication history being retained for other voters. This local path
 is safe because the applied index is at or below the committed index, and a

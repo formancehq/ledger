@@ -64,11 +64,12 @@ var errGateNotReady domain.Classifiable = errWriteGateNotReady{}
 // cluster-wide write verdict via its own disk plus peer polls. Readiness does
 // NOT depend on this state (see grpc_health_updater / http).
 type HealthChecker struct {
-	node        nodeState
-	collector   *diskusage.Collector
-	servicePool *transport.ConnectionPool
-	logger      logging.Logger
-	interval    time.Duration
+	node              nodeState
+	collector         *diskusage.Collector
+	servicePool       *transport.ConnectionPool
+	logger            logging.Logger
+	interval          time.Duration
+	durabilityRefresh <-chan struct{}
 
 	thresholds         Thresholds
 	clockSkewThreshold time.Duration
@@ -106,6 +107,7 @@ func NewHealthChecker(
 		servicePool:        servicePool,
 		logger:             logger,
 		interval:           interval,
+		durabilityRefresh:  n.DurabilityRefreshes(),
 		thresholds:         thresholds,
 		clockSkewThreshold: clockSkewThreshold,
 		checkNow:           make(chan struct{}, 1),
@@ -140,6 +142,7 @@ func (hc *HealthChecker) Start() {
 				return
 			case <-ticker.C:
 			case <-hc.checkNow:
+			case <-hc.durabilityRefresh:
 			}
 			hc.check(stop)
 		}

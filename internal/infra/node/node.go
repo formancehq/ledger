@@ -366,6 +366,8 @@ type Node struct {
 	peerPersistedIndexesMu sync.Mutex
 	peerPersistedIndexes   map[uint64]uint64
 	compactionFenced       atomic.Bool
+	durabilityRefreshCh    chan struct{}
+	lastDurabilityRefresh  time.Time // orchestrate loop only
 
 	readies         chan raft.Ready
 	readyTerminated chan readyResult
@@ -694,6 +696,7 @@ func NewNode(
 		indexTracker:         NewIndexTracker(initialIndex(wal)),
 		observer:             NewNoOpObserver(),
 		peerPersistedIndexes: make(map[uint64]uint64),
+		durabilityRefreshCh:  make(chan struct{}, 1),
 	}
 
 	// Start ready: no leadership transition is in progress yet.
@@ -2440,6 +2443,23 @@ func (node *Node) ResetPeerPersistedIndexes() {
 	node.compactionFenced.Store(false)
 }
 
+// DurabilityRefreshes asks the health worker to poll new learners promptly.
+// The channel is buffered so the Raft orchestrate loop never waits on RPCs.
+func (node *Node) DurabilityRefreshes() <-chan struct{} {
+	return node.durabilityRefreshCh
+}
+
+func (node *Node) requestDurabilityRefresh(now time.Time) {
+	if node.durabilityRefreshCh == nil || now.Sub(node.lastDurabilityRefresh) < time.Second {
+		return
+	}
+	node.lastDurabilityRefresh = now
+	select {
+	case node.durabilityRefreshCh <- struct{}{}:
+	default:
+	}
+}
+
 // CompactionFence returns the highest index known durable in a quorum of voters.
 // Missing remote reports contribute zero, but do not block compaction when the
 // remaining reports still form a quorum. During joint consensus, both the
@@ -3108,6 +3128,7 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 			return err
 		}
 		if !covered {
+			node.requestDurabilityRefresh(time.Now())
 			return fmt.Errorf("learner %d has not durably covered the leader WAL snapshot", nodeID)
 		}
 
@@ -3522,6 +3543,7 @@ func (node *Node) learnerCoversWALSnapshot(id uint64) (bool, error) {
 	node.peerPersistedIndexesMu.Lock()
 	reported, ok := node.peerPersistedIndexes[id]
 	node.peerPersistedIndexesMu.Unlock()
+
 	return ok && reported >= snapshot.GetMetadata().GetIndex(), nil
 }
 
@@ -3564,6 +3586,7 @@ func (node *Node) checkAndPromoteLearners() error {
 				return err
 			}
 			if !covered {
+				node.requestDurabilityRefresh(now)
 				continue
 			}
 			if lastAttempt, ok := node.lastAutoPromote[id]; ok {

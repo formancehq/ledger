@@ -113,6 +113,7 @@ func (g *Gateway) SetPrepareSnapshotInterceptor(interceptor func(context.Context
 func (g *Gateway) getPrepareSnapshotInterceptor() func(context.Context, *snapshotpb.PrepareSnapshotRequest) error {
 	g.interceptorMu.RLock()
 	defer g.interceptorMu.RUnlock()
+
 	return g.prepareSnapshotInterceptor
 }
 
@@ -429,6 +430,7 @@ func (g *snapshotServiceGateway) PrepareSnapshot(ctx context.Context, req *snaps
 			return nil, err
 		}
 	}
+
 	return g.client.PrepareSnapshot(forwardIncomingMetadata(ctx), req)
 }
 

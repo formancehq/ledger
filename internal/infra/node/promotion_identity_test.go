@@ -82,6 +82,7 @@ func TestCheckAndPromoteLearners_ProposesCompleteRegisteredIdentity(t *testing.T
 	n := newConfiguredPeersTestNode(t)
 	n.logger = logging.Testing()
 	n.lastAutoPromote = make(map[uint64]time.Time)
+	n.durabilityRefreshCh = make(chan struct{}, 1)
 	// A real replication acknowledgement makes the learner active and caught
 	// up to the leader's initial no-op entry, satisfying the automatic gate.
 	ack := msgWithIndex(raftpb.MsgAppResp, 2, 1, 1)
@@ -91,6 +92,13 @@ func TestCheckAndPromoteLearners_ProposesCompleteRegisteredIdentity(t *testing.T
 	require.True(t, progress.IsLearner)
 	require.True(t, progress.RecentActive)
 	require.Equal(t, uint64(1), progress.Match)
+	require.NoError(t, n.checkAndPromoteLearners())
+	require.Empty(t, n.lastAutoPromote, "a Raft acknowledgement alone must not promote")
+	select {
+	case <-n.DurabilityRefreshes():
+	default:
+		t.Fatal("the missing durable report must request an immediate health poll")
+	}
 	n.RecordPeerPersistedIndex(2, 1)
 	require.NoError(t, n.checkAndPromoteLearners())
 	_, cc := requireCompletePromotion(t, n)
