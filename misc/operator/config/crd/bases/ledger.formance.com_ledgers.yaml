@@ -55,8 +55,11 @@ spec:
               clusterRef:
                 description: |-
                   ClusterRef is the name of the Cluster in the same namespace
-                  that provides the gRPC endpoint.
+                  that provides the gRPC endpoint. It is immutable from CR creation.
                 type: string
+                x-kubernetes-validations:
+                - message: clusterRef is immutable
+                  rule: self == oldSelf
               indexes:
                 description: |-
                   Indexes declares the account/transaction indexes the operator maintains
@@ -613,8 +616,12 @@ spec:
                 - mirror
                 type: string
               name:
-                description: Name is the ledger name to create/delete via gRPC.
+                description: Name is the ledger name to create/delete via gRPC, immutable
+                  from CR creation.
                 type: string
+                x-kubernetes-validations:
+                - message: name is immutable
+                  rule: self == oldSelf
             required:
             - clusterRef
             - name

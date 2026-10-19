@@ -5,6 +5,15 @@ The Ledger v3 Operator owns the Kubernetes lifecycle of a Raft cluster: the
 deletion protection, and operational controllers that must remain outside the
 deterministic Ledger FSM.
 
+Ledger CR target identity is fixed at creation by API-server CEL transition
+rules on `spec.name` and `spec.clusterRef`. This prevents a Pending creation,
+promotion, index update or finalization from being redirected by a spec edit.
+The controller continues to use the admitted target and keeps best-effort
+external deletion semantics. Existing drift must be recovered with reconcilers
+stopped before installing the rules; the applied-spec hash does not retain the
+original target. See [Ledger target identity](../../../../../misc/operator/README.md#ledger-target-identity)
+for the upgrade procedure and same-name Cluster replacement boundary.
+
 ## Documents
 
 - [Automatic PVC expansion](volume-auto-expansion.md) — opt-in capacity policy,

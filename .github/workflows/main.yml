@@ -107,6 +107,12 @@ jobs:
         run: >
           nix develop .#ci --command bash -c "unset GOROOT;
           cd misc/operator && go test ./..."
+      - name: Run Ledger target admission regressions
+        run: >
+          nix develop .#operator-tests --command bash -ec 'unset GOROOT;
+          KUBEBUILDER_ASSETS=$(setup-envtest use 1.32.x -p path); export KUBEBUILDER_ASSETS;
+          cd misc/operator && go test -tags integration ./internal/controller
+          -run "^TestLedgerAdmission" -count=1 -timeout 3m'
 
   Tests-E2E-Business:
     runs-on: namespace-profile-linux-amd64-4vcpu

@@ -894,7 +894,14 @@ export DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock
 
 ### Operator Integration Tests
 
-The default Nix shell provides `setup-envtest`, and its shell hook exports `KUBEBUILDER_ASSETS`. The first shell start downloads the etcd and kube-apiserver binaries. The `ci` shell does not include envtest because no CI job runs the `integration` tag.
+The default Nix shell provides `setup-envtest`, and its shell hook exports `KUBEBUILDER_ASSETS`. The first shell start downloads the etcd and kube-apiserver binaries. The lean `ci` shell does not include envtest. The `Tests-Operator` CI job uses the dedicated `operator-tests` shell for the focused Ledger target admission regressions, selecting Kubernetes 1.32.x assets:
+
+```bash
+nix develop .#operator-tests --command bash -ec 'unset GOROOT;
+  KUBEBUILDER_ASSETS=$(setup-envtest use 1.32.x -p path); export KUBEBUILDER_ASSETS;
+  cd misc/operator && go test -tags integration ./internal/controller \
+    -run "^TestLedgerAdmission" -count=1 -timeout 3m'
+```
 
 ```bash
 # Run from misc/operator/ inside the default shell

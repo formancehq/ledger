@@ -49,6 +49,26 @@ Ledger process restart and cluster-level availability from recovery of the
 intended PVC/node. Record inspected areas and untested boundaries in residual
 risk rather than claiming exhaustive coverage.
 
+## Ledger target admission boundary
+
+Ledger `spec.name` and `spec.clusterRef` are immutable from CR creation through
+API-server CEL transition validation. Include Pending resources and updates
+combined with promotion or index changes: an unknown creation outcome must not
+permit retargeting. API-server rejection must leave the stored target unchanged;
+deleting that CR must select the original ledger and leave distinguishable
+external ledgers in either Cluster untouched. Fake clients and exported JSON
+schemas do not enforce this transition boundary.
+
+For upgrades, distinguish newly admitted edits from target drift already stored
+before these rules were installed. The operator must be stopped while existing
+CRs, including ambiguous Pending creations, are inventoried and recovered before
+installing the rules. The applied hash cannot recover original identity, and
+installing immutability freezes the current values. Do not treat rejection of
+future edits as retrospective identity recovery, external ownership proof, or
+fencing against a Cluster recreated under the same name. Ledger cleanup remains
+best-effort after target selection; endpoint/exec failure can leave the external
+ledger after finalizer removal.
+
 ## Backup Secret delivery boundary
 
 Backup S3 static authentication uses same-namespace Secret key references.

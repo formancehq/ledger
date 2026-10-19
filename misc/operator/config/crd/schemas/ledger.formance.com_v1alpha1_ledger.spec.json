@@ -4,8 +4,14 @@
   "description": "LedgerCRDSpec defines the desired state of a Ledger.",
   "properties": {
     "clusterRef": {
-      "description": "ClusterRef is the name of the Cluster in the same namespace\nthat provides the gRPC endpoint.",
-      "type": "string"
+      "description": "ClusterRef is the name of the Cluster in the same namespace\nthat provides the gRPC endpoint. It is immutable from CR creation.",
+      "type": "string",
+      "x-kubernetes-validations": [
+        {
+          "message": "clusterRef is immutable",
+          "rule": "self == oldSelf"
+        }
+      ]
     },
     "indexes": {
       "additionalProperties": false,
@@ -663,8 +669,14 @@
       "type": "string"
     },
     "name": {
-      "description": "Name is the ledger name to create/delete via gRPC.",
-      "type": "string"
+      "description": "Name is the ledger name to create/delete via gRPC, immutable from CR creation.",
+      "type": "string",
+      "x-kubernetes-validations": [
+        {
+          "message": "name is immutable",
+          "rule": "self == oldSelf"
+        }
+      ]
     }
   },
   "required": [

@@ -6,16 +6,26 @@ spec:
   timeouts:
     assert: 5m
   steps:
-    - name: Deploy Cluster
+    - name: Deploy Clusters
       try:
         - apply:
             file: cluster.yaml
+        - apply:
+            file: cluster-other.yaml
         - assert:
             resource:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
                 name: ledger-crd-cluster
+              status:
+                readyReplicas: 1
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ledger-crd-other-cluster
               status:
                 readyReplicas: 1
 
@@ -90,6 +100,70 @@ spec:
               echo "OK: index reconcile converged (address dropped, timestamp added)"
             timeout: 60s
 
+    - name: Seed distinguishable data in the original and possible destinations
+      try:
+        - script:
+            content: |
+              set -eu
+              ledgerctl() {
+                POD=$1
+                shift
+                kubectl exec "$POD" -n "$NAMESPACE" -c ledger -- \
+                  /bin/sh -c './ledgerctl "$@" --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' ledgerctl "$@"
+              }
+              ledgerctl ledger-crd-cluster-0 transactions create --ledger my-ledger \
+                --posting world,original,100,USD --reference original-target --force
+              ledgerctl ledger-crd-cluster-0 ledgers create other-ledger
+              ledgerctl ledger-crd-cluster-0 transactions create --ledger other-ledger \
+                --posting world,name-destination,200,USD --reference name-destination --force
+              ledgerctl ledger-crd-other-cluster-0 ledgers create my-ledger
+              ledgerctl ledger-crd-other-cluster-0 transactions create --ledger my-ledger \
+                --posting world,cluster-destination,300,USD --reference cluster-destination --force
+              ledgerctl ledger-crd-other-cluster-0 ledgers create other-ledger
+              ledgerctl ledger-crd-other-cluster-0 transactions create --ledger other-ledger \
+                --posting world,combined-destination,400,USD --reference combined-destination --force
+            timeout: 90s
+
+    - name: Reject target changes at admission and preserve the stored identity
+      try:
+        - script:
+            content: |
+              set -eu
+              reject_patch() {
+                PATCH=$1
+                MESSAGE=$2
+                if OUTPUT=$(kubectl patch ledger test-ledger -n "$NAMESPACE" --type=merge -p "$PATCH" 2>&1); then
+                  echo "FAIL: target change was accepted: $PATCH"
+                  exit 1
+                fi
+                echo "$OUTPUT"
+                echo "$OUTPUT" | grep -Fq "$MESSAGE"
+                test "$(kubectl get ledger test-ledger -n "$NAMESPACE" -o jsonpath='{.spec.name}')" = my-ledger
+                test "$(kubectl get ledger test-ledger -n "$NAMESPACE" -o jsonpath='{.spec.clusterRef}')" = crd-cluster
+              }
+              reject_patch '{"spec":{"name":"other-ledger"}}' 'name is immutable'
+              reject_patch '{"spec":{"clusterRef":"crd-other-cluster"}}' 'clusterRef is immutable'
+              reject_patch '{"spec":{"name":"other-ledger","clusterRef":"crd-other-cluster"}}' 'name is immutable'
+              echo "$OUTPUT" | grep -Fq 'clusterRef is immutable'
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: Ledger
+              metadata:
+                name: test-ledger
+              spec:
+                name: my-ledger
+                clusterRef: crd-cluster
+              status:
+                phase: Ready
+        - script:
+            content: |
+              set -eu
+              OUTPUT=$(kubectl exec ledger-crd-cluster-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl transactions list --ledger my-ledger --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
+              echo "$OUTPUT" | grep -Fq original-target
+            timeout: 30s
+
     - name: Delete Ledger CRD
       try:
         - script:
@@ -101,6 +175,7 @@ spec:
       try:
         - script:
             content: |
+              set -eu
               OUTPUT=$(kubectl exec ledger-crd-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
               if echo "$OUTPUT" | grep -q my-ledger; then
@@ -109,3 +184,25 @@ spec:
               fi
               echo "OK: ledger my-ledger deleted successfully"
             timeout: 30s
+
+    - name: Verify every rejected destination retains its own data after deletion
+      try:
+        - script:
+            content: |
+              set -eu
+              assert_reference() {
+                POD=$1
+                LEDGER=$2
+                REFERENCE=$3
+                OUTPUT=$(kubectl exec "$POD" -n "$NAMESPACE" -c ledger -- \
+                  /bin/sh -c './ledgerctl transactions list --ledger "$1" --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' ledgerctl "$LEDGER")
+                echo "$OUTPUT" | grep -Fq "$REFERENCE"
+                if echo "$OUTPUT" | grep -Fq original-target; then
+                  echo "FAIL: original data appeared in destination $POD/$LEDGER"
+                  exit 1
+                fi
+              }
+              assert_reference ledger-crd-cluster-0 other-ledger name-destination
+              assert_reference ledger-crd-other-cluster-0 my-ledger cluster-destination
+              assert_reference ledger-crd-other-cluster-0 other-ledger combined-destination
+            timeout: 60s
