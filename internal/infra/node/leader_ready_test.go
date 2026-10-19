@@ -3,7 +3,9 @@ package node
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -255,4 +257,39 @@ func requireOpen(t *testing.T, ch <-chan struct{}) {
 		t.Fatal(errors.New("channel is closed"))
 	default:
 	}
+}
+
+func TestLeaderReadyGenerationConcurrentCancellationJoinsCallback(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		generation := newLeaderReadyGeneration(context.Background())
+		entered := make(chan struct{})
+		releaseCallback := make(chan struct{})
+		release := sync.OnceFunc(func() { close(releaseCallback) })
+		t.Cleanup(release)
+		go func() {
+			_ = generation.run(func(context.Context) error { return nil }, func() {
+				close(entered)
+				<-releaseCallback
+			})
+		}()
+		<-entered
+		const callers = 2
+		joined := make(chan struct{}, callers)
+		for range callers {
+			go func() {
+				generation.cancelAndWait()
+				joined <- struct{}{}
+			}()
+		}
+		synctest.Wait()
+		requireClosed(t, generation.lost)
+		requireOpen(t, joined)
+		release()
+		for range callers {
+			<-joined
+		}
+		generation.cancelAndWait()
+		requireClosed(t, generation.done)
+	})
 }

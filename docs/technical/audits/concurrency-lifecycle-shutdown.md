@@ -16,7 +16,7 @@ that authorizes each operation:
 | Token | Current examples | Required rejection or join boundary |
 | --- | --- | --- |
 | Fx process lifetime | bootstrap hooks, HTTP/gRPC servers, stores, metrics registrations, health workers | Failed start unwinds only acquired resources. Stop rejects new work, unregisters callbacks and joins owned goroutines before dependencies close. An expired graceful HTTP drain cancels request contexts, closes active transports and joins handlers; a timed-out outer Fx call alone is not proof that a hook or worker has exited. |
-| Node run generation | `Node.Run`, `Applier`, transport, maintenance and FSM tasks | The persistent stop request is published once. Commit drain and child joins complete before node-owned storage or transport can close. |
+| Node run generation | `Node.Run`, `Applier`, transport, maintenance and FSM tasks | The persistent stop request is published once. Commit drain and child joins complete before node-owned storage or transport can close. After the ready processor exits, cancel and join the final leader-ready waiter and synchronous callback before FSM cleanup or Run completion, including task failure and prior leadership loss. |
 | Ordered leadership generation | node observer, event and mirror managers, backup orchestrator, leader-only reconcilers | The transition is recorded synchronously in observer order. Work that captured generation N cannot install or remove generation N+1 resources; Stop advances a terminal generation. |
 
 | Replicated resource identity | named sink configuration, mirror ledger incarnation/source, backup job and destination | Replacement invalidates old local ownership even if a human-readable name is reused. The successor resumes only from the replicated cursor/state promised by that subsystem. |
@@ -149,6 +149,19 @@ At minimum, attempt to falsify these sequences with deterministic barriers:
    application is a failure. Separately verify the read-handle owner and close
    boundary, and whether an unrelated request can proceed. Repeat with a type
    transition that claims a wider lifecycle scope.
+
+For node readiness, hold a synchronous `LeaderReadyEvent` callback after entry
+and separately hold the real FSM catch-up wait. Exercise normal stop and task
+failure, then assert the final generation is cancelled and joined before
+`Run` publishes completion. Repeat cancellation after leadership loss and with
+concurrent callers to prove close-once behavior without skipping any join.
+Cancellation cannot forcibly interrupt an executing observer; dependency closure
+must wait for it to return. The production cluster-config observer must use the
+readiness event's generation context for its blocking proposal. Hold its FSM
+future after Raft acceptance, cancel the generation, and prove the observer
+returns without waiting for its independent 30-second timeout. Retain the normal
+HTTP-failure process regression to cover application shutdown wiring. Preserve
+the independent commit-drain and leadership-loss ordering regressions.
 
 Record initial and final generations, identities, goroutine completion, resource
 close counts, proposal/publication counts and durable cursor bytes. A test using
