@@ -48,28 +48,40 @@ func desiredTLSMode(ledger *ledgerv1alpha1.Cluster) string {
 // the same base name), which is exactly why the exec paths must not proceed.
 var errClusterRuntimeAbsent = errors.New("cluster StatefulSet not found")
 
-// fetchTLSMode returns the TLS_MODE currently in effect on the running pods of
-// the Cluster, by reading the TLS_MODE env var from the StatefulSet pod
-// template.
+// fetchClusterStatefulSet returns the StatefulSet under the Cluster base name
+// when the Cluster controls it.
 //
 // It is the gate of every cross-CRD exec/dial path (Ledger, EventSink,
 // BackupRun): it returns errClusterRuntimeAbsent when the StatefulSet does not
 // exist, and errResourceNameConflict when one exists under the Cluster base
 // name but is not controlled by the Cluster (no controller reference, or
 // another one). Callers must not exec or dial in either case, so they never act
-// on pods the Cluster did not create.
-func fetchTLSMode(ctx context.Context, c client.Client, cluster *ledgerv1alpha1.Cluster) (string, error) {
+// on pods the Cluster did not create. Exec paths then pass the returned
+// StatefulSet to ownedPodExec, which checks the target pod itself.
+func fetchClusterStatefulSet(ctx context.Context, c client.Client, cluster *ledgerv1alpha1.Cluster) (*appsv1.StatefulSet, error) {
 	sts := &appsv1.StatefulSet{}
 	key := types.NamespacedName{Name: clusterBaseName(cluster), Namespace: cluster.Namespace}
 	if err := c.Get(ctx, key, sts); err != nil {
 		if apierrors.IsNotFound(err) {
-			return "", fmt.Errorf("%w: %s", errClusterRuntimeAbsent, key)
+			return nil, fmt.Errorf("%w: %s", errClusterRuntimeAbsent, key)
 		}
 
-		return "", err
+		return nil, err
 	}
 	if notControlledBy(sts, cluster) {
-		return "", fmt.Errorf("%w: %s", errResourceNameConflict, describeOwnership("StatefulSet", sts, cluster))
+		return nil, fmt.Errorf("%w: %s", errResourceNameConflict, describeOwnership("StatefulSet", sts, cluster))
+	}
+
+	return sts, nil
+}
+
+// fetchTLSMode returns the TLS_MODE currently in effect on the running pods of
+// the Cluster, by reading the TLS_MODE env var from the pod template of the
+// StatefulSet returned by fetchClusterStatefulSet, with the same errors.
+func fetchTLSMode(ctx context.Context, c client.Client, cluster *ledgerv1alpha1.Cluster) (string, error) {
+	sts, err := fetchClusterStatefulSet(ctx, c, cluster)
+	if err != nil {
+		return "", err
 	}
 
 	return currentTLSModeFromStatefulSet(sts), nil

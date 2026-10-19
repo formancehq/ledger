@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -249,19 +250,23 @@ const (
 	realIndexClusterUID  = "test-cluster-uid"
 )
 
-// client seeds the referenced Cluster's own StatefulSet: every ledgerctl exec
-// is gated on the Cluster controlling a StatefulSet under its base name
-// (fetchTLSMode), so without it no exec would ever reach the real ledgerctl.
-func (h *realIndexHarness) client(funcs interceptor.Funcs) client.Client {
-	sts := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
-		Name: clusterBaseName(clusterNamed(realIndexClusterName)), Namespace: "test",
+// statefulSet is the referenced Cluster's own StatefulSet: every ledgerctl
+// exec is gated on the Cluster controlling a StatefulSet under its base name
+// (fetchClusterStatefulSet) and on that StatefulSet controlling pod-0
+// (ownedPodExec), so without both no exec would ever reach the real ledgerctl.
+func (h *realIndexHarness) statefulSet() *appsv1.StatefulSet {
+	return &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
+		Name: clusterBaseName(clusterNamed(realIndexClusterName)), Namespace: "test", UID: "test-cluster-sts-uid",
 		OwnerReferences: []metav1.OwnerReference{{
 			APIVersion: ledgerv1alpha1.GroupVersion.String(), Kind: "Cluster",
 			Name: realIndexClusterName, UID: realIndexClusterUID, Controller: new(true),
 		}},
 	}}
+}
 
-	return fake.NewClientBuilder().WithScheme(h.scheme).WithObjects(h.ledger, sts).WithStatusSubresource(h.ledger).WithInterceptorFuncs(funcs).Build()
+// client seeds the Cluster's StatefulSet (see statefulSet).
+func (h *realIndexHarness) client(funcs interceptor.Funcs) client.Client {
+	return fake.NewClientBuilder().WithScheme(h.scheme).WithObjects(h.ledger, h.statefulSet()).WithStatusSubresource(h.ledger).WithInterceptorFuncs(funcs).Build()
 }
 
 func (h *realIndexHarness) controller(c client.Client) *LedgerReconciler {
@@ -271,7 +276,10 @@ func (h *realIndexHarness) controller(c client.Client) *LedgerReconciler {
 		"status":   map[string]any{"phase": "Running"},
 	}}
 
-	return &LedgerReconciler{Client: c, Scheme: h.scheme, Dynamic: dynamicfake.NewSimpleDynamicClient(h.scheme, cluster), exec: h.podExec}
+	return &LedgerReconciler{
+		Client: c, Scheme: h.scheme, Clientset: k8sfake.NewClientset(pod0ControlledBy(h.statefulSet())),
+		Dynamic: dynamicfake.NewSimpleDynamicClient(h.scheme, cluster), exec: h.podExec,
+	}
 }
 
 func (h *realIndexHarness) request() ctrl.Request {

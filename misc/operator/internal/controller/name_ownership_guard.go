@@ -16,6 +16,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -33,6 +35,16 @@ import (
 // that carry no controller reference at all. The Cluster must never adopt,
 // mutate, delete or exec into an object it does not control.
 var errResourceNameConflict = errors.New("resource name conflict")
+
+// errPodNotOwned signals that the pod an exec path targets does not exist or
+// is not controlled by the Cluster's StatefulSet that was just inspected. An
+// owned StatefulSet does not make every "<base>-<ordinal>" pod its own: while
+// the garbage collector removes a deleted same-base-name Cluster's runtime, a
+// pod under that name can still be controlled by the old StatefulSet, and
+// after the VolumeClaimTemplate orphan-and-recreate path a pod has no
+// controller until the new StatefulSet adopts it. Nothing is executed; the
+// caller reacts as to any other failed exec.
+var errPodNotOwned = errors.New("pod not controlled by the Cluster StatefulSet")
 
 const (
 	// conditionResourceNamesAvailable reports whether the Cluster controls (or
@@ -230,11 +242,15 @@ func (r *ClusterReconciler) deleteIfExists(ctx context.Context, ledger *ledgerv1
 // without it an owned object replaced by a foreign one between the read and
 // the delete (or a stale cached read) would delete the replacement.
 //
-// The precondition pins the UID only, not the resourceVersion: ownership is a
-// property of the object's identity, and the API server and the garbage
-// collector update owned objects continually (a StatefulSet's status, for
+// The guarantee is identity only: the delete hits the same object (UID) that
+// was read, nothing more. The precondition pins the UID, not the
+// resourceVersion, so a change to that same object between the read and the
+// delete is not detected — in particular an ownerReference change, such as
+// someone orphaning it or handing it to another controller, after its
+// ownership was checked. That race is accepted: the API server and other
+// controllers update these objects continually (a StatefulSet's status, for
 // instance), so a resourceVersion precondition would turn every such write
-// into a spurious conflict without protecting anything more.
+// into a spurious conflict.
 //
 // A failed precondition (Conflict) is returned as an error so the reconcile
 // retries and re-inspects ownership on the next pass; the replacement is never
@@ -253,5 +269,57 @@ func deleteInspected(ctx context.Context, c client.Client, obj client.Object, op
 		return fmt.Errorf("%T %s/%s was replaced after its ownership was checked, re-inspecting on retry: %w", obj, obj.GetNamespace(), obj.GetName(), err)
 	default:
 		return err
+	}
+}
+
+// requirePodControlledBy reads the pod namespace/name directly from the API
+// server and fails with errPodNotOwned unless sts, the Cluster's StatefulSet
+// whose ownership was just checked, is its controller. The read is uncached so
+// it observes a pod replaced since the StatefulSet read.
+func requirePodControlledBy(ctx context.Context, clientset kubernetes.Interface, sts *appsv1.StatefulSet, namespace, name string) error {
+	if sts == nil || sts.UID == "" {
+		return fmt.Errorf("invariant: refusing to exec into pod %s/%s without the UID of the inspected Cluster StatefulSet", namespace, name)
+	}
+	if clientset == nil {
+		return fmt.Errorf("invariant: refusing to exec into pod %s/%s without a client to verify its controller", namespace, name)
+	}
+	// Bounded like the exec it guards, so a stuck read cannot hold the reconcile.
+	readCtx, cancel := context.WithTimeout(ctx, ledgerExecTimeout)
+	defer cancel()
+	pod, err := clientset.CoreV1().Pods(namespace).Get(readCtx, name, metav1.GetOptions{})
+	switch {
+	case apierrors.IsNotFound(err):
+		// Deliberately not phrased "not found": ledgerctl callers match that
+		// text to recognise an absent ledger.
+		return fmt.Errorf("%w: pod %s/%s does not exist", errPodNotOwned, namespace, name)
+	case err != nil:
+		return fmt.Errorf("reading pod %s/%s before exec: %w", namespace, name, err)
+	}
+	if metav1.IsControlledBy(pod, sts) {
+		return nil
+	}
+	if ref := metav1.GetControllerOf(pod); ref != nil {
+		return fmt.Errorf("%w: pod %s/%s is controlled by %s/%s (uid %s), not StatefulSet %s (uid %s)",
+			errPodNotOwned, namespace, name, ref.Kind, ref.Name, ref.UID, sts.Name, sts.UID)
+	}
+
+	return fmt.Errorf("%w: pod %s/%s has no controller, expected StatefulSet %s (uid %s)",
+		errPodNotOwned, namespace, name, sts.Name, sts.UID)
+}
+
+// ownedPodExec returns exec guarded by requirePodControlledBy: every call first
+// re-reads its target pod and runs nothing unless sts controls it. Every exec
+// into a Cluster pod goes through it. A pod replaced between that read and the
+// exec stream (the exec API has no UID precondition) is not detected; the
+// window is one API round trip.
+func ownedPodExec(sts *appsv1.StatefulSet, exec ledgerctlExec) ledgerctlExec {
+	return func(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
+		namespace, podName, container string, command []string,
+	) (*execResult, error) {
+		if err := requirePodControlledBy(ctx, clientset, sts, namespace, podName); err != nil {
+			return nil, err
+		}
+
+		return exec(ctx, cfg, clientset, namespace, podName, container, command)
 	}
 }

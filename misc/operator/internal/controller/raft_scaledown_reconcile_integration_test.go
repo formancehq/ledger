@@ -53,12 +53,18 @@ func TestReconcileScaleDownReplacementMembership(t *testing.T) {
 				_, err = reconciler.reconcileStatefulSetWithExec(ctx, ledger, "initial", nil, fixture.exec)
 				require.NoError(t, err)
 				require.Empty(t, fixture.commands, "initial creation must not remove established members")
+				// envtest runs no StatefulSet controller: the fixture creates the
+				// pods and claims it would, controlled by / labelled for the
+				// Cluster's StatefulSet, which the exec and PVC-deletion paths
+				// require before acting on them.
+				sts := &appsv1.StatefulSet{}
+				require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: clusterBaseName(ledger)}, sts))
 
 				for ordinal := range 3 {
-					createScaleDownReconcilePod(t, clientset, namespace, podName(ledger, ordinal), corev1.PodRunning)
+					createScaleDownReconcilePod(t, clientset, sts, podName(ledger, ordinal), corev1.PodRunning)
 					for _, volume := range []string{"wal", "data"} {
 						_, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Create(ctx, &corev1.PersistentVolumeClaim{
-							ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s-%d", volume, clusterBaseName(ledger), ordinal)},
+							ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s-%d", volume, clusterBaseName(ledger), ordinal), Labels: sts.Spec.Selector.MatchLabels},
 							Spec: corev1.PersistentVolumeClaimSpec{
 								AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 								Resources:   corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")}},
@@ -71,7 +77,7 @@ func TestReconcileScaleDownReplacementMembership(t *testing.T) {
 				require.NoError(t, err)
 				require.NoError(t, clientset.CoreV1().Pods(namespace).Delete(ctx, oldPod.Name, metav1.DeleteOptions{GracePeriodSeconds: new(int64(0))}))
 				if replacement == "pending" {
-					createScaleDownReconcilePod(t, clientset, namespace, oldPod.Name, corev1.PodPending)
+					createScaleDownReconcilePod(t, clientset, sts, oldPod.Name, corev1.PodPending)
 					newPod, err := clientset.CoreV1().Pods(namespace).Get(ctx, oldPod.Name, metav1.GetOptions{})
 					require.NoError(t, err)
 					require.NotEqual(t, oldPod.UID, newPod.UID, "same ordinal must have a new Pod incarnation")
@@ -178,11 +184,14 @@ func (f *scaleDownReconcileMembership) exec(_ context.Context, _ *rest.Config, _
 	return nil, errors.New("unexpected ledgerctl invocation")
 }
 
-func createScaleDownReconcilePod(t *testing.T, clientset kubernetes.Interface, namespace, name string, phase corev1.PodPhase) {
+func createScaleDownReconcilePod(t *testing.T, clientset kubernetes.Interface, sts *appsv1.StatefulSet, name string, phase corev1.PodPhase) {
 	t.Helper()
-	pod, err := clientset.CoreV1().Pods(namespace).Create(ctx, &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Image: "ledger:test"}}},
+	pod, err := clientset.CoreV1().Pods(sts.Namespace).Create(ctx, &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(sts, appsv1.SchemeGroupVersion.WithKind("StatefulSet"))},
+		},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Image: "ledger:test"}}},
 	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 	pod.Status.Phase = phase
@@ -192,7 +201,7 @@ func createScaleDownReconcilePod(t *testing.T, clientset kubernetes.Interface, n
 			State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
 		}}
 	}
-	_, err = clientset.CoreV1().Pods(namespace).UpdateStatus(ctx, pod, metav1.UpdateOptions{})
+	_, err = clientset.CoreV1().Pods(sts.Namespace).UpdateStatus(ctx, pod, metav1.UpdateOptions{})
 	require.NoError(t, err)
 }
 

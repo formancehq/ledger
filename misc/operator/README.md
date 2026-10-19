@@ -36,7 +36,10 @@ recovers committed removals whose response was lost, without matching CLI error
 substrings.
 
 Only after all removed ordinals satisfy that postcondition does the operator
-persist the reduced StatefulSet replica count and issue PVC deletions. The
+persist the reduced StatefulSet replica count and issue PVC deletions, for the
+PVCs the Cluster's StatefulSet created only (see
+[Resource names](../../docs/ops/deployment.md#resource-names)). Every exec into
+pod-0 first checks that the Cluster's StatefulSet controls that pod. The
 StatefulSet update requests Pod termination; it does not wait for termination to
 finish. If a membership check or removal fails, replicas and PVCs are retained,
 although the template update and earlier membership removals may already have
@@ -126,7 +129,8 @@ Set `spec.resourceName` at creation to replace that whole base name (for
 example `resourceName: ledger-v3` yields StatefulSet `ledger-v3`, pods
 `ledger-v3-<n>`, Service `ledger-v3-headless`). It is create-time only, at most
 52 characters (the StatefulSet `controller-revision-hash` label limit, which
-also caps `metadata.name` at 45 characters without an override), and must be
+also caps `metadata.name` at 45 characters without an override; `metadata.name`
+is capped at 63 characters in any case), and must be
 unique in the namespace: the operator never adopts
 an existing object it did not create and reports `ResourceNamesAvailable=False`
 instead. See [Resource names](../../docs/ops/deployment.md#resource-names).

@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -618,6 +619,21 @@ func applyDefaults(ledger *ledgerv1alpha1.Cluster) {
 // cause reconciliation to fail. Errors are surfaced via status conditions
 // rather than silently failing in operator logs.
 func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
+	// metadata.name is the app.kubernetes.io/instance label value of every
+	// derived object and of the pod template (selectorLabels), and a label value
+	// is capped at 63 chars. Without spec.resourceName the base-name bound below
+	// already caps the name at 45, but with a short override nothing else does,
+	// and every derived object would then be rejected by the API server. The
+	// CRD does not enforce this: a root CEL rule on metadata.name also runs on
+	// every update, status writes included, so a longer-named Cluster admitted
+	// by v3.0.0-rc.1 could then not even be updated to report ConfigValid=False.
+	if len(ledger.Name) > validation.LabelValueMaxLength {
+		return fmt.Errorf(
+			"name %q is too long: it is %d chars, exceeding the %d-char limit of the %s label value it is set as on every derived object; recreate the Cluster with a shorter name",
+			ledger.Name, len(ledger.Name), validation.LabelValueMaxLength, labelInstance,
+		)
+	}
+
 	// The Cluster base name is the StatefulSet name, the tightest bound on any
 	// derived name: pods carry controller-revision-hash=<statefulset>-<hash>,
 	// a label value capped at 63 chars, so the base name is capped at 52

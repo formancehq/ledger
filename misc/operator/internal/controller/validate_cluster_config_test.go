@@ -61,6 +61,25 @@ func TestValidateSpec_ResourceNameLengthBoundary(t *testing.T) {
 	require.NoError(t, validateSpec(clusterWithResourceName(strings.Repeat("a", 60), "payments")))
 }
 
+// metadata.name is the app.kubernetes.io/instance label value of every derived
+// object, so it is capped at 63 chars even when spec.resourceName keeps every
+// derived name short.
+func TestValidateSpec_NameLabelValueLimit(t *testing.T) {
+	t.Parallel()
+
+	name63 := strings.Repeat("a", 63)
+	name64 := strings.Repeat("a", 64)
+
+	require.NoError(t, validateSpec(clusterWithResourceName(name63, "payments")),
+		"a 63-char name fits the label value limit and must be accepted with a short resourceName")
+
+	err := validateSpec(clusterWithResourceName(name64, "payments"))
+	require.Error(t, err, "a 64-char name exceeds the label value limit even with a short resourceName")
+	assert.Contains(t, err.Error(), name64)
+	assert.Contains(t, err.Error(), "63-char limit")
+	assert.Contains(t, err.Error(), labelInstance)
+}
+
 func TestValidateClusterConfig_AcceptsNilAndEmpty(t *testing.T) {
 	t.Parallel()
 	require.NoError(t, validateClusterConfig(&ledgerv1alpha1.ClusterSpec{}))

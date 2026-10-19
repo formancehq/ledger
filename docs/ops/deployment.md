@@ -210,7 +210,10 @@ spec:
 Raft peer, bootstrap and `ledgerctl` addresses, backup Jobs, the status
 endpoints (`ledger-v3.<namespace>.svc.cluster.local`) and the `kubectl ledger`
 plugin follow the same base name. `spec.serviceAccount.name` still overrides
-the ServiceAccount name. Labels (`app.kubernetes.io/instance`) keep the CR name.
+the ServiceAccount name. Labels (`app.kubernetes.io/instance`) keep the CR name,
+so `metadata.name` is limited to 63 characters (the label value limit) even
+with a short `resourceName`; the operator reports a longer one as
+`ConfigValid=False`.
 
 Rules:
 
@@ -226,8 +229,9 @@ Rules:
   `ConfigValid=False`.
 - It is create-time only. The API server rejects changing it, adding it to an
   existing Cluster, or removing it, because that would orphan the StatefulSet
-  and its PVCs and change every Raft peer address. To rename, create a new
-  Cluster (restore from backup if the data must move).
+  and its PVCs and change every Raft peer address. `spec` itself is required,
+  so removing the whole spec and adding it back is rejected too. To rename,
+  create a new Cluster (restore from backup if the data must move).
 - Keep the `ledger-` prefix when the namespace is shared with other services.
   On a Formance stack, other modules and the stack gateway already own Service
   names such as `ledger` and `ledger-grpc`, so a bare `ledger` base name
@@ -244,9 +248,14 @@ Rules:
   the Cluster does not use (for example a disabled gRPC Service) do not block
   it and are never deleted by it. The Ledger and EventSink controllers do not
   exec into a Cluster whose StatefulSet is missing or not controlled by it
-  (a deleting Ledger or EventSink releases its finalizer without cleanup); a
-  BackupRun against such a StatefulSet fails without creating a Job, and waits
-  while the StatefulSet does not exist yet.
+  (a deleting Ledger or EventSink releases its finalizer without cleanup). Every
+  exec into a pod (Ledger, EventSink, scale-down, disk-usage probes) also first
+  checks that the pod is controlled by that StatefulSet, so a `<base>-0` pod
+  still owned by an older StatefulSet is never used; the operation fails and is
+  retried (a deleting Ledger releases its finalizer, as for any failed
+  cleanup). A BackupRun whose StatefulSet or `<base>` Service is not
+  controlled by the Cluster fails without creating a Job, and waits while
+  either does not exist yet.
 - This applies to the ServiceAccount too. With `spec.serviceAccount.name` set to
   an existing ServiceAccount (for example `default`), also set
   `spec.serviceAccount.create: false`; otherwise the operator treats it as a
@@ -254,6 +263,26 @@ Rules:
 - PVCs retained from a deleted Cluster with the same base name are reused by
   the new StatefulSet, exactly as when a Cluster is recreated with the same
   name; the persisted cluster ID check rejects mismatched data on boot.
+- On scale-down the operator deletes the PVC of a removed ordinal only if the
+  Cluster's StatefulSet created it: the PVC carries all the StatefulSet's
+  selector labels (`app.kubernetes.io/name`, `app.kubernetes.io/instance=<metadata.name>`
+  and any selector `additionalLabels`), and has no owner other than that
+  StatefulSet or the removed pod. Any other PVC under the derived name,
+  including one retained from a Cluster with another `metadata.name` and
+  reused through the same `resourceName`, is kept. The Cluster then reports
+  the condition `ScaleDownPVCsRetained=True` (reason `PVCsRetained`, listing
+  the kept PVCs) with a `ScaleDownPVCNotDeleted` warning event, and keeps
+  re-checking them until they are gone. Delete them once you have checked
+  them. Until then the operator refuses any scale-up that would bring their
+  ordinal back, since the StatefulSet would remount them: the replica count
+  stays at its current value and the condition switches to reason
+  `ScaleUpBlocked` with a `ScaleUpBlocked` warning event. The cleanup is
+  resumable: the range of removed ordinals is recorded on the StatefulSet
+  (`ledger.formance.com/scaled-down-from`) in the same update that lowers the
+  replicas, so a PVC deletion that fails on an API error is retried on later
+  passes. Recreating the StatefulSet for a `persistence` template change drops
+  that record; check for leftover PVCs of removed ordinals before such a
+  change.
 - To reattach data after deleting a Cluster with `kubectl delete
   --cascade=orphan`, first delete the orphaned StatefulSet, Services, Ingresses,
   NetworkPolicy, ConfigMap, Secret and ServiceAccount it left behind (keep the
@@ -275,12 +304,24 @@ Check two behaviour changes before upgrading:
   example after `--cascade=orphan`) or a ServiceAccount shared through
   `spec.serviceAccount.name` with `create` left at its default now reports
   `NameConflict` instead of being adopted; follow the rules above.
-- A Cluster whose `metadata.name` exceeds 45 characters now reports
-  `ConfigValid=False`, and the operator stops reconciling it; its existing
-  objects keep running. `v3.0.0-rc.1` accepted 46 and 47 characters, but the
-  resulting 53- and 54-character StatefulSet names can fail pod creation on the
-  `controller-revision-hash` label. Move such a Cluster to a new Cluster with a
-  shorter name, restoring from a backup.
+- A Cluster whose `metadata.name` exceeds 45 characters is no longer
+  reconciled. `v3.0.0-rc.1` accepted 46 and 47 characters, and such Clusters
+  can be healthy: the 53- or 54-character StatefulSet name fits the
+  `controller-revision-hash=<statefulset>-<hash>` label whenever the revision
+  hash is short enough (9 digits or fewer at 53 characters, about 23% of
+  revisions; 8 or fewer at 54, about 2%). After the operator upgrade such a
+  Cluster reports `ConfigValid=False` and the operator stops reconciling it:
+  scaling, image updates and credential propagation stop, while the existing
+  pods keep running. `spec.resourceName` cannot rescue it, because it is
+  create-time only and the current base name is already longer than 52
+  characters. The only path is a backup, a new Cluster whose name has at most
+  45 characters (or that sets `resourceName`), and a restore. Before upgrading
+  the operator, list the affected Clusters:
+
+  ```bash
+  kubectl get clusters.ledger.formance.com -A -o json \
+    | jq -r '.items[] | select((.metadata.name | length) > 45) | "\(.metadata.namespace)/\(.metadata.name)"'
+  ```
 
 ### Main Configuration
 

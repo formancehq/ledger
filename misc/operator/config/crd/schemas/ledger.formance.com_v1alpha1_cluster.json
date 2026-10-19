@@ -4202,6 +4202,7 @@
     }
   },
   "required": [
+    "spec",
     "apiVersion",
     "kind"
   ],

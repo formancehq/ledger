@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,7 +16,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -56,7 +59,7 @@ func newResourceNameCrossCRDFixture(t *testing.T) resourceNameCrossCRDFixture {
 // ownedStatefulSet is the referenced Cluster's own StatefulSet "payments".
 func (f resourceNameCrossCRDFixture) ownedStatefulSet() *appsv1.StatefulSet {
 	return &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
-		Name: "payments", Namespace: "test",
+		Name: "payments", Namespace: "test", UID: "payments-sts-uid",
 		OwnerReferences: []metav1.OwnerReference{{
 			APIVersion: ledgerv1alpha1.GroupVersion.String(), Kind: "Cluster",
 			Name: "jdxmvkvwlyiy-cukg", UID: types.UID("cluster-uid"), Controller: new(true),
@@ -64,12 +67,27 @@ func (f resourceNameCrossCRDFixture) ownedStatefulSet() *appsv1.StatefulSet {
 	}}
 }
 
-func (f resourceNameCrossCRDFixture) reconciler(objects []client.Object, exec ledgerctlExec) (*LedgerReconciler, client.Client) {
+// pod0ControlledBy is the pod "payments-0" controlled by the StatefulSet sts:
+// every exec into a Cluster pod requires its controller to be the Cluster's
+// own StatefulSet (ownedPodExec).
+func pod0ControlledBy(sts *appsv1.StatefulSet) *corev1.Pod {
+	return &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Name: sts.Name + "-0", Namespace: sts.Namespace, UID: types.UID(sts.Name + "-0-uid"),
+		OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(sts, appsv1.SchemeGroupVersion.WithKind("StatefulSet"))},
+	}}
+}
+
+// reconciler builds a LedgerReconciler over objects (controller-runtime
+// client) and pods (the typed clientset the exec path reads pods with).
+func (f resourceNameCrossCRDFixture) reconciler(objects []client.Object, pods []runtime.Object, exec ledgerctlExec) (*LedgerReconciler, client.Client) {
 	c := fake.NewClientBuilder().WithScheme(f.scheme).
 		WithObjects(append([]client.Object{f.ledger}, objects...)...).
 		WithStatusSubresource(f.ledger).Build()
 
-	return &LedgerReconciler{Client: c, Scheme: f.scheme, Dynamic: dynamicfake.NewSimpleDynamicClient(f.scheme, f.cluster), exec: exec}, c
+	return &LedgerReconciler{
+		Client: c, Scheme: f.scheme, Clientset: k8sfake.NewClientset(pods...),
+		Dynamic: dynamicfake.NewSimpleDynamicClient(f.scheme, f.cluster), exec: exec,
+	}, c
 }
 
 // TestLedgerDialsOverriddenClusterPod proves the Ledger controller, which only
@@ -86,7 +104,8 @@ func TestLedgerDialsOverriddenClusterPod(t *testing.T) {
 
 		return &execResult{}, nil
 	}
-	r, c := f.reconciler([]client.Object{f.ownedStatefulSet()}, exec)
+	sts := f.ownedStatefulSet()
+	r, c := f.reconciler([]client.Object{sts}, []runtime.Object{pod0ControlledBy(sts)}, exec)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(f.ledger)})
 	require.NoError(t, err)
@@ -121,7 +140,7 @@ func TestLedgerRefusesConflictingClusterStatefulSet(t *testing.T) {
 
 		return &execResult{}, nil
 	}
-	r, c := f.reconciler([]client.Object{foreign}, exec)
+	r, c := f.reconciler([]client.Object{foreign}, []runtime.Object{pod0ControlledBy(foreign)}, exec)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(f.ledger)})
 	require.NoError(t, err)
@@ -168,18 +187,123 @@ func TestLedgerDeleteNeverExecsIntoForeignOrAbsentRuntime(t *testing.T) {
 
 				return &execResult{}, nil
 			}
-			r, c := f.reconciler(tc.objects, exec)
+			r, c := f.reconciler(tc.objects, nil, exec)
 
 			_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(f.ledger)})
 			require.NoError(t, err)
 			require.Zero(t, execCalls, "must not exec into pods the Cluster does not own")
 
+			// Releasing the last finalizer of a deleting object removes it.
 			stored := &ledgerv1alpha1.Ledger{}
 			if err := c.Get(context.Background(), client.ObjectKeyFromObject(f.ledger), stored); err == nil {
 				require.NotContains(t, stored.Finalizers, ledgerFinalizer)
+			} else {
+				require.True(t, apierrors.IsNotFound(err), "reading the released Ledger: %v", err)
 			}
 		})
 	}
+}
+
+// TestLedgerNeverExecsIntoPodNotControlledByClusterStatefulSet proves the
+// Ledger controller checks the target pod itself, not only the StatefulSet:
+// the Cluster controls the StatefulSet "payments", but "payments-0" is still
+// controlled by an older StatefulSet UID (garbage collection of a deleted
+// same-base-name Cluster's runtime), or does not exist. Neither the create nor the delete path execs; each keeps its
+// reaction to a failed exec (create: Pending with the reason; delete:
+// best-effort, the finalizer is released).
+func TestLedgerNeverExecsIntoPodNotControlledByClusterStatefulSet(t *testing.T) {
+	t.Parallel()
+	oldStatefulSet := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "payments", Namespace: "test", UID: "old-sts-uid"}}
+	for _, tc := range []struct {
+		name     string
+		pods     []runtime.Object
+		deleting bool
+		reason   string
+	}{
+		{"create, pod-0 of an older StatefulSet", []runtime.Object{pod0ControlledBy(oldStatefulSet)}, false, "uid old-sts-uid"},
+		{"delete, pod-0 of an older StatefulSet", []runtime.Object{pod0ControlledBy(oldStatefulSet)}, true, "uid old-sts-uid"},
+		{"create, pod-0 missing", nil, false, "does not exist"},
+		{"delete, pod-0 missing", nil, true, "does not exist"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newResourceNameCrossCRDFixture(t)
+			if tc.deleting {
+				now := metav1.Now()
+				f.ledger.DeletionTimestamp = &now
+			}
+			execCalls := 0
+			exec := func(context.Context, *rest.Config, kubernetes.Interface, string, string, string, []string) (*execResult, error) {
+				execCalls++
+
+				return &execResult{}, nil
+			}
+			r, c := f.reconciler([]client.Object{f.ownedStatefulSet()}, tc.pods, exec)
+
+			_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(f.ledger)})
+			require.NoError(t, err)
+			require.Zero(t, execCalls, "must not exec into a pod the Cluster's StatefulSet does not control")
+			// The refusal comes from the pod check (the StatefulSet is owned).
+			var podReads []string
+			for _, action := range r.Clientset.(*k8sfake.Clientset).Actions() {
+				if get, ok := action.(k8stesting.GetAction); ok && action.GetResource().Resource == "pods" {
+					podReads = append(podReads, get.GetName())
+				}
+			}
+			require.Equal(t, []string{"payments-0"}, podReads)
+
+			stored := &ledgerv1alpha1.Ledger{}
+			getErr := c.Get(context.Background(), client.ObjectKeyFromObject(f.ledger), stored)
+			if tc.deleting {
+				// Releasing the last finalizer of a deleting object removes it.
+				if getErr == nil {
+					require.NotContains(t, stored.Finalizers, ledgerFinalizer)
+				} else {
+					require.True(t, apierrors.IsNotFound(getErr), "reading the released Ledger: %v", getErr)
+				}
+
+				return
+			}
+			require.NoError(t, getErr)
+			require.Equal(t, ledgerv1alpha1.LedgerPhasePending, stored.Status.Phase)
+			condition := meta.FindStatusCondition(stored.Status.Conditions, conditionLedgerSynced)
+			require.NotNil(t, condition)
+			require.Equal(t, "CreateFailed", condition.Reason)
+			require.Contains(t, condition.Message, errPodNotOwned.Error())
+			require.Contains(t, condition.Message, tc.reason)
+		})
+	}
+}
+
+// TestLedgerIndexReconcileNeverExecsIntoPodOfAnotherStatefulSet proves the
+// ledger-index path (a Ready Ledger reconciling spec.indexes) is gated by the
+// same pod check: pod-0 is controlled by an older StatefulSet UID, so no
+// ledgerctl command runs and IndexesSynced reports the refusal.
+func TestLedgerIndexReconcileNeverExecsIntoPodOfAnotherStatefulSet(t *testing.T) {
+	t.Parallel()
+	f := newResourceNameCrossCRDFixture(t)
+	f.ledger.Spec.Indexes = &ledgerv1alpha1.LedgerIndexesSpec{Transaction: []string{"reference"}}
+	f.ledger.Status = ledgerv1alpha1.LedgerCRDStatus{Phase: ledgerv1alpha1.LedgerPhaseReady, Mode: "normal", AppliedSpecHash: computeLedgerSpecHash(&f.ledger.Spec)}
+	oldStatefulSet := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "payments", Namespace: "test", UID: "old-sts-uid"}}
+	execCalls := 0
+	exec := func(context.Context, *rest.Config, kubernetes.Interface, string, string, string, []string) (*execResult, error) {
+		execCalls++
+
+		return &execResult{}, nil
+	}
+	r, c := f.reconciler([]client.Object{f.ownedStatefulSet()}, []runtime.Object{pod0ControlledBy(oldStatefulSet)}, exec)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(f.ledger)})
+	require.NoError(t, err)
+	require.Zero(t, execCalls, "must not exec into a pod the Cluster's StatefulSet does not control")
+
+	stored := &ledgerv1alpha1.Ledger{}
+	require.NoError(t, c.Get(context.Background(), client.ObjectKeyFromObject(f.ledger), stored))
+	condition := meta.FindStatusCondition(stored.Status.Conditions, conditionIndexesSynced)
+	require.NotNil(t, condition)
+	require.Equal(t, metav1.ConditionFalse, condition.Status)
+	require.Contains(t, condition.Message, errPodNotOwned.Error())
+	require.Contains(t, condition.Message, "uid old-sts-uid")
 }
 
 // TestVolumeExpansionRefusesConflictingClusterStatefulSet proves the volume

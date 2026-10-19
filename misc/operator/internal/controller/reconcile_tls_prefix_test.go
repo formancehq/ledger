@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -115,9 +116,12 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 			require.NoError(t, corev1.AddToScheme(scheme))
 			require.NoError(t, batchv1.AddToScheme(scheme))
 
+			// The Service the Job dials is the Cluster's own: only the
+			// StatefulSet varies here.
+			svc := controlledByCluster(&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: clusterBaseName(ls), Namespace: namespace}}, ls)
 			c := fake.NewClientBuilder().
 				WithScheme(scheme).
-				WithObjects(makeSTS(tt.stsName, tt.owned)).
+				WithObjects(makeSTS(tt.stsName, tt.owned), svc).
 				Build()
 
 			r := &BackupRunReconciler{Client: c, Scheme: scheme}
@@ -147,6 +151,100 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 				require.Contains(t, shell, `--tls-ca-cert "$TLS_CA_CERT_FILE"`,
 					"TLS-required StatefulSet found under prefixed name must yield a TLS ledgerctl command")
 				require.NotContains(t, shell, "--insecure")
+			}
+		})
+	}
+}
+
+// TestEnsureBackupJob_RequiresOwnedClusterService proves a backup Job is only
+// created when the ClusterIP Service it dials ("<base>", backupServerAddr) is
+// controlled by the Cluster, even though the Cluster controls its StatefulSet:
+// a Service under the base name owned by another Cluster (or by nobody) fails
+// the run permanently, and a missing one makes it wait. Neither creates a Job.
+func TestEnsureBackupJob_RequiresOwnedClusterService(t *testing.T) {
+	t.Parallel()
+
+	const namespace = "test"
+	ls := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "jdxmvkvwlyiy-cukg", Namespace: namespace, UID: "cluster-uid"},
+		Spec: ledgerv1alpha1.ClusterSpec{
+			ResourceName: "payments",
+			Image:        ledgerv1alpha1.ImageSpec{Repository: "ghcr.io/formancehq/ledger", Tag: "v0.0.8"},
+		},
+	}
+	backup := &ledgerv1alpha1.Backup{
+		ObjectMeta: metav1.ObjectMeta{Name: "bk", Namespace: namespace},
+		Spec: ledgerv1alpha1.BackupSpec{
+			ClusterRef:  ls.Name,
+			Destination: ledgerv1alpha1.BackupDestination{Driver: "s3", S3: &ledgerv1alpha1.S3Config{Bucket: "my-bucket"}},
+		},
+	}
+	run := &ledgerv1alpha1.BackupRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "bk-manual-abc", Namespace: namespace, UID: "run-uid"},
+		Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: "bk", Type: ledgerv1alpha1.BackupRunTypeFull},
+	}
+	other := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: namespace, UID: "other-uid"}}
+
+	for _, tc := range []struct {
+		name         string
+		service      *corev1.Service
+		wantConflict bool
+		wantAbsent   bool
+	}{
+		{
+			name:    "Service controlled by the Cluster creates the Job",
+			service: controlledByCluster(&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "payments", Namespace: namespace}}, ls),
+		},
+		{
+			name:         "Service controlled by another Cluster fails the run",
+			service:      controlledByCluster(&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "payments", Namespace: namespace}}, other),
+			wantConflict: true,
+		},
+		{
+			name:         "Service without a controller reference fails the run",
+			service:      &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "payments", Namespace: namespace, UID: "unowned-uid"}},
+			wantConflict: true,
+		},
+		{
+			name:       "missing Service makes the run wait",
+			wantAbsent: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			scheme := runtime.NewScheme()
+			require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+			require.NoError(t, appsv1.AddToScheme(scheme))
+			require.NoError(t, corev1.AddToScheme(scheme))
+			require.NoError(t, batchv1.AddToScheme(scheme))
+			objects := []client.Object{controlledByCluster(&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "payments", Namespace: namespace}}, ls)}
+			if tc.service != nil {
+				objects = append(objects, tc.service)
+			}
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+			r := &BackupRunReconciler{Client: c, Scheme: scheme}
+
+			job, err := r.ensureBackupJob(context.Background(), run, backup, ls)
+
+			jobs := &batchv1.JobList{}
+			require.NoError(t, c.List(context.Background(), jobs))
+			var permanent *permanentBackupJobError
+			switch {
+			case tc.wantConflict:
+				require.Nil(t, job)
+				require.True(t, errors.As(err, &permanent), "a foreign Service fails the run: %v", err)
+				require.ErrorIs(t, permanent.error, errResourceNameConflict)
+				require.ErrorContains(t, err, "Service/payments")
+				require.Empty(t, jobs.Items, "no backup Job may dial a Service the Cluster does not control")
+			case tc.wantAbsent:
+				require.Nil(t, job)
+				require.ErrorIs(t, err, errClusterServiceAbsent)
+				require.False(t, errors.As(err, &permanent), "a missing Service is transient")
+				require.Empty(t, jobs.Items)
+			default:
+				require.NoError(t, err)
+				require.Len(t, jobs.Items, 1)
+				require.Contains(t, job.Spec.Template.Spec.Containers[0].Command[2], "payments.test.svc.cluster.local:8888")
 			}
 		})
 	}

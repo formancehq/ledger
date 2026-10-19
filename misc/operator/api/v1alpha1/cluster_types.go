@@ -19,7 +19,15 @@ type Cluster struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ClusterSpec   `json:"spec,omitempty"`
+	// +kubebuilder:validation:Required
+	Spec ClusterSpec `json:"spec"`
+	// Spec is required (no omitempty): the create-time-only and immutability
+	// rules of spec.resourceName, spec.clusterID, spec.bindAddr, spec.walDir and
+	// spec.dataDir only run while both the old and the new object have a spec,
+	// so removing the whole spec and adding it back would otherwise bypass them.
+	// This note is not the field's doc comment, so the schema description stays
+	// ClusterSpec's.
+
 	Status ClusterStatus `json:"status,omitempty"`
 }
 

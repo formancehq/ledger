@@ -12,6 +12,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -90,5 +91,29 @@ func TestClusterResourceNameCRDValidation(t *testing.T) {
 		err := updateClusterSpec(t, types.NamespacedName{Namespace: ns, Name: cluster.Name}, func(spec *ledgerv1alpha1.ClusterSpec) { spec.ResourceName = "added-rn" })
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "resourceName can only be set at creation")
+	})
+
+	t.Run("whole spec cannot be removed, so a remove/re-add cannot change it", func(t *testing.T) {
+		cluster := newCluster("remove-spec", ns)
+		cluster.Spec.ResourceName = "remove-spec-rn"
+		require.NoError(t, k8sClient.Create(ctx, cluster))
+		key := types.NamespacedName{Namespace: ns, Name: cluster.Name}
+
+		// Without a required spec, the ClusterSpec transition rule and the
+		// field rules would not run on this update (no spec in the new object)
+		// nor on the next one (no spec in the old object).
+		err := k8sClient.Patch(ctx, cluster.DeepCopy(), client.RawPatch(types.MergePatchType, []byte(`{"spec":null}`)))
+		require.Error(t, err)
+		require.True(t, apierrors.IsInvalid(err), "removing spec: %v", err)
+		require.Contains(t, err.Error(), "spec: Required value")
+
+		// The re-add half of the sequence then meets the immutability rule.
+		err = k8sClient.Patch(ctx, cluster.DeepCopy(), client.RawPatch(types.MergePatchType, []byte(`{"spec":{"resourceName":"readded-rn"}}`)))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "resourceName is immutable")
+
+		stored := &ledgerv1alpha1.Cluster{}
+		require.NoError(t, k8sClient.Get(ctx, key, stored))
+		require.Equal(t, "remove-spec-rn", stored.Spec.ResourceName)
 	})
 }

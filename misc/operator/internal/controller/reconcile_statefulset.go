@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -10,6 +11,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -115,7 +117,10 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			// taken before the CreateOrUpdate above): the rolling update has not yet
 			// started, so pod-0's gRPC server is still on the old TLS_MODE.
 			runningTLSMode := currentTLSModeFromStatefulSet(existingForTLS)
-			if err := raftScaleDown(ctx, r.Config, r.Clientset, ledger, previousReplicas, desiredReplicas, runningTLSMode, exec); err != nil {
+			// sts is now the live StatefulSet the Cluster controls (the mutate
+			// function refused any other): every exec into pod-0 first checks
+			// that this StatefulSet controls it.
+			if err := raftScaleDown(ctx, r.Config, r.Clientset, ledger, previousReplicas, desiredReplicas, runningTLSMode, ownedPodExec(sts, exec)); err != nil {
 				return ctrl.Result{}, fmt.Errorf("removing Raft nodes before scale-down: %w", err)
 			}
 		}
@@ -133,6 +138,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	// Check if VolumeClaimTemplates changed on an existing StatefulSet.
 	// VCTs are immutable — we must delete-recreate with orphan propagation.
 	existing := &appsv1.StatefulSet{}
+	var blockedScaleUp []string
 	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, existing); err == nil {
 		if notControlledBy(existing, ledger) {
 			return ctrl.Result{}, nameConflictError(name, []string{describeOwnership("StatefulSet", existing, ledger)})
@@ -147,6 +153,19 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			// Returning here requeues via the owned-StatefulSet delete event — the next
 			// reconciliation creates the new StatefulSet and the orphaned pods are adopted.
 			return ctrl.Result{}, nil
+		}
+		// A scale-up must not bring back a removed ordinal whose claim is still
+		// there: the StatefulSet would remount it, with another owner's data or
+		// a removed Raft node's state. Keep the live replica count until those
+		// claims are gone; reportScaleDownPVCs makes the refusal loud.
+		if r.Clientset != nil {
+			blockedScaleUp, err = scaleUpBlockingClaims(ctx, r.Clientset, ledger, existing, desiredReplicas)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("checking removed replicas' PVCs before scale-up: %w", err)
+			}
+			if len(blockedScaleUp) > 0 {
+				desired.Replicas = new(statefulSetReplicas(existing))
+			}
 		}
 	}
 
@@ -166,6 +185,13 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			sts.Spec.PersistentVolumeClaimRetentionPolicy = desired.PersistentVolumeClaimRetentionPolicy
 			sts.Spec.MinReadySeconds = desired.MinReadySeconds
 		}
+		if scalingDown {
+			// Recorded in the same write that drops the replicas, so the PVC
+			// cleanup of the removed ordinals resumes after any failure.
+			if err := recordScaledDownFrom(sts, previousReplicas); err != nil {
+				return err
+			}
+		}
 
 		return setOwnedControllerReference(ledger, sts, r.Scheme, "StatefulSet")
 	})
@@ -173,10 +199,11 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		return ctrl.Result{}, err
 	}
 
-	// After the StatefulSet is updated (pods terminated), delete orphaned PVCs.
-	if scalingDown && r.Clientset != nil {
-		volNames := pvcVolumeNames(&ledger.Spec.Persistence)
-		if err := deleteScaledDownPVCs(ctx, r.Clientset, ledger, previousReplicas, desiredReplicas, volNames); err != nil {
+	// Delete the PVCs of removed ordinals, resuming any earlier unfinished
+	// cleanup, and report the claims kept. sts is the live StatefulSet the
+	// Cluster controls: its UID and selector identify the PVCs it created.
+	if r.Clientset != nil {
+		if err := r.reconcileScaledDownPVCs(ctx, ledger, sts, desiredReplicas, blockedScaleUp); err != nil {
 			return ctrl.Result{}, fmt.Errorf("deleting PVCs after scale-down: %w", err)
 		}
 	}
@@ -195,11 +222,97 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	// rather than relying on an incidental later StatefulSet status change — in both
 	// directions: stamping a freshly scaled-out PVC/PV when protection is on, and
 	// unstamping a PVC born from a still-labeled immutable VCT after an opt-out.
-	if result, err := r.reconcileVolumeProtectionPass(ctx, ledger); err != nil || !result.IsZero() {
+	//
+	// A refused scale-up labels only the live ordinals: the kept claims of the
+	// others must stay deletable by the user.
+	protectedReplicas := desiredReplicas
+	if len(blockedScaleUp) > 0 {
+		protectedReplicas = statefulSetReplicas(sts)
+	}
+	result, err := r.reconcileVolumeProtectionForReplicas(ctx, ledger, protectedReplicas)
+	if err != nil {
 		return result, err
 	}
+	if len(blockedScaleUp) > 0 && (result.RequeueAfter == 0 || result.RequeueAfter > nameConflictRequeueInterval) {
+		// Nothing watches PVCs: re-check the refused scale-up periodically.
+		result.RequeueAfter = nameConflictRequeueInterval
+	}
 
-	return ctrl.Result{}, nil
+	return result, nil
+}
+
+// reconcileScaledDownPVCs deletes the PVCs of the ordinals a scale-down
+// removed, from the live replica count up to the count recorded on the
+// StatefulSet (annotationScaledDownFrom), and reports the claims it keeps.
+// Every pass re-evaluates the whole recorded range, so a cleanup interrupted by
+// an API error resumes, and a kept claim stays reported until it is gone (or
+// matches the StatefulSet again and is deleted). The record is removed once no
+// claim of the range is left to delete or report.
+func (r *ClusterReconciler) reconcileScaledDownPVCs(ctx context.Context, ledger *ledgerv1alpha1.Cluster,
+	sts *appsv1.StatefulSet, desiredReplicas int32, blockedScaleUp []string,
+) error {
+	from, err := scaledDownFrom(sts)
+	if err != nil {
+		return err
+	}
+	live := statefulSetReplicas(sts)
+	var retained []string
+	var cleanupErr error
+	if from > live {
+		retained, cleanupErr = deleteScaledDownPVCs(ctx, r.Clientset, ledger, sts, from, live, pvcVolumeNames(&ledger.Spec.Persistence))
+	}
+	r.reportScaleDownPVCs(ctx, ledger, retained, blockedScaleUp, desiredReplicas)
+	if cleanupErr != nil || len(retained) > 0 || from == 0 {
+		return cleanupErr
+	}
+	patch := client.MergeFrom(sts.DeepCopy())
+	delete(sts.Annotations, annotationScaledDownFrom)
+	if err := r.Patch(ctx, sts, patch); err != nil {
+		return fmt.Errorf("clearing %s on StatefulSet %s: %w", annotationScaledDownFrom, sts.Name, err)
+	}
+
+	return nil
+}
+
+// reportScaleDownPVCs sets or clears conditionScaleDownPVCsRetained from this
+// pass's evaluation: the claims of removed ordinals kept because the Cluster's
+// StatefulSet did not create them, and the claims that made it refuse a
+// scale-up. A Warning event (ScaleDownPVCNotDeleted, or ScaleUpBlocked)
+// accompanies every change of the condition.
+func (r *ClusterReconciler) reportScaleDownPVCs(ctx context.Context, ledger *ledgerv1alpha1.Cluster,
+	retained, blockedScaleUp []string, desiredReplicas int32,
+) {
+	if len(retained) == 0 && len(blockedScaleUp) == 0 {
+		meta.RemoveStatusCondition(&ledger.Status.Conditions, conditionScaleDownPVCsRetained)
+
+		return
+	}
+	reason, eventReason := "PVCsRetained", "ScaleDownPVCNotDeleted"
+	var messages []string
+	if len(blockedScaleUp) > 0 {
+		reason, eventReason = "ScaleUpBlocked", "ScaleUpBlocked"
+		messages = append(messages, fmt.Sprintf(
+			"refusing to scale up to %d replicas: PVCs of removed replicas are still present and would be remounted; delete them first: %s",
+			desiredReplicas, strings.Join(blockedScaleUp, ", ")))
+	}
+	if len(retained) > 0 {
+		messages = append(messages, "kept PVCs of removed replicas that this Cluster's StatefulSet did not create; delete them once checked: "+
+			strings.Join(retained, "; "))
+	}
+	message := strings.Join(messages, ". ")
+	changed := meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+		Type:               conditionScaleDownPVCsRetained,
+		Status:             metav1.ConditionTrue,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: ledger.Generation,
+	})
+	if len(blockedScaleUp) > 0 {
+		log.FromContext(ctx).Error(errors.New(message), "scale-up refused")
+	}
+	if changed && r.Recorder != nil {
+		r.Recorder.Event(ledger, corev1.EventTypeWarning, eventReason, message)
+	}
 }
 
 // reconcileVolumeProtectionPass brings the deletion-protection labels on this
@@ -216,13 +329,19 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 //
 // A nil Clientset (unit tests without a typed client) is a no-op.
 func (r *ClusterReconciler) reconcileVolumeProtectionPass(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (ctrl.Result, error) {
-	if r.Clientset == nil {
-		return ctrl.Result{}, nil
-	}
-
 	desiredReplicas := int32(3)
 	if ledger.Spec.Replicas != nil {
 		desiredReplicas = *ledger.Spec.Replicas
+	}
+
+	return r.reconcileVolumeProtectionForReplicas(ctx, ledger, desiredReplicas)
+}
+
+// reconcileVolumeProtectionForReplicas is reconcileVolumeProtectionPass for the
+// PVCs of ordinals below desiredReplicas.
+func (r *ClusterReconciler) reconcileVolumeProtectionForReplicas(ctx context.Context, ledger *ledgerv1alpha1.Cluster, desiredReplicas int32) (ctrl.Result, error) {
+	if r.Clientset == nil {
+		return ctrl.Result{}, nil
 	}
 
 	volNames := pvcVolumeNames(&ledger.Spec.Persistence)

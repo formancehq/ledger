@@ -73,6 +73,16 @@ that derives the name from a CR name string instead of the Cluster object. A sam
 orphaned object, is the documented `ResourceNamesAvailable=False` behaviour,
 not a defect by itself.
 
+Ownership is checked per object, not inherited by name: an exec must establish
+that the target pod is controlled by the Cluster's StatefulSet UID
+(`ownedPodExec`), a scale-down PVC delete that the Cluster's StatefulSet created
+the claim (`scaledDownPVCMismatch`), and a backup Job that the Service it dials
+is controlled by the Cluster. The UID delete precondition guarantees identity
+only; an ownerReference change on the same object between the read and the
+delete is a documented, accepted race, and so is a pod replaced between its
+ownership read and the exec stream. A finding about either must show more than
+that window.
+
 ## Severity
 
 Use the native P0–P3 scale with demonstrated impact and explicit preconditions:

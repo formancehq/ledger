@@ -607,20 +607,25 @@ func (r *LedgerReconciler) ledgerctlExec(ctx context.Context, cluster *ledgerv1a
 // its captured stdout. When the command is invoked with --json, pterm output
 // (spinners, messages) is routed to stderr by the CLI, so stdout carries only
 // the JSON payload — safe to parse.
+//
+// It execs only into a pod-0 controlled by the Cluster's own StatefulSet
+// (fetchClusterStatefulSet, then ownedPodExec); otherwise it fails with
+// errClusterRuntimeAbsent, errResourceNameConflict or errPodNotOwned and runs
+// nothing.
 func (r *LedgerReconciler) ledgerctlExecOutput(ctx context.Context, cluster *ledgerv1alpha1.Cluster, grpcPort int32, args ...string) (string, error) {
-	tlsMode, err := fetchTLSMode(ctx, r.Client, cluster)
+	sts, err := fetchClusterStatefulSet(ctx, r.Client, cluster)
 	if err != nil {
-		return "", fmt.Errorf("resolving TLS mode for Cluster %q: %w", cluster.Name, err)
+		return "", fmt.Errorf("resolving the StatefulSet of Cluster %q: %w", cluster.Name, err)
 	}
 
 	serverAddr := podSelfServerAddr(headlessServiceName(cluster), grpcPort)
-	cmd := ledgerctlCommand(serverAddr, tlsMode, args...)
+	cmd := ledgerctlCommand(serverAddr, currentTLSModeFromStatefulSet(sts), args...)
 
 	exec := r.exec
 	if exec == nil {
 		exec = podExec
 	}
-	res, err := exec(ctx, r.Config, r.Clientset, cluster.Namespace, podName(cluster, 0), ledgerContainer, cmd)
+	res, err := ownedPodExec(sts, exec)(ctx, r.Config, r.Clientset, cluster.Namespace, podName(cluster, 0), ledgerContainer, cmd)
 	if err != nil {
 		return "", fmt.Errorf("ledgerctl %s: %w", args[0], err)
 	}

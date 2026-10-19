@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -472,36 +474,202 @@ func isAlreadyLeader(stderr string) bool {
 		strings.Contains(lower, "already leader")
 }
 
-// deleteScaledDownPVCs deletes PVCs for pod ordinals that no longer exist after
-// a scale-down. Only PVC-backed volumes are considered; hostPath volumes have
-// no PVC to clean up. This must be called after the StatefulSet update so the
-// pods are already terminated.
+const (
+	// annotationScaledDownFrom, on the Cluster's StatefulSet, records the
+	// replica count a scale-down started from while the PVCs of the removed
+	// ordinals [spec.replicas, value) still need cleanup or are reported as
+	// kept. It is written in the same update that lowers spec.replicas and
+	// removed once no claim of the range is left (reconcileScaledDownPVCs).
+	// A StatefulSet recreated for a VolumeClaimTemplate change starts without
+	// it: the claims still pending then are neither deleted nor reported.
+	annotationScaledDownFrom = "ledger.formance.com/scaled-down-from"
+
+	// conditionScaleDownPVCsRetained is True while PVCs of removed ordinals are
+	// kept because the Cluster's StatefulSet did not create them (reason
+	// PVCsRetained), or while such claims make the operator refuse a scale-up
+	// (reason ScaleUpBlocked). It is removed once none is left.
+	conditionScaleDownPVCsRetained = "ScaleDownPVCsRetained"
+)
+
+// statefulSetReplicas returns sts.spec.replicas, defaulting to 1 like the API
+// server.
+func statefulSetReplicas(sts *appsv1.StatefulSet) int32 {
+	if sts.Spec.Replicas == nil {
+		return 1
+	}
+
+	return *sts.Spec.Replicas
+}
+
+// scaledDownFrom returns the annotationScaledDownFrom record of sts, or 0 when
+// there is none. A value that is not a positive integer is an invariant
+// failure: the operator alone writes it.
+func scaledDownFrom(sts *appsv1.StatefulSet) (int32, error) {
+	value, ok := sts.Annotations[annotationScaledDownFrom]
+	if !ok {
+		return 0, nil
+	}
+	from, err := strconv.ParseInt(value, 10, 32)
+	if err != nil || from < 1 {
+		return 0, fmt.Errorf("invariant: StatefulSet %s/%s has an invalid %s annotation %q", sts.Namespace, sts.Name, annotationScaledDownFrom, value)
+	}
+
+	return int32(from), nil
+}
+
+// recordScaledDownFrom raises the annotationScaledDownFrom record of sts to
+// previousReplicas, keeping a higher range still pending from an earlier
+// scale-down.
+func recordScaledDownFrom(sts *appsv1.StatefulSet, previousReplicas int32) error {
+	from, err := scaledDownFrom(sts)
+	if err != nil {
+		return err
+	}
+	if sts.Annotations == nil {
+		sts.Annotations = map[string]string{}
+	}
+	sts.Annotations[annotationScaledDownFrom] = strconv.Itoa(int(max(from, previousReplicas)))
+
+	return nil
+}
+
+// scaleUpBlockingClaims returns the PVCs that a scale-up of the live
+// StatefulSet existing to desiredReplicas would remount although a scale-down
+// removed their ordinal and they are still recorded for cleanup or reporting
+// (annotationScaledDownFrom), whoever owns them. It returns nil when the
+// replica count does not grow into that range. Claims of ordinals outside the
+// record (for instance retained from a deleted Cluster) are intended reuse and
+// never block.
+func scaleUpBlockingClaims(ctx context.Context, clientset kubernetes.Interface, cluster *ledgerv1alpha1.Cluster,
+	existing *appsv1.StatefulSet, desiredReplicas int32,
+) ([]string, error) {
+	from, err := scaledDownFrom(existing)
+	if err != nil {
+		return nil, err
+	}
+	live := statefulSetReplicas(existing)
+	var present []string
+	for ordinal := live; ordinal < min(desiredReplicas, from); ordinal++ {
+		for _, vol := range pvcVolumeNames(&cluster.Spec.Persistence) {
+			claimName := pvcName(cluster, vol, ordinal)
+			_, err := clientset.CoreV1().PersistentVolumeClaims(cluster.Namespace).Get(ctx, claimName, metav1.GetOptions{})
+			if kerrors.IsNotFound(err) {
+				continue
+			}
+			if err != nil {
+				return nil, fmt.Errorf("getting PVC %s: %w", claimName, err)
+			}
+			present = append(present, claimName)
+		}
+	}
+
+	return present, nil
+}
+
+// deleteScaledDownPVCs deletes the PVCs of the pod ordinals removed by a
+// scale-down, [currentReplicas, previousReplicas). Only PVC-backed volumes are
+// considered; hostPath volumes have no PVC to clean up. This must be called
+// after the StatefulSet update has requested termination of those pods.
+//
+// A PVC is looked up by its derived name "<volume>-<base>-<ordinal>", which
+// proves nothing: with spec.resourceName that name can belong to someone else.
+// sts is the live StatefulSet the Cluster controls, and a PVC is deleted only
+// when scaledDownPVCMismatch finds it is one that StatefulSet's controller
+// created for that ordinal. A PVC that does not match is never deleted: it is
+// logged and returned in retained, for the caller to report. The delete
+// carries a UID precondition, so a PVC replaced after it was inspected is
+// retained too. An API error on one claim does not stop the others; the
+// errors are returned joined, and the caller retries the whole range.
 func deleteScaledDownPVCs(ctx context.Context, clientset kubernetes.Interface,
-	cluster *ledgerv1alpha1.Cluster, previousReplicas, currentReplicas int32,
+	cluster *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, previousReplicas, currentReplicas int32,
 	volumeNames []string,
-) error {
+) (retained []string, err error) {
+	if sts == nil || sts.UID == "" {
+		return nil, errors.New("invariant: deleting scaled-down PVCs without the inspected Cluster StatefulSet")
+	}
 	logger := log.FromContext(ctx)
 	pvcs := clientset.CoreV1().PersistentVolumeClaims(cluster.Namespace)
 
+	var errs []error
 	for ordinal := previousReplicas - 1; ordinal >= currentReplicas; ordinal-- {
 		for _, vol := range volumeNames {
 			claimName := pvcName(cluster, vol, ordinal)
-			logger.Info("deleting PVC for removed replica",
-				"pvc", claimName,
-				"ordinal", ordinal,
-			)
-			if err := pvcs.Delete(ctx, claimName, metav1.DeleteOptions{}); err != nil {
-				// Already gone — idempotent.
-				if strings.Contains(err.Error(), "not found") {
-					logger.Info("PVC already deleted, skipping", "pvc", claimName)
+			pvc, err := pvcs.Get(ctx, claimName, metav1.GetOptions{})
+			if kerrors.IsNotFound(err) {
+				continue
+			}
+			if err != nil {
+				errs = append(errs, fmt.Errorf("getting PVC %s: %w", claimName, err))
 
-					continue
-				}
+				continue
+			}
+			if reason := scaledDownPVCMismatch(pvc, sts, podName(cluster, int(ordinal))); reason != "" {
+				logger.Info("not deleting PVC of removed replica: not created by this Cluster's StatefulSet",
+					"pvc", claimName, "ordinal", ordinal, "reason", reason)
+				retained = append(retained, claimName+" ("+reason+")")
 
-				return fmt.Errorf("deleting PVC %s: %w", claimName, err)
+				continue
+			}
+
+			logger.Info("deleting PVC for removed replica", "pvc", claimName, "ordinal", ordinal)
+			uid := pvc.UID
+			err = pvcs.Delete(ctx, claimName, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &uid}})
+			switch {
+			case err == nil, kerrors.IsNotFound(err):
+			case kerrors.IsConflict(err):
+				// The PVC under the name was replaced after it was inspected: the
+				// replacement was never checked, so it is not deleted.
+				logger.Info("not deleting PVC of removed replica: replaced after its ownership was checked",
+					"pvc", claimName, "ordinal", ordinal, "inspectedUID", uid)
+				retained = append(retained, claimName+" (replaced after its ownership was checked)")
+			default:
+				errs = append(errs, fmt.Errorf("deleting PVC %s: %w", claimName, err))
 			}
 		}
 	}
 
-	return nil
+	return retained, errors.Join(errs...)
+}
+
+// scaledDownPVCMismatch returns why pvc, found under the derived name of
+// ordinalPod's claim, is not a claim that sts created for that ordinal, or ""
+// when it is. The policy follows what the StatefulSet controller writes on the
+// claims it creates from a VolumeClaimTemplate:
+//
+//   - labels: it copies sts.spec.selector.matchLabels onto every claim, and the
+//     selector is immutable, so the claim must carry all of them. They include
+//     app.kubernetes.io/instance=<Cluster name>, so a claim of another
+//     Cluster's StatefulSet does not match even under the same base name.
+//   - ownerReferences: with persistentVolumeClaimRetentionPolicy Retain/Retain
+//     (the default) the claim has none; whenDeleted=Delete adds sts itself and
+//     whenScaled=Delete adds the condemned Pod. Any other reference, such as
+//     another StatefulSet's UID, means another owner.
+//
+// A retained, ownerless claim left by an earlier StatefulSet of a Cluster with
+// the same name and selector labels matches, which keeps a recreated Cluster's
+// reuse of its retained PVCs intact, scale-down cleanup included. A retained
+// claim from a Cluster with another name or other selector labels does not:
+// the StatefulSet still mounts it, but scale-down never deletes it.
+func scaledDownPVCMismatch(pvc *corev1.PersistentVolumeClaim, sts *appsv1.StatefulSet, ordinalPod string) string {
+	if sts.Spec.Selector == nil || len(sts.Spec.Selector.MatchLabels) == 0 {
+		return "the StatefulSet has no selector labels to match"
+	}
+	// Sorted keys keep the reported reason, and so the condition message,
+	// stable across passes.
+	for _, key := range slices.Sorted(maps.Keys(sts.Spec.Selector.MatchLabels)) {
+		value := sts.Spec.Selector.MatchLabels[key]
+		if got, ok := pvc.Labels[key]; !ok || got != value {
+			return fmt.Sprintf("label %s=%q does not match the StatefulSet selector %q", key, got, value)
+		}
+	}
+	for _, ref := range pvc.OwnerReferences {
+		switch {
+		case ref.Kind == "StatefulSet" && ref.UID == sts.UID:
+		case ref.Kind == "Pod" && ref.Name == ordinalPod:
+		default:
+			return fmt.Sprintf("owned by %s/%s (uid %s)", ref.Kind, ref.Name, ref.UID)
+		}
+	}
+
+	return ""
 }

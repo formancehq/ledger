@@ -13,8 +13,10 @@ import (
 // spec.resourceName in the generated (and Helm-synced) CRDs: DNS-1035 label,
 // at most 52 chars (StatefulSet controller-revision-hash label limit),
 // immutable once set, and impossible to add or remove after creation. The
-// rules are exercised against a real API server by the integration-tagged
-// TestClusterResourceNameCRDValidation.
+// root schema requires spec: the CEL rules only run while both the old and the
+// new object have a spec, so removing the whole spec and adding it back would
+// otherwise bypass them. The rules are exercised against a real API server by
+// the integration-tagged TestClusterResourceNameCRDValidation.
 func TestResourceNameCRDValidation(t *testing.T) {
 	t.Parallel()
 	for _, path := range []string{
@@ -27,7 +29,9 @@ func TestResourceNameCRDValidation(t *testing.T) {
 			require.NoError(t, err)
 			var crd apiextensionsv1.CustomResourceDefinition
 			require.NoError(t, yaml.Unmarshal(data, &crd))
-			spec := crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties["spec"]
+			root := crd.Spec.Versions[0].Schema.OpenAPIV3Schema
+			require.Contains(t, root.Required, "spec")
+			spec := root.Properties["spec"]
 
 			field, ok := spec.Properties["resourceName"]
 			require.True(t, ok)
