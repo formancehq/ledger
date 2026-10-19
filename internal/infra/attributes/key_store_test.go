@@ -17,7 +17,7 @@ type testKey struct {
 func (k testKey) AppendBytes(dst []byte) []byte { return append(dst, k.name...) }
 
 func newTestKeyStore() *KeyStore[testKey, string] {
-	return NewKeyStore[testKey, string](kv.NewValidatedShardedMap[U128, Entry[string]](func(k U128) uint64 { return k.Hi() }, func(old, next Entry[string]) bool { return old.Tag == next.Tag }))
+	return NewKeyStore[testKey, string](kv.NewShardedMap[U128, Entry[string]](func(k U128) uint64 { return k.Hi() }, kv.WithReplaceValidator(func(old, next Entry[string]) bool { return old.Tag == next.Tag })))
 }
 
 func BenchmarkKeyStorePutExisting(b *testing.B) {
@@ -53,7 +53,7 @@ func TestKeyStorePutRejectsBeforePublication(t *testing.T) {
 	t.Parallel()
 	canonical := []byte("publication-window")
 	id, tag := MakeKey(canonical)
-	raw := kv.NewValidatedShardedMap[U128, Entry[string]](func(k U128) uint64 { return k.Hi() }, func(old, next Entry[string]) bool { return old.Tag == next.Tag })
+	raw := kv.NewShardedMap[U128, Entry[string]](func(k U128) uint64 { return k.Hi() }, kv.WithReplaceValidator(func(old, next Entry[string]) bool { return old.Tag == next.Tag }))
 	raw.Put(id, Entry[string]{Tag: tag + 1, Data: "original"})
 	barrier := &publishBarrierKV{
 		KV:        raw,

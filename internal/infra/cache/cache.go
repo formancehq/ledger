@@ -26,7 +26,7 @@ func u128Hash(k attributes.U128) uint64 {
 
 // newShardedMap creates a ShardedMap keyed by U128 with the standard hash function.
 func newShardedMap[T any]() *kv.ShardedMap[attributes.U128, attributes.Entry[T]] {
-	return kv.NewValidatedShardedMap[attributes.U128, attributes.Entry[T]](u128Hash, func(old, next attributes.Entry[T]) bool { return old.Tag == next.Tag })
+	return kv.NewShardedMap[attributes.U128, attributes.Entry[T]](u128Hash, kv.WithReplaceValidator(func(old, next attributes.Entry[T]) bool { return old.Tag == next.Tag }))
 }
 
 // AttributeCache is a dual-generation cache for attribute values.

@@ -92,9 +92,9 @@ func TestShardedMap_PutOverwrite(t *testing.T) {
 
 func TestShardedMap_PutValidator(t *testing.T) {
 	t.Parallel()
-	sm := NewValidatedShardedMap[string, int](stringHash, func(old, next int) bool {
+	sm := NewShardedMap[string, int](stringHash, WithReplaceValidator(func(old, next int) bool {
 		return old%2 == next%2
-	})
+	}))
 	_, existed, written := sm.Put("a", 2)
 	require.False(t, existed)
 	require.True(t, written)

@@ -27,26 +27,38 @@ type ShardedMap[K comparable, V any] struct {
 	size            atomic.Int64
 }
 
-// NewShardedMap creates a ShardedMap with the given hash function.
+type shardedMapOptions[V any] struct {
+	validateReplace func(old, next V) bool
+}
+
+// ShardedMapOption configures optional behavior at construction.
+type ShardedMapOption[V any] func(*shardedMapOptions[V])
+
+// WithReplaceValidator rejects replacements for which validateReplace returns false.
+func WithReplaceValidator[V any](validateReplace func(old, next V) bool) ShardedMapOption[V] {
+	if validateReplace == nil {
+		panic("kv.WithReplaceValidator: validator is required")
+	}
+
+	return func(options *shardedMapOptions[V]) {
+		options.validateReplace = validateReplace
+	}
+}
+
+// NewShardedMap creates a ShardedMap with the given hash function and options.
 // hashFn must return a well-distributed uint64 for shard selection.
-func NewShardedMap[K comparable, V any](hashFn func(K) uint64) *ShardedMap[K, V] {
+func NewShardedMap[K comparable, V any](hashFn func(K) uint64, options ...ShardedMapOption[V]) *ShardedMap[K, V] {
+	config := shardedMapOptions[V]{}
+	for _, option := range options {
+		option(&config)
+	}
 	sm := &ShardedMap[K, V]{
-		hashFn: hashFn,
+		hashFn:          hashFn,
+		validateReplace: config.validateReplace,
 	}
 	for i := range sm.shards {
 		sm.shards[i].m = make(map[K]V)
 	}
-
-	return sm
-}
-
-// NewValidatedShardedMap applies validateReplace to every replacement.
-func NewValidatedShardedMap[K comparable, V any](hashFn func(K) uint64, validateReplace func(old, next V) bool) *ShardedMap[K, V] {
-	if validateReplace == nil {
-		panic("kv.NewValidatedShardedMap: validator is required")
-	}
-	sm := NewShardedMap[K, V](hashFn)
-	sm.validateReplace = validateReplace
 
 	return sm
 }
