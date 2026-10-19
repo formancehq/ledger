@@ -5,7 +5,10 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/hex"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -758,6 +761,70 @@ func TestAuthenticate_SuperuserClaimMustBeBooleanTrue(t *testing.T) {
 			_, err := authenticate(ctxWithBearer(token), cfg, ScopeClusterWrite)
 			require.Error(t, err)
 			assert.Equal(t, codes.PermissionDenied, status.Code(err))
+		})
+	}
+}
+
+func TestEvaluateGRPCCredentialsLoadedEd25519Privileges(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	privateKeys := make(map[string]ed25519.PrivateKey)
+	entries := make([]Ed25519KeyEntry, 0, 2)
+	for _, id := range []string{"restricted", "privileged"} {
+		publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+		require.NoError(t, err)
+		privateKeys[id] = privateKey
+		path := filepath.Join(dir, id+".hex")
+		require.NoError(t, os.WriteFile(path, []byte(hex.EncodeToString(publicKey)), 0600))
+		entry := Ed25519KeyEntry{KeyID: id, PublicKeyFile: path, Scopes: []string{"ledger:read"}}
+		if id == "privileged" {
+			entry.Scopes = []string{"ledger:admin"}
+			entry.Superuser = true
+		}
+		entries = append(entries, entry)
+	}
+	data, err := json.Marshal(Ed25519KeysConfig{Keys: entries})
+	require.NoError(t, err)
+	path := filepath.Join(dir, "keys.json")
+	require.NoError(t, os.WriteFile(path, data, 0600))
+	loaded, err := LoadEd25519KeySet(path)
+	require.NoError(t, err)
+	cfg := AuthConfig{
+		Enabled: true, KeySet: loaded.KeySet, Service: "ledger", ScopeMapping: DefaultMapping("ledger"),
+		Ed25519AllowedScopes: loaded.AllowedScopes, Ed25519SuperuserKeys: loaded.SuperuserKeys,
+	}
+
+	for _, test := range []struct {
+		name              string
+		keyID             string
+		scopes            []string
+		superuser         bool
+		credentialCode    codes.Code
+		authorizationCode codes.Code
+	}{
+		{name: "restricted superuser", keyID: "restricted", superuser: true, credentialCode: codes.Unauthenticated},
+		{name: "restricted excessive scope", keyID: "restricted", scopes: []string{"ledger:admin"}, credentialCode: codes.Unauthenticated},
+		{name: "restricted valid read", keyID: "restricted", scopes: []string{"ledger:read"}, authorizationCode: codes.PermissionDenied},
+		{name: "privileged admin scope", keyID: "privileged", scopes: []string{"ledger:admin"}},
+		{name: "privileged superuser", keyID: "privileged", superuser: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			claims := newTestClaims(test.scopes...)
+			claims.Issuer = ""
+			claims.Claims = map[string]any{"superuser": test.superuser}
+			token := signEdDSA(t, privateKeys[test.keyID], test.keyID, claims)
+			ctx, err := EvaluateGRPCCredentials(ctxWithBearer(token), cfg)
+			require.Equal(t, test.credentialCode, status.Code(err))
+			if test.credentialCode != codes.OK {
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, test.authorizationCode, status.Code(AuthorizeGRPC(ctx, ScopeClusterWrite)))
+			if test.keyID == "restricted" {
+				require.NoError(t, AuthorizeGRPC(ctx, ScopeLedgersRead))
+			}
 		})
 	}
 }

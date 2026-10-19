@@ -190,6 +190,13 @@ Setting `--auth-ed25519-keys` automatically enables `--auth-enabled` unless `--a
 |------|------|---------|-------------|
 | `--auth-ed25519-keys` | string | `""` | Path to JSON file with Ed25519 public keys and scopes |
 
+Every entry must have a nonempty `keyId`, and each exact ID must be unique
+throughout the file, including entries with identical keys or policies. A
+duplicate rejects startup with an error naming the ID. Ledger processes entries
+in order: it rejects a duplicate before reading that entry's public-key file,
+but an invalid file in an earlier entry can fail first. A rejected configuration
+publishes no static keyset or scope/superuser policy maps.
+
 ### Client Usage
 
 1. Generate a JWT token:
