@@ -241,6 +241,14 @@ func waitNodeAtIndex(ctx context.Context, c *internal.PerNodeConn, target uint64
 			continue
 		}
 
+		if err := clusterpb.ValidateStateTarget(c.NodeID, state); err != nil {
+			// An older server may ignore the full-width selector and return
+			// its leader's cursor, which cannot qualify this node's state.
+			log.Printf("composer: node %s status target unsupported: %v, skipping", c.Addr, err)
+
+			return readyNode{}, false
+		}
+
 		status := state.GetSyncProgress().GetStatus()
 		// Gate on last_persisted_index (the "Pebble is caught up" cursor)
 		// rather than Raft's `Applied`. Under AsyncStorageWrites the two now

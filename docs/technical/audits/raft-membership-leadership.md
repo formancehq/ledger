@@ -266,6 +266,15 @@ requirements in protocol-compatibility.md.
 This evidence covers identity preservation at the service/CLI boundary; it does
 not change persisted membership, transfer readiness or quorum semantics.
 
+The Antithesis cross-node identity oracle must validate a directed status
+response before using its durable cursor or learner role. Exercise
+`TestWaitNodeAtIndexValidatesTarget` with real gRPC responses: a legacy leader
+response without `local_node64` and a full-width response from the wrong node
+must not qualify a high-ID target even when the durable index matches. Exact
+full-width responses and legacy small-ID responses still qualify and preserve
+learner attribution. An unsupported target is an inconclusive observation,
+never evidence that the requested node's Pebble state has caught up.
+
 Structured CLI status retains numeric IDs through MaxUint32 and uses decimal
 strings above it. Exercise the actual Cobra stdout contract and the operator
 scale-down membership reader; string parsing must preserve high values and must
