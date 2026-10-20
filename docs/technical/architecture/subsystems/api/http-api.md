@@ -57,6 +57,18 @@ the SDK encode the path segment. Passing a pre-encoded key to an SDK produces
 double encoding and is rejected. Direct HTTP clients encode the raw key as one
 path segment themselves.
 
+### Encoded path identifiers
+
+The single-decoding rule also applies to every free-form identifier carried in
+a path segment: account addresses (`GET /accounts/{address}` and the account
+metadata POST/DELETE routes), numscript names, prepared-query names,
+account-type names and events sink names. The adapter extracts them with
+`requirePathParameter`, never with a raw `chi.URLParam`. For example,
+`users%3Aa` and `%75sers:a` both select the account `users:a`. Without this
+decoding, an encoded address would read an empty account with HTTP 200, or be
+rejected by admission on metadata writes. A double-encoded `users%253Aa`
+selects the literal `users%3Aa`, which is not a valid account address.
+
 ### Ledger information
 
 See [LedgerInfo read contract](ledger-info.md) for camelCase properties, explicit
@@ -1058,7 +1070,22 @@ Returns the `IndexEntry` — the registry entry joined with the backfill cursor 
 GET /v3/{ledgerName}/indexes/{canonicalId}/inspect?mode=summary
 ```
 
-Scans the index and returns distinct values, facets, or a summary (`mode=distinctValues|facets|summary`). Only metadata indexes are inspectable; builtin canonicals return `400`. The `distinctValues` and `facets` modes page in ascending value order with `pageSize` and `cursor`, and return `nextCursor` / `previousCursor` page tokens whose key is the base64url of the encoded value (see [Paged list](#paged-list)).
+Scans the index and returns distinct values, facets, or a summary (`mode=distinctValues|distinct-values|facets|summary`). Only metadata indexes are inspectable; builtin canonicals return `400`. The `distinctValues` and `facets` modes page in ascending value order with `pageSize` and `cursor`, and return `nextCursor` / `previousCursor` page tokens whose key is the base64url of the encoded value (see [Paged list](#paged-list)).
+
+The deprecated `distinct-values` alias remains accepted, but OpenAPI lists only
+the canonical `distinctValues` spelling in its enum to avoid generated SDK enum
+collisions.
+
+Omitting `mode` selects `summary`. An explicitly empty or unsupported mode returns
+`400` with `errorCode: INVALID_REQUEST`. Omitting `pageSize` preserves the
+backend default of 100 for paginated modes. Every supplied `pageSize` must be
+an integer in 1..10000, including for summary, which ignores pagination;
+empty, malformed, zero, overflowed, and oversized values return `400` with
+`errorCode: INVALID_PAGE_SIZE`. These checks happen before backend invocation
+so malformed queries cannot silently change meaning or exceed the HTTP page
+bound (EN-2905). This HTTP bound does not define a service gRPC inspection
+limit; its proto3 page size zero remains unspecified and its omitted enum
+selects distinct values.
 
 #### Drop an index
 

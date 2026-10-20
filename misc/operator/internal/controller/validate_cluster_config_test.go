@@ -148,7 +148,7 @@ func TestValidateClusterConfig_AcceptsZeroExpectedKeys(t *testing.T) {
 
 func TestValidateClusterConfig_RejectsInvalidFPRate(t *testing.T) {
 	t.Parallel()
-	cases := []string{"0", "1", "-0.01", "1.01", "not-a-float"}
+	cases := []string{"0", "1", "-0.01", "1.01", "not-a-float", "NaN", "+Inf", "-Inf"}
 	for _, c := range cases {
 		t.Run("fpRate="+c, func(t *testing.T) {
 			t.Parallel()
@@ -195,4 +195,37 @@ func TestValidateClusterConfig_CoversPreparedQueries(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "bloom.preparedQueries.fpRate")
+}
+
+func TestValidateClusterConfig_HealthInterval(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name    string
+		health  *ledgerv1alpha1.HealthConfig
+		wantErr bool
+	}{
+		{name: "omitted"},
+		{name: "empty", health: &ledgerv1alpha1.HealthConfig{}},
+		{name: "default", health: &ledgerv1alpha1.HealthConfig{Interval: "30s"}},
+		{name: "smallest positive", health: &ledgerv1alpha1.HealthConfig{Interval: "1ns"}},
+		{name: "composite", health: &ledgerv1alpha1.HealthConfig{Interval: "1m30s"}},
+		{name: "zero", health: &ledgerv1alpha1.HealthConfig{Interval: "0"}, wantErr: true},
+		{name: "zero with unit", health: &ledgerv1alpha1.HealthConfig{Interval: "0s"}, wantErr: true},
+		{name: "negative", health: &ledgerv1alpha1.HealthConfig{Interval: "-1s"}, wantErr: true},
+		{name: "malformed", health: &ledgerv1alpha1.HealthConfig{Interval: "invalid"}, wantErr: true},
+		{name: "overflow", health: &ledgerv1alpha1.HealthConfig{Interval: "999999999999999999h"}, wantErr: true},
+		{name: "rounds to zero", health: &ledgerv1alpha1.HealthConfig{Interval: "0.1ns"}, wantErr: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateClusterConfig(&ledgerv1alpha1.ClusterSpec{Health: tt.health})
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "health.interval")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }

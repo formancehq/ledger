@@ -126,6 +126,33 @@ func TestStoreIntegration(t *testing.T) {
 }
 ```
 
+### Schemathesis API Conformance Tests
+
+**Location**: `tests/schemathesis/`
+
+Run `just test-schemathesis` in the Nix development environment. The runner
+starts a disposable single-node server with authentication disabled and seeds
+nonempty responses. Ledger deletion uses a separate sacrificial ledger so the
+fixture ledger survives the run.
+
+The Python wrapper invokes the pinned Schemathesis public CLI with the
+`examples`, `fuzzing`, and `stateful` phases and positive generation. It selects
+`not_a_server_error`, `status_code_conformance`, and
+`response_schema_conformance` explicitly and disables security-parameter
+generation for the auth-disabled server. Generation is deterministic, the
+Hypothesis database is disabled, and shrinking is disabled unless
+`SCHEMATHESIS_SHRINK=1`. Keep `SCHEMATHESIS_WORKERS=1` for the reproducible gate;
+increase it only for exploratory runs. `MAX_EXAMPLES` controls fuzzing and
+stateful generation.
+
+The wrapper reads the CLI's NDJSON report. Passing requires a zero CLI exit
+status, an `EngineFinished` event, and an actual successful check in a
+`ScenarioFinished` recorder. Every error or check failure remains fatal even
+after a later success. Missing or malformed reports and runs without
+successful checks fail. Reporting regressions run before the API suite, and
+the shell pipeline preserves failures while saving diagnostics under
+`/tmp/schemathesis-*.txt`.
+
 ### End-to-End Tests (E2E)
 
 **Location**: `tests/e2e/`

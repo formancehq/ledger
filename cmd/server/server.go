@@ -158,7 +158,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd.Flags().Int("max-execution-plan-size", 4096, "Maximum number of AttributePlan entries an ExecutionPlan may carry; admission rejects proposals beyond this (0 = unlimited)")
 
 	// Health check configuration flags
-	runCmd.Flags().Duration("health-check-interval", 30*time.Second, "Interval between health checks (default: 30s)")
+	runCmd.Flags().Duration("health-check-interval", 30*time.Second, "Interval between health checks; must be greater than zero (default: 30s)")
 	runCmd.Flags().Float64("health-wal-threshold", 0.8, "WAL volume usage threshold (0.0-1.0, default: 0.8 = 80%)")
 	runCmd.Flags().Float64("health-data-threshold", 0.8, "Data volume usage threshold (0.0-1.0, default: 0.8 = 80%)")
 	runCmd.Flags().Float64("health-wal-resume-threshold", 0.75, "WAL volume usage resume threshold for hysteresis (must satisfy 0 < resume < health-wal-threshold; when unset, derived as 0.9375 x the block threshold)")
@@ -1083,7 +1083,7 @@ func registerBloomFlags(cmd *cobra.Command) {
 		)
 		cmd.Flags().Float64(
 			fmt.Sprintf("bloom-%s-fp-rate", name), 0,
-			fmt.Sprintf("False positive rate for %s bloom filter (0 = use 0.01 when enabled)", name),
+			fmt.Sprintf("False positive rate for %s bloom filter (finite, > 0 and < 1; 0 = use 0.01 when enabled)", name),
 		)
 	}
 }
@@ -1099,7 +1099,7 @@ func loadBloomConfig(cmd *cobra.Command, cfg *commonpb.ClusterConfig) {
 			return nil
 		}
 
-		// FPRate must be > 0 when filter is enabled.
+		// Normalize the CLI default sentinel before bootstrap validates (0,1).
 		if fpRate == 0 {
 			fpRate = 0.01
 		}

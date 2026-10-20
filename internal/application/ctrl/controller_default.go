@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"slices"
 	"time"
 
@@ -1236,10 +1235,7 @@ func (ctrl *DefaultController) GetIndexStatus(ctx context.Context, req *servicep
 		lag = lastLog - lastIndexed
 	}
 
-	var fileSize uint64
-	if info, err := os.Stat(ctrl.readStore.Path()); err == nil {
-		fileSize = uint64(info.Size())
-	}
+	fileSize := ctrl.readStore.DiskSpaceUsage()
 
 	backfillEntries, err := ctrl.readStore.ListBackfillProgressFrom(readSnap)
 	if err != nil {

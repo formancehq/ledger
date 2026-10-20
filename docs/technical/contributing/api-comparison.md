@@ -205,7 +205,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Drop index | ✅ | ❌ | Remove an index from a ledger. HTTP: `DELETE /v3/{ledger}/indexes/{canonicalId}`; gRPC: `Apply(DropIndex)` |
 | Get index | ✅ | ❌ | Fetch a single registry entry. HTTP: `GET /v3/{ledger}/indexes/{canonicalId}`; gRPC: `GetIndex` |
 | Get index status | ✅ | ❌ | Per-index backfill cursor + per-replica IndexVersionState. HTTP: `GET /v3/{ledger}/indexes/{canonicalId}/status`; gRPC: `GetIndexEntryStatus` |
-| Inspect index | ✅ | ❌ | Explore values of a metadata index (distinct values, facets, summary). HTTP: `GET /v3/{ledger}/indexes/{canonicalId}/inspect`; gRPC: `InspectIndex` |
+| Inspect index | ✅ | ❌ | Explore values of a metadata index (distinct values, facets, summary). HTTP: `GET /v3/{ledger}/indexes/{canonicalId}/inspect`; gRPC: `InspectIndex`. HTTP accepts `summary` (default), `distinctValues`, its deprecated `distinct-values` alias, and `facets`; OpenAPI documents the alias in the description but omits it from the enum to avoid generated SDK enum collisions. Supplied `pageSize` must be 1..10000 even for summary, with omission preserving the paginated default of 100. Explicitly empty/unsupported modes or empty/invalid sizes return 400 before backend invocation (EN-2905). This HTTP limit does not establish a gRPC inspection cap. |
 | List indexes | ✅ | ❌ | View all indexes with build status and backfill progress. HTTP: `GET /v3/{ledger}/indexes` (per-ledger), `GET /v3/_/indexes?scope=all\|bucket` (bucket-wide); gRPC: `BucketService.ListIndexes`, scoped `ALL` / `BUCKET` / `LEDGER` |
 | Aggregated index status | ✅ | ❌ | Cluster-wide progress (LastIndexedSequence, LastLogSequence, Lag, IndexFileSize) + IndexEntry list. HTTP: `GET /v3/_/indexes/status?ledger=`; gRPC: `GetIndexStatus` |
 | **Volumes (responses)** |
@@ -436,8 +436,10 @@ The current implementation is
 All metadata-key path parameters above use one URL-decoding pass, including
 schema PUT/DELETE. A JSON key `formance.com/reviewed` is addressed with
 `formance.com%2Freviewed`; double-encoded `%252F` retains a percent-containing
-key and is rejected by metadata admission with HTTP 400. Canonical index IDs
-use the same single-decoding rule.
+key and is rejected by metadata admission with HTTP 400. Canonical index IDs,
+account addresses, numscript names, prepared-query names, account-type names
+and events sink names use the same single-decoding rule: `users%3Aa` selects
+the account `users:a`.
 
 Ledger metadata is stored separately from ledger configuration (LedgerInfo) and is populated at read time when calling `GET /v3/{ledgerName}` or `GET /v3/` (list ledgers). It uses the same typed value system as account/transaction metadata.
 

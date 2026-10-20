@@ -7363,10 +7363,12 @@ type GetIndexStatusResponse struct {
 	LastIndexedSequence uint64                 `protobuf:"fixed64,1,opt,name=last_indexed_sequence,json=lastIndexedSequence,proto3" json:"last_indexed_sequence,omitempty"`
 	LastLogSequence     uint64                 `protobuf:"fixed64,2,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`
 	Lag                 uint64                 `protobuf:"fixed64,3,opt,name=lag,proto3" json:"lag,omitempty"`
-	IndexFileSize       uint64                 `protobuf:"fixed64,4,opt,name=index_file_size,json=indexFileSize,proto3" json:"index_file_size,omitempty"`
-	Indexes             []*IndexEntry          `protobuf:"bytes,5,rep,name=indexes,proto3" json:"indexes,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// Bytes the answering node's read index occupies on disk, live and obsolete
+	// files included, from Pebble's disk-usage metrics.
+	IndexFileSize uint64        `protobuf:"fixed64,4,opt,name=index_file_size,json=indexFileSize,proto3" json:"index_file_size,omitempty"`
+	Indexes       []*IndexEntry `protobuf:"bytes,5,rep,name=indexes,proto3" json:"indexes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetIndexStatusResponse) Reset() {

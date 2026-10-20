@@ -64,7 +64,7 @@ Available flags for `run`:
 - `--join`: Raft transport address of an existing cluster member to join as a learner (e.g., `--join node-1:7777`; mutually exclusive with `--bootstrap`). Discovery and learner registration go through the inter-node `ClusterBootstrapService` on the RaftServer — no user JWT is required. If the target cluster enforces a `--cluster-secret` and this node's secret is missing or wrong, startup **fails fast** with an actionable error rather than retrying forever (EN-1080); a `--cluster-id` the target does not accept fails fast the same way (EN-2738). See the [`--cluster-secret`](cli.md#server-cluster-secret-flag) section.
 - `--learner-promotion-threshold`: Max log entry lag before auto-promoting a caught-up learner to voter (default: `100`, `0` = disable auto-promotion)
 - `--http-port`: HTTP server port (default: `9000`)
-- `--health-check-interval`: Interval between disk usage health checks (default: `30s`)
+- `--health-check-interval`: Interval between disk usage health checks; must be greater than zero (default: `30s`)
 - `--health-wal-threshold`: WAL volume usage threshold, 0.0-1.0 (default: `0.8`)
 - `--health-data-threshold`: Data volume usage threshold, 0.0-1.0 (default: `0.8`)
 
@@ -97,6 +97,13 @@ conversion or defaulting. For example, `--raft-max-size-per-msg=16Ei` is rejecte
 Explicit zero retains each flag's documented sentinel meaning, including the
 1 MiB default for `--raft-max-size-per-msg=0`. Individual consumers may impose
 smaller limits.
+
+Enabled bloom filters require a finite false-positive rate strictly between
+`0` and `1`. Direct server flags normalize rate `0` to `0.01`; setting expected
+keys to `0` disables that filter and ignores its rate. Invalid enabled rates
+fail startup validation before filter construction. The operator rejects
+non-finite or out-of-range supplied rates; an omitted operator rate retains its
+default. See [bloom filter flags](cli.md#server-bloom-filter-flags).
 
 Example with environment variables:
 ```bash
@@ -709,7 +716,9 @@ config:
 
 Before opening the WAL, startup validates the persisted `INSTANCE_ID`. If any durable WAL marker exists but `INSTANCE_ID` is missing, startup fails rather than generating a replacement identity. This check is not bypassed by `--unsafe-skip-config-validation`; see [membership recovery](../technical/architecture/subsystems/consensus/removed-member-registry.md).
 
-The server persists critical configuration parameters in Pebble under the Global zone (key `{0x06, 0x0C}`) on first boot and validates them on every subsequent boot. This prevents silent data corruption from accidentally changing critical parameters between restarts.
+The server persists critical configuration parameters in Pebble under `ZoneClusterPersistent` at key `{0x08, 0x0C}` (`ZoneClusterPersistent`, `SubGlobPersistedConfig`; see the [storage key definitions](../../internal/storage/dal/store.go)) on first boot and validates them on every subsequent boot. This prevents silent data corruption from accidentally changing critical parameters between restarts.
+
+The old Global-zone anchor at `{0x06, 0x0C}` belongs to a prior storage layout. Startup checks for it before reading the current anchor and rejects that layout before persisting first-boot configuration, even with `--unsafe-skip-config-validation`. It is not treated as a missing current configuration.
 
 #### Persisted Parameters
 
@@ -734,7 +743,7 @@ the audit key. Its rotation is not an implicit configuration change.
 
 - **First boot**: No persisted config exists -- current config is saved (no error)
 - **Restore flow**: Validation is skipped in restore mode (`--restore`)
-- **Existing deployments upgrading**: Treated as first boot (no persisted config key yet)
+- **Prior-layout persisted config**: The old `{0x06, 0x0C}` anchor is always rejected; upgrading such a store is not treated as first boot
 - **Schema version mismatch**: Always fatal regardless of `--unsafe-skip-config-validation`, because data corruption is certain
 - **Cluster policy without metadata limits**: The committed policy carries the metadata size ceilings the server enforces on every write path. A leader's reconciler proposes a new policy only when `--cluster-policy-revision` exceeds the applied revision, so a policy committed without the ceilings cannot be repaired at the same revision. The node refuses to start and names the remedy — raise `--cluster-policy-revision`. Zero is never treated as "unlimited". See the [metadata size limits contract](../technical/architecture/subsystems/admission/metadata-limits.md)
 

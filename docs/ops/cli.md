@@ -2344,7 +2344,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 **Behavior:**
 
 1. Verifies the target data directory is fresh (no existing checkpoints via `ScanLatestCheckpointID`)
-2. Downloads backup files from the configured backend into a staging directory
+2. Creates or opens the selected data directory and downloads checkpoint files sequentially into `restore-staging/` through rooted filesystem operations. Rejects a staging-root symlink (including one pointing inside the data directory), non-local manifest filenames and symlink escapes. Each filename is checked before its parent directories are created or its object is read; file size and sha256 verification still apply.
 3. Applies export segments and rebuilds derived state from logs (if any)
 4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
 5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
@@ -2352,6 +2352,11 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 7. Prepares attributes for backup (Global-zone resets): preserves the applied index as the genesis boundary (the WAL-snapshot index the restored genesis occupies, so joiners must sync a checkpoint; fallback 1 for a genesis checkpoint), strips persisted config, drops persisted bloom blocks; the attribute zone is left intact
 8. Hard-links staging to `checkpoints/0`, writes `RESTORED` marker
 9. Cleans up the staging directory
+
+Staging is created even for export-only manifests. Download root handles close
+before replay and preview. A download failure stops before validation,
+confirmation and finalization, but can leave earlier or partially written files
+in staging; the command does not automatically clean up failed downloads.
 
 After bootstrap, start the server with `--bootstrap` to use the restored data.
 
@@ -4023,6 +4028,11 @@ contract](../technical/architecture/subsystems/admission/metadata-limits.md).
 
 Application-level bloom filters that avoid Pebble reads for keys known not to exist. Each attribute type has its own filter with independent sizing. Set `expected-keys` to `0` to disable a type.
 
+For an enabled filter, `fp-rate` must be finite and strictly between `0` and `1`.
+The CLI value `0` selects the default `0.01` before startup validation. Invalid
+enabled rates, including `NaN` and infinities, fail startup with the offending
+flag named before filter construction. A disabled type ignores its rate.
+
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--bloom-volumes-expected-keys` | uint | `0` | Expected unique volume keys (0 = disabled by default) |
@@ -4393,7 +4403,7 @@ Configure disk-usage and clock-skew monitoring. The health checker runs on the c
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--health-check-interval` | duration | `30s` | Interval between health-check polls |
+| `--health-check-interval` | duration | `30s` | Interval between health-check polls; must be greater than zero |
 | `--health-wal-threshold` | float64 | `0.8` | WAL volume usage fraction (0.0–1.0) at which writes are blocked (high-water / block mark) |
 | `--health-data-threshold` | float64 | `0.8` | Data volume usage fraction (0.0–1.0) at which writes are blocked (high-water / block mark) |
 | `--health-wal-resume-threshold` | float64 | `0.75` | WAL volume usage fraction below which a blocked write gate re-opens (low-water / resume mark). Must be `< --health-wal-threshold` |
