@@ -62,7 +62,9 @@ Examples:
 	}
 
 	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{SupportsReverse: true})
-	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{})
+	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{
+		FilterHelp: "Filter expression, textual grammar only (e.g. \"outcome == failure\"); the JSON DSL does not support audit fields",
+	})
 	cmdutil.AddConsistencyFlags(cmd)
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")

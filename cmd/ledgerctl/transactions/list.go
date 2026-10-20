@@ -27,6 +27,12 @@ func NewListCommand() *cobra.Command {
 Transactions are displayed newest first by default. Use --reverse for oldest first.
 Press Enter to load the next page, or 'q' to quit.
 
+Filter fields (--filter):
+  Textual grammar: metadata[key], address, source, destination (== or ^=),
+  timestamp (RFC3339 or unix microseconds).
+  JSON DSL only: reference ($match), reverted ($match), id, insertedAt,
+  revertedAt ($gt/$gte/$lt/$lte ranges; id has no $match).
+
 Examples:
   ledgerctl transactions list --ledger my-ledger
   ledgerctl transactions list --ledger my-ledger --page-size 20
@@ -36,6 +42,11 @@ Examples:
   ledgerctl transactions list --ledger my-ledger --filter 'source ^= "merchants:"'
   ledgerctl transactions list --ledger my-ledger --filter 'destination == "users:alice"'
   ledgerctl transactions list --ledger my-ledger --filter 'source ^= "merchants:" and destination ^= "users:"'
+  ledgerctl transactions list --ledger my-ledger --filter 'address == "users:alice"'
+  ledgerctl transactions list --ledger my-ledger --filter 'timestamp >= "2026-01-01T00:00:00Z"'
+  ledgerctl transactions list --ledger my-ledger --filter '{"$match":{"reference":"order-42"}}'
+  ledgerctl transactions list --ledger my-ledger --filter '{"$match":{"reverted":true}}'
+  ledgerctl transactions list --ledger my-ledger --filter '{"$gte":{"insertedAt":"2026-01-01T00:00:00Z"}}'
   ledgerctl transactions list --reverse --ledger my-ledger   # Oldest first
   ledgerctl transactions list --all --ledger my-ledger   # Fetch all transactions without pagination
   ledgerctl transactions list --cursor eyJrZXkiOiI0MiJ9 --ledger my-ledger   # Resume after tx id 42 (page token for {"key":"42"})`,

@@ -19,9 +19,19 @@ func NewCreateCommand() *cobra.Command {
 		Short: "Create a prepared query",
 		Long: `Create a named prepared query for a ledger.
 
+--filter accepts the textual grammar only (not the JSON DSL), so JSON-only
+fields (transaction reference, reverted, id, insertedAt, revertedAt; log logId)
+cannot be used here; "queries update" accepts both formats. Valid fields per
+--target:
+  accounts:      metadata[key], address, has asset BASE[/PRECISION]
+  transactions:  metadata[key], address, source, destination, timestamp
+  logs:          date, ledger
+Transaction amounts are not filterable.
+
 Examples:
   ledgerctl queries create active-users --ledger my-ledger --target accounts --filter "metadata[active] == true"
-  ledgerctl queries create big-txns --ledger my-ledger --target transactions --filter "amount > 1000"`,
+  ledgerctl queries create pending-payouts --ledger my-ledger --target transactions --filter 'source ^= "payouts:" and metadata[status] == pending'
+  ledgerctl queries create recent-logs --ledger my-ledger --target logs --filter 'date >= "2026-01-01T00:00:00Z"'`,
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runCreate,
@@ -30,7 +40,7 @@ Examples:
 	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("target", "accounts", "Query target: accounts, transactions, or logs")
 	cmdutil.RegisterEnumCompletion(cmd, "target", "accounts", "transactions", "logs")
-	cmd.Flags().String("filter", "", "Filter expression")
+	cmd.Flags().String("filter", "", `Filter expression, textual grammar only (e.g. "metadata[k] == v")`)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd

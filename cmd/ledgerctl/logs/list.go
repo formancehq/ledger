@@ -14,10 +14,20 @@ import (
 // NewListCommand creates the logs list command.
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:               "list",
-		Aliases:           cmdutil.ListAliases,
-		Short:             "List system logs",
-		Long:              "List system log entries via gRPC streaming",
+		Use:     "list",
+		Aliases: cmdutil.ListAliases,
+		Short:   "List system logs",
+		Long: `List system log entries via gRPC streaming.
+
+Filter fields (--filter): date (RFC3339 or unix microseconds) and ledger in the
+textual grammar or JSON DSL; logId ($gt/$gte/$lt/$lte ranges) in the JSON DSL
+only. Metadata, address, source and destination conditions are rejected on logs.
+
+Examples:
+  ledgerctl logs list --ledger my-ledger
+  ledgerctl logs list --ledger my-ledger --reverse
+  ledgerctl logs list --ledger my-ledger --filter 'date >= "2026-01-01T00:00:00Z"'
+  ledgerctl logs list --ledger my-ledger --filter '{"$gte":{"logId":100}}'`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runList,
@@ -25,7 +35,9 @@ func NewListCommand() *cobra.Command {
 
 	cmdutil.AddLedgerFlag(cmd)
 	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{SupportsReverse: true})
-	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{})
+	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{
+		FilterHelp: `Filter expression: textual grammar ('date >= "2026-01-01T00:00:00Z"') or JSON DSL ('{"$gte":{"logId":100}}')`,
+	})
 	cmdutil.AddConsistencyFlags(cmd)
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")

@@ -1181,7 +1181,7 @@ asset reference in `has asset BASE/PRECISION`, whose `/` is part of the grammar
 (e.g. `has asset USD/2`).
 
 Bare audit fields (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`,
-`log_seq`, `caller_subject`, `order_type`) are only valid on `audit list` (see
+`log_seq`, `caller_subject`, `order_type`, `idempotency_key`) are only valid on `audit list` (see
 [audit list](#audit-list) for the field/operator matrix). They are written
 without any prefix and resolved against the audit query target (EN-1549 — this
 replaced the old `audit[...]` namespaced syntax, a breaking change with no
@@ -1258,7 +1258,7 @@ backward compatibility). They are rejected on other list endpoints.
 --filter "metadata[category] exists"
 
 # Address prefix
---filter "address ^= users:"
+--filter 'address ^= "users:"'
 
 # Exact address
 --filter 'address == "users:alice"'
@@ -1273,7 +1273,7 @@ backward compatibility). They are rejected on other list endpoints.
 --filter 'source ^= "merchants:" and destination ^= "users:"'
 
 # AND (both must match)
---filter "metadata[active] == true and address ^= users:"
+--filter 'metadata[active] == true and address ^= "users:"'
 
 # OR (either must match)
 --filter "metadata[category] == premium or metadata[category] == gold"
@@ -1282,7 +1282,7 @@ backward compatibility). They are rejected on other list endpoints.
 --filter "not metadata[blocked] == true"
 
 # Grouping
---filter "(metadata[a] == x or metadata[b] == y) and address ^= users:"
+--filter '(metadata[a] == x or metadata[b] == y) and address ^= "users:"'
 
 # Has asset (precision 0) — requires account-asset index
 --filter "has asset USD"
@@ -1291,8 +1291,31 @@ backward compatibility). They are rejected on other list endpoints.
 --filter "has asset USD/2"
 
 # Combine has asset with other conditions
---filter "has asset USD and address ^= users:"
+--filter 'has asset USD and address ^= "users:"'
 ```
+
+##### Filter fields by target
+
+The server validates every condition against the query target and rejects a
+condition the target does not support (for example `metadata` on logs). The
+textual grammar and the JSON DSL do not cover the same fields:
+
+| Target | Textual grammar | JSON DSL only |
+|--------|-----------------|---------------|
+| accounts (`accounts list`, `accounts aggregate-volumes`) | `metadata[key]`, `address`, `has asset` | — |
+| transactions (`transactions list`) | `metadata[key]`, `address`, `source`, `destination`, `timestamp` | `reference` and `reverted` (`$match`); `id`, `insertedAt`, `revertedAt` (`$gt`/`$gte`/`$lt`/`$lte` ranges; `id` has no `$match`) |
+| logs (`logs list`) | `date`, `ledger` | `logId` (ranges) |
+| audit (`audit list`) | see [audit list](#audit-list) | none: the JSON DSL has no audit fields |
+
+```bash
+# JSON-only transaction fields
+ledgerctl transactions list --ledger my-ledger --filter '{"$match":{"reference":"order-42"}}'
+ledgerctl transactions list --ledger my-ledger --filter '{"$match":{"reverted":true}}'
+ledgerctl transactions list --ledger my-ledger --filter '{"$gte":{"insertedAt":"2026-01-01T00:00:00Z"}}'
+```
+
+`queries create` accepts the textual grammar only; `queries update` accepts both
+formats. Transaction amounts are not filterable.
 
 #### accounts get
 
@@ -2617,10 +2640,13 @@ ledgerctl logs list --ledger my-ledger --reverse
 # Next or previous page, with a token printed by the previous call
 ledgerctl logs list --ledger my-ledger --page-size 20 --cursor <token>
 
-# Filter via the shared filter grammar (only the fields documented under
-# "Shared Flag Contract → Filter grammar" are accepted: metadata[<key>],
-# address, source, destination, ledger)
-ledgerctl logs list --ledger my-ledger --filter 'metadata[origin] == "payments"'
+# Filter by date (textual grammar or JSON DSL). Logs accept only date and
+# ledger conditions, plus logId in the JSON DSL; metadata, address, source
+# and destination conditions are rejected on logs.
+ledgerctl logs list --ledger my-ledger --filter 'date >= "2026-01-01T00:00:00Z"'
+
+# Log id range (JSON DSL only)
+ledgerctl logs list --ledger my-ledger --filter '{"$gte":{"logId":100}}'
 
 # Output as JSON
 ledgerctl logs list --ledger my-ledger --json
@@ -3628,7 +3654,7 @@ ledgerctl queries create <name> --ledger <ledger-name> [flags]
 |------|---------|-------------|
 | `--ledger` | *(required)* | Name of the ledger |
 | `--target` | `accounts` | Query target: `accounts`, `transactions`, or `logs` |
-| `--filter` | | Filter expression (same DSL as account/transaction list) |
+| `--filter` | | Filter expression, textual grammar only (the JSON DSL is not accepted here; use `queries update` for JSON-only fields). See [Filter fields by target](#filter-fields-by-target) |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
@@ -3640,8 +3666,8 @@ ledgerctl queries create <name> --ledger <ledger-name> [flags]
 # Query accounts with specific metadata
 ledgerctl queries create active-users --ledger my-ledger --target accounts --filter "metadata[active] == true"
 
-# Query transactions above a threshold
-ledgerctl queries create big-txns --ledger my-ledger --target transactions --filter "amount > 1000"
+# Query pending payout transactions (transaction amounts are not filterable)
+ledgerctl queries create pending-payouts --ledger my-ledger --target transactions --filter 'source ^= "payouts:" and metadata[status] == pending'
 
 # Parameterized query (parameters prefixed with $)
 ledgerctl queries create by-tier --ledger my-ledger --target accounts --filter "metadata[tier] == \$tier"

@@ -28,6 +28,7 @@ Examples:
   ledgerctl accounts aggregate-volumes --ledger my-ledger
   ledgerctl accounts aggregate-volumes --ledger my-ledger --prefix users:
   ledgerctl accounts aggregate-volumes --ledger my-ledger --filter "metadata[type] == user"
+  ledgerctl accounts aggregate-volumes --ledger my-ledger --filter "has asset USD/2"
   ledgerctl accounts agg --ledger my-ledger --json`,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
@@ -36,7 +37,7 @@ Examples:
 
 	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("prefix", "", "Filter accounts by address prefix (e.g. users:)")
-	cmd.Flags().String("filter", "", `Filter expression (e.g. "metadata[category] == premium")`)
+	cmd.Flags().String("filter", "", `Filter expression: textual grammar ("metadata[k] == v") or JSON DSL ('{"$match":{"metadata[k]":"v"}}')`)
 	cmdutil.AddOutputFlags(cmd)
 	cmdutil.AddAnalyzeFlag(cmd)
 	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
