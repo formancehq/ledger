@@ -71,9 +71,13 @@ flowchart TB
     C -->|CreateIndex / DropIndex| H6[config mutation]
     H1 & H2 & H3 & H4 --> WB[Buffer writes into WriteBatch]
     H5 & H6 --> WB
-    WB --> D{Batch non-empty<br/>or checkpoint pending?}
-    D -->|yes| E[Pass 2: write progress cursor +<br/>commit batch to ReadStore]
-    D -->|no| F[Defer progress write to next non-empty batch]
+    WB --> D{Checkpoint action pending?}
+    D -->|yes| G[Commit projection batch<br/>without progress cursor]
+    G --> H[Run checkpoint filesystem action]
+    H --> I[Commit progress cursor separately]
+    D -->|no| J{Index writes or<br/>fixed target reached?}
+    J -->|yes| E[Pass 2: write progress cursor +<br/>commit batch to ReadStore]
+    J -->|no| F[Defer progress write to next committed batch]
 ```
 
 `internal/application/indexbuilder/process_logs.go` owns the fold and progress
