@@ -41,6 +41,8 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
+        with:
+          go-remote-cache: 'true'
       - run: >
           nix develop .#ci --command just pre-commit
       - name: Check service protocol revision
@@ -71,6 +73,8 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
+        with:
+          go-remote-cache: 'true'
       - name: Run unit tests with coverage
         run: >
           nix develop .#ci --command just test-coverage
@@ -103,6 +107,8 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
+        with:
+          go-remote-cache: 'true'
       - name: Run operator unit tests
         run: >
           nix develop .#ci --command bash -c "unset GOROOT;
@@ -119,6 +125,8 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
+        with:
+          go-remote-cache: 'true'
       - name: Run Business E2E tests with coverage
         run: >
           nix develop .#ci --command just test-e2e-coverage './tests/e2e/business/...' e2e-business.out
@@ -142,6 +150,8 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
+        with:
+          go-remote-cache: 'true'
       - name: Run Cluster E2E tests with coverage
         run: >
           nix develop .#ci --command just test-e2e-coverage './tests/e2e/cluster/...' e2e-cluster.out
@@ -165,6 +175,8 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
+        with:
+          go-remote-cache: 'true'
       - name: Run scenario tests with coverage
         run: >
           nix develop .#ci --command just test-scenarios-coverage
@@ -188,6 +200,8 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
+        with:
+          go-remote-cache: 'true'
       - name: Run deterministic model workload tests with race detection
         run: >
           nix develop .#ci --command go -C tests/antithesis/workload test -race
@@ -204,6 +218,8 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
+        with:
+          go-remote-cache: 'true'
       - name: Run in-memory model checker (3-node cluster, rolling restarts)
         run: >
           nix develop .#ci --command just test-model-cluster 180
@@ -221,6 +237,8 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
+        with:
+          go-remote-cache: 'true'
       - name: Download all coverage profiles
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -274,6 +292,8 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
+        with:
+          go-remote-cache: 'true'
       - run: >
           nix develop .#ci --command go build ./...
       - name: Cross-compile ledgerctl for Windows
@@ -296,6 +316,8 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
+        with:
+          go-remote-cache: 'true'
       - name: Run Schemathesis API conformity tests
         run: >
           nix develop .#ci --command bash -c "MAX_EXAMPLES=10 SCHEMATHESIS_WORKERS=1 just test-schemathesis"
