@@ -447,7 +447,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				"cursor":  max(cursor, unpersistedCursor),
 				"from":    startCursor,
 				"indexed": max(cursor, unpersistedCursor) - startCursor,
-			}).Infof("processLogs progress")
+			}).Infof("Index builder log processing progress")
 
 			lastProgressLog = now
 		}
