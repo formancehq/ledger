@@ -1,10 +1,10 @@
-# Pinned exactly so the gate is reproducible: `derandomize=True` (see
+# Pinned exactly so the gate is reproducible: `--generation-deterministic` (see
 # test_api.py) makes Hypothesis generate a fixed input set, but only for a
 # given Hypothesis version — a different resolved version would generate
 # different inputs and could surface a failure locally != CI. Pin both so a
 # local run reproduces CI exactly. Bump deliberately (and re-run the suite) to
 # widen fuzzing coverage.
-schemathesis==3.39.16
+schemathesis==4.30.0
 hypothesis==6.156.6
 
 # Validate OpenAPI 3.0 request instances, including nullable filter branches.
