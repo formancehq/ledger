@@ -546,14 +546,25 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	// Reset the spool unconditionally: any data from a previous run is stale.
 	// A SIGKILL can leave a partially-written spool that causes corrupt record
 	// errors and entry index gaps during post-sync replay.
+	spoolResetStart := time.Now()
+	a.logger.Infof("Resetting startup spool")
 	if err := a.spool.Reset(); err != nil {
 		return false, fmt.Errorf("resetting spool: %w", err)
 	}
+	a.logger.WithFields(map[string]any{
+		"duration": time.Since(spoolResetStart).String(),
+	}).Infof("Startup spool reset")
 
+	storeCheckStart := time.Now()
+	a.logger.Infof("Checking startup store against WAL snapshot")
 	isStoreUpToDate, err := a.synchronizer.IsStoreUpToDate(ctx)
 	if err != nil {
 		return false, fmt.Errorf("checking if store is up to date: %w", err)
 	}
+	a.logger.WithFields(map[string]any{
+		"duration":      time.Since(storeCheckStart).String(),
+		"storeUpToDate": isStoreUpToDate,
+	}).Infof("Startup store check completed")
 
 	if !isStoreUpToDate {
 		a.logger.WithFields(map[string]any{

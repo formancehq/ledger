@@ -48,8 +48,12 @@ graph TB
 
 ### Startup recovery diagnostics
 
-Startup logs distinguish the main-store cache restoration, query-checkpoint
-recovery, the read of committed WAL entries, and their application to the FSM.
+Startup logs distinguish the etcd WAL snapshot scan and `ReadAll` (which loads
+entries into memory), spool reset, the comparison of the live store with
+the WAL snapshot, main-store cache restoration, query-checkpoint recovery,
+the read of committed WAL entries, and their application to the FSM. The query
+checkpoint scan reports how many registered checkpoints were already ready,
+unavailable on this replica, or rebuilt after an interrupted materialization.
 The WAL replay reports each bounded batch's index range before application and
 its duration and applied index afterward. If startup stops mid-batch, the last
 "Applying startup WAL batch" record identifies the range in progress. Entry

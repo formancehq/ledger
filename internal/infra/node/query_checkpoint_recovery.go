@@ -2,6 +2,7 @@ package node
 
 import (
 	"fmt"
+	"time"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -33,10 +34,15 @@ func recoverQueryCheckpointMainStores(store *dal.Store, logger logging.Logger, l
 	if err != nil {
 		return err
 	}
+	readyCount := 0
+	unavailableCount := 0
+	rebuiltCount := 0
 
 	for _, cp := range checkpoints {
 		id := cp.GetCheckpointId()
 		if dal.CheckpointDirReady(store.QueryCheckpointMainDir(id)) {
+			readyCount++
+
 			continue
 		}
 
@@ -48,17 +54,29 @@ func recoverQueryCheckpointMainStores(store *dal.Store, logger logging.Logger, l
 
 		switch {
 		case cp.GetRestoredFromBackup():
+			unavailableCount++
 			logger.WithFields(fields).Infof("Query checkpoint main store was not restored with the backup; it stays unavailable on this replica")
 		case cp.GetAppliedIndex() != liveAppliedIndex:
+			unavailableCount++
 			logger.WithFields(fields).Infof("Query checkpoint main store was never materialized on this replica; it stays unavailable here")
 		default:
+			start := time.Now()
+			logger.WithFields(fields).Infof("Rebuilding interrupted query checkpoint main store")
 			if _, err := store.CreateQueryCheckpoint(id); err != nil {
 				return fmt.Errorf("rebuilding main store of query checkpoint %d: %w", id, err)
 			}
+			rebuiltCount++
 
+			fields["duration"] = time.Since(start).String()
 			logger.WithFields(fields).Infof("Rebuilt query checkpoint main store left unmaterialized by a previous run")
 		}
 	}
+	logger.WithFields(map[string]any{
+		"registered":  len(checkpoints),
+		"ready":       readyCount,
+		"unavailable": unavailableCount,
+		"rebuilt":     rebuiltCount,
+	}).Infof("Query checkpoint startup recovery scan completed")
 
 	return nil
 }

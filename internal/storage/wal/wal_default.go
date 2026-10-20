@@ -261,6 +261,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 
 		// List valid snapshot records from the etcd WAL (source of truth).
 		validStart := time.Now()
+		s.logger.Infof("Scanning WAL for valid snapshot entries")
 		walSnaps, err := wal.ValidSnapshotEntries(zapLogger, s.etcdWalDir)
 		if err != nil {
 			return nil, fmt.Errorf("reading valid snapshot entries from WAL: %w", err)
@@ -426,6 +427,9 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 		}
 	}
 
+	readAllStart := time.Now()
+	repaired := false
+	s.logger.Infof("Reading all WAL entries into memory")
 	_, s.hardState, s.entries, err = s.wal.ReadAll()
 	if err != nil {
 		if !errors.Is(err, io.ErrUnexpectedEOF) {
@@ -449,6 +453,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 		}
 
 		s.logger.Errorf("WAL repair succeeded — re-opening WAL")
+		repaired = true
 
 		s.wal, err = wal.Open(zapLogger, s.etcdWalDir, snap)
 		if err != nil {
@@ -477,6 +482,8 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	s.logger.
 		WithFields(map[string]any{
 			"entries":          len(s.entries),
+			"duration":         time.Since(readAllStart).String(),
+			"repaired":         repaired,
 			"hardState.Term":   s.hardState.GetTerm(),
 			"hardState.Commit": s.hardState.GetCommit(),
 			"snapshot.Index":   s.snapshot.GetMetadata().GetIndex(),
