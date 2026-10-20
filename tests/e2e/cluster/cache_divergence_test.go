@@ -161,7 +161,7 @@ func sendParallelTransactions(
 // aggregated volumes for the given ledger.
 func verifyVolumesConsistent(ctx context.Context, servers []*testutil.ServiceWithClient, ledgerName string) {
 	type volumeSnapshot struct {
-		nodeID  uint32
+		nodeID  uint64
 		volumes map[string]string // "account/asset" → "input:output"
 	}
 

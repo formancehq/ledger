@@ -4159,7 +4159,7 @@ func (m *GetClusterStateRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.NodeId |= uint32(b&0x7F) << shift
+				m.NodeId |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -4229,7 +4229,7 @@ func (m *NodeInfo) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Id |= uint32(b&0x7F) << shift
+				m.Id |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -5046,7 +5046,7 @@ func (m *ClusterState) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Leader |= uint32(b&0x7F) << shift
+				m.Leader |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -5099,7 +5099,7 @@ func (m *ClusterState) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.LocalNode |= uint32(b&0x7F) << shift
+				m.LocalNode |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -5539,7 +5539,7 @@ func (m *TransferLeadershipRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Transferee |= uint32(b&0x7F) << shift
+				m.Transferee |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -5609,7 +5609,7 @@ func (m *TransferLeadershipResponse) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.NewLeader |= uint32(b&0x7F) << shift
+				m.NewLeader |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

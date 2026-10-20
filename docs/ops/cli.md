@@ -2674,6 +2674,10 @@ Manage and inspect the Raft cluster.
 
 #### cluster status
 
+`--node-id` accepts unsigned 64-bit IDs; zero routes to the leader. Node lists,
+leader/local IDs and peer details preserve the full identity. In JSON/YAML
+output, protobuf uint64 identity fields are decimal strings.
+
 Display the current state of the Raft cluster, including node information and replication status.
 
 **Aliases:** `st`
@@ -2715,6 +2719,8 @@ ledgerctl cluster status --node-id 2
 
 #### cluster watch
 
+`--node-id` accepts the same unsigned 64-bit IDs as `cluster status`.
+
 Continuously poll and display the cluster status with in-place updates (similar to the Unix `watch` command).
 
 ```bash
@@ -2755,6 +2761,13 @@ ledgerctl cluster watch --interval 5s --timeout 3s
 #### cluster transfer-leader
 
 Transfer the Raft cluster leadership to a specific node. The request is automatically forwarded to the current leader.
+
+The target must be a nonzero unsigned 64-bit integer (up to
+`18446744073709551615`); for example, `transfer-leader 4294967297` preserves the
+full target ID. Invalid, zero and overflowing arguments reject before dialing.
+For IDs above `4294967295`, update the CLI and all participating servers first;
+older protobuf readers can truncate the target. See the
+[rolling-upgrade limitation](../technical/architecture/subsystems/api/protocol-compatibility.md#cluster-node-id-width).
 
 **Aliases:** `tl`
 
