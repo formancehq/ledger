@@ -68,10 +68,14 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 				"inputBytes":    info.InputBytes,
 				"duration":      info.Duration.String(),
 				"totalDuration": info.TotalDuration.String(),
-				"error":         info.Err,
 			}
 			switch {
+			case info.Err != nil && info.Err.Error() == "pebble: empty table":
+				// Pebble reports a successful flush with no output table using an
+				// unexported sentinel error. It is not a background failure.
+				logger.WithFields(fields).Infof("Pebble empty flush completed")
 			case info.Err != nil:
+				fields["error"] = info.Err
 				logger.WithFields(fields).Errorf("Pebble flush failed")
 			case info.TotalDuration >= 10*time.Second:
 				logger.WithFields(fields).Infof("Pebble slow flush completed")
