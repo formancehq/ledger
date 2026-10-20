@@ -38,6 +38,16 @@ type WriteGate interface {
 	CheckWritesAllowed() error
 }
 
+// snapshotRecoveryTracker is implemented by node.Node. It is deliberately
+// optional so health tests and alternate node implementations do not need to
+// model the Raft transport lifecycle. When present, it lets the leader mark a
+// voter as unavailable as soon as MsgSnap is emitted, and clear that state
+// only after the voter reports a ready Pebble checkpoint.
+type snapshotRecoveryTracker interface {
+	SnapshotRecoveryPending(peerID uint64) (snapshotIndex uint64, pending bool)
+	ConfirmSnapshotRecovery(peerID, persistedIndex uint64)
+}
+
 // gateState is the write-gate verdict published as one atomic value so
 // CheckWritesAllowed observes both block reasons consistently — no torn read
 // between separate stores during a block-reason transition (e.g. disk recovers
@@ -45,6 +55,7 @@ type WriteGate interface {
 type gateState struct {
 	diskBlocked     bool
 	skewBlocked     bool
+	recoveryBlocked bool
 	leadershipEpoch uint64
 }
 
@@ -156,7 +167,14 @@ func (hc *HealthChecker) CheckWritesAllowed() error {
 		return errGateNotReady
 	}
 
-	return writeGateErrorForState(s.diskBlocked, s.skewBlocked)
+	if err := writeGateErrorForState(s.diskBlocked, s.skewBlocked); err != nil {
+		return err
+	}
+	if s.recoveryBlocked {
+		return domain.ErrWritesBlockedRecovery
+	}
+
+	return nil
 }
 
 // OnLeadershipChange invalidates the node-local verdict before any admission
@@ -231,6 +249,9 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	var reports []nodeUsageReport
 	var samples []VolumeSample
 	skewExceeded := false
+	checkpointableVoters := 0
+	peerVoters := 0
+	recoveryTracker, _ := hc.node.(snapshotRecoveryTracker)
 
 	now := time.Now()
 	localWAL := hc.collector.WALVolume.Load()
@@ -271,10 +292,11 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	// Raft membership is authoritative: a committed peer that failed to enter
 	// the service pool is still an unreachable sample and cannot clear an
 	// existing disk write gate.
-	for _, peerID := range hc.node.MemberIDs() {
+	for _, peerID := range hc.node.VoterIDs() {
 		if peerID == localNodeID {
 			continue
 		}
+		peerVoters++
 
 		// Abort early if shutting down.
 		select {
@@ -354,6 +376,43 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				dataAge:     time.Duration(dataVolume.GetSampleAgeMs()) * time.Millisecond,
 				dataError:   dataError,
 			})
+
+			// Disk health alone is not enough to donate a checkpoint. A voter
+			// whose FSM is syncing or out of sync cannot serve the checkpoint
+			// needed to recover another voter. Treat any missing or stale state
+			// as non-checkpointable; this gate is intentionally fail-closed.
+			stateCtx, stateCancel := context.WithTimeout(baseCtx, healthCheckCallTimeout)
+			clusterState, stateErr := client.GetClusterState(stateCtx, &clusterpb.GetClusterStateRequest{
+				NodeId: uint32(peerID),
+			})
+			stateCancel()
+			if stateErr != nil {
+				hc.logger.WithFields(map[string]any{
+					"node_id": peerID,
+					"error":   stateErr,
+				}).Infof("Failed to get peer recovery state")
+			} else if clusterState.GetSyncProgress().GetStatus() == "normal" {
+				// A MsgSnap marks the start of recovery, not its completion:
+				// Raft may already have returned to Replicate while the
+				// checkpoint is still being downloaded/restored. Only the
+				// remote normal status closes the episode. Do not count the
+				// voter in this same sample; the next poll observes the
+				// cleared state and establishes a fresh donor verdict.
+				if recoveryTracker != nil {
+					pendingIndex, pending := recoveryTracker.SnapshotRecoveryPending(peerID)
+					wasPending := pending
+					persistedIndex := clusterState.GetRaftStatus().GetLastPersistedIndex()
+					if pending && persistedIndex >= pendingIndex {
+						recoveryTracker.ConfirmSnapshotRecovery(peerID, persistedIndex)
+						pending = false
+					}
+					if !wasPending && !pending {
+						checkpointableVoters++
+					}
+				} else {
+					checkpointableVoters++
+				}
+			}
 		}
 
 		// Check clock skew
@@ -400,6 +459,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	hc.gate.Store(&gateState{
 		diskBlocked:     diskBlocked,
 		skewBlocked:     skewExceeded,
+		recoveryBlocked: peerVoters > 0 && checkpointableVoters == 0,
 		leadershipEpoch: leadershipEpoch,
 	})
 

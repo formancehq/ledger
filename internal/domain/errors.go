@@ -376,6 +376,10 @@ const (
 	// request because cluster clock skew exceeds the configured threshold.
 	// Maps to gRPC Unavailable / HTTP 503.
 	ErrReasonWritesBlockedClockSkew = "WRITES_BLOCKED_CLOCK_SKEW"
+
+	// ErrReasonClusterUnhealthy is used for retryable admission failures when
+	// the cluster cannot currently guarantee a recovery donor.
+	ErrReasonClusterUnhealthy = "CLUSTER_UNHEALTHY"
 )
 
 // ErrSequenceExhausted rejects an allocation that would wrap an authoritative
@@ -590,6 +594,20 @@ func (errWritesBlockedClockSkew) Kind() ErrorKind { return KindUnavailable }
 func (errWritesBlockedClockSkew) Reason() string  { return ErrReasonWritesBlockedClockSkew }
 
 var ErrWritesBlockedClockSkew Describable = errWritesBlockedClockSkew{}
+
+// ErrWritesBlockedRecovery is returned by the write gate when no other voter
+// is currently able to provide a checkpoint. It is intentionally retryable:
+// elections and snapshot recovery continue while business writes are held
+// back to prevent an unbounded spool from making recovery harder.
+type errWritesBlockedRecovery struct{}
+
+func (errWritesBlockedRecovery) Error() string {
+	return "writes blocked: no checkpointable voter is available for recovery"
+}
+func (errWritesBlockedRecovery) Kind() ErrorKind { return KindUnavailable }
+func (errWritesBlockedRecovery) Reason() string  { return ErrReasonClusterUnhealthy }
+
+var ErrWritesBlockedRecovery Describable = errWritesBlockedRecovery{}
 
 // Validation sentinels — caller sent a request that fails a structural
 // check. Each is a unique *validationSentinel pointer; errors.Is compares

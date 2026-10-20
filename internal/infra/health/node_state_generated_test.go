@@ -106,3 +106,17 @@ func (mr *MocknodeStateMockRecorder) MemberIDs() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MemberIDs", reflect.TypeOf((*MocknodeState)(nil).MemberIDs))
 }
+
+// VoterIDs mocks base method.
+func (m *MocknodeState) VoterIDs() []uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "VoterIDs")
+	ret0, _ := ret[0].([]uint64)
+	return ret0
+}
+
+// VoterIDs indicates an expected call of VoterIDs.
+func (mr *MocknodeStateMockRecorder) VoterIDs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "VoterIDs", reflect.TypeOf((*MocknodeState)(nil).VoterIDs))
+}

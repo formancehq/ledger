@@ -50,3 +50,54 @@ func (mr *MockWriteGateMockRecorder) CheckWritesAllowed() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckWritesAllowed", reflect.TypeOf((*MockWriteGate)(nil).CheckWritesAllowed))
 }
+
+// MocksnapshotRecoveryTracker is a mock of snapshotRecoveryTracker interface.
+type MocksnapshotRecoveryTracker struct {
+	ctrl     *gomock.Controller
+	recorder *MocksnapshotRecoveryTrackerMockRecorder
+	isgomock struct{}
+}
+
+// MocksnapshotRecoveryTrackerMockRecorder is the mock recorder for MocksnapshotRecoveryTracker.
+type MocksnapshotRecoveryTrackerMockRecorder struct {
+	mock *MocksnapshotRecoveryTracker
+}
+
+// NewMocksnapshotRecoveryTracker creates a new mock instance.
+func NewMocksnapshotRecoveryTracker(ctrl *gomock.Controller) *MocksnapshotRecoveryTracker {
+	mock := &MocksnapshotRecoveryTracker{ctrl: ctrl}
+	mock.recorder = &MocksnapshotRecoveryTrackerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MocksnapshotRecoveryTracker) EXPECT() *MocksnapshotRecoveryTrackerMockRecorder {
+	return m.recorder
+}
+
+// ConfirmSnapshotRecovery mocks base method.
+func (m *MocksnapshotRecoveryTracker) ConfirmSnapshotRecovery(peerID, persistedIndex uint64) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ConfirmSnapshotRecovery", peerID, persistedIndex)
+}
+
+// ConfirmSnapshotRecovery indicates an expected call of ConfirmSnapshotRecovery.
+func (mr *MocksnapshotRecoveryTrackerMockRecorder) ConfirmSnapshotRecovery(peerID, persistedIndex any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConfirmSnapshotRecovery", reflect.TypeOf((*MocksnapshotRecoveryTracker)(nil).ConfirmSnapshotRecovery), peerID, persistedIndex)
+}
+
+// SnapshotRecoveryPending mocks base method.
+func (m *MocksnapshotRecoveryTracker) SnapshotRecoveryPending(peerID uint64) (uint64, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SnapshotRecoveryPending", peerID)
+	ret0, _ := ret[0].(uint64)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// SnapshotRecoveryPending indicates an expected call of SnapshotRecoveryPending.
+func (mr *MocksnapshotRecoveryTrackerMockRecorder) SnapshotRecoveryPending(peerID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SnapshotRecoveryPending", reflect.TypeOf((*MocksnapshotRecoveryTracker)(nil).SnapshotRecoveryPending), peerID)
+}

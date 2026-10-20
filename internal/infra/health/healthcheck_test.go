@@ -23,8 +23,24 @@ import (
 type diskUsageTestServer struct {
 	clusterpb.UnimplementedClusterServiceServer
 
-	calls atomic.Int64
+	calls      atomic.Int64
+	syncStatus atomic.Value
 }
+
+type snapshotRecoveryTestNode struct {
+	pending bool
+}
+
+func (n *snapshotRecoveryTestNode) IsLeader() bool      { return true }
+func (n *snapshotRecoveryTestNode) GetNodeID() uint64   { return 7 }
+func (n *snapshotRecoveryTestNode) MemberIDs() []uint64 { return []uint64{7, 8} }
+func (n *snapshotRecoveryTestNode) VoterIDs() []uint64  { return []uint64{7, 8} }
+func (n *snapshotRecoveryTestNode) IsHealthy() bool     { return true }
+func (n *snapshotRecoveryTestNode) GetLeader() uint64   { return 7 }
+func (n *snapshotRecoveryTestNode) SnapshotRecoveryPending(uint64) (uint64, bool) {
+	return 1, n.pending
+}
+func (n *snapshotRecoveryTestNode) ConfirmSnapshotRecovery(uint64, uint64) { n.pending = false }
 
 func newFreshCollector(t *testing.T) *diskusage.Collector {
 	t.Helper()
@@ -58,6 +74,18 @@ func (s *diskUsageTestServer) GetDiskUsage(context.Context, *clusterpb.GetDiskUs
 			ObservedAtUs: 1,
 			Valid:        true,
 		},
+	}, nil
+}
+
+func (s *diskUsageTestServer) GetClusterState(context.Context, *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
+	status := "normal"
+	if value := s.syncStatus.Load(); value != nil {
+		status = value.(string)
+	}
+
+	return &clusterpb.ClusterState{
+		SyncProgress: &clusterpb.SyncProgress{Status: status},
+		RaftStatus:   &clusterpb.RaftStatus{LastPersistedIndex: 1},
 	}, nil
 }
 
@@ -109,9 +137,9 @@ func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
 	require.NoError(t, pool.AddPeer(8, listener.Addr().String()))
 
 	ns := NewMocknodeState(gomock.NewController(t))
-	ns.EXPECT().IsLeader().Return(true)
-	ns.EXPECT().GetNodeID().Return(uint64(7))
-	ns.EXPECT().MemberIDs().Return([]uint64{7, 8})
+	ns.EXPECT().IsLeader().Return(true).AnyTimes()
+	ns.EXPECT().GetNodeID().Return(uint64(7)).AnyTimes()
+	ns.EXPECT().VoterIDs().Return([]uint64{7, 8}).AnyTimes()
 
 	hc := &HealthChecker{
 		node:        ns,
@@ -135,7 +163,94 @@ func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
 	require.False(t, hc.gate.Load().diskBlocked)
 }
 
-func TestHealthChecker_NewLeaderCanOpenWithUnavailablePeer(t *testing.T) {
+func TestHealthChecker_BlocksWhenNoOtherVoterIsCheckpointable(t *testing.T) {
+	t.Parallel()
+
+	collector := newFreshCollector(t)
+	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := grpc.NewServer()
+	handler := &diskUsageTestServer{}
+	handler.syncStatus.Store("out_of_sync")
+	clusterpb.RegisterClusterServiceServer(server, handler)
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		server.Stop()
+		require.NoError(t, <-serveErr)
+	})
+	require.NoError(t, pool.AddPeer(8, listener.Addr().String()))
+
+	ns := NewMocknodeState(gomock.NewController(t))
+	ns.EXPECT().IsLeader().Return(true).AnyTimes()
+	ns.EXPECT().GetNodeID().Return(uint64(7)).AnyTimes()
+	ns.EXPECT().VoterIDs().Return([]uint64{7, 8}).AnyTimes()
+	hc := &HealthChecker{
+		node:        ns,
+		collector:   collector,
+		servicePool: pool,
+		logger:      logging.Testing(),
+		thresholds: Thresholds{
+			WALBlock:   1.1,
+			WALResume:  0.000000001,
+			DataBlock:  1.1,
+			DataResume: 0.000000001,
+		},
+	}
+
+	hc.OnLeadershipChange(true)
+	hc.check(make(chan struct{}))
+
+	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedRecovery)
+
+	handler.syncStatus.Store("normal")
+	hc.check(make(chan struct{}))
+	require.NoError(t, hc.CheckWritesAllowed())
+}
+
+func TestHealthChecker_DoesNotCountVoterUntilSnapshotRecoveryIsConfirmed(t *testing.T) {
+	t.Parallel()
+
+	collector := newFreshCollector(t)
+	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := grpc.NewServer()
+	handler := &diskUsageTestServer{}
+	handler.syncStatus.Store("normal")
+	clusterpb.RegisterClusterServiceServer(server, handler)
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		server.Stop()
+		require.NoError(t, <-serveErr)
+	})
+	require.NoError(t, pool.AddPeer(8, listener.Addr().String()))
+
+	ns := &snapshotRecoveryTestNode{pending: true}
+	hc := &HealthChecker{
+		node:        ns,
+		collector:   collector,
+		servicePool: pool,
+		logger:      logging.Testing(),
+		thresholds:  Thresholds{WALBlock: 1.1, WALResume: 0.000000001, DataBlock: 1.1, DataResume: 0.000000001},
+	}
+	hc.OnLeadershipChange(true)
+	hc.check(make(chan struct{}))
+	// The remote status is normal, but this sample only closes the recovery
+	// episode. The voter is counted on the following poll.
+	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedRecovery)
+	require.False(t, ns.pending)
+
+	hc.check(make(chan struct{}))
+	require.NoError(t, hc.CheckWritesAllowed())
+}
+
+func TestHealthChecker_NewLeaderBlocksWithUnavailablePeer(t *testing.T) {
 	t.Parallel()
 
 	collector := newFreshCollector(t)
@@ -150,7 +265,7 @@ func TestHealthChecker_NewLeaderCanOpenWithUnavailablePeer(t *testing.T) {
 	ns := NewMocknodeState(gomock.NewController(t))
 	ns.EXPECT().IsLeader().Return(true)
 	ns.EXPECT().GetNodeID().Return(uint64(7))
-	ns.EXPECT().MemberIDs().Return([]uint64{7, 8})
+	ns.EXPECT().VoterIDs().Return([]uint64{7, 8})
 	hc := &HealthChecker{
 		node:         ns,
 		collector:    collector,
@@ -170,7 +285,7 @@ func TestHealthChecker_NewLeaderCanOpenWithUnavailablePeer(t *testing.T) {
 	hc.check(make(chan struct{}))
 
 	require.NotNil(t, hc.gate.Load())
-	require.NoError(t, hc.CheckWritesAllowed(), "an unavailable peer must not synthesize a permanent block for a new leader")
+	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedRecovery)
 }
 
 func TestHealthChecker_NewLeaderRequiresFreshLocalSample(t *testing.T) {
@@ -180,7 +295,7 @@ func TestHealthChecker_NewLeaderRequiresFreshLocalSample(t *testing.T) {
 	ns := NewMocknodeState(gomock.NewController(t))
 	ns.EXPECT().IsLeader().Return(true)
 	ns.EXPECT().GetNodeID().Return(uint64(7))
-	ns.EXPECT().MemberIDs().Return([]uint64{7})
+	ns.EXPECT().VoterIDs().Return([]uint64{7})
 	hc := &HealthChecker{
 		node:        ns,
 		collector:   collector,
@@ -232,7 +347,7 @@ func TestHealthChecker_MissingCommittedPeerCannotClearDiskGate(t *testing.T) {
 	ns := NewMocknodeState(gomock.NewController(t))
 	ns.EXPECT().IsLeader().Return(true)
 	ns.EXPECT().GetNodeID().Return(uint64(7))
-	ns.EXPECT().MemberIDs().Return([]uint64{7, 8})
+	ns.EXPECT().VoterIDs().Return([]uint64{7, 8})
 
 	hc := &HealthChecker{
 		node:         ns,
