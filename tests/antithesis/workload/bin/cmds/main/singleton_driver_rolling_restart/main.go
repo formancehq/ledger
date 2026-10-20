@@ -175,7 +175,7 @@ func transferAwayFrom(ctx context.Context, clusterClient clusterpb.ClusterServic
 	if err != nil || target == 0 {
 		return err
 	}
-	_, err = clusterClient.TransferLeadership(ctx, clusterpb.NewTransferRequest(target))
+	_, err = clusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{Transferee: target})
 	if err == nil {
 		assert.Reachable("rolling-restart transferred leadership before pod delete", details.With(internal.Details{"to": target}))
 	}

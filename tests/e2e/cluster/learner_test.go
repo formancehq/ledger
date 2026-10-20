@@ -32,14 +32,16 @@ func phantomPeer() (raftAddr, serviceAddr string, instanceID []byte) {
 }
 
 // waitForLearner polls the cluster state on the leader until the given node appears as a learner.
-func waitForLearner(clusterClient clusterpb.ClusterServiceClient, leaderID uint64, learnerNodeID uint64) {
+func waitForLearner(clusterClient clusterpb.ClusterServiceClient, leaderID uint64, learnerNodeID uint32) {
 	Eventually(func(g Gomega) {
-		state, err := clusterClient.GetClusterState(context.Background(), clusterpb.NewStateRequest(uint64(leaderID)))
+		state, err := clusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
+			NodeId: uint32(leaderID),
+		})
 		g.Expect(err).To(Succeed())
 
 		var found bool
 		for _, nodeInfo := range state.Nodes {
-			if nodeInfo.NodeID() == learnerNodeID {
+			if nodeInfo.Id == learnerNodeID {
 				g.Expect(nodeInfo.Suffrage).To(Equal("Learner"))
 				found = true
 			}
@@ -80,12 +82,14 @@ var _ = Describe("Learner node", func() {
 
 		It("should show the learner in cluster status", func() {
 			lid := *leaderID
-			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(uint64(lid)))
+			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+				NodeId: uint32(lid),
+			})
 			Expect(err).To(Succeed())
 
 			var learnerFound bool
 			for _, nodeInfo := range state.Nodes {
-				if nodeInfo.NodeID() == 4 {
+				if nodeInfo.Id == 4 {
 					Expect(nodeInfo.Suffrage).To(Equal("Learner"))
 					learnerFound = true
 				}
@@ -95,7 +99,9 @@ var _ = Describe("Learner node", func() {
 
 		It("should have 4 nodes total (3 voters + 1 learner)", func() {
 			lid := *leaderID
-			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(uint64(lid)))
+			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+				NodeId: uint32(lid),
+			})
 			Expect(err).To(Succeed())
 
 			var (
@@ -116,7 +122,9 @@ var _ = Describe("Learner node", func() {
 
 		It("should reject leadership transfer to the learner", func() {
 			lid := *leaderID
-			_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, clusterpb.NewTransferRequest(4))
+			_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
+				Transferee: 4,
+			})
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -148,7 +156,9 @@ var _ = Describe("Learner node", func() {
 			followerID := ((lid + 1) % countInstances) + 1
 
 			Eventually(func() error {
-				_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, clusterpb.NewTransferRequest(uint64(followerID)))
+				_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
+					Transferee: uint32(followerID),
+				})
 				return err
 			}, "10s").Should(Succeed())
 
@@ -191,10 +201,10 @@ var _ = Describe("Learner node", func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+				state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 				for _, n := range state.Nodes {
-					if n.NodeID() == 4 {
+					if n.Id == 4 {
 						g.Expect(n.Suffrage).To(Equal("Voter"))
 						return
 					}
@@ -205,7 +215,7 @@ var _ = Describe("Learner node", func() {
 
 		It("should have 4 voters after promotion", func() {
 			lid := *leaderID
-			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 			Expect(err).To(Succeed())
 
 			voterCount := 0
@@ -238,10 +248,10 @@ var _ = Describe("Learner node", func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+				state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 				for _, n := range state.Nodes {
-					if n.NodeID() == 5 {
+					if n.Id == 5 {
 						g.Expect(n.Suffrage).To(Equal("Voter"))
 						return
 					}
@@ -266,12 +276,12 @@ var _ = Describe("Learner node", func() {
 		})
 
 		It("should have all nodes as voters after auto-promotion", func() {
-			state, err := servers[0].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+			state, err := servers[0].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 			Expect(err).To(Succeed())
 
 			Expect(state.Nodes).To(HaveLen(countInstances))
 			for _, n := range state.Nodes {
-				Expect(n.Suffrage).To(Equal("Voter"), fmt.Sprintf("Node %d should be a voter", n.NodeID()))
+				Expect(n.Suffrage).To(Equal("Voter"), fmt.Sprintf("Node %d should be a voter", n.Id))
 			}
 		})
 

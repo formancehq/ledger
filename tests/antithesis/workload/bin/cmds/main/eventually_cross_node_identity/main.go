@@ -233,20 +233,12 @@ func waitNodeAtIndex(ctx context.Context, c *internal.PerNodeConn, target uint64
 		// NodeId routes to this specific node, returning its local Raft status
 		// (the forwarder resolves a non-zero ID to that node, or serves locally
 		// when it is the receiver) — never the leader's view.
-		state, err := c.Cluster.GetClusterState(ctx, clusterpb.NewStateRequest(c.NodeID))
+		state, err := c.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: c.NodeID})
 		if err != nil {
 			// Node down or transient — skip after a short wait.
 			time.Sleep(appliedPollInterval)
 
 			continue
-		}
-
-		if err := clusterpb.ValidateStateTarget(c.NodeID, state); err != nil {
-			// An older server may ignore the full-width selector and return
-			// its leader's cursor, which cannot qualify this node's state.
-			log.Printf("composer: node %s status target unsupported: %v, skipping", c.Addr, err)
-
-			return readyNode{}, false
 		}
 
 		status := state.GetSyncProgress().GetStatus()
@@ -289,9 +281,9 @@ func waitNodeAtIndex(ctx context.Context, c *internal.PerNodeConn, target uint64
 
 // localIsLearner reports whether the local node is a learner, for triage tags.
 func localIsLearner(state *clusterpb.ClusterState) bool {
-	local := state.LocalNodeID()
+	local := state.GetLocalNode()
 	for _, n := range state.GetNodes() {
-		if n.NodeID() == local {
+		if n.GetId() == local {
 			return n.GetSuffrage() == "Learner"
 		}
 	}

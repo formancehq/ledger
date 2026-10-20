@@ -36,7 +36,7 @@ var _ = Describe("Cluster server version", Ordered, func() {
 		// after SetupMultiNodeCluster. Peer-version population can lag the join,
 		// so poll until every NodeInfo carries a version.
 		Eventually(func(g Gomega) {
-			state, err := servers[0].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+			state, err := servers[0].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed())
 
 			nodes := state.GetNodes()

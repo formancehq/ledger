@@ -63,8 +63,8 @@ func main() {
 		// after a change steer exploration toward the forwarding-during-
 		// election window where a deposed leader could answer.
 		if internal.Rand().Uint64()%2 == 0 {
-			if state, stateErr := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0)); stateErr == nil {
-				leader := state.LeaderID()
+			if state, stateErr := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{}); stateErr == nil {
+				leader := uint64(state.GetLeader())
 				if prevLeader != 0 && leader != 0 && leader != prevLeader {
 					leaderChanged = true
 				}

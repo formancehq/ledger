@@ -27,10 +27,6 @@ func (m *GetClusterStateRequest) CloneVT() *GetClusterStateRequest {
 	}
 	r := new(GetClusterStateRequest)
 	r.NodeId = m.NodeId
-	if rhs := m.NodeId64; rhs != nil {
-		tmpVal := *rhs
-		r.NodeId64 = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -54,7 +50,6 @@ func (m *NodeInfo) CloneVT() *NodeInfo {
 	r.ServiceAddress = m.ServiceAddress
 	r.SyncProgress = m.SyncProgress.CloneVT()
 	r.IndexProgress = m.IndexProgress.CloneVT()
-	r.Id64 = m.Id64
 	r.Version = m.Version
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -143,14 +138,6 @@ func (m *ClusterState) CloneVT() *ClusterState {
 		}
 		r.Nodes = tmpContainer
 	}
-	if rhs := m.Leader64; rhs != nil {
-		tmpVal := *rhs
-		r.Leader64 = &tmpVal
-	}
-	if rhs := m.LocalNode64; rhs != nil {
-		tmpVal := *rhs
-		r.LocalNode64 = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -205,7 +192,6 @@ func (m *TransferLeadershipRequest) CloneVT() *TransferLeadershipRequest {
 	}
 	r := new(TransferLeadershipRequest)
 	r.Transferee = m.Transferee
-	r.Transferee64 = m.Transferee64
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -223,7 +209,6 @@ func (m *TransferLeadershipResponse) CloneVT() *TransferLeadershipResponse {
 	}
 	r := new(TransferLeadershipResponse)
 	r.NewLeader = m.NewLeader
-	r.NewLeader64 = m.NewLeader64
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -734,9 +719,6 @@ func (this *GetClusterStateRequest) EqualVT(that *GetClusterStateRequest) bool {
 	if this.NodeId != that.NodeId {
 		return false
 	}
-	if p, q := this.NodeId64, that.NodeId64; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -775,9 +757,6 @@ func (this *NodeInfo) EqualVT(that *NodeInfo) bool {
 		return false
 	}
 	if this.Version != that.Version {
-		return false
-	}
-	if this.Id64 != that.Id64 {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -940,12 +919,6 @@ func (this *ClusterState) EqualVT(that *ClusterState) bool {
 	if this.NodeVersion != that.NodeVersion {
 		return false
 	}
-	if p, q := this.Leader64, that.Leader64; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if p, q := this.LocalNode64, that.LocalNode64; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -1012,9 +985,6 @@ func (this *TransferLeadershipRequest) EqualVT(that *TransferLeadershipRequest) 
 	if this.Transferee != that.Transferee {
 		return false
 	}
-	if this.Transferee64 != that.Transferee64 {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -1032,9 +1002,6 @@ func (this *TransferLeadershipResponse) EqualVT(that *TransferLeadershipResponse
 		return false
 	}
 	if this.NewLeader != that.NewLeader {
-		return false
-	}
-	if this.NewLeader64 != that.NewLeader64 {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -1667,11 +1634,6 @@ func (m *GetClusterStateRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.NodeId64 != nil {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.NodeId64))
-		i--
-		dAtA[i] = 0x10
-	}
 	if m.NodeId != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NodeId))
 		i--
@@ -1709,11 +1671,6 @@ func (m *NodeInfo) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Id64 != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id64))
-		i--
-		dAtA[i] = 0x48
 	}
 	if len(m.Version) > 0 {
 		i -= len(m.Version)
@@ -2009,16 +1966,6 @@ func (m *ClusterState) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.LocalNode64 != nil {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.LocalNode64))
-		i--
-		dAtA[i] = 0x60
-	}
-	if m.Leader64 != nil {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Leader64))
-		i--
-		dAtA[i] = 0x58
-	}
 	if len(m.NodeVersion) > 0 {
 		i -= len(m.NodeVersion)
 		copy(dAtA[i:], m.NodeVersion)
@@ -2235,11 +2182,6 @@ func (m *TransferLeadershipRequest) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Transferee64 != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Transferee64))
-		i--
-		dAtA[i] = 0x10
-	}
 	if m.Transferee != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Transferee))
 		i--
@@ -2277,11 +2219,6 @@ func (m *TransferLeadershipResponse) MarshalToSizedBufferVT(dAtA []byte) (int, e
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.NewLeader64 != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NewLeader64))
-		i--
-		dAtA[i] = 0x10
 	}
 	if m.NewLeader != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NewLeader))
@@ -3509,9 +3446,6 @@ func (m *GetClusterStateRequest) SizeVT() (n int) {
 	if m.NodeId != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.NodeId))
 	}
-	if m.NodeId64 != nil {
-		n += 1 + protohelpers.SizeOfVarint(uint64(*m.NodeId64))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -3552,9 +3486,6 @@ func (m *NodeInfo) SizeVT() (n int) {
 	l = len(m.Version)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Id64 != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Id64))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -3688,12 +3619,6 @@ func (m *ClusterState) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Leader64 != nil {
-		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Leader64))
-	}
-	if m.LocalNode64 != nil {
-		n += 1 + protohelpers.SizeOfVarint(uint64(*m.LocalNode64))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -3743,9 +3668,6 @@ func (m *TransferLeadershipRequest) SizeVT() (n int) {
 	if m.Transferee != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Transferee))
 	}
-	if m.Transferee64 != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Transferee64))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -3758,9 +3680,6 @@ func (m *TransferLeadershipResponse) SizeVT() (n int) {
 	_ = l
 	if m.NewLeader != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.NewLeader))
-	}
-	if m.NewLeader64 != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.NewLeader64))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -4245,26 +4164,6 @@ func (m *GetClusterStateRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NodeId64", wireType)
-			}
-			var v uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.NodeId64 = &v
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -4571,25 +4470,6 @@ func (m *NodeInfo) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Version = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 9:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Id64", wireType)
-			}
-			m.Id64 = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Id64 |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -5420,46 +5300,6 @@ func (m *ClusterState) UnmarshalVT(dAtA []byte) error {
 			}
 			m.NodeVersion = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 11:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Leader64", wireType)
-			}
-			var v uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Leader64 = &v
-		case 12:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LocalNode64", wireType)
-			}
-			var v uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.LocalNode64 = &v
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -5704,25 +5544,6 @@ func (m *TransferLeadershipRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Transferee64", wireType)
-			}
-			m.Transferee64 = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Transferee64 |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -5789,25 +5610,6 @@ func (m *TransferLeadershipResponse) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.NewLeader |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NewLeader64", wireType)
-			}
-			m.NewLeader64 = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.NewLeader64 |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

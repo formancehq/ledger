@@ -16,20 +16,6 @@ An empty error by itself does not establish successful delivery.
 Filtered or internal logs can advance the cursor without external delivery;
 `Delivering=True` therefore does not establish a successful publish by itself.
 
-For scale-down membership observations, trace the actual
-`ledgerctl cluster status --json` output into the removal postcondition.
-Member IDs accept JSON integer numbers and decimal strings across the full uint64
-range without float conversion; `3` and `4294967299` must remain distinct.
-Current CLI output retains numeric IDs in the legacy uint32 range and uses
-strings for larger IDs. Exercise both earlier RC numeric output and current
-output so an operator-first rolling upgrade preserves scale-down. With retained
-leader node 1 and member 4294967299, removable target node 3 must not appear
-present. Retain small-ID, high-bit-only, maximum-ID and above-float-precision
-cases, and require malformed, fractional, negative and overflowing IDs to stop
-before removal. Keep the existing normal/force removal, lost-response,
-replacement-Pod and partial-reconciliation evidence; widening the observation
-does not change the ordinal-based scale-down algorithm.
-
 ## Reachability and proof
 
 For each hypothesis, establish all of the following from the audited SHA:

@@ -102,7 +102,7 @@ var _ = Describe("gRPC protocol version", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Successful discovery on this connection does not authorize later RPCs.
-		_, err = clusterpb.NewClusterServiceClient(rawConn).GetClusterState(ctx, clusterpb.NewStateRequest(0))
+		_, err = clusterpb.NewClusterServiceClient(rawConn).GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		expectProtocolRejection(err)
 		stream, err := rawClient.ListLedgers(ctx, &servicepb.ListLedgersRequest{})
 		if err == nil {
@@ -115,7 +115,7 @@ var _ = Describe("gRPC protocol version", Ordered, func() {
 		ledgers, err := actions.ListLedgers(ctx, leader.Client)
 		Expect(err).To(Succeed())
 		Expect(ledgers).To(HaveKey("protocol-stream"))
-		state, err := leader.ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+		state, err := leader.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		Expect(err).To(Succeed())
 		Expect(state.Nodes).To(HaveLen(3))
 	})
@@ -124,9 +124,9 @@ var _ = Describe("gRPC protocol version", Ordered, func() {
 		currentLeaderID := *leaderID
 		follower := servers[currentLeaderID%uint64(len(servers))]
 		Expect(uint64(follower.NodeID)).NotTo(Equal(currentLeaderID))
-		state, err := follower.ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+		state, err := follower.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		Expect(err).To(Succeed())
-		Expect(uint64(state.LeaderID())).To(Equal(currentLeaderID))
+		Expect(uint64(state.Leader)).To(Equal(currentLeaderID))
 
 		const ledgerName = "protocol-http-forwarding"
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost,
@@ -142,8 +142,8 @@ var _ = Describe("gRPC protocol version", Ordered, func() {
 		ledgerInfo, err := servers[currentLeaderID-1].Client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 		Expect(err).To(Succeed())
 		Expect(ledgerInfo.Name).To(Equal(ledgerName))
-		state, err = follower.ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+		state, err = follower.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		Expect(err).To(Succeed())
-		Expect(uint64(state.LeaderID())).To(Equal(currentLeaderID), "the request must have used the follower-to-leader path")
+		Expect(uint64(state.Leader)).To(Equal(currentLeaderID), "the request must have used the follower-to-leader path")
 	})
 })

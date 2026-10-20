@@ -90,7 +90,7 @@ func (s *checkpointMetadataServer) Barrier(context.Context, *servicepb.BarrierRe
 }
 
 func (s *checkpointMetadataServer) GetClusterState(_ context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
-	if req.TargetID() == 0 {
+	if req.GetNodeId() == 0 {
 		if s.remainingDemotions.CompareAndSwap(1, 0) {
 			return &clusterpb.ClusterState{State: "Follower", LocalNode: 1}, nil
 		}
@@ -100,7 +100,7 @@ func (s *checkpointMetadataServer) GetClusterState(_ context.Context, req *clust
 
 		return &clusterpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*clusterpb.NodeInfo{{Id: 2, ServiceAddress: s.addr}}}, nil
 	}
-	if req.TargetID() != 2 {
+	if req.GetNodeId() != 2 {
 		return nil, status.Error(codes.InvalidArgument, "expected pinned node ID")
 	}
 	s.fenced.Store(true)

@@ -27,12 +27,12 @@ type nodeForwarder struct {
 
 // resolve returns a gRPC connection to the target node, or nil when the request
 // should be handled locally (nodeID is 0 or matches the local node).
-func (f *nodeForwarder) resolve(nodeID uint64) (*grpc.ClientConn, error) {
-	if nodeID == 0 || nodeID == f.node.GetNodeID() {
+func (f *nodeForwarder) resolve(nodeID uint32) (*grpc.ClientConn, error) {
+	if nodeID == 0 || uint64(nodeID) == f.node.GetNodeID() {
 		return nil, nil
 	}
 
-	conn := f.servicePool.GetConnection(nodeID)
+	conn := f.servicePool.GetConnection(uint64(nodeID))
 	if conn == nil {
 		return nil, fmt.Errorf("%w: node %d", ErrNodeNotReachable, nodeID)
 	}

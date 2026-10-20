@@ -63,13 +63,13 @@ func main() {
 	// Wait for the full cluster to be ready (leader elected, all nodes are voters)
 	for {
 		time.Sleep(time.Second)
-		state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+		state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		if err != nil {
 			fmt.Printf("Not ready (cluster state): %s\n", err)
 
 			continue
 		}
-		if state.LeaderID() == 0 {
+		if state.GetLeader() == 0 {
 			fmt.Println("Not ready: no leader elected")
 
 			continue
@@ -85,7 +85,7 @@ func main() {
 
 			continue
 		}
-		log.Printf("init: cluster ready (leader=%d, voters=%d)", state.LeaderID(), voterCount)
+		log.Printf("init: cluster ready (leader=%d, voters=%d)", state.GetLeader(), voterCount)
 
 		break
 	}
