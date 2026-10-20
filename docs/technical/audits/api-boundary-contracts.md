@@ -102,16 +102,31 @@ text through the generated operation, as described in `tests/sdk/README.md`.
 Compare documented write scopes with both the granular route guard and default
 aggregate mapping. Creation metadata remains EN-2686's separate server contract.
 
-HTTP monetary negotiation follows the v2 contract: posting amounts, volume
-inputs/outputs and signed balances use exact decimal JSON number tokens by
-default, and canonical strings with a truthy `Formance-Bigint-As-String` header.
-Posting input accepts canonical unsigned decimal strings or integer tokens
-within uint256; volume codecs retain arbitrary precision and signed balances.
-Review option propagation through custom nested codecs, checked-response
-buffering and concurrent mixed-header requests. CLI, protobuf, event and
-storage codecs keep their existing representations. Use the generated SDK
-integration in `tests/sdk` and exact raw-token handler assertions as evidence;
-a number/string schema union alone cannot prove the selected mode.
+HTTP large-integer negotiation preserves the v2 monetary default and extends it
+by type: every response `Uint256`, `BigUint` and `SignedBigInt` uses exact decimal
+JSON number tokens by default and canonical strings with case-insensitive
+`true`, `yes`, `y` or `1` in `Formance-Bigint-As-String`, without trimming.
+Include standalone values and nonmonetary fields inside structs, maps, slices
+and custom public projections. Trace shared streaming, checked, paged and bulk
+writers from the request through option-aware nested codecs; dedicated protojson
+projections must contain none of these types, including in nested descriptors.
+Preserve null/zero/omission shapes, escaping, streaming newlines and checked
+failure buffering. Concurrent mixed-header requests must remain isolated.
+Ordinary integer IDs/counts, metadata and explicitly string-encoded counters
+retain their current representation. CLI, protobuf, event and storage codecs
+also keep their existing representations; response negotiation does not expand
+request decoding. Posting input still accepts canonical unsigned decimal strings
+or integer tokens within uint256; volumes retain arbitrary precision and signed
+balances.
+
+Use exact raw-token assertions at zero, 2^53 boundaries, Uint256 maximum,
+arbitrary precision beyond 256 bits and negative signed values. Preserve
+validation failures for invalid magnitudes and negative zero. The generated SDK
+integration in `tests/sdk` exercises the 12 operations currently exposing these
+types; future fields inherit the same type-based rule without a new business
+classification. Bind the actual schema/generator/dependencies and prove exact
+opt-in strings through generated operations. A number/string schema union or a
+helper-only probe cannot prove routed SDK preservation.
 
 ## Boundaries
 

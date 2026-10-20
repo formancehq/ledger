@@ -31,5 +31,5 @@ func (s *Server) handleGetNumscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeOK(w, info)
+	writeOK(w, r, info)
 }

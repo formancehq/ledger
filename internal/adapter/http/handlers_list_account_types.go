@@ -58,5 +58,5 @@ func (s *Server) handleListAccountTypes(w http.ResponseWriter, r *http.Request) 
 		return types[i].Name < types[j].Name
 	})
 
-	writeOK(w, &listAccountTypesResponse{Types: types})
+	writeOK(w, r, &listAccountTypesResponse{Types: types})
 }

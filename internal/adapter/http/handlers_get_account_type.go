@@ -34,5 +34,5 @@ func (s *Server) handleGetAccountType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeOK(w, toAccountTypeJSON(at))
+	writeOK(w, r, toAccountTypeJSON(at))
 }

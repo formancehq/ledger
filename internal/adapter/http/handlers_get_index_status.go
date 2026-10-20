@@ -23,5 +23,5 @@ func (s *Server) handleGetIndexStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeProtoOK(w, resp)
+	writeProtoOK(w, r, resp)
 }
