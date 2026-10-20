@@ -1108,6 +1108,24 @@ To inspect the cluster state during a test:
 2. Use `time.Sleep` temporarily for inspection
 3. Access HTTP endpoints directly
 
+## Schemathesis API conformance
+
+Run the CI gate against a disposable single-node server without Docker:
+
+```bash
+nix develop .#ci --command bash -c 'MAX_EXAMPLES=10 SCHEMATHESIS_WORKERS=1 just test-schemathesis'
+```
+
+The harness runs its Python regression tests before the endpoint checks. Header
+generation must satisfy HTTP field-value syntax as well as the OpenAPI schema:
+permit HTAB, visible ASCII and obs-text, but exclude other control bytes and DEL.
+Schema-derived strategies can generate header values that Go rejects before
+routing.
+Closing the connection with an unread request body can reset it before the
+client receives the rejection, making the gate depend on TCP timing. The
+`before_generate_headers` hook filters both inline and constrained shared header
+parameters. Keep transport errors fatal: a later successful request does not validate a failed one.
+
 ## CI/CD
 
 ### GitHub Actions (Example)
