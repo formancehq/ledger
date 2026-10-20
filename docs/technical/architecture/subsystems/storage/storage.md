@@ -46,6 +46,23 @@ graph TB
 
 ## WAL (Write-Ahead Log)
 
+### Startup recovery diagnostics
+
+Startup logs distinguish the main-store cache restoration, query-checkpoint
+recovery, the read of committed WAL entries, and their application to the FSM.
+The WAL replay reports each bounded batch's index range before application and
+its duration and applied index afterward. If startup stops mid-batch, the last
+"Applying startup WAL batch" record identifies the range in progress. Entry
+payloads and customer data are never logged.
+
+The main Pebble store, read index, and usage store label background compaction
+and flush events with their store name. Compaction start and completion are
+visible at info level; ordinary flushes are debug-only, while flushes taking
+at least ten seconds and Pebble disk-slow events are visible at info level.
+The main store retains its existing Pebble metrics listener. These events may
+run concurrently with `pebble.Open`: a compaction reported at the end of Open
+does not by itself explain Open's elapsed time.
+
 ### Concept
 
 The WAL is the main log used by Raft to guarantee entry durability. It uses the `etcd/server/v3/storage/wal` library which provides:

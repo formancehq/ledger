@@ -427,7 +427,11 @@ func NewStore(
 	opts := &pebble.Options{
 		Logger:             NewPebbleLogger(logger),
 		FormatMajorVersion: pebble.FormatNewest,
-		EventListener:      NewMetricsListener(meter, stallState),
+		EventListener: func() *pebble.EventListener {
+			listener := pebble.TeeEventListener(*NewMetricsListener(meter, stallState), *NewPebbleEventLogger(logger, "live"))
+
+			return &listener
+		}(),
 		// 1) Absorb more writes before flush => fewer SST files, fewer compactions.
 		MemTableSize:                cfg.MemTableSize,
 		MemTableStopWritesThreshold: cfg.MemTableStopWritesThreshold,
