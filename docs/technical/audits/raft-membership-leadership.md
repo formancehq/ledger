@@ -275,6 +275,13 @@ full-width responses and legacy small-ID responses still qualify and preserve
 learner attribution. An unsupported target is an inconclusive observation,
 never evidence that the requested node's Pebble state has caught up.
 
+Apply the same response-identity gate before exposing a directed node's cluster
+configuration. `TestClusterConfigValidatesTargetBeforeConvergence` exercises the
+generated client with legacy leader and wrong full-width responses: neither may
+return configuration or reach the convergence predicate for a high-ID target.
+Exact full-width targets, legacy small targets and leader routing remain valid.
+An unsupported response is inconclusive, never evidence of follower convergence.
+
 Structured CLI status retains numeric IDs through MaxUint32 and uses decimal
 strings above it. Exercise the actual Cobra stdout contract and the operator
 scale-down membership reader; string parsing must preserve high values and must

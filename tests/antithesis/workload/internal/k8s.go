@@ -409,6 +409,9 @@ func GetClusterConfig(ctx context.Context, clusterClient clusterpb.ClusterServic
 	if err != nil {
 		return nil, err
 	}
+	if err := clusterpb.ValidateStateTarget(nodeID, state); err != nil {
+		return nil, err
+	}
 
 	return state.GetClusterConfig(), nil
 }
