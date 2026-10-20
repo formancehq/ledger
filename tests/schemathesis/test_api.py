@@ -46,6 +46,25 @@ _numscript_idx = 0
 
 # --- Link validation + domain hooks (applied to actual test cases) ---
 @schemathesis.hook
+def before_generate_headers(context, strategy):
+    """Generate HTTP field values that reach the application handlers.
+
+    String strategies can admit control bytes that requests can
+    send but Go's HTTP parser rejects before routing. Closing that connection
+    with an unread body can reset it before the client receives the 400.
+    Apply the same transport filter to inline and constrained shared header
+    parameters. Keep HTAB, visible ASCII and obs-text (RFC 9110 field-vchar).
+    """
+    return strategy.filter(
+        lambda headers: all(
+            c == "\t" or 0x20 <= ord(c) <= 0xFF and c != "\x7f"
+            for value in (headers or {}).values()
+            for c in value
+        )
+    )
+
+
+@schemathesis.hook
 def before_call(context, case, kwargs):
     """Validate link resolution and adjust domain-specific constraints."""
     global _numscript_idx
