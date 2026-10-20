@@ -443,10 +443,13 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 		// Periodic progress logging for long catch-up runs.
 		if now := time.Now(); now.Sub(lastProgressLog) >= 10*time.Second {
+			progressCursor := max(cursor, unpersistedCursor)
 			b.logger.WithFields(map[string]any{
-				"cursor":  max(cursor, unpersistedCursor),
-				"from":    startCursor,
-				"indexed": max(cursor, unpersistedCursor) - startCursor,
+				"cursor":    progressCursor,
+				"from":      startCursor,
+				"indexed":   progressCursor - startCursor,
+				"target":    targetSequence,
+				"remaining": targetSequence - progressCursor,
 			}).Infof("Index builder log processing progress")
 
 			lastProgressLog = now
