@@ -429,7 +429,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 
 	readAllStart := time.Now()
 	repaired := false
-	s.logger.Infof("Reading all WAL entries from memory")
+	s.logger.Infof("Loading WAL entries into memory")
 	_, s.hardState, s.entries, err = s.wal.ReadAll()
 	if err != nil {
 		if !errors.Is(err, io.ErrUnexpectedEOF) {
