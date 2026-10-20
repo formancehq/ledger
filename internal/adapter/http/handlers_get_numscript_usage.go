@@ -62,5 +62,5 @@ func (s *Server) handleGetNumscriptUsage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	writeOK(w, toTemplateUsageJSON(usage))
+	writeOK(w, r, toTemplateUsageJSON(usage))
 }

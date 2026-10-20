@@ -220,7 +220,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 
 ## Ledger-log JSON contract
 
-### Monetary encoding parity (EN-2779)
+### Large-integer response encoding
 
 V2 and v3 HTTP responses emit decimal JSON number tokens for posting amounts,
 volume input/output and balances by default. `Formance-Bigint-As-String` opts
@@ -235,8 +235,14 @@ aggregate volumes, transaction-analysis statistics, bulk (including partial
 failures), ledger/system logs, and prepared-query cursors/aggregates. V3 posting inputs accept both integer tokens
 and canonical unsigned decimal strings regardless of the response header, with
 the existing uint256 bound. Volume input/output and balances retain their
-arbitrary-precision bounds and signedness. IDs, metadata and nonmonetary
-integer projections retain their existing contract.
+arbitrary-precision bounds and signedness. V3 selects response encoding by
+`commonpb.Uint256`, `commonpb.BigUint` and `commonpb.SignedBigInt`, including
+nested and future nonmonetary fields, rather than by endpoint or monetary field
+name. This generalization preserves v2 monetary behavior; v2 has no equivalent
+contract for these v3 message types. Ordinary integer IDs/counts, typed metadata
+and explicitly string-encoded counters retain their existing contract. Shared
+HTTP writers negotiate the response, while custom nested projections forward
+options. Request decoding is unchanged.
 
 The OpenAPI schemas expose number/string unions and the reusable header on
 every affected operation. Generated SDK operation tests in `tests/sdk/` retain

@@ -131,7 +131,7 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 	}
 
 	finishProfile(w, r, profile)
-	writeMonetaryJSONResponse(w, r, http.StatusOK, envelope)
+	writeJSONResponse(w, r, http.StatusOK, envelope)
 }
 
 // executePreparedQueryResponseJSON is the clean camelCase envelope for the

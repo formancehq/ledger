@@ -39,5 +39,5 @@ func (s *Server) handleGetEventsSinks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeOK(w, json.RawValue(raw))
+	writeOK(w, r, json.RawValue(raw))
 }

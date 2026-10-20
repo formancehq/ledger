@@ -44,5 +44,5 @@ func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeMonetaryOK(w, r, account)
+	writeOK(w, r, account)
 }

@@ -3270,11 +3270,15 @@ components:
       in: header
       required: false
       description: |
-        Render monetary amounts (postings, volume input/output and balances) as
-        canonical decimal strings. Case-insensitive true, yes, y and 1 enable
+        Render all response Uint256, BigUint and SignedBigInt values as canonical
+        decimal strings, regardless of business meaning, including posting
+        amounts, volume input/output and balances. Ordinary integer IDs/counts,
+        metadata and explicitly string-encoded counters keep their existing
+        representation. Case-insensitive true, yes, y and 1 enable
         this option, matching Ledger v2. Whitespace is not trimmed. Omission and
         every other value retain JSON number tokens. This affects only this
-        response, including nested transaction/log/cursor and bulk results.
+        response, including nested objects, maps, arrays, transaction/log/cursor
+        and bulk results. Request decoding is unchanged.
       schema:
         type: string
       example: 'true'
@@ -3619,8 +3623,10 @@ components:
 
     UnsignedMonetaryAmount:
       description: |
-        Exact unsigned integer encoded as a JSON number by default, or a
-        canonical decimal string when Formance-Bigint-As-String is enabled.
+        Arbitrary-precision unsigned BigUint value encoded as a JSON number by
+        default, or a canonical decimal string when Formance-Bigint-As-String
+        is enabled. The same rule applies to every response BigUint value,
+        including nested fields, regardless of business meaning.
         JavaScript consumers should enable the header to avoid number rounding.
       oneOf:
         - type: integer
@@ -3631,8 +3637,10 @@ components:
 
     SignedMonetaryAmount:
       description: |
-        Exact signed integer encoded as a JSON number by default, or a
-        canonical decimal string when Formance-Bigint-As-String is enabled.
+        Arbitrary-precision SignedBigInt value encoded as a JSON number by
+        default, or a canonical decimal string when Formance-Bigint-As-String
+        is enabled. The same rule applies to every response SignedBigInt value,
+        including nested fields, regardless of business meaning.
       oneOf:
         - type: integer
           format: bigint
@@ -3644,7 +3652,8 @@ components:
         Unsigned amount from 0 through 2^256-1. Requests accept JSON integer
         tokens or canonical decimal strings independently of the response
         header; the server enforces the bound for both forms. Responses use
-        numbers by default and strings with Formance-Bigint-As-String enabled.
+        numbers by default and strings with Formance-Bigint-As-String enabled,
+        as do all response Uint256 values regardless of business meaning.
       oneOf:
         - type: integer
           format: bigint

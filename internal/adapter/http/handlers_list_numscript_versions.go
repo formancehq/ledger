@@ -45,5 +45,5 @@ func (s *Server) handleListNumscriptVersions(w http.ResponseWriter, r *http.Requ
 		dto.Versions[i] = numscriptVersionEntryDTO{Version: v.GetVersion(), CreatedAt: v.GetCreatedAt()}
 	}
 
-	writeOK(w, dto)
+	writeOK(w, r, dto)
 }

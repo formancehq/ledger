@@ -60,5 +60,5 @@ func (s *Server) handleGetMetadataSchema(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	writeOK(w, toSchemaStatusJSON(resp))
+	writeOK(w, r, toSchemaStatusJSON(resp))
 }

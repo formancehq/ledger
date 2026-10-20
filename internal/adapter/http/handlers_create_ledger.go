@@ -177,7 +177,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 	info := createLedgerLog.ToLedgerInfo()
 	info.Metadata = createLedgerLog.GetMetadata()
-	writeCreated(w, info)
+	writeCreated(w, r, info)
 }
 
 // mirrorSourceToProto converts the HTTP body to the proto MirrorSourceConfig.
