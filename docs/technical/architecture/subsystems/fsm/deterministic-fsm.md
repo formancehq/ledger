@@ -303,9 +303,9 @@ The dependency discovery uses the upstream **`ResolveDependencies`** API via `Di
 
 `DiscoverNumscriptDependencies` wraps the resolved values in a `RecordingStore` over a `numscript.Store`-backed `ValueSource`:
 
-- `Balance(account, asset)` returns the `(input − output)` balance from the snapshot (a fresh account resolves to zero). Under `force`, the store short-circuits to `MaxForceBalance` (`2^256`) so bounded sources still resolve without reading real balances.
+- `Balance(account, asset, color)` returns the `(input − output)` balance from the snapshot (a fresh account resolves to zero). Under `force`, the store short-circuits to `MaxForceBalance` (`2^256`) so bounded sources still resolve without reading real balances.
 - `Metadata(account, key)` returns the verbatim stored value and a presence flag; `meta()` reads are recorded, not rejected.
-- Color/scope-qualified balance/metadata queries are **rejected** (`domain.ErrColoredBalanceUnsupported`) — Ledger volumes have no color/scope dimension, so serving a per-color view would double-count one underlying volume.
+- Color-qualified balance queries resolve their own `(account, asset, color)` bucket — color is a volume dimension. Scope-qualified balance/metadata queries are **rejected** (`domain.ErrScopedBalanceUnsupported`) — Ledger has no scope dimension, so serving a per-scope view would double-count one underlying volume. See [Numscript colors and scopes](../../../contributing/numscript.md#colors-are-supported-scope-qualified-access-is-rejected).
 - Every value read is recorded and folded into a `blake3` **inputs-resolution hash**; the FSM re-resolves at apply time and rejects with `domain.ErrStaleInputsResolution` if any bound input changed (see §7.2.2).
 
 ```go

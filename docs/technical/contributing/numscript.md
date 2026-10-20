@@ -148,12 +148,14 @@ Track the origin of funds using asset coloring:
 #![feature("experimental-asset-colors")]
 
 // Send specifically colored funds: the color qualifies the source bucket.
-// Colors are uppercase (validated against ^[A-Z]*$).
+// Numscript colors are 1 to 16 uppercase letters (^[A-Z]{1,16}$).
 send [USD/2 100] (
   source = @marketing:budget \ "PROMO"
   destination = @users:alice
 )
 ```
+
+The color selects the `(marketing:budget, USD/2, PROMO)` volume and the destination is credited under the same color. See [Colors are supported; scope-qualified access is rejected](#colors-are-supported-scope-qualified-access-is-rejected) for the full rules.
 
 Asset colors allow tracking where funds originated, useful for:
 - Promotional credits
@@ -468,19 +470,41 @@ The wrapper lives in `internal/domain/processing/numscript/discover.go` (`Discov
 
 1. **Parse** the script through the NumscriptCache — the same parsed entry the admission-side compile hangs off (`lruEntry.compileParsed`), so parse and compile both run once per cached script.
 2. **Resolve** dependencies against a `RecordingStore` wrapping the admission-time value source.
-3. **Map** the resolved account/metadata dependencies to Ledger volume/metadata preload keys `(ledger, account, asset)` / `(ledger, account, key)` — Ledger does not partition volumes or metadata by color/scope.
+3. **Map** the resolved account/metadata dependencies to Ledger volume/metadata preload keys `(ledger, account, asset, color)` / `(ledger, account, key)` — volumes are partitioned by color, metadata is not, and neither is partitioned by scope (see below).
 4. **Preload** the union of read and write keys so every FSM read/mutate resolves from cache.
 
 `meta()`, `oneof` (all branches), and multiple `send` blocks are all handled by the resolver — none is rejected. `ErrMetaNotSupported` and `ErrNonDeterministicScript` no longer exist.
 
-#### Color/scope-qualified balances are rejected (reads **and** writes)
+#### Colors are supported; scope-qualified access is rejected
 
-Ledger volumes and account metadata have **no** color/scope dimension: every color/scope view of `(account, asset)` resolves to the *same* underlying volume, and every scope-qualified metadata read collapses to the same `(account, key)` entry. Serving such a qualified view would hand the script a full-balance view *per color* (letting it spend the same funds once per color) on the read side, or silently collapse a colored credit/debit onto the unqualified volume (a silent semantic loss) on the write side. Until Ledger gains a first-class color/scope dimension (EN-1334), **every** color/scope-qualified balance or metadata access is rejected with `domain.ErrColoredBalanceUnsupported` (a validation sentinel — admission fails the transaction as a business error before proposing, and the authoritative FSM path rejects it identically):
+Ledger volumes are keyed by `(ledger, account, asset, color)`: color is a first-class volume dimension, and the uncolored bucket is the empty color. Numscript colors map directly onto that dimension:
 
-- **reads** — the `Store` (`internal/domain/processing/numscript/store.go`) rejects any `balance()`/`overdraft()`/`meta()` read carrying a non-empty `Color` or `Scope`;
-- **writes** — `DiscoverNumscriptDependencies` (`discover.go`) rejects any color/scope-qualified `AccountsWrites`/`MetaWrites` dependency, and the FSM posting loop (`processor_transaction_numscript.go`) rejects any colored/scoped posting at apply time.
+- **Enable colors in the script.** The upstream interpreter gates color syntax behind the `experimental-asset-colors` feature flag. Ledger sets no feature flags of its own and has no ledger-level or server-level switch for them, so a script opts in with the in-script pragma:
 
-This is **uniform**: source or destination, bounded or unbounded. In particular an **unbounded colored source** such as `send [COIN 100] (source = @world \ "RED" ...)` is *not* a harmless no-op — it moves RED-colored `COIN`, so the destination is credited a RED volume that would collapse onto the single uncolored `COIN` volume. It is a color/scope-qualified **write** and is rejected like any other, even though `@world` reads no balance. There is no "allowed" colored shape today; the guard is closed until the color/scope dimension lands.
+  ```numscript
+  #![feature("experimental-asset-colors")]
+
+  send [USD/2 60] (
+    source = @alice \ "GRANTS"
+    destination = @bob
+  )
+  ```
+
+  Without the pragma, a script that uses a color fails with a Numscript experimental-feature error (`NumscriptExperimentalFeatureDetails` / `NumscriptCompileExperimentalFeatureDetails`, carrying the flag name).
+- **A color restricts the source bucket.** `@alice \ "GRANTS"` draws only from the `(alice, USD/2, GRANTS)` volume. It never falls back to the uncolored bucket or to another color, so a draw from an empty color fails instead of using other funds. A source without a color restriction draws only from the uncolored bucket.
+- **The color propagates to the destination.** The emitted posting carries the color, so the destination is credited in the same color bucket (`bob` receives `USD/2` under `GRANTS`, not uncolored).
+- **Preload and stale-inputs detection are color-aware.** The `Store` (`store.go`) threads the query's color into the `(account, asset, color)` balance lookup, `DiscoverNumscriptDependencies` (`discover.go`) preloads colored read and write dependencies under their own volume key, and the FSM posting loop (`processor_transaction_numscript.go`) builds each posting and volume key with the posting's color.
+
+Color syntax rules differ by entry point. A Numscript color must match `^[A-Z]{1,16}$` (`colorNameRegex` in the upstream `internal/funds/values.go`). A color on a plain posting is checked by `domain.ValidateColor` (`internal/domain/validation.go`): `^[A-Z]*$`, at most 32 bytes, where the empty string is the uncolored bucket. A Numscript color is therefore always a valid posting color, but a plain posting can use colors that a script cannot name (17 to 32 letters).
+
+**Scope** is a distinct Numscript concept that Ledger does not model: account volumes and account metadata have no scope dimension. Serving a scope view would collapse onto the unscoped volume or `(account, key)` metadata entry — letting a script spend the same funds once per scope on the read side, or silently dropping the qualifier on the write side. Every scope-qualified access is therefore rejected with `domain.ErrScopedBalanceUnsupported` (`SCOPED_BALANCE_UNSUPPORTED`, a validation sentinel):
+
+- **reads** — the `Store` rejects any `balance()`/`overdraft()`/`meta()` read carrying a non-empty `Scope`;
+- **writes** — `DiscoverNumscriptDependencies` rejects any scope-qualified `AccountsWrites`/`MetaWrites` dependency at admission, and the FSM posting loop rejects any posting with a source or destination scope at apply time, so every node produces the same definitive failure.
+
+Account metadata has no color dimension: `meta()` and `set_account_meta` address `(account, key)` regardless of any color used elsewhere in the script.
+
+End-to-end coverage lives in `tests/e2e/business/color_numscript_test.go` (colored draw, empty-color refusal, uncolored isolation) and `tests/e2e/business/color_segregation_test.go` (plain-posting color segregation).
 
 #### Intra-batch effect accumulation
 
