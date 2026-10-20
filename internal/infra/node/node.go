@@ -366,8 +366,9 @@ type Node struct {
 	// removed after the peer confirms that its Pebble checkpoint is installed
 	// (see HealthChecker). Keeping this episode state separate prevents a
 	// follower becoming Replicate in Raft from being mistaken for a ready FSM.
-	snapshotRecoveryMu sync.Mutex
-	snapshotRecovery   map[uint64]uint64
+	snapshotRecoveryMu         sync.Mutex
+	snapshotRecovery           map[uint64]uint64
+	snapshotRecoveryGeneration atomic.Uint64
 
 	readies         chan raft.Ready
 	readyTerminated chan readyResult
@@ -1625,7 +1626,7 @@ func (node *Node) sendReadyMessages(stop chan struct{}, rd raft.Ready, result *r
 	appendResponses, applyResponses, outbound := splitReadyMessages(node.config.NodeID, rd.Messages)
 	result.applyResponses = applyResponses
 	for _, msg := range outbound {
-		if msg.GetType() == raftpb.MsgSnap && msg.GetTo() != 0 {
+		if msg.GetType() == raftpb.MsgSnap && msg.GetTo() != 0 && node.isVoter(msg.GetTo()) {
 			node.markSnapshotRecoveryPending(msg.GetTo(), msg.GetSnapshot().GetMetadata().GetIndex())
 		}
 	}
@@ -1640,6 +1641,16 @@ func (node *Node) sendReadyMessages(stop chan struct{}, rd raft.Ready, result *r
 	}
 }
 
+func (node *Node) isVoter(nodeID uint64) bool {
+	for _, voters := range node.VoterQuorumSets() {
+		if slices.Contains(voters, nodeID) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // markSnapshotRecoveryPending records the beginning of a checkpoint recovery
 // episode for a voter. MsgSnap only tells us that the Raft WAL snapshot is
 // needed; the episode remains pending until the remote FSM reports normal
@@ -1648,6 +1659,14 @@ func (node *Node) markSnapshotRecoveryPending(peerID, snapshotIndex uint64) {
 	node.snapshotRecoveryMu.Lock()
 	node.snapshotRecovery[peerID] = snapshotIndex
 	node.snapshotRecoveryMu.Unlock()
+	node.snapshotRecoveryGeneration.Add(1)
+}
+
+// RecoveryGeneration changes whenever this leader starts a new snapshot
+// recovery episode. Health admission uses it to invalidate a previously
+// published quorum verdict before the next periodic poll runs.
+func (node *Node) RecoveryGeneration() uint64 {
+	return node.snapshotRecoveryGeneration.Load()
 }
 
 // SnapshotRecoveryPending reports whether this node has sent a MsgSnap to the
@@ -2482,6 +2501,26 @@ func (node *Node) VoterIDs() []uint64 {
 	slices.Sort(voters)
 
 	return voters
+}
+
+// VoterQuorumSets returns the active voter sets used by Raft quorum checks.
+// Stable configurations have one set. Joint consensus has incoming and
+// outgoing sets, and both require a majority.
+func (node *Node) VoterQuorumSets() [][]uint64 {
+	confState := node.confState.Load()
+	if confState == nil {
+		return nil
+	}
+
+	sets := [][]uint64{append([]uint64(nil), confState.GetVoters()...)}
+	if outgoing := confState.GetVotersOutgoing(); len(outgoing) > 0 {
+		sets = append(sets, append([]uint64(nil), outgoing...))
+	}
+	for _, voters := range sets {
+		slices.Sort(voters)
+	}
+
+	return sets
 }
 
 // Logger returns the node's logger.

@@ -595,14 +595,14 @@ func (errWritesBlockedClockSkew) Reason() string  { return ErrReasonWritesBlocke
 
 var ErrWritesBlockedClockSkew Describable = errWritesBlockedClockSkew{}
 
-// ErrWritesBlockedRecovery is returned by the write gate when no other voter
-// is currently able to provide a checkpoint. It is intentionally retryable:
+// ErrWritesBlockedRecovery is returned by the write gate when a checkpointable
+// quorum is not currently available. It is intentionally retryable:
 // elections and snapshot recovery continue while business writes are held
 // back to prevent an unbounded spool from making recovery harder.
 type errWritesBlockedRecovery struct{}
 
 func (errWritesBlockedRecovery) Error() string {
-	return "writes blocked: no checkpointable voter is available for recovery"
+	return "writes blocked: checkpointable voter quorum is unavailable"
 }
 func (errWritesBlockedRecovery) Kind() ErrorKind { return KindUnavailable }
 func (errWritesBlockedRecovery) Reason() string  { return ErrReasonClusterUnhealthy }

@@ -328,17 +328,16 @@ An out-of-sync leader therefore serves nothing until its store is current, and i
 
 ### Recovery write gate
 
-The leader also holds new business writes when no other voter is currently
-checkpointable. A voter is checkpointable only when its cluster-state report
-shows `sync_progress.status=normal`. After the leader emits a Raft `MsgSnap`,
-it also keeps that voter unavailable until the report's Pebble-persisted index
-has reached the snapshot index. An unreachable, stale, syncing, or
-`out_of_sync` voter is treated as unavailable. This prevents the leader from
-continuing to grow followers' spools after the last possible checkpoint donor
-has disappeared. Elections and checkpoint recovery continue while writes are
-rejected with a retryable `Unavailable` error (`CLUSTER_UNHEALTHY`). Writes
-resume after a voter has returned to `normal` and the leader's next health
-poll observes it.
+The leader also holds new business writes when a majority of the active voters
+is not currently checkpointable. A voter is checkpointable only when its
+cluster-state report shows `sync_progress.status=normal`. After the leader
+emits a Raft `MsgSnap`, it immediately invalidates the current write verdict
+for that recovery episode and keeps the voter unavailable until the report's
+Pebble-persisted index has reached the snapshot index. An unreachable, stale,
+syncing, or `out_of_sync` voter is treated as unavailable. Elections and
+checkpoint recovery continue while writes are rejected with a retryable
+`Unavailable` error (`CLUSTER_UNHEALTHY`). Writes resume after a checkpointable
+quorum is observed again.
 
 The gate is deliberately conservative rather than a transactional guarantee:
 an election or peer failure can race a health poll. Its purpose is to apply
@@ -346,8 +345,8 @@ backpressure before recovery becomes impossible, while Raft remains the source
 of truth for commit and durability. A successful admission therefore does not
 claim that every acknowledged entry is already durable in Pebble on every
 voter, nor does it replace Pebble's WAL/index fsync or checkpoint completion
-protocol. It only requires that the latest live peer report identifies at least
-one other voter whose store is currently in the normal (checkpointable) state.
+protocol. It only requires that the latest live peer reports identify a
+checkpointable quorum.
 
 ## Automatic Learner Promotion
 

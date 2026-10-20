@@ -100,8 +100,10 @@ hold:
 4. the report is fresh enough for the current leadership epoch.
 
 A snapshot entering Raft is not proof that the Pebble restore has completed.
-The leader therefore keeps a pending snapshot-recovery marker until a later
-peer report confirms the persisted index and normal status.
+The leader therefore marks the peer as pending as soon as it emits `MsgSnap`,
+which invalidates the current write verdict before the next periodic poll. The
+leader clears the pending episode only after a later peer report confirms the
+persisted index and normal status.
 
 ## Why the Raft library does not remove the race
 
@@ -132,9 +134,10 @@ A readiness verdict can become false immediately after it is sampled:
 3. the leader proposes a new entry.
 ```
 
-The gate can reduce this window by versioning reports with the Raft term and
-configuration, expiring reports, and rechecking leadership before admission.
-It cannot guarantee that a voter will remain available after the final check.
+The gate reduces this window by invalidating its verdict when it emits
+`MsgSnap`, versioning reports with the leadership epoch, and recalculating the
+quorum after recovery. It cannot guarantee that a voter will remain available
+after the final check.
 
 A strict guarantee would require follower acknowledgements after Pebble
 persistence to participate in the commit condition. That would change Raft's

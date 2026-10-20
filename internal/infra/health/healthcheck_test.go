@@ -28,7 +28,8 @@ type diskUsageTestServer struct {
 }
 
 type snapshotRecoveryTestNode struct {
-	pending bool
+	pending    bool
+	generation uint64
 }
 
 func (n *snapshotRecoveryTestNode) IsLeader() bool      { return true }
@@ -41,6 +42,7 @@ func (n *snapshotRecoveryTestNode) SnapshotRecoveryPending(uint64) (uint64, bool
 	return 1, n.pending
 }
 func (n *snapshotRecoveryTestNode) ConfirmSnapshotRecovery(uint64, uint64) { n.pending = false }
+func (n *snapshotRecoveryTestNode) RecoveryGeneration() uint64             { return n.generation }
 
 func newFreshCollector(t *testing.T) *diskusage.Collector {
 	t.Helper()
@@ -109,6 +111,31 @@ func TestHealthChecker_LeadershipChangeInvalidatesWriteGate(t *testing.T) {
 
 	hc.OnLeaderReady()
 	require.Len(t, hc.checkNow, 1)
+}
+
+func TestCheckpointableQuorum(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, checkpointableQuorum(
+		[][]uint64{{1, 2, 3}},
+		map[uint64]bool{1: true, 2: true},
+	))
+	require.False(t, checkpointableQuorum(
+		[][]uint64{{1, 2, 3}},
+		map[uint64]bool{1: true},
+	))
+	require.True(t, checkpointableQuorum(
+		[][]uint64{{1, 2, 3, 4, 5}},
+		map[uint64]bool{1: true, 2: true, 3: true},
+	))
+	require.True(t, checkpointableQuorum(
+		[][]uint64{{1, 2, 3}, {1, 2}},
+		map[uint64]bool{1: true, 2: true, 3: true},
+	))
+	require.False(t, checkpointableQuorum(
+		[][]uint64{{1, 2, 3}, {1, 2}},
+		map[uint64]bool{1: true, 3: true},
+	))
 }
 
 func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
@@ -248,6 +275,49 @@ func TestHealthChecker_DoesNotCountVoterUntilSnapshotRecoveryIsConfirmed(t *test
 
 	hc.check(make(chan struct{}))
 	require.NoError(t, hc.CheckWritesAllowed())
+}
+
+func TestHealthChecker_InvalidatesVerdictWhenSnapshotRecoveryStarts(t *testing.T) {
+	t.Parallel()
+
+	collector := newFreshCollector(t)
+	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := grpc.NewServer()
+	handler := &diskUsageTestServer{}
+	handler.syncStatus.Store("normal")
+	clusterpb.RegisterClusterServiceServer(server, handler)
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		server.Stop()
+		require.NoError(t, <-serveErr)
+	})
+	require.NoError(t, pool.AddPeer(8, listener.Addr().String()))
+
+	ns := &snapshotRecoveryTestNode{}
+	hc := &HealthChecker{
+		node:        ns,
+		collector:   collector,
+		servicePool: pool,
+		logger:      logging.Testing(),
+		thresholds: Thresholds{
+			WALBlock:   1.1,
+			WALResume:  0.000000001,
+			DataBlock:  1.1,
+			DataResume: 0.000000001,
+		},
+	}
+
+	hc.OnLeadershipChange(true)
+	hc.check(make(chan struct{}))
+	require.NoError(t, hc.CheckWritesAllowed())
+
+	ns.pending = true
+	ns.generation++
+	require.ErrorIs(t, hc.CheckWritesAllowed(), errGateNotReady)
 }
 
 func TestHealthChecker_NewLeaderBlocksWithUnavailablePeer(t *testing.T) {

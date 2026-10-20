@@ -184,15 +184,15 @@ var _ = Describe("Out-of-sync election", func() {
 
 			desyncFollower(lid, followers[1], []uint64{lid, followers[1]})
 
-			By("Rejecting writes once no other voter can provide a checkpoint")
+			By("Rejecting writes once checkpointable voter quorum is lost")
 			Eventually(func() codes.Code {
 				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("recovery-gate-probe", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 				}, nil, nil)))
 				return status.Code(err)
-			// The recovery gate is refreshed by the periodic leader health poll
-			// (30s by default), so allow one complete interval after the second
-			// follower becomes non-checkpointable before asserting the verdict.
+				// The recovery gate is refreshed by the periodic leader health poll
+				// (30s by default), so allow one complete interval after the second
+				// follower becomes non-checkpointable before asserting the verdict.
 			}).Within(45 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Equal(codes.Unavailable))
 
 			By("Stopping the leader so the syncing followers elect among themselves")

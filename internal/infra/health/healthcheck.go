@@ -48,15 +48,29 @@ type snapshotRecoveryTracker interface {
 	ConfirmSnapshotRecovery(peerID, persistedIndex uint64)
 }
 
+// recoveryGenerationSource lets a node invalidate an already-published gate
+// as soon as it emits a snapshot. The health poll still establishes the next
+// positive verdict; the generation only closes the stale-verdict window.
+type recoveryGenerationSource interface {
+	RecoveryGeneration() uint64
+}
+
+// voterQuorumSetSource exposes the active voter sets. A joint configuration
+// has two sets and requires a majority in each; a stable configuration has one.
+type voterQuorumSetSource interface {
+	VoterQuorumSets() [][]uint64
+}
+
 // gateState is the write-gate verdict published as one atomic value so
 // CheckWritesAllowed observes both block reasons consistently — no torn read
 // between separate stores during a block-reason transition (e.g. disk recovers
 // below resume while clock skew is newly detected in the same cycle).
 type gateState struct {
-	diskBlocked     bool
-	skewBlocked     bool
-	recoveryBlocked bool
-	leadershipEpoch uint64
+	diskBlocked        bool
+	skewBlocked        bool
+	recoveryBlocked    bool
+	recoveryGeneration uint64
+	leadershipEpoch    uint64
 }
 
 // An unknown verdict must fail closed without claiming that a disk is full.
@@ -166,6 +180,10 @@ func (hc *HealthChecker) CheckWritesAllowed() error {
 	if s == nil || s.leadershipEpoch != hc.leadershipEpoch.Load() {
 		return errGateNotReady
 	}
+	if source, ok := hc.node.(recoveryGenerationSource); ok &&
+		s.recoveryGeneration != source.RecoveryGeneration() {
+		return errGateNotReady
+	}
 
 	if err := writeGateErrorForState(s.diskBlocked, s.skewBlocked); err != nil {
 		return err
@@ -249,9 +267,13 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	var reports []nodeUsageReport
 	var samples []VolumeSample
 	skewExceeded := false
-	checkpointableVoters := 0
-	peerVoters := 0
 	recoveryTracker, _ := hc.node.(snapshotRecoveryTracker)
+	recoveryGeneration := uint64(0)
+	if source, ok := hc.node.(recoveryGenerationSource); ok {
+		recoveryGeneration = source.RecoveryGeneration()
+	}
+	checkpointable := map[uint64]bool{}
+	voterIDs := hc.node.VoterIDs()
 
 	now := time.Now()
 	localWAL := hc.collector.WALVolume.Load()
@@ -264,6 +286,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	localDataValid := localData.Usable(now)
 
 	localNodeID := hc.node.GetNodeID()
+	checkpointable[localNodeID] = localWalValid && localDataValid
 	hc.logIfAtBlock(localNodeID, localWalUsed, localWalTotal, localWalValid, localDataUsed, localDataTotal, localDataValid)
 
 	samples = append(samples, VolumeSample{
@@ -292,11 +315,10 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	// Raft membership is authoritative: a committed peer that failed to enter
 	// the service pool is still an unreachable sample and cannot clear an
 	// existing disk write gate.
-	for _, peerID := range hc.node.VoterIDs() {
+	for _, peerID := range voterIDs {
 		if peerID == localNodeID {
 			continue
 		}
-		peerVoters++
 
 		// Abort early if shutting down.
 		select {
@@ -397,7 +419,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				// checkpoint is still being downloaded/restored. Only the
 				// remote normal status closes the episode. Do not count the
 				// voter in this same sample; the next poll observes the
-				// cleared state and establishes a fresh donor verdict.
+				// cleared state and establishes a fresh quorum verdict.
 				if recoveryTracker != nil {
 					pendingIndex, pending := recoveryTracker.SnapshotRecoveryPending(peerID)
 					wasPending := pending
@@ -407,10 +429,10 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 						pending = false
 					}
 					if !wasPending && !pending {
-						checkpointableVoters++
+						checkpointable[peerID] = true
 					}
 				} else {
-					checkpointableVoters++
+					checkpointable[peerID] = true
 				}
 			}
 		}
@@ -456,14 +478,44 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 		diskBlocked = hc.thresholds.anyAtBlock(samples)
 	}
 
+	quorumSets := [][]uint64{voterIDs}
+	if source, ok := hc.node.(voterQuorumSetSource); ok {
+		quorumSets = source.VoterQuorumSets()
+	}
+	recoveryBlocked := !checkpointableQuorum(quorumSets, checkpointable)
+
 	hc.gate.Store(&gateState{
-		diskBlocked:     diskBlocked,
-		skewBlocked:     skewExceeded,
-		recoveryBlocked: peerVoters > 0 && checkpointableVoters == 0,
-		leadershipEpoch: leadershipEpoch,
+		diskBlocked:        diskBlocked,
+		skewBlocked:        skewExceeded,
+		recoveryBlocked:    recoveryBlocked,
+		recoveryGeneration: recoveryGeneration,
+		leadershipEpoch:    leadershipEpoch,
 	})
 
 	hc.logDiskUsageSummary(reports)
+}
+
+func checkpointableQuorum(quorumSets [][]uint64, checkpointable map[uint64]bool) bool {
+	if len(quorumSets) == 0 {
+		return false
+	}
+
+	for _, voters := range quorumSets {
+		if len(voters) == 0 {
+			return false
+		}
+		count := 0
+		for _, voterID := range voters {
+			if checkpointable[voterID] {
+				count++
+			}
+		}
+		if count < len(voters)/2+1 {
+			return false
+		}
+	}
+
+	return true
 }
 
 // logDiskUsageSummary logs an info-level message summarizing disk usage across all nodes.

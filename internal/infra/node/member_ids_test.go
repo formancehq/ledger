@@ -37,4 +37,5 @@ func TestNodeVoterIDsIncludesJointConsensusVoters(t *testing.T) {
 	})
 
 	require.Equal(t, []uint64{1, 2, 3}, n.VoterIDs())
+	require.Equal(t, [][]uint64{{1, 3}, {1, 2}}, n.VoterQuorumSets())
 }
