@@ -181,8 +181,9 @@ Leadership acquisition does not admit writes immediately. The node first
 drains previously submitted apply work and waits until the FSM has applied the
 new leader's current-term no-op entry. Applying that entry proves that every
 preceding entry is committed and locally applied. `WaitLeaderReady` exposes
-this generation-specific gate to admission, and `LeaderReadyEvent` lets
-bootstrap reconcile persisted cluster configuration only after the same gate.
+this generation-specific gate to admission and to membership changes, and
+`LeaderReadyEvent` lets bootstrap reconcile persisted cluster configuration and
+start the event and mirror managers only after the same gate.
 
 Each acquisition owns a cancellable readiness generation. After the FSM
 wait succeeds, the waiter rechecks cancellation before emitting the event and
@@ -541,8 +542,8 @@ the leader after a failure.
   locally, and only then read Pebble. See
   [Linearizable Reads via ReadIndex](#linearizable-reads-via-readindex).
 - Cluster bootstrap, learner registration, automatic voter promotion, and the
-  safeguards preventing a syncing node from becoming leader are detailed in
-  [Cluster Lifecycle](../../../../ops/cluster-operations.md).
+  gates an out-of-sync node keeps on serving while it may still vote and lead
+  are detailed in [Cluster Lifecycle](../../../../ops/cluster-operations.md).
 
 ## Snapshots
 
@@ -697,6 +698,12 @@ if !raft.IsEmptySnap(rd.Snapshot) {
 ```
 
 #### Snapshot Synchronization Flow
+
+The checkpoint is fetched from a donor the follower picks on each attempt:
+the leader first, then the other voters in turn, never itself. The leader
+can be unreachable, or resynchronizing itself after winning an election while
+out of sync; a donor in that state refuses and the follower tries the next
+one. See [Donor Selection](../../data-flows.md#donor-selection).
 
 The `SynchronizeWithLeader` method handles the complex task of bringing the store up to date:
 

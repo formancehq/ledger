@@ -23,8 +23,9 @@ through the complete transition:
 - discovered peer endpoint, outbound connection attempt, priority stream, and
   outstanding liveness probe identity and deadline;
 - node status (`normal`, snapshotting, syncing/out-of-sync, stopped, or terminal)
-  and the exact gate controlling proposal, ReadIndex, campaign, transfer, and
-  serving behavior;
+  and the exact gate controlling proposal, ReadIndex, transfer, membership
+  admission, and serving behavior; campaigning and voting depend on the Raft
+  log alone and have no store gate;
 - for snapshot catch-up, the snapshot term/index/ConfState, FSM snapshot horizon,
   spooled committed suffix, and main-store synchronization horizon.
 
@@ -170,9 +171,19 @@ Prove compatibility and order across Raft snapshot metadata/`ConfState`, WAL
 installation, FSM replacement, spool replay, business-store synchronization,
 status transition, and serving gates. Exercise interruption before and after
 each durable boundary and preserve entries committed after the snapshot through
-the retained log or spool. A receiver must reject transfer/campaign and fail or
-forward quorum-dependent work until its applied and durable horizons meet the
-documented requirement.
+the retained log or spool. A receiver must reject transfer and fail or forward
+quorum-dependent work until its applied and durable horizons meet the
+documented requirement. It keeps voting and campaigning on its log: when the
+voters holding the newest log are the resynchronizing ones, no other candidate
+can win, so an out-of-sync voter may lead on its log while every
+store-dependent path stays gated (admission, ReadIndex, event sinks and
+mirrors, membership changes) until its checkpoint sync and spool replay
+finish, and it must never fetch that checkpoint from itself. The regression is
+`tests/e2e/cluster/out_of_sync_election_test.go`: the two newest-log voters
+restart out of sync, elect among themselves, resynchronize from a peer, and
+run a sink created inside the checkpoint. `TestSyncDonor`,
+`TestAddLearnerWaitsForLeaderReady`, `TestCheckAndPromoteLearnersWaitsForLeaderReady`,
+and `TestManagerLeadership` pin the donor rotation and the gates.
 
 This domain owns the consensus-side selection, transfer, installation order and
 authority gates. General checkpoint/restore content correctness belongs to

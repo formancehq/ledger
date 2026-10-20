@@ -10,6 +10,11 @@ import (
 // or during graceful shutdown scenarios.
 var ErrNotAvailable = errors.New("peer not available")
 
+// ErrStoreResynchronizing is returned by a would-be donor whose own store is
+// behind its Raft log. Such a node reaches the requested index only after
+// fetching a checkpoint itself, so the requester must try another peer.
+var ErrStoreResynchronizing = errors.New("store is resynchronizing and cannot serve a checkpoint")
+
 // SnapshotFetcher fetches a fresh checkpoint from a peer.
 type SnapshotFetcher interface {
 	// FetchSnapshot requests a fresh checkpoint from the leader and writes it

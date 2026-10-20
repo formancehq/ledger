@@ -849,8 +849,12 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 					return err
 				}
 
-				a.status.Store(statusGated)
+				// The reason is stored before the status: readers such as
+				// IsResynchronizing load both without the lock, and a reason
+				// seen with the old status is harmless while the reverse is
+				// a gated status with a stale reason.
 				a.gatingReason.Store(gatingReasonSyncing)
+				a.status.Store(statusGated)
 				syncingLeader = work.syncLeader
 				a.startSyncSnapshot(ctx, work.syncLeader)
 				waitStart = time.Now()
@@ -1109,6 +1113,33 @@ func (a *Applier) StatusString() string {
 // IsSyncing returns true if the applier is gated due to a leader sync.
 func (a *Applier) IsSyncing() bool {
 	return a.status.Load() == statusGated && a.gatingReason.Load() == gatingReasonSyncing
+}
+
+// IsResynchronizing reports whether the store is behind the Raft log: the
+// node is waiting for a donor, fetching a checkpoint, or installing a Raft
+// snapshot.
+func (a *Applier) IsResynchronizing() bool {
+	switch a.status.Load() {
+	case statusOutOfSync, statusInstallingSnapshot:
+		return true
+	case statusGated:
+		return a.gatingReason.Load() == gatingReasonSyncing
+	default:
+		return false
+	}
+}
+
+// WaitForCheckpointable blocks until a checkpoint taken from the store would
+// contain targetIndex. A resynchronizing store fails at once with
+// state.ErrStoreResynchronizing: it reaches targetIndex only after fetching a
+// checkpoint itself, and the peer asking would otherwise spend its whole
+// PrepareSnapshot budget on a donor that cannot deliver.
+func (a *Applier) WaitForCheckpointable(ctx context.Context, targetIndex uint64) error {
+	if a.IsResynchronizing() {
+		return state.ErrStoreResynchronizing
+	}
+
+	return a.fsm.WaitForApplied(ctx, targetIndex)
 }
 
 // GetSyncProgress returns the current sync progress, or nil if not syncing.
@@ -1637,8 +1668,8 @@ func (a *Applier) gateAndLaunchMaintenance(
 ) error {
 	frozenAtIndex := entries[len(entries)-1].GetIndex()
 
-	a.status.Store(statusGated)
 	a.gatingReason.Store(gatingReason)
+	a.status.Store(statusGated)
 
 	deferredResult, deferredFuture := a.extractDeferredFuture(applyResult)
 

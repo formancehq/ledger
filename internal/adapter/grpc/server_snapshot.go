@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -14,11 +15,14 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // WaitForAppliedFunc blocks until the FSM has applied entries up to targetIndex.
+// It fails with state.ErrStoreResynchronizing when the local store is behind
+// its Raft log and must not serve a checkpoint.
 type WaitForAppliedFunc func(ctx context.Context, targetIndex uint64) error
 
 // SnapshotServiceServerImpl implements the SnapshotService gRPC server.
@@ -77,10 +81,17 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 	// Wait until the FSM has applied at least the requested index before
 	// creating the Pebble checkpoint. Without this, the checkpoint could be
 	// taken before the FSM commits entries the follower needs, causing the
-	// follower to restore a state behind its Raft snapshot index.
-	if minIdx := req.GetMinAppliedIndex(); minIdx > 0 && s.waitForApplied != nil {
+	// follower to restore a state behind its Raft snapshot index. A store
+	// that is itself resynchronizing is refused outright: the requester
+	// treats FailedPrecondition as final and moves on to another donor
+	// instead of waiting out its PrepareSnapshot budget here.
+	if minIdx := req.GetMinAppliedIndex(); s.waitForApplied != nil {
 		waitStart := time.Now()
 		if err := s.waitForApplied(ctx, minIdx); err != nil {
+			if errors.Is(err, state.ErrStoreResynchronizing) {
+				return nil, status.Error(codes.FailedPrecondition, err.Error())
+			}
+
 			return nil, fmt.Errorf("waiting for FSM to apply index %d: %w", minIdx, err)
 		}
 
