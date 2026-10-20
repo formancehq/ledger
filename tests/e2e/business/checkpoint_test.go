@@ -48,9 +48,9 @@ var _ = Describe("CreateCheckpoint", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Verify the cluster is still healthy after checkpoint
-		state, err := sharedClusterClient.GetClusterState(sharedCtx, clusterpb.NewStateRequest(0))
+		state, err := sharedClusterClient.GetClusterState(sharedCtx, &clusterpb.GetClusterStateRequest{})
 		Expect(err).To(Succeed())
-		Expect(state.LeaderID()).NotTo(BeZero())
+		Expect(state.Leader).NotTo(BeZero())
 
 		// Verify we can still create transactions after checkpoint
 		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("checkpoint-test", []*commonpb.Posting{

@@ -37,7 +37,7 @@ type ServiceWithClient struct {
 	DataDir       string
 	HTTPPort      int
 	GRPCPort      int
-	NodeID        uint64
+	NodeID        uint32
 	// lease owns the node's ports. RestartNode needs it to rebind the same
 	// addresses: the node's peers still hold its old Raft address.
 	lease *testserver.NodeLease
@@ -240,7 +240,7 @@ func SetupMultiNodeCluster(
 			DataDir:       dataTmpDir,
 			HTTPPort:      nodePorts[i].HTTP(),
 			GRPCPort:      nodePorts[i].GRPC(),
-			NodeID:        uint64(i + 1),
+			NodeID:        uint32(i + 1),
 			lease:         leases[i],
 		})
 	}
@@ -251,10 +251,10 @@ func SetupMultiNodeCluster(
 	// Wait for node 0 to become leader before joining other nodes
 	var leaderID uint64
 	Eventually(func(g Gomega) {
-		state, err := servers[0].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+		state, err := servers[0].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		g.Expect(err).To(Succeed())
-		g.Expect(state.LeaderID()).NotTo(BeZero())
-		leaderID = state.LeaderID()
+		g.Expect(state.GetLeader()).NotTo(BeZero())
+		leaderID = uint64(state.GetLeader())
 	}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 
 	// Nodes 1..N-1: join the bootstrap node via the RaftServer port.
@@ -269,7 +269,7 @@ func SetupMultiNodeCluster(
 	// Wait for all nodes to be promoted to voters
 	if countInstances > 1 {
 		Eventually(func(g Gomega) {
-			state, err := servers[0].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+			state, err := servers[0].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed())
 			voterCount := 0
 			for _, n := range state.GetNodes() {
@@ -389,10 +389,10 @@ func SetupSingleNode(extra ...testservice.Instrumentation) (context.Context, *Se
 
 	// Wait for leader election (single node elects itself)
 	Eventually(func(g Gomega) bool {
-		state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+		state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		g.Expect(err).To(Succeed())
 
-		return state.LeaderID() != 0
+		return state.GetLeader() != 0
 	}).Within(5 * time.Second).To(BeTrue())
 
 	return ctx, &ServiceWithClient{

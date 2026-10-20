@@ -155,9 +155,9 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	t.Cleanup(func() { require.NoError(t, leaderConn.Close()) })
 	cluster := clusterpb.NewClusterServiceClient(leaderConn)
 	require.Eventually(t, func() bool {
-		state, err := cluster.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 
-		return err == nil && state.LeaderID() != 0
+		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
 	leader := servicepb.NewBucketServiceClient(leaderConn)
 	testserver.WaitForWriteAdmission(t, ctx, leader)

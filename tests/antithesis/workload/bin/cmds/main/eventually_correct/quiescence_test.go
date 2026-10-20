@@ -248,9 +248,9 @@ func quiescenceTestServer(t *testing.T) (context.Context, servicepb.BucketServic
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 	cluster := clusterpb.NewClusterServiceClient(conn)
 	require.Eventually(t, func() bool {
-		state, err := cluster.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 
-		return err == nil && state.LeaderID() != 0
+		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
 	client := servicepb.NewBucketServiceClient(conn)
 	testserver.WaitForWriteAdmission(t, ctx, client)

@@ -111,10 +111,10 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 
 		c := clusterpb.NewClusterServiceClient(conn)
 		Eventually(func(g Gomega) {
-			state, err := c.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+			state, err := c.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed(),
 				"RPC must succeed; if you see 'error reading server preface' here, the production bug is reproduced")
-			g.Expect(state.LeaderID()).NotTo(BeZero())
+			g.Expect(state.Leader).NotTo(BeZero())
 		}).Within(10 * time.Second).Should(Succeed())
 	})
 })

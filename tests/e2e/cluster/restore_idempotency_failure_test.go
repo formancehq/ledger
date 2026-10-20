@@ -230,9 +230,9 @@ send [USD 10] (
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
-				state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
-				return state.LeaderID() != 0
+				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
@@ -407,9 +407,9 @@ send [USD 10] (
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
-				state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
-				return state.LeaderID() != 0
+				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 		})
 

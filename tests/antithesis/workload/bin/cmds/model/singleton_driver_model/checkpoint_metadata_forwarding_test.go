@@ -97,7 +97,7 @@ func (s *checkpointFenceFollower) Barrier(ctx context.Context, req *servicepb.Ba
 
 func (s *checkpointFenceFollower) GetClusterState(_ context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
 	// A zero/default request routes to the leader, and cannot fence this node.
-	if req.TargetID() != 2 {
+	if req.GetNodeId() != 2 {
 		return &clusterpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*clusterpb.NodeInfo{{Id: 2, ServiceAddress: "node"}}, RaftStatus: &clusterpb.RaftStatus{LastPersistedIndex: 1992}}, nil
 	}
 	persisted := uint64(995)
@@ -131,25 +131,25 @@ func TestCheckpointMetadataRejectsUnprovenLocalProgress(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name    string
-		mutate  func(*checkpointFenceProbe, *uint64)
+		mutate  func(*checkpointFenceProbe, *uint32)
 		code    codes.Code
 		want    string
 		timeout bool
 	}{
-		{name: "unresolved identity", want: "unresolved identity", mutate: func(s *checkpointFenceProbe, id *uint64) { *id = 0; s.topology.Nodes = nil }},
-		{name: "wrong requested node", want: "is not advertised as node 1", mutate: func(s *checkpointFenceProbe, id *uint64) { *id = 1; s.state.LocalNode = 1 }},
-		{name: "wrong responding node", want: "expected state for node 2", mutate: func(s *checkpointFenceProbe, _ *uint64) { s.state.LocalNode = 1 }},
-		{name: "leader demoted during discovery", mutate: func(s *checkpointFenceProbe, _ *uint64) { s.topology.State = "Follower"; s.topology.Nodes = nil }, code: codes.Unavailable},
-		{name: "invalid discovery response", want: "invalid node state", mutate: func(s *checkpointFenceProbe, _ *uint64) { s.topology.State = "" }},
-		{name: "missing durable status", want: "with durable progress", mutate: func(s *checkpointFenceProbe, _ *uint64) { s.state.RaftStatus = nil }},
-		{name: "missing address mapping", want: "unresolved identity in leader topology", mutate: func(s *checkpointFenceProbe, _ *uint64) { s.topology.Nodes = nil }},
-		{name: "zero barrier", want: "barrier returned zero index", mutate: func(s *checkpointFenceProbe, _ *uint64) { s.target = 0 }},
-		{name: "barrier denied", mutate: func(s *checkpointFenceProbe, _ *uint64) {
+		{name: "unresolved identity", want: "unresolved identity", mutate: func(s *checkpointFenceProbe, id *uint32) { *id = 0; s.topology.Nodes = nil }},
+		{name: "wrong requested node", want: "is not advertised as node 1", mutate: func(s *checkpointFenceProbe, id *uint32) { *id = 1; s.state.LocalNode = 1 }},
+		{name: "wrong responding node", want: "expected state for node 2", mutate: func(s *checkpointFenceProbe, _ *uint32) { s.state.LocalNode = 1 }},
+		{name: "leader demoted during discovery", mutate: func(s *checkpointFenceProbe, _ *uint32) { s.topology.State = "Follower"; s.topology.Nodes = nil }, code: codes.Unavailable},
+		{name: "invalid discovery response", want: "invalid node state", mutate: func(s *checkpointFenceProbe, _ *uint32) { s.topology.State = "" }},
+		{name: "missing durable status", want: "with durable progress", mutate: func(s *checkpointFenceProbe, _ *uint32) { s.state.RaftStatus = nil }},
+		{name: "missing address mapping", want: "unresolved identity in leader topology", mutate: func(s *checkpointFenceProbe, _ *uint32) { s.topology.Nodes = nil }},
+		{name: "zero barrier", want: "barrier returned zero index", mutate: func(s *checkpointFenceProbe, _ *uint32) { s.target = 0 }},
+		{name: "barrier denied", mutate: func(s *checkpointFenceProbe, _ *uint32) {
 			s.barrierErr = status.Error(codes.PermissionDenied, "denied")
 		}, code: codes.PermissionDenied},
-		{name: "state error", mutate: func(s *checkpointFenceProbe, _ *uint64) { s.stateErr = status.Error(codes.Unknown, "storage failure") }, code: codes.Unknown},
-		{name: "raft progress without durable progress", mutate: func(s *checkpointFenceProbe, _ *uint64) { s.state.RaftStatus.LastPersistedIndex = 995 }, timeout: true},
-		{name: "syncing despite durable cursor", mutate: func(s *checkpointFenceProbe, _ *uint64) {
+		{name: "state error", mutate: func(s *checkpointFenceProbe, _ *uint32) { s.stateErr = status.Error(codes.Unknown, "storage failure") }, code: codes.Unknown},
+		{name: "raft progress without durable progress", mutate: func(s *checkpointFenceProbe, _ *uint32) { s.state.RaftStatus.LastPersistedIndex = 995 }, timeout: true},
+		{name: "syncing despite durable cursor", mutate: func(s *checkpointFenceProbe, _ *uint32) {
 			s.state.SyncProgress = &clusterpb.SyncProgress{Status: "syncing"}
 		}, timeout: true},
 	} {
@@ -157,7 +157,7 @@ func TestCheckpointMetadataRejectsUnprovenLocalProgress(t *testing.T) {
 			t.Parallel()
 			for _, schedule := range []bool{false, true} {
 				probe := newCheckpointFenceProbe()
-				id := uint64(2)
+				id := uint32(2)
 				tc.mutate(probe, &id)
 				var ctx context.Context
 				var cancel context.CancelFunc
@@ -247,7 +247,7 @@ func (s *checkpointFenceProbe) Barrier(context.Context, *servicepb.BarrierReques
 }
 
 func (s *checkpointFenceProbe) GetClusterState(_ context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
-	if req.TargetID() == 0 {
+	if req.GetNodeId() == 0 {
 		return s.topology, nil
 	}
 	polls := s.localPolls.Add(1)

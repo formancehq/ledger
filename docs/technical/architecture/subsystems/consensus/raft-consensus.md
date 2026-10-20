@@ -119,16 +119,6 @@ type Node struct {
 }
 ```
 
-#### Cluster status identity
-
-Raft node IDs remain unsigned 64-bit values through cluster status projection,
-peer routing/enrichment and manual leadership transfer. Distinct
-identities such as 1 and 4294967297 must not alias, and 4294967296 must not
-become the zero routing sentinel. This changes the service boundary rather
-than persisted membership or Raft state. Published uint32 fields are retained
-with additive full-width fields; see the revision-40 API compatibility assessment
-for safe mixed-version management and rollout requirements.
-
 #### Node shutdown
 
 `Node.Stop(ctx)` first attempts a best-effort leadership transfer while peer

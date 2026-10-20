@@ -93,9 +93,9 @@ var _ = Describe("Cache divergence under chaos", func() {
 
 				// Wait for follower to rejoin
 				Eventually(func(g Gomega) {
-					state, err := servers[followerIdx].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+					state, err := servers[followerIdx].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 					g.Expect(err).To(Succeed())
-					g.Expect(state.LeaderID()).NotTo(BeZero())
+					g.Expect(state.GetLeader()).NotTo(BeZero())
 				}).Within(30 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 				// Now send MORE transactions through the leader while follower catches up
@@ -161,7 +161,7 @@ func sendParallelTransactions(
 // aggregated volumes for the given ledger.
 func verifyVolumesConsistent(ctx context.Context, servers []*testutil.ServiceWithClient, ledgerName string) {
 	type volumeSnapshot struct {
-		nodeID  uint64
+		nodeID  uint32
 		volumes map[string]string // "account/asset" → "input:output"
 	}
 

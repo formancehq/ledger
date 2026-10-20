@@ -34,7 +34,7 @@ type PerNodeConn struct {
 	Addr string
 	// NodeID is the Raft node ID resolved once via GetClusterState. Zero if it
 	// could not be resolved (node down at dial time); Addr is still usable.
-	NodeID uint64
+	NodeID uint32
 
 	conn    *grpc.ClientConn
 	Bucket  servicepb.BucketServiceClient
@@ -146,14 +146,14 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 	// routes to that node), so a connection whose ID cannot be resolved is left
 	// at 0 and callers skip it rather than compare at the leader's index.
 	for _, c := range conns {
-		state, err := c.Cluster.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+		state, err := c.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		if err != nil {
 			continue
 		}
 
 		for _, n := range state.GetNodes() {
 			if n.GetServiceAddress() == c.Addr {
-				c.NodeID = n.NodeID()
+				c.NodeID = n.GetId()
 
 				break
 			}
@@ -162,9 +162,9 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 		// One successful leader response carries the full node list, so the
 		// remaining connections can be resolved from the same snapshot.
 		if len(state.GetNodes()) > 0 {
-			byAddr := make(map[string]uint64, len(state.GetNodes()))
+			byAddr := make(map[string]uint32, len(state.GetNodes()))
 			for _, n := range state.GetNodes() {
-				byAddr[n.GetServiceAddress()] = n.NodeID()
+				byAddr[n.GetServiceAddress()] = n.GetId()
 			}
 
 			for _, other := range conns {

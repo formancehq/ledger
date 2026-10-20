@@ -111,9 +111,9 @@ func setupTLSSingleNode(lease *testserver.NodeLease) (context.Context, servicepb
 
 	// Wait for leader election
 	Eventually(func(g Gomega) bool {
-		state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+		state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		g.Expect(err).To(Succeed())
-		return state.LeaderID() != 0
+		return state.Leader != 0
 	}).Within(5 * time.Second).To(BeTrue())
 
 	return ctx, grpcClient, clusterClient, certs
@@ -212,9 +212,9 @@ func setupTLSMultiNodeCluster(countInstances int) (context.Context, []*tlsServic
 
 	// Wait for node 0 to become leader
 	Eventually(func(g Gomega) {
-		state, err := servers[0].clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+		state, err := servers[0].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		g.Expect(err).To(Succeed())
-		g.Expect(state.LeaderID()).NotTo(BeZero())
+		g.Expect(state.Leader).NotTo(BeZero())
 	}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 
 	// Nodes 1..N-1: join the bootstrap node via TLS on the RaftServer port.
@@ -228,7 +228,7 @@ func setupTLSMultiNodeCluster(countInstances int) (context.Context, []*tlsServic
 	// Wait for all nodes to be promoted to voters
 	if countInstances > 1 {
 		Eventually(func(g Gomega) {
-			state, err := servers[0].clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+			state, err := servers[0].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed())
 			voterCount := 0
 			for _, n := range state.Nodes {
@@ -291,9 +291,9 @@ var _ = Describe("TLS", Ordered, func() {
 		})
 
 		It("should return cluster state over TLS", func() {
-			state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+			state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 			Expect(err).To(Succeed())
-			Expect(state.LeaderID()).NotTo(BeZero())
+			Expect(state.Leader).NotTo(BeZero())
 			Expect(state.Nodes).NotTo(BeEmpty())
 		})
 
@@ -308,7 +308,7 @@ var _ = Describe("TLS", Ordered, func() {
 			defer func() { _ = conn.Close() }()
 
 			insecureClient := clusterpb.NewClusterServiceClient(conn)
-			_, err = insecureClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+			_, err = insecureClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -328,7 +328,7 @@ var _ = Describe("TLS", Ordered, func() {
 			defer func() { _ = conn.Close() }()
 
 			wrongCAClient := clusterpb.NewClusterServiceClient(conn)
-			_, err = wrongCAClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+			_, err = wrongCAClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -357,9 +357,9 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 
 	Context("with a TLS-enabled multi-node cluster", func() {
 		It("should elect a leader across TLS nodes", func() {
-			state, err := servers[0].clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+			state, err := servers[0].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 			Expect(err).To(Succeed())
-			Expect(state.LeaderID()).NotTo(BeZero())
+			Expect(state.Leader).NotTo(BeZero())
 			Expect(state.Nodes).To(HaveLen(3))
 		})
 
@@ -433,9 +433,9 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 
 		It("should return consistent cluster state from all TLS nodes", func() {
 			for i, srv := range servers {
-				state, err := srv.clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+				state, err := srv.clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 				Expect(err).To(Succeed(), "node %d should return cluster state", i+1)
-				Expect(state.LeaderID()).NotTo(BeZero(), "node %d should report a leader", i+1)
+				Expect(state.Leader).NotTo(BeZero(), "node %d should report a leader", i+1)
 				Expect(state.Nodes).To(HaveLen(3), "node %d should see all 3 nodes", i+1)
 			}
 		})

@@ -252,32 +252,6 @@ func removeNodeWithExec(ctx context.Context, cfg *rest.Config, clientset kuberne
 	return nil
 }
 
-// raftStatusNodeID accepts both the numeric JSON emitted by earlier RCs and
-// the decimal strings emitted for larger IDs by current ledgerctl, without float conversion.
-type raftStatusNodeID uint64
-
-func (id *raftStatusNodeID) UnmarshalJSON(data []byte) error {
-	value := string(data)
-	if len(data) > 0 && data[0] == '"' {
-		if err := json.Unmarshal(data, &value); err != nil {
-			return err
-		}
-	}
-	// ParseUint accepts a leading plus; membership IDs must contain only digits.
-	for _, digit := range value {
-		if digit < '0' || digit > '9' {
-			return fmt.Errorf("invalid Raft member ID %q", value)
-		}
-	}
-	parsed, err := strconv.ParseUint(value, 10, 64)
-	if err != nil {
-		return fmt.Errorf("invalid Raft member ID %q: %w", value, err)
-	}
-	*id = raftStatusNodeID(parsed)
-
-	return nil
-}
-
 // raftNodePresent reports whether nodeID is in the current Raft membership.
 // Normal removal uses leader routing. Force removal explicitly queries node 1,
 // which raftScaleDown has already made the pod-0 leader, so the check remains a
@@ -305,7 +279,7 @@ func raftNodePresent(ctx context.Context, cfg *rest.Config, clientset kubernetes
 	var state struct {
 		State string `json:"state"`
 		Nodes []struct {
-			ID raftStatusNodeID `json:"id"`
+			ID uint32 `json:"id"`
 		} `json:"nodes"`
 	}
 	if err := json.Unmarshal([]byte(result.Stdout), &state); err != nil {
@@ -316,7 +290,7 @@ func raftNodePresent(ctx context.Context, cfg *rest.Config, clientset kubernetes
 	}
 
 	for _, member := range state.Nodes {
-		if uint64(member.ID) == uint64(nodeID) {
+		if member.ID == uint32(nodeID) {
 			return true, nil
 		}
 	}
