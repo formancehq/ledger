@@ -100,13 +100,21 @@ value to itself, the proto textual `==` builds. A closed range written as two bo
 (`id > 3 and id < 9`, or a JSON `$and` of `$gt` and `$lt`) folds into one range
 condition in both decoders.
 
+A bound of a non-audit uint range (`id`, `timestamp`, `insertedAt`,
+`revertedAt`, `logId`, `date`) may be a parameter in both forms: textual
+`id >= $from` and structured `{"$gte":{"id":{"$param":"from"}}}` decode to the
+same `ParamMin`, resolved when a prepared query executes. `Format` renders a
+parameter bound as `$name`, so a parameterized range survives the
+`ledgers configuration export` / `apply` round-trip; a literal and a parameter
+bound can be mixed (`id >= 3 and id <= $hi`). The audit fields take literal
+operands only: audit reads have no parameter-resolution context.
+
 The remaining asymmetries are operator-level, not field-level:
 
 | Capability | Textual | Structured JSON | Why |
 |---|---|---|---|
 | Byte-level address prefix | `address ^= "users"` | only a prefix ending `:` → `{"$match":{"address":"users:"}}` | the JSON DSL has no prefix operator (`$like` was dropped, EN-1465) |
 | Audit `idempotency_key` prefix | `idempotency_key ^= "import-"` | *(none)* | same |
-| `$param` on uint range bounds | *(rejected)* | `{"$gte":{"id":{"$param":"from"}}}` | the textual uint fields take literal operands only |
 
 ## 4. Removed aliases → canonical replacements
 

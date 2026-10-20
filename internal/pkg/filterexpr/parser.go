@@ -271,25 +271,35 @@ func mergeComplementaryBounds(x, y *commonpb.UintCondition) (*commonpb.UintCondi
 		return nil, false
 	}
 
-	lo := lower.GetMin()
-	hi := upper.GetMax()
-
+	// Each side is a literal or a $param; copying both the literal pointer and the
+	// param name carries whichever one is set.
 	return &commonpb.UintCondition{
-		Min:          &lo,
-		Max:          &hi,
+		Min:          lower.Min,
+		ParamMin:     lower.GetParamMin(),
+		Max:          upper.Max,
+		ParamMax:     upper.GetParamMax(),
 		MinExclusive: lower.GetMinExclusive(),
 		MaxExclusive: upper.GetMaxExclusive(),
 	}, true
 }
 
-// isSingleLowerBound reports whether uc carries only a lower bound (Min set, Max
-// unset). isSingleUpperBound is the symmetric check.
+// isSingleLowerBound reports whether uc carries only a lower bound (a literal Min
+// or a ParamMin, and no upper bound of either kind). isSingleUpperBound is the
+// symmetric check.
 func isSingleLowerBound(uc *commonpb.UintCondition) bool {
-	return uc.Min != nil && uc.Max == nil
+	return hasLowerBound(uc) && !hasUpperBound(uc)
 }
 
 func isSingleUpperBound(uc *commonpb.UintCondition) bool {
-	return uc.Max != nil && uc.Min == nil
+	return hasUpperBound(uc) && !hasLowerBound(uc)
+}
+
+func hasLowerBound(uc *commonpb.UintCondition) bool {
+	return uc.Min != nil || uc.GetParamMin() != ""
+}
+
+func hasUpperBound(uc *commonpb.UintCondition) bool {
+	return uc.Max != nil || uc.GetParamMax() != ""
 }
 
 type UnaryExpr struct {
@@ -495,7 +505,7 @@ func coerceDatetimeValue(v *Value) (uint64, error) {
 // parse to turn each operand into a uint64. Shared by plain-uint fields and the
 // datetime timestamp field.
 func (a *FieldCond) uintProtoWithParse(field commonpb.AuditField, parse func(*Value) (uint64, error)) (*commonpb.QueryFilter, error) {
-	uc, err := uintConditionFromOp(a.Op, parse)
+	uc, err := uintConditionFromOp(a.Op, parse, false)
 	if err != nil {
 		return nil, fmt.Errorf("audit field %q: %w", a.Field, err)
 	}
@@ -504,63 +514,77 @@ func (a *FieldCond) uintProtoWithParse(field commonpb.AuditField, parse func(*Va
 }
 
 // uintConditionFromOp folds a comparison operator (==, >, >=, <, <=, between)
-// into a single commonpb.UintCondition, using parse to turn each operand Value
-// into a uint64. It is the shared range assembler for every textual uint range
-// field — the audit uint/datetime fields and the top-level date/timestamp fields
-// (EN-1544) — so the operator-to-bound mapping lives in one place. Parameters
-// ($param) are not accepted here: the fields that use this helper are evaluated
-// without a parameter-resolution context, and each parse closure rejects a param
-// operand with a field-specific message.
-func uintConditionFromOp(op *MetadataOp, parse func(*Value) (uint64, error)) (*commonpb.UintCondition, error) {
+// into a single commonpb.UintCondition, using parse to turn each literal operand
+// Value into a uint64. It is the shared range assembler for every textual uint
+// range field — the audit uint/datetime fields and the non-audit id/logId/date
+// fields (EN-1544) — so the operator-to-bound mapping lives in one place.
+//
+// With allowParams, a $param operand becomes the ParamMin/ParamMax of its side,
+// the same proto the structured JSON DSL builds for {"$gte":{"id":{"$param":…}}};
+// a prepared query resolves it at execution (query.resolveUintBounds). Without
+// it, every operand goes through parse, whose closure rejects a $param with a
+// field-specific message: the audit fields have no parameter-resolution context.
+func uintConditionFromOp(op *MetadataOp, parse func(*Value) (uint64, error), allowParams bool) (*commonpb.UintCondition, error) {
 	uc := &commonpb.UintCondition{}
 
+	setMin := func(v *Value, exclusive bool) error {
+		uc.MinExclusive = exclusive
+		if allowParams && v.Param != "" {
+			uc.ParamMin = v.Param
+
+			return nil
+		}
+		n, err := parse(v)
+		if err != nil {
+			return err
+		}
+		uc.Min = &n
+
+		return nil
+	}
+	setMax := func(v *Value, exclusive bool) error {
+		uc.MaxExclusive = exclusive
+		if allowParams && v.Param != "" {
+			uc.ParamMax = v.Param
+
+			return nil
+		}
+		n, err := parse(v)
+		if err != nil {
+			return err
+		}
+		uc.Max = &n
+
+		return nil
+	}
+
+	var err error
 	switch {
 	// op.Prefix is routed to auditToProto before reaching this helper for the
 	// one field that supports it (idempotency_key); any remaining Prefix is an error.
 	case op.Prefix != nil:
 		return nil, errors.New("prefix operator ^= is not supported for numeric or datetime fields")
 	case op.Eq != nil:
-		n, err := parse(op.Eq)
-		if err != nil {
-			return nil, err
+		if err = setMin(op.Eq, false); err == nil {
+			err = setMax(op.Eq, false)
 		}
-		uc.Min, uc.Max = &n, &n
 	case op.Gt != nil:
-		n, err := parse(op.Gt)
-		if err != nil {
-			return nil, err
-		}
-		uc.Min, uc.MinExclusive = &n, true
+		err = setMin(op.Gt, true)
 	case op.Gte != nil:
-		n, err := parse(op.Gte)
-		if err != nil {
-			return nil, err
-		}
-		uc.Min = &n
+		err = setMin(op.Gte, false)
 	case op.Lt != nil:
-		n, err := parse(op.Lt)
-		if err != nil {
-			return nil, err
-		}
-		uc.Max, uc.MaxExclusive = &n, true
+		err = setMax(op.Lt, true)
 	case op.Lte != nil:
-		n, err := parse(op.Lte)
-		if err != nil {
-			return nil, err
-		}
-		uc.Max = &n
+		err = setMax(op.Lte, false)
 	case op.Between != nil:
-		lo, err := parse(op.Between.Low)
-		if err != nil {
-			return nil, err
+		if err = setMin(op.Between.Low, false); err == nil {
+			err = setMax(op.Between.High, false)
 		}
-		hi, err := parse(op.Between.High)
-		if err != nil {
-			return nil, err
-		}
-		uc.Min, uc.Max = &lo, &hi
 	default:
 		return nil, errors.New("supports ==, >, >=, <, <= and between only")
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return uc, nil
@@ -625,7 +649,8 @@ func (a *FieldCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFil
 // target each is valid on is NOT decided here: the field just selects the proto
 // arm, and the per-target validity gate (domain.ValidateFilterForTarget) rejects
 // `date` on a non-logs target and `timestamp` on a non-transactions target
-// downstream — the same gate the structured JSON DSL goes through.
+// downstream — the same gate the structured JSON DSL goes through. A bound may
+// also be a $param, resolved when a prepared query executes.
 //
 // Every bare intrinsic field name except `ledger` (`date`, `timestamp`, `id`,
 // `reference`, …) is matched by the generic FieldCond production against the
@@ -636,15 +661,7 @@ func (a *FieldCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFil
 // `metadata[date-range]` — because the keyword `\b` boundary matches before those
 // characters, breaking filters that parsed before.
 func (d *FieldCond) dateToProto() (*commonpb.QueryFilter, error) {
-	parse := func(v *Value) (uint64, error) {
-		if v.Param != "" {
-			return 0, fmt.Errorf("%s field does not support parameters", d.Field)
-		}
-
-		return coerceDatetimeValue(v)
-	}
-
-	uc, err := uintConditionFromOp(d.Op, parse)
+	uc, err := uintConditionFromOp(d.Op, coerceDatetimeValue, true)
 	if err != nil {
 		return nil, fmt.Errorf("%s field: %w", d.Field, err)
 	}
@@ -679,14 +696,10 @@ func txBuiltinQF(field commonpb.TransactionBuiltinIndex, uc *commonpb.UintCondit
 
 // idToProto resolves the bare `id OP value` (transactions) / `logId OP value`
 // (logs) range filter. Ids are plain counters: the operand is a raw unsigned
-// integer, never an RFC3339 timestamp. Like the date fields, ids take no
-// $param operand in the textual grammar.
+// integer, never an RFC3339 timestamp. Like the date fields, a bound may be a
+// $param, resolved when a prepared query executes.
 func (d *FieldCond) idToProto() (*commonpb.QueryFilter, error) {
 	parse := func(v *Value) (uint64, error) {
-		if v.Param != "" {
-			return 0, fmt.Errorf("%s field does not support parameters", d.Field)
-		}
-
 		n, err := strconv.ParseUint(v.resolve(), 10, 64)
 		if err != nil {
 			return 0, fmt.Errorf("requires an unsigned integer, got %q", v.resolve())
@@ -695,7 +708,7 @@ func (d *FieldCond) idToProto() (*commonpb.QueryFilter, error) {
 		return n, nil
 	}
 
-	uc, err := uintConditionFromOp(d.Op, parse)
+	uc, err := uintConditionFromOp(d.Op, parse, true)
 	if err != nil {
 		return nil, fmt.Errorf("%s field: %w", d.Field, err)
 	}

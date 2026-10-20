@@ -97,6 +97,13 @@ func TestConfigPreparedQueryFilterExportReapplies(t *testing.T) {
 		"id-window":   {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$and":[{"$gt":{"id":10}},{"$lt":{"id":20}}]}`},
 		"inserted":    {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$gte":{"insertedAt":"2023-11-14T22:13:20Z"}}`},
 		"recent-logs": {commonpb.QueryTarget_QUERY_TARGET_LOGS, `{"$match":{"logId":7}}`},
+		// Parameterized range bounds must survive export: a param-only bound
+		// used to export as "id <uint?>", and the param side of a mixed range
+		// was dropped, silently widening the re-applied query.
+		"id-param":       {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"id":{"$param":"n"}}}`},
+		"id-mixed":       {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$and":[{"$gte":{"id":3}},{"$lt":{"id":{"$param":"hi"}}}]}`},
+		"since-param":    {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$gte":{"timestamp":{"$param":"since"}}}`},
+		"logs-from-date": {commonpb.QueryTarget_QUERY_TARGET_LOGS, `{"$gte":{"date":{"$param":"from"}}}`},
 	}
 
 	var queries []*commonpb.PreparedQuery

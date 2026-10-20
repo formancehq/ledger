@@ -416,15 +416,27 @@ func TestParseDate_RejectsGarbageValue(t *testing.T) {
 	assert.Contains(t, err.Error(), "RFC3339")
 }
 
-func TestParseDate_RejectsParam(t *testing.T) {
+func TestParseDate_AcceptsParam(t *testing.T) {
 	t.Parallel()
 
-	// date/timestamp are index-resolved range fields evaluated without a
-	// parameter-resolution context; a $param operand is rejected, mirroring the
-	// audit datetime field.
-	_, err := Parse(`date >= $since`, tx)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "does not support parameters")
+	// A $param bound on a date/timestamp range is resolved when a prepared query
+	// executes (query.resolveUintBounds with the execution parameters), exactly
+	// like the structured {"$gte":{"date":{"$param":"since"}}}. Only the audit
+	// datetime field, which has no parameter-resolution context, rejects it.
+	f, err := Parse(`date >= $since`, tx)
+	require.NoError(t, err)
+	require.NotNil(t, f.GetLogBuiltinUint())
+	uc := f.GetLogBuiltinUint().GetCond()
+	assert.Equal(t, "since", uc.GetParamMin())
+	assert.Nil(t, uc.Min)
+	assert.Empty(t, uc.GetParamMax())
+
+	f, err = Parse(`timestamp between "2023-11-14T22:13:20Z" and $until`, tx)
+	require.NoError(t, err)
+	uc = f.GetBuiltinUint().GetCond()
+	assert.Equal(t, uint64(1700000000000000), uc.GetMin())
+	assert.Equal(t, "until", uc.GetParamMax())
+	assert.Nil(t, uc.Max)
 }
 
 // TestParseDate_KeywordsUsableAsBareValues guards that `date`/`timestamp` remain

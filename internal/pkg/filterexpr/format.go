@@ -96,9 +96,9 @@ func formatLogBuiltinUintCondition(lc *commonpb.LogBuiltinUintCondition) (string
 }
 
 // formatUintRange renders a bare-field uint range (transaction/log builtins and
-// the uint/datetime audit fields) as `field OP value`, rendering each bound with
-// render. The textual grammar never parameterizes these fields, so only
-// hardcoded bounds are formatted.
+// the uint/datetime audit fields) as `field OP value`, rendering each literal
+// bound with render and each parameter bound as `$name` (non-audit fields only:
+// the audit grammar rejects parameters).
 //
 // A closed range only renders as `between` when BOTH bounds are inclusive, since
 // `between` parses back inclusive on both ends. If either bound is exclusive (the
@@ -108,13 +108,20 @@ func formatLogBuiltinUintCondition(lc *commonpb.LogBuiltinUintCondition) (string
 // exclusivity survives the round-trip instead of being silently widened. The
 // field names are bare, disambiguated only by the re-parse target (EN-1549).
 func formatUintRange(field string, uc *commonpb.UintCondition, render func(uint64) string) (string, int) {
-	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
-		return fmt.Sprintf("%s == %s", field, render(uc.GetMin())), precLeaf
+	// A bound is a literal or a $param (ParamMin/ParamMax, resolved when a
+	// prepared query executes). Rendering both kinds is what keeps a
+	// parameterized range exportable: dropping the param side of a mixed range
+	// would silently widen the re-applied filter.
+	lo, hasLo := renderUintBound(uc.Min, uc.GetParamMin(), render)
+	hi, hasHi := renderUintBound(uc.Max, uc.GetParamMax(), render)
+
+	if hasLo && hasHi && lo == hi && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
+		return fmt.Sprintf("%s == %s", field, lo), precLeaf
 	}
 
-	if uc.Min != nil && uc.Max != nil {
+	if hasLo && hasHi {
 		if !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
-			return fmt.Sprintf("%s between %s and %s", field, render(uc.GetMin()), render(uc.GetMax())), precLeaf
+			return fmt.Sprintf("%s between %s and %s", field, lo, hi), precLeaf
 		}
 
 		// An exclusive bound folds into two comparison clauses joined by
@@ -125,19 +132,32 @@ func formatUintRange(field string, uc *commonpb.UintCondition, render func(uint6
 		// list, where they no longer fold back into one condition. Under an
 		// `or` the pair binds tighter anyway and still folds.
 		return fmt.Sprintf("%s %s %s and %s %s %s",
-			field, lowerOp(uc.GetMinExclusive()), render(uc.GetMin()),
-			field, upperOp(uc.GetMaxExclusive()), render(uc.GetMax())), precOr
+			field, lowerOp(uc.GetMinExclusive()), lo,
+			field, upperOp(uc.GetMaxExclusive()), hi), precOr
 	}
 
-	if uc.Min != nil {
-		return fmt.Sprintf("%s %s %s", field, lowerOp(uc.GetMinExclusive()), render(uc.GetMin())), precLeaf
+	if hasLo {
+		return fmt.Sprintf("%s %s %s", field, lowerOp(uc.GetMinExclusive()), lo), precLeaf
 	}
 
-	if uc.Max != nil {
-		return fmt.Sprintf("%s %s %s", field, upperOp(uc.GetMaxExclusive()), render(uc.GetMax())), precLeaf
+	if hasHi {
+		return fmt.Sprintf("%s %s %s", field, upperOp(uc.GetMaxExclusive()), hi), precLeaf
 	}
 
 	return field + " <uint?>", precLeaf
+}
+
+// renderUintBound renders one side of a uint range: `$name` for a parameter,
+// render(literal) otherwise. ok=false when the side has no bound.
+func renderUintBound(literal *uint64, param string, render func(uint64) string) (string, bool) {
+	if param != "" {
+		return "$" + param, true
+	}
+	if literal != nil {
+		return render(*literal), true
+	}
+
+	return "", false
 }
 
 // renderDatetimeBound renders a microsecond bound as a quoted RFC3339 string

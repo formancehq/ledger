@@ -1330,10 +1330,11 @@ textual grammar and the JSON DSL cover the same fields under the same names:
 | logs (`logs list`) | `logId`, `date`, `ledger` |
 | audit (`audit list`) | the bare audit fields, see [audit list](#audit-list) |
 
-Only a few operators exist in one form alone: an `address ^=` prefix that does
+Only two operators exist in one form alone: an `address ^=` prefix that does
 not end in `:` and the audit `idempotency_key ^=` prefix are textual-only (the
-JSON DSL has no prefix operator), and `$param` values on `id`, `logId` and date
-range bounds are JSON-only.
+JSON DSL has no prefix operator). Range bounds on `id`, `logId` and the date
+fields may be `$param` values in both forms (`id >= $from` or
+`{"$gte":{"id":{"$param":"from"}}}`), resolved when a prepared query executes.
 
 ```bash
 # The same transaction filters in both forms

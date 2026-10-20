@@ -46,10 +46,23 @@ func TestDualFormatFieldParity(t *testing.T) {
 		{tx, `insertedAt >= "` + rfc + `"`, `{"$gte":{"insertedAt":"` + rfc + `"}}`},
 		{tx, `revertedAt < 1700000000000000`, `{"$lt":{"revertedAt":1700000000000000}}`},
 		{tx, `timestamp == "` + rfc + `"`, `{"$match":{"timestamp":"` + rfc + `"}}`},
+		// Parameterized range bounds: a prepared query resolves them at
+		// execution. Format must emit them as $name, never drop one side of a
+		// mixed literal/parameter range or emit an unparseable placeholder.
+		{tx, `id == $n`, `{"$match":{"id":{"$param":"n"}}}`},
+		{tx, `id >= $n`, `{"$gte":{"id":{"$param":"n"}}}`},
+		{tx, `id >= 3 and id <= $hi`, `{"$and":[{"$gte":{"id":3}},{"$lte":{"id":{"$param":"hi"}}}]}`},
+		{tx, `id between $lo and $hi`, `{"$and":[{"$gte":{"id":{"$param":"lo"}}},{"$lte":{"id":{"$param":"hi"}}}]}`},
+		{tx, `id > $lo and id < 9`, `{"$and":[{"$gt":{"id":{"$param":"lo"}}},{"$lt":{"id":9}}]}`},
+		{tx, `timestamp > $from`, `{"$gt":{"timestamp":{"$param":"from"}}}`},
+		{tx, `insertedAt >= "` + rfc + `" and insertedAt < $to`, `{"$and":[{"$gte":{"insertedAt":"` + rfc + `"}},{"$lt":{"insertedAt":{"$param":"to"}}}]}`},
+		{tx, `revertedAt <= $to`, `{"$lte":{"revertedAt":{"$param":"to"}}}`},
 		// Logs: logId / date.
 		{logs, `logId == 7`, `{"$match":{"logId":7}}`},
 		{logs, `logId > 7 and logId <= 9`, `{"$and":[{"$gt":{"logId":7}},{"$lte":{"logId":9}}]}`},
 		{logs, `date == "` + rfc + `"`, `{"$match":{"date":"` + rfc + `"}}`},
+		{logs, `logId >= $n`, `{"$gte":{"logId":{"$param":"n"}}}`},
+		{logs, `date <= $to`, `{"$lte":{"date":{"$param":"to"}}}`},
 		// Audit: the bare audit fields resolve to the audit arm in BOTH forms.
 		{audit, `outcome == failure`, `{"$match":{"outcome":"failure"}}`},
 		{audit, `idempotency_key == "payment-42"`, `{"$match":{"idempotency_key":"payment-42"}}`},
@@ -148,8 +161,10 @@ func TestParseIntrinsicFields_Rejections(t *testing.T) {
 		{`id == -1`, tx, "unsigned integer"},
 		{`id == abc`, tx, "unsigned integer"},
 		{`id == "2023-11-14T22:13:20Z"`, tx, "unsigned integer"},
-		{`id >= $from`, tx, "does not support parameters"},
 		{`id ^= 1`, tx, "prefix operator"},
+		// Audit ranges have no parameter-resolution context.
+		{`seq >= $from`, audit, "does not support parameters"},
+		{`timestamp between $a and $b`, audit, "does not support parameters"},
 		{`logId == x`, logs, "unsigned integer"},
 		{`insertedAt >= "not-a-date"`, tx, "RFC3339"},
 		// Intrinsic-only names carry no meaning on the audit target.
