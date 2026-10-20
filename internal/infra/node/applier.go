@@ -12,6 +12,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
+	"github.com/dustin/go-humanize"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 
@@ -1967,9 +1968,10 @@ func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
 		payloadBytes += int64(len(entry.GetData()))
 	}
 	a.logger.WithFields(map[string]any{
-		"duration":     time.Since(readStart).String(),
-		"entryCount":   len(entries),
-		"payloadBytes": payloadBytes,
+		"duration":         time.Since(readStart).String(),
+		"entryCount":       len(entries),
+		"payloadBytes":     payloadBytes,
+		"payloadSizeHuman": humanize.IBytes(uint64(payloadBytes)),
 	}).Infof("Committed WAL entries loaded for startup replay")
 
 	if len(entries) == 0 {

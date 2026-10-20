@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
+	"github.com/dustin/go-humanize"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
@@ -31,22 +32,28 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 
 	return &pebble.EventListener{
 		CompactionBegin: func(info pebble.CompactionInfo) {
+			bytes := inputBytes(info.Input)
 			logger.WithFields(map[string]any{
-				"jobID":      info.JobID,
-				"reason":     info.Reason,
-				"inputBytes": inputBytes(info.Input),
+				"jobID":          info.JobID,
+				"reason":         info.Reason,
+				"inputBytes":     bytes,
+				"inputSizeHuman": humanize.IBytes(bytes),
 			}).Infof("Pebble compaction started")
 		},
 		CompactionEnd: func(info pebble.CompactionInfo) {
+			inBytes := inputBytes(info.Input)
+			outBytes := tableBytes(info.Output.Tables)
 			fields := map[string]any{
-				"jobID":         info.JobID,
-				"reason":        info.Reason,
-				"duration":      info.Duration.String(),
-				"totalDuration": info.TotalDuration.String(),
-				"inputBytes":    inputBytes(info.Input),
-				"outputBytes":   tableBytes(info.Output.Tables),
-				"outputLevel":   info.Output.Level,
-				"error":         info.Err,
+				"jobID":           info.JobID,
+				"reason":          info.Reason,
+				"duration":        info.Duration.String(),
+				"totalDuration":   info.TotalDuration.String(),
+				"inputBytes":      inBytes,
+				"inputSizeHuman":  humanize.IBytes(inBytes),
+				"outputBytes":     outBytes,
+				"outputSizeHuman": humanize.IBytes(outBytes),
+				"outputLevel":     info.Output.Level,
+				"error":           info.Err,
 			}
 			if info.Err != nil {
 				logger.WithFields(fields).Errorf("Pebble compaction failed")
@@ -56,18 +63,20 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 		},
 		FlushBegin: func(info pebble.FlushInfo) {
 			logger.WithFields(map[string]any{
-				"jobID":      info.JobID,
-				"reason":     info.Reason,
-				"inputBytes": info.InputBytes,
+				"jobID":          info.JobID,
+				"reason":         info.Reason,
+				"inputBytes":     info.InputBytes,
+				"inputSizeHuman": humanize.IBytes(info.InputBytes),
 			}).Debugf("Pebble flush started")
 		},
 		FlushEnd: func(info pebble.FlushInfo) {
 			fields := map[string]any{
-				"jobID":         info.JobID,
-				"reason":        info.Reason,
-				"inputBytes":    info.InputBytes,
-				"duration":      info.Duration.String(),
-				"totalDuration": info.TotalDuration.String(),
+				"jobID":          info.JobID,
+				"reason":         info.Reason,
+				"inputBytes":     info.InputBytes,
+				"inputSizeHuman": humanize.IBytes(info.InputBytes),
+				"duration":       info.Duration.String(),
+				"totalDuration":  info.TotalDuration.String(),
 			}
 			switch {
 			case info.Err != nil && info.Err.Error() == "pebble: empty table":

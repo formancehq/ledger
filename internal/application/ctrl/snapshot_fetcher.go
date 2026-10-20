@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -211,10 +212,11 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, client snaps
 	totalSize := manifestTotalSize(manifest)
 
 	logger.WithFields(map[string]any{
-		"sessionId":  sessionID,
-		"filesTotal": len(manifest.GetFiles()),
-		"totalSize":  totalSize,
-		"duration":   time.Since(prepareStart).String(),
+		"sessionId":      sessionID,
+		"filesTotal":     len(manifest.GetFiles()),
+		"totalSize":      totalSize,
+		"totalSizeHuman": humanize.IBytes(totalSize),
+		"duration":       time.Since(prepareStart).String(),
 	}).Infof("Snapshot session prepared")
 
 	// 2. Fetch every file in this session. The manifest intentionally carries
@@ -241,8 +243,9 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, client snaps
 	for _, entry := range pending {
 		g.Go(func() error {
 			logger.WithFields(map[string]any{
-				"path": entry.GetPath(),
-				"size": entry.GetSize(),
+				"path":      entry.GetPath(),
+				"size":      entry.GetSize(),
+				"sizeHuman": humanize.IBytes(entry.GetSize()),
 			}).Infof("Downloading snapshot file")
 
 			if err := ff.fetchFile(gCtx, entry, targetDir, progress); err != nil {
@@ -250,8 +253,9 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, client snaps
 			}
 
 			fields := map[string]any{
-				"path": entry.GetPath(),
-				"size": entry.GetSize(),
+				"path":      entry.GetPath(),
+				"size":      entry.GetSize(),
+				"sizeHuman": humanize.IBytes(entry.GetSize()),
 			}
 			if progress != nil {
 				fields["filesCompleted"] = progress.FilesCompleted()

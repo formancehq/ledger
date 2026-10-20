@@ -67,6 +67,10 @@ The main store retains its existing Pebble metrics listener. These events may
 run concurrently with `pebble.Open`: a compaction reported at the end of Open
 does not by itself explain Open's elapsed time.
 
+Size fields in startup, Pebble, and snapshot transfer logs retain their exact
+numeric byte values for queries. Companion `*Human` fields render those values
+in binary units (KiB, MiB, GiB) for quick inspection.
+
 ### Concept
 
 The WAL is the main log used by Raft to guarantee entry durability. It uses the `etcd/server/v3/storage/wal` library which provides:
