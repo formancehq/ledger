@@ -143,6 +143,59 @@ A strict guarantee would require follower acknowledgements after Pebble
 persistence to participate in the commit condition. That would change Raft's
 commit semantics and its performance profile.
 
+## Cascading failures can make data service impossible
+
+The checkpointable-quorum gate protects recovery capacity. It cannot create a
+new Pebble store after the last usable store has failed.
+
+Consider this sequence in a three-voter cluster:
+
+```text
+1. A is the leader and has a usable Pebble store.
+2. B has the current WAL but is still restoring a checkpoint.
+3. C fails.
+4. A detects that the checkpointable quorum is gone and blocks new writes.
+5. A fails before B completes its restore.
+```
+
+At step 5, B may still be a valid Raft voter and may hold the replicated WAL,
+but no surviving voter has a usable Pebble store. Raft can still have enough
+members to elect a leader or continue recovery. That does not mean that the
+cluster can serve data. If B cannot complete its restore without a donor, the
+cluster remains unable to serve data until a donor or another repaired voter is
+available.
+
+This is a permanent service-loss state for the current set of stores. No
+election, retry, quorum check, or network-failure detector can reconstruct a
+missing Pebble state. The system must repair or reintroduce a voter that can
+provide the missing state.
+
+The distinction is important:
+
+| State | Raft status | Data service |
+| --- | --- | --- |
+| A is ready, B is restoring, C is down | The cluster may still have a Raft quorum | A can serve local data, but the recovery margin is lost and new writes are blocked |
+| A then fails before B is ready | Raft may still have voters and WAL state | No surviving voter may be able to serve data |
+| A repaired or a donor returns | Recovery can resume | Data service can be restored after Pebble readiness is confirmed |
+
+This failure mode does not require an unsafe write. A write accepted after the
+checkpointable quorum was lost would increase the amount of state that must be
+recovered, but blocking that write cannot undo a failure chain that already
+removed every usable store.
+
+The gate therefore provides a bounded safety policy, not an availability
+guarantee under arbitrary cascading failures:
+
+- it refuses to add new business state when the cluster has lost its recovery
+  quorum;
+- it keeps Raft replication and snapshot recovery active;
+- it reports the need for a repaired voter or checkpoint donor when no usable
+  store remains.
+
+Network-failure detection shortens the time before the gate closes. It does not
+change this limit: once every surviving voter lacks a usable Pebble store, only
+state recovery from another store can restore data service.
+
 ## Operational decision
 
 The write gate is an availability policy above Raft. It should reject new
