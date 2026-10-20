@@ -137,9 +137,9 @@ func StartServer(t *testing.T) (context.Context, servicepb.BucketServiceClient) 
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 	cluster := clusterpb.NewClusterServiceClient(conn)
 	require.Eventually(t, func() bool {
-		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := cluster.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 
-		return err == nil && state.GetLeader() != 0
+		return err == nil && state.LeaderID() != 0
 	}, 5*time.Second, 10*time.Millisecond)
 	client := servicepb.NewBucketServiceClient(conn)
 	testserver.WaitForWriteAdmission(t, ctx, client)

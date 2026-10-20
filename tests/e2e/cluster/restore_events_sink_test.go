@@ -146,9 +146,9 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 			Eventually(func(g Gomega) bool {
-				state, stateErr := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, stateErr := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 				g.Expect(stateErr).To(Succeed())
-				return state.Leader != 0
+				return state.LeaderID() != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 		})
 
@@ -256,9 +256,9 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 			Eventually(func(g Gomega) bool {
-				state, stateErr := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, stateErr := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 				g.Expect(stateErr).To(Succeed())
-				return state.Leader != 0
+				return state.LeaderID() != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 		})
 

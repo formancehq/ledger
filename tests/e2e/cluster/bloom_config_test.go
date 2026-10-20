@@ -63,11 +63,9 @@ func rollingUpdateBloomConfig(
 		}
 	}
 
-	resp, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-		Transferee: uint32(targetID),
-	})
+	resp, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, clusterpb.NewTransferRequest(uint64(targetID)))
 	Expect(err).To(Succeed())
-	Expect(resp.NewLeader).To(Equal(uint32(targetID)))
+	Expect(resp.ConfirmedLeaderID()).To(Equal(uint64(targetID)))
 	*leaderID = targetID
 
 	// Wait for all nodes to see the new leader.
@@ -75,11 +73,11 @@ func rollingUpdateBloomConfig(
 		Eventually(func(g Gomega) uint64 {
 			state, err := servers[i].ClusterClient.GetClusterState(
 				context.Background(),
-				&clusterpb.GetClusterStateRequest{NodeId: servers[i].NodeID},
+				clusterpb.NewStateRequest(servers[i].NodeID),
 			)
 			g.Expect(err).To(Succeed())
 
-			return uint64(state.Leader)
+			return uint64(state.LeaderID())
 		}).Should(Equal(targetID))
 	}
 
@@ -88,7 +86,7 @@ func rollingUpdateBloomConfig(
 		Eventually(func(g Gomega) uint64 {
 			state, err := servers[i].ClusterClient.GetClusterState(
 				context.Background(),
-				&clusterpb.GetClusterStateRequest{NodeId: servers[i].NodeID},
+				clusterpb.NewStateRequest(servers[i].NodeID),
 			)
 			g.Expect(err).To(Succeed())
 

@@ -69,7 +69,7 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should show maintenance mode in cluster status", func() {
-			state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 			Expect(err).To(Succeed())
 			Expect(state.MaintenanceMode).To(BeTrue())
 		})
@@ -124,7 +124,7 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should show maintenance mode off in cluster status after disabling", func() {
-			state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 			Expect(err).To(Succeed())
 			Expect(state.MaintenanceMode).To(BeFalse())
 		})

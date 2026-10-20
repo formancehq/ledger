@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/onsi/gomega/types"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
+	"github.com/onsi/gomega/types"
 )
 
 type beFollowerMatcher struct{}
@@ -23,17 +23,15 @@ func (matcher beFollowerMatcher) Match(actual any) (success bool, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	clusterState, err := srv.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-		NodeId: srv.NodeID,
-	})
+	clusterState, err := srv.ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(srv.NodeID))
 	if err != nil {
 		return false, nil // gRPC not ready yet — retry
 	}
 
-	if clusterState.Leader == 0 {
+	if clusterState.LeaderID() == 0 {
 		return false, nil // Leader not yet known
 	}
-	return clusterState.Leader != clusterState.LocalNode, nil
+	return clusterState.LeaderID() != clusterState.LocalNodeID(), nil
 }
 
 func (matcher beFollowerMatcher) FailureMessage(_ any) (message string) {
@@ -60,18 +58,16 @@ func (h haveALeaderMatcher) Match(actual any) (success bool, err error) {
 		return false, fmt.Errorf("expected *testutil.ServiceWithClient, got %T", actual)
 	}
 
-	clusterState, err := srv.ClusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
-		NodeId: srv.NodeID,
-	})
+	clusterState, err := srv.ClusterClient.GetClusterState(context.Background(), clusterpb.NewStateRequest(srv.NodeID))
 	if err != nil {
 		return false, nil // gRPC not ready yet — retry
 	}
 
-	if clusterState.Leader == 0 {
+	if clusterState.LeaderID() == 0 {
 		return false, nil
 	}
 
-	leaderID := uint64(clusterState.Leader)
+	leaderID := uint64(clusterState.LeaderID())
 	if h.fetchTo != nil {
 		*h.fetchTo = leaderID
 	}

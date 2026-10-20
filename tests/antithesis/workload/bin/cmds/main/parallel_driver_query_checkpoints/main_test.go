@@ -165,9 +165,9 @@ func checkpointTestServer(t *testing.T) (context.Context, string, servicepb.Buck
 	cluster := clusterpb.NewClusterServiceClient(conn)
 	client := servicepb.NewBucketServiceClient(conn)
 	require.Eventually(t, func() bool {
-		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := cluster.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 
-		return err == nil && state.GetLeader() != 0
+		return err == nil && state.LeaderID() != 0
 	}, 5*time.Second, 10*time.Millisecond)
 	testserver.WaitForWriteAdmission(t, ctx, client)
 	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("checkpoint-driver", nil)))

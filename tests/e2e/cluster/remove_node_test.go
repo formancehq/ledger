@@ -17,15 +17,13 @@ import (
 )
 
 // waitForNodeRemoved polls the cluster state on the leader until the given node is no longer present.
-func waitForNodeRemoved(clusterClient clusterpb.ClusterServiceClient, leaderID uint64, removedNodeID uint32) {
+func waitForNodeRemoved(clusterClient clusterpb.ClusterServiceClient, leaderID uint64, removedNodeID uint64) {
 	Eventually(func(g Gomega) {
-		state, err := clusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
-			NodeId: uint32(leaderID),
-		})
+		state, err := clusterClient.GetClusterState(context.Background(), clusterpb.NewStateRequest(uint64(leaderID)))
 		g.Expect(err).To(Succeed())
 
 		for _, nodeInfo := range state.Nodes {
-			g.Expect(nodeInfo.Id).NotTo(Equal(removedNodeID),
+			g.Expect(nodeInfo.NodeID()).NotTo(Equal(removedNodeID),
 				fmt.Sprintf("Node %d should no longer appear in cluster state", removedNodeID))
 		}
 	}).Should(Succeed())
@@ -59,14 +57,12 @@ var _ = Describe("Remove node", func() {
 			})
 			Expect(err).To(Succeed())
 
-			waitForNodeRemoved(servers[lid-1].ClusterClient, lid, uint32(followerID))
+			waitForNodeRemoved(servers[lid-1].ClusterClient, lid, uint64(followerID))
 		})
 
 		It("should have 2 nodes after removal", func() {
 			lid := *leaderID
-			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-				NodeId: uint32(lid),
-			})
+			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(uint64(lid)))
 			Expect(err).To(Succeed())
 			Expect(state.Nodes).To(HaveLen(2), "should have 2 nodes after removal")
 		})
@@ -127,9 +123,7 @@ var _ = Describe("Remove node", func() {
 
 		It("should have 3 voters and 0 learners after learner removal", func() {
 			lid := *leaderID
-			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-				NodeId: uint32(lid),
-			})
+			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(uint64(lid)))
 			Expect(err).To(Succeed())
 
 			var (
@@ -180,7 +174,7 @@ var _ = Describe("Remove node", func() {
 			})
 			Expect(err).To(Succeed())
 
-			waitForNodeRemoved(servers[lid-1].ClusterClient, lid, uint32(followerID))
+			waitForNodeRemoved(servers[lid-1].ClusterClient, lid, uint64(followerID))
 		})
 
 		It("should continue to accept transactions with remaining 2 nodes", func() {
@@ -238,9 +232,7 @@ var _ = Describe("Remove node", func() {
 
 			// Verify leader can operate as single-node cluster
 			Eventually(func(g Gomega) {
-				state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-					NodeId: uint32(lid),
-				})
+				state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(uint64(lid)))
 				g.Expect(err).To(Succeed())
 				g.Expect(state.Nodes).To(HaveLen(1))
 			}).Should(Succeed())

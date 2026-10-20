@@ -92,8 +92,28 @@ func NewClusterServiceServer(
 	}
 }
 
+// GetClusterState keeps the published fields safe for legacy clients. Presence
+// of node_id64 is an explicit opt-in to the additive full-width representation.
 func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
-	if req.GetNodeId() == 0 {
+	if req.NodeId64 != nil && req.GetNodeId() != clusterpb.LegacyNodeID(req.TargetID()) {
+		return nil, status.Error(codes.InvalidArgument, "conflicting cluster node identities")
+	}
+	result, err := impl.getClusterState(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if err := clusterpb.ValidateStateTarget(req.TargetID(), result); err != nil {
+		return nil, err
+	}
+	if req.NodeId64 == nil && clusterpb.HasLargeIdentity(result) {
+		return nil, status.Error(codes.FailedPrecondition, "cluster identities exceed legacy client range; use full-width fields")
+	}
+
+	return result, nil
+}
+
+func (impl *ClusterServiceServerImpl) getClusterState(ctx context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
+	if req.TargetID() == 0 {
 		// No node ID specified, route to leader
 		if impl.node.IsLeader() {
 			return impl.getClusterStateLocal(ctx)
@@ -117,7 +137,7 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 	}
 
 	// Specific node ID requested — use shared resolver.
-	conn, err := impl.forwarder.resolve(req.GetNodeId())
+	conn, err := impl.forwarder.resolve(req.TargetID())
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +189,7 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 	localNodeID := impl.node.GetNodeID()
 
 	for _, nodeInfo := range clusterState.GetNodes() {
-		nodeID := uint64(nodeInfo.GetId())
+		nodeID := nodeInfo.NodeID()
 		if nodeID == localNodeID {
 			nodeInfo.RaftAddress = impl.localRaftAddr
 			nodeInfo.ServiceAddress = impl.localServiceAddr
@@ -207,10 +227,11 @@ func (impl *ClusterServiceServerImpl) fetchPeerState(ctx context.Context, nodeID
 
 	client := clusterpb.NewClusterServiceClient(conn)
 
-	peerState, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-		NodeId: uint32(nodeID),
-	})
+	peerState, err := client.GetClusterState(ctx, clusterpb.NewStateRequest(nodeID))
 	if err != nil {
+		return nil
+	}
+	if clusterpb.ValidateStateTarget(nodeID, peerState) != nil {
 		return nil
 	}
 
@@ -234,11 +255,14 @@ func (impl *ClusterServiceServerImpl) leaderClient() (clusterpb.ClusterServiceCl
 }
 
 func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
-	if req.GetTransferee() == 0 {
+	if req.GetTransferee64() != 0 && req.GetTransferee() != clusterpb.LegacyNodeID(req.TargetID()) {
+		return nil, status.Error(codes.InvalidArgument, "conflicting transferee identities")
+	}
+	if req.TargetID() == 0 {
 		return nil, errors.New("transferee node ID must be non-zero")
 	}
 
-	transferee := uint64(req.GetTransferee())
+	transferee := req.TargetID()
 
 	// If this node is not the leader, forward to the leader
 	if !impl.node.IsLeader() {
@@ -256,7 +280,8 @@ func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, re
 	}
 
 	return &clusterpb.TransferLeadershipResponse{
-		NewLeader: req.GetTransferee(),
+		NewLeader:   clusterpb.LegacyNodeID(req.TargetID()),
+		NewLeader64: req.TargetID(),
 	}, nil
 }
 

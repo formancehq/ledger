@@ -187,9 +187,9 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			g.Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			state, err := clusterClient.GetClusterState(authCtx, &clusterpb.GetClusterStateRequest{})
+			state, err := clusterClient.GetClusterState(authCtx, clusterpb.NewStateRequest(0))
 			g.Expect(err).To(Succeed())
-			return state.Leader != 0
+			return state.LeaderID() != 0
 		}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(BeTrue())
 	})
 
@@ -257,9 +257,9 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			state, err := clusterClient.GetClusterState(authCtx, &clusterpb.GetClusterStateRequest{})
+			state, err := clusterClient.GetClusterState(authCtx, clusterpb.NewStateRequest(0))
 			Expect(err).To(Succeed())
-			Expect(state.Leader).NotTo(BeZero())
+			Expect(state.LeaderID()).NotTo(BeZero())
 		})
 
 		It("should reject cluster operations without admin scope", func() {
@@ -267,7 +267,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			_, err = clusterClient.GetClusterState(authCtx, &clusterpb.GetClusterStateRequest{})
+			_, err = clusterClient.GetClusterState(authCtx, clusterpb.NewStateRequest(0))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -421,7 +421,7 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			_, err = clusterClient.GetClusterState(authCtx, &clusterpb.GetClusterStateRequest{})
+			_, err = clusterClient.GetClusterState(authCtx, clusterpb.NewStateRequest(0))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -578,9 +578,9 @@ var _ = Describe("Ed25519 Auth Superuser Mode", Ordered, func() {
 			g.Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			state, err := clusterClient.GetClusterState(authCtx, &clusterpb.GetClusterStateRequest{})
+			state, err := clusterClient.GetClusterState(authCtx, clusterpb.NewStateRequest(0))
 			g.Expect(err).To(Succeed())
-			return state.Leader != 0
+			return state.LeaderID() != 0
 		}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(BeTrue())
 	})
 
@@ -592,9 +592,9 @@ var _ = Describe("Ed25519 Auth Superuser Mode", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			state, err := clusterClient.GetClusterState(authCtx, &clusterpb.GetClusterStateRequest{})
+			state, err := clusterClient.GetClusterState(authCtx, clusterpb.NewStateRequest(0))
 			Expect(err).To(Succeed())
-			Expect(state.Leader).NotTo(BeZero())
+			Expect(state.LeaderID()).NotTo(BeZero())
 		})
 
 		It("should allow write operations without any scopes", func() {

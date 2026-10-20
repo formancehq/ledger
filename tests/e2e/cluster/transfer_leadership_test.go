@@ -42,20 +42,16 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		targetID := (lid % countInstances) + 1
 		GinkgoLogr.Info(fmt.Sprintf("Transferring leadership from node %d to node %d", lid, targetID))
 
-		resp, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-			Transferee: uint32(targetID),
-		})
+		resp, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, clusterpb.NewTransferRequest(uint64(targetID)))
 		Expect(err).To(Succeed())
-		Expect(resp.NewLeader).To(Equal(uint32(targetID)))
+		Expect(resp.ConfirmedLeaderID()).To(Equal(uint64(targetID)))
 
 		// Verify all nodes see the new leader
 		for i := range countInstances {
 			Eventually(func(g Gomega) uint64 {
-				state, err := servers[i].ClusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
-					NodeId: servers[i].NodeID,
-				})
+				state, err := servers[i].ClusterClient.GetClusterState(context.Background(), clusterpb.NewStateRequest(servers[i].NodeID))
 				g.Expect(err).To(Succeed())
-				return uint64(state.Leader)
+				return uint64(state.LeaderID())
 			}).Should(Equal(targetID), fmt.Sprintf("node %d should see node %d as leader", i+1, targetID))
 		}
 
@@ -70,11 +66,9 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 
 		GinkgoLogr.Info(fmt.Sprintf("Requesting transfer via follower %d, target node %d (leader is %d)", followerID, targetID, lid))
 
-		resp, err := servers[followerID-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-			Transferee: uint32(targetID),
-		})
+		resp, err := servers[followerID-1].ClusterClient.TransferLeadership(ctx, clusterpb.NewTransferRequest(uint64(targetID)))
 		Expect(err).To(Succeed())
-		Expect(resp.NewLeader).To(Equal(uint32(targetID)))
+		Expect(resp.ConfirmedLeaderID()).To(Equal(uint64(targetID)))
 
 		*leaderID = targetID
 	})
@@ -91,19 +85,15 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 
 		// Transfer leadership
 		targetID := (lid % countInstances) + 1
-		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-			Transferee: uint32(targetID),
-		})
+		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, clusterpb.NewTransferRequest(uint64(targetID)))
 		Expect(err).To(Succeed())
 
 		// Wait for all nodes to see new leader
 		for i := range countInstances {
 			Eventually(func(g Gomega) uint64 {
-				state, err := servers[i].ClusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
-					NodeId: servers[i].NodeID,
-				})
+				state, err := servers[i].ClusterClient.GetClusterState(context.Background(), clusterpb.NewStateRequest(servers[i].NodeID))
 				g.Expect(err).To(Succeed())
-				return uint64(state.Leader)
+				return uint64(state.LeaderID())
 			}).Should(Equal(targetID))
 		}
 
@@ -137,17 +127,13 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 
 	It("should reject transfer to an unknown node", func() {
 		lid := *leaderID
-		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-			Transferee: 99,
-		})
+		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, clusterpb.NewTransferRequest(99))
 		Expect(err).To(HaveOccurred())
 	})
 
 	It("should reject transfer with zero node ID", func() {
 		lid := *leaderID
-		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-			Transferee: 0,
-		})
+		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, clusterpb.NewTransferRequest(0))
 		Expect(err).To(HaveOccurred())
 	})
 
@@ -178,11 +164,9 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		followerIdx := int(oldLeaderID) % countInstances
 		var newLeaderID uint64
 		Eventually(func(g Gomega) bool {
-			state, err := servers[followerIdx].ClusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
-				NodeId: servers[followerIdx].NodeID,
-			})
+			state, err := servers[followerIdx].ClusterClient.GetClusterState(context.Background(), clusterpb.NewStateRequest(servers[followerIdx].NodeID))
 			g.Expect(err).To(Succeed())
-			newLeaderID = uint64(state.Leader)
+			newLeaderID = uint64(state.LeaderID())
 			return newLeaderID != 0 && newLeaderID != oldLeaderID
 		}).Should(BeTrue(), "a new leader should be elected after the old leader stops")
 

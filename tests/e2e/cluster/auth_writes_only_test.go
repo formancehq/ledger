@@ -113,9 +113,9 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 			g.Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			state, err := clusterCli.GetClusterState(authCtx, &clusterpb.GetClusterStateRequest{})
+			state, err := clusterCli.GetClusterState(authCtx, clusterpb.NewStateRequest(0))
 			g.Expect(err).To(Succeed())
-			return state.Leader != 0
+			return state.LeaderID() != 0
 		}).Within(30 * time.Second).ProbeEvery(200 * time.Millisecond).Should(BeTrue())
 
 		// Seed a ledger that the read tests can target.

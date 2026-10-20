@@ -28,7 +28,7 @@ func NewStatusCommand() *cobra.Command {
 
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
-	cmd.Flags().Uint32("node-id", 0, "Query specific node by ID (0 = route to leader)")
+	cmd.Flags().Uint64("node-id", 0, "Query specific node by ID (0 = route to leader)")
 
 	return cmd
 }
@@ -47,17 +47,18 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	defer cancel()
 
 	// Get node-id flag
-	nodeID, _ := cmd.Flags().GetUint32("node-id")
+	nodeID, _ := cmd.Flags().GetUint64("node-id")
 
 	// Get cluster state
-	state, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-		NodeId: nodeID,
-	})
+	state, err := client.GetClusterState(ctx, clusterpb.NewStateRequest(nodeID))
+	if err == nil {
+		err = clusterpb.ValidateStateTarget(nodeID, state)
+	}
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to get cluster state", err)
 	}
 
-	if handled, err := cmdutil.EncodeStructured(cmd, state); handled || err != nil {
+	if handled, err := cmdutil.EncodeStructured(cmd, statusOutput{state}); handled || err != nil {
 		return err
 	}
 
@@ -100,8 +101,8 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 
 	overviewData := [][]string{
 		{pterm.LightCyan("State:"), getStateColor(state.GetState())},
-		{pterm.LightCyan("Local Node ID:"), strconv.FormatUint(uint64(state.GetLocalNode()), 10)},
-		{pterm.LightCyan("Leader ID:"), getLeaderDisplay(state.GetLeader())},
+		{pterm.LightCyan("Local Node ID:"), strconv.FormatUint(state.LocalNodeID(), 10)},
+		{pterm.LightCyan("Leader ID:"), getLeaderDisplay(state.LeaderID())},
 		{pterm.LightCyan("Total Nodes:"), strconv.Itoa(len(state.GetNodes()))},
 		{pterm.LightCyan("Maintenance:"), maintenanceDisplay},
 		{pterm.LightCyan("Sync Status:"), syncStatusDisplay},
@@ -153,7 +154,7 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 		sortedNodes := make([]*clusterpb.NodeInfo, len(state.GetNodes()))
 		copy(sortedNodes, state.GetNodes())
 		sort.Slice(sortedNodes, func(i, j int) bool {
-			return sortedNodes[i].GetId() < sortedNodes[j].GetId()
+			return sortedNodes[i].NodeID() < sortedNodes[j].NodeID()
 		})
 
 		commitIndex := uint64(0)
@@ -164,10 +165,10 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 		for _, node := range sortedNodes {
 			status := ""
 
-			switch node.GetId() {
-			case state.GetLeader():
+			switch node.NodeID() {
+			case state.LeaderID():
 				status = pterm.Green("Leader")
-			case state.GetLocalNode():
+			case state.LocalNodeID():
 				status = pterm.Yellow("Local")
 			}
 
@@ -180,7 +181,7 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 				matchStr = strconv.FormatUint(node.GetProgress().GetMatch(), 10)
 				nextStr = strconv.FormatUint(node.GetProgress().GetNext(), 10)
 				stateStr = node.GetProgress().GetState()
-				isLeader := node.GetId() == state.GetLeader()
+				isLeader := node.NodeID() == state.LeaderID()
 				progressStr = formatNodeProgress(node.GetProgress(), commitIndex, isLeader)
 			}
 
@@ -194,7 +195,7 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 			indexStr := formatIndexProgress(node.GetIndexProgress())
 
 			nodeData = append(nodeData, []string{
-				strconv.FormatUint(uint64(node.GetId()), 10),
+				strconv.FormatUint(node.NodeID(), 10),
 				node.GetSuffrage(),
 				status,
 				matchStr,
@@ -328,12 +329,12 @@ func getStateColor(state string) string {
 	}
 }
 
-func getLeaderDisplay(leaderID uint32) string {
+func getLeaderDisplay(leaderID uint64) string {
 	if leaderID == 0 {
 		return pterm.Red("No leader")
 	}
 
-	return pterm.Green(strconv.FormatUint(uint64(leaderID), 10))
+	return pterm.Green(strconv.FormatUint(leaderID, 10))
 }
 
 // formatIndexProgress formats index builder progress for the node table.

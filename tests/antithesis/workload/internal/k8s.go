@@ -150,7 +150,7 @@ func pollForVoters(parentCtx context.Context, clusterClient clusterpb.ClusterSer
 		case <-time.After(5 * time.Second):
 		}
 
-		state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 		if err != nil {
 			log.Printf("scaling: cluster state unavailable: %s", err)
 
@@ -160,7 +160,7 @@ func pollForVoters(parentCtx context.Context, clusterClient clusterpb.ClusterSer
 			return false
 		}
 
-		if state.GetLeader() == 0 {
+		if state.LeaderID() == 0 {
 			continue
 		}
 
@@ -172,12 +172,12 @@ func pollForVoters(parentCtx context.Context, clusterClient clusterpb.ClusterSer
 		}
 
 		if voterCount == expected {
-			log.Printf("scaling: cluster converged (%d voters, leader=%d)", voterCount, state.GetLeader())
+			log.Printf("scaling: cluster converged (%d voters, leader=%d)", voterCount, state.LeaderID())
 
 			return true
 		}
 
-		log.Printf("scaling: %d/%d voters (leader=%d)", voterCount, expected, state.GetLeader())
+		log.Printf("scaling: %d/%d voters (leader=%d)", voterCount, expected, state.LeaderID())
 	}
 }
 
@@ -373,12 +373,12 @@ func GetPodUID(ctx context.Context, clientset kubernetes.Interface, name string)
 
 // GetLeaderPodName returns the pod name hosting the current Raft leader,
 // or an empty string if no leader is known.
-func GetLeaderPodName(ctx context.Context, clusterClient clusterpb.ClusterServiceClient) (string, uint32, error) {
-	state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+func GetLeaderPodName(ctx context.Context, clusterClient clusterpb.ClusterServiceClient) (string, uint64, error) {
+	state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 	if err != nil {
 		return "", 0, err
 	}
-	leader := state.GetLeader()
+	leader := state.LeaderID()
 	if leader == 0 {
 		return "", 0, nil
 	}
@@ -387,15 +387,15 @@ func GetLeaderPodName(ctx context.Context, clusterClient clusterpb.ClusterServic
 }
 
 // GetNonLeaderVoter returns the node ID of a non-leader voter, or 0 if none.
-func GetNonLeaderVoter(ctx context.Context, clusterClient clusterpb.ClusterServiceClient) (uint32, error) {
-	state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+func GetNonLeaderVoter(ctx context.Context, clusterClient clusterpb.ClusterServiceClient) (uint64, error) {
+	state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 	if err != nil {
 		return 0, err
 	}
-	leader := state.GetLeader()
+	leader := state.LeaderID()
 	for _, n := range state.GetNodes() {
-		if n.GetId() != leader && n.GetSuffrage() == "Voter" {
-			return n.GetId(), nil
+		if n.NodeID() != leader && n.GetSuffrage() == "Voter" {
+			return n.NodeID(), nil
 		}
 	}
 
@@ -404,9 +404,12 @@ func GetNonLeaderVoter(ctx context.Context, clusterClient clusterpb.ClusterServi
 
 // GetClusterConfig returns the ClusterConfig observed by the given node
 // (0 = route to leader).
-func GetClusterConfig(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, nodeID uint32) (*commonpb.ClusterConfig, error) {
-	state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: nodeID})
+func GetClusterConfig(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, nodeID uint64) (*commonpb.ClusterConfig, error) {
+	state, err := clusterClient.GetClusterState(ctx, clusterpb.NewStateRequest(nodeID))
 	if err != nil {
+		return nil, err
+	}
+	if err := clusterpb.ValidateStateTarget(nodeID, state); err != nil {
 		return nil, err
 	}
 
@@ -424,7 +427,7 @@ func WaitForClusterConfig(ctx context.Context, clusterClient clusterpb.ClusterSe
 // Used to verify follower convergence after the leader has applied — Raft
 // entries reach followers a few hundred ms later, so a tight poll absorbs the
 // natural propagation delay without false-flagging an FSM divergence.
-func WaitForClusterConfigOnNode(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, nodeID uint32, predicate func(*commonpb.ClusterConfig) bool, timeout time.Duration) bool {
+func WaitForClusterConfigOnNode(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, nodeID uint64, predicate func(*commonpb.ClusterConfig) bool, timeout time.Duration) bool {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	for {

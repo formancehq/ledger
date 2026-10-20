@@ -36,7 +36,7 @@ func NewWatchCommand() *cobra.Command {
 
 	cmd.Flags().Duration("interval", 2*time.Second, "Polling interval")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Per-request timeout")
-	cmd.Flags().Uint32("node-id", 0, "Query specific node by ID (0 = route to leader)")
+	cmd.Flags().Uint64("node-id", 0, "Query specific node by ID (0 = route to leader)")
 
 	return cmd
 }
@@ -44,7 +44,7 @@ func NewWatchCommand() *cobra.Command {
 func runWatch(cmd *cobra.Command, _ []string) error {
 	interval, _ := cmd.Flags().GetDuration("interval")
 	reqTimeout, _ := cmd.Flags().GetDuration("timeout")
-	nodeID, _ := cmd.Flags().GetUint32("node-id")
+	nodeID, _ := cmd.Flags().GetUint64("node-id")
 
 	if err := validateInterval(interval); err != nil {
 		return err
@@ -85,16 +85,17 @@ func runWatch(cmd *cobra.Command, _ []string) error {
 func pollClusterStatus(
 	ctx context.Context,
 	client clusterpb.ClusterServiceClient,
-	nodeID uint32,
+	nodeID uint64,
 	reqTimeout time.Duration,
 	interval time.Duration,
 ) string {
 	reqCtx, cancel := context.WithTimeout(ctx, reqTimeout)
 	defer cancel()
 
-	state, err := client.GetClusterState(reqCtx, &clusterpb.GetClusterStateRequest{
-		NodeId: nodeID,
-	})
+	state, err := client.GetClusterState(reqCtx, clusterpb.NewStateRequest(nodeID))
+	if err == nil {
+		err = clusterpb.ValidateStateTarget(nodeID, state)
+	}
 
 	now := time.Now().Format("15:04:05")
 

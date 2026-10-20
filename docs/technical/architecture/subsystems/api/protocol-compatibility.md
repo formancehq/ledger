@@ -658,3 +658,43 @@ page. The protobuf text changes only by a comment. Clients that previously
 treated the requested page as complete must now follow the cursor to read all
 results. This response behavior changes under revision 40 by the RC policy;
 the revision is frozen, and the client impact must be documented.
+
+## Full-width cluster identities
+
+The six published ClusterService identity fields remain `uint32` at their
+original field numbers. Full-width identities use additive fields:
+`GetClusterStateRequest.node_id64` (2), `NodeInfo.id64` (9),
+`ClusterState.leader64` (11), `ClusterState.local_node64` (12),
+`TransferLeadershipRequest.transferee64` (2), and
+`TransferLeadershipResponse.new_leader64` (2). The revision stays at 40.
+New readers prefer full-width fields and fall back to legacy values. Servers
+populate legacy fields exactly when values fit, otherwise zero; they never
+truncate a high identity into another peer. Conflicting request fields fail
+with `InvalidArgument`.
+
+Presence of `node_id64`, including zero for leader routing, opts into full-width
+status. A legacy request to a new server whose response contains a high ID
+fails with `FailedPrecondition` instead of returning incomplete identities.
+New clients send both representations for small targets. For high targets they
+send legacy zero and the full target, and reject responses without the exact
+`local_node64`; this detects older servers ignoring the new selector rather
+than accepting their leader-routed response. Old responses also fail when their
+already full-width nested Raft status reveals unrepresentable identities. Peer enrichment applies the same
+check and omits unavailable progress/version. A high leadership-transfer target
+uses legacy zero, which older servers reject as invalid without transferring
+leadership. New servers use the full target and return both representations.
+
+During a rolling upgrade, keep node identities within the legacy range until
+all servers and cluster-management clients are upgraded. Either upgrade order
+supports small IDs. Existing high-ID clusters must use upgraded servers and
+clients for exact management; high-target requests reaching an old server fail
+safely, and old servers themselves retain their pre-existing reporting defect.
+Raft membership, persisted identities, FSM application and consensus remain
+unchanged; no migration is needed.
+
+Protobuf JSON retains numeric legacy fields and decimal strings for the new
+64-bit fields. CLI status projects the full IDs into its existing `leader`,
+`localNode`, and node `id` keys: numeric through MaxUint32, decimal strings above
+it. This preserves old operator compatibility for small IDs even if servers
+upgrade first. The new operator accepts both numeric and string uint64 values,
+so operator-first rollout also works.

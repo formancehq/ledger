@@ -338,10 +338,10 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 		DeferCleanup(func() { Expect(conn.Close()).To(Succeed()) })
 		cluster := clusterpb.NewClusterServiceClient(conn)
 		adminCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token("ledger:admin"))
-		Eventually(func(g Gomega) uint32 {
-			state, err := cluster.GetClusterState(adminCtx, &clusterpb.GetClusterStateRequest{})
+		Eventually(func(g Gomega) uint64 {
+			state, err := cluster.GetClusterState(adminCtx, clusterpb.NewStateRequest(0))
 			g.Expect(err).To(Succeed())
-			return state.GetLeader()
+			return state.LeaderID()
 		}).Within(10 * time.Second).ShouldNot(BeZero())
 		transport := &http.Transport{TLSClientConfig: tlsConfig}
 		DeferCleanup(transport.CloseIdleConnections)

@@ -64,8 +64,8 @@ func TestOperatorIndexOwnership(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 	cluster := clusterpb.NewClusterServiceClient(conn)
 	require.Eventually(t, func() bool {
-		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
-		return err == nil && state.GetLeader() != 0
+		state, err := cluster.GetClusterState(ctx, clusterpb.NewStateRequest(0))
+		return err == nil && state.LeaderID() != 0
 	}, 10*time.Second, 10*time.Millisecond)
 
 	tests := exec.CommandContext(ctx, goTool, "test", "-race", "./internal/controller", "-run", "^TestLedgerIndexOwnershipReal", "-count=1", "-v")

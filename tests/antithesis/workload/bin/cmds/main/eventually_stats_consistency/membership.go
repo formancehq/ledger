@@ -21,7 +21,7 @@ func activeReplicas(ctx context.Context, source *internal.PerNodeConn, candidate
 	if len(candidates) == 0 {
 		return nil, errors.New("no replica candidates")
 	}
-	state, err := source.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+	state, err := source.Cluster.GetClusterState(ctx, clusterpb.NewStateRequest(0))
 	if err != nil {
 		return nil, err
 	}
@@ -32,11 +32,11 @@ func activeReplicas(ctx context.Context, source *internal.PerNodeConn, candidate
 	for _, conn := range candidates {
 		byAddress[conn.Addr] = conn
 	}
-	seenIDs := make(map[uint32]bool)
+	seenIDs := make(map[uint64]bool)
 	seenAddresses := make(map[string]bool)
 	var replicas internal.PerNodeConns
 	for _, node := range state.GetNodes() {
-		id, address := node.GetId(), node.GetServiceAddress()
+		id, address := node.NodeID(), node.GetServiceAddress()
 		if id == 0 || address == "" || seenIDs[id] || seenAddresses[address] {
 			return nil, fmt.Errorf("invalid membership identity: id=%d address=%q", id, address)
 		}
