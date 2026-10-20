@@ -4028,6 +4028,11 @@ contract](../technical/architecture/subsystems/admission/metadata-limits.md).
 
 Application-level bloom filters that avoid Pebble reads for keys known not to exist. Each attribute type has its own filter with independent sizing. Set `expected-keys` to `0` to disable a type.
 
+For an enabled filter, `fp-rate` must be finite and strictly between `0` and `1`.
+The CLI value `0` selects the default `0.01` before startup validation. Invalid
+enabled rates, including `NaN` and infinities, fail startup with the offending
+flag named before filter construction. A disabled type ignores its rate.
+
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--bloom-volumes-expected-keys` | uint | `0` | Expected unique volume keys (0 = disabled by default) |
@@ -4398,7 +4403,7 @@ Configure disk-usage and clock-skew monitoring. The health checker runs on the c
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--health-check-interval` | duration | `30s` | Interval between health-check polls |
+| `--health-check-interval` | duration | `30s` | Interval between health-check polls; must be greater than zero |
 | `--health-wal-threshold` | float64 | `0.8` | WAL volume usage fraction (0.0–1.0) at which writes are blocked (high-water / block mark) |
 | `--health-data-threshold` | float64 | `0.8` | Data volume usage fraction (0.0–1.0) at which writes are blocked (high-water / block mark) |
 | `--health-wal-resume-threshold` | float64 | `0.75` | WAL volume usage fraction below which a blocked write gate re-opens (low-water / resume mark). Must be `< --health-wal-threshold` |

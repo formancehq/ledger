@@ -69,6 +69,21 @@ Reference changes trigger a rollout; rotating Secret contents requires a Pod
 restart. See [profiling deployment](../../docs/ops/deployment.md#pyroscope-continuous-profiling)
 for examples and missing-reference behavior.
 
+## Health check interval
+
+`spec.health.interval` accepts a Go duration that parses to a value greater
+than zero, such as `30s` or `1m30s`. Omitting it, or setting an empty string,
+uses the server's `30s` default. Invalid, zero, negative, overflowing, and
+sub-nanosecond values that round to zero stop reconciliation with
+`ConfigValid=False`, reason `ValidationFailed`, and phase `Error` before workload
+creation or updates. Existing workloads remain unchanged; correcting the field
+resumes reconciliation. This validation runs during reconciliation, so the CR
+may be accepted by Kubernetes and its generated cluster identity may already
+have been persisted before validation fails.
+
+`spec.extraEnv` retains its override precedence. The server validates the final
+selected interval at startup, including values supplied through that override.
+
 ## Backup scheduling
 
 Backup schedules preserve their completion cursors in `Backup.status` before
@@ -144,6 +159,8 @@ spec:
   # bounded by one election cycle after the last pod restarts.
   cache:
     rotationThreshold: 1000
+  # Supplied fpRate must be finite and strictly between 0 and 1.
+  # Omit it for the default; explicit zero, NaN and infinities are invalid.
   bloom:
     volumes:
       expectedKeys: 100000000

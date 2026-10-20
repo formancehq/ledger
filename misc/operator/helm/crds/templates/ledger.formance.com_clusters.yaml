@@ -1478,7 +1478,9 @@ spec:
                       (0.0-1.0).
                     type: string
                   interval:
-                    description: Interval between health checks.
+                    description: |-
+                      Interval between health checks, as a Go duration greater than zero.
+                      Omitted or empty uses the server default of 30s.
                     type: string
                   walResumeThreshold:
                     description: |-
