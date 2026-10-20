@@ -169,6 +169,32 @@ remain stable while the checkpoint is created. A blanket rule that rejects all
 implementation uses that conservative rule; this is a follow-up consideration
 for donor selection, separate from Raft election safety.
 
+Target-aware donors do not close every recovery gap by themselves. Consider
+this schedule:
+
+```text
+1. A is the leader; B is restoring and C is unavailable.
+2. A accepts entries through index S. B persists the entries in its Raft WAL,
+   but neither B nor C has Pebble state covering S.
+3. A publishes a Raft snapshot at S and later fails.
+4. B installs that snapshot and becomes out_of_sync because its Pebble restore
+   has not completed.
+5. C returns with an older WAL and receives the same or a later MsgSnap from B.
+```
+
+B and C can then both have a WAL suffix after `S` while neither has Pebble state
+through `S`. A donor check based on `LastPersistedIndex` correctly rejects both
+nodes. No local suffix can reconstruct the missing prefix, so a donor or a
+repair is still required.
+
+This also limits what a quorum compaction fence can guarantee. Fencing only WAL
+deletion is insufficient if the leader still publishes a latest Raft snapshot
+above the durable quorum floor. Raft can select that snapshot when a follower
+falls below the retained WAL boundary, even if entries between the quorum floor
+and the snapshot index remain on disk. A strong fence must also constrain the
+snapshot boundary used for follower recovery, or retain a snapshot/checkpoint
+that covers every advertised recovery boundary.
+
 The compaction fence and the write gate were evaluated as additional defenses:
 
 | Mechanism | Protects | Does not protect |
