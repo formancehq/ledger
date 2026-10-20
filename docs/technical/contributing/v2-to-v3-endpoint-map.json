@@ -6,7 +6,7 @@
   },
   "gatewayPrefix": "/api/ledger",
   "statuses": {
-    "moved": "Same operation at the v3 path. Contract-wide changes apply (typed metadata, response envelope, idempotency scope, post-commit volumes); notes list any parameter that is no longer accepted.",
+    "moved": "Same operation at the v3 path. Contract-wide changes apply (asset and address grammar, typed metadata, response envelope, pagination, filter syntax, idempotency scope, error codes, post-commit volumes; see docs/technical/contributing/api-comparison.md#contract-wide-changes-for-v2-clients); notes list any parameter that is no longer accepted. v3 silently ignores such a parameter instead of rejecting it.",
     "changed": "A v3 equivalent exists, but its parameters, method or behavior differ. Read the notes.",
     "replaced": "The capability moved to a different resource model. The listed v3 operations cover it.",
     "removed": "No v3 HTTP equivalent. The notes name the alternative, if there is one."
@@ -133,7 +133,7 @@
       "v3": [
         "POST /v3/{ledgerName}/transactions/{transactionId}/revert"
       ],
-      "notes": "`disableChecks` becomes `force` in the JSON body."
+      "notes": "`disableChecks` becomes `force` in the JSON body. Compensating postings keep the original posting order (v1 reversed it), and balances are checked posting by posting rather than on net account balances."
     },
     "POST /{ledger}/transactions/batch": {
       "operationId": "CreateTransactions",
@@ -305,14 +305,15 @@
       "v3": [
         "POST /v3/{ledgerName}/accounts/{address}/metadata"
       ],
-      "notes": "`dryRun` and `schemaVersion` are not accepted."
+      "notes": "`dryRun` and `schemaVersion` are ignored, so a `dryRun` request commits."
     },
     "DELETE /v2/{ledger}/accounts/{address}/metadata/{key}": {
       "operationId": "v2DeleteAccountMetadata",
-      "status": "moved",
+      "status": "changed",
       "v3": [
         "DELETE /v3/{ledgerName}/accounts/{address}/metadata/{key}"
-      ]
+      ],
+      "notes": "Deleting a key that does not exist returns `404` `METADATA_NOT_FOUND`; v2 returned `204`."
     },
     "GET /v2/{ledger}/stats": {
       "operationId": "v2ReadStats",
@@ -343,7 +344,7 @@
       "v3": [
         "POST /v3/{ledgerName}/transactions"
       ],
-      "notes": "`dryRun`, `runtime` and `schemaVersion` are not accepted, and `force` is read from the JSON body only. Use `scriptReference` to run a saved program. Returns `201`.",
+      "notes": "`dryRun`, `runtime` and `schemaVersion` are ignored, so a `dryRun` request commits. `force` is read from the JSON body only; a `force` query parameter is ignored. Assets must match `[A-Z][A-Z0-9]{0,16}(/[1-9]\\d{0,2})?`: underscore suffixes and `/0` are rejected. Use `scriptReference` to run a saved program. Returns `201` with the transaction under `data.transaction` (v2 returned `200`).",
       "docs": "/modules/ledger/migration/update-clients#update-transaction-writes"
     },
     "GET /v2/{ledger}/transactions/{id}": {
@@ -360,14 +361,15 @@
       "v3": [
         "POST /v3/{ledgerName}/transactions/{transactionId}/metadata"
       ],
-      "notes": "`dryRun` and `schemaVersion` are not accepted."
+      "notes": "`dryRun` and `schemaVersion` are ignored, so a `dryRun` request commits."
     },
     "DELETE /v2/{ledger}/transactions/{id}/metadata/{key}": {
       "operationId": "v2DeleteTransactionMetadata",
       "status": "moved",
       "v3": [
         "DELETE /v3/{ledgerName}/transactions/{transactionId}/metadata/{key}"
-      ]
+      ],
+      "notes": "Deleting a key that does not exist returns `404` `METADATA_NOT_FOUND` (v2: `404` `NOT_FOUND`)."
     },
     "POST /v2/{ledger}/transactions/{id}/revert": {
       "operationId": "v2RevertTransaction",
@@ -375,7 +377,7 @@
       "v3": [
         "POST /v3/{ledgerName}/transactions/{transactionId}/revert"
       ],
-      "notes": "`force` and `atEffectiveDate` move from query parameters to the JSON body. `dryRun` and `schemaVersion` are not accepted."
+      "notes": "`force` and `atEffectiveDate` move from query parameters to the JSON body. `dryRun` and `schemaVersion` are ignored, so a `dryRun` request commits. Compensating postings keep the original posting order (v2 reversed it), and balances are checked posting by posting rather than on net account balances."
     },
     "GET /v2/{ledger}/aggregate/balances": {
       "operationId": "v2GetBalancesAggregated",
