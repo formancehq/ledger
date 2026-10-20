@@ -333,6 +333,7 @@ func (fsm *Machine) RestoreState(s *FSMState) {
 // need a one-shot read with no readiness wait (e.g. PrepareEntries).
 func (fsm *Machine) publishApplied(idx uint64) {
 	fsm.appliedMu.Lock()
+	fsm.Registry.Cache.SetPersistedIndex(idx)
 	fsm.lastPersistedIndex.Store(idx)
 	fsm.publishSeq++
 	fsm.appliedCond.Broadcast()

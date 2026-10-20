@@ -322,6 +322,29 @@ func TestObserveAdmissionBetweenGenerationWrites(t *testing.T) {
 	require.False(t, later.HasSource)
 }
 
+func TestObserveAdmissionRejectsTwoPreparedRotationsAheadOfPebble(t *testing.T) {
+	t.Parallel()
+	c, err := New(10, nil)
+	require.NoError(t, err)
+	id := attributes.NewU128(31, 32)
+
+	// Both generations rotate during preparation, before either batch commits.
+	c.CheckRotationNeeded(11)
+	c.CheckRotationNeeded(21)
+	require.Equal(t, uint64(2), c.CurrentGeneration())
+	observation, err := c.Volumes.ObserveAdmission(25, id, 1)
+	require.NoError(t, err)
+	require.Equal(t, CacheUnreachable, observation.Status)
+	require.Equal(t, CacheUnreachable, c.Volumes.CheckCache(25, id))
+
+	// Once the first batch commits, only one uncommitted rotation remains.
+	c.SetPersistedIndex(11)
+	observation, err = c.Volumes.ObserveAdmission(25, id, 1)
+	require.NoError(t, err)
+	require.Equal(t, CacheMiss, observation.Status)
+	require.Equal(t, CacheMiss, c.Volumes.CheckCache(25, id))
+}
+
 func BenchmarkAdmissionHotGen0(b *testing.B) {
 	c, err := New(1000, nil)
 	if err != nil {

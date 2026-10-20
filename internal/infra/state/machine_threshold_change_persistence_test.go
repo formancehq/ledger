@@ -46,6 +46,8 @@ func TestApplyClusterConfig_ThresholdChangePersistsGeneration(t *testing.T) {
 		RotationThreshold: newThreshold,
 	}))
 	require.NoError(t, batch.Commit())
+	// Production publishes the durable cursor after the batch commit.
+	fsm.publishApplied(raftIndex)
 
 	// Verify the in-memory state was realigned.
 	require.Equal(t, expectedGen, fsm.Registry.Cache.CurrentGeneration())

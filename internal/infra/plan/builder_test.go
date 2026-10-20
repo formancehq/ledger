@@ -263,6 +263,41 @@ func TestBuildPreloads_RejectsCacheHorizonExceeded(t *testing.T) {
 		"reject must surface ErrCacheHorizonExceeded so the gRPC adapter maps to codes.Unavailable")
 }
 
+func TestBuildPreloadsRejectsStalePebbleAfterTwoPreparedRotations(t *testing.T) {
+	t.Parallel()
+	logger := logging.Testing()
+	meter := noop.NewMeterProvider().Meter("test")
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	attrs := attributes.New()
+	c, err := cache.New(10, meter)
+	require.NoError(t, err)
+	key := domain.TransactionReferenceKey{LedgerName: "test", Reference: "pending"}
+	id, tag := attributes.MakeKey(key.Bytes())
+
+	old := &commonpb.TransactionReferenceValue{TransactionId: 1}
+	batch := store.OpenWriteSession()
+	_, err = attrs.References.Set(batch, key.Bytes(), old)
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+	newer := &commonpb.TransactionReferenceValue{TransactionId: 2}
+	c.References.Put(id, attributes.Entry[*commonpb.TransactionReferenceValue]{Tag: tag, Data: newer})
+	c.CheckRotationNeeded(11)
+	c.CheckRotationNeeded(21)
+	require.Equal(t, uint64(2), c.CurrentGeneration())
+
+	needs := NewCoverage()
+	needs.Add(dal.SubAttrReference, key.Bytes())
+	builder := NewBuilder(node.NewIndexTracker(25), c, attrs, store, nil, logger, 0)
+	build, err := builder.Build(needs, []WriteOperation{{Coverage: needs}})
+	if build != nil {
+		build.ReleaseLoaders()
+	}
+	require.ErrorIs(t, err, ErrCacheHorizonExceeded,
+		"admission must not seed the old Pebble value after prepared rotations evict the newer cache value")
+}
+
 // TestBuildPreloads_EmitsDeclareOnCacheHit pins the unified coverage
 // model: when admission's CheckCache verdict is CacheHit (key in Gen0
 // at snapshot, or Gen1-only within reach), the resolver emits a

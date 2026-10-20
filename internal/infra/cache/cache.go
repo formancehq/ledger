@@ -142,6 +142,15 @@ func (a *AttributeCache[T]) ObserveAdmission(at uint64, k attributes.U128, tag u
 	result := AdmissionObservation[T]{Status: CacheMiss, Epoch: a.Cache.epoch.Load()}
 	future := Gen(at, a.Cache.GenerationThreshold())
 	current := a.Cache.currentGeneration.Load()
+	// Prepared batches rotate the in-memory cache before their Pebble commits.
+	// Two pending rotations can therefore hide a write from both generations
+	// while Pebble still holds its old value. Never seed from that stale store.
+	if a.Cache.beyondPersistedHorizon(future) {
+		result.Status = CacheUnreachable
+		a.Cache.RecordPreloadEvent("horizon_rejection")
+
+		return result, nil
+	}
 	if future < current {
 		return result, nil
 	}
@@ -245,6 +254,9 @@ func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus
 	threshold := a.Cache.GenerationThreshold()
 	actualGeneration := a.Cache.currentGeneration.Load()
 	futureGeneration := Gen(at, threshold)
+	if a.Cache.beyondPersistedHorizon(futureGeneration) {
+		return CacheUnreachable
+	}
 
 	// Stale-behind build: an admission build sampled `at` before the FSM
 	// applied entries past that index, so its `at` maps to a generation the
@@ -345,6 +357,9 @@ type Cache struct {
 	// currentGeneration is accessed atomically from CheckCache (hot path)
 	// and written under mu by rotateLocked/Reset.
 	currentGeneration atomic.Uint64
+	// persistedIndex advances only after Pebble commits (or recovery loads)
+	// the matching applied index. Cache rotation can run ahead of this cursor.
+	persistedIndex atomic.Uint64
 
 	// epoch is incremented on every Reset(). Used by the admission layer to
 	// detect that the cache was invalidated between preload building and FSM
@@ -580,6 +595,21 @@ func (c *Cache) recordGeneration(gen int64) {
 // CurrentGeneration returns the current generation number.
 func (c *Cache) CurrentGeneration() uint64 {
 	return c.currentGeneration.Load()
+}
+
+// SetPersistedIndex publishes the applied index only after its Pebble batch
+// commits. Recovery also uses it after loading the durable FSM state.
+func (c *Cache) SetPersistedIndex(index uint64) {
+	c.persistedIndex.Store(index)
+}
+
+// beyondPersistedHorizon rejects a proposal that could read Pebble while two
+// cache rotations are prepared but not yet durable. The caller holds c.mu's
+// read lock so the threshold used for both generation calculations is stable.
+func (c *Cache) beyondPersistedHorizon(future uint64) bool {
+	persisted := Gen(c.persistedIndex.Load(), c.generationThreshold.Load())
+
+	return future >= persisted && future-persisted >= 2
 }
 
 // SetCurrentGeneration sets the current generation number (used during snapshot restore).
