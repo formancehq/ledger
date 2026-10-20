@@ -72,6 +72,7 @@ func New(dir string, logger logging.Logger, cfg pebblecfg.Config) (*Store, error
 
 	opts := &pebble.Options{
 		Logger:             dal.NewPebbleLogger(logger),
+		EventListener:      dal.NewPebbleEventLogger(logger, "usage"),
 		FormatMajorVersion: pebble.FormatNewest,
 		Comparer:           UsageStoreComparer,
 		// The usage store is a derived projection rebuilt from the audit log.
