@@ -143,6 +143,44 @@ A strict guarantee would require follower acknowledgements after Pebble
 persistence to participate in the commit condition. That would change Raft's
 commit semantics and its performance profile.
 
+## Compaction fencing and donor selection
+
+Compaction fencing protects a different boundary. It prevents a node from
+deleting its local Raft WAL prefix beyond the Pebble index that it has
+persisted. When a node is behind only within its retained WAL, it can replay
+that suffix locally and does not need a checkpoint donor.
+
+The fencing rule does not imply that every `out_of_sync` voter is unusable as a
+donor. A voter can receive a newer Raft snapshot, become `out_of_sync`, and
+still have a stable Pebble store that covers an older recovery target. For
+example, if B needs a checkpoint at index `S_B` and C has persisted Pebble past
+`S_B` before receiving a later snapshot, C can provide B with a checkpoint at
+`S_B` even though C is waiting to restore its own newer snapshot.
+
+Donor eligibility should therefore be target-aware:
+
+```text
+donor.LastPersistedIndex >= requester.WALSnapshotIndex
+```
+
+The donor must not be actively replacing its Pebble store, and its store must
+remain stable while the checkpoint is created. A blanket rule that rejects all
+`out_of_sync` voters is safe but can reject a valid recovery path. The current
+implementation uses that conservative rule; this is a follow-up consideration
+for donor selection, separate from Raft election safety.
+
+The compaction fence and the write gate were evaluated as additional defenses:
+
+| Mechanism | Protects | Does not protect |
+| --- | --- | --- |
+| Compaction fence | Retains local WAL history until the local Pebble state is durable | The availability of a Pebble donor after snapshot installation |
+| Write gate | Stops new writes after a sampled recovery condition becomes false | A cascading failure that removes every usable Pebble state |
+
+The fence can make the local-WAL recovery path sufficient and can reduce the
+number of checkpoint transfers. The write gate only adds backpressure during
+the detection window. Neither mechanism guarantees data service after the last
+usable Pebble state has disappeared.
+
 ## Cascading failures can make data service impossible
 
 The checkpointable-quorum gate protects recovery capacity. It cannot create a
