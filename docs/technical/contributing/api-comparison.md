@@ -436,8 +436,10 @@ The current implementation is
 All metadata-key path parameters above use one URL-decoding pass, including
 schema PUT/DELETE. A JSON key `formance.com/reviewed` is addressed with
 `formance.com%2Freviewed`; double-encoded `%252F` retains a percent-containing
-key and is rejected by metadata admission with HTTP 400. Canonical index IDs
-use the same single-decoding rule.
+key and is rejected by metadata admission with HTTP 400. Canonical index IDs,
+account addresses, numscript names, prepared-query names, account-type names
+and events sink names use the same single-decoding rule: `users%3Aa` selects
+the account `users:a`.
 
 Ledger metadata is stored separately from ledger configuration (LedgerInfo) and is populated at read time when calling `GET /v3/{ledgerName}` or `GET /v3/` (list ledgers). It uses the same typed value system as account/transaction metadata.
 
