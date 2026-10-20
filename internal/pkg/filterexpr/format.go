@@ -54,23 +54,34 @@ func formatFilter(f *commonpb.QueryFilter) (string, int) {
 		return formatBuiltinUintCondition(v.BuiltinUint)
 	case *commonpb.QueryFilter_LogBuiltinUint:
 		return formatLogBuiltinUintCondition(v.LogBuiltinUint)
+	case *commonpb.QueryFilter_LogId:
+		return formatUintRange("logId", v.LogId.GetCond(), renderRawUint)
+	case *commonpb.QueryFilter_Reference:
+		return "reference == " + formatStringCondValue(v.Reference.GetCond()), precLeaf
+	case *commonpb.QueryFilter_Reverted:
+		return fmt.Sprintf("reverted == %t", v.Reverted.GetValue()), precLeaf
 	default:
 		return "<unknown filter>", precLeaf
 	}
 }
 
 // formatBuiltinUintCondition renders a transaction builtin uint range back into
-// `timestamp OP value`, the inverse of the parser's DateCond. `timestamp` is the
-// only transaction builtin field the textual grammar (DateCond) can read back, so
-// it is the only one we emit — advertising id/insertedAt/revertedAt here would
-// produce strings Parse cannot re-read, breaking the config export/apply
-// round-trip. Its bounds render as quoted RFC3339 (EN-1544).
+// `field OP value`, the inverse of the parser's bare intrinsic fields: `id`
+// bounds render as raw uints, the date fields (`timestamp`, `insertedAt`,
+// `revertedAt`) as quoted RFC3339 (EN-1544).
 func formatBuiltinUintCondition(bc *commonpb.BuiltinUintCondition) (string, int) {
-	if bc.GetField() != commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP {
+	switch bc.GetField() {
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:
+		return formatUintRange("id", bc.GetCond(), renderRawUint)
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+		return formatUintRange("timestamp", bc.GetCond(), renderDatetimeBound)
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+		return formatUintRange("insertedAt", bc.GetCond(), renderDatetimeBound)
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+		return formatUintRange("revertedAt", bc.GetCond(), renderDatetimeBound)
+	default:
 		return "<unknown builtin field>", precLeaf
 	}
-
-	return formatDateUintCondition("timestamp", bc.GetCond())
 }
 
 // formatLogBuiltinUintCondition renders a log builtin uint range. The only field
@@ -78,27 +89,25 @@ func formatBuiltinUintCondition(bc *commonpb.BuiltinUintCondition) (string, int)
 func formatLogBuiltinUintCondition(lc *commonpb.LogBuiltinUintCondition) (string, int) {
 	switch lc.GetField() {
 	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
-		return formatDateUintCondition("date", lc.GetCond())
+		return formatUintRange("date", lc.GetCond(), renderDatetimeBound)
 	default:
 		return "<unknown log field>", precLeaf
 	}
 }
 
-// formatDateUintCondition renders a builtin date range as `field OP value` with
-// bounds as quoted RFC3339, the inverse of the parser's DateCond. Builtin ranges
-// are never parameterized in the DSL, so only hardcoded bounds are formatted.
+// formatUintRange renders a bare-field uint range (transaction/log builtins and
+// the uint/datetime audit fields) as `field OP value`, rendering each bound with
+// render. The textual grammar never parameterizes these fields, so only
+// hardcoded bounds are formatted.
 //
 // A closed range only renders as `between` when BOTH bounds are inclusive, since
 // `between` parses back inclusive on both ends. If either bound is exclusive (the
 // shape a JSON `$and` of `$gt`/`$lt` folds into) it renders as two comparison
 // clauses joined by `and` — `field > lo and field < hi` — which the parser folds
-// back into the same single condition (see foldDateRangeAnd), so the exclusivity
-// survives the round-trip instead of being silently widened. This is the
-// transaction/log counterpart of formatAuditUintCondition; both now emit bare
-// field names, disambiguated only by the re-parse target (EN-1549).
-func formatDateUintCondition(field string, uc *commonpb.UintCondition) (string, int) {
-	render := renderDatetimeBound
-
+// back into the same single condition (see foldClosedRangeAnd), so the
+// exclusivity survives the round-trip instead of being silently widened. The
+// field names are bare, disambiguated only by the re-parse target (EN-1549).
+func formatUintRange(field string, uc *commonpb.UintCondition, render func(uint64) string) (string, int) {
 	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
 		return fmt.Sprintf("%s == %s", field, render(uc.GetMin())), precLeaf
 	}
@@ -109,11 +118,15 @@ func formatDateUintCondition(field string, uc *commonpb.UintCondition) (string, 
 		}
 
 		// An exclusive bound folds into two comparison clauses joined by
-		// `and`; report precAnd so a wrapping `not` parenthesizes the pair
-		// (otherwise `not a and b` mis-associates as `(not a) and b`).
+		// `and`. Report precOr so every enclosing operator but `or`
+		// parenthesizes the pair: a wrapping `not` would otherwise
+		// mis-associate (`not a and b` reads as `(not a) and b`), and an
+		// enclosing `and` would splice the two clauses into its own operand
+		// list, where they no longer fold back into one condition. Under an
+		// `or` the pair binds tighter anyway and still folds.
 		return fmt.Sprintf("%s %s %s and %s %s %s",
 			field, lowerOp(uc.GetMinExclusive()), render(uc.GetMin()),
-			field, upperOp(uc.GetMaxExclusive()), render(uc.GetMax())), precAnd
+			field, upperOp(uc.GetMaxExclusive()), render(uc.GetMax())), precOr
 	}
 
 	if uc.Min != nil {
@@ -147,6 +160,9 @@ func renderDatetimeBound(v uint64) string {
 	return strconv.FormatUint(v, 10)
 }
 
+// renderRawUint renders a plain-counter bound (ids, sequences) as a raw uint.
+func renderRawUint(v uint64) string { return strconv.FormatUint(v, 10) }
+
 // lowerOp / upperOp map a bound's exclusivity to its DSL comparison operator.
 func lowerOp(exclusive bool) string {
 	if exclusive {
@@ -164,19 +180,6 @@ func upperOp(exclusive bool) string {
 	return "<="
 }
 
-// auditFieldNames is the reverse of the parser's auditFieldKeys: enum -> DSL key.
-var auditFieldNames = map[commonpb.AuditField]string{
-	commonpb.AuditField_AUDIT_FIELD_SEQUENCE:        "seq",
-	commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID:     "proposal_id",
-	commonpb.AuditField_AUDIT_FIELD_TIMESTAMP:       "timestamp",
-	commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE:    "log_seq",
-	commonpb.AuditField_AUDIT_FIELD_OUTCOME:         "outcome",
-	commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT:  "caller_subject",
-	commonpb.AuditField_AUDIT_FIELD_LEDGER:          "ledger",
-	commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE:      "order_type",
-	commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY: "idempotency_key",
-}
-
 // formatAuditCondition renders an AuditCondition back into the bare `field OP
 // value` form, inverse of the parser's FieldCond production on the audit target
 // (EN-1549). The `audit[...]` namespace prefix is gone: the audit fields are bare
@@ -185,7 +188,7 @@ var auditFieldNames = map[commonpb.AuditField]string{
 // collide with the transaction/log arms otherwise — which is exactly the contract
 // (an audit filter is always re-parsed with QUERY_TARGET_AUDIT).
 func formatAuditCondition(ac *commonpb.AuditCondition) (string, int) {
-	key, ok := auditFieldNames[ac.GetField()]
+	key, ok := commonpb.AuditFieldName(ac.GetField())
 	if !ok {
 		return "<unknown audit field>", precLeaf
 	}
@@ -194,53 +197,19 @@ func formatAuditCondition(ac *commonpb.AuditCondition) (string, int) {
 	case *commonpb.AuditCondition_StringCond:
 		return fmt.Sprintf("%s == %s", key, formatStringCondValue(cond.StringCond)), precLeaf
 	case *commonpb.AuditCondition_UintCond:
-		// Audit ranges always render as `between`/single-bound (never an
-		// `and`-join), so they are always leaf-precedence.
-		return formatAuditUintCondition(key, ac.GetField(), cond.UintCond), precLeaf
+		// The timestamp field is a datetime: its bounds render as quoted RFC3339
+		// so the output round-trips through the datetime-aware parser.
+		render := renderRawUint
+		if ac.GetField() == commonpb.AuditField_AUDIT_FIELD_TIMESTAMP {
+			render = renderDatetimeBound
+		}
+
+		return formatUintRange(key, cond.UintCond, render)
 	case *commonpb.AuditCondition_StringPrefix:
 		return fmt.Sprintf("%s ^= %s", key, quoteIfNeeded(cond.StringPrefix)), precLeaf
 	default:
 		return key + " <unknown>", precLeaf
 	}
-}
-
-// formatAuditUintCondition renders a UintCondition on a bare audit field. The
-// audit DSL only produces hardcoded bounds (no params), so only those are
-// formatted. The timestamp field is a datetime: its bounds render as quoted
-// RFC3339 so the output round-trips through the datetime-aware parser.
-func formatAuditUintCondition(key string, field commonpb.AuditField, uc *commonpb.UintCondition) string {
-	render := func(v uint64) string { return strconv.FormatUint(v, 10) }
-	if field == commonpb.AuditField_AUDIT_FIELD_TIMESTAMP {
-		render = renderDatetimeBound
-	}
-
-	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
-		return fmt.Sprintf("%s == %s", key, render(uc.GetMin()))
-	}
-
-	if uc.Min != nil && uc.Max != nil {
-		return fmt.Sprintf("%s between %s and %s", key, render(uc.GetMin()), render(uc.GetMax()))
-	}
-
-	if uc.Min != nil {
-		op := ">="
-		if uc.GetMinExclusive() {
-			op = ">"
-		}
-
-		return fmt.Sprintf("%s %s %s", key, op, render(uc.GetMin()))
-	}
-
-	if uc.Max != nil {
-		op := "<="
-		if uc.GetMaxExclusive() {
-			op = "<"
-		}
-
-		return fmt.Sprintf("%s %s %s", key, op, render(uc.GetMax()))
-	}
-
-	return key + " <uint?>"
 }
 
 // formatLedgerCondition renders a non-audit LedgerCondition as `ledger == value`,

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -77,6 +78,49 @@ func TestConfigStructuredRoundTrip(t *testing.T) {
 		t.Parallel()
 		assertRoundTrip(t, ledger.GetName(), original, "config.json", (*EditableConfig).WriteJSON)
 	})
+}
+
+// TestConfigPreparedQueryFilterExportReapplies is the regression for the
+// filter-coverage gap between the two filter forms: a prepared query created
+// through the JSON DSL on a field the textual grammar did not know (reference,
+// reverted, id, logId, …) exported as `<unknown filter>`, which `apply` could
+// not parse back. Every exported filter must now re-create the same proto.
+func TestConfigPreparedQueryFilterExportReapplies(t *testing.T) {
+	t.Parallel()
+
+	jsonFilters := map[string]struct {
+		target commonpb.QueryTarget
+		json   string
+	}{
+		"by-ref":      {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"reference":{"$param":"ref"}}}`},
+		"reverted":    {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"reverted":true}}`},
+		"id-window":   {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$and":[{"$gt":{"id":10}},{"$lt":{"id":20}}]}`},
+		"inserted":    {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$gte":{"insertedAt":"2023-11-14T22:13:20Z"}}`},
+		"recent-logs": {commonpb.QueryTarget_QUERY_TARGET_LOGS, `{"$match":{"logId":7}}`},
+	}
+
+	var queries []*commonpb.PreparedQuery
+	want := map[string]*commonpb.QueryFilter{}
+	for name, tc := range jsonFilters {
+		filter, err := commonpb.DecodeQueryFilterJSON([]byte(tc.json), tc.target)
+		require.NoError(t, err, name)
+		queries = append(queries, &commonpb.PreparedQuery{Name: name, Target: tc.target, Filter: filter})
+		want[name] = filter
+	}
+
+	exported := ConfigFromProto(&commonpb.LedgerInfo{Name: "l"}, nil, queries, nil)
+
+	actions, err := diffPreparedQueries("l", &EditableConfig{}, exported)
+	require.NoError(t, err)
+	require.Len(t, actions, len(jsonFilters))
+
+	for _, action := range actions {
+		created := action.Request.GetCreatePreparedQuery().GetQuery()
+		require.NotNil(t, created)
+		require.Truef(t, proto.Equal(want[created.GetName()], created.GetFilter()),
+			"%s: exported filter %q re-applied as %v", created.GetName(),
+			exported.PreparedQueries[created.GetName()].Filter, created.GetFilter())
+	}
 }
 
 // TestDiffAccountTypePersistenceChange asserts ComputeDiff catches a

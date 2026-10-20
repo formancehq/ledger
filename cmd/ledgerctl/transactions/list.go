@@ -27,11 +27,10 @@ func NewListCommand() *cobra.Command {
 Transactions are displayed newest first by default. Use --reverse for oldest first.
 Press Enter to load the next page, or 'q' to quit.
 
-Filter fields (--filter):
-  Textual grammar: metadata[key], address, source, destination (== or ^=),
-  timestamp (RFC3339 or unix microseconds).
-  JSON DSL only: reference ($match), reverted ($match), id, insertedAt,
-  revertedAt ($gt/$gte/$lt/$lte ranges; id has no $match).
+Filter fields (--filter), the same in the textual grammar and the JSON DSL:
+  metadata[key], address, source, destination (== or ^=), reference (== or in),
+  reverted (== true|false), id (==, ranges, between), and the dates timestamp,
+  insertedAt, revertedAt (RFC3339 or unix microseconds).
 
 Examples:
   ledgerctl transactions list --ledger my-ledger
@@ -44,6 +43,8 @@ Examples:
   ledgerctl transactions list --ledger my-ledger --filter 'source ^= "merchants:" and destination ^= "users:"'
   ledgerctl transactions list --ledger my-ledger --filter 'address == "users:alice"'
   ledgerctl transactions list --ledger my-ledger --filter 'timestamp >= "2026-01-01T00:00:00Z"'
+  ledgerctl transactions list --ledger my-ledger --filter 'reference == "order-42"'
+  ledgerctl transactions list --ledger my-ledger --filter 'reverted == false and id > 1000'
   ledgerctl transactions list --ledger my-ledger --filter '{"$match":{"reference":"order-42"}}'
   ledgerctl transactions list --ledger my-ledger --filter '{"$match":{"reverted":true}}'
   ledgerctl transactions list --ledger my-ledger --filter '{"$gte":{"insertedAt":"2026-01-01T00:00:00Z"}}'

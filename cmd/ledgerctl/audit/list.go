@@ -47,7 +47,9 @@ Supported fields: seq, proposal_id, log_seq (numeric); timestamp
 caller_subject, order_type, idempotency_key (string). Only idempotency_key
 supports the ^= prefix operator; a reused key returns every audit entry
 recorded under it.
-Unsupported conditions (not, non-indexed fields) are rejected.
+Unsupported conditions (not, non-indexed fields) are rejected. The JSON DSL
+takes the same bare fields, e.g. '{"$match":{"outcome":"failure"}}', without
+the ^= prefix operator.
 
 Examples:
   ledgerctl audit list
@@ -55,6 +57,7 @@ Examples:
   ledgerctl audit list --filter 'outcome == failure'
   ledgerctl audit list --filter 'ledger == "my-ledger"'
   ledgerctl audit list --filter 'idempotency_key == "payment-42"'
+  ledgerctl audit list --filter '{"$match":{"outcome":"failure"}}'
   ledgerctl audit list --checkpoint-id 7`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
@@ -63,7 +66,7 @@ Examples:
 
 	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{SupportsReverse: true})
 	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{
-		FilterHelp: "Filter expression, textual grammar only (e.g. \"outcome == failure\"); the JSON DSL does not support audit fields",
+		FilterHelp: `Filter expression: textual grammar ("outcome == failure") or JSON DSL ('{"$match":{"outcome":"failure"}}')`,
 	})
 	cmdutil.AddConsistencyFlags(cmd)
 	cmdutil.AddOutputFlags(cmd)

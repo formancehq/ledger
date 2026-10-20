@@ -53,6 +53,15 @@ func FuzzFilterExprParse(f *testing.F) {
 	f.Add(`order_type in (create_transaction, revert_transaction)`)
 	f.Add(`proposal_id == 42`)
 	f.Add(`outcome == failure and ledger == main`)
+	// Bare intrinsic fields shared with the JSON DSL.
+	f.Add(`reference == "ref-1"`)
+	f.Add(`reference in (a, $ref)`)
+	f.Add(`reverted == true`)
+	f.Add(`id > 3 and id < 9`)
+	f.Add(`insertedAt >= "2023-11-14T22:13:20Z"`)
+	f.Add(`revertedAt between 1 and 2`)
+	f.Add(`logId == 7`)
+	f.Add(`idempotency_key ^= "import-"`)
 
 	f.Fuzz(func(t *testing.T, input string) {
 		// Parse must not panic on any input, on any target. Errors are expected
@@ -60,6 +69,7 @@ func FuzzFilterExprParse(f *testing.F) {
 		// audit-field resolution path.
 		for _, target := range []commonpb.QueryTarget{
 			commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			commonpb.QueryTarget_QUERY_TARGET_LOGS,
 			commonpb.QueryTarget_QUERY_TARGET_AUDIT,
 		} {
 			_, _ = Parse(input, target)

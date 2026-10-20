@@ -67,7 +67,9 @@ func TestFilterHelpExamplesAreValid(t *testing.T) {
 			}[m[1]]
 			require.Truef(t, ok, "unknown --target %q in example: %s", m[1], line)
 
-			f, err := filterexpr.Parse(expr, target)
+			// Same decode as queries.parseCreateFilter: both forms, resolved
+			// against the --target.
+			f, err := filterexpr.DecodeDualFormatStructuralOnly([]byte(expr), target)
 
 			return f, []commonpb.QueryTarget{target}, err
 		},

@@ -22,12 +22,13 @@ func NewUpdateCommand() *cobra.Command {
 		Long: `Update the filter of an existing prepared query. Omit --filter to clear
 the existing filter and make the query match all entities in its target.
 
---filter accepts the textual grammar or the JSON DSL. The fields valid for the
-query's target are listed in "ledgerctl queries create --help"; JSON-only
-fields (for example a transaction reference) can be set here.
+--filter accepts the textual grammar or the JSON DSL; both forms cover the same
+fields. The fields valid for the query's target are listed in
+"ledgerctl queries create --help".
 
 Examples:
   ledgerctl queries update active-users --ledger my-ledger --filter "metadata[active] == true and metadata[tier] == gold"
+  ledgerctl queries update order-lookup --ledger my-ledger --filter 'reference == "order-42"'
   ledgerctl queries update order-lookup --ledger my-ledger --filter '{"$match":{"reference":"order-42"}}'
   ledgerctl queries update active-users --ledger my-ledger`,
 		Args:              cobra.ExactArgs(1),
@@ -77,7 +78,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// filter against it). DecodeDualFormatStructuralOnly is the shared "target not
 	// known here" entry point: it resolves bare fields with a non-audit target
 	// (prepared queries are never audit) and defers the per-target validity gate
-	// to the server (EN-1549).
+	// to the server (EN-1549). Every non-audit target resolves every bare field
+	// identically (TestDecodeDualFormatStructuralOnly_NonAuditResolutionIsTargetIndependent),
+	// so the hard-coded TRANSACTIONS target never changes the decoded filter.
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 

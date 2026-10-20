@@ -19,14 +19,15 @@ func NewListCommand() *cobra.Command {
 		Short:   "List system logs",
 		Long: `List system log entries via gRPC streaming.
 
-Filter fields (--filter): date (RFC3339 or unix microseconds) and ledger in the
-textual grammar or JSON DSL; logId ($gt/$gte/$lt/$lte ranges) in the JSON DSL
-only. Metadata, address, source and destination conditions are rejected on logs.
+Filter fields (--filter), the same in the textual grammar and the JSON DSL:
+logId (==, ranges, between), date (RFC3339 or unix microseconds) and ledger.
+Metadata, address, source and destination conditions are rejected on logs.
 
 Examples:
   ledgerctl logs list --ledger my-ledger
   ledgerctl logs list --ledger my-ledger --reverse
   ledgerctl logs list --ledger my-ledger --filter 'date >= "2026-01-01T00:00:00Z"'
+  ledgerctl logs list --ledger my-ledger --filter 'logId >= 100'
   ledgerctl logs list --ledger my-ledger --filter '{"$gte":{"logId":100}}'`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,

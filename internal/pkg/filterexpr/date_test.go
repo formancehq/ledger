@@ -339,29 +339,41 @@ func TestFormatDate_RawMicrosOutsideRFC3339Range(t *testing.T) {
 
 // TestFormatDate_OnlyEmitsParseableFields is the regression for the flemzord
 // MEDIUM: Format used to emit id/insertedAt/revertedAt expressions the textual
-// parser (DateCond) cannot read back, so Parse(Format(f)) failed for those arms.
-// Format now renders only the fields the grammar admits (timestamp, date); other
-// builtin fields render as an explicit unknown marker rather than a lie that
-// won't reparse.
+// parser could not read back, so Parse(Format(f)) failed for those arms. The
+// grammar now admits every transaction builtin field, so each one must format to
+// a string that re-parses to the same condition — never to an unparseable lie.
 func TestFormatDate_OnlyEmitsParseableFields(t *testing.T) {
 	t.Parallel()
 
-	nonParseable := []commonpb.TransactionBuiltinIndex{
+	lo := wantDateMicros
+	for _, field := range []commonpb.TransactionBuiltinIndex{
 		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
 		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
 		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
-	}
-
-	lo := wantDateMicros
-	for _, field := range nonParseable {
+	} {
 		f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
 			BuiltinUint: &commonpb.BuiltinUintCondition{
 				Field: field,
 				Cond:  &commonpb.UintCondition{Min: &lo},
 			},
 		}}
-		assert.Equal(t, "<unknown builtin field>", Format(f), field.String())
+		got := Format(f)
+		reparsed, err := Parse(got, tx)
+		require.NoError(t, err, "%s: Format emitted %q", field, got)
+		require.True(t, proto.Equal(f, reparsed), "%s: %q did not round-trip", field, got)
 	}
+
+	// A builtin index kind that is not a uint range field (reference, address)
+	// still renders as an explicit unknown marker rather than a string that
+	// would parse as something else.
+	unknown := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &commonpb.BuiltinUintCondition{
+			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
+			Cond:  &commonpb.UintCondition{Min: &lo},
+		},
+	}}
+	assert.Equal(t, "<unknown builtin field>", Format(unknown))
 
 	// And the two fields we DO emit must round-trip through Parse for every
 	// single-bound operator shape (== is covered by TestFormatDate_RoundTrip).
