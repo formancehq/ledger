@@ -94,6 +94,34 @@ this manifest.
   were removed. A partial fold can emit a mismatch/incomplete signal and stop;
   the contract does not demand every corruption be enumerated after failure.
 
+## Ledger policy evidence
+
+`internal/application/check/ledger_policy.go` verifies canonical `SubAttrLedger`
+and global `SubGlobLedgerInfo` separately against ledger information exported
+by `internal/infra/state/audit_replay.go`. The existing isolated FSM replay is
+fed successful chain-verified audit proposals; stored logs and either stored
+ledger projection are not its policy oracle. Record actual persisted keys as
+well as embedded names. Agreement between the two stored copies is insufficient
+when both are corrupted.
+
+Coverage includes missing and surplus rows, name, schema, account types,
+default enforcement mode, normal/mirror mode, complete source configuration
+and exact deletion timestamp. Audited deletion retains tombstones and their
+final policy in both keyspaces; promotion clears the source and sets normal
+mode. Probe normal and mirror creation, promotion, deletion, rejected and skipped
+orders before attributing a mismatch to corruption. Suppress this final-state
+comparison after an incomplete audit chain or isolated replay rather than
+comparing a prefix with the final store.
+
+Pair each healthy fixture with independent canonical/global changes and a
+coordinated two-copy change, keeping the audit witness intact. Assert all typed
+events, keyspace identities and terminal errors. Mirror configuration may hold
+credentials: diagnostics must name the affected field without exposing values.
+Creation timestamps and numeric ledger IDs remain outside this policy pass;
+read-time metadata and mirror progress are excluded enrichments. Its coverage
+must not be described as verification of every LedgerInfo field. The pass
+changes verification only, with no persisted format or apply-semantic change.
+
 ## Ownership and deduplication
 
 Choose the owner by the missing protection and required correction. Shared

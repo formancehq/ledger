@@ -118,6 +118,27 @@ func (r *AuditReplayer) Close() error {
 	return err
 }
 
+// LedgerInfos returns the persisted ledger policies produced solely by the
+// verified orders replayed so far, including retained deletion tombstones.
+// Read-time metadata and mirror progress are not populated here.
+func (r *AuditReplayer) LedgerInfos() (map[string]*commonpb.LedgerInfo, error) {
+	reader, err := r.store.NewReadHandle()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = reader.Close() }()
+	rows, err := r.machine.Registry.Attrs.Ledger.ComputeAllForPrefix(reader, nil)
+	if err != nil {
+		return nil, err
+	}
+	infos := make(map[string]*commonpb.LedgerInfo, len(rows))
+	for _, row := range rows {
+		infos[string(row.CanonicalKey)] = row.Value
+	}
+
+	return infos, nil
+}
+
 // Replay applies one successful audited proposal and returns the exact logs
 // produced by the canonical request processor. Call proposals in audit order.
 func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order) ([]*commonpb.Log, error) {

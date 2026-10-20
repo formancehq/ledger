@@ -80,6 +80,15 @@ exemptions. The two signing projections (`SubGlobSigningKey`,
 chain-bound signing orders; maintenance mode has the identical shape and gap but
 is deliberately deferred.
 
+The ledger policy pass verifies canonical `SubAttrLedger` and global
+`SubGlobLedgerInfo` independently against the existing isolated FSM replay of
+successful verified audit proposals. It covers presence, embedded name, schema,
+account types, default enforcement, normal/mirror mode, complete mirror source
+and deletion timestamp, including retained tombstones. A partial chain or
+replay suppresses this final-state comparison. Creation timestamp and numeric
+ledger ID remain outside that pass; read-time metadata and mirror progress
+are excluded enrichments. See [checker.md](checker.md) for errors and scope.
+
 ## Related
 
 - [Consensus → global-log.md](../consensus/global-log.md) — what produces the audit entries the chain links.
