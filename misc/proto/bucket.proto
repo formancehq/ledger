@@ -1262,6 +1262,8 @@ message GetIndexStatusResponse {
   fixed64 last_indexed_sequence = 1;
   fixed64 last_log_sequence = 2;
   fixed64 lag = 3;
+  // Bytes the answering node's read index occupies on disk, live and obsolete
+  // files included, from Pebble's disk-usage metrics.
   fixed64 index_file_size = 4;
   repeated IndexEntry indexes = 5;
 }
