@@ -90,6 +90,7 @@ func ValidateMembers(members []Member) error {
 		}
 		seen[member.NodeID] = identity
 	}
+
 	return nil
 }
 
@@ -97,6 +98,7 @@ func ValidateMembershipRevision(observed, examined uint64) error {
 	if examined == 0 || observed != examined {
 		return fmt.Errorf("%w: membership revision changed from %d to %d", ErrInvalidState, examined, observed)
 	}
+
 	return nil
 }
 
@@ -104,6 +106,7 @@ func AdvanceReplayFloor(current, next uint32) (uint32, error) {
 	if next < current {
 		return current, fmt.Errorf("%w: replay protocol floor cannot decrease from %d to %d", ErrInvalidState, current, next)
 	}
+
 	return next, nil
 }
 
@@ -155,6 +158,7 @@ func StampProposal(proposal *raftcmdpb.Proposal) error {
 	for i, id := range required {
 		proposal.RequiredCapabilities[i] = uint32(id)
 	}
+
 	return nil
 }
 
@@ -180,6 +184,7 @@ func (s State) Validate() error {
 	if s.MembershipRevision == 0 {
 		return fmt.Errorf("%w: zero membership revision", ErrInvalidState)
 	}
+
 	return nil
 }
 
@@ -201,6 +206,7 @@ func FromPolicy(policy *commonpb.ClusterPolicy) State {
 			s.Activations[ID(activation.GetId())] = activation.GetActive()
 		}
 	}
+
 	return s
 }
 
@@ -212,6 +218,7 @@ func Normalize(ids []ID) ([]ID, error) {
 			return nil, fmt.Errorf("%w: duplicate id %d", ErrInvalidDeclaration, result[i])
 		}
 	}
+
 	return result, nil
 }
 
@@ -241,6 +248,7 @@ func Evaluate(state State, required []ID, businessWrite bool, members []Member) 
 		for _, id := range required {
 			if !slices.Contains(member.Capabilities, id) {
 				blockers = append(blockers, Blocker{NodeID: member.NodeID, Role: member.Role, Reason: fmt.Sprintf("missing capability %d", id)})
+
 				continue
 			}
 			if !member.Reachable {
@@ -254,6 +262,7 @@ func Evaluate(state State, required []ID, businessWrite bool, members []Member) 
 	if businessWrite && state.Policy == AllWrites && len(required) == 0 {
 		return Decision{Reason: "business writes are blocked while capability activation is armed", Blockers: blockers}
 	}
+
 	return Decision{Allowed: true, Blockers: blockers}
 }
 
@@ -286,6 +295,7 @@ func ValidateFinalProposal(data []byte, declared []ID) error {
 	if !bytes.Equal(idsBytes(wire), idsBytes(declared)) {
 		return fmt.Errorf("%w: declaration does not match final payload", ErrMissingCapability)
 	}
+
 	return nil
 }
 
@@ -297,5 +307,6 @@ func idsBytes(ids []ID) []byte {
 		result[i*4+2] = byte(id >> 16)
 		result[i*4+3] = byte(id >> 24)
 	}
+
 	return result
 }

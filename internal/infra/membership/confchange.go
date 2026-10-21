@@ -3,6 +3,7 @@ package membership
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -30,10 +31,10 @@ func ValidateInstanceID(instanceID []byte) error {
 func ValidateCapabilities(ids []uint32) error {
 	for i, id := range ids {
 		if id == 0 {
-			return fmt.Errorf("capability id must be non-zero")
+			return errors.New("capability id must be non-zero")
 		}
 		if i > 0 && ids[i-1] >= id {
-			return fmt.Errorf("capabilities must be sorted and unique")
+			return errors.New("capabilities must be sorted and unique")
 		}
 	}
 
@@ -46,7 +47,7 @@ func ValidateCapabilities(ids []uint32) error {
 // must carry a fresh revision-bound capability set.
 func ValidateCapabilityEvidence(ctx *ConfChangeContext, armed bool, expectedRevision uint64) error {
 	if ctx == nil {
-		return fmt.Errorf("missing capability membership evidence")
+		return errors.New("missing capability membership evidence")
 	}
 	if err := ValidateCapabilities(ctx.Capabilities); err != nil {
 		return fmt.Errorf("invalid capability evidence: %w", err)
@@ -55,13 +56,13 @@ func ValidateCapabilityEvidence(ctx *ConfChangeContext, armed bool, expectedRevi
 		return nil
 	}
 	if expectedRevision == 0 {
-		return fmt.Errorf("capability membership revision is not configured")
+		return errors.New("capability membership revision is not configured")
 	}
 	if ctx.CapabilityMembershipRevision != expectedRevision {
 		return fmt.Errorf("capability membership revision %d does not match active revision %d", ctx.CapabilityMembershipRevision, expectedRevision)
 	}
 	if len(ctx.Capabilities) == 0 {
-		return fmt.Errorf("capability evidence is empty while activation is armed")
+		return errors.New("capability evidence is empty while activation is armed")
 	}
 
 	return nil
