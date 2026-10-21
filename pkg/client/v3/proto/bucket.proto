@@ -8,27 +8,6 @@ option go_package = "github.com/formancehq/ledger/pkg/client/v3/grpc";
 import "common.proto";
 import "audit.proto";
 import "signature.proto";
-import "google/protobuf/descriptor.proto";
-
-// allowed_skippable_reasons annotates a oneof case inside LedgerAction.data
-// with the business ErrorReasons a caller may list in
-// LedgerApplyRequest.skippable_reasons for that action. protoc-gen-skippable
-// (misc/proto → tools/protoc-gen-skippable) reads these annotations and
-// generates pkg/client/v3/grpc/bucket_skippable.pb.go — admission's
-// extractSkippableReasonsFromApply consumes that generated table so the
-// whitelist stays co-located with the wire declaration.
-//
-// A oneof case without the annotation has NO whitelist: any non-empty
-// LedgerApplyRequest.skippable_reasons on that action is rejected at
-// admission.
-//
-// Field number 71001 sits in a range outside the taken slots of
-// transitive dependencies (etcd uses 50000-50003, gogoproto uses
-// 62000-65012, google.api uses 72295728+) — collisions in the
-// same-message×same-number key would panic at runtime during package init.
-extend google.protobuf.FieldOptions {
-  repeated common.ErrorReason allowed_skippable_reasons = 71001;
-}
 
 // ============================================================================
 // gRPC Service
@@ -542,29 +521,17 @@ message RevertTransactionPayload {
 
 // LedgerAction represents a single ledger action.
 //
-// Each oneof case MAY carry an `(allowed_skippable_reasons)` annotation
-// (see the extension declaration at the top of this file). Admission
-// consumes the generated whitelist to validate LedgerApplyRequest
-// .skippable_reasons; cases without the annotation reject any non-empty
-// list from the caller.
+// The server may use skippable_reasons when applying an order. The allowed
+// values and admission policy are server-owned and are not part of this
+// public client module's generated API.
 message LedgerAction {
   oneof data {
-    CreateTransactionPayload create_transaction = 1 [
-      (allowed_skippable_reasons) = ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
-    ];
+    CreateTransactionPayload create_transaction = 1;
     common.SaveMetadataCommand add_metadata = 2;
-    RevertTransactionPayload revert_transaction = 3 [
-      (allowed_skippable_reasons) = ERROR_REASON_TRANSACTION_ALREADY_REVERTED
-    ];
-    common.DeleteMetadataCommand delete_metadata = 4 [
-      (allowed_skippable_reasons) = ERROR_REASON_METADATA_NOT_FOUND
-    ];
-    AddAccountTypeRequest add_account_type = 5 [
-      (allowed_skippable_reasons) = ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
-    ];
-    RemoveAccountTypeRequest remove_account_type = 6 [
-      (allowed_skippable_reasons) = ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
-    ];
+    RevertTransactionPayload revert_transaction = 3;
+    common.DeleteMetadataCommand delete_metadata = 4;
+    AddAccountTypeRequest add_account_type = 5;
+    RemoveAccountTypeRequest remove_account_type = 6;
     SetDefaultEnforcementModeRequest set_default_enforcement_mode = 7;
   }
 }
@@ -576,15 +543,7 @@ message LedgerApplyRequest {
   // fail the proposal. The FSM records a common.OrderSkippedLog for each
   // matching skip; the proposal continues with Outcome=Success.
   //
-  // Validated at admission against the per-action whitelist declared inline on
-  // each LedgerAction.data oneof case via `(allowed_skippable_reasons)` (the
-  // single source of truth; the generated SkippableReasonsForLedgerAction is
-  // what admission consults). Today: CreateTransaction accepts
-  // TRANSACTION_REFERENCE_CONFLICT, RevertTransaction TRANSACTION_ALREADY_REVERTED,
-  // DeleteMetadata METADATA_NOT_FOUND, AddAccountType ACCOUNT_TYPE_ALREADY_EXISTS,
-  // RemoveAccountType ACCOUNT_TYPE_NOT_FOUND. An opt-in on an action that
-  // declares no annotation is rejected up front. Empty (default) preserves the
-  // historical fail-fast behaviour.
+  // The server validates these values according to its admission policy.
   repeated common.ErrorReason skippable_reasons = 3;
 }
 
