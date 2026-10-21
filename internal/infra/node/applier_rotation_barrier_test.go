@@ -11,6 +11,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -111,4 +112,81 @@ func TestRotationDoesNotPrepareAfterFailedCommit(t *testing.T) {
 	err = setup.applier.applyDecodedEntriesToFSM(ctx, setup.stop, setup.confState, nil, decoded)
 	require.ErrorIs(t, err, previousError)
 	require.Equal(t, uint64(0), setup.fsm.Registry.Cache.CurrentGeneration())
+}
+
+func TestThresholdResetDoesNotPrepareAfterFailedCommit(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+	setup := newTestApplierSetup(t)
+	previousError := errors.New("previous Pebble commit failed")
+	done := make(chan error, 1)
+	done <- previousError
+	setup.applier.pending = &pendingCommit{done: done}
+
+	proposal := &raftcmdpb.Proposal{TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
+		Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{
+			ClusterConfig: &commonpb.ClusterConfig{RotationThreshold: 2},
+		},
+	}}}
+	data, err := proposal.MarshalVT()
+	require.NoError(t, err)
+	decoded, err := state.DecodeEntries([]*raftpb.Entry{{
+		Index: new(uint64(2)), Type: new(raftpb.EntryNormal), Data: data,
+	}})
+	require.NoError(t, err)
+
+	epoch := setup.fsm.Registry.Cache.Epoch()
+	err = setup.applier.applyDecodedEntriesToFSM(ctx, setup.stop, setup.confState, nil, decoded)
+	require.ErrorIs(t, err, previousError)
+	require.Equal(t, epoch, setup.fsm.Registry.Cache.Epoch())
+	require.Equal(t, uint64(1000), setup.fsm.Registry.Cache.GenerationThreshold())
+}
+
+func TestThresholdResetWaitsForPreviousCommit(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+	setup := newTestApplierSetup(t)
+	entry, _ := makeCreateLedgerEntry(t, 1, "before-reset")
+	proposal := commands.NewCommand()
+	proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterConfig)
+	proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+		Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{
+			ClusterConfig: &commonpb.ClusterConfig{RotationThreshold: 2},
+		},
+	}}
+	data, err := proposal.MarshalVT()
+	require.NoError(t, err)
+	configEntry := &raftpb.Entry{Index: new(uint64(2)), Term: new(uint64(1)), Type: new(raftpb.EntryNormal), Data: data}
+	decoded, err := state.DecodeEntries([]*raftpb.Entry{entry, configEntry})
+	require.NoError(t, err)
+
+	epoch := setup.fsm.Registry.Cache.Epoch()
+	result := make(chan error, 1)
+	go func() {
+		result <- setup.applier.applyDecodedEntriesToFSM(ctx, setup.stop, setup.confState, nil, decoded)
+	}()
+
+	var previous commitWork
+	select {
+	case previous = <-setup.applier.commitCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("pre-reset batch was not prepared")
+	}
+	require.Never(t, func() bool { return setup.fsm.Registry.Cache.Epoch() != epoch }, 100*time.Millisecond, 5*time.Millisecond)
+	require.NoError(t, setup.fsm.CommitPreparedBatch(ctx, previous.prepared))
+	previous.done <- nil
+
+	var configCommit commitWork
+	select {
+	case configCommit = <-setup.applier.commitCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("config batch was not prepared after the previous commit")
+	}
+	require.True(t, listLedgerContains(setup.store, "before-reset"))
+	require.Equal(t, epoch+1, setup.fsm.Registry.Cache.Epoch())
+	require.Equal(t, uint64(2), setup.fsm.Registry.Cache.GenerationThreshold())
+	require.NoError(t, setup.fsm.CommitPreparedBatch(ctx, configCommit.prepared))
+	configCommit.done <- nil
+	require.NoError(t, <-result)
+	require.NoError(t, setup.applier.waitPendingCommit(ctx))
 }

@@ -643,7 +643,7 @@ we enforce:
 3. **Applier pre-split.** Before passing a `[]raftpb.Entry` slice to
    `PrepareEntries`, the applier scans for checkpoint triggers and splits
    the slice so any trigger entry is always the LAST in its sub-batch
-   (`findCheckpointBoundary`). Entries past the trigger go to the spool
+   (`findApplyBoundaryDecoded`). Entries past the trigger go to the spool
    and are replayed once the maintenance window clears.
 
 Result: every `PrepareEntries` → `CommitPreparedBatch` pair commits exactly
@@ -657,9 +657,9 @@ preparing that entry. Preparation can mutate the cache, so waiting only when
 submitting the new commit would be too late: rotation could evict a Gen1 value
 that admission still needs from Pebble. Replay uses the same split, with each
 sub-batch committed synchronously. Cluster configuration entries are isolated
-so the next sub-batch uses the current rotation threshold. This boundary
-handles ordinary generation rotations; a cache reset caused by a threshold
-change remains a separate invalidation path.
+and wait for the preceding commit before preparation because changing the
+rotation threshold resets the cache. The next sub-batch then uses the current
+rotation threshold.
 
 The sentinel's expected-volume reduction follows the durable batch's lifecycle
 order: a successful `WriteSet` deletion cascade invalidates that ledger's

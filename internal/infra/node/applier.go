@@ -1516,8 +1516,8 @@ func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 // To preserve the "one PrepareEntries call = one commit through runCommitter"
 // invariant, callers must never mix a checkpoint-trigger entry with later
 // entries in the same FSM batch. A batch must also stop before an entry that
-// rotates the cache: the preceding batch must reach Pebble before rotation
-// evicts its Gen1 entries. We split at both boundaries. Entries past a trigger that
+// rotates or resets the cache: the preceding batch must reach Pebble before
+// either operation evicts its entries. We split at both boundaries. Entries past a trigger that
 // actually fires (CheckpointRequired) are spooled before we hand control to
 // the maintenance task so the spool replay picks them up once gating clears.
 //
@@ -1537,12 +1537,12 @@ func (a *Applier) applyDecodedEntriesToFSM(ctx context.Context, stop chan struct
 		end := offset + boundary
 		head := decoded[offset:end]
 		tail := decoded[end:]
-		if cache.Gen(head[0].Entry.GetIndex(), a.fsm.Registry.Cache.GenerationThreshold()) != a.fsm.Registry.Cache.CurrentGeneration() {
+		if cache.Gen(head[0].Entry.GetIndex(), a.fsm.Registry.Cache.GenerationThreshold()) != a.fsm.Registry.Cache.CurrentGeneration() || hasClusterConfigUpdate(head[0]) {
 			// applyEntriesPipelined prepares before it waits for the previous
-			// commit. A rotating entry cannot use that overlap: rotation would
-			// evict cache values that are not yet visible in Pebble.
+			// commit. Rotation or a threshold-change reset cannot use that
+			// overlap: either could evict values not yet visible in Pebble.
 			if err := a.waitPendingCommit(ctx); err != nil {
-				return fmt.Errorf("waiting for commit before cache rotation: %w", err)
+				return fmt.Errorf("waiting for commit before cache eviction: %w", err)
 			}
 		}
 
