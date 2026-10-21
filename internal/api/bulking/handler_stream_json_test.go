@@ -41,6 +41,8 @@ func TestBulkStreamHandlerJSON(t *testing.T) {
 			t.Parallel()
 
 			reader, writer := io.Pipe()
+			defer reader.Close()
+			defer writer.Close()
 
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodPost, "/", reader)
@@ -56,12 +58,32 @@ func TestBulkStreamHandlerJSON(t *testing.T) {
 
 			require.True(t, ok)
 
-			_, err := writer.Write([]byte(testCase.stream))
-			require.NoError(t, err)
+			writeDone := make(chan struct{})
+			var writeErr, closeErr error
+			go func() {
+				defer close(writeDone)
+				_, writeErr = writer.Write([]byte(testCase.stream))
+				closeErr = writer.CloseWithError(writeErr)
+			}()
+
+			receiveClosed := false
+			t.Cleanup(func() {
+				// Unblock the producer and decoder even if an assertion fails.
+				reader.Close()
+				writer.Close()
+				for range send {
+				}
+				if !receiveClosed {
+					close(receive)
+				}
+				<-h.terminated
+				<-writeDone
+			})
 
 			for id := range testCase.expectScriptCount {
 				select {
-				case <-send:
+				case _, ok := <-send:
+					require.True(t, ok, "send channel closed before expected element")
 				case <-time.After(100 * time.Millisecond):
 					t.Fatal("should have received send channel")
 				}
@@ -76,13 +98,21 @@ func TestBulkStreamHandlerJSON(t *testing.T) {
 				}
 			}
 
-			require.NoError(t, writer.Close())
 			select {
-			case <-send:
+			case <-writeDone:
+				require.NoError(t, writeErr)
+				require.NoError(t, closeErr)
+			case <-time.After(100 * time.Millisecond):
+				t.Fatal("pipe writer should have completed")
+			}
+			select {
+			case _, ok := <-send:
+				require.False(t, ok, "send channel should have been closed")
 			case <-time.After(100 * time.Millisecond):
 				t.Fatal("send channel should have been closed")
 			}
 			close(receive)
+			receiveClosed = true
 
 			h.Terminate(w, r)
 

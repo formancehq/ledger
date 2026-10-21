@@ -1,7 +1,12 @@
 {
-  description = "A Nix-flake-based Go 1.26 development environment";
+  description = "A Nix-flake-based Go 1.27.3 development environment";
 
   inputs = {
+    # Keep application tooling pinned; update only the compiler and its linter.
+    go-tooling = {
+      url = "github:NixOS/nixpkgs/8cec5ef1131078ea76689e84c362b0ed6a1fb6a1";
+      flake = false;
+    };
     nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2511";
     nixpkgs-unstable.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1";
 
@@ -11,7 +16,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, goreleaser }:
+  outputs = { self, go-tooling, nixpkgs, nixpkgs-unstable, goreleaser }:
     let
       supportedSystems = [
         "x86_64-linux"
@@ -86,9 +91,19 @@
 
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         let
+          # Import only Go recipes so unrelated tools and all four platforms stay pinned.
+          go127 = pkgs.callPackage "${go-tooling}/pkgs/development/compilers/go/1.27.nix" {
+            buildGo127Module = build127;
+          };
+          build127 = pkgs.buildGoModule.override { go = go127; };
+          go = go127;
+          golangci-lint = pkgs.callPackage "${go-tooling}/pkgs/by-name/go/golangci-lint/package.nix" {
+            buildGo127Module = build127;
+          };
+
           stablePackages = with pkgs; [
             ginkgo
-            go_1_26
+            go
             go-tools
             gomarkdoc
             goperf
@@ -103,17 +118,16 @@
             protoc-gen-go-grpc
             yq-go
           ];
-          unstablePackages = with pkgs-unstable; [
-            golangci-lint
-          ];
           otherPackages = [
+            golangci-lint
             (pkgs.callPackage "${goreleaser}/pkgs/goreleaser-pro" { })
             self.packages.${system}.speakeasy
           ];
         in
         {
           default = pkgs.mkShell {
-            packages = stablePackages ++ unstablePackages ++ otherPackages;
+            packages = stablePackages ++ otherPackages;
+            GOTOOLCHAIN = "local";
           };
         }
       );
