@@ -188,6 +188,35 @@ func TestBuildCreateArgs_MirrorHTTPWithRewriteRules(t *testing.T) {
 	}, args)
 }
 
+func TestBuildCreateArgs_MirrorHTTPWithAssetMappings(t *testing.T) {
+	t.Parallel()
+
+	r := newTestLedgerReconciler()
+	ledger := newLedger("test", "default", "cluster", "ledger1")
+	ledger.Spec.Mode = "mirror"
+	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
+		AssetMappings: []ledgerv1alpha1.MirrorAssetMapping{
+			{SourceAsset: "USDT_ETHEREUM/6", Asset: "USDT/6", Color: "ETHEREUM"},
+			{SourceAsset: "EUR_LEGACY/2", Asset: "EUR/2"},
+		},
+		HTTP: &ledgerv1alpha1.HTTPMirrorSource{
+			BaseURL: "https://source.example.com",
+		},
+	}
+
+	args, err := r.buildCreateArgs(context.Background(), ledger)
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"ledgers", "create",
+		"--mode", "mirror",
+		"--mirror-asset-mapping", "USDT_ETHEREUM/6=USDT/6:ETHEREUM",
+		"--mirror-asset-mapping", "EUR_LEGACY/2=EUR/2",
+		"--mirror-source-type", "http",
+		"--mirror-base-url", "https://source.example.com",
+		"--", "ledger1",
+	}, args)
+}
+
 func TestBuildCreateArgs_MirrorPostgresWithRewriteRules(t *testing.T) {
 	t.Parallel()
 

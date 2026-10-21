@@ -95,7 +95,7 @@ func TestHTTPSource_AscendingHistory(t *testing.T) {
 	logs, more, err := source.FetchLogs(ctx, 0, 2)
 	require.NoError(t, err)
 	require.True(t, more)
-	orders, _, _, err := TranslateBatch("mirror", logs, 1, 0, nil)
+	orders, _, _, err := TranslateBatch("mirror", logs, 1, 0, TranslateOptions{})
 	require.NoError(t, err)
 	// This is the lossy branch: descending [3,2] translates successfully but
 	// fabricates gaps for available logs 1 and 2 before replaying the real log 2.

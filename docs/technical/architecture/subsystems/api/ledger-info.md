@@ -32,7 +32,7 @@ string representation also remain exact. Clients using JSON.stringify on a
 decoded native bigint must explicitly convert it to a decimal string first.
 
 Read configuration uses `ledgerName` and exactly one nested `http` or `postgres`
-source, with optional `batchSize` and `rewriteRules`. HTTP sources include nested
+source, with optional `batchSize`, `rewriteRules` and `assetMappings`. HTTP sources include nested
 `oauth2ClientCredentials`. PostgreSQL sources retain `dsn` and supported
 `awsIamAuth` fields (`region`, `assumeRoleArn`). `MirrorSourceRead` is a separate
 schema from the flat `MirrorSourceConfig` accepted at ledger creation: correcting
@@ -43,6 +43,8 @@ spelling), and empty address replacements are omitted by protojson and decode
 as the empty string. This applies both to `rewriteAddress.replacement` and each
 `setAccountMetadataFromAddress.replacements` entry. Empty literal oneof values
 remain explicit `value: ""`; absent sources mean the default empty literal.
+Each `assetMappings` entry reads as `{sourceAsset, asset, color}` in creation
+order. protojson omits an empty `color`, which decodes as the uncolored bucket.
 
 Marshal failures propagate. Get buffers with `writeOKChecked`; list buffers with `writePageOK` before
 writing success headers so invalid values return a sanitized HTTP 500 instead

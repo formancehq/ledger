@@ -123,6 +123,38 @@
           "additionalProperties": false,
           "description": "MirrorSource configures the replication source when mode is \"mirror\".\nRequired when mode is \"mirror\".",
           "properties": {
+            "assetMappings": {
+              "description": "AssetMappings map v2 source assets onto a v3 asset and optional color\n(see MirrorAssetMapping). Applies to both HTTP and Postgres sources.",
+              "items": {
+                "additionalProperties": false,
+                "description": "MirrorAssetMapping maps one v2 source asset (for example `USDT_ETHEREUM/6`)\nonto a v3 asset (`USDT/6`) and an optional color (`ETHEREUM`).",
+                "properties": {
+                  "asset": {
+                    "description": "Asset is the v3 asset the source asset is mirrored into.",
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "color": {
+                    "description": "Color is the v3 color attached to the mirrored asset.",
+                    "maxLength": 32,
+                    "pattern": "^[A-Z]{0,32}$",
+                    "type": "string"
+                  },
+                  "sourceAsset": {
+                    "description": "SourceAsset is the asset as it appears in the v2 source ledger.",
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "asset",
+                  "sourceAsset"
+                ],
+                "type": "object"
+              },
+              "maxItems": 256,
+              "type": "array"
+            },
             "batchSize": {
               "description": "BatchSize is the max number of log entries per replication batch (0 = default 100).",
               "format": "int32",

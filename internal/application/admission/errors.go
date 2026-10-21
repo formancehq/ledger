@@ -34,6 +34,12 @@ var (
 	// instead of stalling — or corrupting — the mirror on every batch.
 	ErrMirrorRewriteRuleInvalid = domain.NewValidationSentinel("MIRROR_REWRITE_RULE_INVALID", "mirrorSource.rewriteRules: each rule must have a boolean match and a cel expression returning a transaction")
 
+	// ErrMirrorAssetMappingInvalid rejects a mirror config whose assetMappings
+	// cannot be compiled by v2.NewAssetMapper. Rejected at admission for the
+	// same reason as rewrite rules: the mirror worker must never stall on a
+	// configuration the ledger already persisted.
+	ErrMirrorAssetMappingInvalid = domain.NewValidationSentinel("MIRROR_ASSET_MAPPING_INVALID", "mirrorSource.assetMappings: each entry needs a unique non-empty sourceAsset (max 64 bytes), a valid v3 asset, a color matching ^[A-Z]{0,32}$, and a unique (asset, color) target; at most 256 entries")
+
 	// ErrLedgerNameReservedPrefix rejects the exact names "_" (system API
 	// routes) and "_system" (system events) on every ledger-scoped order.
 	// Other underscore-prefixed names remain valid.

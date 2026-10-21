@@ -2419,6 +2419,17 @@ func (m *MirrorRewriteRuleInvalidDetails) MarshalDeterministicVT(dAtA []byte) []
 	return append(dAtA, b...)
 }
 
+func (m *MirrorAssetMappingInvalidDetails) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
 func (m *NumscriptAssetMismatchDetails) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
@@ -3669,6 +3680,17 @@ func (m *RemovedMetadataFieldTypeLog) MarshalDeterministicVT(dAtA []byte) []byte
 }
 
 func (m *MirrorSourceConfig) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *MirrorAssetMapping) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

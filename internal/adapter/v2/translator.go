@@ -36,11 +36,20 @@ var (
 	}}
 )
 
+// TranslateOptions carries a mirror's compiled translation configuration.
+// Both fields are nil-safe: a nil Rewriter applies no rules and a nil Assets
+// maps nothing but still validates every posting asset.
+type TranslateOptions struct {
+	Rewriter *celrewrite.Rewriter
+	Assets   *AssetMapper
+}
+
 // TranslateBatch translates a batch of v2 logs into v3 Raft orders.
 // It generates FillGap orders for any gaps in log IDs or transaction IDs.
 // expectedNextLogID and expectedNextTxID are used to detect gaps.
-func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNextTxID uint64, rewriter *celrewrite.Rewriter) ([]*raftcmdpb.Order, uint64, uint64, error) {
+func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNextTxID uint64, opts TranslateOptions) ([]*raftcmdpb.Order, uint64, uint64, error) {
 	orders := make([]*raftcmdpb.Order, 0, len(v2Logs))
+	validatedAssets := make(map[string]struct{})
 
 	for _, v2Log := range v2Logs {
 		// Detect log ID gaps and fill them
@@ -76,9 +85,16 @@ func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNe
 			// runs on the leader and its output is baked into the proposed order,
 			// so followers apply identical bytes. A rule may drop the entry, in
 			// which case Apply returns a fill-gap that still advances the tx ID.
-			entry, err = rewriter.Apply(entry)
+			entry, err = opts.Rewriter.Apply(entry)
 			if err != nil {
 				return nil, 0, 0, fmt.Errorf("rewriting v2 log %d (type=%s): %w", v2Log.ID, v2Log.Type, err)
+			}
+
+			// Asset mapping runs after the rules so a drop rule can discard
+			// a transaction whose assets have no v3 representation, and so
+			// match predicates see the v2 asset names.
+			if err := opts.Assets.apply(entryPostings(entry), validatedAssets); err != nil {
+				return nil, 0, 0, fmt.Errorf("mapping assets of v2 log %d (type=%s): %w", v2Log.ID, v2Log.Type, err)
 			}
 
 			orders = append(orders, makeMirrorOrder(ledger, entry))
@@ -339,6 +355,19 @@ func translateDeleteMetadata(v2Log V2Log) (*raftcmdpb.MirrorLogEntry, error) {
 			},
 		},
 	}, nil
+}
+
+// entryPostings returns the postings a mirror entry will apply, or nil for
+// variants that move no funds.
+func entryPostings(entry *raftcmdpb.MirrorLogEntry) []*commonpb.Posting {
+	switch data := entry.GetData().(type) {
+	case *raftcmdpb.MirrorLogEntry_CreatedTransaction:
+		return data.CreatedTransaction.GetPostings()
+	case *raftcmdpb.MirrorLogEntry_RevertedTransaction:
+		return data.RevertedTransaction.GetReversePostings()
+	default:
+		return nil
+	}
 }
 
 // translatePostings converts v2 postings to v3 proto postings.

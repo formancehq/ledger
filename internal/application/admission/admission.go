@@ -1402,11 +1402,9 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			postings = rt.GetReversePostings()
 		}
 
-		// Mirror ingestion only handles v2 logs, which have no color
-		// dimension — every mirrored posting lands in the uncolored bucket.
 		for _, posting := range postings {
-			addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), "")
-			addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), "")
+			addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
+			addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
 		}
 
 		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {

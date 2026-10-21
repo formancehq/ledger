@@ -604,6 +604,18 @@ HTTP(S) URL with a nonempty hostname. Invalid input returns HTTP 400 / gRPC
 echoing credentials. Rejection occurs before Raft, audit/ledger persistence and
 worker startup, and does not probe the remote source.
 
+**Asset mappings:** `mirrorSource.assetMappings` is an optional list of
+`{sourceAsset, asset, color}` entries. Each entry maps one v2 asset, matched
+exactly, to a v3 asset and color, so v2 assets that v3 cannot represent
+(`USDT_ETHEREUM/6`, `USD/0`) can be mirrored. Mappings apply after
+`rewriteRules`. Creation rejects an invalid list with HTTP 400 / gRPC
+`InvalidArgument` (`MIRROR_ASSET_MAPPING_INVALID`): at most 256 entries, each
+with a unique non-empty `sourceAsset` of at most 64 bytes, a valid v3 `asset`,
+a `color` matching `^[A-Z]{0,32}$`, and a unique `(asset, color)` target. The
+list is fixed at creation and is returned in `mirrorSource.assetMappings` by
+`GET /v3/{ledgerName}`. See
+[asset mappings](../architecture/subsystems/events-mirror/mirror.md#asset-mappings).
+
 **Write guard:** All direct write operations (create transaction, save metadata, delete metadata, revert transaction) are rejected on mirror-mode ledgers with HTTP 409 (`LEDGER_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`.
 
 **Sync progress:** `GET /v3/{ledgerName}` returns a `mirrorSyncProgress` object for mirror ledgers with:
@@ -619,6 +631,17 @@ worker startup, and does not probe the remote source.
 - `REVERTED_TRANSACTION` — Replays a revert
 - `DELETE_METADATA` — Deletes a metadata key
 - Unknown log types are recorded as fill-gap entries (no-op for data, preserves log ID sequence)
+
+**Sync errors stall the mirror:** a v2 log that cannot be translated stops
+ingestion at that log. The cursor does not advance, the worker retries with
+backoff, and `mirrorSyncProgress.error` is set. Its `message` is returned as
+`[redacted]`; the reason is in the server's `Mirror sync error` log line. A
+posting asset that is not a valid v3 asset and has no `assetMappings` entry is
+such an error, as is an unmapped asset equal to an uncolored mapping target. A
+mirror that already stores invalid assets refuses to ingest and logs
+`ledger contains assets ingested before asset-mapping support`. Mirror source
+configuration cannot be changed, so recovery is to delete the mirror ledger and
+recreate it with the needed `assetMappings` or `drop` rewrite rules.
 
 **Promote a mirror ledger:** `POST /v3/{ledgerName}/promote`
 

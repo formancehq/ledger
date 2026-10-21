@@ -111,3 +111,24 @@ When persisted storage is compatible but mixed binaries are not:
 `ledgerctl upgrade` upgrades the `ledgerctl` client binary only. It does not
 upgrade Ledger servers or decide whether a server revision is storage- or
 wire-compatible.
+
+## Change-specific notes
+
+### Mirror asset mappings
+
+`MirrorSourceConfig.asset_mappings` (field 6) is an additive optional field on
+a message stored in `LedgerInfo` and in the audited `CreatedLedgerLog`. Existing
+mirrors have an empty list, and their persisted state and audit hashes remain
+valid. No migration is required. A voter without the field preserves it as an
+unknown field, so old and new voters hash and apply the same committed entry
+identically.
+
+The mappings are applied by the leader's mirror worker, not by the FSM. A
+leader running a release without asset-mapping support ignores the field and
+ingests assets verbatim. Upgrade every node before creating a mirror with
+`assetMappings`. See
+[asset mappings](../technical/architecture/subsystems/events-mirror/mirror.md#asset-mappings).
+
+A worker that finds assets v3 cannot represent among a mirror's stored volumes
+stops ingesting that mirror after the upgrade. Delete the mirror ledger and
+recreate it with the needed mappings.

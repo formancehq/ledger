@@ -448,6 +448,15 @@ func (r *LedgerReconciler) buildCreateArgs(ctx context.Context, ledger *ledgerv1
 			args = append(args, "--mirror-rewrite-rule", string(encoded))
 		}
 
+		for _, mapping := range src.AssetMappings {
+			target := mapping.Asset
+			if mapping.Color != "" {
+				target += ":" + mapping.Color
+			}
+
+			args = append(args, "--mirror-asset-mapping", mapping.SourceAsset+"="+target)
+		}
+
 		switch {
 		case src.HTTP != nil:
 			args = append(args, "--mirror-source-type", "http")

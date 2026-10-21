@@ -5294,6 +5294,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MirrorRewriteRuleRead'
+        assetMappings:
+          type: array
+          items:
+            $ref: '#/components/schemas/MirrorAssetMappingRead'
         http:
           $ref: '#/components/schemas/HttpMirrorSourceRead'
         postgres:
@@ -5392,6 +5396,49 @@ components:
             v2 logs are translated into v3 orders. Each rule is scoped to exactly
             one variant of the log's `data` oneof, with a CEL `match` predicate
             and a list of typed actions.
+        assetMappings:
+          type: array
+          maxItems: 256
+          items:
+            $ref: '#/components/schemas/MirrorAssetMapping'
+          description: >
+            Exact-match translation of v2 posting assets into a v3 asset and
+            color, applied after rewriteRules to created and reverted
+            transactions. An unmapped posting asset must already be a valid v3
+            asset, and must not equal an uncolored mapping target; otherwise the
+            mirror stops on that log and reports a sync error. Fixed at ledger
+            creation.
+
+    MirrorAssetMapping:
+      type: object
+      required: [sourceAsset, asset]
+      properties:
+        sourceAsset:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: v2 posting asset, matched byte-for-byte (e.g. USDT_ETHEREUM/6)
+        asset:
+          type: string
+          description: Target v3 asset (e.g. USDT/6)
+        color:
+          type: string
+          maxLength: 32
+          pattern: '^[A-Z]*$'
+          description: Target color; empty is the uncolored bucket
+
+    MirrorAssetMappingRead:
+      type: object
+      description: >
+        Read representation of a mirror asset mapping, using protojson camelCase
+        names. An empty color is omitted.
+      properties:
+        sourceAsset:
+          type: string
+        asset:
+          type: string
+        color:
+          type: string
 
     MirrorRewriteRuleRead:
       type: object
