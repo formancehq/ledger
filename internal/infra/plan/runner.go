@@ -259,6 +259,7 @@ func (p *Builder) Run(
 	required, err := capabilities.RequiredCapabilities(cmd)
 	if err != nil {
 		guard.ReleaseAll()
+
 		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
 	}
 	proposal.RequireCapabilities(required...)
@@ -396,6 +397,7 @@ func (p *Builder) runWithoutPreload(
 	required, err := capabilities.RequiredCapabilities(cmd)
 	if err != nil {
 		guard.ReleaseLoaders()
+
 		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
 	}
 	proposal.RequireCapabilities(required...)

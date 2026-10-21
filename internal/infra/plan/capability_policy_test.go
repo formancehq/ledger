@@ -18,6 +18,7 @@ type capabilityPolicyTestProposer struct{ called bool }
 
 func (p *capabilityPolicyTestProposer) Propose(context.Context, *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 	p.called = true
+
 	return futures.New[state.ApplyResult](), nil
 }
 
