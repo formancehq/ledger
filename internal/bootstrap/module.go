@@ -1431,6 +1431,7 @@ func capabilityIDsAsUint32(ids []capabilities.ID) []uint32 {
 	for i, id := range ids {
 		result[i] = uint32(id)
 	}
+
 	return result
 }
 
