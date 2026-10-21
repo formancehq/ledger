@@ -50,7 +50,15 @@ openapi:
     npx -y widdershins {{justfile_directory()}}/openapi/v2.yaml -o {{justfile_directory()}}/docs/api/README.md --search false --language_tabs 'http:HTTP' --summary --omitHeader
 
 generate-client: openapi
-    if [ ! -z "${SPEAKEASY_API_KEY:-}" ]; then cd pkg/client && speakeasy run --skip-versioning; fi
+    if [ -n "${SPEAKEASY_API_KEY:-}" ]; then \
+        cd pkg/client && \
+        speakeasy=$(command -v speakeasy) && \
+        go_bin=$(go env GOBIN) && \
+        if [ -z "$go_bin" ]; then \
+            go_path=$(go env GOPATH) && go_bin="${go_path%%:*}/bin"; \
+        fi && \
+        PATH="$go_bin:$PATH" "$speakeasy" run --skip-versioning; \
+    fi
 
 release-local:
     @goreleaser release --nightly --skip=publish --clean

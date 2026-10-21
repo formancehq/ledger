@@ -75,6 +75,7 @@ var _ = Context("Ledger stress tests", func() {
 						createdTx, err := Wait(ctx, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 							Ledger: ledger,
 							V2PostTransaction: components.V2PostTransaction{
+								Force: pointer.For(true),
 								Postings: []components.V2Posting{
 									{
 										Source:      fmt.Sprintf("accounts:%d", rand.Intn(countAccounts)),
@@ -90,7 +91,6 @@ var _ = Context("Ledger stress tests", func() {
 									},
 								},
 							},
-							Force: pointer.For(true),
 						})
 						Expect(err).ShouldNot(HaveOccurred())
 						mu.Lock()

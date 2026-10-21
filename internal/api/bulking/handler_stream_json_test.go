@@ -38,6 +38,10 @@ func TestBulkStreamHandlerJSON(t *testing.T) {
 			t.Parallel()
 
 			reader, writer := io.Pipe()
+			t.Cleanup(func() {
+				_ = reader.Close()
+				_ = writer.Close()
+			})
 
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodPost, "/", reader)
@@ -53,8 +57,12 @@ func TestBulkStreamHandlerJSON(t *testing.T) {
 
 			require.True(t, ok)
 
-			_, err := writer.Write([]byte(testCase.stream))
-			require.NoError(t, err)
+			// Consume elements while writing: the decoder need not buffer the whole stream.
+			writeResult := make(chan error, 1)
+			go func() {
+				_, err := writer.Write([]byte(testCase.stream))
+				writeResult <- err
+			}()
 
 			for id := range testCase.expectScriptCount {
 				select {
@@ -73,6 +81,12 @@ func TestBulkStreamHandlerJSON(t *testing.T) {
 				}
 			}
 
+			select {
+			case err := <-writeResult:
+				require.NoError(t, err)
+			case <-time.After(100 * time.Millisecond):
+				t.Fatal("stream write should have completed")
+			}
 			require.NoError(t, writer.Close())
 			select {
 			case <-send:
