@@ -19,3 +19,11 @@ func TestReplayFloorIsMonotonic(t *testing.T) {
 	_, err = AdvanceReplayFloor(floor, 2)
 	require.Error(t, err)
 }
+
+func TestValidateReplayFloorRejectsUnsupportedDowngrade(t *testing.T) {
+	require.NoError(t, ValidateReplayFloor(0, 0))
+	require.NoError(t, ValidateReplayFloor(CurrentReplayProtocol, CurrentReplayProtocol))
+
+	err := ValidateReplayFloor(CurrentReplayProtocol+1, CurrentReplayProtocol)
+	require.ErrorIs(t, err, ErrReplayProtocolUnsupported)
+}

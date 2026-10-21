@@ -22,6 +22,20 @@ const (
 	IDSemanticReplayV1 ID = 2
 )
 
+// SupportedIDs is the immutable capability set implemented by this binary.
+// It is used as membership evidence during join; callers must copy the result
+// before attaching it to a mutable wire message.
+func SupportedIDs() []ID {
+	return []ID{IDExecutionPlanV1, IDSemanticReplayV1}
+}
+
+// CurrentReplayProtocol is the replay encoding understood by this binary.
+// It is intentionally independent from the client-facing gRPC protocol and
+// from the capability IDs above. Once a policy raises its replay floor, a
+// binary whose supported floor is lower must refuse to open the store rather
+// than decode state it cannot execute deterministically.
+const CurrentReplayProtocol uint32 = 1
+
 type AdmissionPolicy uint8
 
 const (
@@ -94,11 +108,67 @@ func AdvanceReplayFloor(current, next uint32) (uint32, error) {
 }
 
 var (
-	ErrInvalidState          = errors.New("invalid capability state")
-	ErrInvalidDeclaration    = errors.New("invalid capability declaration")
-	ErrMissingCapability     = errors.New("proposal is missing a required capability declaration")
-	ErrCapabilityUnsupported = errors.New("capability is unsupported by a cluster member")
+	ErrInvalidState              = errors.New("invalid capability state")
+	ErrInvalidDeclaration        = errors.New("invalid capability declaration")
+	ErrMissingCapability         = errors.New("proposal is missing a required capability declaration")
+	ErrCapabilityUnsupported     = errors.New("capability is unsupported by a cluster member")
+	ErrReplayProtocolUnsupported = errors.New("replay protocol floor is unsupported")
 )
+
+// RequiredCapabilities derives semantic protocol dependencies from the final
+// proposal shape. The registry is deliberately colocated with the wire
+// contract so a producer cannot make a feature-specific payload appear safe by
+// omitting required_capabilities. Predicates inspect only replicated fields,
+// which makes the result deterministic on every member.
+func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]ID, error) {
+	if proposal == nil {
+		return nil, fmt.Errorf("%w: nil proposal", ErrInvalidDeclaration)
+	}
+
+	var required []ID
+	// ExecutionPlan is the admission/apply coverage contract. Its presence is
+	// significant even when the message is empty (for no-read proposals): an
+	// old binary cannot safely replay the envelope without understanding it.
+	if proposal.GetExecutionPlan() != nil {
+		required = append(required, IDExecutionPlanV1)
+	}
+	// Idempotency freezes a proposal's semantic outcome for replay. Attach the
+	// dependency to the envelope rather than to the number of orders so an
+	// empty or metadata-only proposal cannot evade the barrier.
+	if proposal.GetIdempotency() != nil {
+		required = append(required, IDSemanticReplayV1)
+	}
+
+	return Normalize(required)
+}
+
+// StampProposal replaces required_capabilities with the deterministic result
+// of RequiredCapabilities. Producers call this after rebuilding the final
+// execution plan and immediately before marshaling; repeated calls are safe on
+// retry and rebuild paths.
+func StampProposal(proposal *raftcmdpb.Proposal) error {
+	required, err := RequiredCapabilities(proposal)
+	if err != nil {
+		return err
+	}
+	proposal.RequiredCapabilities = make([]uint32, len(required))
+	for i, id := range required {
+		proposal.RequiredCapabilities[i] = uint32(id)
+	}
+	return nil
+}
+
+// ValidateReplayFloor checks the persisted replay floor before any other
+// replicated state is decoded. A zero floor is the legacy policy and is
+// accepted by every binary; newer floors are safe only when this binary knows
+// how to decode and execute the corresponding entries.
+func ValidateReplayFloor(required, supported uint32) error {
+	if required > supported {
+		return fmt.Errorf("%w: persisted floor %d exceeds supported protocol %d", ErrReplayProtocolUnsupported, required, supported)
+	}
+
+	return nil
+}
 
 func (s State) Validate() error {
 	if !s.Armed {
@@ -160,6 +230,13 @@ func Evaluate(state State, required []ID, businessWrite bool, members []Member) 
 		return Decision{Reason: err.Error()}
 	}
 	blockers := make([]Blocker, 0)
+	// A required capability is not admitted merely because members advertise
+	// support: the replicated activation must also have been committed.
+	for _, id := range required {
+		if !state.Activations[id] {
+			blockers = append(blockers, Blocker{Reason: fmt.Sprintf("capability %d is inactive", id)})
+		}
+	}
 	for _, member := range members {
 		for _, id := range required {
 			if !slices.Contains(member.Capabilities, id) {
@@ -187,17 +264,24 @@ func ValidateFinalProposal(data []byte, declared []ID) error {
 	if err := proposal.UnmarshalVT(data); err != nil {
 		return fmt.Errorf("decode final proposal: %w", err)
 	}
+	expected, err := RequiredCapabilities(proposal)
+	if err != nil {
+		return err
+	}
 	wire := make([]ID, len(proposal.GetRequiredCapabilities()))
 	for i, id := range proposal.GetRequiredCapabilities() {
 		wire[i] = ID(id)
 	}
-	wire, err := Normalize(wire)
+	wire, err = Normalize(wire)
 	if err != nil {
 		return err
 	}
 	declared, err = Normalize(declared)
 	if err != nil {
 		return err
+	}
+	if !bytes.Equal(idsBytes(wire), idsBytes(expected)) {
+		return fmt.Errorf("%w: wire declaration does not match semantic payload", ErrMissingCapability)
 	}
 	if !bytes.Equal(idsBytes(wire), idsBytes(declared)) {
 		return fmt.Errorf("%w: declaration does not match final payload", ErrMissingCapability)

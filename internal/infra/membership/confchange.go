@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -23,6 +24,49 @@ func ValidateInstanceID(instanceID []byte) error {
 	return nil
 }
 
+// ValidateCapabilities enforces the canonical representation used in
+// membership evidence. IDs are non-zero, sorted, and unique so the same
+// concrete member cannot present two byte-level representations of support.
+func ValidateCapabilities(ids []uint32) error {
+	for i, id := range ids {
+		if id == 0 {
+			return fmt.Errorf("capability id must be non-zero")
+		}
+		if i > 0 && ids[i-1] >= id {
+			return fmt.Errorf("capabilities must be sorted and unique")
+		}
+	}
+
+	return nil
+}
+
+// ValidateCapabilityEvidence validates the proof attached to a membership
+// transition. Unarmed clusters retain backwards-compatible empty evidence;
+// once the capability barrier is armed, every Add/Update/Promote transition
+// must carry a fresh revision-bound capability set.
+func ValidateCapabilityEvidence(ctx *ConfChangeContext, armed bool, expectedRevision uint64) error {
+	if ctx == nil {
+		return fmt.Errorf("missing capability membership evidence")
+	}
+	if err := ValidateCapabilities(ctx.Capabilities); err != nil {
+		return fmt.Errorf("invalid capability evidence: %w", err)
+	}
+	if !armed {
+		return nil
+	}
+	if expectedRevision == 0 {
+		return fmt.Errorf("capability membership revision is not configured")
+	}
+	if ctx.CapabilityMembershipRevision != expectedRevision {
+		return fmt.Errorf("capability membership revision %d does not match active revision %d", ctx.CapabilityMembershipRevision, expectedRevision)
+	}
+	if len(ctx.Capabilities) == 0 {
+		return fmt.Errorf("capability evidence is empty while activation is armed")
+	}
+
+	return nil
+}
+
 // ConfChangeContext carries peer addresses alongside a Raft ConfChange so that
 // all nodes (not just the leader) can learn the new peer's addresses when the
 // ConfChange is committed.
@@ -35,6 +79,12 @@ type ConfChangeContext struct {
 	RaftAddress    string `json:"raftAddress"`
 	ServiceAddress string `json:"serviceAddress"`
 	InstanceID     []byte `json:"instanceId,omitempty"`
+	// Capabilities and CapabilityMembershipRevision are the signed-by-
+	// consensus membership evidence for this concrete peer incarnation. They
+	// travel in every registration context and are persisted in PeerAddress so
+	// activation cannot accidentally inherit support from a replaced pod.
+	Capabilities                 []uint32 `json:"capabilities,omitempty"`
+	CapabilityMembershipRevision uint64   `json:"capabilityMembershipRevision,omitempty"`
 	// ProposalID is a leader-local correlation token. It is committed with the
 	// ConfChange so the proposing leader can resolve only the matching waiter;
 	// FSM apply deliberately ignores it.
@@ -48,7 +98,9 @@ type ConfChangeContext struct {
 func (c ConfChangeContext) Equal(other ConfChangeContext) bool {
 	return c.RaftAddress == other.RaftAddress &&
 		c.ServiceAddress == other.ServiceAddress &&
-		bytes.Equal(c.InstanceID, other.InstanceID)
+		bytes.Equal(c.InstanceID, other.InstanceID) &&
+		slices.Equal(c.Capabilities, other.Capabilities) &&
+		c.CapabilityMembershipRevision == other.CapabilityMembershipRevision
 }
 
 // MarshalConfChangeContext serialises a ConfChangeContext to JSON bytes
