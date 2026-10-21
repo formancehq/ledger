@@ -2,7 +2,7 @@ module github.com/formancehq/ledger/tools/provisioner
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.27.3
 
 replace (
 	github.com/formancehq/ledger => ../..

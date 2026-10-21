@@ -2,7 +2,7 @@ module github.com/formancehq/ledger/deployments/pulumi
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.27.3
 
 require (
 	github.com/formancehq/go-libs/v5 v5.6.1
