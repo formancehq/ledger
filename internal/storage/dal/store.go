@@ -424,15 +424,12 @@ func NewStore(
 	cfg Config,
 ) (*Store, error) {
 	stallState := NewWriteStallState()
+	pebbleLogger := NewPebbleLogger(logger)
 
 	opts := &pebble.Options{
-		Logger:             NewPebbleLogger(logger),
+		Logger:             pebbleLogger,
 		FormatMajorVersion: pebble.FormatNewest,
-		EventListener: func() *pebble.EventListener {
-			listener := pebble.TeeEventListener(*NewMetricsListener(meter, stallState), *NewPebbleEventLogger(logger, "live"))
-
-			return &listener
-		}(),
+		EventListener:      newStoreEventListener(logger, pebbleLogger, meter, stallState),
 		// 1) Absorb more writes before flush => fewer SST files, fewer compactions.
 		MemTableSize:                cfg.MemTableSize,
 		MemTableStopWritesThreshold: cfg.MemTableStopWritesThreshold,
@@ -620,6 +617,16 @@ func NewStore(
 	store.cleanupIncomingRestore()
 
 	return store, nil
+}
+
+func newStoreEventListener(logger logging.Logger, pebbleLogger pebble.Logger, meter metric.Meter, stallState *WriteStallState) *pebble.EventListener {
+	events := NewPebbleEventLogger(logger, "live")
+	// TeeEventListener fills nil callbacks with no-ops. Install Pebble's fatal
+	// corruption handler first so composing metrics and logs cannot silence it.
+	events.EnsureDefaults(pebbleLogger)
+	listener := pebble.TeeEventListener(*NewMetricsListener(meter, stallState), *events)
+
+	return &listener
 }
 
 // DataDir returns the base data directory path for this store.
