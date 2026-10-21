@@ -17,6 +17,8 @@ import (
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // This test aggressively reproduces the cache divergence race condition:
@@ -136,15 +138,23 @@ func sendParallelTransactions(
 			for i := 0; i < txPerWorker; i++ {
 				account := fmt.Sprintf("user:%d", accountOffset+workerID*txPerWorker+i)
 
-				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(
-					ledgerName,
-					[]*commonpb.Posting{
-						actions.NewPosting("world", account, big.NewInt(100), asset),
-					},
-					nil,
-				)))
-				if err != nil {
-					failures.Add(1)
+				retryUntil := time.Now().Add(45 * time.Second)
+				for {
+					_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(
+						ledgerName,
+						[]*commonpb.Posting{
+							actions.NewPosting("world", account, big.NewInt(100), asset),
+						},
+						nil,
+					)))
+					if err == nil {
+						break
+					}
+					if status.Code(err) != codes.Unavailable || time.Now().After(retryUntil) {
+						failures.Add(1)
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
 				}
 			}
 		}(w)

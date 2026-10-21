@@ -168,19 +168,22 @@ var _ = Describe("Out-of-sync election", func() {
 			desyncFollower(lid, followers[0], []uint64{lid, followers[0], followers[1]})
 
 			// F1 is already syncing, but F2 is still a checkpointable voter, so
-			// this write is allowed. Both followers append the entry and it
+			// this write is eventually allowed once the health poll refreshes the
+			// verdict. Both followers append the entry and it
 			// reaches their stores only inside the checkpoints they fetch.
 			By("Creating an event sink while the followers' stores are behind")
-			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
-				Name:         "checkpointed-sink",
-				Format:       "json",
-				BatchSize:    1,
-				BatchDelayMs: 1,
-				Type: &commonpb.SinkConfig_Http{
-					Http: &commonpb.HttpSinkConfig{Endpoint: sinkReceiver.URL},
-				},
-			})))
-			Expect(err).To(Succeed())
+			Eventually(func() error {
+				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+					Name:         "checkpointed-sink",
+					Format:       "json",
+					BatchSize:    1,
+					BatchDelayMs: 1,
+					Type: &commonpb.SinkConfig_Http{
+						Http: &commonpb.HttpSinkConfig{Endpoint: sinkReceiver.URL},
+					},
+				})))
+				return err
+			}).Within(45 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 
 			desyncFollower(lid, followers[1], []uint64{lid, followers[1]})
 
