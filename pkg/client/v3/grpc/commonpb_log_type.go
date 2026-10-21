@@ -2,8 +2,6 @@ package grpc
 
 import (
 	"fmt"
-
-	"github.com/formancehq/ledger/pkg/client/v3/internal/json"
 )
 
 // LogType constants for log payload types.
@@ -24,28 +22,6 @@ const (
 )
 
 type LogType int16
-
-func (lt LogType) MarshalJSON() ([]byte, error) {
-	return json.Marshal(lt.String())
-}
-
-func (lt *LogType) UnmarshalJSON(data []byte) error {
-	var s string
-
-	err := json.Unmarshal(data, &s)
-	if err != nil {
-		return err
-	}
-
-	v, err := LogTypeFromString(s)
-	if err != nil {
-		return err
-	}
-
-	*lt = v
-
-	return nil
-}
 
 func (lt LogType) String() string {
 	switch lt {
