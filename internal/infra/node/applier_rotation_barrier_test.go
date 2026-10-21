@@ -50,6 +50,24 @@ func TestFindApplyBoundaryRechecksThresholdAfterConfig(t *testing.T) {
 	require.Equal(t, 1, findApplyBoundaryDecoded(decoded[2:], 2))
 }
 
+func TestFindApplyBoundaryKeepsUnchangedThresholdConfigInBatch(t *testing.T) {
+	t.Parallel()
+	decoded := []state.DecodedEntry{
+		{Entry: &raftpb.Entry{Index: new(uint64(1))}},
+		{
+			Entry: &raftpb.Entry{Index: new(uint64(2))},
+			Proposal: &raftcmdpb.Proposal{TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
+				Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{
+					ClusterConfig: &commonpb.ClusterConfig{RotationThreshold: 1000},
+				},
+			}}},
+		},
+		{Entry: &raftpb.Entry{Index: new(uint64(3))}},
+	}
+
+	require.Equal(t, len(decoded), findApplyBoundaryDecoded(decoded, 1000))
+}
+
 func TestRotationWaitsForPreviousCommit(t *testing.T) {
 	t.Parallel()
 	ctx := logging.TestingContext()

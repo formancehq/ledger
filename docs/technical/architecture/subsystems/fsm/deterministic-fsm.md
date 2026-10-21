@@ -656,10 +656,11 @@ the cache to a new generation. It waits for the preceding Pebble commit before
 preparing that entry. Preparation can mutate the cache, so waiting only when
 submitting the new commit would be too late: rotation could evict a Gen1 value
 that admission still needs from Pebble. Replay uses the same split, with each
-sub-batch committed synchronously. Cluster configuration entries are isolated
-and wait for the preceding commit before preparation because changing the
-rotation threshold resets the cache. The next sub-batch then uses the current
-rotation threshold.
+sub-batch committed synchronously. A cluster configuration entry that changes
+the rotation threshold is isolated and waits for the preceding commit before
+preparation because that change resets the cache. The next sub-batch then uses
+the new threshold. A configuration update that retains the threshold keeps
+the normal pipelined path.
 
 The sentinel's expected-volume reduction follows the durable batch's lifecycle
 order: a successful `WriteSet` deletion cascade invalidates that ledger's

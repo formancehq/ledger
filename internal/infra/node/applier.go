@@ -1532,12 +1532,13 @@ func (a *Applier) applyDecodedEntriesToFSM(ctx context.Context, stop chan struct
 	defer state.ReleaseDecodedEntries(decoded)
 
 	for offset := 0; offset < len(decoded); {
-		boundary := findApplyBoundaryDecoded(decoded[offset:], a.fsm.Registry.Cache.GenerationThreshold())
+		threshold := a.fsm.Registry.Cache.GenerationThreshold()
+		boundary := findApplyBoundaryDecoded(decoded[offset:], threshold)
 
 		end := offset + boundary
 		head := decoded[offset:end]
 		tail := decoded[end:]
-		if cache.Gen(head[0].Entry.GetIndex(), a.fsm.Registry.Cache.GenerationThreshold()) != a.fsm.Registry.Cache.CurrentGeneration() || hasClusterConfigUpdate(head[0]) {
+		if cache.Gen(head[0].Entry.GetIndex(), threshold) != a.fsm.Registry.Cache.CurrentGeneration() || changesRotationThreshold(head[0], threshold) {
 			// applyEntriesPipelined prepares before it waits for the previous
 			// commit. Rotation or a threshold-change reset cannot use that
 			// overlap: either could evict values not yet visible in Pebble.
@@ -1673,8 +1674,8 @@ func findCheckpointBoundaryDecoded(decoded []state.DecodedEntry) int {
 }
 
 // findApplyBoundaryDecoded ends a batch before its first cache rotation or
-// after its first checkpoint trigger. It isolates cluster configuration
-// entries so the next sub-batch uses the updated rotation threshold.
+// after its first checkpoint trigger. It isolates threshold-changing cluster
+// configuration entries so the next sub-batch uses the updated threshold.
 func findApplyBoundaryDecoded(decoded []state.DecodedEntry, threshold uint64) int {
 	if len(decoded) == 0 {
 		return 0
@@ -1685,7 +1686,7 @@ func findApplyBoundaryDecoded(decoded []state.DecodedEntry, threshold uint64) in
 		if cache.Gen(decoded[i].Entry.GetIndex(), threshold) != generation {
 			return i
 		}
-		if hasClusterConfigUpdate(decoded[i]) {
+		if changesRotationThreshold(decoded[i], threshold) {
 			if i > 0 {
 				return i
 			}
@@ -1700,12 +1701,12 @@ func findApplyBoundaryDecoded(decoded []state.DecodedEntry, threshold uint64) in
 	return len(decoded)
 }
 
-func hasClusterConfigUpdate(decoded state.DecodedEntry) bool {
+func changesRotationThreshold(decoded state.DecodedEntry, threshold uint64) bool {
 	if decoded.Proposal == nil {
 		return false
 	}
 	for _, update := range decoded.Proposal.GetTechnicalUpdates() {
-		if _, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_ClusterConfig); ok {
+		if config, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_ClusterConfig); ok && config.ClusterConfig.GetRotationThreshold() != threshold {
 			return true
 		}
 	}
