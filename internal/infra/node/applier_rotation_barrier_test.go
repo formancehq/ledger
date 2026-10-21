@@ -10,6 +10,9 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -91,7 +94,9 @@ func TestRotationWaitsForPreviousCommit(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("pre-rotation batch was not prepared")
 	}
-	require.Equal(t, uint64(0), setup.fsm.Registry.Cache.CurrentGeneration())
+	require.Never(t, func() bool {
+		return setup.fsm.Registry.Cache.CurrentGeneration() != 0
+	}, 100*time.Millisecond, 5*time.Millisecond)
 	require.False(t, listLedgerContains(setup.store, "rotation-ledger-a"))
 
 	// The rotating entry is in the same Raft apply work item. It must not
@@ -111,6 +116,84 @@ func TestRotationWaitsForPreviousCommit(t *testing.T) {
 	rotating.done <- nil
 	require.NoError(t, <-result)
 	require.NoError(t, setup.applier.waitPendingCommit(ctx))
+}
+
+// TestRotationPreloadReadsCommittedValue checks the original stale-seed
+// symptom. The write at index 3 is in the cache while its Pebble commit is
+// withheld. At index 5, rotation moves it out of Gen0. For a proposal at
+// index 9, CheckCache then requires a Pebble seed; that seed must contain the
+// index-3 value. The read below is the cache-verdict + store-read path used
+// by plan.Builder (which cannot be imported by node tests without a cycle).
+func TestRotationPreloadReadsCommittedValue(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+	setup := newTestApplierSetup(t)
+	setup.fsm.Registry.Cache.SetGenerationThreshold(4)
+	ledgerName := "pre-rotation-ledger"
+	ledgerKey := domain.LedgerKey{Name: ledgerName}
+	ledgerID, _ := attributes.MakeKey(ledgerKey.Bytes())
+	create, _ := makeCreateLedgerEntry(t, 3, ledgerName)
+	entries := []*raftpb.Entry{
+		{Index: new(uint64(1)), Type: new(raftpb.EntryNormal)},
+		{Index: new(uint64(2)), Type: new(raftpb.EntryNormal)},
+		create,
+		{Index: new(uint64(4)), Type: new(raftpb.EntryNormal)},
+		{Index: new(uint64(5)), Type: new(raftpb.EntryNormal)},
+	}
+	decoded, err := state.DecodeEntries(entries)
+	require.NoError(t, err)
+	result := make(chan error, 1)
+	go func() {
+		result <- setup.applier.applyDecodedEntriesToFSM(ctx, setup.stop, setup.confState, nil, decoded)
+	}()
+
+	readSeed := func() (cache.CacheStatus, *commonpb.LedgerInfo, error) {
+		status := setup.fsm.Registry.Cache.Ledgers.CheckCache(9, ledgerID)
+		handle, err := setup.store.NewReadHandle()
+		if err != nil {
+			return status, nil, err
+		}
+		defer func() { _ = handle.Close() }()
+		seed, err := setup.fsm.Registry.Attrs.Ledger.Get(handle, ledgerKey.Bytes())
+
+		return status, seed, err
+	}
+
+	var previous commitWork
+	select {
+	case previous = <-setup.applier.commitCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("pre-rotation batch was not prepared")
+	}
+	// Without the barrier, index 5 was already prepared and rotated while
+	// the index-3 write was still absent from Pebble. Capture that stale seed
+	// before committing; release the work even when the assertion will fail.
+	rotatedBeforeCommit := setup.fsm.Registry.Cache.CurrentGeneration() == 1
+	var status cache.CacheStatus
+	var seed *commonpb.LedgerInfo
+	var seedErr error
+	if rotatedBeforeCommit {
+		status, seed, seedErr = readSeed()
+	}
+	require.NoError(t, setup.fsm.CommitPreparedBatch(ctx, previous.prepared))
+	previous.done <- nil
+
+	if !rotatedBeforeCommit {
+		var rotating commitWork
+		select {
+		case rotating = <-setup.applier.commitCh:
+		case <-time.After(5 * time.Second):
+			t.Fatal("rotating batch was not prepared after the previous commit")
+		}
+		status, seed, seedErr = readSeed()
+		require.NoError(t, setup.fsm.CommitPreparedBatch(ctx, rotating.prepared))
+		rotating.done <- nil
+	}
+	require.NoError(t, <-result)
+	require.NoError(t, setup.applier.waitPendingCommit(ctx))
+	require.Equal(t, cache.CacheMiss, status, "index 9 cannot use this Gen1-only ledger")
+	require.NoError(t, seedErr, "the required preload seed must already be durable")
+	require.Equal(t, ledgerName, seed.GetName())
 }
 
 func TestRotationDoesNotPrepareAfterFailedCommit(t *testing.T) {

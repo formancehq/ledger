@@ -511,28 +511,29 @@ Restore:
 
 ---
 
-## 11. persistedIndex + Backpressure (rare)
+## 11. Commit barrier at cache rotation
 
 ### 11.1 persistedIndex definition
 
 `persistedIndex` is the last Raft index whose effects are visible in Pebble after successful `Batch.Commit()`.
 
-Used for:
+It is useful for observing persistence lag and diagnosing restarts. Raft indexes
+still determine when the cache rotates. Before preparing an entry that crosses
+a generation boundary, the applier waits for the previous Pebble commit. Thus,
+when rotation evicts the old Gen1, every write from the preceding generation
+is already visible in Pebble. Admission can safely load a key that is no longer
+in Gen0 for a proposal in the next generation (`CheckCache` case 1).
 
-- observability: persistence lag
-- admission guardrail: ensure the store is up-to-date enough for reading values at boundary `B`
-- restart diagnostics
+### 11.2 Threshold changes
 
-It must never drive rotation/eviction.
+A cluster configuration entry that changes the rotation threshold resets the
+cache. The applier waits for the previous commit before preparing that entry,
+then uses the new threshold for subsequent entries. A configuration update
+that keeps the threshold follows the normal pipelined path.
 
-### 11.2 Backpressure condition
-
-If the store is too far behind to provide coherent values for accounts not in the cache:
-
-- condition: `storeIndex < baseIndex(gen1)` (equivalently: cannot read values at `B(i)`)
-- Admission must apply backpressure (queue/retry) until catch-up
-
-In practice: expected negligible with continuous Pebble flush (batch + no sync).
+Admission separately rejects a proposal predicted to land two or more
+generations ahead of the applied cache; such a proposal must be rebuilt after
+the FSM catches up. This horizon guard does not depend on `persistedIndex`.
 
 ---
 
@@ -726,6 +727,6 @@ satisfy it.
 - Preload may include an "older" volume at `B(i)`; subsequent applies update absolute volumes in place, ensuring correctness.
 - Snapshots are not aligned across nodes → snapshot must embed `gen0 + gen1`.
 - Pebble stores one entry per canonical key (last-write-wins, overwritten in place).
-- `persistedIndex` is an operational guardrail and backpressure signal (rare), not a rotation input.
+- The applier waits for the preceding Pebble commit before a cache rotation or threshold-changing reset, so evicted values are durable when admission reads them.
 - Checkpoint-triggering orders are always the last in their proposal AND the last in their PrepareEntries slice, keeping `runCommitter` the sole writer to the main store.
 - `AttributeLoader` coordinates concurrent attribute loads to prevent duplicate store reads.
