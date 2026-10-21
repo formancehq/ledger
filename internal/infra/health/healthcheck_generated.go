@@ -101,3 +101,79 @@ func (mr *MocksnapshotRecoveryTrackerMockRecorder) SnapshotRecoveryPending(peerI
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SnapshotRecoveryPending", reflect.TypeOf((*MocksnapshotRecoveryTracker)(nil).SnapshotRecoveryPending), peerID)
 }
+
+// MockrecoveryGenerationSource is a mock of recoveryGenerationSource interface.
+type MockrecoveryGenerationSource struct {
+	ctrl     *gomock.Controller
+	recorder *MockrecoveryGenerationSourceMockRecorder
+	isgomock struct{}
+}
+
+// MockrecoveryGenerationSourceMockRecorder is the mock recorder for MockrecoveryGenerationSource.
+type MockrecoveryGenerationSourceMockRecorder struct {
+	mock *MockrecoveryGenerationSource
+}
+
+// NewMockrecoveryGenerationSource creates a new mock instance.
+func NewMockrecoveryGenerationSource(ctrl *gomock.Controller) *MockrecoveryGenerationSource {
+	mock := &MockrecoveryGenerationSource{ctrl: ctrl}
+	mock.recorder = &MockrecoveryGenerationSourceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockrecoveryGenerationSource) EXPECT() *MockrecoveryGenerationSourceMockRecorder {
+	return m.recorder
+}
+
+// RecoveryGeneration mocks base method.
+func (m *MockrecoveryGenerationSource) RecoveryGeneration() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecoveryGeneration")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// RecoveryGeneration indicates an expected call of RecoveryGeneration.
+func (mr *MockrecoveryGenerationSourceMockRecorder) RecoveryGeneration() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecoveryGeneration", reflect.TypeOf((*MockrecoveryGenerationSource)(nil).RecoveryGeneration))
+}
+
+// MockvoterQuorumSetSource is a mock of voterQuorumSetSource interface.
+type MockvoterQuorumSetSource struct {
+	ctrl     *gomock.Controller
+	recorder *MockvoterQuorumSetSourceMockRecorder
+	isgomock struct{}
+}
+
+// MockvoterQuorumSetSourceMockRecorder is the mock recorder for MockvoterQuorumSetSource.
+type MockvoterQuorumSetSourceMockRecorder struct {
+	mock *MockvoterQuorumSetSource
+}
+
+// NewMockvoterQuorumSetSource creates a new mock instance.
+func NewMockvoterQuorumSetSource(ctrl *gomock.Controller) *MockvoterQuorumSetSource {
+	mock := &MockvoterQuorumSetSource{ctrl: ctrl}
+	mock.recorder = &MockvoterQuorumSetSourceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockvoterQuorumSetSource) EXPECT() *MockvoterQuorumSetSourceMockRecorder {
+	return m.recorder
+}
+
+// VoterQuorumSets mocks base method.
+func (m *MockvoterQuorumSetSource) VoterQuorumSets() [][]uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "VoterQuorumSets")
+	ret0, _ := ret[0].([][]uint64)
+	return ret0
+}
+
+// VoterQuorumSets indicates an expected call of VoterQuorumSets.
+func (mr *MockvoterQuorumSetSourceMockRecorder) VoterQuorumSets() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "VoterQuorumSets", reflect.TypeOf((*MockvoterQuorumSetSource)(nil).VoterQuorumSets))
+}
