@@ -2111,10 +2111,10 @@ enum ErrorReason {
   // Submit the revert in a later batch.
   ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH = 70;
   ERROR_REASON_SINK_CONTROLLER_MISMATCH = 71;
-  // Deprecated: caller-attribution violations are internal-only and are no
-  // longer emitted by any public failure producer. Retain the value because
-  // revision 40 freezes the service-visible enum descriptor.
-  ERROR_REASON_INVALID_CALLER_ATTRIBUTION = 72 [deprecated = true];
+  // Caller-attribution violations are internal-only and are no longer emitted
+  // by any public failure producer. Retain the value because revision 40
+  // freezes the service-visible enum descriptor.
+  ERROR_REASON_INVALID_CALLER_ATTRIBUTION = 72;
   // ERROR_REASON_NUMSCRIPT_COMPILE_ERROR: a script that parsed and resolved
   // cannot run on the Numscript VM — a static-semantics error the compiler's
   // typechecker catches, a feature used without its flag, an unsupported
