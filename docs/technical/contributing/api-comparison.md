@@ -1324,11 +1324,12 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 
 ### Cluster node ID width
 
-Cluster status and manual leadership transfer preserve unsigned 64-bit node
-identities in the existing protobuf fields, including per-peer enrichment and
-CLI arguments. The zero state-request target still routes to the leader; a
-zero transfer target rejects. These v3 cluster administration RPCs have no v2
-ledger API equivalent and do not change HTTP routes or envelopes. See the
+Cluster status, manual leadership transfer and primary/secondary store-metrics
+targets preserve unsigned 64-bit node identities in the existing protobuf fields,
+including per-peer enrichment and CLI arguments. The zero state-request target still routes to the leader; a
+zero transfer target rejects. Zero metrics targets select the local store.
+These v3 administration RPCs have no v2 ledger API equivalent and do not change
+HTTP routes or envelopes. See the
 [cluster identity contract](../architecture/subsystems/api/grpc-api.md#cluster-node-identities)
 and [old-reader limitations](../architecture/subsystems/api/protocol-compatibility.md#cluster-node-id-width).
 

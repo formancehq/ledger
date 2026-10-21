@@ -300,12 +300,16 @@ See [LedgerInfo](../architecture/subsystems/api/ledger-info.md).
 
 ## Cluster node identities
 
-Cluster state projections, targeted peer requests, per-node enrichment and
-leadership transfer must preserve uint64 IDs, including colliding low 32 bits
+Cluster state projections, targeted peer requests, per-node enrichment,
+leadership transfer and primary/secondary store-metrics targets must preserve
+uint64 IDs, including colliding low 32 bits
 (`1` and `4294967297`). Verify the real Node.GetClusterState projection against
 nested Raft status and capture actual adapter and Cobra RPC targets. Include
 small-ID controls, uint64 maximum, and pre-dial rejection of invalid, zero or
-overflowing transfer arguments. The six original cluster fields retain names,
+overflowing transfer arguments. Metrics target zero remains local; unknown
+targets must not fall back to a colliding low-ID peer. Capture both metrics RPCs
+through Cobra and the forwarding adapter, including uint64 maximum. The six
+original cluster fields and two metrics target fields retain names,
 numbers and unsigned-varint encoding without a parallel compatibility field.
 This domain owns projection, parsing and routing fidelity; election correctness
 and member persistence remain in raft-membership-leadership. Varint decoding

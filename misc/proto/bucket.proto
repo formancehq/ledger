@@ -627,7 +627,7 @@ message RemoveAccountTypeLedgerRequest {
 
 message GetPrimaryMetricsRequest {
   // node_id indicates which node to query (0 = local node)
-  uint32 node_id = 1;
+  uint64 node_id = 1;
 }
 
 message GetPrimaryMetricsResponse {
@@ -639,7 +639,7 @@ message GetPrimaryMetricsResponse {
 
 message GetSecondaryMetricsRequest {
   // node_id indicates which node to query (0 = local node)
-  uint32 node_id = 1;
+  uint64 node_id = 1;
 }
 
 message GetSecondaryMetricsResponse {

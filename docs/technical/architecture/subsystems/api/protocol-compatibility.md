@@ -661,20 +661,21 @@ the revision is frozen, and the client impact must be documented.
 
 ## Cluster node ID width
 
-Cluster status and leadership-transfer identities widen their existing fields
-from `uint32` to `uint64`, retaining names, field numbers and unsigned-varint
-wire encoding. Revision 40 remains unchanged. Values through `4294967295`
+Cluster status, leadership-transfer identities and both store-metrics request
+targets widen their existing fields from `uint32` to `uint64`, retaining names,
+field numbers and unsigned-varint wire encoding. Revision 40 remains unchanged. Values through `4294967295`
 have the same representation and interpretation in old and new readers.
 Older generated readers truncate larger values to 32 bits: IDs `1` and
 `4294967297` can appear identical, and an old server can route a high-ID
-request to the wrong member. Old CLI builds also reject high transfer targets.
+request to the wrong member. Old CLI builds also reject high transfer and
+store-metrics targets.
 ProtoJSON renders these widened fields as decimal strings rather than the
 previous uint32 JSON numbers, including structured CLI status output; JSON/YAML
 consumers must accept that representation. Regenerate clients from the updated
 schema and update the CLI and every server
-participating in status forwarding or leadership transfer before using these
-operations with IDs above `4294967295`. During rolling upgrades, those high-ID
-operations remain unreliable through older servers; complete the rollout first.
+participating in status forwarding, leadership transfer or store-metrics routing
+before using these operations with IDs above `4294967295`. During rolling
+upgrades, those high-ID operations remain unreliable through older servers; complete the rollout first.
 This change does not alter persisted member identities, Raft transport,
 committed entry application, audit history, snapshots or backups, and requires
 no persisted-state migration. Existing configured high IDs remain intact.

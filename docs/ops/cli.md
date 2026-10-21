@@ -1999,6 +1999,12 @@ Storage operations.
 
 Get metrics from the primary Pebble storage engine.
 
+Both store-metrics commands accept `--node-id` through `18446744073709551615`;
+negative, malformed and overflowing values reject before dialing. For IDs above
+`4294967295`, upgrade the CLI and every server on the forwarding path first:
+older servers truncate request IDs. See the
+[rollout limitation](../technical/architecture/subsystems/api/protocol-compatibility.md#cluster-node-id-width).
+
 **Aliases:** `store p m`
 
 ```bash
@@ -2011,7 +2017,7 @@ ledgerctl store primary metrics [flags]
 |------|---------|-------------|
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
-| `--node-id` | `0` | Target node ID (0 = local node) |
+| `--node-id` | `0` | Unsigned 64-bit target node ID (0 = local node) |
 
 **Example:**
 
@@ -2040,7 +2046,7 @@ ledgerctl store secondary metrics [flags]
 |------|---------|-------------|
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
-| `--node-id` | `0` | Target node ID (0 = local node) |
+| `--node-id` | `0` | Unsigned 64-bit target node ID (0 = local node) |
 
 **Example:**
 
