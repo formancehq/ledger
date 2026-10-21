@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -221,12 +222,28 @@ func (r *BackupRunReconciler) ensureBackupJob(
 		return nil, fmt.Errorf("looking up Job: %w", err)
 	}
 
-	tlsMode, err := fetchTLSMode(ctx, r.Client, ls.Namespace, resourceName(ls.Name))
-	if err != nil {
-		return nil, fmt.Errorf("resolving TLS mode for Cluster %q: %w", ls.Name, err)
+	// Desired spec may already omit TLS while the live workload is optional.
+	// Resolve both transport and trust from the same owned workload snapshot.
+	// Absence during orphan/recreate is retryable, never a plaintext fallback.
+	sts := &appsv1.StatefulSet{}
+	if err := r.Get(ctx, types.NamespacedName{Name: resourceName(ls.Name), Namespace: ls.Namespace}, sts); err != nil {
+		return nil, fmt.Errorf("resolving TLS workload for Cluster %q: %w", ls.Name, err)
+	}
+	if !metav1.IsControlledBy(sts, ls) {
+		return nil, fmt.Errorf("StatefulSet %q is not controlled by Cluster %q (UID %s)", sts.Name, ls.Name, ls.UID)
+	}
+	tlsMode := currentTLSModeFromStatefulSet(sts)
+	effective := ls.DeepCopy()
+	if tlsMode == tlsModeRequired || tlsMode == tlsModeOptional {
+		effective.Spec.TLS = tlsConfigFromStatefulSet(sts)
+		if effective.Spec.TLS == nil {
+			return nil, fmt.Errorf("TLS workload %q has no certificate Secret reference", sts.Name)
+		}
+	} else if tlsMode != tlsModeDisabled {
+		return nil, fmt.Errorf("workload %q has invalid TLS mode %q", sts.Name, tlsMode)
 	}
 
-	desired, err := buildBackupJob(run, backup, ls, tlsMode)
+	desired, err := buildBackupJob(run, backup, effective, tlsMode)
 	if err != nil {
 		return nil, &permanentBackupJobError{err}
 	}

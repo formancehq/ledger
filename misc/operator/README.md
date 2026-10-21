@@ -58,6 +58,33 @@ excluded. Manual replacement between verification and the unconditional drop
 can still be deleted: this race is explicitly accepted, and no atomic deletion
 precondition is provided. See the [audit attribution contract](../../docs/technical/architecture/subsystems/indexer/operator-ownership.md).
 
+## TLS disable recovery
+
+Removing `spec.tls`, or setting `tls.enabled: false` while clearing its Secret
+reference, drives the existing cluster through `optional` before `disabled`.
+The operator first persists `status.tlsRollout` (mode, certificate Secret name
+and CA key), then changes or recreates the StatefulSet using those references.
+If that status write fails, the workload remains unchanged. Desired spec is
+not rewritten. A replacement controller can resume even after orphan deletion
+has removed the StatefulSet; retained mode prevents plaintext bootstrap while
+TLS peers still exist.
+
+The retained reference remains until the disabled template has converged
+(current StatefulSet generation observed, all desired replicas updated and
+ready). A failed workload or cleanup write leaves durable recovery state for
+retry. Keep the externally owned certificate Secret until that convergence
+and rollout-state cleanup; the operator never deletes it. The separately
+managed inter-node `cluster-secret` is removed after the disabled template
+has dropped its reference. External authentication continues to require TLS.
+New backup Jobs resolve TLS mode and certificate/CA references from the same
+owned StatefulSet template, so removing desired TLS cannot strip trust from a
+Job targeting the optional phase. Missing workloads retry provisioning; foreign
+owners are rejected. Existing Jobs retain their own persisted templates.
+In-pod ledgerctl calls from Ledger and EventSink reconciliation also retry
+without exec when the StatefulSet is absent, then read its mode after recreation.
+See [TLS migration](../../docs/ops/tls-migration.md) for phases, interruption
+boundaries and recovery guidance.
+
 ## Pyroscope credentials
 
 `spec.monitoring.pyroscope.authTokenFrom` and `basicAuthPasswordFrom` accept

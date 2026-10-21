@@ -245,7 +245,15 @@ func newRealIndexHarness(t *testing.T) *realIndexHarness {
 }
 
 func (h *realIndexHarness) client(funcs interceptor.Funcs) client.Client {
-	return fake.NewClientBuilder().WithScheme(h.scheme).WithObjects(h.ledger).WithStatusSubresource(h.ledger).WithInterceptorFuncs(funcs).Build()
+	// The exec boundary resolves transport from the live workload before invoking
+	// the real CLI. Keep that workload present independently of desired TLS.
+	cluster := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
+		Name: h.ledger.Spec.ClusterRef, Namespace: h.ledger.Namespace, UID: "index-test-cluster",
+	}}
+	applyDefaults(cluster)
+	sts := backupTLSWorkload(cluster, tlsModeDisabled)
+
+	return fake.NewClientBuilder().WithScheme(h.scheme).WithObjects(h.ledger, sts).WithStatusSubresource(h.ledger).WithInterceptorFuncs(funcs).Build()
 }
 
 func (h *realIndexHarness) controller(c client.Client) *LedgerReconciler {
