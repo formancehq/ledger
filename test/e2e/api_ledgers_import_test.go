@@ -530,8 +530,8 @@ var _ = Context("Ledger engine tests", func() {
 								// should block
 								_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 									Ledger: ledgerCopyName,
-									Force:  pointer.For(true),
 									V2PostTransaction: components.V2PostTransaction{
+										Force: pointer.For(true),
 										Postings: []components.V2Posting{{
 											Source:      "a",
 											Destination: "b",
