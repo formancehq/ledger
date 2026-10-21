@@ -138,8 +138,9 @@ func sendParallelTransactions(
 			for i := 0; i < txPerWorker; i++ {
 				account := fmt.Sprintf("user:%d", accountOffset+workerID*txPerWorker+i)
 
-				retryUntil := time.Now().Add(45 * time.Second)
-				for {
+				succeeded := false
+				terminal := false
+				Eventually(func() bool {
 					_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(
 						ledgerName,
 						[]*commonpb.Posting{
@@ -148,13 +149,17 @@ func sendParallelTransactions(
 						nil,
 					)))
 					if err == nil {
-						break
+						succeeded = true
+						return true
 					}
-					if status.Code(err) != codes.Unavailable || time.Now().After(retryUntil) {
-						failures.Add(1)
-						break
+					if status.Code(err) != codes.Unavailable {
+						terminal = true
+						return true
 					}
-					time.Sleep(100 * time.Millisecond)
+					return false
+				}).Within(45 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
+				if terminal || !succeeded {
+					failures.Add(1)
 				}
 			}
 		}(w)
