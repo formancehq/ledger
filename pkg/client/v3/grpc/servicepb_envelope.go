@@ -3,6 +3,8 @@ package grpc
 import (
 	"errors"
 	"fmt"
+
+	"google.golang.org/protobuf/proto"
 )
 
 // UnsignedApplyRequest builds an unsigned ApplyRequest carrying a batch of
@@ -41,7 +43,7 @@ func PeekBatch(ar *ApplyRequest) (*ApplyBatch, error) {
 		}
 
 		batch := &ApplyBatch{}
-		if err := batch.UnmarshalVT(v.Signed.GetPayload()); err != nil {
+		if err := proto.Unmarshal(v.Signed.GetPayload(), batch); err != nil {
 			return nil, fmt.Errorf("peeking signed payload: %w", err)
 		}
 
