@@ -1,7 +1,12 @@
 {
-  description = "A Nix-flake-based Go 1.24 development environment";
+  description = "A Nix-flake-based Go 1.26 development environment";
 
   inputs = {
+    # Keep application tooling pinned; update only the compiler and its linter.
+    go-tooling = {
+      url = "github:NixOS/nixpkgs/8cec5ef1131078ea76689e84c362b0ed6a1fb6a1";
+      flake = false;
+    };
     nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2511";
 
     nur = {
@@ -10,7 +15,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, nur }:
+  outputs = { self, go-tooling, nixpkgs, nur }:
     let
       supportedSystems = [
         "x86_64-linux"
@@ -82,11 +87,24 @@
 
       devShells = forEachSupportedSystem ({ pkgs, system }:
         let
+          # Import only Go recipes so unrelated tools and all four platforms stay pinned.
+          go126 = pkgs.callPackage "${go-tooling}/pkgs/development/compilers/go/1.26.nix" {
+            buildGo126Module = build126;
+          };
+          go127 = pkgs.callPackage "${go-tooling}/pkgs/development/compilers/go/1.27.nix" {
+            buildGo127Module = build127;
+          };
+          build126 = pkgs.buildGoModule.override { go = go126; };
+          build127 = pkgs.buildGoModule.override { go = go127; };
+          go = go126;
+          golangci-lint = pkgs.callPackage "${go-tooling}/pkgs/by-name/go/golangci-lint/package.nix" {
+            buildGo127Module = build127;
+          };
+
           stablePackages = with pkgs; [
             ginkgo
-            go_1_24
+            go
             go-tools
-            golangci-lint
             gomarkdoc
             goperf
             gotools
@@ -101,6 +119,7 @@
             yq-go
           ];
           otherPackages = [
+            golangci-lint
             pkgs.nur.repos.goreleaser.goreleaser-pro
             self.packages.${system}.speakeasy
           ];
@@ -108,6 +127,7 @@
         {
           default = pkgs.mkShell {
             packages = stablePackages ++ otherPackages;
+            GOTOOLCHAIN = "local";
           };
         }
       );
