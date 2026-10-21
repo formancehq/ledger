@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 )
@@ -51,12 +52,19 @@ func jsonToString(value any) (string, error) {
 	switch v := value.(type) {
 	// we might want to disallow this completely
 	case float64:
-		if math.Floor(v) != v {
+		if math.IsInf(v, 0) || math.Floor(v) != v {
 			return "", errors.New("numbers with decimals are not allowed")
 		}
-		return strconv.FormatInt(int64(v), 10), nil
+		x, _ := new(big.Float).SetFloat64(v).Int(nil)
+		return x.String(), nil
 	case json.Number:
-		return string(v), nil
+		// Normalize integral forms such as 123.0 or 1e3 so that an address
+		// like users:${id} becomes users:123, not users:123.0.
+		x, err := jsonNumberToInt(v)
+		if err != nil {
+			return "", errors.New("numbers with decimals are not allowed")
+		}
+		return x.String(), nil
 	case string:
 		return v, nil
 	case bool:

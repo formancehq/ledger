@@ -243,11 +243,11 @@ func resolveValue(fieldType FieldType, value string, vars map[string]any) (any, 
 			}
 			return bigInt, nil
 		}
-		if x, ok := new(big.Int).SetString(string(*v), 10); ok {
-			return x, nil
-		} else {
-			return nil, fmt.Errorf("provided number should be an integer: %v", v)
+		x, err := jsonNumberToInt(*v)
+		if err != nil {
+			return nil, fmt.Errorf("provided number should be an integer: %v", *v)
 		}
+		return x, nil
 	default:
 		return nil, fmt.Errorf("unexpected FieldType: %#v", fieldType)
 	}
