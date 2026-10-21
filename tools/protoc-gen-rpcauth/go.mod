@@ -2,7 +2,7 @@ module github.com/formancehq/ledger/v3/tools/protoc-gen-rpcauth
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.27.3
 
 require (
 	github.com/stretchr/testify v1.11.1

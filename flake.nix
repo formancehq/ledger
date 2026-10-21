@@ -92,7 +92,7 @@
           };
 
           # Mock generation must understand the root module Go version.
-          buildGoModule = pkgs.buildGoModule.override { inherit go; };
+          buildGoModule = build127;
 
           # Tools invoked by CI jobs. Every CI job downloads this closure on a
           # cold Nix cache, so a tool belongs here only if a workflow step,

@@ -2,7 +2,7 @@ module github.com/formancehq/ledger/v3/tests/perf
 
 go 1.26.1
 
-toolchain go1.26.10
+toolchain go1.27.3
 
 require (
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.24.1
