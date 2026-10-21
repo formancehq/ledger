@@ -71,7 +71,7 @@ func TestApplyCheckpointReplayWhileOriginalWaits(t *testing.T) {
 			serving := leader
 			if forwarded {
 				follower, _ := newCheckpointWaitHarness(t)
-				follower.ctrl = NewLedgerGrpcClient(dialBucketServer(t, checkpointAuthenticatedPeer{leader}), true)
+				follower.ctrl = NewLedgerGrpcClient(dialBucketServer(t, checkpointAuthenticatedPeer{leader}))
 				serving = follower
 			}
 			response, err := serving.Apply(ctx, request())

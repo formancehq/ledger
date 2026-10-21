@@ -1055,7 +1055,7 @@ func TestApply_DoesNotForwardAuthDisabledSnapshotToTrustedPeer(t *testing.T) {
 		ClusterSecret: "shared-cluster-secret",
 	})
 	require.NoError(t, err)
-	grpcClient := NewLedgerGrpcClient(mock, true)
+	grpcClient := NewLedgerGrpcClient(mock)
 	_, err = grpcClient.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{}))
 	require.NoError(t, err)
 	require.NotNil(t, capturedApplyReq)

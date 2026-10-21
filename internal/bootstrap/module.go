@@ -619,7 +619,6 @@ func Module() fx.Option {
 					defaultCtrl,
 					raftNode,
 					servicePool,
-					cfg.ClusterSecret != "",
 				), defaultCtrl
 			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``)),
 			func(serviceServer *grpcadp.ServiceServer, n *node.Node, store *dal.Store, rs *readstore.Store) *clusterhealth.GRPCHealthUpdater {
