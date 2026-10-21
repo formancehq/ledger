@@ -11,7 +11,7 @@ postgres:
 
 sources:
     # The shared builder installs an unpinned Go package from Alpine edge.
-    FROM golang:1.26.10-alpine
+    FROM golang:1.27.3-alpine
     RUN apk add --no-cache git
     ENV GOTOOLCHAIN=local
     ENV CGO_ENABLED=0

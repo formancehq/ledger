@@ -1,5 +1,5 @@
 {
-  description = "A Nix-flake-based Go 1.26 development environment";
+  description = "A Nix-flake-based Go 1.27.3 development environment";
 
   inputs = {
     # Keep application tooling pinned; update only the compiler and its linter.
@@ -88,15 +88,11 @@
       devShells = forEachSupportedSystem ({ pkgs, system }:
         let
           # Import only Go recipes so unrelated tools and all four platforms stay pinned.
-          go126 = pkgs.callPackage "${go-tooling}/pkgs/development/compilers/go/1.26.nix" {
-            buildGo126Module = build126;
-          };
           go127 = pkgs.callPackage "${go-tooling}/pkgs/development/compilers/go/1.27.nix" {
             buildGo127Module = build127;
           };
-          build126 = pkgs.buildGoModule.override { go = go126; };
           build127 = pkgs.buildGoModule.override { go = go127; };
-          go = go126;
+          go = go127;
           golangci-lint = pkgs.callPackage "${go-tooling}/pkgs/by-name/go/golangci-lint/package.nix" {
             buildGo127Module = build127;
           };
