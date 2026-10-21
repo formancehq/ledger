@@ -38,10 +38,29 @@ jobs:
         uses: ./.github/actions/default
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      - run: >
+      - id: pre-commit
+        run: >
           nix develop --impure --command just pre-commit
         env:
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
+      - name: Diagnose SDK Staticcheck selection
+        if: failure() && steps.pre-commit.outcome == 'failure'
+        run: |
+          nix develop --impure --command bash -euo pipefail -c '
+            type -a staticcheck
+            selected=$(command -v staticcheck)
+            "$selected" -version
+            go version -m "$selected"
+            go env GOBIN GOPATH
+            install_dir=$(go env GOBIN)
+            if [ -z "$install_dir" ]; then
+              install_dir="$(go env GOPATH)/bin"
+            fi
+            if [ -x "$install_dir/staticcheck" ]; then
+              "$install_dir/staticcheck" -version
+              go version -m "$install_dir/staticcheck"
+            fi
+          '
       - name: Get changed files
         id: changed-files
         shell: bash
