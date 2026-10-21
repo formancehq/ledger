@@ -3,8 +3,6 @@ package grpc
 import (
 	"fmt"
 	"math/big"
-
-	"github.com/formancehq/ledger/pkg/client/v3/internal/json"
 )
 
 // NewPosting constructs an uncolored posting.
@@ -38,21 +36,4 @@ func NewUint256FromBig(value *big.Int) *Uint256 {
 	copyValue.Rsh(copyValue, 64)
 	result.V3 = copyValue.Uint64()
 	return result
-}
-
-// MarshalJSON preserves the explicit empty color on uncolored postings.
-func (x *Posting) MarshalJSON() ([]byte, error) {
-	return json.Marshal(struct {
-		Source      string   `json:"source"`
-		Destination string   `json:"destination"`
-		Amount      *Uint256 `json:"amount"`
-		Asset       string   `json:"asset"`
-		Color       string   `json:"color"`
-	}{
-		Source:      x.GetSource(),
-		Destination: x.GetDestination(),
-		Amount:      x.GetAmount(),
-		Asset:       x.GetAsset(),
-		Color:       x.GetColor(),
-	})
 }

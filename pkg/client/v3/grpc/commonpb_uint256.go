@@ -1,8 +1,6 @@
 package grpc
 
 import (
-	"encoding/json"
-	"fmt"
 	"math/big"
 )
 
@@ -38,30 +36,4 @@ func (u *Uint256) IsZero() bool {
 // Dec returns the decimal string representation of the value.
 func (u *Uint256) Dec() string {
 	return u.ToBigInt().String()
-}
-
-// MarshalJSON encodes the Uint256 as a decimal number.
-func (u *Uint256) MarshalJSON() ([]byte, error) {
-	return []byte(u.Dec()), nil
-}
-
-// UnmarshalJSON decodes a decimal number into the Uint256.
-func (u *Uint256) UnmarshalJSON(data []byte) error {
-	// A uint256 has at most 78 decimal digits. Bound input before big.Int
-	// parsing so an untrusted JSON number cannot demand unbounded work.
-	if len(data) > 78 || !json.Valid(data) {
-		return fmt.Errorf("invalid Uint256 decimal %q", data)
-	}
-	value, ok := new(big.Int).SetString(string(data), 10)
-	if !ok || value.Sign() < 0 || value.BitLen() > 256 {
-		return fmt.Errorf("invalid Uint256 decimal %q", data)
-	}
-	u.V0 = value.Uint64()
-	value.Rsh(value, 64)
-	u.V1 = value.Uint64()
-	value.Rsh(value, 64)
-	u.V2 = value.Uint64()
-	value.Rsh(value, 64)
-	u.V3 = value.Uint64()
-	return nil
 }

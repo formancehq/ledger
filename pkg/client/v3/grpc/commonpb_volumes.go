@@ -1,13 +1,10 @@
 package grpc
 
 import (
-	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"math/big"
 	"sort"
-
-	"github.com/formancehq/ledger/pkg/client/v3/internal/json"
 )
 
 // Balance calculates the balance (input - output).
@@ -38,20 +35,6 @@ func (v *Volumes) toBigInts() (*big.Int, *big.Int, error) {
 	}
 
 	return input, output, nil
-}
-
-// MarshalJSON implements json.Marshaler for Volumes.
-func (v *Volumes) MarshalJSON() ([]byte, error) {
-	if v == nil {
-		return json.Marshal(nil)
-	}
-
-	input, output, err := v.toBigInts()
-	if err != nil {
-		return nil, err
-	}
-
-	return marshalVolumesJSON(input, output, new(big.Int).Sub(input, output))
 }
 
 func (v *VolumesWithBalance) Validate() error {
@@ -86,54 +69,6 @@ func (v *VolumesWithBalance) validatedBigInts() (*big.Int, *big.Int, *big.Int, e
 	}
 
 	return input, output, balance, nil
-}
-
-func (v *VolumesWithBalance) MarshalJSON() ([]byte, error) {
-	if v == nil {
-		return json.Marshal(nil)
-	}
-	input, output, balance, err := v.validatedBigInts()
-	if err != nil {
-		return nil, err
-	}
-
-	return marshalVolumesJSON(input, output, balance)
-}
-
-func marshalVolumesJSON(input, output, balance *big.Int) ([]byte, error) {
-	return json.Marshal(&struct {
-		Input   string `json:"input"`
-		Output  string `json:"output"`
-		Balance string `json:"balance"`
-	}{
-		Input:   input.String(),
-		Output:  output.String(),
-		Balance: balance.String(),
-	})
-}
-
-// MarshalJSONTo retains validation and typed amounts for request-scoped encoders.
-func (v *Volumes) MarshalJSONTo(enc *jsontext.Encoder) error {
-	input, output, err := v.toBigInts()
-	if err != nil {
-		return err
-	}
-
-	return json.MarshalEncode(enc, volumesJSON{Input: v.GetInput(), Output: v.GetOutput(), Balance: NewSignedBigInt(new(big.Int).Sub(input, output))})
-}
-
-func (v *VolumesWithBalance) MarshalJSONTo(enc *jsontext.Encoder) error {
-	if err := v.Validate(); err != nil {
-		return err
-	}
-
-	return json.MarshalEncode(enc, volumesJSON{Input: v.GetInput(), Output: v.GetOutput(), Balance: v.GetBalance()})
-}
-
-type volumesJSON struct {
-	Input   *BigUint      `json:"input"`
-	Output  *BigUint      `json:"output"`
-	Balance *SignedBigInt `json:"balance"`
 }
 
 // AssetColored is implemented by every volume-bearing message keyed by an

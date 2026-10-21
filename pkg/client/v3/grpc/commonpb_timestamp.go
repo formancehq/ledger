@@ -2,10 +2,7 @@ package grpc
 
 import (
 	"errors"
-	"fmt"
 	"time"
-
-	"github.com/formancehq/ledger/pkg/client/v3/internal/json"
 )
 
 // ErrTimestampBeforeEpoch is returned when a timestamp before the Unix epoch is provided.
@@ -24,31 +21,4 @@ func NewTimestamp(t interface{ UnixMicro() int64 }) *Timestamp {
 
 func (x *Timestamp) AsTime() time.Time {
 	return time.UnixMicro(int64(x.GetData())).UTC()
-}
-
-func (x *Timestamp) MarshalJSON() ([]byte, error) {
-	v := x.AsTime().Format(time.RFC3339Nano)
-
-	return fmt.Appendf(nil, "\"%s\"", v), nil
-}
-
-func (x *Timestamp) UnmarshalJSON(data []byte) error {
-	var v string
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-
-	t, err := time.Parse(time.RFC3339Nano, v)
-	if err != nil {
-		return err
-	}
-
-	rounded := t.Round(time.Microsecond).UTC()
-	if rounded.UnixMicro() < 0 {
-		return ErrTimestampBeforeEpoch
-	}
-
-	x.Data = uint64(rounded.UnixMicro())
-
-	return nil
 }
