@@ -4032,7 +4032,7 @@ func (x *RemoveAccountTypeLedgerRequest) GetName() string {
 type GetPrimaryMetricsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// node_id indicates which node to query (0 = local node)
-	NodeId        uint32 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	NodeId        uint64 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4067,7 +4067,7 @@ func (*GetPrimaryMetricsRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{53}
 }
 
-func (x *GetPrimaryMetricsRequest) GetNodeId() uint32 {
+func (x *GetPrimaryMetricsRequest) GetNodeId() uint64 {
 	if x != nil {
 		return x.NodeId
 	}
@@ -4131,7 +4131,7 @@ func (x *GetPrimaryMetricsResponse) GetMetrics() *PebbleMetrics {
 type GetSecondaryMetricsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// node_id indicates which node to query (0 = local node)
-	NodeId        uint32 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	NodeId        uint64 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4166,7 +4166,7 @@ func (*GetSecondaryMetricsRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{55}
 }
 
-func (x *GetSecondaryMetricsRequest) GetNodeId() uint32 {
+func (x *GetSecondaryMetricsRequest) GetNodeId() uint64 {
 	if x != nil {
 		return x.NodeId
 	}
@@ -8981,12 +8981,12 @@ const file_bucket_proto_rawDesc = "" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"3\n" +
 	"\x18GetPrimaryMetricsRequest\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\rR\x06nodeId\"j\n" +
+	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\"j\n" +
 	"\x19GetPrimaryMetricsResponse\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12/\n" +
 	"\ametrics\x18\x02 \x01(\v2\x15.ledger.PebbleMetricsR\ametrics\"5\n" +
 	"\x1aGetSecondaryMetricsRequest\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\rR\x06nodeId\"l\n" +
+	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\"l\n" +
 	"\x1bGetSecondaryMetricsResponse\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12/\n" +
 	"\ametrics\x18\x02 \x01(\v2\x15.ledger.PebbleMetricsR\ametrics\"\xa6\x04\n" +
