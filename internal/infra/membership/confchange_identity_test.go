@@ -8,6 +8,19 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func TestValidateCapabilityEvidenceBindsActivationToRevisionAndIdentity(t *testing.T) {
+	ctx := &ConfChangeContext{
+		InstanceID:                   bytesN(0x42),
+		Capabilities:                 []uint32{1, 2},
+		CapabilityMembershipRevision: 7,
+	}
+
+	require.NoError(t, ValidateCapabilityEvidence(ctx, true, 7))
+	require.ErrorContains(t, ValidateCapabilityEvidence(ctx, true, 8), "does not match active revision")
+	require.ErrorContains(t, ValidateCapabilityEvidence(&ConfChangeContext{InstanceID: bytesN(0x42), CapabilityMembershipRevision: 7}, true, 7), "evidence is empty")
+	require.NoError(t, ValidateCapabilityEvidence(&ConfChangeContext{InstanceID: bytesN(0x42)}, false, 0))
+}
+
 func TestWriteConfChangeRejectsIncompleteRegistration(t *testing.T) {
 	t.Parallel()
 	for _, kind := range []raftpb.ConfChangeType{raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode} {

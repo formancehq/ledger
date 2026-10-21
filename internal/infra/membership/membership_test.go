@@ -646,6 +646,21 @@ func TestMembership_ClonesInstanceIDs(t *testing.T) {
 	require.Equal(t, byte(1), again[0], "PeerAddresses must deep-clone instance IDs")
 }
 
+func TestPeerStore_PersistsCapabilityEvidenceWithIdentity(t *testing.T) {
+	ps := newTestPeerStore(t)
+	caps := []uint32{1, 2}
+	identity := fixedInstanceID(0x7a)
+	require.NoError(t, ps.PutWithEvidence(9, "raft:9", "service:9", identity, caps, 11))
+
+	rows, err := ps.LoadAll()
+	require.NoError(t, err)
+	row, ok := rows[9]
+	require.True(t, ok)
+	require.Equal(t, identity, row.InstanceID)
+	require.Equal(t, caps, row.Capabilities)
+	require.Equal(t, uint64(11), row.CapabilityMembershipRevision)
+}
+
 // TestMembership_ReconcileAgainstConfState pins the boot-time cleanup
 // pass that drops peers whose NodeID is no longer in the durable
 // ConfState. This covers two crash windows: interrupted ForceRemoveNode

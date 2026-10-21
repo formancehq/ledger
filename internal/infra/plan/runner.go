@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // Sentinel errors returned by Run to let callers distinguish which
@@ -126,6 +129,16 @@ func (p *Builder) Run(
 	marshalFn func(*raftcmdpb.Proposal) ([]byte, error),
 	proposer Proposer,
 ) (*RunResult, error) {
+	// Every producer that uses the shared runner (mirror, events, backup and
+	// bootstrap maintenance) gets the same final policy check. Admission wraps
+	// its business writes separately with businessWrite=true; this default
+	// wrapper covers technical/control-plane proposals.
+	if p.store != nil {
+		proposer = NewCapabilityPolicyProposer(proposer, func() (*commonpb.ClusterPolicy, error) {
+			return query.ReadClusterPolicy(p.store)
+		}, p.readMembers, false)
+	}
+
 	// Guarantee a unique command ID. The applier keys FSM futures by
 	// `cmd.Id` (`node.NewProposal(cmd.GetId(), data)` below); two in-flight
 	// proposals sharing Id=0 would overwrite each other in
@@ -158,6 +171,11 @@ func (p *Builder) Run(
 	}
 
 	cmd.ExecutionPlan = build.ExecutionPlan
+	if err := capabilities.StampProposal(cmd); err != nil {
+		build.ReleaseLoaders()
+
+		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
+	}
 	if err := build.applyBits(cmd, build.ExecutionPlan.GetAttributes()); err != nil {
 		build.ReleaseLoaders()
 
@@ -199,6 +217,11 @@ func (p *Builder) Run(
 		// possibly values.
 		result.Rebuilt = true
 		cmd.ExecutionPlan = updatedPreloads
+		if err := capabilities.StampProposal(cmd); err != nil {
+			guard.ReleaseAll()
+
+			return nil, fmt.Errorf("%w (under guard): %w", ErrMarshalProposal, err)
+		}
 		if err := build.applyBits(cmd, updatedPreloads.GetAttributes()); err != nil {
 			guard.ReleaseAll()
 
@@ -219,6 +242,12 @@ func (p *Builder) Run(
 	}
 
 	proposal := node.NewProposal(cmd.GetId(), data)
+	required, err := capabilities.RequiredCapabilities(cmd)
+	if err != nil {
+		guard.ReleaseAll()
+		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
+	}
+	proposal.RequireCapabilities(required...)
 
 	result.ProposeStartTime = time.Now()
 	fsmFuture, err := proposer.Propose(ctx, proposal)
@@ -321,6 +350,11 @@ func (p *Builder) runWithoutPreload(
 	} else {
 		cmd.ExecutionPlan = nil
 	}
+	if err := capabilities.StampProposal(cmd); err != nil {
+		build.ReleaseLoaders()
+
+		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
+	}
 
 	if err := build.applyBits(cmd, nil); err != nil {
 		build.ReleaseLoaders()
@@ -345,6 +379,12 @@ func (p *Builder) runWithoutPreload(
 	data = AppendProposalPredictedIndex(data, cmd.GetPredictedIndex())
 
 	proposal := node.NewProposal(cmd.GetId(), data)
+	required, err := capabilities.RequiredCapabilities(cmd)
+	if err != nil {
+		guard.ReleaseLoaders()
+		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
+	}
+	proposal.RequireCapabilities(required...)
 
 	proposeStart := time.Now()
 	fsmFuture, err := proposer.Propose(ctx, proposal)

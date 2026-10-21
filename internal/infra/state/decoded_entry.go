@@ -5,6 +5,7 @@ import (
 
 	"go.etcd.io/raft/v3/raftpb"
 
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -58,10 +59,41 @@ func DecodeEntries(entries []*raftpb.Entry) ([]DecodedEntry, error) {
 			return nil, fmt.Errorf("unmarshaling proposal at raft index %d: %w", entries[i].GetIndex(), err)
 		}
 
+		if err := validateReplayFloor(cmd); err != nil {
+			cmd.ReturnToVTPool()
+			ReleaseDecodedEntries(decoded[:i])
+
+			return nil, fmt.Errorf("validating proposal replay floor at raft index %d: %w", entries[i].GetIndex(), err)
+		}
+
 		decoded[i].Proposal = cmd
 	}
 
 	return decoded, nil
+}
+
+// validateReplayFloor rejects a policy entry that this binary could commit
+// but cannot later replay. It runs immediately after wire decoding, before the
+// entry reaches checkpoint detection or FSM apply, so the unsupported floor
+// cannot cause any partial state mutation.
+func validateReplayFloor(proposal *raftcmdpb.Proposal) error {
+	for _, order := range proposal.GetOrders() {
+		policyOrder := order.GetSystemScoped().GetSetClusterPolicy()
+		if policyOrder == nil {
+			continue
+		}
+
+		policy := policyOrder.GetPolicy()
+		if policy == nil {
+			continue
+		}
+
+		if err := capabilities.ValidateReplayFloor(policy.GetMinimumReplayProtocol(), capabilities.CurrentReplayProtocol); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // ReleaseDecodedEntries returns every non-nil Proposal in decoded back to

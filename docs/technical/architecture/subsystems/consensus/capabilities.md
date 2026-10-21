@@ -32,8 +32,9 @@ business writes. `ALL_WRITES` rejects all business writes, with only the
 narrow control-plane recovery and activation path exempted by its producer
 inventory. FSM apply never consults node-local capability flags.
 
-The replay floor is monotonic and is checked before decoding an entry or
-snapshot that could require a newer protocol. This floor is intentionally not
+The replay floor is monotonic, is bounded by the local replay protocol during
+policy apply, and is checked immediately after decoding an entry or snapshot
+that could require a newer protocol. This floor is intentionally not
 `pkg/grpcprotocol.Version`.
 
 ## Rollout and recovery
@@ -46,8 +47,8 @@ below the committed floor is refused. Membership changes racing activation are
 serialized at the Raft proposal boundary and must be revalidated immediately
 before `rawNode.Propose`, because `Node.Propose` queues work.
 
-The current package is the deterministic contract and wire foundation. Wiring
-each admission, mirror, events, technical-maintenance, and backup producer to
-the final-proposal validator and to the node's pre-`Propose` revalidation is a
-follow-up integration step; no producer may claim support until that inventory
-is complete.
+The admission path and the shared plan runner apply the policy check to
+business and technical producers (including mirror, events, maintenance, and
+backup flows). Direct `Node.Propose` callers remain low-level APIs and must
+stamp their proposal before use; membership `ConfChange` operations carry and
+validate their capability evidence separately.
