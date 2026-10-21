@@ -1,5 +1,5 @@
 # Build stage: always runs on the build host's native platform
-FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.10 AS builder
 
 ARG TARGETOS
 ARG TARGETARCH

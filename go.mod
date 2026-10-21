@@ -2,6 +2,8 @@ module github.com/formancehq/ledger/v3
 
 go 1.27.0
 
+toolchain go1.27.3
+
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.1
