@@ -1,6 +1,7 @@
 package dal
 
 import (
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -13,6 +14,34 @@ import (
 // consume disk bandwidth. The store name distinguishes independent Pebble DBs.
 func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventListener {
 	logger = logger.WithFields(map[string]any{"pebbleStore": store})
+	// DiskSlow runs on Pebble's disk-health goroutine. Keep its handoff bounded
+	// and let an idle worker exit so reopened stores do not retain goroutines.
+	var diskSlowMu sync.Mutex
+	var diskSlowQueue chan pebble.DiskSlowInfo
+	logDiskSlow := func(queue chan pebble.DiskSlowInfo) {
+		idle := time.NewTimer(time.Minute)
+		defer idle.Stop()
+		for {
+			select {
+			case info := <-queue:
+				logger.WithFields(map[string]any{
+					"operation": info.OpType.String(),
+					"duration":  info.Duration.String(),
+				}).Infof("Pebble disk operation slow")
+				idle.Reset(time.Minute)
+			case <-idle.C:
+				diskSlowMu.Lock()
+				if len(queue) == 0 {
+					diskSlowQueue = nil
+					diskSlowMu.Unlock()
+
+					return
+				}
+				diskSlowMu.Unlock()
+				idle.Reset(time.Minute)
+			}
+		}
+	}
 	tableBytes := func(tables []pebble.TableInfo) uint64 {
 		var total uint64
 		for _, table := range tables {
@@ -93,10 +122,16 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 			}
 		},
 		DiskSlow: func(info pebble.DiskSlowInfo) {
-			logger.WithFields(map[string]any{
-				"operation": info.OpType.String(),
-				"duration":  info.Duration.String(),
-			}).Infof("Pebble disk operation slow")
+			diskSlowMu.Lock()
+			if diskSlowQueue == nil {
+				diskSlowQueue = make(chan pebble.DiskSlowInfo, 32)
+				go logDiskSlow(diskSlowQueue)
+			}
+			select {
+			case diskSlowQueue <- info:
+			default: // The logging sink is blocked; never block disk monitoring.
+			}
+			diskSlowMu.Unlock()
 		},
 		BackgroundError: func(err error) {
 			logger.WithFields(map[string]any{"error": err}).Errorf("Pebble background error")

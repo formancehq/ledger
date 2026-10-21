@@ -63,6 +63,10 @@ The main Pebble store, read index, and usage store label background compaction
 and flush events with their store name. Compaction start and completion are
 visible at info level; ordinary flushes are debug-only, while flushes taking
 at least ten seconds and Pebble disk-slow events are visible at info level.
+Disk-slow logging uses a bounded, nonblocking handoff because Pebble invokes
+the callback on its disk-health goroutine. If the log sink remains blocked and
+the handoff fills, additional disk-slow log records are dropped; the main
+store's disk-slow metrics callback still runs independently.
 The main store retains its existing Pebble metrics listener. These events may
 run concurrently with `pebble.Open`: a compaction reported at the end of Open
 does not by itself explain Open's elapsed time.
