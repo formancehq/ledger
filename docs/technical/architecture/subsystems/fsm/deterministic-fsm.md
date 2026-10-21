@@ -651,6 +651,16 @@ one Pebble batch, and the post-commit sentinel reads a snapshot pinned to
 that commit. There is no concurrent commit path on the main store; any
 unexpected cache/pebble divergence remains fatal.
 
+The applier also splits an apply slice before an entry whose Raft index moves
+the cache to a new generation. It waits for the preceding Pebble commit before
+preparing that entry. Preparation can mutate the cache, so waiting only when
+submitting the new commit would be too late: rotation could evict a Gen1 value
+that admission still needs from Pebble. Replay uses the same split, with each
+sub-batch committed synchronously. Cluster configuration entries are isolated
+so the next sub-batch uses the current rotation threshold. This boundary
+handles ordinary generation rotations; a cache reset caused by a threshold
+change remains a separate invalidation path.
+
 The sentinel's expected-volume reduction follows the durable batch's lifecycle
 order: a successful `WriteSet` deletion cascade invalidates that ledger's
 updates from earlier results and the same result (the cascade is staged after

@@ -18,9 +18,11 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/spool"
@@ -1214,8 +1216,7 @@ func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, decoded ..
 }
 
 // applyReplayEntries applies a slice of entries during replay (spool or WAL),
-// splitting on checkpoint boundaries so each FSM batch contains at most one
-// trigger entry (always last). Each checkpoint is handled synchronously
+// splitting on checkpoint and cache rotation boundaries. Each checkpoint is handled synchronously
 // (createMainStoreCheckpoint) before continuing.
 // Cascading checkpoints in the same slice are handled by the loop.
 func (a *Applier) applyReplayEntries(ctx context.Context, entries []*raftpb.Entry) error {
@@ -1227,7 +1228,7 @@ func (a *Applier) applyReplayEntries(ctx context.Context, entries []*raftpb.Entr
 	defer state.ReleaseDecodedEntries(decoded)
 
 	for offset := 0; offset < len(decoded); {
-		boundary := findCheckpointBoundaryDecoded(decoded[offset:])
+		boundary := findApplyBoundaryDecoded(decoded[offset:], a.fsm.Registry.Cache.GenerationThreshold())
 
 		end := offset + boundary
 
@@ -1514,8 +1515,9 @@ func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 //
 // To preserve the "one PrepareEntries call = one commit through runCommitter"
 // invariant, callers must never mix a checkpoint-trigger entry with later
-// entries in the same FSM batch. We split the input slice at each checkpoint
-// trigger and apply each prefix as its own batch; entries past a trigger that
+// entries in the same FSM batch. A batch must also stop before an entry that
+// rotates the cache: the preceding batch must reach Pebble before rotation
+// evicts its Gen1 entries. We split at both boundaries. Entries past a trigger that
 // actually fires (CheckpointRequired) are spooled before we hand control to
 // the maintenance task so the spool replay picks them up once gating clears.
 //
@@ -1530,11 +1532,19 @@ func (a *Applier) applyDecodedEntriesToFSM(ctx context.Context, stop chan struct
 	defer state.ReleaseDecodedEntries(decoded)
 
 	for offset := 0; offset < len(decoded); {
-		boundary := findCheckpointBoundaryDecoded(decoded[offset:])
+		boundary := findApplyBoundaryDecoded(decoded[offset:], a.fsm.Registry.Cache.GenerationThreshold())
 
 		end := offset + boundary
 		head := decoded[offset:end]
 		tail := decoded[end:]
+		if cache.Gen(head[0].Entry.GetIndex(), a.fsm.Registry.Cache.GenerationThreshold()) != a.fsm.Registry.Cache.CurrentGeneration() {
+			// applyEntriesPipelined prepares before it waits for the previous
+			// commit. A rotating entry cannot use that overlap: rotation would
+			// evict cache values that are not yet visible in Pebble.
+			if err := a.waitPendingCommit(ctx); err != nil {
+				return fmt.Errorf("waiting for commit before cache rotation: %w", err)
+			}
+		}
 
 		// Attach responses only to the sub-batch that reaches the end of
 		// the decoded slice — that commit's completion means "everything
@@ -1660,6 +1670,47 @@ func findCheckpointBoundaryDecoded(decoded []state.DecodedEntry) int {
 	}
 
 	return len(decoded)
+}
+
+// findApplyBoundaryDecoded ends a batch before its first cache rotation or
+// after its first checkpoint trigger. It isolates cluster configuration
+// entries so the next sub-batch uses the updated rotation threshold.
+func findApplyBoundaryDecoded(decoded []state.DecodedEntry, threshold uint64) int {
+	if len(decoded) == 0 {
+		return 0
+	}
+
+	generation := cache.Gen(decoded[0].Entry.GetIndex(), threshold)
+	for i := range decoded {
+		if cache.Gen(decoded[i].Entry.GetIndex(), threshold) != generation {
+			return i
+		}
+		if hasClusterConfigUpdate(decoded[i]) {
+			if i > 0 {
+				return i
+			}
+
+			return 1
+		}
+		if state.DecodedEntryRequiresCheckpoint(decoded[i]) {
+			return i + 1
+		}
+	}
+
+	return len(decoded)
+}
+
+func hasClusterConfigUpdate(decoded state.DecodedEntry) bool {
+	if decoded.Proposal == nil {
+		return false
+	}
+	for _, update := range decoded.Proposal.GetTechnicalUpdates() {
+		if _, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_ClusterConfig); ok {
+			return true
+		}
+	}
+
+	return false
 }
 
 // maintenanceTask is the body of a gated maintenance task. It receives the
