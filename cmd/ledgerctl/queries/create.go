@@ -19,9 +19,20 @@ func NewCreateCommand() *cobra.Command {
 		Short: "Create a prepared query",
 		Long: `Create a named prepared query for a ledger.
 
+--filter accepts the textual grammar or the JSON QueryFilter DSL; both forms
+cover the same fields. Valid fields per --target:
+  accounts:      metadata[key], address, has asset BASE[/PRECISION]
+  transactions:  metadata[key], address, source, destination, reference,
+                 reverted, id, timestamp, insertedAt, revertedAt
+  logs:          logId, date, ledger
+Transaction amounts are not filterable.
+
 Examples:
   ledgerctl queries create active-users --ledger my-ledger --target accounts --filter "metadata[active] == true"
-  ledgerctl queries create big-txns --ledger my-ledger --target transactions --filter "amount > 1000"`,
+  ledgerctl queries create pending-payouts --ledger my-ledger --target transactions --filter 'source ^= "payouts:" and metadata[status] == pending'
+  ledgerctl queries create by-ref --ledger my-ledger --target transactions --filter 'reference == $ref'
+  ledgerctl queries create by-ref-json --ledger my-ledger --target transactions --filter '{"$match":{"reference":{"$param":"ref"}}}'
+  ledgerctl queries create recent-logs --ledger my-ledger --target logs --filter 'date >= "2026-01-01T00:00:00Z"'`,
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runCreate,
@@ -30,7 +41,7 @@ Examples:
 	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("target", "accounts", "Query target: accounts, transactions, or logs")
 	cmdutil.RegisterEnumCompletion(cmd, "target", "accounts", "transactions", "logs")
-	cmd.Flags().String("filter", "", "Filter expression")
+	cmd.Flags().String("filter", "", `Filter expression: textual grammar ("metadata[k] == v") or JSON DSL ('{"$match":{"metadata[k]":"v"}}')`)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -56,12 +67,9 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	var filter *commonpb.QueryFilter
-	if filterExpr != "" {
-		filter, err = filterexpr.Parse(filterExpr, target)
-		if err != nil {
-			return fmt.Errorf("invalid filter expression: %w", err)
-		}
+	filter, err := parseCreateFilter(filterExpr, target)
+	if err != nil {
+		return err
 	}
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -84,6 +92,19 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	pterm.Success.Printfln("Prepared query %q created for ledger %q", name, ledgerName)
 
 	return nil
+}
+
+// parseCreateFilter decodes the --filter value in either form (textual grammar
+// or JSON DSL), resolving bare fields against the query's target. An empty
+// value creates an unfiltered query. Like the list commands, it leaves the
+// per-target validity gate to the server, which applies it on create.
+func parseCreateFilter(expr string, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+	filter, err := filterexpr.DecodeDualFormatStructuralOnly([]byte(expr), target)
+	if err != nil {
+		return nil, fmt.Errorf("invalid filter expression: %w", err)
+	}
+
+	return filter, nil
 }
 
 func parseTarget(s string) (commonpb.QueryTarget, error) {
