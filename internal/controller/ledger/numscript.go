@@ -56,7 +56,7 @@ func TxToScriptData(txData ledger.TransactionData, allowUnboundedOverdrafts bool
 	}
 	sort.Strings(accVars)
 	for _, v := range accVars {
-		sb.WriteString(fmt.Sprintf("\taccount $%s\n", v))
+		fmt.Fprintf(&sb, "\taccount $%s\n", v)
 	}
 	monVars := make([]string, 0)
 	for _, v := range monetaryToVars {
@@ -64,7 +64,7 @@ func TxToScriptData(txData ledger.TransactionData, allowUnboundedOverdrafts bool
 	}
 	sort.Strings(monVars)
 	for _, v := range monVars {
-		sb.WriteString(fmt.Sprintf("\tmonetary $%s\n", v))
+		fmt.Fprintf(&sb, "\tmonetary $%s\n", v)
 	}
 	sb.WriteString("}\n")
 
@@ -74,7 +74,7 @@ func TxToScriptData(txData ledger.TransactionData, allowUnboundedOverdrafts bool
 		if !ok {
 			panic(fmt.Sprintf("monetary %s not found", m))
 		}
-		sb.WriteString(fmt.Sprintf("send $%s (\n", mon.name))
+		fmt.Fprintf(&sb, "send $%s (\n", mon.name)
 		if p.Source == ledger.WORLD {
 			sb.WriteString("\tsource = @world\n")
 		} else {
@@ -82,7 +82,7 @@ func TxToScriptData(txData ledger.TransactionData, allowUnboundedOverdrafts bool
 			if !ok {
 				panic(fmt.Sprintf("source %s not found", p.Source))
 			}
-			sb.WriteString(fmt.Sprintf("\tsource = $%s", src.name))
+			fmt.Fprintf(&sb, "\tsource = $%s", src.name)
 			if allowUnboundedOverdrafts {
 				sb.WriteString(" allowing unbounded overdraft")
 			}
@@ -95,7 +95,7 @@ func TxToScriptData(txData ledger.TransactionData, allowUnboundedOverdrafts bool
 			if !ok {
 				panic(fmt.Sprintf("destination %s not found", p.Destination))
 			}
-			sb.WriteString(fmt.Sprintf("\tdestination = $%s\n", dest.name))
+			fmt.Fprintf(&sb, "\tdestination = $%s\n", dest.name)
 		}
 		sb.WriteString(")\n")
 	}
