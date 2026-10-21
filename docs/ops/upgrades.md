@@ -13,11 +13,21 @@ revisions before `v3.0.0-rc.1` remain outside this guarantee.
 During the RC line, keep the service gRPC revision at 40 and document the client
 impact and upgrade steps of behavior or configuration changes. See the
 [protocol policy](../technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision).
-Every RC update must also support a direct rolling server upgrade from every
-earlier published RC in the line, including skipped RCs. Old and new voters must
-communicate and apply each committed entry identically while they coexist. A
-change that cannot meet this requirement needs a staged rollout design or must
-wait for a different compatibility line.
+RC updates are sequential: upgrade from `v3.0.0-rc.1` to `v3.0.0-rc.2`
+before proceeding to `v3.0.0-rc.3`. The same rule applies to each release
+line. Skipping an RC is not supported. For operator-managed clusters, the
+operator compares the current StatefulSet template's Ledger image tag with
+`spec.image.tag`. It rejects an unknown or non-adjacent source, or an incomplete
+source rollout, before changing cluster resources. The current image must have
+a canonical RC tag; an untagged digest does not establish its release version.
+If the StatefulSet is temporarily absent during recreation, restore the image
+tag still used by its orphaned Pods before requesting the next RC. If only PVCs
+remain, restore the source StatefulSet before changing the image tag.
+When an RC image change also changes volume templates, the operator completes
+the RC rollout before recreating the StatefulSet for the volume change.
+Old and new voters must communicate and apply each committed entry identically
+while they coexist. A change that cannot meet this requirement needs a staged
+rollout design or must wait for a different compatibility line.
 
 Before tagging a new release, verify the upgrade with state created by the
 supported source releases. Cover affected Pebble records, Raft log and snapshot
@@ -32,14 +42,14 @@ earlier development revisions and explicitly separate compatibility lines.
 
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
-| Rolling | Required between builds on the same RC line. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
+| Rolling | Required between adjacent RCs on the same release line. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
 | Coordinated restart | A separate compatibility line that cannot safely mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart without a mixed-version window. Preserve or migrate the released data. |
 | Migrate or restore | A separate line with a changed persisted or backup format, or development state before the first RC. | Follow a tested migration or restore a backup supported by the target release. A wipe or external rebuild is permitted only for unsupported pre-RC development state. Verify the complete state before serving writes. |
 
-Before publishing an RC update, demonstrate the rolling class separately from
-each earlier published RC binary to the target binary in one cluster, including
+Before publishing an RC update, demonstrate the rolling class from the
+immediately preceding RC binary to the target binary in one cluster, including
 leadership transfer, writes, replay, and restart. Record the source and target
-builds and the results in the release validation. If any path fails, fix the
+builds and the results in the release validation. If the path fails, fix the
 change before release. Do not infer support from a successful single-node restart.
 
 For upgrades from builds before `v3.0.0-rc.1`, the change-specific constraints

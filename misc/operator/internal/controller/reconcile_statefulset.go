@@ -139,16 +139,20 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	existing := &appsv1.StatefulSet{}
 	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, existing); err == nil {
 		if volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
-			logger.Info("VolumeClaimTemplates changed, recreating StatefulSet with orphan propagation")
-			orphan := metav1.DeletePropagationOrphan
-			if err := r.Delete(ctx, existing, &client.DeleteOptions{
-				PropagationPolicy: &orphan,
-			}); err != nil {
-				return ctrl.Result{}, fmt.Errorf("deleting StatefulSet for VolumeClaimTemplate change: %w", err)
+			if deferRCVolumeClaimRecreation(ledger.Spec.Image.Tag, existing) {
+				logger.Info("deferring StatefulSet recreation until RC rollout converges")
+			} else {
+				logger.Info("VolumeClaimTemplates changed, recreating StatefulSet with orphan propagation")
+				orphan := metav1.DeletePropagationOrphan
+				if err := r.Delete(ctx, existing, &client.DeleteOptions{
+					PropagationPolicy: &orphan,
+				}); err != nil {
+					return ctrl.Result{}, fmt.Errorf("deleting StatefulSet for VolumeClaimTemplate change: %w", err)
+				}
+				// Returning here requeues via the owned-StatefulSet delete event — the next
+				// reconciliation creates the new StatefulSet and the orphaned pods are adopted.
+				return ctrl.Result{}, nil
 			}
-			// Returning here requeues via the owned-StatefulSet delete event — the next
-			// reconciliation creates the new StatefulSet and the orphaned pods are adopted.
-			return ctrl.Result{}, nil
 		}
 	}
 
