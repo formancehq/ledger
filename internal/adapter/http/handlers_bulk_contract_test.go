@@ -14,13 +14,17 @@ import (
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
@@ -136,6 +140,71 @@ func TestHandleBulk_ProcessingResponseContract(t *testing.T) {
 		}
 	}
 }
+
+// TestHandleBulk_MatchesSingleRequestClassification pins bulk elements to the
+// status and message handleError answers for the same error on a single
+// request, for the errors that carry no apierr.Describe reason. Those elements
+// keep the generic bulk "ERROR" code.
+func TestHandleBulk_MatchesSingleRequestClassification(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{"idempotency-key-too-long", admission.ErrIdempotencyKeyTooLong, http.StatusBadRequest, "INVALID_REQUEST"},
+		{"idempotency-key-invalid-utf8", admission.ErrIdempotencyKeyInvalidUTF8, http.StatusBadRequest, "INVALID_REQUEST"},
+		{"classified-unavailable", classifiedOnly{domain.KindUnavailable}, http.StatusServiceUnavailable, "UNAVAILABLE"},
+		{"classified-internal", classifiedOnly{domain.KindInternal}, http.StatusInternalServerError, "INTERNAL_ERROR"},
+		{"typed-not-found", commonpb.NewNotFoundError("ledger %s not found", "ledger1"), http.StatusNotFound, "NOT_FOUND"},
+		{"not-found-sentinel", fmt.Errorf("reading ledger: %w", domain.ErrNotFound), http.StatusNotFound, "NOT_FOUND"},
+		{"grpc-invalid-argument", status.Error(codes.InvalidArgument, "bad filter"), http.StatusBadRequest, "INVALID_REQUEST"},
+		{"grpc-unavailable", status.Error(codes.Unavailable, "stream torn down"), http.StatusServiceUnavailable, "UNAVAILABLE"},
+	} {
+		single := httptest.NewRecorder()
+		singleRequest := httptest.NewRequest(http.MethodPost, "/v3/ledger1/transactions", nil)
+		singleRequest = singleRequest.WithContext(context.WithValue(singleRequest.Context(), middleware.RequestIDKey, "bulk-classification"))
+		handleError(single, singleRequest, tc.err)
+		require.Equal(t, tc.status, single.Code, tc.name)
+		want := decodeResponse[ErrorResponse](t, single)
+		require.Equal(t, tc.code, want.ErrorCode, tc.name)
+
+		for _, atomic := range []bool{false, true} {
+			for _, continuation := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/atomic=%t/continue=%t", tc.name, atomic, continuation), func(t *testing.T) {
+					t.Parallel()
+					backend := NewMockBackend(gomock.NewController(t))
+					backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, tc.err).Times(1)
+					handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+					r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v3/ledger1/bulk?atomic=%t&continueOnFailure=%t", atomic, continuation), strings.NewReader(bulkWriteBody))
+					r.Header.Set("X-Request-ID", "bulk-classification")
+					w := httptest.NewRecorder()
+					handler.ServeHTTP(w, r)
+
+					wantStatus := tc.status
+					if continuation && tc.status < http.StatusTooManyRequests {
+						wantStatus = http.StatusOK
+					}
+					require.Equal(t, wantStatus, w.Code)
+					response := decodeResponse[bulkResponse](t, w)
+					require.Len(t, response.Data, 1)
+					require.Equal(t, "ERROR", response.Data[0].ResponseType)
+					require.Equal(t, "ERROR", response.Data[0].ErrorCode)
+					require.Equal(t, want.ErrorMessage, response.Data[0].ErrorDescription)
+					requireBulkContract(t, fmt.Sprintf("classification-%s-atomic-%t-continue-%t", tc.name, atomic, continuation), w)
+				})
+			}
+		}
+	}
+}
+
+// classifiedOnly is a domain.Classifiable with no public reason.
+type classifiedOnly struct{ kind domain.ErrorKind }
+
+func (c classifiedOnly) Error() string          { return "classified failure: /private/detail" }
+func (c classifiedOnly) Kind() domain.ErrorKind { return c.kind }
 
 func TestHandleBulk_IdempotencyContract(t *testing.T) {
 	t.Parallel()

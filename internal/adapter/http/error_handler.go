@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"google.golang.org/grpc/codes"
@@ -74,22 +75,58 @@ func classifiedErrorCode(k domain.ErrorKind) string {
 	return "INTERNAL_ERROR"
 }
 
+// errorClass is the public HTTP rendering of a server-side error. Single
+// requests and bulk elements both derive theirs from classifyError, so one
+// failure answers the same status, code and message on either surface.
+type errorClass struct {
+	status int
+	code   string
+	// message is the client-visible text. Empty means the error must not be
+	// echoed: publicMessage answers the generic correlated internal error.
+	message string
+}
+
+// publicMessage returns the client-visible message. A 500 is recorded under
+// the request's correlation ID, which a sanitized message then carries.
+func (c errorClass) publicMessage(r *http.Request, err error) string {
+	if c.status != http.StatusInternalServerError {
+		return c.message
+	}
+
+	id := correlationID(r)
+	recordHTTPInternalError(r, id, err)
+	if c.message != "" {
+		return c.message
+	}
+
+	return fmt.Sprintf("internal server error (correlation ID: %s)", id)
+}
+
 // handleError converts a server-side error into a JSON-formatted HTTP
-// response. The bulk of the work is delegated to the domain error contract:
-// any *Err* type or sentinel from internal/domain flows through
-// kindToHTTPStatus + Reason(), and an error that classifies itself without
-// declaring a reason answers from its kind alone. The few branches below
-// handle errors that carry neither — the leader-discovery sentinel from
-// commonpb and the generic NotFoundError used by route lookups.
+// response. Every 503 carries Retry-After: an unavailable answer is by
+// definition a retry-now condition.
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
+	c := classifyError(err)
+	if c.status == http.StatusServiceUnavailable {
+		w.Header().Set("Retry-After", "1")
+	}
+
+	writeErrorResponse(w, c.status, c.code, errors.New(c.publicMessage(r, err)))
+}
+
+// classifyError selects the public rendering of err. The bulk of the work is
+// delegated to the domain error contract: any *Err* type or sentinel from
+// internal/domain flows through kindToHTTPStatus + Reason(), and an error that
+// classifies itself without declaring a reason answers from its kind alone.
+// The few branches below handle errors that carry neither — the
+// leader-discovery sentinel from commonpb and the generic NotFoundError used
+// by route lookups.
+func classifyError(err error) errorClass {
 	// commonpb.ErrNoLeader carries its own retry hint (Retry-After) — keep
 	// the dedicated branch so the response shape stays stable for clients
 	// that have been told to honour it.
 	if errors.Is(err, commonpb.ErrNoLeader) {
-		w.Header().Set("Retry-After", "1")
-		writeErrorResponse(w, http.StatusServiceUnavailable, "NO_LEADER", err)
-
-		return
+		return errorClass{status: http.StatusServiceUnavailable, code: "NO_LEADER", message: err.Error()}
 	}
 
 	// plan.ErrCacheHorizonExceeded is an infrastructure-level admission
@@ -99,16 +136,11 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	// admission snapshot. Mirrors the gRPC adapter's codes.Unavailable
 	// mapping (see internal/adapter/grpc/server.go).
 	if errors.Is(err, plan.ErrCacheHorizonExceeded) {
-		w.Header().Set("Retry-After", "1")
-		writeErrorResponse(w, http.StatusServiceUnavailable, "CACHE_HORIZON_EXCEEDED", err)
-
-		return
+		return errorClass{status: http.StatusServiceUnavailable, code: "CACHE_HORIZON_EXCEEDED", message: err.Error()}
 	}
 
 	if _, ok := errors.AsType[*commonpb.NotFoundError](err); ok {
-		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
-
-		return
+		return errorClass{status: http.StatusNotFound, code: "NOT_FOUND", message: err.Error()}
 	}
 
 	// domain.ErrNotFound is a bare sentinel (not a typed NotFoundError and not
@@ -117,21 +149,17 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	// a deleted ledger via query.GetLedgerByName. Without this branch it falls
 	// through to the 500 sanitizer; a missing resource on a read is a 404.
 	if errors.Is(err, domain.ErrNotFound) {
-		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
-
-		return
+		return errorClass{status: http.StatusNotFound, code: "NOT_FOUND", message: err.Error()}
 	}
 
 	// A reason this build knows arriving under a code it would never send that
 	// reason under: the sender is not a ledger of this contract. Answer the
 	// generic sanitizer so none of the reason, message or metadata it claimed
 	// is echoed. InvalidWireError implements neither Describable nor
-	// GRPCStatus, so it would reach writeInternalServerError below anyway;
-	// this branch states the contract instead of relying on that method set.
+	// GRPCStatus, so it would reach the sanitizer below anyway; this branch
+	// states the contract instead of relying on that method set.
 	if _, ok := apierr.InvalidWire(err); ok {
-		writeInternalServerError(w, r, err)
-
-		return
+		return errorClass{status: http.StatusInternalServerError, code: "INTERNAL_ERROR"}
 	}
 
 	// The boundary contract: every typed *Err* and sentinel in internal/domain
@@ -140,43 +168,26 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	// two provenances — a locally raised Describable classifies from its
 	// reason, a decoded one keeps the kind the wire carried, which is what
 	// preserves a reason this build's enum does not know. Catches
-	// BusinessError too (it implements Describable transparently).
+	// BusinessError too (it implements Describable transparently). The
+	// message is the public one selected by the originating gRPC encoder;
+	// routing wrappers belong to diagnostics, not the response.
 	if d, ok := apierr.Describe(err); ok {
-		httpStatus := kindToHTTPStatus(d.Kind)
-
-		// An Unavailable kind is by definition a retry-now condition (a fold
-		// behind, an index still building, no leader yet); the two dedicated
-		// branches above already promise clients a Retry-After, so give the
-		// whole class the same contract instead of only those two.
-		if httpStatus == http.StatusServiceUnavailable {
-			w.Header().Set("Retry-After", "1")
-		}
-		if httpStatus == http.StatusInternalServerError {
-			recordHTTPInternalError(r, correlationID(r), err)
-		}
-		// Render the same public message selected by the originating gRPC
-		// encoder; routing wrappers belong to diagnostics, not the response.
-		writeErrorResponse(w, httpStatus, d.Reason, errors.New(d.Message))
-
-		return
+		return errorClass{status: kindToHTTPStatus(d.Kind), code: d.Reason, message: d.Message}
 	}
 
-	// A failure that classifies itself but owns no public reason: today the
-	// read path's prepared-query argument checks. Describe cannot normalise it
-	// — there is no Reason to normalise — but the kind still selects the
-	// status, so a caller mistake answers 400 here exactly as it answers
-	// codes.InvalidArgument on the gRPC surface, instead of degrading to a 500.
+	// A failure that classifies itself but owns no public reason: the read
+	// path's prepared-query argument checks, the admission idempotency-key
+	// guards. Describe cannot normalise it — there is no Reason to normalise —
+	// but the kind still selects the status, so a caller mistake answers 400
+	// here exactly as it answers codes.InvalidArgument on the gRPC surface.
 	// KindInternal keeps the sanitiser: a server fault must not echo its
 	// message to the client.
 	if c, ok := errors.AsType[domain.Classifiable](err); ok && c.Kind() != domain.KindInternal {
-		httpStatus := kindToHTTPStatus(c.Kind())
-		if httpStatus == http.StatusServiceUnavailable {
-			w.Header().Set("Retry-After", "1")
+		return errorClass{
+			status:  kindToHTTPStatus(c.Kind()),
+			code:    classifiedErrorCode(c.Kind()),
+			message: domain.PublicKindMessage(c.Kind()),
 		}
-
-		writeErrorResponse(w, httpStatus, classifiedErrorCode(c.Kind()), errors.New(domain.PublicKindMessage(c.Kind())))
-
-		return
 	}
 
 	// Statuses with nothing typed left to recover. A business error forwarded
@@ -201,16 +212,11 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	if st, ok := status.FromError(err); ok {
 		switch st.Code() {
 		case codes.InvalidArgument:
-			writeErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("invalid request"))
-
-			return
+			return errorClass{status: http.StatusBadRequest, code: "INVALID_REQUEST", message: "invalid request"}
 		case codes.Unavailable:
-			w.Header().Set("Retry-After", "1")
-			writeErrorResponse(w, http.StatusServiceUnavailable, "UNAVAILABLE", errors.New("unavailable"))
-
-			return
+			return errorClass{status: http.StatusServiceUnavailable, code: "UNAVAILABLE", message: "unavailable"}
 		}
 	}
 
-	writeInternalServerError(w, r, err)
+	return errorClass{status: http.StatusInternalServerError, code: "INTERNAL_ERROR"}
 }
