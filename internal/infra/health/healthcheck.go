@@ -405,7 +405,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 			// as non-checkpointable; this gate is intentionally fail-closed.
 			stateCtx, stateCancel := context.WithTimeout(baseCtx, healthCheckCallTimeout)
 			clusterState, stateErr := client.GetClusterState(stateCtx, &clusterpb.GetClusterStateRequest{
-				NodeId: uint32(peerID),
+				NodeId: peerID,
 			})
 			stateCancel()
 			if stateErr != nil {
