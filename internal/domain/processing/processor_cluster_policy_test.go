@@ -7,6 +7,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -99,6 +100,54 @@ func TestProcessSetClusterPolicy_LowerRevisionStale(t *testing.T) {
 	require.ErrorAs(t, procErr, &stale)
 	require.Equal(t, uint64(3), stale.ProposedRevision)
 	require.Equal(t, uint64(5), stale.AppliedRevision)
+}
+
+// A higher policy revision cannot lower the replay floor. The floor protects
+// restart and restore paths, so accepting a rollback here would let a later
+// policy make an old binary appear safe again.
+func TestProcessSetClusterPolicy_ReplayFloorCannotDecrease(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	current := withMetadataLimits(&commonpb.ClusterPolicy{Revision: 2, MinimumReplayProtocol: capabilities.CurrentReplayProtocol, QueryCheckpointLimit: 1})
+	mockStore.EXPECT().GetClusterPolicy().Return(current)
+
+	proposed := withMetadataLimits(&commonpb.ClusterPolicy{Revision: 3, MinimumReplayProtocol: capabilities.CurrentReplayProtocol - 1, QueryCheckpointLimit: 1})
+	_, procErr := processor.ProcessOrder(clusterPolicyOrder(proposed), mockStore)
+
+	var invalid *domain.ErrClusterPolicyInvalid
+	require.ErrorAs(t, procErr, &invalid)
+	require.Contains(t, invalid.Detail, "replay protocol floor cannot decrease")
+}
+
+// A policy cannot commit a replay floor newer than the protocol implemented
+// by this binary: otherwise the node would accept the entry and then be unable
+// to replay its own store after restart.
+func TestProcessSetClusterPolicy_ReplayFloorCannotExceedLocalProtocol(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	current := withMetadataLimits(&commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 1})
+	mockStore.EXPECT().GetClusterPolicy().Return(current)
+
+	proposed := withMetadataLimits(&commonpb.ClusterPolicy{
+		Revision:              3,
+		MinimumReplayProtocol: capabilities.CurrentReplayProtocol + 1,
+		QueryCheckpointLimit:  1,
+	})
+	_, procErr := processor.ProcessOrder(clusterPolicyOrder(proposed), mockStore)
+
+	var invalid *domain.ErrClusterPolicyInvalid
+	require.ErrorAs(t, procErr, &invalid)
+	require.Contains(t, invalid.Detail, "persisted floor")
 }
 
 // Structural validation runs before the revision check, so it needs no applied

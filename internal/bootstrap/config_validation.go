@@ -8,6 +8,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -165,6 +166,16 @@ func validateCommittedMetadataLimits(store *dal.Store, cfg Config) error {
 	applied, err := query.ReadClusterPolicy(store)
 	if err != nil {
 		return fmt.Errorf("reading committed cluster policy: %w", err)
+	}
+
+	// The replay floor is checked during bootstrap, before the node opens a
+	// state machine or decodes historical entries. A binary that cannot execute
+	// the committed protocol must fail closed even when identity validation is
+	// run with --unsafe-skip-config-validation.
+	if applied != nil {
+		if err := capabilities.ValidateReplayFloor(applied.GetMinimumReplayProtocol(), capabilities.CurrentReplayProtocol); err != nil {
+			return fmt.Errorf("committed cluster policy requires an unsupported replay protocol: %w", err)
+		}
 	}
 
 	// No policy committed yet: the leader's reconciler commits the first one,

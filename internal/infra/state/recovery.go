@@ -3,6 +3,7 @@ package state
 import (
 	"fmt"
 
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -53,6 +54,20 @@ func (r *Recovery) RecoverState() error {
 	}
 
 	defer func() { _ = handle.Close() }()
+
+	// Read and validate the policy before hydrating any other FSM field. The
+	// policy is the only durable record that carries the replay floor, so this
+	// preflight is the recovery boundary that prevents a downgraded binary from
+	// decoding or executing state written by a newer replay protocol.
+	policy, err := query.ReadClusterPolicy(r.reader)
+	if err != nil {
+		return fmt.Errorf("reading cluster policy replay floor: %w", err)
+	}
+	if policy != nil {
+		if err := capabilities.ValidateReplayFloor(policy.GetMinimumReplayProtocol(), capabilities.CurrentReplayProtocol); err != nil {
+			return fmt.Errorf("recovery refused by replay protocol floor: %w", err)
+		}
+	}
 
 	// Phase 1: load a fresh FSMState in its entirety. Any error returns
 	// before we touch the Machine.
