@@ -17,7 +17,7 @@ services:
     depends_on:
       - postgres
       - listener
-    image: golang:1.23-alpine
+    image: golang:1.26.10-alpine
     entrypoint: go run main.go serve
     volumes:
       - ../..:/src

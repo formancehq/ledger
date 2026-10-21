@@ -1,5 +1,22 @@
 {
   "nodes": {
+    "go-tooling": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792576425,
+        "narHash": "sha256-SUPLAibw0l2AIg19PC8ttGjMWNId0LSOzkjnzcd0gqE=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "8cec5ef1131078ea76689e84c362b0ed6a1fb6a1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "8cec5ef1131078ea76689e84c362b0ed6a1fb6a1",
+        "type": "github"
+      }
+    },
     "goreleaser": {
       "flake": false,
       "locked": {
@@ -47,6 +64,7 @@
     },
     "root": {
       "inputs": {
+        "go-tooling": "go-tooling",
         "goreleaser": "goreleaser",
         "nixpkgs": "nixpkgs",
         "nixpkgs-unstable": "nixpkgs-unstable"
