@@ -103,6 +103,7 @@ func capabilityIDsAsUint32(ids []capabilities.ID) []uint32 {
 	for i, id := range ids {
 		result[i] = uint32(id)
 	}
+
 	return result
 }
 
@@ -2512,8 +2513,10 @@ func (node *Node) CapabilityMembers() []capabilities.Member {
 		if a.NodeID > b.NodeID {
 			return 1
 		}
+
 		return 0
 	})
+
 	return result
 }
 

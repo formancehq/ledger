@@ -250,7 +250,7 @@ func (m *Membership) SnapshotDonorCandidates() []uint64 {
 // a zero revision is accepted only while the barrier is disarmed.
 func (m *Membership) SetCapabilityGate(armed bool, revision uint64) error {
 	if armed && revision == 0 {
-		return fmt.Errorf("capability membership revision must be non-zero when armed")
+		return errors.New("capability membership revision must be non-zero when armed")
 	}
 
 	m.mu.Lock()

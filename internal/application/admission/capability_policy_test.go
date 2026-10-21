@@ -20,6 +20,7 @@ type capabilityTestProposer struct{ called bool }
 
 func (p *capabilityTestProposer) Propose(context.Context, *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 	p.called = true
+
 	return futures.New[state.ApplyResult](), nil
 }
 
@@ -36,6 +37,7 @@ func (barrierTestProposer) Propose(_ context.Context, proposal *node.Proposal) (
 	proposal.Resolve(nil, nil)
 	future := futures.New[state.ApplyResult]()
 	future.Resolve(state.ApplyResult{AppliedIndex: 1}, nil)
+
 	return future, nil
 }
 
