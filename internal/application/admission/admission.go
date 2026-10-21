@@ -1067,12 +1067,24 @@ func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
 	}
 
 	cmd := commands.NewCommand() // no orders = no-op
+	// Barrier bypasses plan.Builder.Run, so it must still stamp the semantic
+	// capability declaration before serialization. The no-op command created by
+	// commands.NewCommand carries an empty ExecutionPlan, which is itself a
+	// protocol dependency for replaying the envelope.
+	if err := capabilities.StampProposal(cmd); err != nil {
+		return 0, fmt.Errorf("stamping barrier capabilities: %w", err)
+	}
+	requiredCapabilities, err := capabilities.RequiredCapabilities(cmd)
+	if err != nil {
+		return 0, fmt.Errorf("deriving barrier capabilities: %w", err)
+	}
 	proposalData, err := a.marshalCommand(ctx, cmd)
 	if err != nil {
 		return 0, fmt.Errorf("marshaling barrier command: %w", err)
 	}
 
 	proposal := node.NewProposal(cmd.GetId(), proposalData)
+	proposal.RequireCapabilities(requiredCapabilities...)
 
 	// Lock the tracker to serialize the Increment with guarded proposals,
 	// preventing preload boundary mismatches in the FSM.

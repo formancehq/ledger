@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -23,6 +24,35 @@ func (p *capabilityTestProposer) Propose(context.Context, *node.Proposal) (*futu
 }
 
 var _ plan.Proposer = (*capabilityTestProposer)(nil)
+
+type barrierTestProposer struct{}
+
+func (barrierTestProposer) InitialIndex() uint64 { return 1 }
+
+func (barrierTestProposer) Propose(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
+	if err := capabilities.ValidateFinalProposal(proposal.Data(), proposal.DeclaredCapabilities()); err != nil {
+		return nil, err
+	}
+	proposal.Resolve(nil, nil)
+	future := futures.New[state.ApplyResult]()
+	future.Resolve(state.ApplyResult{AppliedIndex: 1}, nil)
+	return future, nil
+}
+
+type allowWrites struct{}
+
+func (allowWrites) CheckWritesAllowed() error { return nil }
+
+var _ health.WriteGate = allowWrites{}
+
+func TestBarrierStampsSemanticCapabilities(t *testing.T) {
+	a, _ := createTestAdmission(t, createTestStore(t))
+	a.writeGate = allowWrites{}
+	a.proposer = barrierTestProposer{}
+
+	_, err := a.Barrier(context.Background())
+	require.NoError(t, err)
+}
 
 func TestCapabilityPolicyProposerBlocksAllWritesAtFinalBoundary(t *testing.T) {
 	delegate := new(capabilityTestProposer)
