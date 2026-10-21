@@ -1150,11 +1150,13 @@ The `--filter` flag accepts a human-readable boolean expression that maps to the
 
 > **Two interchangeable forms (EN-1511).** `--filter` also accepts the structured
 > JSON `QueryFilter` DSL, e.g. `--filter '{"$match":{"metadata[category]":"premium"}}'`.
-> The textual grammar below and the JSON DSL parse to the same filter and are
-> validated against the same per-target rules, so either form works everywhere
-> `--filter` is accepted (the same dual-format contract every server-side
-> filtered endpoint honors). The textual form is the recommended, more concise
-> one for CLI use.
+> The textual grammar below and the JSON DSL cover the same fields under the same
+> names, parse to the same filter and are validated against the same per-target
+> rules, so either form works everywhere `--filter` is accepted (the same
+> dual-format contract every server-side filtered endpoint honors). Only the
+> prefix operators `^=` without a trailing `:` (and `idempotency_key ^=` on audit)
+> are textual-only. The textual form is the recommended, more concise one for CLI
+> use.
 
 **Grammar:**
 
@@ -1164,14 +1166,16 @@ or_expr        := and_expr ("or" and_expr)*
 and_expr       := unary_expr ("and" unary_expr)*
 unary_expr     := "not" unary_expr | primary
 primary        := "(" expression ")" | condition
-condition      := metadata_cond | audit_cond | address_cond | source_cond | destination_cond | has_asset_cond
-metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "exists")
-audit_cond     := "audit" "[" AUDIT_FIELD "]" ("==" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "in" "(" VALUE ("," VALUE)* ")")
-address_cond   := "address" ("==" VALUE | "^=" VALUE)
-source_cond    := "source" ("==" VALUE | "^=" VALUE)
-destination_cond := "destination" ("==" VALUE | "^=" VALUE)
+condition      := metadata_cond | address_cond | has_asset_cond | field_cond
+metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "exists" | "in" "(" VALUE ("," VALUE)* ")")
+address_cond   := ("address" | "source" | "destination") ("==" VALUE | "^=" VALUE | "in" "(" VALUE ("," VALUE)* ")")
 has_asset_cond := "has" "asset" ASSET_BASE ["/" PRECISION]
+field_cond     := FIELD ("==" VALUE | "^=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "in" "(" VALUE ("," VALUE)* ")")
 ```
+
+`FIELD` is a bare field name resolved against the command's query target; each
+field accepts only the operators listed in the conditions table below (or, for
+the audit fields, in [audit list](#audit-list)).
 
 A bare `KEY` or `VALUE` is a plain-alphanumeric identifier (`[a-zA-Z_][a-zA-Z0-9_]*`).
 Any key or value that contains a special character — `-`, `:`, `.`, `/`, spaces, etc.
@@ -1181,7 +1185,7 @@ asset reference in `has asset BASE/PRECISION`, whose `/` is part of the grammar
 (e.g. `has asset USD/2`).
 
 Bare audit fields (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`,
-`log_seq`, `caller_subject`, `order_type`) are only valid on `audit list` (see
+`log_seq`, `caller_subject`, `order_type`, `idempotency_key`) are only valid on `audit list` (see
 [audit list](#audit-list) for the field/operator matrix). They are written
 without any prefix and resolved against the audit query target (EN-1549 — this
 replaced the old `audit[...]` namespaced syntax, a breaking change with no
@@ -1207,6 +1211,14 @@ backward compatibility). They are rejected on other list endpoints.
 | `destination ^= value` | Destination address prefix match (transactions only) |
 | `has asset BASE` | Accounts that have ever touched asset `BASE` with precision 0 (requires `account-asset` index) |
 | `has asset BASE/PRECISION` | Accounts that have ever touched asset `BASE` with the given precision (requires `account-asset` index) |
+| `reference == value` / `reference in (v1, v2)` | Transaction reference exact match (transactions only; requires `reference` index). JSON: `{"$match":{"reference":"…"}}` |
+| `reverted == true` / `reverted == false` | Transaction revert status (transactions only). JSON: `{"$match":{"reverted":true}}` |
+| `id OP value` | Transaction id: `==`, `>`, `>=`, `<`, `<=`, `between` on raw unsigned integers (transactions only). JSON: `{"$match":{"id":3}}`, `{"$gte":{"id":3}}` |
+| `timestamp OP value` | Transaction effective date (transactions only; requires `timestamp` index). Same operators; RFC3339 (quoted) or raw unix microseconds |
+| `insertedAt OP value` / `revertedAt OP value` | Transaction insertion / revert date (transactions only; requires `inserted-at` / `reverted-at` index). Same operators and values as `timestamp` |
+| `logId OP value` | Ledger-local log id: `==`, `>`, `>=`, `<`, `<=`, `between` (logs only). JSON: `{"$match":{"logId":7}}` |
+| `date OP value` | Log date (logs only). Same operators and values as `timestamp` |
+| `ledger == value` | Ledger name (logs only) |
 
 **Boolean operators** (precedence: `not` > `and` > `or`):
 
@@ -1258,7 +1270,7 @@ backward compatibility). They are rejected on other list endpoints.
 --filter "metadata[category] exists"
 
 # Address prefix
---filter "address ^= users:"
+--filter 'address ^= "users:"'
 
 # Exact address
 --filter 'address == "users:alice"'
@@ -1273,7 +1285,7 @@ backward compatibility). They are rejected on other list endpoints.
 --filter 'source ^= "merchants:" and destination ^= "users:"'
 
 # AND (both must match)
---filter "metadata[active] == true and address ^= users:"
+--filter 'metadata[active] == true and address ^= "users:"'
 
 # OR (either must match)
 --filter "metadata[category] == premium or metadata[category] == gold"
@@ -1282,7 +1294,7 @@ backward compatibility). They are rejected on other list endpoints.
 --filter "not metadata[blocked] == true"
 
 # Grouping
---filter "(metadata[a] == x or metadata[b] == y) and address ^= users:"
+--filter '(metadata[a] == x or metadata[b] == y) and address ^= "users:"'
 
 # Has asset (precision 0) — requires account-asset index
 --filter "has asset USD"
@@ -1291,8 +1303,49 @@ backward compatibility). They are rejected on other list endpoints.
 --filter "has asset USD/2"
 
 # Combine has asset with other conditions
---filter "has asset USD and address ^= users:"
+--filter 'has asset USD and address ^= "users:"'
+
+# Transaction reference, revert status and id window (transactions only)
+--filter 'reference == "order-123"'
+--filter 'reverted == false and id > 1000'
+--filter 'insertedAt >= "2023-11-14T22:13:20Z"'
+
+# The same reference filter in the structured JSON form
+--filter '{"$match":{"reference":"order-123"}}'
+
+# Log id range (logs only)
+--filter 'logId between 100 and 200'
 ```
+
+##### Filter fields by target
+
+The server validates every condition against the query target and rejects a
+condition the target does not support (for example `metadata` on logs). The
+textual grammar and the JSON DSL cover the same fields under the same names:
+
+| Target | Fields (textual and JSON DSL) |
+|--------|-------------------------------|
+| accounts (`accounts list`, `accounts aggregate-volumes`) | `metadata[key]`, `address`, `has asset` (JSON: `$exists` on `asset`) |
+| transactions (`transactions list`) | `metadata[key]`, `address`, `source`, `destination`, `reference`, `reverted`, `id`, `timestamp`, `insertedAt`, `revertedAt` |
+| logs (`logs list`) | `logId`, `date`, `ledger` |
+| audit (`audit list`) | the bare audit fields, see [audit list](#audit-list) |
+
+Only two operators exist in one form alone: an `address ^=` prefix that does
+not end in `:` and the audit `idempotency_key ^=` prefix are textual-only (the
+JSON DSL has no prefix operator). Range bounds on `id`, `logId` and the date
+fields may be `$param` values in both forms (`id >= $from` or
+`{"$gte":{"id":{"$param":"from"}}}`), resolved when a prepared query executes.
+
+```bash
+# The same transaction filters in both forms
+ledgerctl transactions list --ledger my-ledger --filter 'reference == "order-42"'
+ledgerctl transactions list --ledger my-ledger --filter '{"$match":{"reference":"order-42"}}'
+ledgerctl transactions list --ledger my-ledger --filter 'reverted == true and insertedAt >= "2026-01-01T00:00:00Z"'
+ledgerctl transactions list --ledger my-ledger --filter '{"$and":[{"$match":{"reverted":true}},{"$gte":{"insertedAt":"2026-01-01T00:00:00Z"}}]}'
+```
+
+`queries create` and `queries update` accept both formats. Transaction amounts
+are not filterable.
 
 #### accounts get
 
@@ -2448,8 +2501,13 @@ they are valid on `audit list` alone:
 | `ledger` | string | `==`, `in` | Match-any over the entry's ledgers. |
 | `caller_subject` | string | `==`, `in` | Auth subject on the caller snapshot. |
 | `order_type` | string | `==`, `in` | Order kind token (e.g. `create_transaction`, `revert_transaction`, `save_numscript`); match-any over the entry's items. |
-| `idempotency_key` | string | `==`, `^=`, `in` | Batch idempotency key. Prefix matching is index-backed; a reused key returns every historical audit entry. |
-| | | | Bare alphanumeric values are accepted unquoted; values with `-`, `:`, spaces or other non-identifier characters must be single- or double-quoted. Keys containing both `"` and `'` cannot be expressed in the textual DSL and require the gRPC API directly: use `AuditCondition.string_cond` (one value) wrapped in a `QueryFilter_Audit` for exact lookups, an `OrFilter` of such leaves for `in` lookups, and `AuditCondition.string_prefix` for prefix lookups. |
+| `idempotency_key` | string | `==`, `^=`, `in` | Batch idempotency key. Prefix matching is index-backed (textual form only); a reused key returns every historical audit entry. |
+| | | | Bare alphanumeric values are accepted unquoted; values with `-`, `:`, spaces or other non-identifier characters must be single- or double-quoted. Keys containing both `"` and `'` cannot be expressed in the textual DSL: use the structured JSON form for exact and `in` lookups (`--filter '{"$match":{"idempotency_key":"…"}}'`, an `$or` of such leaves), and the gRPC API directly (`AuditCondition.string_prefix`) for prefix lookups. |
+
+The structured JSON form uses the same bare field names, resolved against the
+audit target the same way: `--filter '{"$match":{"outcome":"failure"}}'`,
+`--filter '{"$and":[{"$gte":{"seq":1000}},{"$lte":{"seq":2000}}]}'`. It takes no
+`$param` values and has no prefix operator.
 
 Unsupported conditions are rejected with `InvalidArgument` rather than silently
 ignored: `not`, `!=` (both need a complement the index cannot serve), and any
@@ -2617,10 +2675,14 @@ ledgerctl logs list --ledger my-ledger --reverse
 # Next or previous page, with a token printed by the previous call
 ledgerctl logs list --ledger my-ledger --page-size 20 --cursor <token>
 
-# Filter via the shared filter grammar (only the fields documented under
-# "Shared Flag Contract → Filter grammar" are accepted: metadata[<key>],
-# address, source, destination, ledger)
-ledgerctl logs list --ledger my-ledger --filter 'metadata[origin] == "payments"'
+# Filter by date and log id (textual grammar or JSON DSL). Logs accept only
+# logId, date and ledger conditions; metadata, address, source and
+# destination conditions are rejected on logs.
+ledgerctl logs list --ledger my-ledger --filter 'date >= "2026-01-01T00:00:00Z"'
+ledgerctl logs list --ledger my-ledger --filter 'logId >= 100'
+
+# The same log id range in the JSON DSL
+ledgerctl logs list --ledger my-ledger --filter '{"$gte":{"logId":100}}'
 
 # Output as JSON
 ledgerctl logs list --ledger my-ledger --json
@@ -3628,7 +3690,7 @@ ledgerctl queries create <name> --ledger <ledger-name> [flags]
 |------|---------|-------------|
 | `--ledger` | *(required)* | Name of the ledger |
 | `--target` | `accounts` | Query target: `accounts`, `transactions`, or `logs` |
-| `--filter` | | Filter expression (same DSL as account/transaction list) |
+| `--filter` | | Filter expression: the textual grammar or the structured JSON `QueryFilter` DSL (same dual-format input as the list commands). See [Filter fields by target](#filter-fields-by-target) |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
@@ -3640,8 +3702,14 @@ ledgerctl queries create <name> --ledger <ledger-name> [flags]
 # Query accounts with specific metadata
 ledgerctl queries create active-users --ledger my-ledger --target accounts --filter "metadata[active] == true"
 
-# Query transactions above a threshold
-ledgerctl queries create big-txns --ledger my-ledger --target transactions --filter "amount > 1000"
+# Query pending payout transactions (transaction amounts are not filterable)
+ledgerctl queries create pending-payouts --ledger my-ledger --target transactions --filter 'source ^= "payouts:" and metadata[status] == pending'
+
+# Query transactions by reference (parameterized)
+ledgerctl queries create by-ref --ledger my-ledger --target transactions --filter 'reference == $ref'
+
+# The same query in the structured JSON form
+ledgerctl queries create by-ref-json --ledger my-ledger --target transactions --filter '{"$match":{"reference":{"$param":"ref"}}}'
 
 # Parameterized query (parameters prefixed with $)
 ledgerctl queries create by-tier --ledger my-ledger --target accounts --filter "metadata[tier] == \$tier"

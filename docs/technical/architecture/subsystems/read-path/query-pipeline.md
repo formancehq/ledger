@@ -68,8 +68,8 @@ Whatever the transport, a filter reaches the pipeline as a single
 grammar or the structured v2 JSON DSL; both are decoded by
 `filterexpr.DecodeDualFormat` and pass the per-target validity gate before the
 pipeline sees them. The canonical contract — the two serializations, the
-parameter classification, expressiveness asymmetries, date coercion, AND-combination
-and audit's textual-only rule — lives in
+parameter classification, field parity and operator asymmetries, date coercion,
+AND-combination and the audit target's field resolution — lives in
 [query-filter.md](query-filter.md). The pipeline itself is agnostic to which form
 was used.
 

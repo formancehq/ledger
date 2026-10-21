@@ -21,17 +21,16 @@ import (
 //   - cursor:   page token from a previous response's next / previous; its
 //     key is the decimal audit sequence
 //   - reverse:  iterate newest-first when "true"
-//   - filter:   filterexpr DSL restricted to bare audit fields, e.g.
+//   - filter:   dual-format filter restricted to bare audit fields, e.g.
 //     `outcome == failure`, `ledger == main`,
-//     `order_type in (create_transaction, revert_transaction)`.
+//     `order_type in (create_transaction, revert_transaction)`, or the
+//     structured `{"$match":{"outcome":"failure"}}`.
 //
 // This exposes the same audit data and filter representation as the gRPC
 // BucketService.ListAuditEntries surface (EN-1241): it consumes the same
-// controller path and the same filter grammar. The filter uses the shared
-// filterexpr grammar — the same one ledgerctl feeds to --filter — rather than
-// the REST-JSON QueryFilter codec, which deliberately rejects audit conditions
-// (their field names collide with transaction/log conditions in the JSON DSL;
-// see commonpb/query_filter.go).
+// controller path and the same filter vocabulary — the one ledgerctl feeds to
+// --filter. Both serializations resolve the bare audit field names against the
+// AUDIT target (see filterexpr.DecodeDualFormat).
 //
 // It is NOT a full parity of the gRPC ListOptions contract: the gRPC surface
 // additionally honors `checkpointId` for a pinned checkpoint read. This HTTP
@@ -86,12 +85,11 @@ func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) 
 // read). A malformed filter, or one carrying a condition invalid on the AUDIT
 // target, is a 400.
 //
-// In practice audit filters are textual: the structured v2 JSON DSL has no
-// representation for audit conditions (their field names collide with the
-// transaction/log conditions the codec already claims — EN-1241), so the codec
-// rejects them. The decoder still accepts the structured form as input; it just
-// cannot carry an audit condition, so the textual form is the canonical one for
-// this endpoint. See the handler doc above and commonpb/query_filter.go.
+// Both serializations carry audit conditions: the AUDIT target makes the
+// structured decoder resolve the bare audit field names (ledger, timestamp, …)
+// to the audit arm, exactly like the textual grammar. Only the
+// `idempotency_key ^=` prefix match is textual-only (the JSON DSL has no prefix
+// operator).
 func parseAuditFilter(w http.ResponseWriter, r *http.Request) (*commonpb.QueryFilter, bool) {
 	return parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_AUDIT)
 }
