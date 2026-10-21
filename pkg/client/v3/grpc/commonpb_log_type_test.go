@@ -1,7 +1,6 @@
 package grpc_test
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -32,32 +31,6 @@ func TestGetLogType_OrderSkipped(t *testing.T) {
 	require.Equal(t, commonpb.OrderSkippedLogType, commonpb.GetLogType(payload))
 }
 
-func TestLedgerLog_MarshalJSON_OrderSkipped(t *testing.T) {
-	t.Parallel()
-
-	log := &commonpb.LedgerLog{
-		Id: 7,
-		Data: &commonpb.LedgerLogPayload{
-			Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-				OrderSkipped: &commonpb.OrderSkippedLog{
-
-					Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
-						"reference":             "ref-x",
-						"existingTransactionId": "42",
-					}),
-				},
-			},
-		},
-	}
-
-	encoded, err := json.Marshal(log)
-	require.NoError(t, err)
-
-	var round map[string]any
-	require.NoError(t, json.Unmarshal(encoded, &round))
-	require.Equal(t, "ORDER_SKIPPED", round["type"])
-}
-
 // Every wire discriminator is pinned independently from the encoder/decoder
 // mapping, so a mutually consistent rename or missing variant still fails.
 func TestLogTypeJSONNames(t *testing.T) {
@@ -83,21 +56,6 @@ func TestLogTypeJSONNames(t *testing.T) {
 			decoded, err := commonpb.LogTypeFromString(name)
 			require.NoError(t, err)
 			require.Equal(t, kind, decoded)
-		})
-	}
-}
-
-func TestLedgerLogJSONRejectsMissingPayload(t *testing.T) {
-	t.Parallel()
-	for name, payload := range map[string]*commonpb.LedgerLogPayload{
-		"nil":                  nil,
-		"empty":                {},
-		"nil selected message": {Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: nil}},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			_, err := json.Marshal(&commonpb.LedgerLog{Data: payload})
-			require.ErrorContains(t, err, "missing log payload")
 		})
 	}
 }

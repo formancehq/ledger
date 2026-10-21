@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	jsonPkg "github.com/formancehq/ledger/pkg/client/v3/internal/json"
 )
 
 // Target type constants.
@@ -244,34 +242,4 @@ func AccountMetadataToAnyMap(m map[string]*MetadataMap) map[string]map[string]an
 	}
 
 	return result
-}
-
-// MarshalJSON implements json.Marshaler for MetadataMap.
-// Outputs a flat JSON object with typed values: {"key": "str", "count": 42, "active": true}.
-func (mm *MetadataMap) MarshalJSON() ([]byte, error) {
-	m := MetadataMapToAnyMap(mm)
-	if m == nil {
-		m = make(map[string]any)
-	}
-
-	return jsonPkg.Marshal(m)
-}
-
-// UnmarshalJSON implements json.Unmarshaler for MetadataMap.
-// Accepts a flat JSON object: {"key": "str", "count": 42, "active": true, "cleared": null}
-// Uses JSON type inference (see MetadataValueFromAny).
-func (mm *MetadataMap) UnmarshalJSON(data []byte) error {
-	var m map[string]any
-	if err := jsonPkg.UnmarshalUseNumber(data, &m); err != nil {
-		return err
-	}
-
-	md, err := MetadataFromAnyMap(m)
-	if err != nil {
-		return err
-	}
-
-	mm.Values = md
-
-	return nil
 }
