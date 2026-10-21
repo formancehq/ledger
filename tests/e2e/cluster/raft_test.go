@@ -21,7 +21,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 var _ = Describe("Simple cluster", func() {
@@ -241,10 +243,15 @@ var _ = Describe("Simple cluster", func() {
 
 			By("Creating state that cannot be replayed after compaction")
 			for i := 0; i < countTransactions; i++ {
-				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", offlineAccountAddress, big.NewInt(100), "USD"),
-				}, nil, nil)))
-				Expect(err).To(Succeed())
+				Eventually(func() error {
+					_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", offlineAccountAddress, big.NewInt(100), "USD"),
+					}, nil, nil)))
+					if err != nil && status.Code(err) != codes.Unavailable {
+						StopTrying("transaction failed with a non-retryable error").Wrap(err).Now()
+					}
+					return err
+				}).Within(45 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 			}
 
 			minimumSnapshotIndex := followerLastIndex + raftCompactionMargin + 1
