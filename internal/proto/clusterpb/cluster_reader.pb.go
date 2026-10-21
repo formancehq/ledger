@@ -11,13 +11,13 @@ import (
 // GetClusterStateRequestReader provides read-only access to GetClusterStateRequest.
 // Call Mutate() to obtain a mutable clone.
 type GetClusterStateRequestReader interface {
-	GetNodeId() uint32
+	GetNodeId() uint64
 	Mutate() *GetClusterStateRequest
 }
 
 type getClusterStateRequestReadonly GetClusterStateRequest
 
-func (r *getClusterStateRequestReadonly) GetNodeId() uint32 {
+func (r *getClusterStateRequestReadonly) GetNodeId() uint64 {
 	return (*GetClusterStateRequest)(r).GetNodeId()
 }
 
@@ -78,7 +78,7 @@ func NewGetClusterStateRequestListReader(s []*GetClusterStateRequest) GetCluster
 // NodeInfoReader provides read-only access to NodeInfo.
 // Call Mutate() to obtain a mutable clone.
 type NodeInfoReader interface {
-	GetId() uint32
+	GetId() uint64
 	GetSuffrage() string
 	GetProgress() ProgressInfoReader
 	GetRaftAddress() string
@@ -91,7 +91,7 @@ type NodeInfoReader interface {
 
 type nodeInfoReadonly NodeInfo
 
-func (r *nodeInfoReadonly) GetId() uint32 {
+func (r *nodeInfoReadonly) GetId() uint64 {
 	return (*NodeInfo)(r).GetId()
 }
 
@@ -429,9 +429,9 @@ func (m raftStatus_progressMapReadonly) Range(yield func(uint64, ProgressInfoRea
 // Call Mutate() to obtain a mutable clone.
 type ClusterStateReader interface {
 	GetState() string
-	GetLeader() uint32
+	GetLeader() uint64
 	GetNodes() NodeInfoListReader
-	GetLocalNode() uint32
+	GetLocalNode() uint64
 	GetRaftStatus() RaftStatusReader
 	GetMaintenanceMode() bool
 	GetSyncProgress() SyncProgressReader
@@ -447,7 +447,7 @@ func (r *clusterStateReadonly) GetState() string {
 	return (*ClusterState)(r).GetState()
 }
 
-func (r *clusterStateReadonly) GetLeader() uint32 {
+func (r *clusterStateReadonly) GetLeader() uint64 {
 	return (*ClusterState)(r).GetLeader()
 }
 
@@ -455,7 +455,7 @@ func (r *clusterStateReadonly) GetNodes() NodeInfoListReader {
 	return NewNodeInfoListReader((*ClusterState)(r).GetNodes())
 }
 
-func (r *clusterStateReadonly) GetLocalNode() uint32 {
+func (r *clusterStateReadonly) GetLocalNode() uint64 {
 	return (*ClusterState)(r).GetLocalNode()
 }
 
@@ -705,13 +705,13 @@ func NewSyncProgressListReader(s []*SyncProgress) SyncProgressListReader {
 // TransferLeadershipRequestReader provides read-only access to TransferLeadershipRequest.
 // Call Mutate() to obtain a mutable clone.
 type TransferLeadershipRequestReader interface {
-	GetTransferee() uint32
+	GetTransferee() uint64
 	Mutate() *TransferLeadershipRequest
 }
 
 type transferLeadershipRequestReadonly TransferLeadershipRequest
 
-func (r *transferLeadershipRequestReadonly) GetTransferee() uint32 {
+func (r *transferLeadershipRequestReadonly) GetTransferee() uint64 {
 	return (*TransferLeadershipRequest)(r).GetTransferee()
 }
 
@@ -772,13 +772,13 @@ func NewTransferLeadershipRequestListReader(s []*TransferLeadershipRequest) Tran
 // TransferLeadershipResponseReader provides read-only access to TransferLeadershipResponse.
 // Call Mutate() to obtain a mutable clone.
 type TransferLeadershipResponseReader interface {
-	GetNewLeader() uint32
+	GetNewLeader() uint64
 	Mutate() *TransferLeadershipResponse
 }
 
 type transferLeadershipResponseReadonly TransferLeadershipResponse
 
-func (r *transferLeadershipResponseReadonly) GetNewLeader() uint32 {
+func (r *transferLeadershipResponseReadonly) GetNewLeader() uint64 {
 	return (*TransferLeadershipResponse)(r).GetNewLeader()
 }
 

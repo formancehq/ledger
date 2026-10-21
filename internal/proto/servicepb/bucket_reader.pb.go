@@ -4159,13 +4159,13 @@ func NewRemoveAccountTypeLedgerRequestListReader(s []*RemoveAccountTypeLedgerReq
 // GetPrimaryMetricsRequestReader provides read-only access to GetPrimaryMetricsRequest.
 // Call Mutate() to obtain a mutable clone.
 type GetPrimaryMetricsRequestReader interface {
-	GetNodeId() uint32
+	GetNodeId() uint64
 	Mutate() *GetPrimaryMetricsRequest
 }
 
 type getPrimaryMetricsRequestReadonly GetPrimaryMetricsRequest
 
-func (r *getPrimaryMetricsRequestReadonly) GetNodeId() uint32 {
+func (r *getPrimaryMetricsRequestReadonly) GetNodeId() uint64 {
 	return (*GetPrimaryMetricsRequest)(r).GetNodeId()
 }
 
@@ -4302,13 +4302,13 @@ func NewGetPrimaryMetricsResponseListReader(s []*GetPrimaryMetricsResponse) GetP
 // GetSecondaryMetricsRequestReader provides read-only access to GetSecondaryMetricsRequest.
 // Call Mutate() to obtain a mutable clone.
 type GetSecondaryMetricsRequestReader interface {
-	GetNodeId() uint32
+	GetNodeId() uint64
 	Mutate() *GetSecondaryMetricsRequest
 }
 
 type getSecondaryMetricsRequestReadonly GetSecondaryMetricsRequest
 
-func (r *getSecondaryMetricsRequestReadonly) GetNodeId() uint32 {
+func (r *getSecondaryMetricsRequestReadonly) GetNodeId() uint64 {
 	return (*GetSecondaryMetricsRequest)(r).GetNodeId()
 }
 

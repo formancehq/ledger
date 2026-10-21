@@ -26,6 +26,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -33,8 +34,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -285,7 +288,7 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 		Expect(os.WriteFile(publicPath, fmt.Appendf(nil, "%x\n", public), 0600)).To(Succeed())
 		config, err := json.Marshal(internalauth.Ed25519KeysConfig{Keys: []internalauth.Ed25519KeyEntry{{
 			KeyID: "http-sinks-scope-key", PublicKeyFile: publicPath,
-			Scopes: []string{"ledger:admin", "ledger:OpsRead", "ledger:OpsWrite", "ledger:TransactionWrite"},
+			Scopes: []string{"ledger:admin", "ledger:OpsRead", "ledger:OpsWrite", "ledger:TransactionWrite", "ledger:LedgerWrite"},
 		}}})
 		Expect(err).To(Succeed())
 		configPath := filepath.Join(dir, "auth.json")
@@ -338,11 +341,20 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 		DeferCleanup(func() { Expect(conn.Close()).To(Succeed()) })
 		cluster := clusterpb.NewClusterServiceClient(conn)
 		adminCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token("ledger:admin"))
-		Eventually(func(g Gomega) uint32 {
+		Eventually(func(g Gomega) uint64 {
 			state, err := cluster.GetClusterState(adminCtx, &clusterpb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed())
 			return state.GetLeader()
 		}).Within(10 * time.Second).ShouldNot(BeZero())
+		// Leadership is visible before its first write-gate verdict. Probe with
+		// invalid input so readiness cannot create business state.
+		bucket := servicepb.NewBucketServiceClient(conn)
+		probe := servicepb.UnsignedApplyRequest("write-gate-probe", actions.CreateLedgerAction("", nil))
+		probeCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token("ledger:LedgerWrite"))
+		Eventually(func() codes.Code {
+			_, err := bucket.Apply(probeCtx, probe)
+			return status.Code(err)
+		}).Within(5 * time.Second).ProbeEvery(10 * time.Millisecond).Should(Equal(codes.InvalidArgument))
 		transport := &http.Transport{TLSClientConfig: tlsConfig}
 		DeferCleanup(transport.CloseIdleConnections)
 		client := &http.Client{Transport: transport, Timeout: 10 * time.Second}

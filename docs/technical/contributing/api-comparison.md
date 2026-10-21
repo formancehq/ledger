@@ -1322,6 +1322,17 @@ See [Global Log Architecture](../architecture/subsystems/consensus/global-log.md
 
 The POC provides a gRPC API for internal service communication (Raft node forwarding to leader) and can be used by clients.
 
+### Cluster node ID width
+
+Cluster status, manual leadership transfer and primary/secondary store-metrics
+targets preserve unsigned 64-bit node identities in the existing protobuf fields,
+including per-peer enrichment and CLI arguments. The zero state-request target still routes to the leader; a
+zero transfer target rejects. Zero metrics targets select the local store.
+These v3 administration RPCs have no v2 ledger API equivalent and do not change
+HTTP routes or envelopes. See the
+[cluster identity contract](../architecture/subsystems/api/grpc-api.md#cluster-node-identities)
+and [old-reader limitations](../architecture/subsystems/api/protocol-compatibility.md#cluster-node-id-width).
+
 ### Cluster membership wire contract
 
 Ledger v3 requires a concrete 16-byte member identity on every membership

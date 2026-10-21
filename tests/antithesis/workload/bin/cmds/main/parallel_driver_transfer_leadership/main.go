@@ -46,7 +46,7 @@ func main() {
 	}
 
 	// Pick a non-leader voter as the transfer target.
-	var targetID uint32
+	var targetID uint64
 
 	for _, node := range state.GetNodes() {
 		if node.GetId() != currentLeader && node.GetSuffrage() == "Voter" {

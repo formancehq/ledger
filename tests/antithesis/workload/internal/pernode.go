@@ -34,7 +34,7 @@ type PerNodeConn struct {
 	Addr string
 	// NodeID is the Raft node ID resolved once via GetClusterState. Zero if it
 	// could not be resolved (node down at dial time); Addr is still usable.
-	NodeID uint32
+	NodeID uint64
 
 	conn    *grpc.ClientConn
 	Bucket  servicepb.BucketServiceClient
@@ -162,7 +162,7 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 		// One successful leader response carries the full node list, so the
 		// remaining connections can be resolved from the same snapshot.
 		if len(state.GetNodes()) > 0 {
-			byAddr := make(map[string]uint32, len(state.GetNodes()))
+			byAddr := make(map[string]uint64, len(state.GetNodes()))
 			for _, n := range state.GetNodes() {
 				byAddr[n.GetServiceAddress()] = n.GetId()
 			}
