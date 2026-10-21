@@ -1142,7 +1142,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
         with:
-          go-version: '1.25'
+          go-version: '1.27.3'
       - run: go test ./...
       - run: go test -tags integration ./...
       - run: ginkgo run -tags e2e ./tests/e2e

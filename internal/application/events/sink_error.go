@@ -198,11 +198,11 @@ func rawUserinfoCredentials(raw string) []string {
 	// Authority ends at the first "/" (path).
 	authority, _, _ := strings.Cut(afterScheme, "/")
 	// Userinfo is the part before the last "@".
-	atIdx := strings.LastIndex(authority, "@")
-	if atIdx < 0 {
+	before, _, ok := strings.CutLast(authority, "@")
+	if !ok {
 		return nil
 	}
-	userinfo := authority[:atIdx]
+	userinfo := before
 	// Split into username:password.
 	if _, password, ok := strings.Cut(userinfo, ":"); ok {
 		if password != "" {

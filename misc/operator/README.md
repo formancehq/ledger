@@ -456,7 +456,7 @@ The `kubectl-ledger` plugin provides a CLI for managing Cluster resources.
 
 ### Installation
 
-**From source (requires Go 1.26+):**
+**From source (use Go 1.27.3; module language minimum Go 1.26.0):**
 
 ```bash
 go build -o $(go env GOPATH)/bin/kubectl-ledger ./cmd/kubectl-ledger

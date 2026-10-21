@@ -2,6 +2,8 @@ module github.com/formancehq/ledger/misc/operator
 
 go 1.26.0
 
+toolchain go1.27.3
+
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/aws/aws-sdk-go-v2 v1.41.7
