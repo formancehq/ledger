@@ -97,6 +97,9 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 				if sts.CreationTimestamp.IsZero() {
 					sts.Spec = desired
 				} else {
+					if volumeClaimTemplatesChanged(sts.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
+						desired.Template = preserveExistingStorageWiring(sts.Spec.Template, desired.Template)
+					}
 					sts.Spec.Replicas = desired.Replicas
 					sts.Spec.Template = withKubectlRestartedAt(sts.Spec.Template, desired.Template)
 					sts.Spec.UpdateStrategy = desired.UpdateStrategy
@@ -141,6 +144,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		if volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
 			if deferRCVolumeClaimRecreation(ledger.Spec.Image.Tag, existing) {
 				logger.Info("deferring StatefulSet recreation until RC rollout converges")
+				desired.Template = preserveExistingStorageWiring(existing.Spec.Template, desired.Template)
 			} else {
 				logger.Info("VolumeClaimTemplates changed, recreating StatefulSet with orphan propagation")
 				orphan := metav1.DeletePropagationOrphan
@@ -206,6 +210,40 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// preserveExistingStorageWiring keeps the Pod template compatible with the
+// immutable claim templates while an RC image rolls out. The new storage layout
+// is installed only when the StatefulSet is recreated after that rollout.
+func preserveExistingStorageWiring(existing, desired corev1.PodTemplateSpec) corev1.PodTemplateSpec {
+	for _, name := range []string{"wal", "data"} {
+		desired.Spec.Volumes = slices.DeleteFunc(desired.Spec.Volumes, func(volume corev1.Volume) bool {
+			return volume.Name == name
+		})
+		for _, volume := range existing.Spec.Volumes {
+			if volume.Name == name {
+				desired.Spec.Volumes = append(desired.Spec.Volumes, *volume.DeepCopy())
+			}
+		}
+		for i := range desired.Spec.Containers {
+			container := &desired.Spec.Containers[i]
+			container.VolumeMounts = slices.DeleteFunc(container.VolumeMounts, func(mount corev1.VolumeMount) bool {
+				return mount.Name == name
+			})
+			for _, oldContainer := range existing.Spec.Containers {
+				if oldContainer.Name != container.Name {
+					continue
+				}
+				for _, mount := range oldContainer.VolumeMounts {
+					if mount.Name == name {
+						container.VolumeMounts = append(container.VolumeMounts, *mount.DeepCopy())
+					}
+				}
+			}
+		}
+	}
+
+	return desired
 }
 
 // reconcileVolumeProtectionPass brings the deletion-protection labels on this

@@ -197,7 +197,11 @@ func TestRCVolumeClaimRecreationWaitsForRollout(t *testing.T) {
 	cluster.Spec.Image.Repository = "ghcr.io/formancehq/ledger"
 	cluster.Spec.Image.Tag = "v3.0.0-rc.2"
 	applyDefaults(cluster)
+	old := cluster.DeepCopy()
+	old.Spec.Image.Tag = "v3.0.0-rc.1"
+	old.Spec.Persistence.Data.HostPath = &ledgerv1alpha1.HostPathVolumeSpec{Path: "/mnt/data"}
 	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.1", true)
+	sts.Spec = buildStatefulSetSpec(old, "old", nil, "disabled")
 	sts.Name = resourceName(cluster.Name)
 	sts.Namespace = cluster.Namespace
 	sts.CreationTimestamp = metav1.Now()
@@ -216,7 +220,10 @@ func TestRCVolumeClaimRecreationWaitsForRollout(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, c.Get(ctx, key, sts))
 	require.Equal(t, "ghcr.io/formancehq/ledger:v3.0.0-rc.2", sts.Spec.Template.Spec.Containers[0].Image)
-	require.Empty(t, sts.Spec.VolumeClaimTemplates)
+	require.Len(t, sts.Spec.VolumeClaimTemplates, 1)
+	require.Equal(t, "wal", sts.Spec.VolumeClaimTemplates[0].Name)
+	require.NotNil(t, storageVolume(sts.Spec.Template.Spec.Volumes, "data"))
+	require.Equal(t, "$(POD_INDEX)", storageMount(sts.Spec.Template.Spec.Containers[0].VolumeMounts, "data").SubPathExpr)
 
 	// An interrupted mixed-image rollout must not delete the StatefulSet.
 	sts.Status.ObservedGeneration = sts.Generation
@@ -237,4 +244,24 @@ func TestRCVolumeClaimRecreationWaitsForRollout(t *testing.T) {
 	_, err = r.reconcileStatefulSetWithExec(ctx, cluster, "hash", nil, nil)
 	require.NoError(t, err)
 	require.True(t, apierrors.IsNotFound(c.Get(ctx, key, sts)))
+}
+
+func storageVolume(volumes []corev1.Volume, name string) *corev1.Volume {
+	for i := range volumes {
+		if volumes[i].Name == name {
+			return &volumes[i]
+		}
+	}
+
+	return nil
+}
+
+func storageMount(mounts []corev1.VolumeMount, name string) *corev1.VolumeMount {
+	for i := range mounts {
+		if mounts[i].Name == name {
+			return &mounts[i]
+		}
+	}
+
+	return nil
 }
