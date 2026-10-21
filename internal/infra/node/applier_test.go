@@ -673,7 +673,7 @@ func TestApplierMixedTermBatchV1RaceFixed(t *testing.T) {
 	require.ErrorIs(t, orphanErr, ErrLeadershipLost)
 
 	close(setup.stop)
-	<-runDone
+	require.NoError(t, <-runDone)
 }
 
 func TestApplierResolveDroppedFuture(t *testing.T) {
