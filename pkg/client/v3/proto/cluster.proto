@@ -102,7 +102,7 @@ service ClusterService {
 
 message GetClusterStateRequest {
   // node_id indicates which node to query for cluster state (0 = route to leader)
-  uint32 node_id = 1;
+  uint64 node_id = 1;
 }
 
 // ============================================================================
@@ -111,7 +111,7 @@ message GetClusterStateRequest {
 
 // NodeInfo represents information about a node in the cluster
 message NodeInfo {
-  uint32 id = 1;
+  uint64 id = 1;
   string suffrage = 2;  // Voter or Learner
   ProgressInfo progress = 3;  // Progress information (only available when querying leader)
   string raft_address = 4;  // Raft transport address
@@ -149,9 +149,9 @@ message RaftStatus {
 // ClusterState represents the state of the Raft cluster
 message ClusterState {
   string state = 1;             // Leader, Follower, Candidate, Shutdown
-  uint32 leader = 2;            // ID of the current leader (0 if no leader)
+  uint64 leader = 2;            // ID of the current leader (0 if no leader)
   repeated NodeInfo nodes = 3;  // List of all nodes in the cluster
-  uint32 local_node = 4;        // ID of the local node
+  uint64 local_node = 4;        // ID of the local node
   RaftStatus raft_status = 5;   // Complete Raft status information
   bool maintenance_mode = 6;    // Whether maintenance mode is active
   SyncProgress sync_progress = 7; // Local node checkpoint sync progress
@@ -178,11 +178,11 @@ message SyncProgress {
 // ============================================================================
 
 message TransferLeadershipRequest {
-  uint32 transferee = 1;  // Target node ID
+  uint64 transferee = 1;  // Target node ID
 }
 
 message TransferLeadershipResponse {
-  uint32 new_leader = 1;  // Confirmed new leader ID
+  uint64 new_leader = 1;  // Confirmed new leader ID
 }
 
 message GetDiskUsageRequest {}
