@@ -20,7 +20,7 @@ The bug this addresses is tracked as [EN-1045](https://formance-team.atlassian.n
 ## Non-Goals
 
 - Not a general access-control mechanism. The registry only tracks members removed via the normal removal paths; it is not a policy engine for who may join.
-- Not a replacement for `--unsafe-skip-config-validation`. An operator can still clear the registry manually via `ledgerctl` if they know what they are doing.
+- Not a replacement for `--unsafe-skip-config-validation`. A manual registry-clearing command was designed (see [`ledgerctl` Additions](#ledgerctl-additions)) but is not implemented in v3.0.
 - Not a fix for the operator scale-down deadlock (companion issue, tracked separately). This document is scoped to the auto-promote loop.
 
 ## Core Mechanism
@@ -97,7 +97,7 @@ Both mutations belong to the same Pebble transaction, so they are atomic. Cross-
 
 No crash window on this path.
 
-On the leader serving `RemoveNode`, `ProposalID` — together with the expected node ID and ConfChange type — selects the exact pending future, which then carries the committed Raft entry index. A canceled proposal that commits late cannot resolve a newer operation for the same node. Every removal waits on `Machine.WaitForApplied(index)` rather than polling Pebble against a fixed wall-clock deadline. If the caller stops waiting after commit but before durable apply, Ledger returns `UNAVAILABLE` with `ErrorInfo.reason=RAFT_NODE_REMOVAL_COMMITTED` and the `nodeId` / `committedIndex` metadata. Observing the committed ConfChange installs a node-local admission barrier for `(nodeID, instanceID)` before the caller's future can be resolved or discarded. A node-lifecycle-bound background waiter starts from that commit observation, waits for apply, verifies the same durable tombstone invariant as the foreground path, and only then clears that exact barrier; the replicated tombstone remains authoritative and can later be removed deliberately through `forget-removed`. Protection therefore does not depend on the RPC winning its cancellation race, while cancellation cannot leave a permanent node-local block after a valid tombstone apply.
+On the leader serving `RemoveNode`, `ProposalID` — together with the expected node ID and ConfChange type — selects the exact pending future, which then carries the committed Raft entry index. A canceled proposal that commits late cannot resolve a newer operation for the same node. Every removal waits on `Machine.WaitForApplied(index)` rather than polling Pebble against a fixed wall-clock deadline. If the caller stops waiting after commit but before durable apply, Ledger returns `UNAVAILABLE` with `ErrorInfo.reason=RAFT_NODE_REMOVAL_COMMITTED` and the `nodeId` / `committedIndex` metadata. Observing the committed ConfChange installs a node-local admission barrier for `(nodeID, instanceID)` before the caller's future can be resolved or discarded. A node-lifecycle-bound background waiter starts from that commit observation, waits for apply, verifies the same durable tombstone invariant as the foreground path, and only then clears that exact barrier; the replicated tombstone remains authoritative, and no operator command currently removes it (the `ledgerctl cluster forget-removed` / `list-removed` commands described in [`ledgerctl` Additions](#ledgerctl-additions) are not implemented). Protection therefore does not depend on the RPC winning its cancellation race, while cancellation cannot leave a permanent node-local block after a valid tombstone apply.
 
 #### Force path (`ForceRemoveNode`)
 
@@ -255,7 +255,7 @@ sequenceDiagram
     P->>L: JoinAsLearner{nodeID=3, instanceID=X}
     L->>L: Read RemovedMembers[3, X]
     alt entry exists
-        L-->>P: FailedPrecondition: nodeID 3 (instance X) was removed at t;<br/>if this is intentional run: ledgerctl cluster forget-removed 3 X
+        L-->>P: FailedPrecondition: node 3 (instance X) was previously removed<br/>(message names ledgerctl cluster forget-removed, which does not exist yet)
     else no entry
         L->>L: propose ConfChangeAddLearnerNode
         L-->>P: OK
@@ -278,12 +278,12 @@ sequenceDiagram
 
 ## `ledgerctl` Additions
 
-Two new subcommands under `ledgerctl cluster`:
+> **Status: not implemented.** Neither subcommand below exists in v3.0: there is no `ledgerctl` command, gRPC RPC, or FSM entry for them, and they are not in `docs/ops/cli.md`. The `JoinAsLearner` rejection message and some code comments still name `ledgerctl cluster forget-removed`; that text is ahead of the implementation. Until it exists, a removed `(nodeID, instanceID)` cannot be re-admitted. To bring a node back at the same ordinal, provision it with empty WAL and data directories so it generates a fresh `instanceID` and joins as a new instance.
+
+The design proposed two subcommands under `ledgerctl cluster`:
 
 - **`list-removed`** — dumps the registry for auditing. Output: `nodeID  instanceID  removedAt  reason`.
 - **`forget-removed <nodeID> <instanceID>`** — proposes a `RemovedMemberEntryDelete` FSM entry that removes the given tuple from the registry. Intended for exceptional operator recovery (e.g., a WAL was accidentally wiped and the peer needs to rejoin under the same identity). Requires the same auth as `remove-node`.
-
-Both commands are documented in `docs/ops/cli.md`.
 
 ## Testing
 
@@ -329,7 +329,7 @@ An alternative where the operator, on scale-up, calls `forget-removed` before le
 - External tools (fctl, GitOps direct) that bypass the operator would need to remember this step; forgetting it leaves pods in `CrashLoopBackOff` at boot.
 - The `instanceID` mechanism achieves the same result with zero operator changes.
 
-Kept as an **operational escape hatch** under the `ledgerctl cluster forget-removed` command, for manual recovery.
+Kept as a planned **operational escape hatch** under a `ledgerctl cluster forget-removed` command, for manual recovery; not implemented in v3.0 (see [`ledgerctl` Additions](#ledgerctl-additions)).
 
 ### Change the Identity Model Entirely (etcd-style random `memberID`)
 

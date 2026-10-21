@@ -167,10 +167,10 @@ manifest, is not a usable backup.
 │ 1a. FULL BACKUP (running cluster, leader only)                         │
 │                                                                        │
 │    ledgerctl store backup --driver s3 --s3-bucket my-bucket            │
-│    ─► Leader: create Pebble checkpoint                                │
-│    ─► Leader: diff SSTs against previous checkpoint                   │
-│    ─► Leader: upload new/changed files, clean old exports             │
+│    ─► Leader: create Pebble checkpoint, hash every file               │
+│    ─► Leader: upload files whose content-addressed key is missing     │
 │    ─► Leader: write manifest (checkpoint + empty exports)             │
+│    ─► Leader: prune objects the new manifest does not reference       │
 ├─────────────────────────────────────────────────────────────────────────┤
 │ 1b. INCREMENTAL BACKUP (leader only, forwarded)                        │
 │                                                                        │
@@ -178,6 +178,7 @@ manifest, is not a usable backup.
 │    ─► Leader: read manifest, determine last exported sequences        │
 │    ─► Leader: stream new log + audit entries as KV segments           │
 │    ─► Leader: append segments to manifest exports list                │
+│    ─► Leader: prune export segments the manifest does not reference   │
 └─────────────────────────────────────────────────────────────────────────┘
                                 │
                  ┌──────────────┴──────────────┐
@@ -246,17 +247,17 @@ The `store backup` command calls the `ClusterService.Backup` gRPC RPC (unary). I
 
 The leader creates a **temporary Pebble checkpoint** — a point-in-time filesystem snapshot using hardlinks. Because boundaries (nextTransactionId, nextLogId per ledger) are written to Pebble on every committed entry, the checkpoint is immediately consistent without requiring Raft consensus or FSM gating. Backup does not block writes.
 
-#### Step 2: Diff Against Previous Manifest
+#### Step 2: Content-Addressed Diff
 
-The backup reads the previous manifest from storage (if any) and computes a diff:
-- **New/changed files**: SST files that are new or have changed size are uploaded.
-- **Stale files**: Files present in the old manifest but not in the current checkpoint are deleted.
+Every checkpoint file is hashed (SHA-256), and its storage key embeds that hash: `<bucket-id>/data/<filename>.<hash>`. A file whose content changes between checkpoints, such as Pebble's growing `MANIFEST-NNNNNN`, gets a new key instead of overwriting the object the published manifest still references. The backup lists the existing objects under `<bucket-id>/data/` once and uploads only the files whose key is missing. Nothing is deleted at this stage.
 
-SST files in Pebble are immutable — same filename means same content. This makes the diff very efficient.
+#### Step 3: Upload, Publish the Manifest, Then Prune
 
-#### Step 3: Upload and Manifest
+1. Upload the missing files.
+2. Write the new manifest (`<bucket-id>/manifest.json`) with the new checkpoint and an empty export list. Writing the manifest publishes the backup.
+3. Only after the manifest is written, prune every object under `<bucket-id>/data/` and `<bucket-id>/exports/` that the new manifest does not reference: superseded checkpoint files, the export segments rolled up into the new checkpoint, and leftovers from earlier runs that crashed. Prune errors are logged and do not fail the backup.
 
-New files are uploaded to the storage backend. A manifest JSON file is written last (for atomicity).
+This order is what makes the cycle crash-safe: a crash before the manifest write leaves the previous manifest fully restorable, and a crash after it leaves the new one restorable. No step deletes an object that the current manifest references. The response reports superseded objects as `files_deleted` and crashed-run leftovers as `orphans_deleted`.
 
 **File**: `internal/infra/backup/manager.go` — `RunBackup()`
 
@@ -320,14 +321,15 @@ sequenceDiagram
     Follower->>Leader: Forward to leader
 
     Leader->>Pebble: CreateTemporaryCheckpoint("backup")
+    Leader->>Leader: Hash checkpoint files (content-addressed keys)
     Leader->>Storage: Read previous manifest
-    Leader->>Leader: Compute diff (new/changed/stale)
-    Leader->>Storage: Upload new/changed files
-    Leader->>Storage: Delete stale files
-    Leader->>Storage: Write updated manifest
+    Leader->>Storage: List existing data/ objects
+    Leader->>Storage: Upload files whose key is missing
+    Leader->>Storage: Write new manifest (publish)
+    Leader->>Storage: Prune data/ and exports/ objects not in the new manifest
     Leader->>Pebble: Remove tmp/backup
 
-    Leader->>Client: Response (files uploaded, deleted, total, duration)
+    Leader->>Client: Response (files uploaded, files deleted, orphans deleted, duration)
 ```
 
 ---
@@ -372,8 +374,9 @@ The `store incremental-backup` command calls the `ClusterService.IncrementalBack
 4. **Snapshot**: Takes a `ReadHandle` (Pebble snapshot) for point-in-time consistency.
 5. **Determine delta**: Compares current sequences against the manifest's last exported sequences.
 6. **Stream entries**: Iterates new log entries (`{0x04, 0x01}` prefix) and audit entries (`{0x04, 0x02}` prefix) via raw Pebble range scan, writing them as a KV stream binary format to S3 segments. Each segment streams through an `io.Pipe` into a multipart upload, so memory stays bounded and a single object can exceed the 5 GB single-`PutObject` limit. A range whose serialized entries exceed `--backup-max-segment-bytes` (default 4Gi) is split into multiple segments at sequence boundaries. Progress proposals were dropped from the FSM lifecycle: liveness is observed in-memory on the leader via the orchestrator's executor registry rather than inferred from progress staleness.
-7. **Update manifest**: Appends new export segments to the manifest.
-8. **Complete / Fail**: The leader proposes the terminal order under a bounded background context (so a client disconnect does not strand the destination lock).
+7. **Update manifest**: Appends new export segments to the manifest and writes it.
+8. **Prune**: After the manifest is written, deletes export segments under `<bucket-id>/exports/` that the manifest does not reference (leftovers from failed runs).
+9. **Complete / Fail**: The leader proposes the terminal order under a bounded background context (so a client disconnect does not strand the destination lock).
 
 ### Prerequisites
 
@@ -399,7 +402,10 @@ The manifest combines checkpoint metadata with incremental exports:
     "lastAppliedIndex": 12345,
     "lastLogSequence": 500,
     "lastAuditSequence": 300,
-    "files": {"000001.sst": 1234, "000002.sst": 5678}
+    "files": {
+      "000001.sst": {"size": 1234, "key": "<bucket-id>/data/000001.sst.<sha256>"},
+      "MANIFEST-000005": {"size": 5678, "key": "<bucket-id>/data/MANIFEST-000005.<sha256>"}
+    }
   },
   "exports": [
     {"type": "log", "startSeq": 501, "endSeq": 600, "key": "...", "size": 12345},
@@ -408,7 +414,7 @@ The manifest combines checkpoint metadata with incremental exports:
 }
 ```
 
-When a new **full backup** is taken, old exports are cleaned up and the exports list is reset to empty.
+When a new **full backup** is taken, the exports list is reset to empty; the old export segments are pruned after the new manifest is written.
 
 **File**: `internal/infra/backup/manager.go` — `RunIncrementalBackup()`
 

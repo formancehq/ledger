@@ -420,7 +420,7 @@ The server exposes four HTTP probes on the management port:
 |-------------|--------------------------------------------------------------------------------------------|------------------------------------------------------------------|
 | `/livez`    | the process is running                                                                     | Kubernetes liveness probe                                        |
 | `/readyz`   | the local Raft loop has started (any role: PreCandidate, Candidate, Follower, Leader)      | Kubernetes readiness probe / StatefulSet `OrderedReady` gate     |
-| `/clusterz` | the local node is connected to a healthy cluster: leader elected, disk and clock checks OK | Monitoring; clients that need cluster-availability semantics     |
+| `/clusterz` | the local Raft node is a Leader or Follower and a leader is elected (disk and clock checks gate writes, not this probe) | Monitoring; clients that need cluster-availability semantics     |
 | `/health`   | the local Raft node is a Leader or Follower (connected to the cluster)                     | Legacy compatibility check                                       |
 
 `/readyz` is intentionally permissive: it must report Ready even before quorum
@@ -746,7 +746,7 @@ Use `--unsafe-skip-config-validation` to bypass safety checks for `node-id` and 
 This refactor changes two things that are not backward-compatible with persisted state from older binaries:
 
 - The **attribute hash scheme** moves from seeded XXH3 (`DefaultSeeds`) to unseeded XXH3. Persisted cache U128 keys (zone `0xFF`) and persisted bloom blocks were computed under the old hash, so they no longer match the IDs the new binary computes for the same canonical inputs.
-- The **audit hash chain** moves from an unkeyed hash to one keyed by a value derived from the immutable `cluster-id` (`processing.HashGenerator`). Audit entries written by the old binary become unverifiable under the new scheme.
+- The **audit hash chain** moves from an unkeyed hash to one keyed by a value derived from the immutable `cluster-id` (`processing.HashGenerator`). Audit entries written by the old binary become unverifiable under the new scheme. (The `cluster-id`-derived key was later replaced by the replicated random audit key; see [Audit hash keying](#audit-hash-keying--threat-model).)
 
 The service is not yet stable, so this break is accepted instead of adding migration code. **The only supported upgrade path is a full data wipe**:
 
@@ -835,17 +835,19 @@ replayable history remain.
 
 ### Audit hash keying — threat model
 
-The audit hash chain (`processing.HashGenerator`) is keyed by a value derived from the immutable `cluster-id`. This is **defense in depth against offline grinding from outside the cluster boundary**, not a tamper-evidence guarantee against an attacker with persisted-store access.
+The audit hash chain (`processing.HashGenerator`) is keyed by a replicated audit key: a 32-byte random secret that the leader generates before the first audit entry and commits once through Raft. It is stored at `ZoneGlobal/SubGlobAuditKey`, outside the public `ClusterConfig`, and is not derived from `cluster-id`. A later initialization proposal never rotates it, and no rotation operation exists. The default algorithm is keyed BLAKE3 (`--hash-algorithm blake3`). `--hash-algorithm xxh3` detects corruption only; it is not cryptographic authentication, even when seeded from the audit key.
+
+The audit key travels with the data. A full backup is refused until the key is committed, the full checkpoint contains it, and incremental segments never change it. A cross-cluster restore keeps the source cluster's audit key while the destination gets its own cluster identity. See [Backup and Restore](./backup-restore.md#backup-preparation-on-restore).
 
 What the keying protects against:
 
-- An external actor with public-API access (or read access to canonical inputs like account names, metadata keys, references) cannot grind XXH3 collisions to fabricate audit entries that hash identically to legitimate ones — they would first need to learn the `cluster-id`, which is not exposed on public surfaces.
+- An external actor with public-API access (or read access to canonical inputs like account names, metadata keys, references) cannot compute valid chain hashes for fabricated audit entries. The audit key is not exposed on public surfaces.
 
 What the keying does **not** protect against:
 
-- An attacker who has obtained the persisted Pebble store (a leaked backup, a compromised node, a malicious operator) can read the `cluster-id` directly from `PersistedConfig` and recompute the entire chain after modifying orders. The keying buys nothing in that scenario.
+- An attacker who has obtained the persisted Pebble store or a plaintext backup (a leaked backup, a compromised node, a malicious operator) can read the audit key and, with write access to history, recompute the whole chain after modifying orders. The checker validates the key and the chain from one snapshot, but it cannot detect a coordinated rewrite of both. Backup confidentiality, access control, and independent artifact integrity are therefore part of the security boundary.
 
-If true tamper-evidence is required (e.g., regulated audit log integrity, third-party verification of leaked backups), configure the cluster's `HashAlgorithm` to `BLAKE3` instead of `XXH3`. BLAKE3 is collision-resistant by construction, so an attacker cannot replace orders with crafted inputs that hash to the same value — but the chain itself can still be replayed from any tampered point onward unless the key is moved to an out-of-store trust anchor (HSM, environment variable, external secret). That move is out of scope for this PoC.
+If tamper evidence against store-level access is required (for example regulated audit-log integrity, or third-party verification of a leaked backup), anchor the chain outside the store: keep an independent record of audit hashes, or move the key to an out-of-store trust anchor (HSM, external secret). Ledger v3 does not provide this. See [Audit-key root of trust](../technical/architecture/audit-vs-technical-state.md#audit-key-root-of-trust-en-2479) and [Audit chain hash primitive](../technical/architecture/subsystems/checker/audit-chain.md#hash-primitive).
 
 ## Scaling
 

@@ -2,6 +2,8 @@
 
 ## Latest Results (2026-01-29, Staging)
 
+These numbers come from one staging run on 2026-01-29 with a specific workload: k6 sends HTTP bulk requests of 50 transactions each, in atomic mode, with unbounded overdraft (no balance check can reject a transaction). Quote them with these conditions. Other workloads, such as single-transaction requests or Numscript with balance checks, will give different numbers. See [Test Configuration](#test-configuration) for the full setup.
+
 | Metric | Value |
 |--------|-------|
 | **Total Transactions** | 44,490,000 |
@@ -66,8 +68,8 @@ Each HTTP request is a bulk operation containing 50 transactions.
 
 ## Key Takeaways
 
-- **High throughput**: >100K tx/s sustained on a 3-node cluster with 8 cores per node
-- **Low latency**: p99 < 75ms even under maximum load
+- **High throughput**: >100K tx/s average on a 3-node cluster with 8 cores per node (bulks of 50, atomic mode, unbounded overdraft)
+- **Low latency**: p99 < 75ms at the peak load of this test
 - **Stability**: No visible degradation during the 7-minute test
 - **CPU efficiency**: <50% utilization leaves headroom for additional load
 - **Balanced distribution**: All 3 nodes process the same load (Raft replication)
