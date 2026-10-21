@@ -101,7 +101,7 @@ Preload provides **base values** (volumes and optionally metadata) aligned to a 
 Every replicated write proposal carries a `CallerSnapshot`. Before cache
 rotation, HLC advancement, audit construction, or business-state writes, each
 replica validates the snapshot using only replicated bytes. Invalid attribution
-produces the same internal business rejection on every replica. The FSM advances
+produces the same internal trust-boundary rejection on every replica. The FSM advances
 the applied Raft index past that already-committed entry but performs no other
 state transition. Empty Raft entries and explicit orderless barriers are
 consensus progress records rather than writes and are the sole unattributed

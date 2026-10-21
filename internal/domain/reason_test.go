@@ -52,3 +52,14 @@ func TestLookupReasonCodeResolvesEveryEnumName(t *testing.T) {
 		require.Equal(t, expected, code)
 	}
 }
+
+func TestCallerAttributionReasonIsInternalOnly(t *testing.T) {
+	t.Parallel()
+
+	_, known := LookupReasonCode("INVALID_CALLER_ATTRIBUTION")
+	require.False(t, known,
+		"caller-attribution violations must not acquire a public ErrorReason")
+	_, stillNamed := commonpb.ErrorReason_value["ERROR_REASON_INVALID_CALLER_ATTRIBUTION"]
+	require.False(t, stillNamed,
+		"the removed enum member must not remain in the public descriptor")
+}
