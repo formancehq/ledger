@@ -196,6 +196,57 @@ func TestRotationPreloadReadsCommittedValue(t *testing.T) {
 	require.Equal(t, ledgerName, seed.GetName())
 }
 
+type replayRotationNotifier struct {
+	onLogsCommitted func()
+}
+
+func (n *replayRotationNotifier) NotifyLogsCommitted(uint64) {
+	if n.onLogsCommitted != nil {
+		n.onLogsCommitted()
+	}
+}
+
+func (*replayRotationNotifier) NotifyConfigChanged() {}
+
+// TestReplayRotationCommitsBeforeEviction exercises the synchronous WAL/spool
+// replay path. A checkpoint-only split would prepare the whole slice, rotate
+// at index 5, and commit once at index 7. The notification after each commit
+// observes that indexes 1-4 are durable while the cache is still in Gen0.
+func TestReplayRotationCommitsBeforeEviction(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+	notifier := &replayRotationNotifier{}
+	setup := newTestApplierSetupWithNotifier(t, make(LocalResponses, 1), notifier)
+	setup.fsm.Registry.Cache.SetGenerationThreshold(4)
+
+	type commitObservation struct {
+		persistedIndex uint64
+		generation     uint64
+		firstPersisted bool
+		lastPersisted  bool
+	}
+	var commits []commitObservation
+	notifier.onLogsCommitted = func() {
+		commits = append(commits, commitObservation{
+			persistedIndex: setup.fsm.LastPersistedIndex(),
+			generation:     setup.fsm.Registry.Cache.CurrentGeneration(),
+			firstPersisted: listLedgerContains(setup.store, "replay-ledger-a"),
+			lastPersisted:  listLedgerContains(setup.store, "replay-ledger-g"),
+		})
+	}
+
+	entries := make([]*raftpb.Entry, 7)
+	for i := range entries {
+		entries[i], _ = makeCreateLedgerEntry(t, uint64(i+1), "replay-ledger-"+string(rune('a'+i)))
+	}
+	require.NoError(t, setup.applier.applyReplayEntries(ctx, entries))
+	require.Equal(t, []commitObservation{
+		{persistedIndex: 4, generation: 0, firstPersisted: true, lastPersisted: false},
+		{persistedIndex: 7, generation: 1, firstPersisted: true, lastPersisted: true},
+	}, commits)
+	require.True(t, listLedgerContains(setup.store, "replay-ledger-g"), "the entire replay tail must apply")
+}
+
 func TestRotationDoesNotPrepareAfterFailedCommit(t *testing.T) {
 	t.Parallel()
 	ctx := logging.TestingContext()
