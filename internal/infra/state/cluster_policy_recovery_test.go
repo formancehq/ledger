@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -30,6 +31,29 @@ func TestRecoverState_ClusterPolicyRoundtrip(t *testing.T) {
 
 	require.True(t, policy.EqualVT(machine.State.ClusterPolicy),
 		"the persisted policy must be recovered verbatim into FSMState")
+}
+
+// Recovery must inspect the persisted policy floor before hydrating the rest
+// of FSMState. This models a downgrade opening a store written by a newer
+// replay protocol and proves that state remains untouched on refusal.
+func TestRecoverState_RejectsUnsupportedReplayFloorBeforeHydration(t *testing.T) {
+	t.Parallel()
+
+	machine, store, _ := newTestMachine(t)
+	stateBefore := machine.State
+
+	policy := &commonpb.ClusterPolicy{
+		Revision:              4,
+		MinimumReplayProtocol: capabilities.CurrentReplayProtocol + 1,
+		QueryCheckpointLimit:  1,
+	}
+	batch := store.OpenWriteSession()
+	require.NoError(t, SaveClusterPolicy(batch, policy))
+	require.NoError(t, batch.Commit())
+
+	err := NewRecovery(machine, store).RecoverState()
+	require.ErrorIs(t, err, capabilities.ErrReplayProtocolUnsupported)
+	require.Same(t, stateBefore, machine.State)
 }
 
 // NewFSMState seeds a non-nil revision-0 default so the apply path and the

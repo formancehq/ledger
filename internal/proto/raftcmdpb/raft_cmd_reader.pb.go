@@ -5812,6 +5812,8 @@ type PeerAddressReader interface {
 	GetRaftAddress() string
 	GetServiceAddress() string
 	GetInstanceId() []byte
+	GetCapabilities() []uint32
+	GetCapabilityMembershipRevision() uint64
 	Mutate() *PeerAddress
 }
 
@@ -5831,6 +5833,14 @@ func (r *peerAddressReadonly) GetServiceAddress() string {
 
 func (r *peerAddressReadonly) GetInstanceId() []byte {
 	return bytes.Clone((*PeerAddress)(r).GetInstanceId())
+}
+
+func (r *peerAddressReadonly) GetCapabilities() []uint32 {
+	return slices.Clone((*PeerAddress)(r).GetCapabilities())
+}
+
+func (r *peerAddressReadonly) GetCapabilityMembershipRevision() uint64 {
+	return (*PeerAddress)(r).GetCapabilityMembershipRevision()
 }
 
 func (r *peerAddressReadonly) Mutate() *PeerAddress {

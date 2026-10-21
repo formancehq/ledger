@@ -98,6 +98,14 @@ var (
 	ErrNodeSyncing = errors.New("node is syncing")
 )
 
+func capabilityIDsAsUint32(ids []capabilities.ID) []uint32 {
+	result := make([]uint32, len(ids))
+	for i, id := range ids {
+		result[i] = uint32(id)
+	}
+	return result
+}
+
 // StaleRaftProgressReason is the machine-readable ErrorInfo reason attached to
 // the FailedPrecondition status a leader returns when a JoinAsLearner call hits
 // ErrNodeStaleProgress (EN-1436). The joining node matches on it to tell the
@@ -678,7 +686,7 @@ func NewNode(
 	// writes self for Bootstrap/Restore, but the restart branch never
 	// did — that's the gap the previous bootstrap hook used to cover
 	// before transport wiring moved into Membership.
-	if err := membership.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID); err != nil {
+	if err := membership.RegisterWithEvidence(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilityIDsAsUint32(capabilities.SupportedIDs()), 0); err != nil {
 		return nil, fmt.Errorf("refreshing self in peer store: %w", err)
 	}
 
@@ -1705,7 +1713,10 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		err := membership.WalkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *membership.ConfChangeContext) error {
 			switch t {
 			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode:
-				if err := node.membership.Set(nodeID, ctx.RaftAddress, ctx.ServiceAddress, ctx.InstanceID); err != nil {
+				if ctx == nil {
+					return fmt.Errorf("invariant: committed registration for node %d has no identity context", nodeID)
+				}
+				if err := node.membership.SetWithEvidence(nodeID, ctx.RaftAddress, ctx.ServiceAddress, ctx.InstanceID, ctx.Capabilities, ctx.CapabilityMembershipRevision); err != nil {
 					return fmt.Errorf("invariant: applying membership cache update: %w", err)
 				}
 			case raftpb.ConfChangeRemoveNode:
@@ -2465,6 +2476,47 @@ func (node *Node) MemberIDs() []uint64 {
 	return ids
 }
 
+// CapabilityMembers returns a lock-consistent membership evidence snapshot for
+// admission. Missing durable rows are represented as unreachable members so
+// activation cannot proceed on an incomplete directory.
+func (node *Node) CapabilityMembers() []capabilities.Member {
+	confState := node.confState.Load()
+	if confState == nil {
+		return nil
+	}
+	addresses := node.membership.PeerAddresses()
+	roles := make(map[uint64]capabilities.MemberRole)
+	for _, id := range confState.GetVoters() {
+		roles[id] = capabilities.Voter
+	}
+	for _, id := range confState.GetLearners() {
+		roles[id] = capabilities.Learner
+	}
+	result := make([]capabilities.Member, 0, len(roles))
+	for id, role := range roles {
+		peer, ok := addresses[id]
+		member := capabilities.Member{NodeID: id, Role: role, Reachable: ok && peer.RaftAddress != "" && peer.ServiceAddress != ""}
+		if ok {
+			member.InstanceID = peer.InstanceID
+			member.Capabilities = make([]capabilities.ID, len(peer.Capabilities))
+			for i, capabilityID := range peer.Capabilities {
+				member.Capabilities[i] = capabilities.ID(capabilityID)
+			}
+		}
+		result = append(result, member)
+	}
+	slices.SortFunc(result, func(a, b capabilities.Member) int {
+		if a.NodeID < b.NodeID {
+			return -1
+		}
+		if a.NodeID > b.NodeID {
+			return 1
+		}
+		return 0
+	})
+	return result
+}
+
 // Logger returns the node's logger.
 func (node *Node) Logger() logging.Logger {
 	return node.logger
@@ -3032,7 +3084,14 @@ func classifyExistingLearner(match uint64, existingInstanceID, incomingInstanceI
 //
 // Must be called on the leader.
 func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	return node.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, false)
+	return node.AddLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, nil, 0)
+}
+
+// AddLearnerWithCapabilities proposes a learner registration carrying the
+// caller's capability proof. The proof is persisted with the peer identity and
+// is required once the capability activation gate is armed.
+func (node *Node) AddLearnerWithCapabilities(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32, membershipRevision uint64) error {
+	return node.addLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs, membershipRevision, false)
 }
 
 // WithStableDrainMembership serializes a drain capability preflight and its
@@ -3064,20 +3123,40 @@ func (node *Node) WithStableDrainMembership(ctx context.Context, fn func() error
 // WAL. It deliberately keeps EN-1436's stricter stale-progress handling
 // separate from administrative AddLearner retries.
 func (node *Node) JoinAsLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	return node.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, true)
+	return node.JoinAsLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, nil, 0)
 }
 
+// JoinAsLearnerWithCapabilities is the bootstrap admission variant carrying
+// the joining node's capability proof.
+func (node *Node) JoinAsLearnerWithCapabilities(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32, membershipRevision uint64) error {
+	return node.addLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs, membershipRevision, true)
+}
+
+// addLearner is kept as a compatibility shim for package-local tests and
+// callers that exercise the pre-evidence admission path directly.
 func (node *Node) addLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, bootJoin bool) error {
+	return node.addLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, nil, 0, bootJoin)
+}
+
+func (node *Node) addLearnerWithCapabilities(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32, membershipRevision uint64, bootJoin bool) error {
 	if err := membership.ValidateInstanceID(instanceID); err != nil {
 		return fmt.Errorf("invalid learner identity: %w", err)
+	}
+	if armed, activeRevision := node.membership.CapabilityGate(); armed && membershipRevision == 0 {
+		// The leader binds a joiner's capability declaration to the currently
+		// committed revision. A stale/omitted caller revision must not be able
+		// to smuggle evidence across a policy transition.
+		membershipRevision = activeRevision
 	}
 
 	proposalID := uuid.NewString()
 	ccCtx, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{
-		RaftAddress:    raftAddr,
-		ServiceAddress: serviceAddr,
-		InstanceID:     instanceID,
-		ProposalID:     proposalID,
+		RaftAddress:                  raftAddr,
+		ServiceAddress:               serviceAddr,
+		InstanceID:                   instanceID,
+		Capabilities:                 append([]uint32(nil), capabilityIDs...),
+		CapabilityMembershipRevision: membershipRevision,
+		ProposalID:                   proposalID,
 	})
 	if err != nil {
 		return fmt.Errorf("marshaling conf change context: %w", err)
@@ -3090,6 +3169,18 @@ func (node *Node) addLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
+		}
+		// Revalidate immediately before RawNode.Propose: policy activation and
+		// membership revision may have changed while the request waited for the
+		// serialized ConfChange boundary.
+		if err := node.membership.ValidateTransitionEvidence(&membership.ConfChangeContext{
+			RaftAddress:                  raftAddr,
+			ServiceAddress:               serviceAddr,
+			InstanceID:                   instanceID,
+			Capabilities:                 capabilityIDs,
+			CapabilityMembershipRevision: membershipRevision,
+		}); err != nil {
+			return err
 		}
 
 		// EN-1045 defense against a race between JoinAsLearner admission
@@ -3183,6 +3274,13 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 
 		ccCtx, err := node.promotionContext(nodeID, proposalID)
 		if err != nil {
+			return err
+		}
+		promotionCtx, decodeErr := membership.UnmarshalConfChangeContext(ccCtx)
+		if decodeErr != nil {
+			return fmt.Errorf("decoding learner membership evidence: %w", decodeErr)
+		}
+		if err := node.membership.ValidateTransitionEvidence(&promotionCtx); err != nil {
 			return err
 		}
 

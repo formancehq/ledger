@@ -46,6 +46,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	clusterhealth "github.com/formancehq/ledger/v3/internal/infra/health"
 	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
@@ -256,7 +257,8 @@ func Module() fx.Option {
 			},
 			newCommittedBloomFilterSet,
 			func(cfg Config, n *node.Node, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, bloomFilters *bloom.FilterSet, logger logging.Logger) *plan.Builder {
-				return plan.NewBuilder(n.IndexTracker(), c, attrs, store, bloomFilters, logger, cfg.MaxExecutionPlanSize)
+				return plan.NewBuilder(n.IndexTracker(), c, attrs, store, bloomFilters, logger, cfg.MaxExecutionPlanSize).
+					WithCapabilityMembers(n.CapabilityMembers)
 			},
 			fx.Annotate(func(
 				cfg Config,
@@ -560,6 +562,7 @@ func Module() fx.Option {
 				}
 
 				opts = append(opts, admission.WithAuditProjectionState(rs.AuditProjectionState))
+				opts = append(opts, admission.WithCapabilityMembership(node.CapabilityMembers))
 
 				return admission.NewAdmission(
 					store,
@@ -1267,6 +1270,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
 		ServiceAddress: cfg.ServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
+		Capabilities:   capabilityIDsAsUint32(capabilities.SupportedIDs()),
 	}
 
 	creds, _, err := ClientTransportCredentials(tlsCfg)
@@ -1419,6 +1423,14 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 	}
 }
 
+func capabilityIDsAsUint32(ids []capabilities.ID) []uint32 {
+	result := make([]uint32, len(ids))
+	for i, id := range ids {
+		result[i] = uint32(id)
+	}
+	return result
+}
+
 // isStaleRaftProgress reports whether a FailedPrecondition status carries the
 // EN-1436 STALE_RAFT_PROGRESS ErrorInfo reason, distinguishing a stale-raft-
 // progress join rejection (remediation: `remove-node --force`) from the
@@ -1561,6 +1573,11 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		MetadataMaxValueBytes:       cfg.MetadataMaxValueBytes,
 		MetadataMaxEntityBytes:      cfg.MetadataMaxEntityBytes,
 		MetadataMaxCommandBytes:     cfg.MetadataMaxCommandBytes,
+		// The replay floor is monotonic and is not a node-local config default.
+		// Preserve the committed value when the reconciler proposes a higher
+		// policy revision; otherwise every ordinary config reconciliation would
+		// accidentally attempt to lower the floor back to zero.
+		MinimumReplayProtocol: applied.GetMinimumReplayProtocol(),
 	}
 
 	appliedRev := applied.GetRevision()

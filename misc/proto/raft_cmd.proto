@@ -814,6 +814,11 @@ message PeerAddress {
   string raft_address = 2;
   string service_address = 3;
   bytes instance_id = 4;
+  // Capability evidence is bound to this concrete (node_id, instance_id)
+  // incarnation. It is persisted with the peer row so a restart cannot
+  // accidentally reuse evidence from an older WAL/PVC incarnation.
+  repeated fixed32 capabilities = 5;
+  fixed64 capability_membership_revision = 6;
 }
 
 // RemovedMemberEntry is the persisted blacklist row keyed by

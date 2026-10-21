@@ -2096,10 +2096,16 @@ func (m *PeerAddress) CloneVT() *PeerAddress {
 	r.NodeId = m.NodeId
 	r.RaftAddress = m.RaftAddress
 	r.ServiceAddress = m.ServiceAddress
+	r.CapabilityMembershipRevision = m.CapabilityMembershipRevision
 	if rhs := m.InstanceId; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
 		r.InstanceId = tmpBytes
+	}
+	if rhs := m.Capabilities; rhs != nil {
+		tmpContainer := make([]uint32, len(rhs))
+		copy(tmpContainer, rhs)
+		r.Capabilities = tmpContainer
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -5739,6 +5745,18 @@ func (this *PeerAddress) EqualVT(that *PeerAddress) bool {
 		return false
 	}
 	if string(this.InstanceId) != string(that.InstanceId) {
+		return false
+	}
+	if len(this.Capabilities) != len(that.Capabilities) {
+		return false
+	}
+	for i, vx := range this.Capabilities {
+		vy := that.Capabilities[i]
+		if vx != vy {
+			return false
+		}
+	}
+	if this.CapabilityMembershipRevision != that.CapabilityMembershipRevision {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -11105,6 +11123,21 @@ func (m *PeerAddress) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.CapabilityMembershipRevision != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CapabilityMembershipRevision))
+		i--
+		dAtA[i] = 0x31
+	}
+	if len(m.Capabilities) > 0 {
+		for iNdEx := len(m.Capabilities) - 1; iNdEx >= 0; iNdEx-- {
+			i -= 4
+			binary.LittleEndian.PutUint32(dAtA[i:], uint32(m.Capabilities[iNdEx]))
+		}
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Capabilities)*4))
+		i--
+		dAtA[i] = 0x2a
+	}
 	if len(m.InstanceId) > 0 {
 		i -= len(m.InstanceId)
 		copy(dAtA[i:], m.InstanceId)
@@ -13735,6 +13768,12 @@ func (m *PeerAddress) SizeVT() (n int) {
 	l = len(m.InstanceId)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if len(m.Capabilities) > 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(len(m.Capabilities)*4)) + len(m.Capabilities)*4
+	}
+	if m.CapabilityMembershipRevision != 0 {
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -25819,6 +25858,68 @@ func (m *PeerAddress) UnmarshalVT(dAtA []byte) error {
 				m.InstanceId = []byte{}
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType == 5 {
+				var v uint32
+				if (iNdEx + 4) > l {
+					return io.ErrUnexpectedEOF
+				}
+				v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+				iNdEx += 4
+				m.Capabilities = append(m.Capabilities, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protohelpers.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return protohelpers.ErrInvalidLength
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return protohelpers.ErrInvalidLength
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				var elementCount int
+				elementCount = packedLen / 4
+				if elementCount != 0 && len(m.Capabilities) == 0 {
+					m.Capabilities = make([]uint32, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v uint32
+					if (iNdEx + 4) > l {
+						return io.ErrUnexpectedEOF
+					}
+					v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+					iNdEx += 4
+					m.Capabilities = append(m.Capabilities, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field Capabilities", wireType)
+			}
+		case 6:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CapabilityMembershipRevision", wireType)
+			}
+			m.CapabilityMembershipRevision = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.CapabilityMembershipRevision = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
