@@ -28,6 +28,23 @@ window, a cache miss must not seed the proposal from Pebble. The durable cursor
 advances only after `batch.Commit()` returns and is restored from Pebble on
 startup and follower synchronization.
 
+## Threshold-change reset barrier
+
+Changing the rotation threshold clears both cache generations. Without a
+commit barrier, the applier could prepare that reset while the preceding
+batch's writes exist only in memory: admission would see a cache miss and read
+their older values from Pebble under the new epoch. The generation-distance
+guard cannot detect this when the new, larger threshold places both the
+durable and predicted indexes in one generation.
+
+The applier therefore splits a `ClusterConfig` entry into its own FSM batch
+and waits for the preceding Pebble commit **before** preparing that entry.
+Replay uses the same split and commits each prefix synchronously. Admission
+builds that began before the reset are still checked by the cache epoch;
+builds that begin after it can read the now-durable primary-store values.
+The split scans the already-decoded entries once, and the extra commit wait
+occurs only for a cluster-config proposal, not for ordinary business batches.
+
 ## Why we reject instead of preload
 
 In the ≥ 2 regime, two cache rotations are predicted to fire on the FSM side

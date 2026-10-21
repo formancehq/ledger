@@ -20,6 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/spool"
@@ -1163,7 +1164,7 @@ func (a *Applier) applyReplayEntries(ctx context.Context, entries []*raftpb.Entr
 	defer state.ReleaseDecodedEntries(decoded)
 
 	for offset := 0; offset < len(decoded); {
-		boundary := findCheckpointBoundaryDecoded(decoded[offset:])
+		boundary, _ := findApplyBoundaryDecoded(decoded[offset:])
 
 		end := offset + boundary
 
@@ -1466,7 +1467,15 @@ func (a *Applier) applyDecodedEntriesToFSM(ctx context.Context, stop chan struct
 	defer state.ReleaseDecodedEntries(decoded)
 
 	for offset := 0; offset < len(decoded); {
-		boundary := findCheckpointBoundaryDecoded(decoded[offset:])
+		boundary, clusterConfig := findApplyBoundaryDecoded(decoded[offset:])
+		if clusterConfig {
+			// ResetWithThreshold clears both cache generations during prepare.
+			// A preceding batch must be durable before its cached writes can
+			// disappear, or admission could seed their older Pebble values.
+			if err := a.waitPendingCommit(ctx); err != nil {
+				return fmt.Errorf("waiting for commit before cluster config: %w", err)
+			}
+		}
 
 		end := offset + boundary
 		head := decoded[offset:end]
@@ -1571,9 +1580,9 @@ func rawEntriesFromDecoded(decoded []state.DecodedEntry) []*raftpb.Entry {
 // one batch).
 //
 // Convenience wrapper around findCheckpointBoundaryDecoded: decodes
-// entries, scans, and releases. Hot-path callers should decode once at the
-// applier boundary and use findCheckpointBoundaryDecoded directly so the
-// pipeline never re-unmarshals the same payload.
+// entries, scans, and releases. Hot-path callers decode once at the applier
+// boundary and use findApplyBoundaryDecoded, which also isolates cluster
+// configuration updates without re-unmarshalling the payload.
 func findCheckpointBoundary(entries []*raftpb.Entry) (int, error) {
 	decoded, err := state.DecodeEntries(entries)
 	if err != nil {
@@ -1596,6 +1605,33 @@ func findCheckpointBoundaryDecoded(decoded []state.DecodedEntry) int {
 	}
 
 	return len(decoded)
+}
+
+// findApplyBoundaryDecoded keeps every ClusterConfig proposal in its own FSM
+// batch. The boolean is true when that proposal is the first entry: the hot
+// path must drain the previous commit before preparing it, since changing the
+// rotation threshold resets the cache before the new batch commits. Split on
+// all ClusterConfig updates rather than inspecting the current threshold here:
+// earlier entries in the same slice may have changed it already.
+func findApplyBoundaryDecoded(decoded []state.DecodedEntry) (length int, clusterConfig bool) {
+	for i, entry := range decoded {
+		if entry.Proposal != nil {
+			for _, update := range entry.Proposal.GetTechnicalUpdates() {
+				if _, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_ClusterConfig); ok {
+					if i == 0 {
+						return 1, true
+					}
+
+					return i, false
+				}
+			}
+		}
+		if state.DecodedEntryRequiresCheckpoint(entry) {
+			return i + 1, false
+		}
+	}
+
+	return len(decoded), false
 }
 
 // maintenanceTask is the body of a gated maintenance task. It receives the
