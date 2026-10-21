@@ -13,7 +13,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 func TestLedgerctlTLSFlag(t *testing.T) {
@@ -221,14 +224,21 @@ func TestFetchTLSMode(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, appsv1.AddToScheme(scheme))
 
-	makeSTS := func(name, namespace, tlsMode string) *appsv1.StatefulSet {
+	const clusterUID = types.UID("cluster-uid")
+	newCluster := func(resourceName string) *ledgerv1alpha1.Cluster {
+		return &ledgerv1alpha1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{Name: "c", Namespace: "ns", UID: clusterUID},
+			Spec:       ledgerv1alpha1.ClusterSpec{ResourceName: resourceName},
+		}
+	}
+	makeSTS := func(name, tlsMode string, controllerUID types.UID) *appsv1.StatefulSet {
 		env := []corev1.EnvVar{{Name: "OTHER", Value: "x"}}
 		if tlsMode != "" {
 			env = append(env, corev1.EnvVar{Name: "TLS_MODE", Value: tlsMode})
 		}
 
-		return &appsv1.StatefulSet{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		sts := &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "ns"},
 			Spec: appsv1.StatefulSetSpec{
 				Template: corev1.PodTemplateSpec{
 					Spec: corev1.PodSpec{
@@ -237,35 +247,59 @@ func TestFetchTLSMode(t *testing.T) {
 				},
 			},
 		}
+		if controllerUID != "" {
+			sts.OwnerReferences = []metav1.OwnerReference{{
+				APIVersion: ledgerv1alpha1.GroupVersion.String(), Kind: "Cluster",
+				Name: "owner", UID: controllerUID, Controller: new(true),
+			}}
+		}
+
+		return sts
 	}
 
 	tests := []struct {
-		name    string
-		objects []*appsv1.StatefulSet
-		nsName  string
-		stsName string
-		want    string
-		wantErr bool
+		name         string
+		objects      []*appsv1.StatefulSet
+		resourceName string
+		want         string
+		wantConflict bool
+		wantAbsent   bool
 	}{
 		{
-			name:    "missing StatefulSet returns empty without error",
-			nsName:  "ns",
-			stsName: "ledger",
-			want:    "",
+			// No StatefulSet of this Cluster: nothing to exec into or dial,
+			// even if a pod named "<base>-0" exists.
+			name:       "missing StatefulSet is errClusterRuntimeAbsent",
+			wantAbsent: true,
 		},
 		{
 			name:    "reads TLS_MODE=required from running StatefulSet",
-			objects: []*appsv1.StatefulSet{makeSTS("ledger", "ns", tlsModeRequired)},
-			nsName:  "ns",
-			stsName: "ledger",
+			objects: []*appsv1.StatefulSet{makeSTS("ledger-c", tlsModeRequired, clusterUID)},
 			want:    tlsModeRequired,
 		},
 		{
 			name:    "TLS_MODE unset returns empty",
-			objects: []*appsv1.StatefulSet{makeSTS("ledger", "ns", "")},
-			nsName:  "ns",
-			stsName: "ledger",
+			objects: []*appsv1.StatefulSet{makeSTS("ledger-c", "", clusterUID)},
 			want:    "",
+		},
+		{
+			name:         "StatefulSet without controller reference is a name conflict",
+			objects:      []*appsv1.StatefulSet{makeSTS("ledger-c", tlsModeRequired, "")},
+			wantConflict: true,
+		},
+		{
+			name: "resourceName override reads the overridden StatefulSet, not ledger-<name>",
+			objects: []*appsv1.StatefulSet{
+				makeSTS("ledger-c", tlsModeDisabled, "other-uid"),
+				makeSTS("payments", tlsModeRequired, clusterUID),
+			},
+			resourceName: "payments",
+			want:         tlsModeRequired,
+		},
+		{
+			name:         "StatefulSet controlled by another Cluster is a name conflict",
+			objects:      []*appsv1.StatefulSet{makeSTS("payments", tlsModeRequired, "other-uid")},
+			resourceName: "payments",
+			wantConflict: true,
 		},
 	}
 
@@ -278,9 +312,14 @@ func TestFetchTLSMode(t *testing.T) {
 			}
 			c := builder.Build()
 
-			got, err := fetchTLSMode(context.Background(), c, tt.nsName, tt.stsName)
-			if tt.wantErr {
-				require.Error(t, err)
+			got, err := fetchTLSMode(context.Background(), c, newCluster(tt.resourceName))
+			if tt.wantConflict {
+				require.ErrorIs(t, err, errResourceNameConflict)
+
+				return
+			}
+			if tt.wantAbsent {
+				require.ErrorIs(t, err, errClusterRuntimeAbsent)
 
 				return
 			}

@@ -10,15 +10,18 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	clienttesting "k8s.io/client-go/testing"
+
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-// stsName mirrors the prefixed StatefulSet name the reconciler passes
-// (resourceName(ledger.Name)); the PVC names derive from it as
-// <volume>-<stsName>-<ordinal>.
-const (
-	testStsName = "ledger-my-ledger"
-	testPVCName = "data-ledger-my-ledger-0"
-)
+// testPVCName is the PVC the StatefulSet controller creates for the "data"
+// volume of ordinal 0 of testVolumeCluster: <volume>-<clusterBaseName>-<ordinal>.
+const testPVCName = "data-ledger-my-ledger-0"
+
+// testVolumeCluster is the Cluster whose PVCs the volume-protection tests reconcile.
+func testVolumeCluster() *ledgerv1alpha1.Cluster {
+	return &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "my-ledger", Namespace: "ns"}}
+}
 
 func boundPVCAndPV(pvcName, pvName, namespace string) (*corev1.PersistentVolumeClaim, *corev1.PersistentVolume) {
 	pvc := &corev1.PersistentVolumeClaim{
@@ -52,7 +55,7 @@ func TestReconcileVolumeProtection_StampsBoundPVCAndPV(t *testing.T) {
 	boundPVC, boundPV := boundPVCAndPV(testPVCName, "pv-0", "ns")
 	cs := fake.NewClientset(boundPVC, boundPV)
 
-	pending, err := reconcileVolumeProtection(context.Background(), cs, "ns", testStsName, 1, []string{"data"}, true)
+	pending, err := reconcileVolumeProtection(context.Background(), cs, testVolumeCluster(), 1, []string{"data"}, true)
 	require.NoError(t, err)
 	require.False(t, pending, "a bound PVC leaves nothing pending")
 
@@ -73,7 +76,7 @@ func TestReconcileVolumeProtection_UnstampsWhenDisabled(t *testing.T) {
 	boundPV.Labels = map[string]string{labelDeletionProtection: labelDeletionProtectionValue}
 	cs := fake.NewClientset(boundPVC, boundPV)
 
-	pending, err := reconcileVolumeProtection(context.Background(), cs, "ns", testStsName, 1, []string{"data"}, false)
+	pending, err := reconcileVolumeProtection(context.Background(), cs, testVolumeCluster(), 1, []string{"data"}, false)
 	require.NoError(t, err)
 	require.False(t, pending, "disabling protection never requeues")
 
@@ -102,7 +105,7 @@ func TestReconcileVolumeProtection_SkipsPVBoundToDifferentClaim(t *testing.T) {
 	}
 	cs := fake.NewClientset(boundPVC, rebound)
 
-	pending, err := reconcileVolumeProtection(context.Background(), cs, "ns", testStsName, 1, []string{"data"}, true)
+	pending, err := reconcileVolumeProtection(context.Background(), cs, testVolumeCluster(), 1, []string{"data"}, true)
 	require.NoError(t, err)
 	require.False(t, pending, "a bound PVC leaves nothing pending even when its PV is rebound elsewhere")
 
@@ -122,7 +125,7 @@ func TestReconcileVolumeProtection_NoOpWhenAlreadyInDesiredState(t *testing.T) {
 	pvcPatches := countPatches(cs, "persistentvolumeclaims")
 	pvPatches := countPatches(cs, "persistentvolumes")
 
-	pending, err := reconcileVolumeProtection(context.Background(), cs, "ns", testStsName, 1, []string{"data"}, true)
+	pending, err := reconcileVolumeProtection(context.Background(), cs, testVolumeCluster(), 1, []string{"data"}, true)
 	require.NoError(t, err)
 	require.False(t, pending)
 	require.Zero(t, *pvcPatches, "already-stamped PVC must not be patched")
@@ -138,7 +141,7 @@ func TestReconcileVolumeProtection_NoOpWhenDisabledAndUnlabeled(t *testing.T) {
 	pvcPatches := countPatches(cs, "persistentvolumeclaims")
 	pvPatches := countPatches(cs, "persistentvolumes")
 
-	pending, err := reconcileVolumeProtection(context.Background(), cs, "ns", testStsName, 1, []string{"data"}, false)
+	pending, err := reconcileVolumeProtection(context.Background(), cs, testVolumeCluster(), 1, []string{"data"}, false)
 	require.NoError(t, err)
 	require.False(t, pending)
 	require.Zero(t, *pvcPatches, "unlabeled PVC must not be patched when protection is off")
@@ -156,7 +159,7 @@ func TestReconcileVolumeProtection_StampsUnboundPVCAndReportsPending(t *testing.
 
 	// ordinal 0 PVC is unbound (PVC stamped, PV skipped); ordinal 1 PVC does not
 	// exist yet -> both leave a PV to stamp once they bind, so pending is true.
-	pending, err := reconcileVolumeProtection(context.Background(), cs, "ns", testStsName, 2, []string{"data"}, true)
+	pending, err := reconcileVolumeProtection(context.Background(), cs, testVolumeCluster(), 2, []string{"data"}, true)
 	require.NoError(t, err)
 	require.True(t, pending, "an unbound/absent PVC under protection must requeue")
 
@@ -176,7 +179,7 @@ func TestReconcileVolumeProtection_UnboundPVCNotPendingWhenDisabled(t *testing.T
 	// replicas=1 so the only ordinal is the existing unbound PVC (no absent ordinal).
 	// Protection off: its future PV is born without our label (the provisioner does
 	// not copy PVC labels), so there is nothing to unstamp and no need to requeue.
-	pending, err := reconcileVolumeProtection(context.Background(), cs, "ns", testStsName, 1, []string{"data"}, false)
+	pending, err := reconcileVolumeProtection(context.Background(), cs, testVolumeCluster(), 1, []string{"data"}, false)
 	require.NoError(t, err)
 	require.False(t, pending, "with protection off an unbound PVC must not requeue")
 }
@@ -189,7 +192,7 @@ func TestReconcileVolumeProtection_RequeuesAbsentPVCWhenDisabled(t *testing.T) {
 	// otherwise it stays selected by the policy and its deletion is wrongly blocked.
 	cs := fake.NewClientset()
 
-	pending, err := reconcileVolumeProtection(context.Background(), cs, "ns", testStsName, 1, []string{"data"}, false)
+	pending, err := reconcileVolumeProtection(context.Background(), cs, testVolumeCluster(), 1, []string{"data"}, false)
 	require.NoError(t, err)
 	require.True(t, pending, "an absent PVC must requeue even when protection is off, to unstamp stale-VCT scale-out PVCs")
 }

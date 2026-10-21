@@ -19,7 +19,15 @@ type Cluster struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ClusterSpec   `json:"spec,omitempty"`
+	// +kubebuilder:validation:Required
+	Spec ClusterSpec `json:"spec"`
+	// Spec is required (no omitempty): the create-time-only and immutability
+	// rules of spec.resourceName, spec.clusterID, spec.bindAddr, spec.walDir and
+	// spec.dataDir only run while both the old and the new object have a spec,
+	// so removing the whole spec and adding it back would otherwise bypass them.
+	// This note is not the field's doc comment, so the schema description stays
+	// ClusterSpec's.
+
 	Status ClusterStatus `json:"status,omitempty"`
 }
 
@@ -34,7 +42,36 @@ type ClusterList struct {
 }
 
 // ClusterSpec defines the desired state of Cluster.
+// +kubebuilder:validation:XValidation:rule="has(self.resourceName) == has(oldSelf.resourceName)",message="resourceName can only be set at creation: it cannot be added or removed afterwards"
 type ClusterSpec struct {
+	// ResourceName overrides the base name of every Kubernetes object the
+	// operator derives from this Cluster. When omitted, the base name is
+	// "ledger-<metadata.name>". When set, it replaces that whole base name
+	// (the "ledger-" prefix is not added), so the StatefulSet and the ClusterIP
+	// Service are named "<resourceName>", pods "<resourceName>-<ordinal>", the
+	// headless Service "<resourceName>-headless", the gRPC Service and Ingress
+	// "<resourceName>-grpc", the auth-keys ConfigMap "<resourceName>-auth-keys",
+	// the cluster Secret "<resourceName>-cluster-secret", DNSEndpoints
+	// "<resourceName>-<entry>", the default ServiceAccount "<resourceName>" and
+	// PVCs "<volume>-<resourceName>-<ordinal>". Every in-cluster address (Raft
+	// peers, bootstrap, ledgerctl, backups, status endpoints) follows.
+	//
+	// It is create-time only: it cannot be changed, added or removed after the
+	// Cluster exists, because that would orphan the StatefulSet and its PVCs
+	// and change every Raft peer address. It must be a DNS-1035 label of at
+	// most 52 characters: the StatefulSet controller labels every pod with
+	// controller-revision-hash=<statefulset>-<hash> (up to 10 chars), and a
+	// label value cannot exceed 63 characters (kubernetes#64023).
+	// The operator never adopts an existing object it did not create under a
+	// derived name (another Cluster's, or an unrelated object without a
+	// controller reference): such a Cluster is not reconciled and reports
+	// ResourceNamesAvailable=False until the conflict is removed.
+	// +kubebuilder:validation:MaxLength=52
+	// +kubebuilder:validation:Pattern=`^[a-z]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="resourceName is immutable"
+	// +optional
+	ResourceName string `json:"resourceName,omitempty" ledger:"immutable"`
+
 	// Image configuration for the ledger container.
 	// +optional
 	Image ImageSpec `json:"image,omitempty"`

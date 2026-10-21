@@ -91,7 +91,13 @@ func runPortForward(cmd *cobra.Command, opts *cmdutil.Options, f *portForwardFla
 		localPort = remotePort
 	}
 
-	podName := cmdutil.ClusterPodName(name, f.pod)
+	// The pod name derives from the base name, which another Cluster can share
+	// through spec.resourceName: forward only to a pod this Cluster controls.
+	pod, err := cmdutil.ClusterPod(ctx, cs, ledger, max(f.pod, 0))
+	if err != nil {
+		return err
+	}
+	podName := pod.Name
 	portSpec := fmt.Sprintf("%d:%d", localPort, remotePort)
 
 	// Build the port-forward URL

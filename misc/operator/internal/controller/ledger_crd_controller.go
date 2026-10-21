@@ -13,6 +13,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -116,7 +117,7 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	}
 
 	// Resolve Cluster endpoint.
-	grpcPort, err := r.resolveEndpoint(ctx, &ledger)
+	cluster, grpcPort, err := r.resolveEndpoint(ctx, &ledger)
 	if err != nil {
 		ledger.Status.Phase = ledgerv1alpha1.LedgerPhasePending
 		ledger.Status.Message = fmt.Sprintf("waiting for Cluster: %v", err)
@@ -125,7 +126,6 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	}
 
 	// Create ledger via ledgerctl exec.
-	pod0 := podName(ledger.Spec.ClusterRef, 0)
 	args, err := r.buildCreateArgs(ctx, &ledger)
 	if err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -146,7 +146,7 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 
 	log.Info("creating ledger", "name", ledger.Spec.Name, "mode", ledger.Spec.Mode)
 	if err := createLedgerWithExec(&ledger, args, func(args ...string) error {
-		return r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ClusterRef, pod0, grpcPort, args...)
+		return r.ledgerctlExec(execCtx, cluster, grpcPort, args...)
 	}); err != nil {
 		switch {
 		case isAlreadyExists(err):
@@ -205,7 +205,7 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	log.Info("ledger ready", "name", ledger.Spec.Name, "mode", mode)
 
 	// Reconcile declarative indexes now that the ledger exists.
-	return r.handleIndexReconcile(ctx, &ledger, grpcPort, ctrl.Result{}), nil
+	return r.handleIndexReconcile(ctx, &ledger, cluster, grpcPort, ctrl.Result{}), nil
 }
 
 // reconcileReady handles reconciliation for a Ledger that is already in Ready phase.
@@ -247,7 +247,7 @@ func (r *LedgerReconciler) reconcileReady(ctx context.Context, ledger *ledgerv1a
 		return ctrl.Result{}, nil
 	}
 
-	grpcPort, err := r.resolveEndpoint(ctx, ledger)
+	cluster, grpcPort, err := r.resolveEndpoint(ctx, ledger)
 	if err != nil {
 		// Index reconciliation did not run for this generation. Mark
 		// IndexesSynced=False so a prior True is not left stale (consumers such
@@ -265,27 +265,25 @@ func (r *LedgerReconciler) reconcileReady(ctx context.Context, ledger *ledgerv1a
 		return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
 	}
 
-	return r.handleIndexReconcile(ctx, ledger, grpcPort, ctrl.Result{}), nil
+	return r.handleIndexReconcile(ctx, ledger, cluster, grpcPort, ctrl.Result{}), nil
 }
 
 // reconcilePromotion handles mirror→normal promotion.
 func (r *LedgerReconciler) reconcilePromotion(ctx context.Context, ledger *ledgerv1alpha1.Ledger) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
 
-	grpcPort, err := r.resolveEndpoint(ctx, ledger)
+	cluster, grpcPort, err := r.resolveEndpoint(ctx, ledger)
 	if err != nil {
 		ledger.Status.Message = fmt.Sprintf("waiting for Cluster for promotion: %v", err)
 
 		return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
 	}
 
-	pod0 := podName(ledger.Spec.ClusterRef, 0)
-
 	execCtx, cancel := context.WithTimeout(ctx, ledgerExecTimeout)
 	defer cancel()
 
 	log.Info("promoting mirror ledger to normal", "name", ledger.Spec.Name)
-	if err := r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ClusterRef, pod0, grpcPort,
+	if err := r.ledgerctlExec(execCtx, cluster, grpcPort,
 		"ledgers", "promote", "--yes", "--", ledger.Spec.Name); err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 			Type:               conditionLedgerSynced,
@@ -324,21 +322,24 @@ func (r *LedgerReconciler) reconcileDelete(ctx context.Context, ledger *ledgerv1
 		return ctrl.Result{}, nil
 	}
 
-	grpcPort, err := r.resolveGRPCPort(ctx, ledger.Namespace, ledger.Spec.ClusterRef)
+	cluster, grpcPort, err := r.resolveCluster(ctx, ledger.Namespace, ledger.Spec.ClusterRef)
 	if err != nil {
 		log.Error(err, "failed to resolve gRPC endpoint for deletion, continuing cleanup")
 	} else {
-		pod0 := podName(ledger.Spec.ClusterRef, 0)
-
 		execCtx, cancel := context.WithTimeout(ctx, ledgerExecTimeout)
 		defer cancel()
 
 		log.Info("deleting ledger", "name", ledger.Spec.Name)
-		if err := r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ClusterRef, pod0, grpcPort,
-			"ledgers", "delete", "--yes", "--", ledger.Spec.Name); err != nil {
-			if !isLedgerNotFound(err) {
-				log.Error(err, "failed to delete ledger (best-effort)")
-			}
+		err := r.ledgerctlExec(execCtx, cluster, grpcPort,
+			"ledgers", "delete", "--yes", "--", ledger.Spec.Name)
+		switch {
+		case errors.Is(err, errClusterRuntimeAbsent), errors.Is(err, errResourceNameConflict):
+			// No StatefulSet of this Cluster to exec into (gone, or the name is
+			// held by another owner): nothing was executed. Like a missing
+			// Cluster, release the finalizer without touching foreign pods.
+			log.Info("skipping ledger deletion: Cluster runtime is not available", "reason", err.Error())
+		case err != nil && !isLedgerNotFound(err):
+			log.Error(err, "failed to delete ledger (best-effort)")
 		}
 	}
 
@@ -350,9 +351,11 @@ func (r *LedgerReconciler) reconcileDelete(ctx context.Context, ledger *ledgerv1
 	return ctrl.Result{}, nil
 }
 
-// resolveEndpoint resolves the gRPC port and verifies the Cluster is Running.
-// Sets the EndpointResolved condition accordingly.
-func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1alpha1.Ledger) (int32, error) {
+// resolveEndpoint resolves the referenced Cluster and its gRPC port and
+// verifies the Cluster is Running. Sets the EndpointResolved condition
+// accordingly. The returned Cluster carries spec.resourceName, from which every
+// pod and Service name the exec path dials is derived.
+func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1alpha1.Ledger) (*ledgerv1alpha1.Cluster, int32, error) {
 	ls, err := r.Dynamic.Resource(clusterGVR).Namespace(ledger.Namespace).Get(
 		ctx, ledger.Spec.ClusterRef, metav1.GetOptions{})
 	if err != nil {
@@ -364,7 +367,7 @@ func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1
 			ObservedGeneration: ledger.Generation,
 		})
 
-		return 0, fmt.Errorf("get Cluster %q: %w", ledger.Spec.ClusterRef, err)
+		return nil, 0, fmt.Errorf("get Cluster %q: %w", ledger.Spec.ClusterRef, err)
 	}
 
 	phase, _, _ := nestedFieldNoCopy(ls.Object, "status", "phase")
@@ -377,7 +380,20 @@ func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1
 			ObservedGeneration: ledger.Generation,
 		})
 
-		return 0, fmt.Errorf("cluster %q is not Running", ledger.Spec.ClusterRef)
+		return nil, 0, fmt.Errorf("cluster %q is not Running", ledger.Spec.ClusterRef)
+	}
+
+	cluster, err := clusterFromUnstructured(ls)
+	if err != nil {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               conditionEndpointResolved,
+			Status:             metav1.ConditionFalse,
+			Reason:             "ClusterUnreadable",
+			Message:            err.Error(),
+			ObservedGeneration: ledger.Generation,
+		})
+
+		return nil, 0, err
 	}
 
 	port, found, err := unstructuredNestedInt64(ls.Object, "spec", "config", "grpcPort")
@@ -392,7 +408,18 @@ func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1
 		ObservedGeneration: ledger.Generation,
 	})
 
-	return int32(port), nil
+	return cluster, int32(port), nil
+}
+
+// clusterFromUnstructured converts a Cluster read through the dynamic client
+// into the typed object the name helpers take.
+func clusterFromUnstructured(u *unstructured.Unstructured) (*ledgerv1alpha1.Cluster, error) {
+	cluster := &ledgerv1alpha1.Cluster{}
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, cluster); err != nil {
+		return nil, fmt.Errorf("decoding Cluster %q: %w", u.GetName(), err)
+	}
+
+	return cluster, nil
 }
 
 // buildCreateArgs constructs the ledgerctl ledgers create arguments.
@@ -570,8 +597,8 @@ func (r *LedgerReconciler) readSecretKey(ctx context.Context, namespace, name, k
 // gRPC server expects — a mismatch surfaces as "error reading server preface".
 // The server address dialed is the pod's own headless DNS so the SNI matches
 // the server certificate's SANs.
-func (r *LedgerReconciler) ledgerctlExec(ctx context.Context, namespace, serviceName, pod string, grpcPort int32, args ...string) error {
-	_, err := r.ledgerctlExecOutput(ctx, namespace, serviceName, pod, grpcPort, args...)
+func (r *LedgerReconciler) ledgerctlExec(ctx context.Context, cluster *ledgerv1alpha1.Cluster, grpcPort int32, args ...string) error {
+	_, err := r.ledgerctlExecOutput(ctx, cluster, grpcPort, args...)
 
 	return err
 }
@@ -580,20 +607,25 @@ func (r *LedgerReconciler) ledgerctlExec(ctx context.Context, namespace, service
 // its captured stdout. When the command is invoked with --json, pterm output
 // (spinners, messages) is routed to stderr by the CLI, so stdout carries only
 // the JSON payload — safe to parse.
-func (r *LedgerReconciler) ledgerctlExecOutput(ctx context.Context, namespace, serviceName, pod string, grpcPort int32, args ...string) (string, error) {
-	tlsMode, err := fetchTLSMode(ctx, r.Client, namespace, resourceName(serviceName))
+//
+// It execs only into a pod-0 controlled by the Cluster's own StatefulSet
+// (fetchClusterStatefulSet, then ownedPodExec); otherwise it fails with
+// errClusterRuntimeAbsent, errResourceNameConflict or errPodNotOwned and runs
+// nothing.
+func (r *LedgerReconciler) ledgerctlExecOutput(ctx context.Context, cluster *ledgerv1alpha1.Cluster, grpcPort int32, args ...string) (string, error) {
+	sts, err := fetchClusterStatefulSet(ctx, r.Client, cluster)
 	if err != nil {
-		return "", fmt.Errorf("resolving TLS mode for Cluster %q: %w", serviceName, err)
+		return "", fmt.Errorf("resolving the StatefulSet of Cluster %q: %w", cluster.Name, err)
 	}
 
-	serverAddr := podSelfServerAddr(headlessServiceName(serviceName), grpcPort)
-	cmd := ledgerctlCommand(serverAddr, tlsMode, args...)
+	serverAddr := podSelfServerAddr(headlessServiceName(cluster), grpcPort)
+	cmd := ledgerctlCommand(serverAddr, currentTLSModeFromStatefulSet(sts), args...)
 
 	exec := r.exec
 	if exec == nil {
 		exec = podExec
 	}
-	res, err := exec(ctx, r.Config, r.Clientset, namespace, pod, ledgerContainer, cmd)
+	res, err := ownedPodExec(sts, exec)(ctx, r.Config, r.Clientset, cluster.Namespace, podName(cluster, 0), ledgerContainer, cmd)
 	if err != nil {
 		return "", fmt.Errorf("ledgerctl %s: %w", args[0], err)
 	}
@@ -601,19 +633,24 @@ func (r *LedgerReconciler) ledgerctlExecOutput(ctx context.Context, namespace, s
 	return res.Stdout, nil
 }
 
-// resolveGRPCPort reads the gRPC port from the Cluster spec (defaults to 8888).
-func (r *LedgerReconciler) resolveGRPCPort(ctx context.Context, namespace, clusterRef string) (int32, error) {
+// resolveCluster reads the referenced Cluster and its gRPC port from the
+// Cluster spec (defaults to 8888), without the Running check of resolveEndpoint.
+func (r *LedgerReconciler) resolveCluster(ctx context.Context, namespace, clusterRef string) (*ledgerv1alpha1.Cluster, int32, error) {
 	ls, err := r.Dynamic.Resource(clusterGVR).Namespace(namespace).Get(ctx, clusterRef, metav1.GetOptions{})
 	if err != nil {
-		return 0, fmt.Errorf("get Cluster %q: %w", clusterRef, err)
+		return nil, 0, fmt.Errorf("get Cluster %q: %w", clusterRef, err)
+	}
+	cluster, err := clusterFromUnstructured(ls)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	port, found, err := unstructuredNestedInt64(ls.Object, "spec", "config", "grpcPort")
 	if err != nil || !found || port == 0 {
-		return clusterGRPCPort, nil
+		return cluster, clusterGRPCPort, nil
 	}
 
-	return int32(port), nil
+	return cluster, int32(port), nil
 }
 
 func (r *LedgerReconciler) SetupWithManager(mgr ctrl.Manager) error {

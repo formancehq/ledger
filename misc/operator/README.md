@@ -36,7 +36,12 @@ recovers committed removals whose response was lost, without matching CLI error
 substrings.
 
 Only after all removed ordinals satisfy that postcondition does the operator
-persist the reduced StatefulSet replica count and issue PVC deletions. The
+persist the reduced StatefulSet replica count and issue PVC deletions, only for
+PVCs proven to be the Cluster's own: stamped with its UID
+(`ledger.formance.com/cluster-uid`) once a Ready pod of its StatefulSet
+mounted them, and matching that StatefulSet's selector labels and owners (see
+[Resource names](../../docs/ops/deployment.md#resource-names)). Every exec into
+pod-0 first checks that the Cluster's StatefulSet controls that pod. The
 StatefulSet update requests Pod termination; it does not wait for termination to
 finish. If a membership check or removal fails, replicas and PVCs are retained,
 although the template update and earlier membership removals may already have
@@ -135,6 +140,17 @@ explicitly only when attaching data whose persisted identity must be reused;
 Ledger rejects an ID mismatch on boot. A deleted Cluster recreated with fresh
 storage receives a new ID. Inspect `kubectl get cluster my-ledger -o
 jsonpath='{.spec.clusterID}'` to discover the resolved value.
+
+Objects derived from a Cluster are named `ledger-<metadata.name>` by default.
+Set `spec.resourceName` at creation to replace that whole base name (for
+example `resourceName: ledger-v3` yields StatefulSet `ledger-v3`, pods
+`ledger-v3-<n>`, Service `ledger-v3-headless`). It is create-time only, at most
+52 characters (the StatefulSet `controller-revision-hash` label limit, which
+also caps `metadata.name` at 45 characters without an override; `metadata.name`
+is capped at 63 characters in any case), and must be
+unique in the namespace: the operator never adopts
+an existing object it did not create and reports `ResourceNamesAvailable=False`
+instead. See [Resource names](../../docs/ops/deployment.md#resource-names).
 
 ```yaml
 apiVersion: ledger.formance.com/v1alpha1
@@ -466,6 +482,12 @@ kubectl ledger credentials create <name>  # Create credentials with API key
 kubectl ledger credentials get-key <name> # Retrieve credentials API key
 kubectl ledger version                    # Print version info
 ```
+
+`logs`, `port-forward` and the pod list of `get` reach only pods controlled by
+the StatefulSet that the Cluster controls. When another Cluster holds the same
+base name (`spec.resourceName`), or a pod under the derived name still belongs
+to an older StatefulSet, `logs` and `port-forward` fail with an error naming the
+actual owner instead of reaching that pod.
 
 ### Examples
 

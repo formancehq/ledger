@@ -1,6 +1,7 @@
 package get
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/cmdutil"
 )
@@ -86,17 +88,24 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 		},
 	)
 
-	// Pods section
-	pods, err := cmdutil.ClusterPods(ctx, cs, ns, name)
-	if err != nil {
+	// Pods section: only the pods of the StatefulSet this Cluster controls. A
+	// base name shared with another Cluster (spec.resourceName) is reported,
+	// not listed; the conditions below explain it.
+	pods, err := cmdutil.ClusterPods(ctx, cs, ledger)
+	switch {
+	case errors.Is(err, cmdutil.ErrNotOwned):
+		pterm.Warning.Println(err.Error())
+	case apierrors.IsNotFound(err):
+		// No StatefulSet yet: no pods to show.
+	case err != nil:
 		return fmt.Errorf("listing pods: %w", err)
 	}
 
-	if len(pods.Items) > 0 {
+	if len(pods) > 0 {
 		pterm.DefaultSection.Println("Pods")
-		podRows := make([][]string, 0, len(pods.Items))
-		for i := range pods.Items {
-			p := &pods.Items[i]
+		podRows := make([][]string, 0, len(pods))
+		for i := range pods {
+			p := &pods[i]
 			podRows = append(podRows, []string{
 				p.Name,
 				string(p.Status.Phase),
@@ -110,7 +119,7 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	}
 
 	// PVCs section
-	pvcs, err := cmdutil.ClusterPVCs(ctx, cs, ns, name)
+	pvcs, err := cmdutil.ClusterPVCs(ctx, cs, ledger)
 	if err != nil {
 		return fmt.Errorf("listing PVCs: %w", err)
 	}

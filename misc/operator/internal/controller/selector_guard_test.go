@@ -33,7 +33,7 @@ func TestValidateSelectorImmutability(t *testing.T) {
 	}
 	makeSTS := func(selector map[string]string) *appsv1.StatefulSet {
 		return &appsv1.StatefulSet{
-			ObjectMeta: metav1.ObjectMeta{Name: resourceName(crName), Namespace: namespace},
+			ObjectMeta: metav1.ObjectMeta{Name: clusterBaseName(clusterNamed(crName)), Namespace: namespace},
 			Spec:       appsv1.StatefulSetSpec{Selector: &metav1.LabelSelector{MatchLabels: selector}},
 		}
 	}
@@ -59,9 +59,9 @@ func TestValidateSelectorImmutability(t *testing.T) {
 		{
 			name: "all existing selectors match the desired",
 			objects: []client.Object{
-				makeService(resourceName(crName), baselineSelector),
-				makeService(headlessServiceName(crName), baselineSelector),
-				makeService(grpcServiceName(crName), baselineSelector),
+				makeService(clusterBaseName(clusterNamed(crName)), baselineSelector),
+				makeService(headlessServiceName(clusterNamed(crName)), baselineSelector),
+				makeService(grpcServiceName(clusterNamed(crName)), baselineSelector),
 				makeSTS(baselineSelector),
 			},
 		},
@@ -69,7 +69,7 @@ func TestValidateSelectorImmutability(t *testing.T) {
 			name:             "AdditionalLabels diverges from existing Service selector",
 			additionalLabels: map[string]string{"app.formance.com/service": "ledger-v3"},
 			objects: []client.Object{
-				makeService(resourceName(crName), baselineSelector),
+				makeService(clusterBaseName(clusterNamed(crName)), baselineSelector),
 			},
 			wantDrift: true,
 		},
@@ -85,7 +85,7 @@ func TestValidateSelectorImmutability(t *testing.T) {
 			name:             "override of default key drifts every existing object",
 			additionalLabels: map[string]string{"app.kubernetes.io/name": "ledger-v3"},
 			objects: []client.Object{
-				makeService(resourceName(crName), baselineSelector),
+				makeService(clusterBaseName(clusterNamed(crName)), baselineSelector),
 				makeSTS(baselineSelector),
 			},
 			wantDrift: true,
@@ -100,7 +100,7 @@ func TestValidateSelectorImmutability(t *testing.T) {
 			additionalLabels: map[string]string{"app.formance.com/service": "ledger-v3"},
 			headlessEnabled:  &headlessDisabled,
 			objects: []client.Object{
-				makeService(headlessServiceName(crName), baselineSelector),
+				makeService(headlessServiceName(clusterNamed(crName)), baselineSelector),
 			},
 		},
 		{
@@ -111,7 +111,7 @@ func TestValidateSelectorImmutability(t *testing.T) {
 			additionalLabels: map[string]string{"app.formance.com/service": "ledger-v3"},
 			ingressGrpc:      &ledgerv1alpha1.IngressGrpcSpec{Enabled: false},
 			objects: []client.Object{
-				makeService(grpcServiceName(crName), baselineSelector),
+				makeService(grpcServiceName(clusterNamed(crName)), baselineSelector),
 			},
 		},
 	}
@@ -171,13 +171,13 @@ func TestPruneDisabledOptionalServices_RunsBeforeDriftGuard(t *testing.T) {
 	require.NoError(t, appsv1.AddToScheme(scheme))
 	require.NoError(t, networkingv1.AddToScheme(scheme))
 
-	headlessSvc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: headlessServiceName(crName), Namespace: namespace},
+	headlessSvc := controlledByCluster(&corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: headlessServiceName(clusterNamed(crName)), Namespace: namespace},
 		Spec: corev1.ServiceSpec{Selector: map[string]string{
 			"app.kubernetes.io/name":     "ledger",
 			"app.kubernetes.io/instance": crName,
 		}},
-	}
+	}, clusterNamed(crName))
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(headlessSvc).Build()
 	r := &ClusterReconciler{Client: c, Scheme: scheme}
 
@@ -192,7 +192,7 @@ func TestPruneDisabledOptionalServices_RunsBeforeDriftGuard(t *testing.T) {
 	require.NoError(t, r.pruneDisabledOptionalServices(context.Background(), ls))
 
 	err := c.Get(context.Background(), client.ObjectKey{
-		Name:      headlessServiceName(crName),
+		Name:      headlessServiceName(clusterNamed(crName)),
 		Namespace: namespace,
 	}, &corev1.Service{})
 	require.True(t, err != nil, "disabled HeadlessService must be deleted by the pre-pass")
@@ -217,12 +217,12 @@ func TestPruneDisabledOptionalServices_PrunesGrpcIngress(t *testing.T) {
 	require.NoError(t, appsv1.AddToScheme(scheme))
 	require.NoError(t, networkingv1.AddToScheme(scheme))
 
-	grpcSvc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: grpcServiceName(crName), Namespace: namespace},
-	}
-	grpcIngress := &networkingv1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{Name: grpcIngressName(crName), Namespace: namespace},
-	}
+	grpcSvc := controlledByCluster(&corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: grpcServiceName(clusterNamed(crName)), Namespace: namespace},
+	}, clusterNamed(crName))
+	grpcIngress := controlledByCluster(&networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{Name: grpcIngressName(clusterNamed(crName)), Namespace: namespace},
+	}, clusterNamed(crName))
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(grpcSvc, grpcIngress).Build()
 	r := &ClusterReconciler{Client: c, Scheme: scheme}
 
@@ -235,13 +235,13 @@ func TestPruneDisabledOptionalServices_PrunesGrpcIngress(t *testing.T) {
 	require.NoError(t, r.pruneDisabledOptionalServices(context.Background(), ls))
 
 	svcErr := c.Get(context.Background(), client.ObjectKey{
-		Name:      grpcServiceName(crName),
+		Name:      grpcServiceName(clusterNamed(crName)),
 		Namespace: namespace,
 	}, &corev1.Service{})
 	require.True(t, svcErr != nil, "disabled gRPC Service must be deleted by the pre-pass")
 
 	ingErr := c.Get(context.Background(), client.ObjectKey{
-		Name:      grpcIngressName(crName),
+		Name:      grpcIngressName(clusterNamed(crName)),
 		Namespace: namespace,
 	}, &networkingv1.Ingress{})
 	require.True(t, ingErr != nil, "disabled gRPC Ingress must be deleted by the pre-pass")

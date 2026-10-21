@@ -14,7 +14,7 @@ import (
 func (r *ClusterReconciler) reconcileService(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName(ledger.Name),
+			Name:      clusterBaseName(ledger),
 			Namespace: ledger.Namespace,
 		},
 	}
@@ -41,7 +41,7 @@ func (r *ClusterReconciler) reconcileService(ctx context.Context, ledger *ledger
 			Selector: selectorLabels(ledger),
 		}
 
-		return controllerutil.SetControllerReference(ledger, svc, r.Scheme)
+		return setOwnedControllerReference(ledger, svc, r.Scheme, "Service")
 	})
 
 	return err

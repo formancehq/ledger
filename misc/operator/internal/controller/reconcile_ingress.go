@@ -12,10 +12,10 @@ import (
 )
 
 func (r *ClusterReconciler) reconcileIngress(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
-	name := resourceName(ledger.Name)
+	name := clusterBaseName(ledger)
 
 	if ledger.Spec.Ingress == nil || !ledger.Spec.Ingress.Enabled {
-		return r.deleteIfExists(ctx, &networkingv1.Ingress{
+		return r.deleteIfExists(ctx, ledger, &networkingv1.Ingress{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: ledger.Namespace,
@@ -49,7 +49,7 @@ func (r *ClusterReconciler) reconcileIngress(ctx context.Context, ledger *ledger
 
 		ing.Spec = spec
 
-		return controllerutil.SetControllerReference(ledger, ing, r.Scheme)
+		return setOwnedControllerReference(ledger, ing, r.Scheme, "Ingress")
 	})
 
 	return err
@@ -79,7 +79,7 @@ func buildHTTPIngressRules(ledger *ledgerv1alpha1.Cluster, hosts []ledgerv1alpha
 				PathType: &pathType,
 				Backend: networkingv1.IngressBackend{
 					Service: &networkingv1.IngressServiceBackend{
-						Name: resourceName(ledger.Name),
+						Name: clusterBaseName(ledger),
 						Port: networkingv1.ServiceBackendPort{Number: httpPort},
 					},
 				},

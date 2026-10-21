@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -59,13 +60,15 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err := r.Get(ctx, clusterKey, &cluster); err != nil {
 		if apierrors.IsNotFound(err) && !sink.DeletionTimestamp.IsZero() {
 			// A deleted Cluster can leave its StatefulSet running briefly. Wait for
-			// the runtime to disappear before releasing cleanup ownership.
-			var sts appsv1.StatefulSet
-			stsKey := types.NamespacedName{Namespace: sink.Namespace, Name: resourceName(sink.Spec.ClusterRef.Name)}
-			if stsErr := r.Get(ctx, stsKey, &sts); stsErr == nil {
-				return ctrl.Result{RequeueAfter: sinkRequeueInterval}, nil
-			} else if !apierrors.IsNotFound(stsErr) {
+			// the runtime to disappear before releasing cleanup ownership. The
+			// Cluster is gone, so its base name (spec.resourceName) is unknown:
+			// find the StatefulSet by owner reference or instance label instead.
+			running, stsErr := r.deletedClusterStatefulSetExists(ctx, sink.Namespace, sink.Spec.ClusterRef.Name)
+			if stsErr != nil {
 				return ctrl.Result{}, stsErr
+			}
+			if running {
+				return ctrl.Result{RequeueAfter: sinkRequeueInterval}, nil
 			}
 			controllerutil.RemoveFinalizer(&sink, eventSinkFinalizer)
 
@@ -82,7 +85,7 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	applyDefaults(&cluster)
 
 	var sts appsv1.StatefulSet
-	if err := r.Get(ctx, types.NamespacedName{Namespace: cluster.Namespace, Name: resourceName(cluster.Name)}, &sts); err != nil {
+	if err := r.Get(ctx, types.NamespacedName{Namespace: cluster.Namespace, Name: clusterBaseName(&cluster)}, &sts); err != nil {
 		if apierrors.IsNotFound(err) && !sink.DeletionTimestamp.IsZero() {
 			controllerutil.RemoveFinalizer(&sink, eventSinkFinalizer)
 
@@ -90,6 +93,20 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 
 		return r.sinkFailure(ctx, &sink, "WaitingForCluster", fmt.Errorf("getting StatefulSet: %w", err), sinkRequeueInterval)
+	}
+	if notControlledBy(&sts, &cluster) {
+		// Resource name conflict: the StatefulSet under this base name was not
+		// created by this Cluster; never configure or remove sinks on its
+		// runtime. A deleting sink has no runtime of its own Cluster to clean
+		// up, so it releases its finalizer instead of looping.
+		if !sink.DeletionTimestamp.IsZero() {
+			controllerutil.RemoveFinalizer(&sink, eventSinkFinalizer)
+
+			return ctrl.Result{}, r.Update(ctx, &sink)
+		}
+
+		return r.sinkFailure(ctx, &sink, "ResourceNameConflict", fmt.Errorf("%w: %s",
+			errResourceNameConflict, describeOwnership("StatefulSet", &sts, &cluster)), sinkDriftCheckInterval)
 	}
 	desiredReplicas := int32(3)
 	if cluster.Spec.Replicas != nil {
@@ -104,7 +121,7 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		defer cancel()
 		delegate := ClusterReconciler{Client: r.Client, Config: r.Config, Clientset: r.Clientset}
 
-		return delegate.ledgerctlExecOutput(execCtx, cluster.Namespace, cluster.Name, podName(cluster.Name, 0), cluster.Spec.GrpcPort, args...)
+		return delegate.ledgerctlExecOutput(execCtx, &cluster, cluster.Spec.GrpcPort, args...)
 	}
 	stdout, err := exec("events", "list", "--json")
 	if err != nil {
@@ -260,6 +277,42 @@ func (r *EventSinkReconciler) persistSinkStatus(ctx context.Context, sink *ledge
 	sink.ResourceVersion = live.ResourceVersion
 
 	return r.Status().Update(ctx, sink)
+}
+
+// deletedClusterStatefulSetExists reports whether a StatefulSet of the deleted
+// Cluster clusterName still exists in namespace. The deleted Cluster's base name
+// cannot be recomputed (spec.resourceName may have overridden it), so a
+// StatefulSet matches when it carries an owner reference to that Cluster (the
+// normal garbage-collection window) or, once an orphaning deletion stripped the
+// owner reference, the operator's managed-by and instance labels AND the
+// default base name prefixedName(clusterName), and only while it has no
+// controller reference (an orphaned StatefulSet has none). The instance label
+// alone is not trusted: spec.additionalLabels can override it, so another
+// Cluster's StatefulSet could carry it, and spec.resourceName lets that Cluster
+// name its StatefulSet prefixedName(clusterName) once clusterName is gone; such
+// a StatefulSet carries the other Cluster's controller reference and must not
+// hold the finalizer forever. An orphaned StatefulSet of a Cluster that used
+// spec.resourceName therefore no longer holds the finalizer: nothing left on
+// it proves which Cluster it belonged to.
+func (r *EventSinkReconciler) deletedClusterStatefulSetExists(ctx context.Context, namespace, clusterName string) (bool, error) {
+	var list appsv1.StatefulSetList
+	if err := r.List(ctx, &list, client.InNamespace(namespace)); err != nil {
+		return false, fmt.Errorf("listing StatefulSets: %w", err)
+	}
+	for i := range list.Items {
+		sts := &list.Items[i]
+		for _, ref := range sts.OwnerReferences {
+			if ref.Kind == "Cluster" && ref.Name == clusterName && strings.HasPrefix(ref.APIVersion, ledgerv1alpha1.GroupVersion.Group+"/") {
+				return true, nil
+			}
+		}
+		if metav1.GetControllerOf(sts) == nil && sts.Name == prefixedName(clusterName) &&
+			sts.Labels[labelManagedBy] == "ledger-operator" && sts.Labels[labelInstance] == clusterName {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (r *EventSinkReconciler) SetupWithManager(mgr ctrl.Manager) error {

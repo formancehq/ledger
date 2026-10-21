@@ -221,9 +221,32 @@ func (r *BackupRunReconciler) ensureBackupJob(
 		return nil, fmt.Errorf("looking up Job: %w", err)
 	}
 
-	tlsMode, err := fetchTLSMode(ctx, r.Client, ls.Namespace, resourceName(ls.Name))
-	if err != nil {
+	tlsMode, err := fetchTLSMode(ctx, r.Client, ls)
+	switch {
+	case errors.Is(err, errResourceNameConflict):
+		// The StatefulSet under the Cluster base name was not created by this
+		// Cluster: a Job dialing "<base>" would back up another runtime. This
+		// does not resolve by retrying the run, so fail it with the reason.
+		return nil, &permanentBackupJobError{fmt.Errorf("refusing to back up Cluster %q: %w", ls.Name, err)}
+	case err != nil:
+		// errClusterRuntimeAbsent (no StatefulSet yet) or a transient read
+		// error: no Job is created; the run waits with the reason recorded.
 		return nil, fmt.Errorf("resolving TLS mode for Cluster %q: %w", ls.Name, err)
+	}
+
+	// The Job dials the ClusterIP Service "<base>" (backupServerAddr), not the
+	// StatefulSet, so the Service must be the Cluster's too. Checking it, rather
+	// than dialing a pod address, keeps the Service's routing to any pod (the
+	// leader proxies the backup) and its certificate SAN; the ownership of the
+	// Service's endpoints follows from the operator writing its selector. A
+	// Service replaced after this check, while the Job starts, is not detected.
+	switch err := requireClusterService(ctx, r.Client, ls); {
+	case errors.Is(err, errResourceNameConflict):
+		return nil, &permanentBackupJobError{fmt.Errorf("refusing to back up Cluster %q: %w", ls.Name, err)}
+	case err != nil:
+		// errClusterServiceAbsent (not created yet) or a transient read error:
+		// no Job is created; the run waits with the reason recorded.
+		return nil, fmt.Errorf("resolving the Service of Cluster %q: %w", ls.Name, err)
 	}
 
 	desired, err := buildBackupJob(run, backup, ls, tlsMode)

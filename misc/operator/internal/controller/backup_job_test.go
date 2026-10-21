@@ -36,6 +36,14 @@ func TestBackupServerAddr(t *testing.T) {
 			},
 			want: "ledger-lgr.ns.svc.cluster.local:9999",
 		},
+		{
+			name: "resourceName override",
+			ls: &ledgerv1alpha1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "jdxmvkvwlyiy-cukg", Namespace: "ns"},
+				Spec:       ledgerv1alpha1.ClusterSpec{ResourceName: "payments"},
+			},
+			want: "payments.ns.svc.cluster.local:8888",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

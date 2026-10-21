@@ -41,7 +41,7 @@ func (r *ClusterReconciler) reconcileDNSEndpoint(ctx context.Context, ledger *le
 			continue
 		}
 
-		name := dnsEndpointName(ledger.Name, spec.Name)
+		name := dnsEndpointName(ledger, spec.Name)
 		desired[name] = struct{}{}
 
 		if err := r.applyDNSEndpoint(ctx, ledger, name, spec.Annotations, endpoints); err != nil {
@@ -80,7 +80,7 @@ func (r *ClusterReconciler) applyDNSEndpoint(
 			return err
 		}
 
-		return controllerutil.SetControllerReference(ledger, obj, r.Scheme)
+		return setOwnedControllerReference(ledger, obj, r.Scheme, "DNSEndpoint")
 	})
 
 	return err
@@ -116,7 +116,9 @@ func (r *ClusterReconciler) pruneDNSEndpoints(ctx context.Context, ledger *ledge
 		if !metav1.IsControlledBy(obj, ledger) {
 			continue
 		}
-		if err := r.deleteUnstructuredIfExists(ctx, obj); err != nil {
+		// deleteIfExists re-reads the object, re-checks ownership and pins the
+		// delete to the inspected UID: the listed copy may be stale.
+		if err := r.deleteIfExists(ctx, ledger, obj); err != nil {
 			return err
 		}
 	}

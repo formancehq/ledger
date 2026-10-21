@@ -10,6 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 // reconcileVolumeProtection brings the deletion-protection label on this
@@ -44,17 +46,17 @@ import (
 // on that signal — the controller does not watch PVC/PV binding events, so this
 // is what makes reconciliation to the desired label state deterministic.
 func reconcileVolumeProtection(ctx context.Context, clientset kubernetes.Interface,
-	namespace, stsName string, replicas int32, volumeNames []string, protect bool,
+	cluster *ledgerv1alpha1.Cluster, replicas int32, volumeNames []string, protect bool,
 ) (bool, error) {
 	logger := log.FromContext(ctx)
-	pvcClient := clientset.CoreV1().PersistentVolumeClaims(namespace)
+	pvcClient := clientset.CoreV1().PersistentVolumeClaims(cluster.Namespace)
 	pvClient := clientset.CoreV1().PersistentVolumes()
 
 	pending := false
 	for ordinal := range replicas {
 		for _, vol := range volumeNames {
-			pvcName := fmt.Sprintf("%s-%s-%d", vol, stsName, ordinal)
-			pvc, err := pvcClient.Get(ctx, pvcName, metav1.GetOptions{})
+			claimName := pvcName(cluster, vol, ordinal)
+			pvc, err := pvcClient.Get(ctx, claimName, metav1.GetOptions{})
 			if err != nil {
 				if kerrors.IsNotFound(err) {
 					// Expected to be created by the StatefulSet controller. Requeue
@@ -68,18 +70,18 @@ func reconcileVolumeProtection(ctx context.Context, clientset kubernetes.Interfa
 					continue
 				}
 
-				return false, fmt.Errorf("getting PVC %s: %w", pvcName, err)
+				return false, fmt.Errorf("getting PVC %s: %w", claimName, err)
 			}
 
 			patch, err := protectionLabelPatch(pvc.Labels, protect)
 			if err != nil {
-				return false, fmt.Errorf("building deletion-protection patch for PVC %s: %w", pvcName, err)
+				return false, fmt.Errorf("building deletion-protection patch for PVC %s: %w", claimName, err)
 			}
 			if patch != nil {
-				if _, err := pvcClient.Patch(ctx, pvcName, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
-					return false, fmt.Errorf("patching deletion-protection label on PVC %s: %w", pvcName, err)
+				if _, err := pvcClient.Patch(ctx, claimName, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+					return false, fmt.Errorf("patching deletion-protection label on PVC %s: %w", claimName, err)
 				}
-				logger.Info("reconciled deletion-protection label on PVC", "pvc", pvcName, "protect", protect)
+				logger.Info("reconciled deletion-protection label on PVC", "pvc", claimName, "protect", protect)
 			}
 
 			if pvc.Spec.VolumeName == "" {
@@ -102,7 +104,7 @@ func reconcileVolumeProtection(ctx context.Context, clientset kubernetes.Interfa
 
 			// Only touch a PV that is still claimed by this PVC; a PV rebound to
 			// another claim must neither inherit nor lose our protection label.
-			if ref := pv.Spec.ClaimRef; ref == nil || ref.Namespace != namespace || ref.Name != pvcName {
+			if ref := pv.Spec.ClaimRef; ref == nil || ref.Namespace != cluster.Namespace || ref.Name != claimName {
 				continue
 			}
 
@@ -114,7 +116,7 @@ func reconcileVolumeProtection(ctx context.Context, clientset kubernetes.Interfa
 				if _, err := pvClient.Patch(ctx, pv.Name, types.MergePatchType, pvPatch, metav1.PatchOptions{}); err != nil {
 					return false, fmt.Errorf("patching deletion-protection label on PV %s: %w", pv.Name, err)
 				}
-				logger.Info("reconciled deletion-protection label on bound PV", "pv", pv.Name, "pvc", pvcName, "protect", protect)
+				logger.Info("reconciled deletion-protection label on bound PV", "pv", pv.Name, "pvc", claimName, "protect", protect)
 			}
 		}
 	}

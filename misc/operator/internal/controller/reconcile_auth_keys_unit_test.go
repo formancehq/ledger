@@ -85,15 +85,15 @@ func matchingCredentials(name string, selector map[string]string, distributed bo
 // existingAuthKeysConfigMap returns a ConfigMap standing in for a previously
 // reconciled auth-keys ConfigMap for the given Cluster.
 func existingAuthKeysConfigMap(clusterName, namespace string) *corev1.ConfigMap {
-	return &corev1.ConfigMap{
+	return controlledByCluster(&corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      authKeysConfigMapName(clusterName),
+			Name:      authKeysConfigMapName(clusterNamed(clusterName)),
 			Namespace: namespace,
 		},
 		Data: map[string]string{
 			"auth-keys.json": `{"keys":[{"keyId":"stale","publicKeyFile":"/auth-keys/stale.hex","scopes":["read"]}]}`,
 		},
-	}
+	}, clusterNamed(clusterName))
 }
 
 // authKeysConfigMapWithEntries builds an auth-keys ConfigMap whose auth-keys.json
@@ -122,13 +122,13 @@ func authKeysConfigMapWithEntries(clusterName, namespace string, entries map[str
 	}
 	data["auth-keys.json"] = string(raw)
 
-	return &corev1.ConfigMap{
+	return controlledByCluster(&corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      authKeysConfigMapName(clusterName),
+			Name:      authKeysConfigMapName(clusterNamed(clusterName)),
 			Namespace: namespace,
 		},
 		Data: data,
-	}
+	}, clusterNamed(clusterName))
 }
 
 // TestReconcileAuthKeys_TransientNonDistribution_PreservesConfigMap covers the
@@ -172,7 +172,7 @@ func TestReconcileAuthKeys_TransientNonDistribution_PreservesConfigMap(t *testin
 	// The existing ConfigMap must survive untouched — deleting it is exactly the
 	// bug that crash-loops auth-enabled clusters.
 	cm := &corev1.ConfigMap{}
-	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm)
+	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterNamed(clusterName))}, cm)
 	require.NoError(t, err, "existing auth-keys ConfigMap must be preserved during transient non-distribution")
 	assert.Equal(t, existingCM.Data["auth-keys.json"], cm.Data["auth-keys.json"],
 		"ConfigMap content must not be mutated during transient non-distribution")
@@ -211,13 +211,13 @@ func TestReconcileAuthKeys_TransientNonDistribution_CompleteCarriedSet_RollsWith
 	}}}
 	priorRaw, err := json.Marshal(prior)
 	require.NoError(t, err)
-	existingCM := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: authKeysConfigMapName(clusterName), Namespace: namespace},
+	existingCM := controlledByCluster(&corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: authKeysConfigMapName(clusterNamed(clusterName)), Namespace: namespace},
 		Data: map[string]string{
 			"auth-keys.json": string(priorRaw),
 			fileName:         "deadbeef",
 		},
-	}
+	}, clusterNamed(clusterName))
 
 	// Live Credentials: still undistributed, but authorization has been narrowed
 	// to read-only with superuser cleared (matchingCredentials sets Scopes=["read"],
@@ -237,7 +237,7 @@ func TestReconcileAuthKeys_TransientNonDistribution_CompleteCarriedSet_RollsWith
 	// ConfigMap rebuilt: key material carried, authorization refreshed from the
 	// live spec.
 	cm := &corev1.ConfigMap{}
-	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterNamed(clusterName))}, cm))
 	var got authKeysJSON
 	require.NoError(t, json.Unmarshal([]byte(cm.Data["auth-keys.json"]), &got))
 	require.Len(t, got.Keys, 1)
@@ -278,14 +278,14 @@ func TestReconcileAuthKeys_TransientNonDistribution_IncompleteCarriedSet_StaysPe
 	}}
 	priorRaw, err := json.Marshal(prior)
 	require.NoError(t, err)
-	existingCM := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: authKeysConfigMapName(clusterName), Namespace: namespace},
+	existingCM := controlledByCluster(&corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: authKeysConfigMapName(clusterNamed(clusterName)), Namespace: namespace},
 		Data: map[string]string{
 			"auth-keys.json": string(priorRaw),
 			fileA:            "aaaa",
 			// fileB blob intentionally omitted -> cred-b cannot be carried forward.
 		},
-	}
+	}, clusterNamed(clusterName))
 	credA := matchingCredentials("thierry-cred-a", selector, false, "", "")
 	credB := matchingCredentials("thierry-cred-b", selector, false, "", "")
 
@@ -303,7 +303,7 @@ func TestReconcileAuthKeys_TransientNonDistribution_IncompleteCarriedSet_StaysPe
 
 	// The existing ConfigMap must be preserved untouched (frozen before rebuild).
 	cm := &corev1.ConfigMap{}
-	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterNamed(clusterName))}, cm))
 	assert.Equal(t, existingCM.Data["auth-keys.json"], cm.Data["auth-keys.json"],
 		"the ConfigMap must not be mutated while the carried set is incomplete")
 	assert.Equal(t, "aaaa", cm.Data[fileA], "cred-a's prior blob must be preserved")
@@ -352,7 +352,7 @@ func TestReconcileAuthKeys_TransientNonDistribution_AuthDisabled_NotPending(t *t
 	// With auth disabled there is no wiring to preserve; the ConfigMap is removed
 	// like any other no-effective-keys case.
 	cm := &corev1.ConfigMap{}
-	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm)
+	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterNamed(clusterName))}, cm)
 	assert.True(t, apierrors.IsNotFound(err),
 		"auth-keys ConfigMap must be deleted for an auth-disabled cluster")
 }
@@ -396,7 +396,7 @@ func TestReconcileAuthKeys_IssuerBacked_AllUnresolved_NotPending(t *testing.T) {
 
 	// No prior ConfigMap existed; none must be created (no effective keys).
 	cm := &corev1.ConfigMap{}
-	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm)
+	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterNamed(clusterName))}, cm)
 	assert.True(t, apierrors.IsNotFound(err),
 		"no auth-keys ConfigMap should be created for an issuer-backed cluster with no resolvable keys")
 }
@@ -438,7 +438,7 @@ func TestReconcileAuthKeys_IssuerBacked_AllUnresolved_PreservesPriorKeyNotPendin
 	// The ConfigMap must still carry the prior key material so the StatefulSet keeps
 	// mounting a valid key set.
 	cm := &corev1.ConfigMap{}
-	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterNamed(clusterName))}, cm))
 	ids := keyIDsInConfigMap(t, cm)
 	assert.Contains(t, ids, "kid-old", "the carried-forward key must be preserved")
 	assert.Equal(t, "deadbeef", cm.Data[pubKeyFileName("credentials", credName)],
@@ -536,7 +536,7 @@ func TestReconcileAuthKeys_NoMatch_DeletesConfigMap(t *testing.T) {
 	assert.Nil(t, credentials)
 
 	cm := &corev1.ConfigMap{}
-	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm)
+	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterNamed(clusterName))}, cm)
 	assert.True(t, apierrors.IsNotFound(err),
 		"auth-keys ConfigMap must be deleted when no Credentials match the selector")
 }
@@ -579,7 +579,7 @@ func TestReconcileAuthKeys_Distributed_CreatesConfigMap(t *testing.T) {
 	assert.Equal(t, "kid-123", credentials[0].KeyID)
 
 	cm := &corev1.ConfigMap{}
-	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm)
+	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterNamed(clusterName))}, cm)
 	require.NoError(t, err, "auth-keys ConfigMap must be created once credentials are distributed")
 	assert.Contains(t, cm.Data, "auth-keys.json")
 	assert.Equal(t, "deadbeef", cm.Data["credentials-thierry-cred-pubkey.hex"])
@@ -605,15 +605,15 @@ func TestReconcileAuthKeys_FullyResolved_MalformedConfigMap_SelfHeals(t *testing
 
 	scheme := authKeysScheme(t)
 	// Malformed existing ConfigMap: auth-keys.json is not valid JSON.
-	malformedCM := &corev1.ConfigMap{
+	malformedCM := controlledByCluster(&corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      authKeysConfigMapName(clusterName),
+			Name:      authKeysConfigMapName(clusterNamed(clusterName)),
 			Namespace: namespace,
 		},
 		Data: map[string]string{
 			"auth-keys.json": `{"keys":[{"keyId":"corrupt",`, // truncated / invalid JSON
 		},
-	}
+	}, clusterNamed(clusterName))
 	cred := matchingCredentials("thierry-cred", selector, true, namespace, secretName)
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
@@ -639,7 +639,7 @@ func TestReconcileAuthKeys_FullyResolved_MalformedConfigMap_SelfHeals(t *testing
 	// The ConfigMap must be rebuilt (self-healed) from the resolved set, dropping
 	// the corrupt content entirely.
 	cm := &corev1.ConfigMap{}
-	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterNamed(clusterName))}, cm))
 	ids := keyIDsInConfigMap(t, cm)
 	assert.Contains(t, ids, "kid-123", "the resolved key must be written")
 	assert.NotContains(t, ids, "corrupt", "the corrupt prior content must be gone")
@@ -666,15 +666,15 @@ func TestReconcileAuthKeys_Partial_MalformedConfigMap_SelfHeals(t *testing.T) {
 
 	scheme := authKeysScheme(t)
 	// Existing ConfigMap present but its auth-keys.json is corrupt.
-	malformedCM := &corev1.ConfigMap{
+	malformedCM := controlledByCluster(&corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      authKeysConfigMapName(clusterName),
+			Name:      authKeysConfigMapName(clusterNamed(clusterName)),
 			Namespace: namespace,
 		},
 		Data: map[string]string{
 			"auth-keys.json": `{"keys":[{"keyId":"corrupt",`, // invalid JSON
 		},
-	}
+	}, clusterNamed(clusterName))
 	credA := matchingCredentials("thierry-cred-a", selector, true, namespace, secretName)
 	credB := matchingCredentials("thierry-cred-b", selector, false, "", "")
 	secret := &corev1.Secret{
@@ -699,7 +699,7 @@ func TestReconcileAuthKeys_Partial_MalformedConfigMap_SelfHeals(t *testing.T) {
 	require.Len(t, credentials, 1, "only the resolved credential contributes; the corrupt prior key is unrecoverable")
 
 	cm := &corev1.ConfigMap{}
-	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterNamed(clusterName))}, cm))
 	ids := keyIDsInConfigMap(t, cm)
 	assert.Contains(t, ids, "kid-a-new", "the resolved key must be propagated")
 	assert.NotContains(t, ids, "corrupt", "the corrupt content must be dropped")
@@ -724,7 +724,7 @@ func TestReconcileAuthKeys_Partial_TransientReadError_DoesNotDropKey(t *testing.
 		secretName  = "thierry-cred-a-secret"
 	)
 	selector := map[string]string{"tier": "gold"}
-	cmName := authKeysConfigMapName(clusterName)
+	cmName := authKeysConfigMapName(clusterNamed(clusterName))
 
 	scheme := authKeysScheme(t)
 	// Valid existing ConfigMap holding the still-unresolved credential's prior key.
@@ -858,7 +858,7 @@ func TestReconcileAuthKeys_PartialNonDistribution_PreservesConfigMap(t *testing.
 	require.Len(t, credentials, 2, "the merged set must carry both the resolved and the carried-forward key")
 
 	cm := &corev1.ConfigMap{}
-	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm)
+	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterNamed(clusterName))}, cm)
 	require.NoError(t, err, "auth-keys ConfigMap must exist")
 
 	ids := keyIDsInConfigMap(t, cm)
@@ -920,7 +920,7 @@ func TestReconcileAuthKeys_PartialResolution_BrokenCredentialDoesNotBlockRotatio
 	assert.False(t, pending.pending())
 
 	cm := &corev1.ConfigMap{}
-	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterNamed(clusterName))}, cm))
 	ids := keyIDsInConfigMap(t, cm)
 	assert.Contains(t, ids, "kid-a-v1")
 	assert.Contains(t, ids, "kid-b-old")
@@ -938,7 +938,7 @@ func TestReconcileAuthKeys_PartialResolution_BrokenCredentialDoesNotBlockRotatio
 	assert.False(t, pending.pending(), "a permanently-broken credential must not block further rotation of the healthy one")
 
 	cm = &corev1.ConfigMap{}
-	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterNamed(clusterName))}, cm))
 	ids = keyIDsInConfigMap(t, cm)
 	assert.Contains(t, ids, "kid-a-v2", "the healthy credential's rotation must propagate despite the broken one")
 	assert.Contains(t, ids, "kid-b-old", "the broken credential still keeps its own last-known key")
@@ -991,7 +991,7 @@ func TestReconcileAuthKeys_PartialResolution_NoPriorKey_Skips(t *testing.T) {
 	require.Len(t, credentials, 1, "only the resolved credential contributes a key")
 
 	cm := &corev1.ConfigMap{}
-	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterNamed(clusterName))}, cm))
 	ids := keyIDsInConfigMap(t, cm)
 	assert.Contains(t, ids, "kid-a-new", "the resolved credential's key must be propagated")
 	assert.Len(t, ids, 1, "the never-distributed credential contributes nothing")
@@ -1043,9 +1043,9 @@ func TestReconcileVolumeProtectionPass_RunsIndependentlyOfAuthKeys(t *testing.T)
 		namespace   = "ledger-v3"
 	)
 
-	// resourceName(clusterName) == "ledger-thierry"; the data PVC for ordinal 0 is
+	// clusterBaseName(clusterNamed(clusterName)) == "ledger-thierry"; the data PVC for ordinal 0 is
 	// "data-ledger-thierry-0".
-	stsName := resourceName(clusterName)
+	stsName := clusterBaseName(clusterNamed(clusterName))
 	boundPVC, boundPV := boundPVCAndPV("data-"+stsName+"-0", "pv-thierry-0", namespace)
 	cs := k8sfake.NewClientset(boundPVC, boundPV)
 
@@ -1095,7 +1095,7 @@ func TestReconcileVolumeProtectionPass_RequeuesWhilePreservingStatefulSet(t *tes
 		clusterName = "thierry"
 		namespace   = "ledger-v3"
 	)
-	stsName := resourceName(clusterName)
+	stsName := clusterBaseName(clusterNamed(clusterName))
 
 	// A StatefulSet standing in for the auth-wired template that must survive the
 	// pending window untouched. The typed clientset holds it so we can assert the
@@ -1186,14 +1186,14 @@ func TestReconcileClusterSecretForTLSState_RunsIndependentlyOfAuthKeys(t *testin
 
 	secret := &corev1.Secret{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Namespace: namespace, Name: clusterSecretName(clusterName)}, secret),
+		types.NamespacedName{Namespace: namespace, Name: clusterSecretName(clusterNamed(clusterName))}, secret),
 		"cluster-secret must be reconciled even while the StatefulSet pass is deferred")
 	require.NotEmpty(t, secret.Data[clusterSecretKey], "the cluster secret token must be populated")
 
 	// The pass must not create a StatefulSet — only the (frozen) reconcileStatefulSet does.
 	sts := &appsv1.StatefulSet{}
 	err := c.Get(context.Background(),
-		types.NamespacedName{Namespace: namespace, Name: resourceName(clusterName)}, sts)
+		types.NamespacedName{Namespace: namespace, Name: clusterBaseName(clusterNamed(clusterName))}, sts)
 	require.True(t, apierrors.IsNotFound(err),
 		"reconcileClusterSecretForTLSState must not create or mutate the StatefulSet")
 }
@@ -1213,10 +1213,10 @@ func TestReconcileClusterSecretForTLSState_DeletesWhenTLSDisabledAndMayDelete(t 
 	scheme := authKeysScheme(t)
 	require.NoError(t, appsv1.AddToScheme(scheme))
 
-	existingSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: clusterSecretName(clusterName), Namespace: namespace},
+	existingSecret := controlledByCluster(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterSecretName(clusterNamed(clusterName)), Namespace: namespace},
 		Data:       map[string][]byte{clusterSecretKey: []byte("stale-token")},
-	}
+	}, clusterNamed(clusterName))
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingSecret).Build()
 	r := &ClusterReconciler{Client: c, Scheme: scheme}
 
@@ -1230,7 +1230,7 @@ func TestReconcileClusterSecretForTLSState_DeletesWhenTLSDisabledAndMayDelete(t 
 
 	secret := &corev1.Secret{}
 	err := c.Get(context.Background(),
-		types.NamespacedName{Namespace: namespace, Name: clusterSecretName(clusterName)}, secret)
+		types.NamespacedName{Namespace: namespace, Name: clusterSecretName(clusterNamed(clusterName))}, secret)
 	require.True(t, apierrors.IsNotFound(err),
 		"cluster-secret must be deleted for a TLS-disabled cluster once mayDelete is set")
 }
@@ -1258,7 +1258,7 @@ func TestReconcileClusterSecretForTLSState_KeepsSecretWhileStillReferenced(t *te
 	replicas := int32(1)
 	existingSTS := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: resourceName(clusterName), Namespace: namespace, Generation: 1,
+			Name: clusterBaseName(clusterNamed(clusterName)), Namespace: namespace, Generation: 1,
 		},
 		Spec: appsv1.StatefulSetSpec{
 			Replicas: &replicas,
@@ -1275,10 +1275,10 @@ func TestReconcileClusterSecretForTLSState_KeepsSecretWhileStillReferenced(t *te
 			ObservedGeneration: 1, UpdatedReplicas: 1, ReadyReplicas: 1,
 		},
 	}
-	existingSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: clusterSecretName(clusterName), Namespace: namespace},
+	existingSecret := controlledByCluster(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterSecretName(clusterNamed(clusterName)), Namespace: namespace},
 		Data:       map[string][]byte{clusterSecretKey: []byte("still-referenced")},
-	}
+	}, clusterNamed(clusterName))
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingSTS, existingSecret).Build()
 	r := &ClusterReconciler{Client: c, Scheme: scheme}
 
@@ -1293,7 +1293,7 @@ func TestReconcileClusterSecretForTLSState_KeepsSecretWhileStillReferenced(t *te
 
 	secret := &corev1.Secret{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Namespace: namespace, Name: clusterSecretName(clusterName)}, secret),
+		types.NamespacedName{Namespace: namespace, Name: clusterSecretName(clusterNamed(clusterName))}, secret),
 		"the cluster-secret must NOT be deleted while a StatefulSet still references it and cannot be updated")
 	require.Equal(t, []byte("still-referenced"), secret.Data[clusterSecretKey],
 		"the referenced cluster-secret must be preserved verbatim")
@@ -1302,7 +1302,7 @@ func TestReconcileClusterSecretForTLSState_KeepsSecretWhileStillReferenced(t *te
 	require.NoError(t, r.reconcileClusterSecretForTLSState(context.Background(), cluster, true))
 
 	err := c.Get(context.Background(),
-		types.NamespacedName{Namespace: namespace, Name: clusterSecretName(clusterName)}, secret)
+		types.NamespacedName{Namespace: namespace, Name: clusterSecretName(clusterNamed(clusterName))}, secret)
 	require.True(t, apierrors.IsNotFound(err),
 		"the cluster-secret must be deleted once the StatefulSet has dropped the reference (mayDelete)")
 }

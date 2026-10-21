@@ -64,16 +64,17 @@ func TestBackupRunCredentialsStayInSecrets(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "run", Namespace: "test", UID: "run-uid"},
 					Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: backup.Name, Type: runType},
 				}
-				sts := &appsv1.StatefulSet{
-					ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: "test"},
+				sts := controlledByCluster(&appsv1.StatefulSet{
+					ObjectMeta: metav1.ObjectMeta{Name: clusterBaseName(cluster), Namespace: "test"},
 					Spec: appsv1.StatefulSetSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
 						Containers: []corev1.Container{{Name: "ledger", Env: []corev1.EnvVar{{Name: "TLS_MODE", Value: tlsModeRequired}}}},
 					}}},
-				}
+				}, cluster)
+				svc := controlledByCluster(&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: clusterBaseName(cluster), Namespace: "test"}}, cluster)
 				secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "s3-auth", Namespace: "test"},
 					Data: map[string][]byte{"access": []byte(accessKey), "secret": []byte(secretKey)}}
 				c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(run).
-					WithObjects(cluster, backup, run, sts, secret).Build()
+					WithObjects(cluster, backup, run, sts, svc, secret).Build()
 				r := &BackupRunReconciler{Client: c, Scheme: scheme}
 				_, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)})
 				require.NoError(t, err)

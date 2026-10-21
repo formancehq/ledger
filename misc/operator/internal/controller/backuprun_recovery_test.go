@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -39,8 +40,12 @@ func backupRunRecoveryFixture(t *testing.T) (client.WithWatch, *ledgerv1alpha1.B
 		Spec:       ledgerv1alpha1.BackupSpec{ClusterRef: "cluster", Destination: ledgerv1alpha1.BackupDestination{Driver: "s3", S3: &ledgerv1alpha1.S3Config{Bucket: "bucket"}}},
 	}
 	cluster := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "cluster", Namespace: run.Namespace}}
+	// The Cluster's own StatefulSet and the Service the Job dials: backups
+	// refuse a Cluster without them.
+	sts := controlledByCluster(&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: clusterBaseName(cluster), Namespace: run.Namespace}}, cluster)
+	svc := controlledByCluster(&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: clusterBaseName(cluster), Namespace: run.Namespace}}, cluster)
 
-	return fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(run, &batchv1.Job{}).WithObjects(run, backup, cluster).Build(), run
+	return fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(run, &batchv1.Job{}).WithObjects(run, backup, cluster, sts, svc).Build(), run
 }
 
 func TestBackupRunCommittedCreateLostResponse(t *testing.T) {

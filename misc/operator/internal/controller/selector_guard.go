@@ -40,9 +40,9 @@ func (r *ClusterReconciler) pruneDisabledOptionalServices(
 	ctx context.Context, ledger *ledgerv1alpha1.Cluster,
 ) error {
 	if ledger.Spec.HeadlessService.Enabled != nil && !*ledger.Spec.HeadlessService.Enabled {
-		if err := r.deleteIfExists(ctx, &corev1.Service{
+		if err := r.deleteIfExists(ctx, ledger, &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      headlessServiceName(ledger.Name),
+				Name:      headlessServiceName(ledger),
 				Namespace: ledger.Namespace,
 			},
 		}); err != nil {
@@ -50,9 +50,9 @@ func (r *ClusterReconciler) pruneDisabledOptionalServices(
 		}
 	}
 	if ledger.Spec.IngressGrpc == nil || !ledger.Spec.IngressGrpc.Enabled {
-		if err := r.deleteIfExists(ctx, &corev1.Service{
+		if err := r.deleteIfExists(ctx, ledger, &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      grpcServiceName(ledger.Name),
+				Name:      grpcServiceName(ledger),
 				Namespace: ledger.Namespace,
 			},
 		}); err != nil {
@@ -63,9 +63,9 @@ func (r *ClusterReconciler) pruneDisabledOptionalServices(
 		// reconcileIngressGrpc, which runs AFTER the guard. Drop it here too
 		// so a drift on the primary Service / StatefulSet does not strand
 		// an Ingress pointing at a deleted backend.
-		if err := r.deleteIfExists(ctx, &networkingv1.Ingress{
+		if err := r.deleteIfExists(ctx, ledger, &networkingv1.Ingress{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      grpcIngressName(ledger.Name),
+				Name:      grpcIngressName(ledger),
 				Namespace: ledger.Namespace,
 			},
 		}); err != nil {
@@ -120,12 +120,12 @@ func (r *ClusterReconciler) validateSelectorImmutability(
 	grpcWanted := ledger.Spec.IngressGrpc != nil && ledger.Spec.IngressGrpc.Enabled
 
 	checks := []check{
-		{"Service", resourceName(ledger.Name), true, getService(resourceName(ledger.Name))},
-		{"HeadlessService", headlessServiceName(ledger.Name), headlessWanted, getService(headlessServiceName(ledger.Name))},
-		{"GrpcService", grpcServiceName(ledger.Name), grpcWanted, getService(grpcServiceName(ledger.Name))},
-		{"StatefulSet", resourceName(ledger.Name), true, func() (map[string]string, bool, error) {
+		{"Service", clusterBaseName(ledger), true, getService(clusterBaseName(ledger))},
+		{"HeadlessService", headlessServiceName(ledger), headlessWanted, getService(headlessServiceName(ledger))},
+		{"GrpcService", grpcServiceName(ledger), grpcWanted, getService(grpcServiceName(ledger))},
+		{"StatefulSet", clusterBaseName(ledger), true, func() (map[string]string, bool, error) {
 			sts := &appsv1.StatefulSet{}
-			err := r.Get(ctx, types.NamespacedName{Name: resourceName(ledger.Name), Namespace: ledger.Namespace}, sts)
+			err := r.Get(ctx, types.NamespacedName{Name: clusterBaseName(ledger), Namespace: ledger.Namespace}, sts)
 			if apierrors.IsNotFound(err) {
 				return nil, false, nil
 			}

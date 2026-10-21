@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -31,6 +32,12 @@ func TestBackupRunCommittedCreateLostResponseIntegration(t *testing.T) {
 	cluster := newCluster("recovery-cluster", namespace)
 	cluster.Spec.Image = ledgerv1alpha1.ImageSpec{Repository: "ghcr.io/formancehq/ledger", Tag: "test"}
 	require.NoError(t, c.Create(testCtx, cluster))
+	// The backup Job requires the Cluster's own StatefulSet and the Service it
+	// dials; the suite's Cluster controller creates both asynchronously.
+	requireEventually(t, func() bool {
+		key := client.ObjectKey{Namespace: namespace, Name: clusterBaseName(cluster)}
+		return c.Get(testCtx, key, &appsv1.StatefulSet{}) == nil && c.Get(testCtx, key, &corev1.Service{}) == nil
+	}, "the Cluster controller must create the StatefulSet and Service the backup Job targets")
 	backup := &ledgerv1alpha1.Backup{
 		ObjectMeta: metav1.ObjectMeta{Name: "recovery-backup", Namespace: namespace},
 		Spec: ledgerv1alpha1.BackupSpec{
