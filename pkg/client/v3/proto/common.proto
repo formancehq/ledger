@@ -1,9 +1,10 @@
+// Code generated from misc/proto/common.proto. DO NOT EDIT.
+
 syntax = "proto3";
 
 package common;
 
 option go_package = "github.com/formancehq/ledger/pkg/client/v3/grpc";
-
 import "signature.proto";
 import "google/protobuf/descriptor.proto";
 
@@ -486,7 +487,6 @@ message ClusterConfig {
   BloomTypeConfig bloom_prepared_queries = 13;
   BloomTypeConfig bloom_indexes = 14;
 }
-
 
 // ClusterPolicy is the Raft-replicated cluster-wide policy for behavior that
 // must apply identically on every node during FSM apply (idempotency
@@ -1934,18 +1934,15 @@ message DeleteMetadataCommand {
   string key = 2;
 }
 
-
-
 // ErrorReason is the typed, wire-bound form of a domain error's Reason()
 // identifier. Each value mirrors a domain.ErrReason* constant: the enum name is
 // "ERROR_REASON_" + that constant's string, so the two map mechanically
 // (domain.ReasonCode / domain.ReasonString) with no hand-maintained table.
 // FailureDetails declares this on each variant so the error kind can be
 // re-derived from the reason (domain.KindForReason) at replay and check time.
-// While v3 remains unreleased and its state is wiped between revisions,
-// removing a value also realigns the remaining numbers sequentially, per the
-// repository protobuf policy. After release these persisted values become
-// append-only and must never be renumbered or removed. Completeness against
+// Since v3.0.0-rc.1, these persisted values are append-only. Never renumber or
+// reuse a published number; reserve removed values and migrate stored data when
+// required. Completeness against
 // domain errors is enforced by TestEveryDomainErrorImplementsDescribable.
 enum ErrorReason {
   ERROR_REASON_UNSPECIFIED = 0;
@@ -2089,9 +2086,6 @@ enum ErrorReason {
   // (Kind=Precondition).
   ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR = 74;
 }
-
-
-
 
 // ChartEnforcementMode controls how chart violations are handled.
 enum ChartEnforcementMode {
@@ -2536,7 +2530,6 @@ message LedgerStats {
   fixed64 numscript_execution_count = 8;
   fixed64 log_count = 9;
 }
-
 
 // CallerIdentity uniquely identifies who initiated an action. It is
 // strictly an *identification* — subject plus the mechanism that

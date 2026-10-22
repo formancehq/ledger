@@ -1,10 +1,11 @@
+// Code generated from misc/proto/bucket.proto. DO NOT EDIT.
+
 
 syntax = "proto3";
 
 package ledger;
 
 option go_package = "github.com/formancehq/ledger/pkg/client/v3/grpc";
-
 import "common.proto";
 import "audit.proto";
 import "signature.proto";
@@ -12,9 +13,20 @@ import "google/protobuf/descriptor.proto";
 
 // allowed_skippable_reasons annotates a oneof case inside LedgerAction.data
 // with the business ErrorReasons a caller may list in
-// LedgerApplyRequest.skippable_reasons for that action. The annotation is
-// useful to clients and language generators even when no server-side plugin is
-// used: it is ordinary protobuf metadata and has no wire-format cost.
+// LedgerApplyRequest.skippable_reasons for that action. protoc-gen-skippable
+// (misc/proto → tools/protoc-gen-skippable) reads these annotations and
+// generates internal/proto/servicepb/bucket_skippable.pb.go — admission's
+// extractSkippableReasonsFromApply consumes that generated table so the
+// whitelist stays co-located with the wire declaration.
+//
+// A oneof case without the annotation has NO whitelist: any non-empty
+// LedgerApplyRequest.skippable_reasons on that action is rejected at
+// admission.
+//
+// Field number 71001 sits in a range outside the taken slots of
+// transitive dependencies (etcd uses 50000-50003, gogoproto uses
+// 62000-65012, google.api uses 72295728+) — collisions in the
+// same-message×same-number key would panic at runtime during package init.
 extend google.protobuf.FieldOptions {
   repeated common.ErrorReason allowed_skippable_reasons = 71001;
 }
@@ -531,9 +543,11 @@ message RevertTransactionPayload {
 
 // LedgerAction represents a single ledger action.
 //
-// Each oneof case MAY carry an `(allowed_skippable_reasons)` annotation.
-// Clients and language generators can inspect this metadata to discover which
-// business ErrorReasons may be requested for an action.
+// Each oneof case MAY carry an `(allowed_skippable_reasons)` annotation
+// (see the extension declaration at the top of this file). Admission
+// consumes the generated whitelist to validate LedgerApplyRequest
+// .skippable_reasons; cases without the annotation reject any non-empty
+// list from the caller.
 message LedgerAction {
   oneof data {
     CreateTransactionPayload create_transaction = 1 [
@@ -564,7 +578,14 @@ message LedgerApplyRequest {
   // matching skip; the proposal continues with Outcome=Success.
   //
   // Validated at admission against the per-action whitelist declared inline on
-  // each LedgerAction.data oneof case via `(allowed_skippable_reasons)`.
+  // each LedgerAction.data oneof case via `(allowed_skippable_reasons)` (the
+  // single source of truth; the generated SkippableReasonsForLedgerAction is
+  // what admission consults). Today: CreateTransaction accepts
+  // TRANSACTION_REFERENCE_CONFLICT, RevertTransaction TRANSACTION_ALREADY_REVERTED,
+  // DeleteMetadata METADATA_NOT_FOUND, AddAccountType ACCOUNT_TYPE_ALREADY_EXISTS,
+  // RemoveAccountType ACCOUNT_TYPE_NOT_FOUND. An opt-in on an action that
+  // declares no annotation is rejected up front. Empty (default) preserves the
+  // historical fail-fast behaviour.
   repeated common.ErrorReason skippable_reasons = 3;
 }
 
@@ -1206,6 +1227,9 @@ message ExecutePreparedQueryRequest {
   string ledger = 1;
   string query_name = 2;
   map<string, common.ParameterValue> parameters = 3;
+  // LIST defaults zero to 100 and clamps values above 1000 to 1000 before
+  // collecting or enriching results. The cursor reports the effective size.
+  // AGGREGATE_VOLUMES ignores page_size and aggregates all matching accounts.
   uint32 page_size = 4;
   string cursor = 5;
   common.QueryMode mode = 6;
@@ -1239,6 +1263,8 @@ message GetIndexStatusResponse {
   fixed64 last_indexed_sequence = 1;
   fixed64 last_log_sequence = 2;
   fixed64 lag = 3;
+  // Bytes the answering node's read index occupies on disk, live and obsolete
+  // files included, from Pebble's disk-usage metrics.
   fixed64 index_file_size = 4;
   repeated IndexEntry indexes = 5;
 }

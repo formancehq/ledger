@@ -7,6 +7,7 @@ client_module=github.com/formancehq/ledger/pkg/client/v3
 public=(common signature audit bucket cluster restore)
 
 mkdir -p build pkg/client/v3/grpc
+python3 scripts/generate-public-protos.py
 
 for name in "${public[@]}"; do
 	rm -f "pkg/client/v3/grpc/${name}.pb.go" "pkg/client/v3/grpc/${name}_grpc.pb.go" \

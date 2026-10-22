@@ -412,8 +412,12 @@ generate-proto:
         misc/proto/restore.proto \
         misc/proto/proposal.proto
 
+# Generate the public protobuf projection from the canonical server schemas.
+generate-public-proto:
+    @python3 scripts/generate-public-protos.py
+
 # Generate the standalone public gRPC client without touching server protobufs
-generate-public-client:
+generate-public-client: generate-public-proto
     @bash scripts/generate-public-client.sh
 
 test-rpcauth-generator:
