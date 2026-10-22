@@ -199,3 +199,22 @@ func TestService_ListPeersReturnsCompleteIndependentSnapshot(t *testing.T) {
 		require.ElementsMatch(t, want, fresh, "caller mutation must not corrupt a later discovery response")
 	})
 }
+
+func TestService_JoinAsLearnerWithCapabilitiesPersistsEvidence(t *testing.T) {
+	t.Parallel()
+
+	s := newMembershipServiceNode(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	require.NoError(t, s.JoinAsLearnerWithCapabilities(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id"), []uint32{7, 9}))
+
+	peer := s.infraMembership.PeerAddresses()[2]
+	require.Equal(t, []uint32{7, 9}, peer.Capabilities)
+	peers, err := s.ListPeers(ctx)
+	require.NoError(t, err)
+	require.Contains(t, peers, Peer{
+		ID: 2, RaftAddress: "peer:7777", ServiceAddress: "peer:8888",
+		InstanceID: []byte("peer-instance-id"), Capabilities: []uint32{7, 9},
+	})
+}

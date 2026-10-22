@@ -70,6 +70,7 @@ func TestRegisterInitialPeersPersistsInstanceIDs(t *testing.T) {
 			Address:        "peer:7777",
 			ServiceAddress: "peer:8888",
 			InstanceID:     instanceID,
+			Capabilities:   []uint32{7, 9},
 		}},
 	}, true)
 	require.NoError(t, err)
@@ -80,6 +81,7 @@ func TestRegisterInitialPeersPersistsInstanceIDs(t *testing.T) {
 	storedSelf, ok := m.GetInstanceID(42)
 	require.True(t, ok)
 	require.Equal(t, selfInstanceID, storedSelf)
+	require.Equal(t, []uint32{7, 9}, m.PeerAddresses()[1].Capabilities)
 }
 
 func TestRegisterInitialPeersRejectsMissingInstanceID(t *testing.T) {
