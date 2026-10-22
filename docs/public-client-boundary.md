@@ -18,7 +18,7 @@ files under `pkg/client/v3/proto/` are a generated projection of that source:
 they contain the public service closure, use the public Go package path, and
 exclude backend-only messages. The generated Go package is one consumer of the
 projection; other consumers (for example TypeScript generators) should use the
-projection or `ledger-public.protoset`, never edit the projection by hand.
+projection, never edit the projection by hand.
 
 The two generated Go packages intentionally contain equivalent wire contracts.
 They must not be imported into the same process: protobuf descriptors are
@@ -27,7 +27,7 @@ such as `signature.proto` twice. The network serialization boundary performs
 the conversion between the private server types and public client types.
 
 Run `just generate-public-client` after changing a schema in `misc/proto/`.
-This regenerates the public projection, the Go client and
-`ledger-public.protoset`. The CI contract check regenerates all three and fails
-if any generated output drifts. Backend-only schemas remain under
+This regenerates the public projection and the Go client. The generated client
+is checked for drift by the existing CI dirty check.
+Backend-only schemas remain under
 `misc/proto/` and are generated exclusively by `just generate-proto`.

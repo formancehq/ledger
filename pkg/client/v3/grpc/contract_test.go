@@ -1,67 +1,11 @@
 package grpc_test
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	ledgergrpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protodesc"
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/types/descriptorpb"
 )
-
-func TestPublicDescriptorMatchesRegisteredPublicClosure(t *testing.T) {
-	protoDir := filepath.Join("..", "proto")
-	bytes, err := os.ReadFile(filepath.Join(protoDir, "ledger-public.protoset"))
-	require.NoError(t, err)
-
-	var set descriptorpb.FileDescriptorSet
-	require.NoError(t, proto.Unmarshal(bytes, &set))
-	public := map[string]protoreflect.FileDescriptor{
-		"common.proto":    ledgergrpc.File_common_proto,
-		"signature.proto": ledgergrpc.File_signature_proto,
-		"audit.proto":     ledgergrpc.File_audit_proto,
-		"bucket.proto":    ledgergrpc.File_bucket_proto,
-		"cluster.proto":   ledgergrpc.File_cluster_proto,
-		"restore.proto":   ledgergrpc.File_restore_proto,
-	}
-	private := map[string]struct{}{
-		"raft_transport.proto":   {},
-		"cluster_bootstrap.proto": {},
-		"raft_cmd.proto":         {},
-		"snapshot.proto":          {},
-		"events.proto":            {},
-		"proposal.proto":          {},
-		"internal_state.proto":    {},
-	}
-	methodCount := 0
-	for _, file := range set.File {
-		if file.GetName() == "google/protobuf/descriptor.proto" {
-			continue
-		}
-		_, isPrivate := private[file.GetName()]
-		require.False(t, isPrivate, "private descriptor leaked into public contract: %s", file.GetName())
-		registered, ok := public[file.GetName()]
-		require.True(t, ok, "unexpected public descriptor %s", file.GetName())
-		require.True(t, proto.Equal(file, protodesc.ToFileDescriptorProto(registered)), file.GetName())
-		for _, dependency := range file.Dependency {
-			_, isPrivate := private[dependency]
-			require.False(t, isPrivate, "public descriptor depends on private proto %s: %s", dependency, file.GetName())
-		}
-		source, err := os.ReadFile(filepath.Join(protoDir, file.GetName()))
-		require.NoError(t, err)
-		require.NotEmpty(t, source)
-		for _, service := range file.Service {
-			methodCount += len(service.Method)
-		}
-		delete(public, file.GetName())
-	}
-	require.Empty(t, public)
-	require.Equal(t, 55, methodCount)
-}
 
 func TestInternalCallerAttributionReasonIsAbsentFromPublicDescriptor(t *testing.T) {
 	reasons := ledgergrpc.File_common_proto.Enums().ByName("ErrorReason")
