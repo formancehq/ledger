@@ -29,6 +29,34 @@ A proposal that declares a capability is admitted only when that capability is
 active and every member advertises it. Proposals with no declared capability
 remain unaffected. FSM apply never consults node-local capability flags.
 
+## Capabilities that change FSM semantics
+
+A capability can describe a protocol or semantic behavior, not only a payload
+feature. For example, `MirrorIngestRejectInvalidAssetV2` can identify the
+behavior that rejects an asset which an older FSM accepted.
+
+The capability has two roles in this case:
+
+1. The replicated `ClusterPolicy` controls whether the cluster may accept the
+   behavior.
+2. The order declares the capability that selects the behavior during FSM
+   apply.
+
+The order must carry the semantic marker explicitly:
+
+```text
+old order:  required_capabilities = []
+new order:  required_capabilities = [MirrorIngestRejectInvalidAssetV2]
+```
+
+The FSM must use the order's declaration to select the behavior. It must not
+infer the behavior from the current policy alone. An old order can be replayed
+after the capability becomes active, and it must keep its old semantics.
+
+If a producer cannot mark the new orders, the change must remain backward
+compatible or add an explicit semantic version to the order. A capability by
+itself is an admission barrier; it is not a historical replay version.
+
 ## Rollout and recovery
 
 Deploy barrier-aware binaries to every eligible member before arming an
