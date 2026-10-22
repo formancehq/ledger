@@ -200,7 +200,7 @@ fuzz-check:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> Replaying fuzz seed corpora..."
-    go test ./internal/proto/commonpb/ -run 'Fuzz' -timeout 60s
+    go -C pkg/proto/v3 test ./ledgerpb/ -run 'Fuzz' -timeout 60s
     go test ./internal/proto/servicepb/ -run 'Fuzz' -timeout 60s
     go test ./internal/proto/rafttransportpb/ -run 'Fuzz' -timeout 60s
     go test ./internal/proto/raftcmdpb/ -run 'Fuzz' -timeout 60s
@@ -220,7 +220,13 @@ fuzz duration="30s": fuzz-inventory-check
     set -euo pipefail
     while read -r pkg name || [[ -n "${pkg:-}${name:-}" ]]; do
         echo "==> Fuzzing $name ({{duration}})..."
-        if ! go test "$pkg" -run '^$' -fuzz="^${name}$" -fuzztime="{{duration}}" -timeout 600s; then
+        if [[ "$pkg" == ./pkg/proto/v3/* ]]; then
+            nested_pkg="./${pkg#./pkg/proto/v3/}"
+            if ! (cd pkg/proto/v3 && go test "$nested_pkg" -run '^$' -fuzz="^${name}$" -fuzztime="{{duration}}" -timeout 600s); then
+                echo "FAIL: $name"
+                exit 1
+            fi
+        elif ! go test "$pkg" -run '^$' -fuzz="^${name}$" -fuzztime="{{duration}}" -timeout 600s; then
             echo "FAIL: $name"
             exit 1
         fi
@@ -244,6 +250,8 @@ test-coverage:
     mkdir -p {{coverage_dir}}
     echo "==> Unit tests with coverage..."
     scripts/go-test-coverage {{coverage_dir}}/unit.out -race -coverpkg={{coverage_pkgs}} -timeout 20m ./...
+    echo "==> Shared public protobuf module tests..."
+    go -C pkg/proto/v3 test -race ./...
 
 # Execute internal assertions behind optional feature tags (requires Docker).
 test-internal-coverage:
@@ -418,7 +426,8 @@ generate-proto:
     @for dir in commonpb servicepb clusterpb auditpb signaturepb restorepb; do \
         find "internal/proto/$dir" -maxdepth 1 -type f \( -name '*.pb.go' -o -name '*_gen.go' \) ! -name 'internal_state*' -delete; \
     done
-    @sed -i '' '/file_common_proto_init()/d' internal/proto/commonpb/internal_state.pb.go
+    @sed -i.bak '/file_common_proto_init()/d' internal/proto/commonpb/internal_state.pb.go
+    @rm -f internal/proto/commonpb/internal_state.pb.go.bak
 
 # Generate the public protobuf projection from the canonical server schemas.
 generate-public-proto:

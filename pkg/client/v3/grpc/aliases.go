@@ -2099,7 +2099,6 @@ var MetadataType_name = ledgerpb.MetadataType_name
 var MetadataType_value = ledgerpb.MetadataType_value
 var MirrorSyncState_name = ledgerpb.MirrorSyncState_name
 var MirrorSyncState_value = ledgerpb.MirrorSyncState_value
-var New = ledgerpb.New
 var PatternSegmentType_name = ledgerpb.PatternSegmentType_name
 var PatternSegmentType_value = ledgerpb.PatternSegmentType_value
 var PostingStructure_name = ledgerpb.PostingStructure_name

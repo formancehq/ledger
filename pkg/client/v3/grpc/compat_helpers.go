@@ -13,7 +13,14 @@ var ErrTimestampBeforeEpoch = ledgerpb.ErrTimestampBeforeEpoch
 type AssetColored = ledgerpb.AssetColored
 type LogPayloadInterface = ledgerpb.LogPayloadInterface
 
-func NewBigUint(value *big.Int) *BigUint { return ledgerpb.NewBigUint(value) }
+func NewBigUint(value *big.Int) *BigUint {
+	encoded, err := ledgerpb.NewBigUint(value)
+	if err != nil {
+		panic(err)
+	}
+
+	return encoded
+}
 
 func MustBigUintFromDecimal(decimal string) *BigUint {
 	return ledgerpb.MustBigUintFromDecimal(decimal)

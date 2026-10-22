@@ -5,6 +5,7 @@ ARG BUILD_TAGS=""
 WORKDIR /build
 RUN apk add --no-cache git make
 COPY go.mod go.sum ./
+COPY pkg/proto/v3/go.mod pkg/proto/v3/go.sum pkg/proto/v3/
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     go mod download
