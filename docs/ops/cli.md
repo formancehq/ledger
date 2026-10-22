@@ -4615,6 +4615,9 @@ into every pod whenever TLS is active (`optional` or `required`), whether
 authentication is enabled or not. Manual deployments must set the flag
 themselves.
 
+When client authentication is disabled, caller attribution is derived
+independently on each node; followers do not forward an auth-disabled snapshot.
+
 **TLS is required when `--cluster-secret` is set.** The server refuses to start
 if a cluster secret is configured without TLS (`--tls-cert-file` and
 `--tls-key-file`), because the secret would be sent in plaintext otherwise.
