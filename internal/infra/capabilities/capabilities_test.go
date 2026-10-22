@@ -10,7 +10,7 @@ import (
 )
 
 func armedState() State {
-	return State{Armed: true, MembershipRevision: 7, Activations: map[ID]bool{}}
+	return State{Armed: true, Activations: map[ID]bool{}}
 }
 
 func TestEvaluateIncludesVotersAndLearners(t *testing.T) {
@@ -43,10 +43,9 @@ func TestStampProposalClearsFutureDeclarations(t *testing.T) {
 
 func TestFromPolicyRoundTrip(t *testing.T) {
 	state := FromPolicy(&commonpb.ClusterPolicy{
-		CapabilityActivationArmed:    true,
-		MinimumReplayProtocol:        4,
-		CapabilityMembershipRevision: 9,
-		CapabilityActivations:        []*commonpb.CapabilityActivation{{Id: 99, Active: true}},
+		CapabilityActivationArmed: true,
+		MinimumReplayProtocol:     4,
+		CapabilityActivations:     []*commonpb.CapabilityActivation{{Id: 99, Active: true}},
 	})
 	require.True(t, state.Armed)
 	require.True(t, state.Activations[99])
