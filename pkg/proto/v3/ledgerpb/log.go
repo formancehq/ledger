@@ -3,8 +3,7 @@ package ledgerpb
 import (
 	"encoding/json/jsontext"
 	"errors"
-
-	"github.com/formancehq/go-libs/v5/pkg/types/time"
+	"time"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/json"
 )
@@ -17,7 +16,7 @@ func NewLedgerLog(payload *LedgerLogPayload) *LedgerLog {
 }
 
 // WithDate sets the date of the log.
-func (l *LedgerLog) WithDate(date time.Time) *LedgerLog {
+func (l *LedgerLog) WithDate(date interface{ UnixMicro() int64 }) *LedgerLog {
 	if l == nil {
 		l = &LedgerLog{}
 	}

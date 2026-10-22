@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
-
 	jsonPkg "github.com/formancehq/ledger/pkg/proto/v3/json"
 )
 
@@ -19,8 +17,8 @@ const (
 	MetaTargetTypeTransaction = "TRANSACTION"
 )
 
-// MetadataFromGoMap converts a metadata.Metadata (map[string]string) to a map[string]*MetadataValue.
-func MetadataFromGoMap(m metadata.Metadata) map[string]*MetadataValue {
+// MetadataFromGoMap converts any map[string]string-compatible value to a map[string]*MetadataValue.
+func MetadataFromGoMap[M ~map[string]string](m M) map[string]*MetadataValue {
 	if m == nil {
 		return nil
 	}
@@ -33,13 +31,13 @@ func MetadataFromGoMap(m metadata.Metadata) map[string]*MetadataValue {
 	return result
 }
 
-// MetadataToGoMap converts a map[string]*MetadataValue to metadata.Metadata (map[string]string).
-func MetadataToGoMap(m map[string]*MetadataValue) metadata.Metadata {
+// MetadataToGoMap converts a map[string]*MetadataValue to map[string]string.
+func MetadataToGoMap(m map[string]*MetadataValue) map[string]string {
 	if m == nil {
 		return nil
 	}
 
-	result := make(metadata.Metadata, len(m))
+	result := make(map[string]string, len(m))
 	for k, v := range m {
 		if v != nil {
 			result[k] = MetadataValueToString(v)
@@ -49,8 +47,8 @@ func MetadataToGoMap(m map[string]*MetadataValue) metadata.Metadata {
 	return result
 }
 
-// MetadataMapToGoMap converts a *MetadataMap to metadata.Metadata (map[string]string).
-func MetadataMapToGoMap(mm *MetadataMap) metadata.Metadata {
+// MetadataMapToGoMap converts a *MetadataMap to map[string]string.
+func MetadataMapToGoMap(mm *MetadataMap) map[string]string {
 	if mm == nil {
 		return nil
 	}
@@ -58,8 +56,8 @@ func MetadataMapToGoMap(mm *MetadataMap) metadata.Metadata {
 	return MetadataToGoMap(mm.GetValues())
 }
 
-// MetadataMapFromGoMap converts a metadata.Metadata (map[string]string) to a *MetadataMap.
-func MetadataMapFromGoMap(m metadata.Metadata) *MetadataMap {
+// MetadataMapFromGoMap converts any map[string]string-compatible value to a *MetadataMap.
+func MetadataMapFromGoMap[M ~map[string]string](m M) *MetadataMap {
 	if m == nil {
 		return nil
 	}

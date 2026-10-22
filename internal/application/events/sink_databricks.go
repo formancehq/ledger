@@ -215,7 +215,7 @@ func (s *DatabricksSink) Publish(ctx context.Context, events []*eventspb.Event) 
 		}
 
 		eventType := strings.ToLower(event.GetType().String())
-		eventDate := event.GetDate().AsTime().Time
+		eventDate := event.GetDate().AsTime()
 
 		if i > 0 {
 			sb.WriteString(", ")
