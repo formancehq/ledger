@@ -1,6 +1,11 @@
-package grpc
+package ledgerpb
 
 import "fmt"
+
+const (
+	MetaTargetTypeAccount     = "ACCOUNT"
+	MetaTargetTypeTransaction = "TRANSACTION"
+)
 
 func (t *Target) AsConst() string {
 	switch t.GetTarget().(type) {

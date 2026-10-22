@@ -1,4 +1,4 @@
-package grpc
+package ledgerpb
 
 import "google.golang.org/protobuf/proto"
 

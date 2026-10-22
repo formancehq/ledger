@@ -1,4 +1,4 @@
-package grpc
+package ledgerpb
 
 import (
 	"math/big"
