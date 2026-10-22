@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
@@ -292,6 +293,7 @@ func Module() fx.Option {
 				registry := state.NewStateRegistry(c, attrs)
 				snapshotter := state.NewCacheSnapshotter(logger, registry, bloomFilters)
 
+				var machine *state.Machine
 				m, err := state.NewMachine(
 					logger,
 					registry,
@@ -305,11 +307,18 @@ func Module() fx.Option {
 					bloomFilters,
 					"", // Audit key is loaded from replicated state during recovery.
 					cfg.NumscriptCacheSize,
-					membership.WriteConfChange,
+					func(entry *raftpb.Entry, session *dal.WriteSession) error {
+						var policy *commonpb.ClusterPolicy
+						if machine != nil {
+							policy = machine.ClusterPolicy()
+						}
+						return membership.WriteConfChangeWithPolicy(entry, session, policy)
+					},
 				)
 				if err != nil {
 					return nil, err
 				}
+				machine = m
 
 				logger.WithFields(map[string]any{
 					"duration": time.Since(machineStart).String(),
