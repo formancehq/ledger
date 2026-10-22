@@ -9,12 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -40,23 +40,23 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 	b.batchSize = DefaultBatchSize
 	b.notifications = signal.NewNotifications()
 	const ledger = "pinned-logs"
-	logs := []*commonpb.Log{{
+	logs := []*ledgerpb.Log{{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+			CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 		}},
 	}}
 	for id := uint64(1); id <= 3; id++ {
-		logs = append(logs, &commonpb.Log{
+		logs = append(logs, &ledgerpb.Log{
 			Sequence: id + 1,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: &commonpb.LedgerLog{
+					Log: &ledgerpb.LedgerLog{
 						Id:   id,
-						Date: &commonpb.Timestamp{Data: id},
-						Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AddedAccountType{
-							AddedAccountType: &commonpb.AddedAccountTypeLog{},
+						Date: &ledgerpb.Timestamp{Data: id},
+						Data: &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_AddedAccountType{
+							AddedAccountType: &ledgerpb.AddedAccountTypeLog{},
 						}},
 					},
 				},
@@ -64,7 +64,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 		})
 	}
 	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
+	require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{Name: ledger}))
 	require.NoError(t, state.AppendLogs(batch, logs))
 	require.NoError(t, state.SetAppliedIndex(batch, 4))
 	require.NoError(t, batch.Commit())
@@ -97,7 +97,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 	deadlineCtx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	observed := &pinnedLogsWaitContext{Context: query.WithReadBarrierHorizon(deadlineCtx, 5), waiting: make(chan struct{})}
 	type queryResult struct {
-		logs []*commonpb.Log
+		logs []*ledgerpb.Log
 		err  error
 	}
 	result := make(chan queryResult, 1)
@@ -132,12 +132,12 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 	// Commit the real deletion representation, then run the actual indexbuilder
 	// deletion branch. The query's main snapshot must still see the old ledger.
 	batch = b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger, DeletedAt: &commonpb.Timestamp{Data: 6}}))
+	require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{Name: ledger, DeletedAt: &ledgerpb.Timestamp{Data: 6}}))
 	require.NoError(t, state.DeleteLedgerData(batch, ledger))
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{{
 		Sequence: 5,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{
-			DeleteLedger: &commonpb.DeletedLedgerLog{Name: ledger},
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeleteLedger{
+			DeleteLedger: &ledgerpb.DeletedLedgerLog{Name: ledger},
 		}},
 	}}))
 	require.NoError(t, state.SetAppliedIndex(batch, 6))
@@ -163,7 +163,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 	require.Equal(t, []uint64{1, 2, 3}, pinnedIDs, "an already acquired cursor must retain its pinned logs")
 	freshCursor, freshErr := c.ListLogs(query.WithReadBarrierHorizon(t.Context(), 6), ledger, 0, 3, nil, false)
 	require.Nil(t, freshCursor)
-	var freshNotFound *commonpb.NotFoundError
+	var freshNotFound *ledgerpb.NotFoundError
 	require.ErrorAs(t, freshErr, &freshNotFound, "fresh reads reject before alignment")
 
 	// The current ledger is absent while the fully acquired cursor above still

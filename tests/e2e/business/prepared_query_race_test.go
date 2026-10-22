@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
@@ -41,14 +41,14 @@ var _ = Describe("PreparedQueryDeleteCreateRace", Ordered, func() {
 	})
 
 	It("Should not fail with 'not found' when concurrent delete and re-create race", func() {
-		query := func(name string) *commonpb.PreparedQuery {
-			return &commonpb.PreparedQuery{
+		query := func(name string) *ledgerpb.PreparedQuery {
+			return &ledgerpb.PreparedQuery{
 				Name:   name,
-				Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-				Filter: &commonpb.QueryFilter{
-					Filter: &commonpb.QueryFilter_Address{
-						Address: &commonpb.AddressMatch{
-							Match: &commonpb.AddressMatch_HardcodedPrefix{
+				Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+				Filter: &ledgerpb.QueryFilter{
+					Filter: &ledgerpb.QueryFilter_Address{
+						Address: &ledgerpb.AddressMatch{
+							Match: &ledgerpb.AddressMatch_HardcodedPrefix{
 								HardcodedPrefix: "users:",
 							},
 						},

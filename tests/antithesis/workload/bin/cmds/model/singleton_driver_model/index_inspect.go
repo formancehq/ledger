@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -180,7 +180,7 @@ func (c *Checker) pickInspectKey(src *generation.Source, ledger string, target c
 	c.mu.Unlock()
 
 	var keys []string
-	types := map[string]commonpb.MetadataType{}
+	types := map[string]ledgerpb.MetadataType{}
 
 	for k, t := range declaredFieldTypes(ls, target).All() {
 		keys = append(keys, k)
@@ -188,7 +188,7 @@ func (c *Checker) pickInspectKey(src *generation.Source, ledger string, target c
 	}
 
 	if len(keys) == 0 {
-		return "", commonpb.MetadataType_METADATA_TYPE_STRING
+		return "", ledgerpb.MetadataType_METADATA_TYPE_STRING
 	}
 
 	key = keys[src.Intn(len(keys))]
@@ -265,7 +265,7 @@ func cursorPairing(hasMore bool, next string) string {
 	return "resume cursor on an exhausted scan"
 }
 
-func distinctValues(values []*commonpb.MetadataValue, seen map[string]bool) bool {
+func distinctValues(values []*ledgerpb.MetadataValue, seen map[string]bool) bool {
 	for _, v := range values {
 		if seen[v.String()] {
 			return false
@@ -343,20 +343,20 @@ type inspectCounts struct {
 // entities_with_key counts only the rest. That split is why cardinality does
 // not bound entities_with_key on its own — a key every entity holds
 // unconvertibly reports entities_with_key 0 with a non-zero cardinality.
-func modelInspectCounts(ls oracle.LedgerState, target commonpb.QueryTarget, key string, declared commonpb.MetadataType) inspectCounts {
+func modelInspectCounts(ls oracle.LedgerState, target ledgerpb.QueryTarget, key string, declared ledgerpb.MetadataType) inspectCounts {
 	var counts inspectCounts
 
 	groups := map[string]struct{}{}
 
-	fold := func(stored *commonpb.MetadataValue) {
+	fold := func(stored *ledgerpb.MetadataValue) {
 		coerced := stored
-		if !commonpb.TypeMatches(stored, declared) {
-			coerced = commonpb.ConvertMetadataValue(stored, declared)
+		if !ledgerpb.TypeMatches(stored, declared) {
+			coerced = ledgerpb.ConvertMetadataValue(stored, declared)
 		}
 
 		groups[oracle.MetaValueString(coerced)] = struct{}{}
 
-		if _, isNull := coerced.GetType().(*commonpb.MetadataValue_NullValue); isNull {
+		if _, isNull := coerced.GetType().(*ledgerpb.MetadataValue_NullValue); isNull {
 			counts.entitiesWithNull++
 
 			return
@@ -365,7 +365,7 @@ func modelInspectCounts(ls oracle.LedgerState, target commonpb.QueryTarget, key 
 		counts.entitiesWithKey++
 	}
 
-	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+	if target == ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
 		txs := ls.Txs()
 		for i := range txs.Len() {
 			if v, ok := txs.Get(i).Metadata()[key]; ok {
@@ -394,9 +394,9 @@ func modelInspectCounts(ls oracle.LedgerState, target commonpb.QueryTarget, key 
 func (c *Checker) validateInspectSummary(
 	maxTicket uint64,
 	ledger string,
-	target commonpb.QueryTarget,
+	target ledgerpb.QueryTarget,
 	key string,
-	declared commonpb.MetadataType,
+	declared ledgerpb.MetadataType,
 	summary *servicepb.InspectSummary,
 	details internal.Details,
 ) bool {
@@ -478,7 +478,7 @@ func (c *Checker) validateInspectSummary(
 
 // modelInspectCountsDump renders the committed model's fold for a finding.
 // Acquires c.mu.
-func (c *Checker) modelInspectCountsDump(ledger string, target commonpb.QueryTarget, key string, declared commonpb.MetadataType) string {
+func (c *Checker) modelInspectCountsDump(ledger string, target ledgerpb.QueryTarget, key string, declared ledgerpb.MetadataType) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

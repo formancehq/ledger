@@ -1,10 +1,11 @@
 package state
 
 import (
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -32,7 +33,7 @@ func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.Audit
 		// records whether a reuse hit a live prior (conflict) or executed fresh
 		// (a normal reason), so no expiry re-derivation is needed to tell them
 		// apart.
-		if reason == commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT {
+		if reason == ledgerpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT {
 			return nil, false
 		}
 

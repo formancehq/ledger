@@ -1,11 +1,10 @@
 package state
 
 import (
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // TestIdempotencyStore_RestoreFromStore_RebuildsMapFromPebble is the

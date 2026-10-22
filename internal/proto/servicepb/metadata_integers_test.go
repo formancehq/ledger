@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestMetadataIntegers_BulkDecoders(t *testing.T) {
@@ -47,7 +47,7 @@ func TestMetadataIntegers_BulkDecoders(t *testing.T) {
 						continue
 					}
 					require.NoError(t, err)
-					var md map[string]*commonpb.MetadataValue
+					var md map[string]*ledgerpb.MetadataValue
 					switch action {
 					case "CREATE_TRANSACTION":
 						md = got.GetCreateTransaction().GetMetadata()
@@ -56,7 +56,7 @@ func TestMetadataIntegers_BulkDecoders(t *testing.T) {
 					case "REVERT_TRANSACTION":
 						md = got.GetRevertTransaction().GetMetadata()
 					}
-					require.Equal(t, tc.want, commonpb.MetadataValueToAny(md["count"]))
+					require.Equal(t, tc.want, ledgerpb.MetadataValueToAny(md["count"]))
 				}
 			})
 		}

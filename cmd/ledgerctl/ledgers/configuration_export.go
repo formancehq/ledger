@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -85,7 +85,7 @@ func fetchEditableConfig(cmd *cobra.Command, ledgerName string) (*EditableConfig
 		return nil, cmdutil.FormatGRPCError("failed to list indexes", err)
 	}
 
-	var ledgerIndexes []*commonpb.Index
+	var ledgerIndexes []*ledgerpb.Index
 	for {
 		idx, recvErr := idxStream.Recv()
 		if errors.Is(recvErr, io.EOF) {

@@ -20,11 +20,11 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
@@ -78,13 +78,13 @@ var _ = Describe("HTTP events sinks mutations", func() {
 		Expect(json.Unmarshal(raw, &response)).To(Succeed())
 		Expect(response.ErrorCode).To(Equal(reason), string(raw))
 	}
-	encode := func(config *commonpb.SinkConfig) []byte {
+	encode := func(config *ledgerpb.SinkConfig) []byte {
 		GinkgoHelper()
 		raw, err := protojson.Marshal(config)
 		Expect(err).To(Succeed())
 		return raw
 	}
-	list := func() []*commonpb.SinkConfig {
+	list := func() []*ledgerpb.SinkConfig {
 		GinkgoHelper()
 		code, raw := request(http.MethodGet, "", nil, "")
 		Expect(code).To(Equal(http.StatusOK), string(raw))
@@ -96,7 +96,7 @@ var _ = Describe("HTTP events sinks mutations", func() {
 		Expect(protojson.Unmarshal(envelope.Data, data)).To(Succeed())
 		return data.GetSinks()
 	}
-	find := func(name string) *commonpb.SinkConfig {
+	find := func(name string) *ledgerpb.SinkConfig {
 		GinkgoHelper()
 		for _, config := range list() {
 			if config.GetName() == name {
@@ -105,7 +105,7 @@ var _ = Describe("HTTP events sinks mutations", func() {
 		}
 		return nil
 	}
-	cleanup := func(config *commonpb.SinkConfig) {
+	cleanup := func(config *ledgerpb.SinkConfig) {
 		GinkgoHelper()
 		DeferCleanup(func() {
 			if find(config.GetName()) == nil {
@@ -117,7 +117,7 @@ var _ = Describe("HTTP events sinks mutations", func() {
 			Expect(err).To(Succeed())
 		})
 	}
-	seed := func(config *commonpb.SinkConfig) {
+	seed := func(config *ledgerpb.SinkConfig) {
 		GinkgoHelper()
 		cleanup(config)
 		_, err := node.Client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(config)))
@@ -143,7 +143,7 @@ var _ = Describe("HTTP events sinks mutations", func() {
 		Expect(proto.Equal(find(config.GetName()), config)).To(BeTrue())
 		persisted, err := node.Client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
 		Expect(err).To(Succeed())
-		Expect(persisted.GetSinks()).To(ContainElement(Satisfy(func(s *commonpb.SinkConfig) bool { return proto.Equal(s, config) })))
+		Expect(persisted.GetSinks()).To(ContainElement(Satisfy(func(s *ledgerpb.SinkConfig) bool { return proto.Equal(s, config) })))
 		code, raw = request(http.MethodDelete, "/"+config.GetName()+"?controllerId="+url.QueryEscape(config.GetControllerId()), nil, "")
 		removed(code, raw)
 		Expect(find(config.GetName())).To(BeNil())
@@ -152,7 +152,7 @@ var _ = Describe("HTTP events sinks mutations", func() {
 	It("rejects duplicate names without replacing the Apply-created configuration", func() {
 		config := newTestSinkConfig("http-sinks-duplicate", "http.events.original")
 		seed(config)
-		duplicate := proto.Clone(config).(*commonpb.SinkConfig)
+		duplicate := proto.Clone(config).(*ledgerpb.SinkConfig)
 		duplicate.GetNats().Topic = "http.events.replacement"
 		code, raw := request(http.MethodPost, "", encode(duplicate), "")
 		Expect(code).To(Equal(http.StatusConflict), string(raw))
@@ -244,7 +244,7 @@ var _ = Describe("HTTP events sinks mutations", func() {
 		code, raw = request(http.MethodPost, "", body, key)
 		created(code, raw, config.GetName())
 		Expect(find(config.GetName())).To(BeNil(), "replay must not resurrect the sink")
-		changed := proto.Clone(config).(*commonpb.SinkConfig)
+		changed := proto.Clone(config).(*ledgerpb.SinkConfig)
 		changed.GetNats().Topic = "http.events.changed"
 		code, raw = request(http.MethodPost, "", encode(changed), key)
 		Expect(code).To(Equal(http.StatusConflict), string(raw))
@@ -262,7 +262,7 @@ var _ = Describe("HTTP events sinks mutations", func() {
 		removed(code, raw)
 		code, raw = request(http.MethodDelete, suffix, nil, key)
 		removed(code, raw)
-		replacement := proto.Clone(config).(*commonpb.SinkConfig)
+		replacement := proto.Clone(config).(*ledgerpb.SinkConfig)
 		replacement.ControllerId = "replacement-owner"
 		_, err := node.Client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(replacement)))
 		Expect(err).To(Succeed())
@@ -374,7 +374,7 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 			Expect(err).To(Succeed())
 			return resp.StatusCode, raw
 		}
-		configuredSinks := func(raw []byte) []*commonpb.SinkConfig {
+		configuredSinks := func(raw []byte) []*ledgerpb.SinkConfig {
 			GinkgoHelper()
 			var envelope struct {
 				Data json.RawMessage `json:"data"`

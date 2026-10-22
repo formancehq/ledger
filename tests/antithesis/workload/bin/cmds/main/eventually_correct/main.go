@@ -11,7 +11,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -107,13 +107,13 @@ func main() {
 
 // listAccounts streams all accounts for a ledger. On a mid-stream error it
 // returns what was collected so far plus the error.
-func listAccounts(ctx context.Context, client servicepb.BucketServiceClient, ledger string) ([]*commonpb.Account, error) {
+func listAccounts(ctx context.Context, client servicepb.BucketServiceClient, ledger string) ([]*ledgerpb.Account, error) {
 	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{Ledger: ledger})
 	if err != nil {
 		return nil, err
 	}
 
-	var accounts []*commonpb.Account
+	var accounts []*ledgerpb.Account
 
 	for {
 		account, err := stream.Recv()
@@ -376,7 +376,7 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 }
 
 // crossCheckMetadata verifies that metadata from ListAccounts matches GetAccount.
-func crossCheckMetadata(listAccount, getAccount *commonpb.Account, details internal.Details) {
+func crossCheckMetadata(listAccount, getAccount *ledgerpb.Account, details internal.Details) {
 	listMeta := metadataToMap(listAccount.GetMetadata())
 	getMeta := metadataToMap(getAccount.GetMetadata())
 
@@ -404,7 +404,7 @@ func crossCheckMetadata(listAccount, getAccount *commonpb.Account, details inter
 	}))
 }
 
-func metadataToMap(ms map[string]*commonpb.MetadataValue) map[string]string {
+func metadataToMap(ms map[string]*ledgerpb.MetadataValue) map[string]string {
 	result := make(map[string]string)
 	for k, v := range ms {
 		result[k] = v.GetStringValue()

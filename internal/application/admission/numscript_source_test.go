@@ -5,13 +5,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // writeAccountMetadata stores an account metadata value directly in Pebble so
 // the admissionValueSource can read it back through the shared snapshot.
-func writeAccountMetadata(t *testing.T, admission *Admission, ledger, account, key string, value *commonpb.MetadataValue) {
+func writeAccountMetadata(t *testing.T, admission *Admission, ledger, account, key string, value *ledgerpb.MetadataValue) {
 	t.Helper()
 
 	metaKey := domain.MetadataKey{
@@ -37,7 +37,7 @@ func TestAdmissionValueSource_Metadata_PresentEmptyString(t *testing.T) {
 	store := createTestStore(t)
 	admission, _ := createTestAdmission(t, store)
 
-	writeAccountMetadata(t, admission, testLedgerName, "users:001", "note", commonpb.NewStringValue(""))
+	writeAccountMetadata(t, admission, testLedgerName, "users:001", "note", ledgerpb.NewStringValue(""))
 
 	source := &admissionValueSource{admission: admission, ledgerName: testLedgerName}
 
@@ -70,7 +70,7 @@ func TestAdmissionValueSource_Metadata_NonEmpty(t *testing.T) {
 	store := createTestStore(t)
 	admission, _ := createTestAdmission(t, store)
 
-	writeAccountMetadata(t, admission, testLedgerName, "users:001", "status", commonpb.NewStringValue("active"))
+	writeAccountMetadata(t, admission, testLedgerName, "users:001", "status", ledgerpb.NewStringValue("active"))
 
 	source := &admissionValueSource{admission: admission, ledgerName: testLedgerName}
 

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -28,7 +28,7 @@ type observation struct {
 // source PostingCount/RevertCount. All reads are local to this single target.
 // Mismatches remain visible at timeout; a usage reset/replay between RPCs is
 // allowed to recover rather than causing an immediate safety false positive.
-func awaitUsage(ctx context.Context, client servicepb.BucketServiceClient, witness *commonpb.LedgerInfo, expected map[string]expectedLedger, wait func(context.Context) error) observation {
+func awaitUsage(ctx context.Context, client servicepb.BucketServiceClient, witness *ledgerpb.LedgerInfo, expected map[string]expectedLedger, wait func(context.Context) error) observation {
 	var result observation
 	for {
 		result.Attempts++
@@ -56,7 +56,7 @@ func awaitUsage(ctx context.Context, client servicepb.BucketServiceClient, witne
 	}
 }
 
-func sampleUsage(ctx context.Context, client servicepb.BucketServiceClient, witness *commonpb.LedgerInfo, expected map[string]expectedLedger, result *observation) (bool, error) {
+func sampleUsage(ctx context.Context, client servicepb.BucketServiceClient, witness *ledgerpb.LedgerInfo, expected map[string]expectedLedger, result *observation) (bool, error) {
 	mismatches := make(map[string]counts)
 	witnessInfo, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: witness.GetName()})
 	if err != nil {
@@ -105,7 +105,7 @@ func sampleUsage(ctx context.Context, client servicepb.BucketServiceClient, witn
 }
 
 // FSM persistence qualifies node identity and source visibility, not usage.
-func awaitReplica(ctx context.Context, conn *internal.PerNodeConn, horizon uint64, witness *commonpb.LedgerInfo, expected map[string]expectedLedger, wait func(context.Context) error) observation {
+func awaitReplica(ctx context.Context, conn *internal.PerNodeConn, horizon uint64, witness *ledgerpb.LedgerInfo, expected map[string]expectedLedger, wait func(context.Context) error) observation {
 	if conn.NodeID == 0 {
 		return observation{Error: "replica node ID could not be resolved"}
 	}

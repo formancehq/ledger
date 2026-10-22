@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // Precedence levels for parenthesization.
@@ -21,7 +21,7 @@ const (
 
 // Format converts a QueryFilter proto message back to the human-readable DSL
 // string. This is the inverse of Parse.
-func Format(f *commonpb.QueryFilter) string {
+func Format(f *ledgerpb.QueryFilter) string {
 	if f == nil {
 		return ""
 	}
@@ -32,27 +32,27 @@ func Format(f *commonpb.QueryFilter) string {
 
 // formatFilter returns the formatted string and the precedence level of the
 // expression, so callers can decide whether to wrap in parentheses.
-func formatFilter(f *commonpb.QueryFilter) (string, int) {
+func formatFilter(f *ledgerpb.QueryFilter) (string, int) {
 	switch v := f.GetFilter().(type) {
-	case *commonpb.QueryFilter_Field:
+	case *ledgerpb.QueryFilter_Field:
 		return formatFieldCondition(v.Field), precLeaf
-	case *commonpb.QueryFilter_Address:
+	case *ledgerpb.QueryFilter_Address:
 		return formatAddressMatch(v.Address), precLeaf
-	case *commonpb.QueryFilter_And:
+	case *ledgerpb.QueryFilter_And:
 		return formatBinaryOp(v.And.GetFilters(), "and", precAnd), precAnd
-	case *commonpb.QueryFilter_Or:
+	case *ledgerpb.QueryFilter_Or:
 		return formatBinaryOp(v.Or.GetFilters(), "or", precOr), precOr
-	case *commonpb.QueryFilter_Not:
+	case *ledgerpb.QueryFilter_Not:
 		return formatNot(v.Not)
-	case *commonpb.QueryFilter_AccountHasAsset:
+	case *ledgerpb.QueryFilter_AccountHasAsset:
 		return formatAccountHasAsset(v.AccountHasAsset), precLeaf
-	case *commonpb.QueryFilter_Ledger:
+	case *ledgerpb.QueryFilter_Ledger:
 		return formatLedgerCondition(v.Ledger), precLeaf
-	case *commonpb.QueryFilter_Audit:
+	case *ledgerpb.QueryFilter_Audit:
 		return formatAuditCondition(v.Audit)
-	case *commonpb.QueryFilter_BuiltinUint:
+	case *ledgerpb.QueryFilter_BuiltinUint:
 		return formatBuiltinUintCondition(v.BuiltinUint)
-	case *commonpb.QueryFilter_LogBuiltinUint:
+	case *ledgerpb.QueryFilter_LogBuiltinUint:
 		return formatLogBuiltinUintCondition(v.LogBuiltinUint)
 	case *commonpb.QueryFilter_LogId:
 		return formatUintRange("logId", v.LogId.GetCond(), renderRawUint)
@@ -86,7 +86,7 @@ func formatBuiltinUintCondition(bc *commonpb.BuiltinUintCondition) (string, int)
 
 // formatLogBuiltinUintCondition renders a log builtin uint range. The only field
 // the textual grammar reads back is `date` (quoted RFC3339 output).
-func formatLogBuiltinUintCondition(lc *commonpb.LogBuiltinUintCondition) (string, int) {
+func formatLogBuiltinUintCondition(lc *ledgerpb.LogBuiltinUintCondition) (string, int) {
 	switch lc.GetField() {
 	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
 		return formatUintRange("date", lc.GetCond(), renderDatetimeBound)
@@ -183,7 +183,7 @@ func renderUintBound(literal *uint64, param string, render func(uint64) string) 
 
 // renderDatetimeBound renders a microsecond bound as a quoted RFC3339 string
 // when that form round-trips through the decoder, and falls back to the raw
-// unsigned-microsecond form otherwise. The decoder (`commonpb.CoerceDatetimeMicros`)
+// unsigned-microsecond form otherwise. The decoder (`ledgerpb.CoerceDatetimeMicros`)
 // accepts the full uint64 raw range, but RFC3339 cannot represent every such
 // value: `int64(v)` wraps for `v > math.MaxInt64` (yielding a pre-epoch time the
 // decoder rejects), and years past 9999 format to a non-RFC3339 5-digit-year
@@ -193,7 +193,7 @@ func renderUintBound(literal *uint64, param string, render func(uint64) string) 
 func renderDatetimeBound(v uint64) string {
 	if v <= math.MaxInt64 {
 		s := time.UnixMicro(int64(v)).UTC().Format(time.RFC3339Nano)
-		if back, err := commonpb.CoerceDatetimeMicros(s); err == nil && back == v {
+		if back, err := ledgerpb.CoerceDatetimeMicros(s); err == nil && back == v {
 			return strconv.Quote(s)
 		}
 	}
@@ -235,7 +235,7 @@ func formatAuditCondition(ac *commonpb.AuditCondition) (string, int) {
 	}
 
 	switch cond := ac.GetCondition().(type) {
-	case *commonpb.AuditCondition_StringCond:
+	case *ledgerpb.AuditCondition_StringCond:
 		return fmt.Sprintf("%s == %s", key, formatStringCondValue(cond.StringCond)), precLeaf
 	case *commonpb.AuditCondition_UintCond:
 		// The timestamp field is a datetime: its bounds render as quoted RFC3339
@@ -260,14 +260,14 @@ func formatAuditCondition(ac *commonpb.AuditCondition) (string, int) {
 // condition uses. On the audit target the ledger field is carried by the
 // AuditCondition arm instead (formatAuditCondition), so this only ever sees the
 // transaction/log/account ledger condition.
-func formatLedgerCondition(lc *commonpb.LedgerCondition) string {
+func formatLedgerCondition(lc *ledgerpb.LedgerCondition) string {
 	return "ledger == " + formatStringCondValue(lc.GetCond())
 }
 
 // formatAccountHasAsset renders an AccountHasAssetCondition as `has asset BASE`
 // (precision 0) or `has asset BASE/PRECISION`. Inverse of the parser's
 // `has asset <asset>` production.
-func formatAccountHasAsset(c *commonpb.AccountHasAssetCondition) string {
+func formatAccountHasAsset(c *ledgerpb.AccountHasAssetCondition) string {
 	if c.GetPrecision() == 0 {
 		return "has asset " + c.GetAssetBase()
 	}
@@ -277,7 +277,7 @@ func formatAccountHasAsset(c *commonpb.AccountHasAssetCondition) string {
 
 // formatWithPrec formats a child filter, wrapping it in parentheses if its
 // precedence is lower than the parent's.
-func formatWithPrec(f *commonpb.QueryFilter, parentPrec int) string {
+func formatWithPrec(f *ledgerpb.QueryFilter, parentPrec int) string {
 	s, prec := formatFilter(f)
 	if prec < parentPrec {
 		return "(" + s + ")"
@@ -286,7 +286,7 @@ func formatWithPrec(f *commonpb.QueryFilter, parentPrec int) string {
 	return s
 }
 
-func formatBinaryOp(filters []*commonpb.QueryFilter, op string, prec int) string {
+func formatBinaryOp(filters []*ledgerpb.QueryFilter, op string, prec int) string {
 	parts := make([]string, len(filters))
 	for i, f := range filters {
 		parts[i] = formatWithPrec(f, prec)
@@ -295,7 +295,7 @@ func formatBinaryOp(filters []*commonpb.QueryFilter, op string, prec int) string
 	return strings.Join(parts, " "+op+" ")
 }
 
-func formatNot(n *commonpb.NotFilter) (string, int) {
+func formatNot(n *ledgerpb.NotFilter) (string, int) {
 	// Sugar: not(field == val) → metadata[key] != val
 	if fc := n.GetFilter().GetField(); fc != nil {
 		if ne := formatAsNotEqual(fc); ne != "" {
@@ -308,42 +308,42 @@ func formatNot(n *commonpb.NotFilter) (string, int) {
 
 // formatAsNotEqual tries to render a FieldCondition wrapped in NOT as a != expression.
 // Returns empty string if the condition is not a simple equality.
-func formatAsNotEqual(fc *commonpb.FieldCondition) string {
+func formatAsNotEqual(fc *ledgerpb.FieldCondition) string {
 	key := quoteIfNeeded(fc.GetField().GetMetadata())
 	switch cond := fc.GetCondition().(type) {
-	case *commonpb.FieldCondition_StringCond:
+	case *ledgerpb.FieldCondition_StringCond:
 		return fmt.Sprintf("metadata[%s] != %s", key, formatStringCondValue(cond.StringCond))
-	case *commonpb.FieldCondition_IntCond:
+	case *ledgerpb.FieldCondition_IntCond:
 		if eq := formatIntCondAsEquality(cond.IntCond); eq != "" {
 			return fmt.Sprintf("metadata[%s] != %s", key, eq)
 		}
-	case *commonpb.FieldCondition_BoolCond:
+	case *ledgerpb.FieldCondition_BoolCond:
 		return fmt.Sprintf("metadata[%s] != %s", key, formatBoolCondValue(cond.BoolCond))
 	}
 
 	return ""
 }
 
-func formatFieldCondition(fc *commonpb.FieldCondition) string {
+func formatFieldCondition(fc *ledgerpb.FieldCondition) string {
 	key := quoteIfNeeded(fc.GetField().GetMetadata())
 
 	switch cond := fc.GetCondition().(type) {
-	case *commonpb.FieldCondition_StringCond:
+	case *ledgerpb.FieldCondition_StringCond:
 		return fmt.Sprintf("metadata[%s] == %s", key, formatStringCondValue(cond.StringCond))
-	case *commonpb.FieldCondition_IntCond:
+	case *ledgerpb.FieldCondition_IntCond:
 		return formatIntCondition(key, cond.IntCond)
-	case *commonpb.FieldCondition_UintCond:
+	case *ledgerpb.FieldCondition_UintCond:
 		return formatUintCondition(key, cond.UintCond)
-	case *commonpb.FieldCondition_BoolCond:
+	case *ledgerpb.FieldCondition_BoolCond:
 		return fmt.Sprintf("metadata[%s] == %s", key, formatBoolCondValue(cond.BoolCond))
-	case *commonpb.FieldCondition_ExistsCond:
+	case *ledgerpb.FieldCondition_ExistsCond:
 		return fmt.Sprintf("metadata[%s] exists", key)
 	default:
 		return fmt.Sprintf("metadata[%s] <unknown>", key)
 	}
 }
 
-func formatStringCondValue(sc *commonpb.StringCondition) string {
+func formatStringCondValue(sc *ledgerpb.StringCondition) string {
 	switch v := sc.GetValue().(type) {
 	case *commonpb.StringCondition_Param:
 		return renderParam(v.Param)
@@ -354,7 +354,7 @@ func formatStringCondValue(sc *commonpb.StringCondition) string {
 	}
 }
 
-func formatBoolCondValue(bc *commonpb.BoolCondition) string {
+func formatBoolCondValue(bc *ledgerpb.BoolCondition) string {
 	switch v := bc.GetValue().(type) {
 	case *commonpb.BoolCondition_Param:
 		return renderParam(v.Param)
@@ -371,7 +371,7 @@ func formatBoolCondValue(bc *commonpb.BoolCondition) string {
 
 // formatIntCondAsEquality returns the value string if the IntCondition represents
 // an exact equality (min == max, both non-nil, no exclusion). Returns "" otherwise.
-func formatIntCondAsEquality(ic *commonpb.IntCondition) string {
+func formatIntCondAsEquality(ic *ledgerpb.IntCondition) string {
 	if ic.Min != nil && ic.Max != nil && ic.GetMin() == ic.GetMax() && !ic.GetMinExclusive() && !ic.GetMaxExclusive() {
 		return strconv.FormatInt(ic.GetMin(), 10)
 	}
@@ -379,7 +379,7 @@ func formatIntCondAsEquality(ic *commonpb.IntCondition) string {
 	return ""
 }
 
-func formatIntCondition(key string, ic *commonpb.IntCondition) string {
+func formatIntCondition(key string, ic *ledgerpb.IntCondition) string {
 	// Equality: min == max, both set, no exclusion
 	if eq := formatIntCondAsEquality(ic); eq != "" {
 		return fmt.Sprintf("metadata[%s] == %s", key, eq)
@@ -439,7 +439,7 @@ func formatIntCondition(key string, ic *commonpb.IntCondition) string {
 // formatIntLowInclusive renders the lower bound for `between` output, with
 // any MinExclusive flag normalized away by incrementing the literal value.
 // Caller must have verified the bound is present.
-func formatIntLowInclusive(ic *commonpb.IntCondition) string {
+func formatIntLowInclusive(ic *ledgerpb.IntCondition) string {
 	if ic.GetParamMin() != "" {
 		return renderParam(ic.GetParamMin())
 	}
@@ -453,7 +453,7 @@ func formatIntLowInclusive(ic *commonpb.IntCondition) string {
 }
 
 // formatIntHighInclusive is the symmetric helper for the upper bound.
-func formatIntHighInclusive(ic *commonpb.IntCondition) string {
+func formatIntHighInclusive(ic *ledgerpb.IntCondition) string {
 	if ic.GetParamMax() != "" {
 		return renderParam(ic.GetParamMax())
 	}
@@ -466,7 +466,7 @@ func formatIntHighInclusive(ic *commonpb.IntCondition) string {
 	return strconv.FormatInt(v, 10)
 }
 
-func formatUintCondition(key string, uc *commonpb.UintCondition) string {
+func formatUintCondition(key string, uc *ledgerpb.UintCondition) string {
 	// Equality
 	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
 		return fmt.Sprintf("metadata[%s] == %d", key, uc.GetMin())
@@ -518,7 +518,7 @@ func formatUintCondition(key string, uc *commonpb.UintCondition) string {
 	return fmt.Sprintf("metadata[%s] <uint?>", key)
 }
 
-func formatUintLowInclusive(uc *commonpb.UintCondition) string {
+func formatUintLowInclusive(uc *ledgerpb.UintCondition) string {
 	if uc.GetParamMin() != "" {
 		return renderParam(uc.GetParamMin())
 	}
@@ -531,7 +531,7 @@ func formatUintLowInclusive(uc *commonpb.UintCondition) string {
 	return strconv.FormatUint(v, 10)
 }
 
-func formatUintHighInclusive(uc *commonpb.UintCondition) string {
+func formatUintHighInclusive(uc *ledgerpb.UintCondition) string {
 	if uc.GetParamMax() != "" {
 		return renderParam(uc.GetParamMax())
 	}
@@ -544,19 +544,19 @@ func formatUintHighInclusive(uc *commonpb.UintCondition) string {
 	return strconv.FormatUint(v, 10)
 }
 
-func formatAddressMatch(am *commonpb.AddressMatch) string {
+func formatAddressMatch(am *ledgerpb.AddressMatch) string {
 	keyword := "address"
 	switch am.GetRole() {
-	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
+	case ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE:
 		keyword = "source"
-	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
+	case ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION:
 		keyword = "destination"
 	}
 
 	switch v := am.GetMatch().(type) {
-	case *commonpb.AddressMatch_HardcodedExact:
+	case *ledgerpb.AddressMatch_HardcodedExact:
 		return fmt.Sprintf("%s == %s", keyword, quoteIfNeeded(v.HardcodedExact))
-	case *commonpb.AddressMatch_HardcodedPrefix:
+	case *ledgerpb.AddressMatch_HardcodedPrefix:
 		return fmt.Sprintf("%s ^= %s", keyword, quoteIfNeeded(v.HardcodedPrefix))
 	case *commonpb.AddressMatch_ParamExact:
 		return fmt.Sprintf("%s == %s", keyword, renderParam(v.ParamExact))

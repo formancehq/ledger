@@ -1,13 +1,14 @@
 package processing
 
 import (
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -27,8 +28,8 @@ func TestProcessCreateTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 	ledgerInfo := strictLedgerInfoWithCompiledAccountType(t, processor, ledger)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	zeroVolume := (&raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}).AsReader()
 
 	setupLedgersStub(mockStore).expectGet(domain.LedgerKey{Name: ledger}, ledgerInfo.AsReader(), nil)
@@ -41,7 +42,7 @@ func TestProcessCreateTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 	transactionStates := &kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]{}
 	mockStore.EXPECT().TransactionStates().Return(transactionStates).AnyTimes()
 
-	now := (&commonpb.Timestamp{Data: 1_234_567_890}).AsReader()
+	now := (&ledgerpb.Timestamp{Data: 1_234_567_890}).AsReader()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1)).AnyTimes()
 
@@ -51,10 +52,10 @@ func TestProcessCreateTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{{
+						Postings: []*ledgerpb.Posting{{
 							Source:      "world",
 							Destination: "merchants:shop",
-							Amount:      commonpb.NewUint256FromUint64(100),
+							Amount:      ledgerpb.NewUint256FromUint64(100),
 							Asset:       "USD",
 						}},
 					},
@@ -90,10 +91,10 @@ func TestProcessRevertTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 	setupLedgersStub(mockStore).expectGet(domain.LedgerKey{Name: ledger}, ledgerInfo.AsReader(), nil)
 	setupBoundariesStub(mockStore).expectGet(domain.LedgerKey{Name: ledger}, boundaries.AsReader(), nil)
 
-	targetPostings := []*commonpb.Posting{{
+	targetPostings := []*ledgerpb.Posting{{
 		Source:      "world",
 		Destination: "legacy:merchant",
-		Amount:      commonpb.NewUint256FromUint64(100),
+		Amount:      ledgerpb.NewUint256FromUint64(100),
 		Asset:       "USD",
 	}}
 
@@ -105,8 +106,8 @@ func TestProcessRevertTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 	mockStore.EXPECT().TransactionStates().Return(transactionStates).AnyTimes()
 
 	zeroVolume := (&raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}).AsReader()
 	volumes := setupVolumesStub(mockStore)
 	volumes.expectGet(domain.NewVolumeKey(ledger, "legacy:merchant", "USD", ""), zeroVolume, nil)
@@ -114,7 +115,7 @@ func TestProcessRevertTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 
 	mockStore.EXPECT().GetReverted(txKey).Return(false, nil)
 	mockStore.EXPECT().PutReverted(txKey, true).AnyTimes()
-	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1_234_567_890}).AsReader()).AnyTimes()
+	mockStore.EXPECT().GetDate().Return((&ledgerpb.Timestamp{Data: 1_234_567_890}).AsReader()).AnyTimes()
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(50)).AnyTimes()
 
 	order := &raftcmdpb.Order{
@@ -150,14 +151,14 @@ func strictLedgerInfoWithCompiledAccountType(
 	t *testing.T,
 	processor *RequestProcessor,
 	ledger string,
-) *commonpb.LedgerInfo {
+) *ledgerpb.LedgerInfo {
 	t.Helper()
 
-	info := &commonpb.LedgerInfo{
+	info := &ledgerpb.LedgerInfo{
 		Name:                   ledger,
 		Id:                     1,
-		DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
-		AccountTypes: map[string]*commonpb.AccountType{
+		DefaultEnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
+		AccountTypes: map[string]*ledgerpb.AccountType{
 			"user": {
 				Name:    "user",
 				Pattern: "users:{id}",

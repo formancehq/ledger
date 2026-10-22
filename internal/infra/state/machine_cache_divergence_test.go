@@ -10,11 +10,11 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -650,8 +650,8 @@ func buildProposalWithLeaderPreloads(
 						vol, _, err := leader.Registry.Volumes.Get(volCanonical)
 						if err != nil || vol == nil {
 							vol = &raftcmdpb.VolumePair{
-								Input:  commonpb.NewUint256FromUint64(0),
-								Output: commonpb.NewUint256FromUint64(0),
+								Input:  ledgerpb.NewUint256FromUint64(0),
+								Output: ledgerpb.NewUint256FromUint64(0),
 							}
 						}
 						attrID := &raftcmdpb.AttributeID{Id: volU128[:], Tag: volTag}
@@ -666,7 +666,7 @@ func buildProposalWithLeaderPreloads(
 		Id:             nextIndex,
 		PredictedIndex: nextIndex,
 		Orders:         orders,
-		Date:           &commonpb.Timestamp{Data: 1700000000 + nextIndex},
+		Date:           &ledgerpb.Timestamp{Data: 1700000000 + nextIndex},
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{
 			Attributes:         plans,
 			LastPersistedIndex: boundary,

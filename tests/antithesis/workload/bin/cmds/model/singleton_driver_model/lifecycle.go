@@ -4,13 +4,13 @@ import (
 	"errors"
 	"maps"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // validateLifecycleLog checks the top-level payloads that carry no ledger-local
 // log. An absent payload is never equivalent to a false maintenance toggle.
-func validateLifecycleLog(req *servicepb.Request, expectedPreparedQuery, payload *commonpb.LogPayload) error {
+func validateLifecycleLog(req *servicepb.Request, expectedPreparedQuery, payload *ledgerpb.LogPayload) error {
 	if expectedPreparedQuery != nil && !expectedPreparedQuery.EqualVT(payload) {
 		return errors.New("prepared-query response does not match committed change")
 	}
@@ -22,7 +22,7 @@ func validateLifecycleLog(req *servicepb.Request, expectedPreparedQuery, payload
 			log.GetMode() != r.CreateLedger.GetMode() || !log.GetMirrorSource().EqualVT(r.CreateLedger.GetMirrorSource()) ||
 			!log.GetMetadataSchema().EqualVT(lifecycleMetadataSchema(r.CreateLedger.GetInitialSchema())) ||
 			!accountTypesEqual(log.GetAccountTypes(), r.CreateLedger.GetAccountTypes()) ||
-			!maps.EqualFunc(log.GetMetadata(), r.CreateLedger.GetMetadata(), func(a, b *commonpb.MetadataValue) bool { return a.EqualVT(b) }) ||
+			!maps.EqualFunc(log.GetMetadata(), r.CreateLedger.GetMetadata(), func(a, b *ledgerpb.MetadataValue) bool { return a.EqualVT(b) }) ||
 			log.GetDefaultEnforcementMode() != r.CreateLedger.GetDefaultEnforcementMode() {
 			return errors.New("create-ledger response does not match request")
 		}
@@ -46,27 +46,27 @@ func validateLifecycleLog(req *servicepb.Request, expectedPreparedQuery, payload
 	return nil
 }
 
-func lifecycleMetadataSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *commonpb.MetadataSchema {
+func lifecycleMetadataSchema(commands []*ledgerpb.SetMetadataFieldTypeCommand) *ledgerpb.MetadataSchema {
 	if len(commands) == 0 {
 		return nil
 	}
-	schema := &commonpb.MetadataSchema{}
+	schema := &ledgerpb.MetadataSchema{}
 	for _, cmd := range commands {
-		field := &commonpb.MetadataFieldSchema{Type: cmd.GetType()}
+		field := &ledgerpb.MetadataFieldSchema{Type: cmd.GetType()}
 		switch cmd.GetTargetType() {
-		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 			if schema.AccountFields == nil {
-				schema.AccountFields = map[string]*commonpb.MetadataFieldSchema{}
+				schema.AccountFields = map[string]*ledgerpb.MetadataFieldSchema{}
 			}
 			schema.AccountFields[cmd.GetKey()] = field
-		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 			if schema.TransactionFields == nil {
-				schema.TransactionFields = map[string]*commonpb.MetadataFieldSchema{}
+				schema.TransactionFields = map[string]*ledgerpb.MetadataFieldSchema{}
 			}
 			schema.TransactionFields[cmd.GetKey()] = field
-		case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
 			if schema.LedgerFields == nil {
-				schema.LedgerFields = map[string]*commonpb.MetadataFieldSchema{}
+				schema.LedgerFields = map[string]*ledgerpb.MetadataFieldSchema{}
 			}
 			schema.LedgerFields[cmd.GetKey()] = field
 		}
@@ -75,7 +75,7 @@ func lifecycleMetadataSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *
 	return schema
 }
 
-func accountTypesEqual(got, want map[string]*commonpb.AccountType) bool {
+func accountTypesEqual(got, want map[string]*ledgerpb.AccountType) bool {
 	if len(got) != len(want) {
 		return false
 	}

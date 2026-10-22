@@ -26,7 +26,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
@@ -96,7 +96,7 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 				},
 			},
 		},
-		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 	))
 
 	skipResp, err := client.Apply(ctx, skipReq)
@@ -137,7 +137,7 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 	}
 
 	reason := skipped.GetReason()
-	assert.AlwaysOrUnreachable(reason == commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+	assert.AlwaysOrUnreachable(reason == ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 		"OrderSkipped reason must be TRANSACTION_REFERENCE_CONFLICT",
 		details.With(internal.Details{"reason": reason.String()}))
 
@@ -183,7 +183,7 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 				},
 			},
 		},
-		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 	))
 
 	freshResp, err := client.Apply(ctx, freshReq)

@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -95,7 +95,7 @@ func TestProcessOrder_DispatchEveryLedgerScopedVariant(t *testing.T) {
 			&raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,
 				Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
-					CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS}},
+					CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &ledgerpb.PreparedQuery{Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS}},
 				},
 			},
 		},
@@ -136,7 +136,7 @@ func TestProcessOrder_DispatchEveryLedgerScopedVariant(t *testing.T) {
 			// "slot free" and proceeds. Returning an existing LedgerInfo
 			// makes it fail with ErrLedgerAlreadyExists.
 			if tc.name == "create_ledger" {
-				expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, (&commonpb.LedgerInfo{Name: ledger}).AsReader(), nil).AnyTimes()
+				expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, (&ledgerpb.LedgerInfo{Name: ledger}).AsReader(), nil).AnyTimes()
 			} else {
 				expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, nil, domain.ErrNotFound).AnyTimes()
 			}
@@ -225,7 +225,7 @@ func TestProcessOrder_DispatchEverySystemScopedVariant(t *testing.T) {
 			name: "add_events_sink/batch_size_too_large",
 			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{
 				AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-					Config: &commonpb.SinkConfig{Name: "s", BatchSize: domain.MaxSinkBatchSize + 1},
+					Config: &ledgerpb.SinkConfig{Name: "s", BatchSize: domain.MaxSinkBatchSize + 1},
 				},
 			}},
 			check: requireErr(new(*domain.ErrSinkBatchSizeTooLarge)),
@@ -257,11 +257,11 @@ func TestProcessOrder_DispatchEverySystemScopedVariant(t *testing.T) {
 			name: "set_cluster_policy",
 			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
 				SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{
-					Policy: withMetadataLimits(&commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 1}),
+					Policy: withMetadataLimits(&ledgerpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 1}),
 				},
 			}},
 			setup: func(m *MockScope) {
-				m.EXPECT().GetClusterPolicy().Return(&commonpb.ClusterPolicy{})
+				m.EXPECT().GetClusterPolicy().Return(&ledgerpb.ClusterPolicy{})
 				m.EXPECT().SetClusterPolicy(gomock.Any())
 			},
 			check: func(t *testing.T, got error) { t.Helper(); require.NoError(t, got) },

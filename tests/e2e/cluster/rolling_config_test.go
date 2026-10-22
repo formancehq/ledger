@@ -8,8 +8,8 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -97,7 +97,7 @@ func expectThreshold(ctx context.Context, servers []*testutil.ServiceWithClient,
 
 func createTxs(ctx context.Context, client servicepb.BucketServiceClient, ledger string, n int, amount int64) {
 	for i := 0; i < n; i++ {
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledger, []*commonpb.Posting{
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledger, []*ledgerpb.Posting{
 			actions.NewPosting("world", "bank", big.NewInt(amount), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())

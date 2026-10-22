@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -16,8 +16,8 @@ import (
 // paging assertions read.
 func addressEnricher() *query.EntityEnricher {
 	return &query.EntityEnricher{
-		EnrichAccount: func(_ dal.PebbleReader, _ string, address string) (*commonpb.Account, error) {
-			return &commonpb.Account{Address: address}, nil
+		EnrichAccount: func(_ dal.PebbleReader, _ string, address string) (*ledgerpb.Account, error) {
+			return &ledgerpb.Account{Address: address}, nil
 		},
 	}
 }
@@ -28,14 +28,14 @@ type reverseFixture struct {
 	attrs *attributes.Attributes
 }
 
-func newReverseFixture(t *testing.T, filter *commonpb.QueryFilter, accounts ...string) *reverseFixture {
+func newReverseFixture(t *testing.T, filter *ledgerpb.QueryFilter, accounts ...string) *reverseFixture {
 	t.Helper()
 
 	store := newTestStore(t)
 	registerLedger(t, store, "l")
 
 	attrs := attributes.New()
-	seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter)
+	seedPreparedQuery(t, store, attrs, "l", "q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter)
 
 	volumes := make([]seededVolume, len(accounts))
 	for i, account := range accounts {
@@ -58,7 +58,7 @@ func (f *reverseFixture) execute(req *servicepb.ExecutePreparedQueryRequest) (*s
 		f.attrs.Volume, f.attrs.PreparedQuery, f.attrs.Index, req, nil, addressEnricher())
 }
 
-func (f *reverseFixture) page(req *servicepb.ExecutePreparedQueryRequest) *commonpb.PreparedQueryCursor {
+func (f *reverseFixture) page(req *servicepb.ExecutePreparedQueryRequest) *ledgerpb.PreparedQueryCursor {
 	f.t.Helper()
 
 	resp, err := f.execute(req)
@@ -70,7 +70,7 @@ func (f *reverseFixture) page(req *servicepb.ExecutePreparedQueryRequest) *commo
 	return cursor
 }
 
-func pageAddresses(cursor *commonpb.PreparedQueryCursor) []string {
+func pageAddresses(cursor *ledgerpb.PreparedQueryCursor) []string {
 	out := make([]string, len(cursor.GetAccountData()))
 	for i, account := range cursor.GetAccountData() {
 		out[i] = account.GetAddress()
@@ -79,10 +79,10 @@ func pageAddresses(cursor *commonpb.PreparedQueryCursor) []string {
 	return out
 }
 
-func usersPrefixFilter() *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{
-		Address: &commonpb.AddressMatch{
-			Match: &commonpb.AddressMatch_ParamPrefix{ParamPrefix: "prefix"},
+func usersPrefixFilter() *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{
+		Address: &ledgerpb.AddressMatch{
+			Match: &ledgerpb.AddressMatch_ParamPrefix{ParamPrefix: "prefix"},
 		},
 	}}
 }
@@ -91,14 +91,14 @@ func TestExecute_ReverseList(t *testing.T) {
 	t.Parallel()
 
 	accounts := []string{"bank", "users:1", "users:2", "users:3", "world"}
-	usersParams := map[string]*commonpb.ParameterValue{
-		"prefix": {Value: &commonpb.ParameterValue_StringValue{StringValue: "users:"}},
+	usersParams := map[string]*ledgerpb.ParameterValue{
+		"prefix": {Value: &ledgerpb.ParameterValue_StringValue{StringValue: "users:"}},
 	}
 
 	for _, tc := range []struct {
 		name   string
-		filter *commonpb.QueryFilter
-		params map[string]*commonpb.ParameterValue
+		filter *ledgerpb.QueryFilter
+		params map[string]*ledgerpb.ParameterValue
 		pages  [][]string
 	}{
 		{
@@ -195,7 +195,7 @@ func TestExecute_ReverseAggregateRejected(t *testing.T) {
 
 	for _, tc := range []struct {
 		name   string
-		filter *commonpb.QueryFilter
+		filter *ledgerpb.QueryFilter
 		ledger string
 	}{
 		{name: "nil filter"},
@@ -209,13 +209,13 @@ func TestExecute_ReverseAggregateRejected(t *testing.T) {
 
 			_, err := f.execute(&servicepb.ExecutePreparedQueryRequest{
 				Ledger:  tc.ledger,
-				Mode:    commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
+				Mode:    ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
 				Reverse: true,
 			})
 
 			var reverseErr *query.ErrQueryModeReverseUnsupported
 			require.ErrorAs(t, err, &reverseErr)
-			require.Equal(t, commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES, reverseErr.Mode)
+			require.Equal(t, ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES, reverseErr.Mode)
 		})
 	}
 }

@@ -9,8 +9,8 @@ import (
 
 	"github.com/holiman/uint256"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -272,7 +272,7 @@ func activeLedgers(g oracle.GlobalState, ledgers []string) []string {
 	live := liveLedgerNames(g, ledgers)
 	out := make([]string, 0, len(live))
 	for _, name := range live {
-		if lc, ok := g.Lifecycle(name); ok && lc.Mode != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+		if lc, ok := g.Lifecycle(name); ok && lc.Mode != ledgerpb.LedgerMode_LEDGER_MODE_MIRROR {
 			out = append(out, name)
 		}
 	}
@@ -316,7 +316,7 @@ func generateLifecycle(src *generation.Source, g oracle.GlobalState, ledgers []s
 	case 1:
 		mirrors := make([]string, 0, len(live))
 		for _, name := range live {
-			if lc, ok := g.Lifecycle(name); ok && lc.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+			if lc, ok := g.Lifecycle(name); ok && lc.Mode == ledgerpb.LedgerMode_LEDGER_MODE_MIRROR {
 				mirrors = append(mirrors, name)
 			}
 		}
@@ -438,7 +438,7 @@ func randomTransientType(src *generation.Source, ls oracle.LedgerState) *oracle.
 	// replayable / steerable via the Antithesis RNG.
 	var names []string
 	for name, t := range ls.Types().All() {
-		if t.Persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+		if t.Persistence == ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
 			names = append(names, name)
 		}
 	}
@@ -530,7 +530,7 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 }
 
 // applyCreate wraps a CreateTransactionPayload as a ledger Apply request.
-func applyCreate(ledger string, payload *servicepb.CreateTransactionPayload, skippableReasons ...commonpb.ErrorReason) *servicepb.Request {
+func applyCreate(ledger string, payload *servicepb.CreateTransactionPayload, skippableReasons ...ledgerpb.ErrorReason) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -590,9 +590,9 @@ func overflowTransaction(src *generation.Source, ledger string) *servicepb.Reque
 	dst := poolAddress(src)
 
 	return applyCreate(ledger, &servicepb.CreateTransactionPayload{
-		Postings: []*commonpb.Posting{
-			commonpb.NewPosting("world", dst, assets[0], half),
-			commonpb.NewPosting("world", dst, assets[0], half),
+		Postings: []*ledgerpb.Posting{
+			ledgerpb.NewPosting("world", dst, assets[0], half),
+			ledgerpb.NewPosting("world", dst, assets[0], half),
 		},
 	})
 }
@@ -610,7 +610,7 @@ func generateAddAccountType(src *generation.Source, ledger string) *servicepb.Re
 		Type: &servicepb.Request_AddAccountType{
 			AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 				Ledger: ledger,
-				AccountType: &commonpb.AccountType{
+				AccountType: &ledgerpb.AccountType{
 					Name:        name,
 					Pattern:     pattern,
 					Persistence: persistence,
@@ -625,11 +625,11 @@ func generateAddAccountType(src *generation.Source, ledger string) *servicepb.Re
 func pickPersistence(src *generation.Source) commonpb.AccountTypePersistence {
 	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5}) {
 	case 0, 1:
-		return commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL
+		return ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL
 	case 2:
-		return commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT
+		return ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT
 	default:
-		return commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL
+		return ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL
 	}
 }
 
@@ -643,8 +643,8 @@ func txRequest(ledger, src, dest, asset, color string, amount *big.Int, force bo
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{
-								commonpb.NewColoredPosting(src, dest, asset, color, amount),
+							Postings: []*ledgerpb.Posting{
+								ledgerpb.NewColoredPosting(src, dest, asset, color, amount),
 							},
 							Force: force,
 						},
@@ -676,7 +676,7 @@ func generateDrainTransaction(src *generation.Source, ledger string, ls oracle.L
 	consider := func(key oracle.VolumeKey, vp oracle.VolumePair) bool {
 		scanned++
 		if vp.Input.Cmp(&vp.Output) > 0 {
-			if t := ls.MatchAddress(key.Address); t != nil && t.Persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+			if t := ls.MatchAddress(key.Address); t != nil && t.Persistence == ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
 				srcKey = key
 				balance.Sub(&vp.Input, &vp.Output)
 				found = true
@@ -710,8 +710,8 @@ func generateDrainTransaction(src *generation.Source, ledger string, ls oracle.L
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{
-								commonpb.NewColoredPosting(srcKey.Address, "world", srcKey.Asset, srcKey.Color, balance.ToBig()),
+							Postings: []*ledgerpb.Posting{
+								ledgerpb.NewColoredPosting(srcKey.Address, "world", srcKey.Asset, srcKey.Color, balance.ToBig()),
 							},
 							Force: true,
 						},
@@ -730,10 +730,10 @@ func generateRemoveAccountType(src *generation.Source, ledger string) *servicepb
 // --- Metadata -------------------------------------------------------------
 
 // accountTarget builds a metadata Target pointing at an account address.
-func accountTarget(addr string) *commonpb.Target {
-	return &commonpb.Target{
-		Target: &commonpb.Target_Account{
-			Account: &commonpb.TargetAccount{Addr: addr},
+func accountTarget(addr string) *ledgerpb.Target {
+	return &ledgerpb.Target{
+		Target: &ledgerpb.Target_Account{
+			Account: &ledgerpb.TargetAccount{Addr: addr},
 		},
 	}
 }
@@ -818,7 +818,7 @@ func generateAddMetadata(src *generation.Source, ledger string) *servicepb.Reque
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_AddMetadata{
-						AddMetadata: &commonpb.SaveMetadataCommand{
+						AddMetadata: &ledgerpb.SaveMetadataCommand{
 							Target:   accountTarget(addr),
 							Metadata: md,
 						},
@@ -858,7 +858,7 @@ func generateDeleteMetadata(src *generation.Source, ledger string, ls oracle.Led
 				SkippableReasons: skippable,
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_DeleteMetadata{
-						DeleteMetadata: &commonpb.DeleteMetadataCommand{
+						DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
 							Target: accountTarget(addr),
 							Key:    key,
 						},
@@ -896,7 +896,7 @@ func generateAddTxMetadata(src *generation.Source, ledger string, ls oracle.Ledg
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_AddMetadata{
-						AddMetadata: &commonpb.SaveMetadataCommand{
+						AddMetadata: &ledgerpb.SaveMetadataCommand{
 							Target:   txTarget(uint64(id)),
 							Metadata: randomMetaMap(src),
 						},
@@ -943,7 +943,7 @@ func generateDeleteTxMetadata(src *generation.Source, ledger string, ls oracle.L
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{
 						Data: &servicepb.LedgerAction_DeleteMetadata{
-							DeleteMetadata: &commonpb.DeleteMetadataCommand{
+							DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
 								Target: txTarget(uint64(id)),
 								Key:    key,
 							},
@@ -1020,9 +1020,9 @@ func txRef() string {
 // txTarget builds a transaction metadata target addressed by id (the proto
 // dropped reference targeting in #462; the caller resolves a tracked reference
 // to its id).
-func txTarget(id uint64) *commonpb.Target {
-	return &commonpb.Target{
-		Target: &commonpb.Target_TransactionId{TransactionId: id},
+func txTarget(id uint64) *ledgerpb.Target {
+	return &ledgerpb.Target{
+		Target: &ledgerpb.Target_TransactionId{TransactionId: id},
 	}
 }
 
@@ -1113,7 +1113,7 @@ func generateSetMetadataFieldType(src *generation.Source, ledger string, ls orac
 // model declares no field types.
 func generateRemoveMetadataFieldType(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
 	type fieldRef struct {
-		target commonpb.TargetType
+		target ledgerpb.TargetType
 		key    string
 	}
 
@@ -1121,13 +1121,13 @@ func generateRemoveMetadataFieldType(src *generation.Source, ledger string, ls o
 	// sequence, so fields is deterministic.
 	var fields []fieldRef
 	for k := range ls.AccountFieldTypes().All() {
-		fields = append(fields, fieldRef{commonpb.TargetType_TARGET_TYPE_ACCOUNT, k})
+		fields = append(fields, fieldRef{ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, k})
 	}
 	for k := range ls.LedgerFieldTypes().All() {
-		fields = append(fields, fieldRef{commonpb.TargetType_TARGET_TYPE_LEDGER, k})
+		fields = append(fields, fieldRef{ledgerpb.TargetType_TARGET_TYPE_LEDGER, k})
 	}
 	for k := range ls.TransactionFieldTypes().All() {
-		fields = append(fields, fieldRef{commonpb.TargetType_TARGET_TYPE_TRANSACTION, k})
+		fields = append(fields, fieldRef{ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, k})
 	}
 
 	if len(fields) == 0 {

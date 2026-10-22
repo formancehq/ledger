@@ -1,6 +1,7 @@
 package plan
 
 import (
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,13 +10,13 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/preload"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -31,7 +32,7 @@ func TestProposalGuard_ReleaseLoaders(t *testing.T) {
 	key := attributes.NewU128(10, 20)
 
 	_, err := loaders.Volumes.LoadOrWait(key, 100, testCacheEpoch, func() (*raftcmdpb.VolumePair, error) {
-		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1)}, nil
+		return &raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(1)}, nil
 	})
 	require.NoError(t, err)
 
@@ -56,7 +57,7 @@ func TestProposalGuard_ReleaseLoaders(t *testing.T) {
 	_, err = loaders.Volumes.LoadOrWait(key, 100, testCacheEpoch, func() (*raftcmdpb.VolumePair, error) {
 		loadCount++
 
-		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(2)}, nil
+		return &raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(2)}, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, loadCount, "Key should reload after ReleaseLoaders")
@@ -288,8 +289,8 @@ func TestBuildPreloads_EmitsDeclareOnCacheHit(t *testing.T) {
 		Key:        "label",
 	}
 	id, _ := attributes.MakeKey(metaKey.Bytes())
-	c.AccountMetadata.Put(id, attributes.Entry[*commonpb.MetadataValue]{
-		Data: &commonpb.MetadataValue{},
+	c.AccountMetadata.Put(id, attributes.Entry[*ledgerpb.MetadataValue]{
+		Data: &ledgerpb.MetadataValue{},
 	})
 
 	tracker := node.NewIndexTracker(1)
@@ -372,8 +373,8 @@ func TestBuildPreloads_EmitsDeclareOnBloomShortcut(t *testing.T) {
 	c, err := cache.New(1000, meter)
 	require.NoError(t, err)
 
-	bfs := bloom.NewFilterSet(&commonpb.ClusterConfig{
-		BloomMetadata: &commonpb.BloomTypeConfig{ExpectedKeys: 1024, FpRate: 0.001},
+	bfs := bloom.NewFilterSet(&ledgerpb.ClusterConfig{
+		BloomMetadata: &ledgerpb.BloomTypeConfig{ExpectedKeys: 1024, FpRate: 0.001},
 	}, meter)
 	require.NotNil(t, bfs)
 	bfs.SetReady(true)

@@ -10,10 +10,10 @@ import (
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 type clusterIdentityServer struct {
@@ -78,7 +78,7 @@ func TestGetClusterStateWithoutLeader(t *testing.T) {
 	impl := &ClusterServiceServerImpl{node: &node.Node{}, logger: testLogger()}
 	response, err := impl.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{})
 	require.Nil(t, response)
-	require.ErrorIs(t, err, commonpb.ErrNoLeader)
+	require.ErrorIs(t, err, ledgerpb.ErrNoLeader)
 }
 
 func TestGetClusterStateRoutesFullNodeID(t *testing.T) {
@@ -133,5 +133,5 @@ func TestTransferLeadershipRejectsZeroAndUnknownLeader(t *testing.T) {
 	require.EqualError(t, err, "transferee node ID must be non-zero")
 	response, err = impl.TransferLeadership(context.Background(), &clusterpb.TransferLeadershipRequest{Transferee: 1<<32 + 1})
 	require.Nil(t, response)
-	require.ErrorIs(t, err, commonpb.ErrNoLeader)
+	require.ErrorIs(t, err, ledgerpb.ErrNoLeader)
 }

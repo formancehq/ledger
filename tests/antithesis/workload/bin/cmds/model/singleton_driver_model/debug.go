@@ -11,8 +11,8 @@ import (
 
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -135,7 +135,7 @@ func requestKinds(b oracle.Bulk) string {
 // Metadata targets a bulk touches, for debug: account (add addr{k=v,...} /
 // del addr/key) and ledger (saveL ledger{k=v,...} / delL ledger/key).
 func bulkMeta(b oracle.Bulk) string {
-	kvList := func(m map[string]*commonpb.MetadataValue) string {
+	kvList := func(m map[string]*ledgerpb.MetadataValue) string {
 		kvs := make([]string, 0, len(m))
 		for k, v := range m {
 			kvs = append(kvs, k+"="+oracle.MetaValueString(v))
@@ -257,11 +257,11 @@ func (c *Checker) failureDiag(b oracle.Bulk, maxTicket uint64) (postings, modelT
 
 // metaTargetLabel renders a metadata target for debug output: the account address
 // or "tx:<id>" for a transaction target.
-func metaTargetLabel(target *commonpb.Target) string {
+func metaTargetLabel(target *ledgerpb.Target) string {
 	switch t := target.GetTarget().(type) {
-	case *commonpb.Target_Account:
+	case *ledgerpb.Target_Account:
 		return t.Account.GetAddr()
-	case *commonpb.Target_TransactionId:
+	case *ledgerpb.Target_TransactionId:
 		return fmt.Sprintf("tx:%d", t.TransactionId)
 	default:
 		return "?"
@@ -269,7 +269,7 @@ func metaTargetLabel(target *commonpb.Target) string {
 }
 
 // renderMetaMap renders a server metadata map as {k=typed,...}, sorted.
-func renderMetaMap(m map[string]*commonpb.MetadataValue) string {
+func renderMetaMap(m map[string]*ledgerpb.MetadataValue) string {
 	parts := make([]string, 0, len(m))
 	for k, v := range m {
 		parts = append(parts, k+"="+oracle.MetaValueString(v))
@@ -368,7 +368,7 @@ func (c *Checker) modelChartDump(ledger string) string {
 
 // renderChart renders a server account-type map the same way as modelChartDump,
 // so the two can be diffed directly in a finding.
-func renderChart(types map[string]*commonpb.AccountType) string {
+func renderChart(types map[string]*ledgerpb.AccountType) string {
 	var parts []string
 	for name, t := range types {
 		parts = append(parts, fmt.Sprintf("%s=%s|%d", name, t.GetPattern(), t.GetPersistence()))
@@ -408,7 +408,7 @@ func (c *Checker) modelSchemaDump(ledger string) string {
 
 	ls := c.modelState.Ledger(ledger)
 
-	render := func(tag string, m oracle.Map[string, commonpb.MetadataType]) string {
+	render := func(tag string, m oracle.Map[string, ledgerpb.MetadataType]) string {
 		parts := make([]string, 0, m.Len())
 		for k, t := range m.All() {
 			parts = append(parts, fmt.Sprintf("%s/%s=%d", tag, k, t))
@@ -424,8 +424,8 @@ func (c *Checker) modelSchemaDump(ledger string) string {
 
 // renderSchema renders a served MetadataSchema the same way as modelSchemaDump,
 // so the two can be diffed directly in a finding.
-func renderSchema(schema *commonpb.MetadataSchema) string {
-	render := func(tag string, m map[string]*commonpb.MetadataFieldSchema) string {
+func renderSchema(schema *ledgerpb.MetadataSchema) string {
+	render := func(tag string, m map[string]*ledgerpb.MetadataFieldSchema) string {
 		parts := make([]string, 0, len(m))
 		for k, field := range m {
 			parts = append(parts, fmt.Sprintf("%s/%s=%d", tag, k, field.GetType()))
@@ -441,7 +441,7 @@ func renderSchema(schema *commonpb.MetadataSchema) string {
 }
 
 // Server log sequences — for verifying drain order vs commit order.
-func logSeqs(logs []*commonpb.Log) string {
+func logSeqs(logs []*ledgerpb.Log) string {
 	ids := make([]string, len(logs))
 	for i, l := range logs {
 		ids[i] = strconv.FormatUint(l.GetSequence(), 10)
@@ -479,7 +479,7 @@ func (c *Checker) modelTxMetaDump(ledger string, id uint64) string {
 	parts := make([]string, 0, len(keys))
 	for _, k := range keys {
 		ft := "none"
-		if t, ok := ls.FieldTypeFor(commonpb.TargetType_TARGET_TYPE_TRANSACTION, k); ok {
+		if t, ok := ls.FieldTypeFor(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, k); ok {
 			ft = fmt.Sprintf("%d", t)
 		}
 		parts = append(parts, fmt.Sprintf("%s=%s[ft=%s]", k, oracle.MetaValueString(meta[k]), ft))

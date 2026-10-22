@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -92,7 +92,7 @@ func multiCurrencyFX(ctx context.Context, client servicepb.BucketServiceClient, 
 
 	// Leg 2: fx:clearing -> target (force, different currency).
 	return ApplyActions(ctx, client,
-		actions.CreateForceTransactionAction(MultiCurrencyLedger, []*commonpb.Posting{
+		actions.CreateForceTransactionAction(MultiCurrencyLedger, []*ledgerpb.Posting{
 			actions.NewPosting("fx:clearing", dst.Treasury, big.NewInt(dstAmount), dst.Asset),
 		}, nil),
 	)
@@ -154,18 +154,18 @@ send $amount (
   source = $treasury
   destination = $vendor
 )`, "1.0.0"),
-		actions.CreateBuiltinTxIndexAction(MultiCurrencyLedger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
-		actions.CreateBuiltinTxIndexAction(MultiCurrencyLedger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+		actions.CreateBuiltinTxIndexAction(MultiCurrencyLedger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+		actions.CreateBuiltinTxIndexAction(MultiCurrencyLedger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
 		actions.CreatePreparedQueryAction("accounts-by-prefix", MultiCurrencyLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamAddressPrefixFilter("prefix"),
 		),
 		actions.CreatePreparedQueryAction("account-exact", MultiCurrencyLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamAddressExactFilter("addr"),
 		),
 		actions.CreatePreparedQueryAction("volumes-by-prefix", MultiCurrencyLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamAddressPrefixFilter("prefix"),
 		),
 	}
@@ -274,7 +274,7 @@ func RunMultiCurrency(r *Runner) error {
 					"clearing_account": "fx:clearing",
 					"amount":           fmt.Sprintf("%s %d", fx.sourceAsset, fx.sourceAmount),
 				}, nil),
-				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledger, []*ledgerpb.Posting{
 					actions.NewPosting("fx:clearing", fx.targetAccount, big.NewInt(fx.targetAmount), fx.targetAsset),
 				}, nil),
 			)

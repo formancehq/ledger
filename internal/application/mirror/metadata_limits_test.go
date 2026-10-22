@@ -7,18 +7,18 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func mirrorMetadataPolicy() *commonpb.ClusterPolicy {
-	return &commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 1, MetadataMaxEntriesPerEntity: 2, MetadataMaxKeyBytes: 4, MetadataMaxValueBytes: 8, MetadataMaxEntityBytes: 10, MetadataMaxCommandBytes: 12}
+func mirrorMetadataPolicy() *ledgerpb.ClusterPolicy {
+	return &ledgerpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 1, MetadataMaxEntriesPerEntity: 2, MetadataMaxKeyBytes: 4, MetadataMaxValueBytes: 8, MetadataMaxEntityBytes: 10, MetadataMaxCommandBytes: 12}
 }
 
-func writeMirrorMetadataPolicy(t *testing.T, store *dal.Store, policy *commonpb.ClusterPolicy) {
+func writeMirrorMetadataPolicy(t *testing.T, store *dal.Store, policy *ledgerpb.ClusterPolicy) {
 	t.Helper()
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.SaveClusterPolicy(batch, policy))

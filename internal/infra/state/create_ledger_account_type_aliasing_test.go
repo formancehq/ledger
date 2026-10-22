@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -17,7 +17,7 @@ import (
 // AccountType.Name values deliberately do NOT match their map keys (one blank,
 // one mismatched), so the test can prove the FSM preserves the submitted bytes
 // verbatim while canonicalizing derived state to the map key.
-func createLedgerOrderWithAccountTypes(name string, accountTypes map[string]*commonpb.AccountType) *raftcmdpb.Order {
+func createLedgerOrderWithAccountTypes(name string, accountTypes map[string]*ledgerpb.AccountType) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -61,13 +61,13 @@ func TestCreateLedger_AuditPreservesSubmittedAccountTypeNames(t *testing.T) {
 
 	const ledgerName = "aliasing"
 
-	order := createLedgerOrderWithAccountTypes(ledgerName, map[string]*commonpb.AccountType{
+	order := createLedgerOrderWithAccountTypes(ledgerName, map[string]*ledgerpb.AccountType{
 		"canonical-a": {Name: "", Pattern: "a:{id}"},
 		"canonical-b": {Name: "wrong-embedded-name", Pattern: "b:{id}"},
 	})
 
 	proposal := makeProposal(2, order)
-	proposal.Idempotency = &commonpb.Idempotency{Key: "create-key"}
+	proposal.Idempotency = &ledgerpb.Idempotency{Key: "create-key"}
 
 	r, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, proposal))
 	require.NoError(t, err)
@@ -110,12 +110,12 @@ func TestCreateLedger_AuditPreservesSubmittedAccountTypeNames(t *testing.T) {
 	// Replaying the identical keyed proposal must replay cleanly, with no
 	// idempotency conflict: the frozen outcome hash re-derived from the accepted
 	// order agrees with what the chain recorded.
-	replayOrder := createLedgerOrderWithAccountTypes(ledgerName, map[string]*commonpb.AccountType{
+	replayOrder := createLedgerOrderWithAccountTypes(ledgerName, map[string]*ledgerpb.AccountType{
 		"canonical-a": {Name: "", Pattern: "a:{id}"},
 		"canonical-b": {Name: "wrong-embedded-name", Pattern: "b:{id}"},
 	})
 	replay := makeProposal(4, replayOrder)
-	replay.Idempotency = &commonpb.Idempotency{Key: "create-key"}
+	replay.Idempotency = &ledgerpb.Idempotency{Key: "create-key"}
 
 	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 3, replay))
 	require.NoError(t, err)
@@ -127,9 +127,9 @@ func TestCreateLedger_InitialMetadataIdempotentReplay(t *testing.T) {
 	t.Parallel()
 	machine, store, attrs := newTestMachine(t)
 	order := createLedgerOrder("metadata")
-	order.GetLedgerScoped().GetCreateLedger().Metadata = map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("team")}
+	order.GetLedgerScoped().GetCreateLedger().Metadata = map[string]*ledgerpb.MetadataValue{"owner": ledgerpb.NewStringValue("team")}
 	proposal := makeProposal(1, order)
-	proposal.Idempotency = &commonpb.Idempotency{Key: "creation-with-metadata"}
+	proposal.Idempotency = &ledgerpb.Idempotency{Key: "creation-with-metadata"}
 	results, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, proposal))
 	require.NoError(t, err)
 	require.NoError(t, results.Results[0].Error)
@@ -142,7 +142,7 @@ func TestCreateLedger_InitialMetadataIdempotentReplay(t *testing.T) {
 	require.NoError(t, query.EnrichLedgerMetadata(handle, attrs, info))
 	require.Equal(t, "team", info.GetMetadata()["owner"].GetStringValue())
 	replay := makeProposal(2, order.CloneVT())
-	replay.Idempotency = &commonpb.Idempotency{Key: "creation-with-metadata"}
+	replay.Idempotency = &ledgerpb.Idempotency{Key: "creation-with-metadata"}
 	results, err = machine.ApplyEntries(t.Context(), store, makeEntry(t, 2, replay))
 	require.NoError(t, err)
 	require.NoError(t, results.Results[0].Error)

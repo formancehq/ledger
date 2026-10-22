@@ -180,7 +180,7 @@ func desiredIndexes(spec *ledgerv1alpha1.LedgerIndexesSpec) []managedIndex {
 	return out
 }
 
-// listedIndex mirrors the protojson shape of one commonpb.Index element from
+// listedIndex mirrors the protojson shape of one ledgerpb.Index element from
 // `ledgerctl indexes list --json`. Only the fields needed for identity are
 // decoded; protojson emits set oneof members only, and enums as string names.
 type listedIndex struct {

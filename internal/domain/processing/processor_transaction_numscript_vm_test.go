@@ -6,9 +6,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -32,8 +32,8 @@ func vmTestScope(t *testing.T) *MockScope {
 	mockStore := NewMockScope(ctrl)
 	volumes := setupVolumesStub(mockStore)
 	walletVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(1000),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(1000),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 	volumes.expectGet(domain.NewVolumeKey("test", "wallet", "USD/2", ""), walletVol.AsReader(), nil)
 
@@ -48,7 +48,7 @@ func produceTextScript(t *testing.T, cache *numscript.NumscriptCache, vars map[s
 		assetCache: map[string]cachedAssetPrecision{},
 	}
 
-	return producer.produce(vmTestScope(t), "test", &raftcmdpb.CreateTransactionOrder{}, &commonpb.Script{Plain: vmScript, Vars: vars})
+	return producer.produce(vmTestScope(t), "test", &raftcmdpb.CreateTransactionOrder{}, &ledgerpb.Script{Plain: vmScript, Vars: vars})
 }
 
 func TestProduce_TextScriptColdAndWarmAgree(t *testing.T) {
@@ -64,7 +64,7 @@ func TestProduce_TextScriptColdAndWarmAgree(t *testing.T) {
 	require.Equal(t, "out", warm.Postings[0].GetDestination())
 	require.Equal(t, "USD/2", warm.Postings[0].GetAsset())
 	require.Equal(t, uint64(100), warm.Postings[0].GetAmount().ToBigInt().Uint64())
-	require.Equal(t, "vm-test", commonpb.MetadataValueToString(warm.TransactionMetadata["kind"]))
+	require.Equal(t, "vm-test", ledgerpb.MetadataValueToString(warm.TransactionMetadata["kind"]))
 }
 
 func TestProduce_TextScriptUsesEachOrdersVars(t *testing.T) {
@@ -109,7 +109,7 @@ send $all (
 
 	_, err := producer.produce(vmTestScope(t), "test",
 		&raftcmdpb.CreateTransactionOrder{Force: true},
-		&commonpb.Script{Plain: script})
+		&ledgerpb.Script{Plain: script})
 	require.NotNil(t, err)
 
 	var execErr *domain.ErrNumscriptExecution

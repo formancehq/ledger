@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -78,7 +78,7 @@ func runListPreparedQueries(src *generation.Source, ctx context.Context, client 
 // validateListPreparedQueries checks a registry listing against the model:
 // legal iff some candidate base holds exactly these names, each with the same
 // target and the byte-identical stored filter.
-func (c *Checker) validateListPreparedQueries(maxTicket uint64, ledger string, served []*commonpb.PreparedQuery) {
+func (c *Checker) validateListPreparedQueries(maxTicket uint64, ledger string, served []*ledgerpb.PreparedQuery) {
 	if c.matchesModel(maxTicket, "PQLIST", func(base oracle.GlobalState) bool {
 		lc, exists := base.Lifecycle(ledger)
 		if !exists || lc.Deleted {
@@ -102,7 +102,7 @@ func (c *Checker) validateListPreparedQueries(maxTicket uint64, ledger string, s
 // listing is unordered by contract, so it is compared as a keyed set; the
 // filter comparison is exact (EqualVT), which is what makes a stale or
 // half-applied update visible.
-func registryMatches(ls oracle.LedgerState, served []*commonpb.PreparedQuery) bool {
+func registryMatches(ls oracle.LedgerState, served []*ledgerpb.PreparedQuery) bool {
 	if len(served) != ls.PreparedQueries().Len() {
 		return false
 	}
@@ -131,7 +131,7 @@ func (c *Checker) modelPreparedQueries(ledger string) string {
 
 	ls := c.modelState.Ledger(ledger)
 
-	out := make([]*commonpb.PreparedQuery, 0, ls.PreparedQueries().Len())
+	out := make([]*ledgerpb.PreparedQuery, 0, ls.PreparedQueries().Len())
 	for _, name := range ls.PreparedQueryNames() {
 		q, _ := ls.PreparedQuery(name)
 		out = append(out, q)
@@ -218,8 +218,8 @@ func runExecutePreparedQuery(src *generation.Source, ctx context.Context, client
 		return
 	}
 
-	if mode == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES &&
-		snapshot.GetTarget() != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+	if mode == ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES &&
+		snapshot.GetTarget() != ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
 		runAggregateTargetMisuse(ctx, client, c, ledger, name, params, complete)
 
 		return
@@ -272,7 +272,7 @@ func runExecutePreparedQuery(src *generation.Source, ctx context.Context, client
 		dbgf("PQPARAM spoiled errKind=%d", int(call.errKind))
 	}
 
-	if mode == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES {
+	if mode == ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES {
 		_, aggregateResult := resp.GetResult().(*servicepb.ExecutePreparedQueryResponse_Aggregate)
 		call.wrongResult = err == nil && !aggregateResult
 		c.validateExecuteAggregate(maxTicket, call, resp.GetAggregate())
@@ -317,7 +317,7 @@ func (c *Checker) runExecuteNextPage(src *generation.Source,
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	call preparedCall,
-	prev *commonpb.PreparedQueryCursor,
+	prev *ledgerpb.PreparedQueryCursor,
 ) {
 	after := lastPageKey(prev)
 	if len(after) == 0 {
@@ -344,7 +344,7 @@ func (c *Checker) runExecuteNextPage(src *generation.Source,
 		Parameters: call.params,
 		PageSize:   uint32(call.pageSize),
 		Cursor:     prev.GetNext(),
-		Mode:       commonpb.QueryMode_QUERY_MODE_LIST,
+		Mode:       ledgerpb.QueryMode_QUERY_MODE_LIST,
 		Reverse:    call.reverse,
 	})
 
@@ -373,7 +373,7 @@ func (c *Checker) runExecuteNextPage(src *generation.Source,
 // name) — nil when absent — alongside the ledger state the parameter generator
 // draws plausible values from. Shaping only: validation re-reads the definition
 // from each candidate base. Acquires c.mu.
-func (c *Checker) preparedQuerySnapshot(ledger, name string) (*commonpb.PreparedQuery, oracle.LedgerState) {
+func (c *Checker) preparedQuerySnapshot(ledger, name string) (*ledgerpb.PreparedQuery, oracle.LedgerState) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -386,7 +386,7 @@ func (c *Checker) preparedQuerySnapshot(ledger, name string) (*commonpb.Prepared
 // lastPageKey renders the model-side after-key of a page: the last account
 // address, transaction id, or log id it returned. Empty when the page is empty
 // — there is nothing to page past.
-func lastPageKey(cur *commonpb.PreparedQueryCursor) []byte {
+func lastPageKey(cur *ledgerpb.PreparedQueryCursor) []byte {
 	if accts := cur.GetAccountData(); len(accts) > 0 {
 		return []byte(accts[len(accts)-1].GetAddress())
 	}
@@ -435,7 +435,7 @@ func runAggregateTargetMisuse(
 		Ledger:     ledger,
 		QueryName:  name,
 		Parameters: params,
-		Mode:       commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
+		Mode:       ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
 	})
 
 	maxTicket := responseFrontier()
@@ -476,7 +476,7 @@ func runAggregateReverseMisuse(
 		Ledger:     ledger,
 		QueryName:  name,
 		Parameters: params,
-		Mode:       commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
+		Mode:       ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
 		Reverse:    true,
 	})
 
@@ -512,7 +512,7 @@ func runAggregateReverseMisuse(
 // after is the model-side cursor: "" for a first page, else the previous
 // page's last key (address, transaction id, or log id). Reports whether the
 // outcome matched the model.
-func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after []byte, cur *commonpb.PreparedQueryCursor) bool {
+func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after []byte, cur *ledgerpb.PreparedQueryCursor) bool {
 	if call.errKind == pqErrOther || call.errKind == pqErrAggregateTarget {
 		assert.Unreachable("singleton_driver_model: prepared query execution returned unexpected error", internal.Details{
 			"ledger": call.ledger,
@@ -583,7 +583,7 @@ func preparedLedgerOutcomeLegal(base oracle.GlobalState, call preparedCall) (han
 }
 
 // preparedListOutcomeLegal is the whole per-base verdict for a LIST page.
-func preparedListOutcomeLegal(ls oracle.LedgerState, call preparedCall, after []byte, cur *commonpb.PreparedQueryCursor) bool {
+func preparedListOutcomeLegal(ls oracle.LedgerState, call preparedCall, after []byte, cur *ledgerpb.PreparedQueryCursor) bool {
 	if call.wrongResult {
 		return false
 	}
@@ -621,8 +621,8 @@ func preparedListOutcomeLegal(ls oracle.LedgerState, call preparedCall, after []
 // legal; results never are.
 func unresolvedParamRejectionLegal(
 	ls oracle.LedgerState,
-	bound *commonpb.QueryFilter,
-	target commonpb.QueryTarget,
+	bound *ledgerpb.QueryFilter,
+	target ledgerpb.QueryTarget,
 	errKind pqErrKind,
 ) bool {
 	switch errKind {
@@ -643,8 +643,8 @@ func unresolvedParamRejectionLegal(
 
 // preparedNeededIndexes names the indexes a bound filter needs on its target.
 // Log leaves use the same stream and opt-in date index as ordinary log queries.
-func preparedNeededIndexes(bound *commonpb.QueryFilter, target commonpb.QueryTarget) map[string]struct{} {
-	if target == commonpb.QueryTarget_QUERY_TARGET_LOGS {
+func preparedNeededIndexes(bound *ledgerpb.QueryFilter, target ledgerpb.QueryTarget) map[string]struct{} {
+	if target == ledgerpb.QueryTarget_QUERY_TARGET_LOGS {
 		return neededLogIndexes(bound)
 	}
 
@@ -660,22 +660,22 @@ func preparedNeededIndexes(bound *commonpb.QueryFilter, target commonpb.QueryTar
 func preparedWindowMatches(
 	ls oracle.LedgerState,
 	call preparedCall,
-	target commonpb.QueryTarget,
-	bound *commonpb.QueryFilter,
+	target ledgerpb.QueryTarget,
+	bound *ledgerpb.QueryFilter,
 	after []byte,
-	cur *commonpb.PreparedQueryCursor,
+	cur *ledgerpb.PreparedQueryCursor,
 ) bool {
 	if cur.GetHasMore() != (cur.GetNext() != "") {
 		return false
 	}
 
 	switch target {
-	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 		return preparedAccountPageMatches(ls, call, bound, string(after), cur)
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		return len(cur.GetAccountData()) == 0 && len(cur.GetLogData()) == 0 &&
 			preparedTransactionPageMatches(ls, call, bound, after, cur)
-	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		return len(cur.GetAccountData()) == 0 && len(cur.GetTransactionData()) == 0 &&
 			preparedLogPageMatches(ls, call, bound, after, cur)
 	default:
@@ -689,9 +689,9 @@ func preparedWindowMatches(
 func preparedAccountPageMatches(
 	ls oracle.LedgerState,
 	call preparedCall,
-	bound *commonpb.QueryFilter,
+	bound *ledgerpb.QueryFilter,
 	after string,
-	cur *commonpb.PreparedQueryCursor,
+	cur *ledgerpb.PreparedQueryCursor,
 ) bool {
 	if len(cur.GetTransactionData()) > 0 || len(cur.GetLogData()) > 0 {
 		return false
@@ -726,9 +726,9 @@ func preparedAccountPageMatches(
 func preparedLogPageMatches(
 	ls oracle.LedgerState,
 	call preparedCall,
-	bound *commonpb.QueryFilter,
+	bound *ledgerpb.QueryFilter,
 	after []byte,
-	cur *commonpb.PreparedQueryCursor,
+	cur *ledgerpb.PreparedQueryCursor,
 ) bool {
 	return preparedLogWindowMatches(ls, call, bound, after, serverLogRows(cur.GetLogData()), cur.GetHasMore())
 }
@@ -736,7 +736,7 @@ func preparedLogPageMatches(
 // preparedLogWindowMatches permits unknown-date rows to match or not, while
 // requiring every known match. The suffix must explain has_more on that same
 // page: a required row forces it, and any possible row can justify it.
-func preparedLogWindowMatches(ls oracle.LedgerState, call preparedCall, bound *commonpb.QueryFilter, after []byte, page []serverLogRow, hasMore bool) bool {
+func preparedLogWindowMatches(ls oracle.LedgerState, call preparedCall, bound *ledgerpb.QueryFilter, after []byte, page []serverLogRow, hasMore bool) bool {
 	rows := preparedLogWindowRows(ls, call.ledger, bound, after, call.reverse)
 	if !logRowsMatch(call.ledger, rows, call.pageSize, page) {
 		return false
@@ -764,7 +764,7 @@ func preparedLogWindowMatches(ls oracle.LedgerState, call preparedCall, bound *c
 	return true
 }
 
-func preparedTransactionPageMatches(ls oracle.LedgerState, call preparedCall, bound *commonpb.QueryFilter, after []byte, cur *commonpb.PreparedQueryCursor) bool {
+func preparedTransactionPageMatches(ls oracle.LedgerState, call preparedCall, bound *ledgerpb.QueryFilter, after []byte, cur *ledgerpb.PreparedQueryCursor) bool {
 	page := cur.GetTransactionData()
 	rows := preparedTransactionWindowRows(ls, bound, after, call.reverse)
 	if !txRowsMatch(ls, rows, call.pageSize, page) {
@@ -792,13 +792,13 @@ func preparedTransactionPageMatches(ls oracle.LedgerState, call preparedCall, bo
 // preparedTransactionWindowRows orders by transaction id. transactionWindowRows
 // takes the ad-hoc ListTransactions flag, whose default is newest-first, so the
 // prepared ascending order is its reverse=true.
-func preparedTransactionWindowRows(ls oracle.LedgerState, bound *commonpb.QueryFilter, after []byte, reverse bool) []txWindowRow {
+func preparedTransactionWindowRows(ls oracle.LedgerState, bound *ledgerpb.QueryFilter, after []byte, reverse bool) []txWindowRow {
 	rows := transactionWindowRows(ls, bound, 0, !reverse)
 
 	return filterPreparedRows(rows, after, reverse, func(row txWindowRow) []byte { return uint64EntityKey(row.id) })
 }
 
-func preparedLogWindowRows(ls oracle.LedgerState, ledger string, bound *commonpb.QueryFilter, after []byte, reverse bool) []logWindowRow {
+func preparedLogWindowRows(ls oracle.LedgerState, ledger string, bound *ledgerpb.QueryFilter, after []byte, reverse bool) []logWindowRow {
 	rows := logWindowRows(ls, ledger, bound, 0, false)
 	if reverse {
 		slices.Reverse(rows)
@@ -835,7 +835,7 @@ func filterPreparedRows[T any](rows []T, after []byte, reverse bool, key func(T)
 // Bucket PRESENCE is asserted, not just the sums: a zero-valued cell the server
 // purged but the model kept (or the reverse) changes the bucket set while
 // leaving every total identical, and comparing sums alone would miss it.
-func (c *Checker) validateExecuteAggregate(maxTicket uint64, call preparedCall, agg *commonpb.AggregateResult) {
+func (c *Checker) validateExecuteAggregate(maxTicket uint64, call preparedCall, agg *ledgerpb.AggregateResult) {
 	if c.matchesModel(maxTicket, "PQAGG", func(base oracle.GlobalState) bool {
 		if handled, legal := preparedLedgerOutcomeLegal(base, call); handled {
 			return legal
@@ -858,7 +858,7 @@ func (c *Checker) validateExecuteAggregate(maxTicket uint64, call preparedCall, 
 	})
 }
 
-func preparedAggregateOutcomeLegal(ls oracle.LedgerState, call preparedCall, agg *commonpb.AggregateResult) bool {
+func preparedAggregateOutcomeLegal(ls oracle.LedgerState, call preparedCall, agg *ledgerpb.AggregateResult) bool {
 	if call.wrongResult {
 		return false
 	}
@@ -873,7 +873,7 @@ func preparedAggregateOutcomeLegal(ls oracle.LedgerState, call preparedCall, agg
 
 	// The call was shaped for an ACCOUNTS-target query; a base holding another
 	// target explains only the rejection, which runAggregateTargetMisuse owns.
-	if stored.GetTarget() != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+	if stored.GetTarget() != ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
 		return call.errKind == pqErrAggregateTarget
 	}
 	if call.errKind == pqErrOther || call.errKind == pqErrAggregateTarget {
@@ -895,7 +895,7 @@ func preparedAggregateOutcomeLegal(ls oracle.LedgerState, call preparedCall, agg
 // aggregateMatches folds the base's volume cells over the accounts the filter
 // selects and compares the bucket set and every total exactly. A prepared query
 // carries no result-stage options, so the fold runs with none.
-func aggregateMatches(ls oracle.LedgerState, bound *commonpb.QueryFilter, agg *commonpb.AggregateResult) bool {
+func aggregateMatches(ls oracle.LedgerState, bound *ledgerpb.QueryFilter, agg *ledgerpb.AggregateResult) bool {
 	if len(agg.GetGroups()) != 0 {
 		return false
 	}
@@ -912,7 +912,7 @@ func aggregateMatches(ls oracle.LedgerState, bound *commonpb.QueryFilter, agg *c
 
 // describeAggregate renders an aggregate result for a finding's details,
 // bucket-sorted so model and server renderings line up.
-func describeAggregate(agg *commonpb.AggregateResult) string {
+func describeAggregate(agg *ledgerpb.AggregateResult) string {
 	parts := make([]string, 0, len(agg.GetVolumes()))
 	for _, v := range agg.GetVolumes() {
 		var in, out uint256.Int
@@ -930,7 +930,7 @@ func describeAggregate(agg *commonpb.AggregateResult) string {
 // preparedPageDiag renders the page the server returned and the page the
 // COMMITTED model state predicts for it, so a finding names the divergence
 // instead of only reporting that one exists. Acquires c.mu.
-func (c *Checker) preparedPageDiag(call preparedCall, after []byte, cur *commonpb.PreparedQueryCursor) (string, string) {
+func (c *Checker) preparedPageDiag(call preparedCall, after []byte, cur *ledgerpb.PreparedQueryCursor) (string, string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -947,9 +947,9 @@ func (c *Checker) preparedPageDiag(call preparedCall, after []byte, cur *commonp
 	}
 
 	switch stored.GetTarget() {
-	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 		return preparedServerRows(cur), strings.Join(preparedAccountProbe(ls, bound, string(after), call.pageSize, call.reverse), ",")
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		rows := preparedTransactionWindowRows(ls, bound, after, call.reverse)
 		ids := make([]uint64, 0, len(rows))
 		for _, row := range rows {
@@ -959,7 +959,7 @@ func (c *Checker) preparedPageDiag(call preparedCall, after []byte, cur *commonp
 		}
 
 		return preparedServerRows(cur), joinUint64(ids)
-	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		rows := preparedLogWindowRows(ls, call.ledger, bound, after, call.reverse)
 		ids := make([]uint64, 0, len(rows))
 		for _, row := range rows {
@@ -975,7 +975,7 @@ func (c *Checker) preparedPageDiag(call preparedCall, after []byte, cur *commonp
 }
 
 // preparedServerRows renders a page's keys, whichever target it carries.
-func preparedServerRows(cur *commonpb.PreparedQueryCursor) string {
+func preparedServerRows(cur *ledgerpb.PreparedQueryCursor) string {
 	if accts := cur.GetAccountData(); len(accts) > 0 {
 		addrs := make([]string, len(accts))
 		for i, a := range accts {
@@ -1055,7 +1055,7 @@ func (c *Checker) preparedIndexDiag(call preparedCall) string {
 // silently drops every purged account the server correctly returns.
 // genAccountAssetFilter never composes the leaf with anything else for the same
 // reason, and requireBareHasAsset holds the stored filters to that.
-func preparedAccountProbe(ls oracle.LedgerState, bound *commonpb.QueryFilter, after string, limit int, reverse bool) []string {
+func preparedAccountProbe(ls oracle.LedgerState, bound *ledgerpb.QueryFilter, after string, limit int, reverse bool) []string {
 	if base, precision, bare := hasAssetTarget(bound); bare {
 		return assetWindow(ls, base, precision, after, limit, reverse)
 	}

@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -69,7 +69,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		// create-transaction / set-metadata). Invalid values (objects, arrays,
 		// non-integer floats) are rejected with 400 INVALID_REQUEST instead of
 		// being silently dropped (EN-1509).
-		ms, err := commonpb.MetadataFromAnyMap(reqBody.Metadata)
+		ms, err := ledgerpb.MetadataFromAnyMap(reqBody.Metadata)
 		if err != nil {
 			writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid metadata: %w", err))
 
@@ -111,7 +111,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	logEntry := exactlyOneLog("revert-transaction", logs, details)
 
 	ledgerLog := logEntry.GetPayload().GetApply().GetLog()
-	rt, ok := ledgerLog.GetData().GetPayload().(*commonpb.LedgerLogPayload_RevertedTransaction)
+	rt, ok := ledgerLog.GetData().GetPayload().(*ledgerpb.LedgerLogPayload_RevertedTransaction)
 	if !ok {
 		panic(unexpectedLogPayload("revert-transaction", logEntry, details))
 	}

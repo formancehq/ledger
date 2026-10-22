@@ -8,8 +8,8 @@ import (
 
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -174,9 +174,9 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 	// Add entries
 	batch := s.OpenWriteSession()
 	require.NoError(t, appendAuditEntries(batch,
-		&auditpb.AuditEntry{Sequence: 1, ProposalId: 10, Timestamp: commonpb.NewTimestamp(libtime.Now())},
-		&auditpb.AuditEntry{Sequence: 2, ProposalId: 20, Timestamp: commonpb.NewTimestamp(libtime.Now())},
-		&auditpb.AuditEntry{Sequence: 3, ProposalId: 30, Timestamp: commonpb.NewTimestamp(libtime.Now())},
+		&auditpb.AuditEntry{Sequence: 1, ProposalId: 10, Timestamp: ledgerpb.NewTimestamp(libtime.Now())},
+		&auditpb.AuditEntry{Sequence: 2, ProposalId: 20, Timestamp: ledgerpb.NewTimestamp(libtime.Now())},
+		&auditpb.AuditEntry{Sequence: 3, ProposalId: 30, Timestamp: ledgerpb.NewTimestamp(libtime.Now())},
 	))
 	require.NoError(t, batch.Commit())
 

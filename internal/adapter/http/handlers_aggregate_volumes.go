@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -21,9 +21,9 @@ type aggregatedVolumeJSON struct {
 	// the uncolored bucket from an older response shape that didn't carry
 	// the color dimension at all.
 	Color   string                 `json:"color"`
-	Input   *commonpb.BigUint      `json:"input"`
-	Output  *commonpb.BigUint      `json:"output"`
-	Balance *commonpb.SignedBigInt `json:"balance"`
+	Input   *ledgerpb.BigUint      `json:"input"`
+	Output  *ledgerpb.BigUint      `json:"output"`
+	Balance *ledgerpb.SignedBigInt `json:"balance"`
 }
 
 type groupedAggregateResultJSON struct {
@@ -31,24 +31,24 @@ type groupedAggregateResultJSON struct {
 	Volumes []*aggregatedVolumeJSON `json:"volumes"`
 }
 
-func toAggregatedVolumeJSON(v *commonpb.AggregatedVolume) *aggregatedVolumeJSON {
+func toAggregatedVolumeJSON(v *ledgerpb.AggregatedVolume) *aggregatedVolumeJSON {
 	input := v.GetInput().ToBigInt()
 	output := v.GetOutput().ToBigInt()
 	balance := new(big.Int).Sub(input, output)
 	// Uint256 inputs are unsigned, so conversion cannot fail.
-	inputAmount, _ := commonpb.NewBigUint(input)
-	outputAmount, _ := commonpb.NewBigUint(output)
+	inputAmount, _ := ledgerpb.NewBigUint(input)
+	outputAmount, _ := ledgerpb.NewBigUint(output)
 
 	return &aggregatedVolumeJSON{
 		Asset:   v.GetAsset(),
 		Color:   v.GetColor(),
 		Input:   inputAmount,
 		Output:  outputAmount,
-		Balance: commonpb.NewSignedBigInt(balance),
+		Balance: ledgerpb.NewSignedBigInt(balance),
 	}
 }
 
-func toAggregateVolumesJSON(result *commonpb.AggregateResult) *aggregateVolumesResponseJSON {
+func toAggregateVolumesJSON(result *ledgerpb.AggregateResult) *aggregateVolumesResponseJSON {
 	resp := &aggregateVolumesResponseJSON{}
 
 	resp.Volumes = make([]*aggregatedVolumeJSON, 0, len(result.GetVolumes()))
@@ -97,7 +97,7 @@ func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) 
 	// or the structured v2 JSON DSL (EN-1511) and is the sole account selector.
 	// It is compiled for the Accounts target and forwarded unchanged; aggregation
 	// options (precision, grouping, color collapsing) stay independent of it.
-	filter, ok := parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	filter, ok := parseListFilter(w, r, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	if !ok {
 		return
 	}

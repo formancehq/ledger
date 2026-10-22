@@ -6,7 +6,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/protowire"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // rawPosting holds the source, destination, asset, and color extracted from
@@ -28,8 +28,8 @@ type parsedLog struct {
 	TxID             uint64
 	Postings         []rawPosting              // reused across iterations via truncate-to-zero
 	LogType          int32                     // LedgerLogPayload oneof tag: 1=created, 2=reverted, 0=skip
-	PurgedVolumes    []*commonpb.TouchedVolume // LedgerLog.purged_volumes    (field 4) — draining evictions, reused
-	EphemeralVolumes []*commonpb.TouchedVolume // LedgerLog.ephemeral_volumes (field 6) — pure ephemeral evictions, reused
+	PurgedVolumes    []*ledgerpb.TouchedVolume // LedgerLog.purged_volumes    (field 4) — draining evictions, reused
+	EphemeralVolumes []*ledgerpb.TouchedVolume // LedgerLog.ephemeral_volumes (field 6) — pure ephemeral evictions, reused
 	// DeletedLedger is the name carried by a DeleteLedger log (LogPayload
 	// field 2); empty for every other log. It lets the backfill replay wipe
 	// the deleted ledger's readstore rows, mirroring the live processLogs path.
@@ -38,9 +38,9 @@ type parsedLog struct {
 
 // GetPurgedVolumes / GetEphemeralVolumes satisfy ledgerLogWithPurgedVolumes
 // so extractPurgedVolumes can consume the protowire fast path without going
-// through commonpb.
-func (p *parsedLog) GetPurgedVolumes() []*commonpb.TouchedVolume    { return p.PurgedVolumes }
-func (p *parsedLog) GetEphemeralVolumes() []*commonpb.TouchedVolume { return p.EphemeralVolumes }
+// through ledgerpb.
+func (p *parsedLog) GetPurgedVolumes() []*ledgerpb.TouchedVolume    { return p.PurgedVolumes }
+func (p *parsedLog) GetEphemeralVolumes() []*ledgerpb.TouchedVolume { return p.EphemeralVolumes }
 
 // parsePostingsFromLog extracts only the fields needed for posting indexation
 // from the raw bytes of a serialized Log message. It skips ~70% of the payload
@@ -355,12 +355,12 @@ func parseTransaction(data []byte, postings []rawPosting) (txID uint64, result [
 }
 
 // parseTouchedVolume extracts account (field 1), asset (field 2), and color
-// (field 3) from a commonpb.TouchedVolume sub-message embedded in
+// (field 3) from a ledgerpb.TouchedVolume sub-message embedded in
 // LedgerLog.purged_volumes. Color is part of the volume identity so
 // indexer exclusions don't over-collapse colored buckets sharing
 // (account, asset).
-func parseTouchedVolume(data []byte) (*commonpb.TouchedVolume, error) {
-	out := &commonpb.TouchedVolume{}
+func parseTouchedVolume(data []byte) (*ledgerpb.TouchedVolume, error) {
+	out := &ledgerpb.TouchedVolume{}
 	for len(data) > 0 {
 		num, typ, n := protowire.ConsumeTag(data)
 		if n < 0 {

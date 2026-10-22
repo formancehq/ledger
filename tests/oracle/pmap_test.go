@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -144,7 +144,7 @@ func TestGlobalStateFingerprint_EmptyLedgerMaterialization(t *testing.T) {
 		Type: &servicepb.Request_RemoveMetadataFieldType{
 			RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
 				Ledger:     "untouched",
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "k0",
 			},
 		},

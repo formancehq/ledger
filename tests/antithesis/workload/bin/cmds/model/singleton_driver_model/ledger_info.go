@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
@@ -14,7 +14,7 @@ import (
 // ledgerIdentity. Mirror sync progress is the mirror worker's, which the model
 // does not run, so only its presence is held: on a mirror ledger and nowhere
 // else.
-func ledgerInfoMatches(base oracle.GlobalState, info *commonpb.LedgerInfo) bool {
+func ledgerInfoMatches(base oracle.GlobalState, info *ledgerpb.LedgerInfo) bool {
 	name := info.GetName()
 
 	lifecycle, exists := base.Lifecycle(name)
@@ -29,14 +29,14 @@ func ledgerInfoMatches(base oracle.GlobalState, info *commonpb.LedgerInfo) bool 
 		metadataSchemaMatches(ls, info.GetMetadataSchema()) &&
 		info.GetMode() == lifecycle.Mode &&
 		info.GetMirrorSource().EqualVT(lifecycle.MirrorSource) &&
-		(info.GetMirrorSyncProgress() != nil) == (lifecycle.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR) &&
+		(info.GetMirrorSyncProgress() != nil) == (lifecycle.Mode == ledgerpb.LedgerMode_LEDGER_MODE_MIRROR) &&
 		info.GetDefaultEnforcementMode() == ls.DefaultEnforcementMode()
 }
 
 // metadataSchemaMatches reports whether ls's declared field types equal the
 // schema a LedgerInfo carries, per target and key-for-key. GetMetadataSchemaStatus
 // is served by projecting this same field, so the two reads answer one record.
-func metadataSchemaMatches(ls oracle.LedgerState, schema *commonpb.MetadataSchema) bool {
+func metadataSchemaMatches(ls oracle.LedgerState, schema *ledgerpb.MetadataSchema) bool {
 	return schemaFieldsMatch(ls.AccountFieldTypes(), schema.GetAccountFields()) &&
 		schemaFieldsMatch(ls.TransactionFieldTypes(), schema.GetTransactionFields()) &&
 		schemaFieldsMatch(ls.LedgerFieldTypes(), schema.GetLedgerFields())
@@ -44,7 +44,7 @@ func metadataSchemaMatches(ls oracle.LedgerState, schema *commonpb.MetadataSchem
 
 // schemaFieldsMatch compares one target's declared types — same keys, same type.
 // An absent schema message reads as the empty one.
-func schemaFieldsMatch(model oracle.Map[string, commonpb.MetadataType], server map[string]*commonpb.MetadataFieldSchema) bool {
+func schemaFieldsMatch(model oracle.Map[string, ledgerpb.MetadataType], server map[string]*ledgerpb.MetadataFieldSchema) bool {
 	if model.Len() != len(server) {
 		return false
 	}
@@ -63,7 +63,7 @@ func schemaFieldsMatch(model oracle.Map[string, commonpb.MetadataType], server m
 // independently of any base, or "" when nothing is. The listing drops every
 // soft-deleted ledger, so no row carries a deletion time whatever the fleet
 // holds.
-func ledgerInfoStructureViolation(info *commonpb.LedgerInfo) string {
+func ledgerInfoStructureViolation(info *ledgerpb.LedgerInfo) string {
 	switch {
 	case info.GetName() == "":
 		return "listed ledger has no name"
@@ -83,10 +83,10 @@ func ledgerInfoStructureViolation(info *commonpb.LedgerInfo) string {
 // Recreating a deleted ledger assigns a fresh pair, which replaces this one.
 type ledgerIdentity struct {
 	id        uint32
-	createdAt *commonpb.Timestamp
+	createdAt *ledgerpb.Timestamp
 }
 
-func (i ledgerIdentity) matches(info *commonpb.LedgerInfo) bool {
+func (i ledgerIdentity) matches(info *ledgerpb.LedgerInfo) bool {
 	return i.id == info.GetId() && i.createdAt.EqualVT(info.GetCreatedAt())
 }
 
@@ -94,7 +94,7 @@ func (i ledgerIdentity) matches(info *commonpb.LedgerInfo) bool {
 // creation reported, or "" when every row agrees. A ledger whose creation could
 // still land — or has landed without being folded in — is skipped: either
 // identity is legal while that create is unsettled. Acquires c.mu.
-func (c *Checker) ledgerIdentityViolation(infos []*commonpb.LedgerInfo) string {
+func (c *Checker) ledgerIdentityViolation(infos []*ledgerpb.LedgerInfo) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

@@ -3,6 +3,7 @@ package query
 import (
 	"errors"
 	"fmt"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -80,8 +81,8 @@ func ReadAuditKey(reader dal.PebbleGetter) ([]byte, error) {
 
 // ReadClusterPolicy loads the replicated cluster policy from the given reader.
 // Returns nil if the key does not exist (no policy committed yet).
-func ReadClusterPolicy(reader dal.PebbleGetter) (*commonpb.ClusterPolicy, error) {
-	policy, err := dal.ReadProto[*commonpb.ClusterPolicy](reader, []byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy})
+func ReadClusterPolicy(reader dal.PebbleGetter) (*ledgerpb.ClusterPolicy, error) {
+	policy, err := dal.ReadProto[*ledgerpb.ClusterPolicy](reader, []byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy})
 	if err != nil {
 		return nil, fmt.Errorf("loading cluster policy: %w", err)
 	}

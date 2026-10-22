@@ -2,13 +2,14 @@ package processing
 
 import (
 	"errors"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -37,7 +38,7 @@ const staleTestLedger = "stale-ledger"
 // It serves every test in this file that reaches those reads, not only the
 // stale-observation ones — the inconsistent-state and malformed-order cases go
 // through the same setup.
-func revertObservationFixture(t *testing.T, txID uint64, postings []*commonpb.Posting) (*MockScope, *raftcmdpb.LedgerBoundaries) {
+func revertObservationFixture(t *testing.T, txID uint64, postings []*ledgerpb.Posting) (*MockScope, *raftcmdpb.LedgerBoundaries) {
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
@@ -52,11 +53,11 @@ func revertObservationFixture(t *testing.T, txID uint64, postings []*commonpb.Po
 	return scope, &raftcmdpb.LedgerBoundaries{NextTransactionId: txID + 1, NextLogId: 1}
 }
 
-func revertTestPostings() []*commonpb.Posting {
-	return []*commonpb.Posting{{
+func revertTestPostings() []*ledgerpb.Posting {
+	return []*ledgerpb.Posting{{
 		Source:      "world",
 		Destination: "users:001",
-		Amount:      commonpb.NewUint256FromUint64(646),
+		Amount:      ledgerpb.NewUint256FromUint64(646),
 		Asset:       "USD/2",
 	}}
 }
@@ -78,7 +79,7 @@ func TestProcessRevertTransaction_StaleObservationIsRetryable(t *testing.T) {
 		&Context{
 			Scope:      scope,
 			Boundaries: boundaries,
-			LedgerInfo: (&commonpb.LedgerInfo{}).AsReader(),
+			LedgerInfo: (&ledgerpb.LedgerInfo{}).AsReader(),
 			// Admission looked and saw nothing.
 			RevertTargetDigest: domain.RevertTargetDigest(nil, false),
 			// The target predates this batch, so a re-admission can see it.
@@ -110,7 +111,7 @@ func TestProcessRevertTransaction_TargetCreatedInBatchIsPermanent(t *testing.T) 
 		&Context{
 			Scope:              scope,
 			Boundaries:         boundaries,
-			LedgerInfo:         (&commonpb.LedgerInfo{}).AsReader(),
+			LedgerInfo:         (&ledgerpb.LedgerInfo{}).AsReader(),
 			RevertTargetDigest: domain.RevertTargetDigest(nil, false),
 			// The ledger's horizon before this batch was the target's own id,
 			// so the target is allocated by an earlier order in this batch.
@@ -149,7 +150,7 @@ func TestProcessRevertTransaction_MatchingObservationProceeds(t *testing.T) {
 		&Context{
 			Scope:                scope,
 			Boundaries:           boundaries,
-			LedgerInfo:           (&commonpb.LedgerInfo{}).AsReader(),
+			LedgerInfo:           (&ledgerpb.LedgerInfo{}).AsReader(),
 			RevertTargetDigest:   domain.RevertTargetDigest(postings, true),
 			batchInitialNextTxID: map[string]uint64{staleTestLedger: txID + 1},
 		},
@@ -186,14 +187,14 @@ func TestProcessRevertTransaction_InvalidMetadataBeatsObservationCheck(t *testin
 		staleTestLedger,
 		&raftcmdpb.RevertTransactionOrder{
 			TransactionId: txID,
-			Metadata: map[string]*commonpb.MetadataValue{
-				"k": commonpb.NewStringValue("far past the ceiling"),
+			Metadata: map[string]*ledgerpb.MetadataValue{
+				"k": ledgerpb.NewStringValue("far past the ceiling"),
 			},
 		},
 		&Context{
 			Scope:      scope,
 			Boundaries: boundaries,
-			LedgerInfo: (&commonpb.LedgerInfo{}).AsReader(),
+			LedgerInfo: (&ledgerpb.LedgerInfo{}).AsReader(),
 			// Admission looked and saw nothing: the observation is stale too.
 			RevertTargetDigest:   domain.RevertTargetDigest(nil, false),
 			batchInitialNextTxID: map[string]uint64{staleTestLedger: txID + 1},
@@ -227,7 +228,7 @@ func TestProcessRevertTransaction_NoDigestIsRejected(t *testing.T) {
 		&Context{
 			Scope:                scope,
 			Boundaries:           boundaries,
-			LedgerInfo:           (&commonpb.LedgerInfo{}).AsReader(),
+			LedgerInfo:           (&ledgerpb.LedgerInfo{}).AsReader(),
 			batchInitialNextTxID: map[string]uint64{staleTestLedger: txID + 1},
 		},
 	)
@@ -261,7 +262,7 @@ func TestProcessRevertTransaction_NoBatchHorizonIsRejected(t *testing.T) {
 		&Context{
 			Scope:              scope,
 			Boundaries:         boundaries,
-			LedgerInfo:         (&commonpb.LedgerInfo{}).AsReader(),
+			LedgerInfo:         (&ledgerpb.LedgerInfo{}).AsReader(),
 			RevertTargetDigest: domain.RevertTargetDigest(nil, false),
 			// Another ledger's horizon only: this one has none.
 			batchInitialNextTxID: map[string]uint64{"other-ledger": txID + 1},
@@ -295,7 +296,7 @@ func TestProcessRevertTransaction_InconsistentStateNotSoftened(t *testing.T) {
 		&Context{
 			Scope:                scope,
 			Boundaries:           boundaries,
-			LedgerInfo:           (&commonpb.LedgerInfo{}).AsReader(),
+			LedgerInfo:           (&ledgerpb.LedgerInfo{}).AsReader(),
 			RevertTargetDigest:   domain.RevertTargetDigest(revertTestPostings(), true),
 			batchInitialNextTxID: map[string]uint64{staleTestLedger: txID + 1},
 		},
@@ -330,7 +331,7 @@ func TestProcessRevertTransaction_AlreadyRevertedBeatsObservationCheck(t *testin
 		&Context{
 			Scope:                scope,
 			Boundaries:           &raftcmdpb.LedgerBoundaries{NextTransactionId: txID + 1},
-			LedgerInfo:           (&commonpb.LedgerInfo{}).AsReader(),
+			LedgerInfo:           (&ledgerpb.LedgerInfo{}).AsReader(),
 			RevertTargetDigest:   domain.RevertTargetDigest(nil, false),
 			batchInitialNextTxID: map[string]uint64{staleTestLedger: txID},
 		},
@@ -356,7 +357,7 @@ func TestProcessRevertTransaction_NotFoundBeatsObservationCheck(t *testing.T) {
 		&Context{
 			Scope:                NewMockScope(ctrl),
 			Boundaries:           &raftcmdpb.LedgerBoundaries{NextTransactionId: 5},
-			LedgerInfo:           (&commonpb.LedgerInfo{}).AsReader(),
+			LedgerInfo:           (&ledgerpb.LedgerInfo{}).AsReader(),
 			RevertTargetDigest:   domain.RevertTargetDigest(nil, false),
 			batchInitialNextTxID: map[string]uint64{staleTestLedger: 5},
 		},

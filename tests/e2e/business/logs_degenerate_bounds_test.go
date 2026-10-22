@@ -10,7 +10,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -33,10 +33,10 @@ var _ = Describe("Degenerate range bounds resolve to the empty match", Ordered, 
 		client = node.Client
 	})
 
-	countLogs := func(g Gomega, filter *commonpb.QueryFilter) int {
+	countLogs := func(g Gomega, filter *ledgerpb.QueryFilter) int {
 		stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
 			Ledger:  ledger,
-			Options: &commonpb.ListOptions{Filter: filter},
+			Options: &ledgerpb.ListOptions{Filter: filter},
 		})
 		g.Expect(err).To(Succeed())
 
@@ -59,16 +59,16 @@ var _ = Describe("Degenerate range bounds resolve to the empty match", Ordered, 
 
 		for range 3 {
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledger, []*ledgerpb.Posting{
 					actions.NewPosting("world", "acc:1", big.NewInt(10), "USD"),
 				}, nil)))
 			Expect(err).To(Succeed())
 		}
 
 		bound := uint64(2)
-		notEmptyInterval := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{
-			Filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{
-				Cond: &commonpb.UintCondition{
+		notEmptyInterval := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Not{Not: &ledgerpb.NotFilter{
+			Filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{LogId: &ledgerpb.LogIdCondition{
+				Cond: &ledgerpb.UintCondition{
 					Min: &bound, MinExclusive: true,
 					Max: &bound, MaxExclusive: true,
 				},

@@ -6,12 +6,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func clusterPolicyOrder(policy *commonpb.ClusterPolicy) *raftcmdpb.Order {
+func clusterPolicyOrder(policy *ledgerpb.ClusterPolicy) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_SystemScoped{
 			SystemScoped: &raftcmdpb.SystemScopedOrder{
@@ -32,8 +32,8 @@ func TestProcessSetClusterPolicy_HigherRevisionApplies(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	newPolicy := withMetadataLimits(&commonpb.ClusterPolicy{Revision: 3, IdempotencyTtlMicros: 1000, QueryCheckpointLimit: 5})
-	mockStore.EXPECT().GetClusterPolicy().Return(&commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 1})
+	newPolicy := withMetadataLimits(&ledgerpb.ClusterPolicy{Revision: 3, IdempotencyTtlMicros: 1000, QueryCheckpointLimit: 5})
+	mockStore.EXPECT().GetClusterPolicy().Return(&ledgerpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 1})
 	mockStore.EXPECT().SetClusterPolicy(newPolicy)
 
 	result, procErr := processor.ProcessOrder(clusterPolicyOrder(newPolicy), mockStore)
@@ -54,7 +54,7 @@ func TestProcessSetClusterPolicy_SameRevisionSamePayloadNoOp(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	applied := withMetadataLimits(&commonpb.ClusterPolicy{Revision: 4, IdempotencyTtlMicros: 2000, QueryCheckpointLimit: 7})
+	applied := withMetadataLimits(&ledgerpb.ClusterPolicy{Revision: 4, IdempotencyTtlMicros: 2000, QueryCheckpointLimit: 7})
 	mockStore.EXPECT().GetClusterPolicy().Return(applied)
 
 	result, procErr := processor.ProcessOrder(clusterPolicyOrder(applied.CloneVT()), mockStore)
@@ -71,9 +71,9 @@ func TestProcessSetClusterPolicy_SameRevisionDifferentPayloadConflict(t *testing
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	mockStore.EXPECT().GetClusterPolicy().Return(&commonpb.ClusterPolicy{Revision: 4, QueryCheckpointLimit: 1})
+	mockStore.EXPECT().GetClusterPolicy().Return(&ledgerpb.ClusterPolicy{Revision: 4, QueryCheckpointLimit: 1})
 
-	order := clusterPolicyOrder(withMetadataLimits(&commonpb.ClusterPolicy{Revision: 4, QueryCheckpointLimit: 2}))
+	order := clusterPolicyOrder(withMetadataLimits(&ledgerpb.ClusterPolicy{Revision: 4, QueryCheckpointLimit: 2}))
 	_, procErr := processor.ProcessOrder(order, mockStore)
 
 	var conflict *domain.ErrClusterPolicyRevisionConflict
@@ -90,9 +90,9 @@ func TestProcessSetClusterPolicy_LowerRevisionStale(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	mockStore.EXPECT().GetClusterPolicy().Return(&commonpb.ClusterPolicy{Revision: 5, QueryCheckpointLimit: 1})
+	mockStore.EXPECT().GetClusterPolicy().Return(&ledgerpb.ClusterPolicy{Revision: 5, QueryCheckpointLimit: 1})
 
-	order := clusterPolicyOrder(withMetadataLimits(&commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1}))
+	order := clusterPolicyOrder(withMetadataLimits(&ledgerpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1}))
 	_, procErr := processor.ProcessOrder(order, mockStore)
 
 	var stale *domain.ErrStaleClusterPolicy
@@ -108,11 +108,11 @@ func TestProcessSetClusterPolicy_StructuralValidation(t *testing.T) {
 
 	cases := []struct {
 		name   string
-		policy *commonpb.ClusterPolicy
+		policy *ledgerpb.ClusterPolicy
 	}{
 		{"missing policy", nil},
-		{"zero revision", &commonpb.ClusterPolicy{Revision: 0, QueryCheckpointLimit: 1}},
-		{"zero limit", &commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 0}},
+		{"zero revision", &ledgerpb.ClusterPolicy{Revision: 0, QueryCheckpointLimit: 1}},
+		{"zero limit", &ledgerpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 0}},
 	}
 
 	for _, tc := range cases {

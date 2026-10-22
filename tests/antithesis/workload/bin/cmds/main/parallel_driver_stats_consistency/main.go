@@ -19,7 +19,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -88,6 +88,6 @@ func main() {
 	})
 }
 
-func mainStoreStatsConsistent(stats *commonpb.LedgerStats) bool {
+func mainStoreStatsConsistent(stats *ledgerpb.LedgerStats) bool {
 	return stats.GetLogCount() >= stats.GetTransactionCount()
 }

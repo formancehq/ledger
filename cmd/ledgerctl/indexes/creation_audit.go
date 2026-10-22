@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -19,12 +19,12 @@ import (
 // then applies attributedIndex to confirm each entry really matches the tracked
 // registry row. The index eliminates the full audit scan; a prefix operand is
 // safe because each attempt appends a unique suffix after the UID segment.
-func filterIndexesByCreationKey(ctx context.Context, client servicepb.BucketServiceClient, ledger, prefix string, entries []*commonpb.Index) ([]*commonpb.Index, error) {
+func filterIndexesByCreationKey(ctx context.Context, client servicepb.BucketServiceClient, ledger, prefix string, entries []*ledgerpb.Index) ([]*ledgerpb.Index, error) {
 	if len(entries) == 0 {
-		return []*commonpb.Index{}, nil
+		return []*ledgerpb.Index{}, nil
 	}
 
-	current := make(map[string]*commonpb.Index, len(entries))
+	current := make(map[string]*ledgerpb.Index, len(entries))
 	for _, entry := range entries {
 		current[indexes.Canonical(entry.GetId())] = entry
 	}
@@ -35,18 +35,18 @@ func filterIndexesByCreationKey(ctx context.Context, client servicepb.BucketServ
 
 	// Build an idempotency-key prefix filter so the server uses the secondary
 	// audit index instead of scanning every entry.
-	filter := &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Audit{
-			Audit: &commonpb.AuditCondition{
-				Field:     commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
-				Condition: &commonpb.AuditCondition_StringPrefix{StringPrefix: prefix},
+	filter := &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Audit{
+			Audit: &ledgerpb.AuditCondition{
+				Field:     ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
+				Condition: &ledgerpb.AuditCondition_StringPrefix{StringPrefix: prefix},
 			},
 		},
 	}
 
 	for {
 		stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-			Options: &commonpb.ListOptions{
+			Options: &ledgerpb.ListOptions{
 				Cursor:   cursor,
 				PageSize: 1000,
 				Filter:   filter,
@@ -91,7 +91,7 @@ func filterIndexesByCreationKey(ctx context.Context, client servicepb.BucketServ
 		cursor = next
 	}
 
-	result := make([]*commonpb.Index, 0, len(matched))
+	result := make([]*ledgerpb.Index, 0, len(matched))
 	for _, entry := range entries {
 		if matched[indexes.Canonical(entry.GetId())] {
 			result = append(result, entry)
@@ -101,7 +101,7 @@ func filterIndexesByCreationKey(ctx context.Context, client servicepb.BucketServ
 	return result, nil
 }
 
-func attributedIndex(entry *auditpb.AuditEntry, ledger, prefix string, current map[string]*commonpb.Index) (string, error) {
+func attributedIndex(entry *auditpb.AuditEntry, ledger, prefix string, current map[string]*ledgerpb.Index) (string, error) {
 	success := entry.GetSuccess()
 	if prefix == "" || !strings.HasPrefix(entry.GetIdempotency().GetKey(), prefix) || success == nil || entry.GetOrderCount() != 1 || len(entry.GetItems()) != 1 {
 		return "", nil

@@ -14,10 +14,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -86,7 +86,7 @@ var _ = Describe("Restore frozen idempotency failures", Ordered, func() {
 
 	frozenTx := func() *servicepb.ApplyRequest {
 		return actions.WithIdempotencyKey(frozenKey,
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting(poorAccount, frozenSink, big.NewInt(100), "USD"),
 			}, nil, nil),
 		)
@@ -150,8 +150,8 @@ send [USD 10] (
 		expectReplay(client, phase, execTx(), domain.ErrReasonNumscriptExecutionError, execMetadata, execMessage, execSink)
 	}
 
-	storage := func() *commonpb.BackupStorage {
-		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+	storage := func() *ledgerpb.BackupStorage {
+		return testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 			Bucket:   s3Bucket,
 			Region:   restoreS3Region,
 			Endpoint: minioEndpoint,
@@ -296,18 +296,18 @@ send [USD 10] (
 			entries, err := actions.ListAuditEntries(ctx, client, true)
 			Expect(err).To(Succeed())
 
-			reasons := map[string]commonpb.ErrorReason{}
+			reasons := map[string]ledgerpb.ErrorReason{}
 			for _, entry := range entries {
 				reasons[entry.GetIdempotency().GetKey()] = entry.GetFailure().GetReason()
 			}
-			Expect(reasons).To(HaveKeyWithValue(frozenKey, commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS))
-			Expect(reasons).To(HaveKeyWithValue(execKey, commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR))
+			Expect(reasons).To(HaveKeyWithValue(frozenKey, ledgerpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS))
+			Expect(reasons).To(HaveKeyWithValue(execKey, ledgerpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR))
 			Expect(reasons).NotTo(HaveKey(retryableKey))
 		})
 
 		It("replays the frozen keys on the live node after funding their sources", func() {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", poorAccount, big.NewInt(500), "USD"),
 					actions.NewPosting("world", execSource, big.NewInt(500), "USD"),
 				}, nil, nil)))

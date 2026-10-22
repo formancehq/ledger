@@ -11,9 +11,9 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -22,7 +22,7 @@ import (
 // backfillTask tracks the progress of backfilling a single index.
 type backfillTask struct {
 	ledger             string // ledger name (used for BB keys, readstore keys, logging)
-	index              *commonpb.IndexID
+	index              *ledgerpb.IndexID
 	cursor             uint64 // current position (persisted in Pebble)
 	appliedProposalSeq uint64 // safe AppliedProposal resume sequence for transient-account filtering
 	bbKey              []byte // precomputed key for progress persistence
@@ -33,23 +33,23 @@ type backfillTask struct {
 }
 
 // backfillIndexName returns a human-readable name for a backfill index ID.
-func backfillIndexName(id *commonpb.IndexID) string {
+func backfillIndexName(id *ledgerpb.IndexID) string {
 	if id == nil {
 		return "unknown"
 	}
 
 	switch k := id.GetKind().(type) {
-	case *commonpb.IndexID_TxBuiltin:
+	case *ledgerpb.IndexID_TxBuiltin:
 		return "tx:" + k.TxBuiltin.String()
-	case *commonpb.IndexID_LogBuiltin:
+	case *ledgerpb.IndexID_LogBuiltin:
 		return "log:" + k.LogBuiltin.String()
-	case *commonpb.IndexID_AccountBuiltin:
+	case *ledgerpb.IndexID_AccountBuiltin:
 		return "acct:" + k.AccountBuiltin.String()
-	case *commonpb.IndexID_Metadata:
+	case *ledgerpb.IndexID_Metadata:
 		switch k.Metadata.GetTarget() {
-		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 			return "acct:metadata:" + k.Metadata.GetKey()
-		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 			return "tx:metadata:" + k.Metadata.GetKey()
 		default:
 			return "metadata:" + k.Metadata.GetKey()
@@ -67,7 +67,7 @@ func backfillIndexName(id *commonpb.IndexID) string {
 //	AcctBuiltin:  [ledgerName padded 64B]A[builtin_byte]
 //	AcctMetadata: [ledgerName padded 64B]a[key]
 //	LogBuiltin:   [ledgerName padded 64B]l[builtin_byte]
-func backfillBBKey(ledgerName string, id *commonpb.IndexID) []byte {
+func backfillBBKey(ledgerName string, id *ledgerpb.IndexID) []byte {
 	if id == nil {
 		return nil
 	}
@@ -76,34 +76,34 @@ func backfillBBKey(ledgerName string, id *commonpb.IndexID) []byte {
 	copy(prefix[:], ledgerName)
 
 	switch k := id.GetKind().(type) {
-	case *commonpb.IndexID_TxBuiltin:
+	case *ledgerpb.IndexID_TxBuiltin:
 		key := make([]byte, 0, dal.LedgerNameFixedSize+2)
 		key = append(key, prefix[:]...)
 		key = append(key, readstore.BackfillKindTxBuiltin, byte(k.TxBuiltin))
 
 		return key
-	case *commonpb.IndexID_LogBuiltin:
+	case *ledgerpb.IndexID_LogBuiltin:
 		key := make([]byte, 0, dal.LedgerNameFixedSize+2)
 		key = append(key, prefix[:]...)
 		key = append(key, readstore.BackfillKindLogBuiltin, byte(k.LogBuiltin))
 
 		return key
-	case *commonpb.IndexID_AccountBuiltin:
+	case *ledgerpb.IndexID_AccountBuiltin:
 		key := make([]byte, 0, dal.LedgerNameFixedSize+2)
 		key = append(key, prefix[:]...)
 		key = append(key, readstore.BackfillKindAcctBuiltin, byte(k.AccountBuiltin))
 
 		return key
-	case *commonpb.IndexID_Metadata:
+	case *ledgerpb.IndexID_Metadata:
 		switch k.Metadata.GetTarget() {
-		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 			key := make([]byte, 0, dal.LedgerNameFixedSize+1+len(k.Metadata.GetKey()))
 			key = append(key, prefix[:]...)
 			key = append(key, readstore.BackfillKindTxMetadata)
 			key = append(key, k.Metadata.GetKey()...)
 
 			return key
-		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 			key := make([]byte, 0, dal.LedgerNameFixedSize+1+len(k.Metadata.GetKey()))
 			key = append(key, prefix[:]...)
 			key = append(key, readstore.BackfillKindAcctMetadata)
@@ -118,7 +118,7 @@ func backfillBBKey(ledgerName string, id *commonpb.IndexID) []byte {
 
 // addBackfillTask is a helper that creates a backfill task for the given IndexID,
 // avoiding duplicates by checking the precomputed progress key.
-func (b *Builder) addBackfillTask(ledgerName string, id *commonpb.IndexID) {
+func (b *Builder) addBackfillTask(ledgerName string, id *ledgerpb.IndexID) {
 	bbKey := backfillBBKey(ledgerName, id)
 	for _, t := range b.backfillTasks {
 		if string(t.bbKey) == string(bbKey) {
@@ -135,27 +135,27 @@ func (b *Builder) addBackfillTask(ledgerName string, id *commonpb.IndexID) {
 }
 
 // addBackfillTaskForTxBuiltin creates a backfill task for a transaction builtin index.
-func (b *Builder) addBackfillTaskForTxBuiltin(ledgerName string, index commonpb.TransactionBuiltinIndex) {
+func (b *Builder) addBackfillTaskForTxBuiltin(ledgerName string, index ledgerpb.TransactionBuiltinIndex) {
 	b.addBackfillTask(ledgerName, indexes.TxBuiltinID(index))
 }
 
 // addBackfillTaskForTxMetadata creates a backfill task for a transaction metadata index.
 func (b *Builder) addBackfillTaskForTxMetadata(ledgerName string, key string) {
-	b.addBackfillTask(ledgerName, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key))
+	b.addBackfillTask(ledgerName, indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, key))
 }
 
 // addBackfillTaskForAcctMetadata creates a backfill task for an account metadata index.
 func (b *Builder) addBackfillTaskForAcctMetadata(ledgerName string, key string) {
-	b.addBackfillTask(ledgerName, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+	b.addBackfillTask(ledgerName, indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 }
 
 // addBackfillTaskForAccountBuiltin creates a backfill task for an account builtin index.
-func (b *Builder) addBackfillTaskForAccountBuiltin(ledgerName string, index commonpb.AccountBuiltinIndex) {
+func (b *Builder) addBackfillTaskForAccountBuiltin(ledgerName string, index ledgerpb.AccountBuiltinIndex) {
 	b.addBackfillTask(ledgerName, indexes.AccountBuiltinID(index))
 }
 
 // addBackfillTaskForLogBuiltin creates a backfill task for a log builtin index.
-func (b *Builder) addBackfillTaskForLogBuiltin(ledgerName string, index commonpb.LogBuiltinIndex) {
+func (b *Builder) addBackfillTaskForLogBuiltin(ledgerName string, index ledgerpb.LogBuiltinIndex) {
 	b.addBackfillTask(ledgerName, indexes.LogBuiltinID(index))
 }
 
@@ -163,7 +163,7 @@ func (b *Builder) addBackfillTaskForLogBuiltin(ledgerName string, index commonpb
 // and deletes its persisted progress. Matching by IndexID alone would
 // drop an unrelated ledger's backfill when two ledgers index the same
 // metadata key — that ledger's index would then stay BUILDING forever.
-func (b *Builder) removeBackfillTask(ledgerName string, id *commonpb.IndexID) error {
+func (b *Builder) removeBackfillTask(ledgerName string, id *ledgerpb.IndexID) error {
 	for i, t := range b.backfillTasks {
 		if t.ledger != ledgerName || !indexes.Equal(t.index, id) {
 			continue
@@ -215,9 +215,9 @@ func removeTaskAndProgress[T any](b *Builder, tasks *[]*T, idx int, bbKey []byte
 // alive across ticks until the gate releases it.
 type schemaRewriteTask struct {
 	ledger     string
-	targetType commonpb.TargetType   // account or transaction
+	targetType ledgerpb.TargetType   // account or transaction
 	key        string                // metadata field name
-	toType     commonpb.MetadataType // target type
+	toType     ledgerpb.MetadataType // target type
 	rmapCursor []byte                // last reverse map key processed (nil = start)
 	bbKey      []byte                // precomputed key for persistence
 
@@ -252,7 +252,7 @@ type schemaRewriteTask struct {
 
 // schemaRewriteBBKey builds the key for persisting schema rewrite progress.
 // Format: [ledgerName padded 64B]S[targetType_byte][key].
-func schemaRewriteBBKey(ledgerName string, targetType commonpb.TargetType, key string) []byte {
+func schemaRewriteBBKey(ledgerName string, targetType ledgerpb.TargetType, key string) []byte {
 	bbKey := make([]byte, 0, dal.LedgerNameFixedSize+2+len(key))
 
 	var prefix [dal.LedgerNameFixedSize]byte
@@ -273,7 +273,7 @@ func schemaRewriteBBKey(ledgerName string, targetType commonpb.TargetType, key s
 // Returns an error if persisting the bumped pending_version (or the
 // reset backfill cursor) fails — the caller propagates so the batch
 // aborts rather than continuing with a desynced cache vs. read store.
-func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string, smft *commonpb.SetMetadataFieldTypeLog) error {
+func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string, smft *ledgerpb.SetMetadataFieldTypeLog) error {
 	// If a backfill is in flight for the same (ledger, metadata index),
 	// reset its cursor to 0 instead of enqueueing a separate
 	// schemaRewriteTask. The backfill replays the logs via the
@@ -413,7 +413,7 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 // Index.ForwardEncodingVersion in processSetMetadataFieldType — each
 // replica derives its own pending the same way, so the two converge as
 // long as every log is seen.
-func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexID, toType commonpb.MetadataType) error {
+func (b *Builder) bumpPendingVersion(ledgerName string, indexID *ledgerpb.IndexID, toType ledgerpb.MetadataType) error {
 	canonical := indexes.Canonical(indexID)
 	prior, priorExists := b.versionStateFor(ledgerName, canonical)
 
@@ -517,7 +517,7 @@ func (b *Builder) scheduleResumedRewrites() {
 				continue
 			}
 
-			meta, ok := idx.GetId().GetKind().(*commonpb.IndexID_Metadata)
+			meta, ok := idx.GetId().GetKind().(*ledgerpb.IndexID_Metadata)
 			if !ok || meta.Metadata == nil {
 				// pending_version on a non-metadata index is impossible
 				// under the current versioning rules — surface it as
@@ -553,7 +553,7 @@ func (b *Builder) scheduleResumedRewrites() {
 				// then restarts from zero under the authoritative type —
 				// resuming would extend a keyspace half-encoded under
 				// another one.
-				if got := commonpb.MetadataType(rawCursor[0]); got != state.PendingType {
+				if got := ledgerpb.MetadataType(rawCursor[0]); got != state.PendingType {
 					b.logger.WithFields(map[string]any{
 						"ledger":      ledgerName,
 						"key":         key,
@@ -590,7 +590,7 @@ func (b *Builder) scheduleResumedRewrites() {
 // (ledger, target, key). Called when the schema field is removed: the index
 // it was rewriting no longer exists, so the task must be discarded
 // instead of scanning toward a keyspace nothing will ever serve.
-func (b *Builder) removeSchemaRewriteTaskByField(ledgerName string, target commonpb.TargetType, key string) error {
+func (b *Builder) removeSchemaRewriteTaskByField(ledgerName string, target ledgerpb.TargetType, key string) error {
 	for i, t := range b.schemaRewriteTasks {
 		if t.ledger == ledgerName && t.targetType == target && t.key == key {
 			return b.removeSchemaRewriteTask(i)
@@ -613,9 +613,9 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	var ns string
 
 	switch task.targetType {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 		ns = readstore.NamespaceAccount
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 		ns = readstore.NamespaceTransaction
 	default:
 		return true, nil
@@ -1005,7 +1005,7 @@ func (b *Builder) rewriteSchemaEntry(
 		return nil
 	}
 
-	newMV := commonpb.ConvertMetadataValue(rawValue, task.toType)
+	newMV := ledgerpb.ConvertMetadataValue(rawValue, task.toType)
 	newEncoded := readstore.EncodeMetadataValue(nil, newMV)
 
 	// ReplaceMetadataIndexV at v_pending deletes the old v_pending
@@ -1116,15 +1116,15 @@ func promotedState(prior readstore.IndexVersionState, pending uint32, activation
 func metadataReverseMapKeyV(
 	kb *dal.KeyBuilder,
 	ledger string,
-	target commonpb.TargetType,
+	target ledgerpb.TargetType,
 	entityID []byte,
 	metaKey string,
 	version uint32,
 ) []byte {
 	switch target {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 		return readstore.AccountReverseMapKeyV(kb, ledger, string(entityID), metaKey, version)
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 		if len(entityID) != 8 {
 			return nil
 		}
@@ -1505,8 +1505,8 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 				continue
 			}
 
-			category := commonpb.LedgerLogCategoryOf(ledgerLog.GetData())
-			if category == commonpb.LedgerLogCategory_LEDGER_LOG_CATEGORY_UNSPECIFIED {
+			category := ledgerpb.LedgerLogCategoryOf(ledgerLog.GetData())
+			if category == ledgerpb.LedgerLogCategory_LEDGER_LOG_CATEGORY_UNSPECIFIED {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("invariant: unclassified ledger log payload %T at global sequence %d", ledgerLog.GetData().GetPayload(), log.GetSequence())
@@ -1581,7 +1581,7 @@ func (b *Builder) buildBackfillConfig(task *backfillTask) *ledgerIndexConfig {
 		return cfg
 	}
 
-	cfg.byCanonical[indexes.Canonical(task.index)] = &commonpb.Index{
+	cfg.byCanonical[indexes.Canonical(task.index)] = &ledgerpb.Index{
 		Id: task.index,
 	}
 
@@ -1590,12 +1590,12 @@ func (b *Builder) buildBackfillConfig(task *backfillTask) *ledgerIndexConfig {
 
 // isHistoryLog delegates the business-history decision to the exhaustive
 // protobuf annotation table generated by protoc-gen-ledger-log-category.
-func isHistoryLog(log *commonpb.Log) bool {
+func isHistoryLog(log *ledgerpb.Log) bool {
 	if log.GetPayload() == nil {
 		return false
 	}
 
-	applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
+	applyLog, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply)
 	if !ok {
 		return false
 	}
@@ -1604,7 +1604,7 @@ func isHistoryLog(log *commonpb.Log) bool {
 		return false
 	}
 
-	return commonpb.IsLedgerHistoryPayload(applyLog.Apply.GetLog().GetData())
+	return ledgerpb.IsLedgerHistoryPayload(applyLog.Apply.GetLog().GetData())
 }
 
 func (b *Builder) purgeBackfillTaskGeneration(task *backfillTask) error {
@@ -1617,43 +1617,43 @@ func (b *Builder) purgeBackfillTaskGeneration(task *backfillTask) error {
 	}
 
 	switch kind := task.index.GetKind().(type) {
-	case *commonpb.IndexID_TxBuiltin:
+	case *ledgerpb.IndexID_TxBuiltin:
 		switch kind.TxBuiltin {
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:
 			// Transaction IDs are inherent in the primary transaction key and
 			// own no readstore projection to purge. Crossing the generation
 			// boundary is nevertheless valid for this scheduled index kind.
 			return nil
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
 			return deletePrefix(readstore.PrefixAccountTx)
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
 			return deletePrefix(readstore.PrefixSourceAccountTx)
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS:
 			return deletePrefix(readstore.PrefixDestinationAccountTx)
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
 			return deletePrefix(readstore.PrefixTransactionReference)
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 			return deletePrefix(readstore.PrefixTransactionTimestamp)
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 			return deletePrefix(readstore.PrefixTransactionInsertedAt)
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
 			return deletePrefix(readstore.PrefixTransactionRevertedAt)
 		default:
 			return fmt.Errorf("invariant: unsupported transaction backfill index %v", kind.TxBuiltin)
 		}
-	case *commonpb.IndexID_AccountBuiltin:
-		if kind.AccountBuiltin != commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET {
+	case *ledgerpb.IndexID_AccountBuiltin:
+		if kind.AccountBuiltin != ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET {
 			return fmt.Errorf("invariant: unsupported account backfill index %v", kind.AccountBuiltin)
 		}
 
 		return deletePrefix(readstore.PrefixAccountByAsset)
-	case *commonpb.IndexID_LogBuiltin:
-		if kind.LogBuiltin != commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
+	case *ledgerpb.IndexID_LogBuiltin:
+		if kind.LogBuiltin != ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
 			return fmt.Errorf("invariant: unsupported log backfill index %v", kind.LogBuiltin)
 		}
 
 		return deletePrefix(readstore.PrefixLedgerLogDate)
-	case *commonpb.IndexID_Metadata:
+	case *ledgerpb.IndexID_Metadata:
 		if kind.Metadata == nil {
 			return errors.New("invariant: nil metadata backfill index")
 		}
@@ -1684,12 +1684,12 @@ func (b *Builder) purgeBackfillTaskGeneration(task *backfillTask) error {
 func (b *Builder) fetchStoredMetadataValue(
 	reader dal.PebbleReader,
 	ledgerName string,
-	targetType commonpb.TargetType,
+	targetType ledgerpb.TargetType,
 	key string,
 	entityID []byte,
-) (*commonpb.MetadataValue, error) {
+) (*ledgerpb.MetadataValue, error) {
 	switch targetType {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 		canonicalKey := domain.MetadataKey{
 			AccountKey: domain.AccountKey{
 				LedgerName: ledgerName,
@@ -1708,7 +1708,7 @@ func (b *Builder) fetchStoredMetadataValue(
 		}
 
 		return v, nil
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 		if len(entityID) != 8 {
 			return nil, fmt.Errorf("invalid transaction entityID length %d (want 8)", len(entityID))
 		}

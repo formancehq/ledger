@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // templateUsageJSON is the camelCase JSON DTO for TemplateUsage. It
@@ -20,7 +20,7 @@ type templateUsageJSON struct {
 	LastUsed *string `json:"lastUsed,omitempty"`
 }
 
-func toTemplateUsageJSON(usage *commonpb.TemplateUsage) *templateUsageJSON {
+func toTemplateUsageJSON(usage *ledgerpb.TemplateUsage) *templateUsageJSON {
 	out := &templateUsageJSON{Count: usage.GetCount()}
 
 	// Gate on nil only: a non-nil Timestamp is a real value even when Data==0

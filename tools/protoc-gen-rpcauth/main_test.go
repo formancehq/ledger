@@ -14,7 +14,7 @@ import (
 
 const commonFixture = `syntax = "proto3";
 package common;
-option go_package = "example/internal/proto/commonpb";
+option go_package = "example/internal/proto/ledgerpb";
 import "google/protobuf/descriptor.proto";
 
 enum AuthScope {
@@ -183,7 +183,7 @@ func runGeneratorWithCluster(t *testing.T, serviceProto string, includeCluster b
 		return "", fmt.Errorf("protoc: %w: %s", err, stderr.String())
 	}
 
-	generated, err := os.ReadFile(filepath.Join(dir, "internal/proto/commonpb/common_rpc_auth_policy.pb.go"))
+	generated, err := os.ReadFile(filepath.Join(dir, "internal/proto/ledgerpb/common_rpc_auth_policy.pb.go"))
 	if err != nil {
 		return "", err
 	}

@@ -10,8 +10,8 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -69,9 +69,9 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 	pageSize, _ := cmd.Flags().GetUint32("page-size")
 	cursor, _ := cmd.Flags().GetString("cursor")
 
-	targetType := commonpb.TargetType_TARGET_TYPE_ACCOUNT
+	targetType := ledgerpb.TargetType_TARGET_TYPE_ACCOUNT
 	if target == "transaction" {
-		targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
+		targetType = ledgerpb.TargetType_TARGET_TYPE_TRANSACTION
 	}
 
 	var inspectMode servicepb.InspectIndexMode
@@ -132,20 +132,20 @@ func declaredMetadataType(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	ledgerName string,
-	targetType commonpb.TargetType,
+	targetType ledgerpb.TargetType,
 	key string,
-) commonpb.MetadataType {
+) ledgerpb.MetadataType {
 	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 	if err != nil {
-		return commonpb.MetadataType_METADATA_TYPE_STRING
+		return ledgerpb.MetadataType_METADATA_TYPE_STRING
 	}
 
-	_, fs := commonpb.SchemaFieldForTarget(ledger.GetMetadataSchema(), targetType, key)
+	_, fs := ledgerpb.SchemaFieldForTarget(ledger.GetMetadataSchema(), targetType, key)
 
 	return fs.GetType()
 }
 
-func printSummary(s *servicepb.InspectSummary, declaredType commonpb.MetadataType) {
+func printSummary(s *servicepb.InspectSummary, declaredType ledgerpb.MetadataType) {
 	pterm.Printf("Cardinality:       %d\n", s.GetCardinality())
 	pterm.Printf("Min:               %s\n", formatMetadataValue(s.GetMin(), declaredType))
 	pterm.Printf("Max:               %s\n", formatMetadataValue(s.GetMax(), declaredType))
@@ -153,7 +153,7 @@ func printSummary(s *servicepb.InspectSummary, declaredType commonpb.MetadataTyp
 	pterm.Printf("Entities null:     %d\n", s.GetEntitiesWithNull())
 }
 
-func printDistinctValues(dv *servicepb.InspectDistinctValues, declaredType commonpb.MetadataType) {
+func printDistinctValues(dv *servicepb.InspectDistinctValues, declaredType ledgerpb.MetadataType) {
 	table := pterm.TableData{{"VALUE"}}
 	for _, v := range dv.GetValues() {
 		table = append(table, []string{formatMetadataValue(v, declaredType)})
@@ -164,7 +164,7 @@ func printDistinctValues(dv *servicepb.InspectDistinctValues, declaredType commo
 	printInspectCursors(dv.GetPreviousCursor(), dv.GetNextCursor())
 }
 
-func printFacets(f *servicepb.InspectFacets, declaredType commonpb.MetadataType) {
+func printFacets(f *servicepb.InspectFacets, declaredType ledgerpb.MetadataType) {
 	facets := make([]*servicepb.InspectFacet, len(f.GetFacets()))
 	copy(facets, f.GetFacets())
 
@@ -201,29 +201,29 @@ func printInspectCursors(previous, next string) {
 	}
 }
 
-func formatMetadataValue(v *commonpb.MetadataValue, declaredType commonpb.MetadataType) string {
+func formatMetadataValue(v *ledgerpb.MetadataValue, declaredType ledgerpb.MetadataType) string {
 	if v == nil {
 		return pterm.Gray("(none)")
 	}
 
 	switch t := v.GetType().(type) {
-	case *commonpb.MetadataValue_StringValue:
+	case *ledgerpb.MetadataValue_StringValue:
 		return fmt.Sprintf("%q", t.StringValue)
-	case *commonpb.MetadataValue_IntValue:
+	case *ledgerpb.MetadataValue_IntValue:
 		// Datetime index keys share the int64 encoding, so the server returns an
 		// int_value for them; render as RFC3339 when the field is declared datetime.
-		if commonpb.IsDatetimeType(declaredType) {
+		if ledgerpb.IsDatetimeType(declaredType) {
 			return time.UnixMicro(t.IntValue).UTC().Format(time.RFC3339Nano)
 		}
 
 		return strconv.FormatInt(t.IntValue, 10)
-	case *commonpb.MetadataValue_UintValue:
+	case *ledgerpb.MetadataValue_UintValue:
 		return strconv.FormatUint(t.UintValue, 10)
-	case *commonpb.MetadataValue_DatetimeValue:
-		return commonpb.MetadataValueToString(v)
-	case *commonpb.MetadataValue_BoolValue:
+	case *ledgerpb.MetadataValue_DatetimeValue:
+		return ledgerpb.MetadataValueToString(v)
+	case *ledgerpb.MetadataValue_BoolValue:
 		return strconv.FormatBool(t.BoolValue)
-	case *commonpb.MetadataValue_NullValue:
+	case *ledgerpb.MetadataValue_NullValue:
 		return pterm.Gray("null")
 	default:
 		return pterm.Gray("(unknown)")

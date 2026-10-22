@@ -202,7 +202,7 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept signed requests with a valid signature", func() {
-			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil)
 			signedEnv5, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyID, privKey)
@@ -217,7 +217,7 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject requests signed with an unknown key ID", func() {
-			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bob", big.NewInt(50), "USD"),
 			}, nil, nil)
 			signedEnv6, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, "unknown-key-id", privKey)
@@ -234,7 +234,7 @@ var _ = Describe("Request Signing", func() {
 			_, wrongPrivKey, err := actions.GenerateTestKeypair()
 			Expect(err).To(Succeed())
 
-			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "charlie", big.NewInt(50), "USD"),
 			}, nil, nil)
 			signedEnv7, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyID, wrongPrivKey)
@@ -248,7 +248,7 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject requests with tampered signed_payload", func() {
-			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "dave", big.NewInt(50), "USD"),
 			}, nil, nil)
 			signedEnv8, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyID, privKey)
@@ -266,10 +266,10 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should handle signed bulk operations", func() {
-			req1 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req1 := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bulk-alice", big.NewInt(100), "USD"),
 			}, nil, nil)
-			req2 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req2 := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bulk-bob", big.NewInt(200), "USD"),
 			}, nil, nil)
 
@@ -290,7 +290,7 @@ var _ = Describe("Request Signing", func() {
 			// not required, both are accepted. The batch signature lives on
 			// AppliedProposal (proposal.proto); no public read endpoint yet — only
 			// acceptance of both batches is observable here.
-			signedReq := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			signedReq := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "mixed-signed", big.NewInt(100), "USD"),
 			}, nil, nil)
 			signedEnv11, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{signedReq}}, keyID, privKey)
@@ -300,7 +300,7 @@ var _ = Describe("Request Signing", func() {
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
-			unsignedReq := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			unsignedReq := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "mixed-unsigned", big.NewInt(100), "USD"),
 			}, nil, nil)
 
@@ -371,7 +371,7 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept requests signed with the second key", func() {
-			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "multi-key-test", big.NewInt(100), "USD"),
 			}, nil, nil)
 			signedEnv15, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyID2, privKey2)
@@ -387,7 +387,7 @@ var _ = Describe("Request Signing", func() {
 			// in its own Apply call; both keys are accepted signers. The batch
 			// signature lives on AppliedProposal (proposal.proto); no public read
 			// endpoint yet — acceptance of each batch is what's observable here.
-			req1 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req1 := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "multi-key-1", big.NewInt(100), "USD"),
 			}, nil, nil)
 			signedEnv16, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req1}}, keyID1, privKey1)
@@ -397,7 +397,7 @@ var _ = Describe("Request Signing", func() {
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
-			req2 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req2 := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "multi-key-2", big.NewInt(200), "USD"),
 			}, nil, nil)
 			signedEnv17, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req2}}, keyID2, privKey2)
@@ -574,7 +574,7 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept requests signed by child key B", func() {
-			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+			req := actions.CreateTransactionAction("hierarchy-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "h-bob", big.NewInt(100), "USD"),
 			}, nil, nil)
 			signedEnv24, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyIDB, privKeyB)
@@ -586,7 +586,7 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept requests signed by grandchild key C", func() {
-			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+			req := actions.CreateTransactionAction("hierarchy-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "h-charlie", big.NewInt(100), "USD"),
 			}, nil, nil)
 			signedEnv25, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyIDC, privKeyC)
@@ -627,7 +627,7 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should still accept requests signed by root key A", func() {
-			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+			req := actions.CreateTransactionAction("hierarchy-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "h-post-revoke", big.NewInt(50), "USD"),
 			}, nil, nil)
 			signedEnv27, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyIDA, privKeyA)
@@ -639,7 +639,7 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject requests signed by revoked key B", func() {
-			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+			req := actions.CreateTransactionAction("hierarchy-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "h-revoked-b", big.NewInt(50), "USD"),
 			}, nil, nil)
 			signedEnv28, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyIDB, privKeyB)
@@ -653,7 +653,7 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject requests signed by cascade-revoked key C", func() {
-			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+			req := actions.CreateTransactionAction("hierarchy-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "h-revoked-c", big.NewInt(50), "USD"),
 			}, nil, nil)
 			signedEnv29, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyIDC, privKeyC)

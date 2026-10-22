@@ -3,7 +3,7 @@ package domain
 import (
 	"encoding/binary"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // RevertTargetDigest binds what a producer observed of a revert's target
@@ -37,7 +37,7 @@ import (
 // versus zero is a representation detail of one amount — it changes neither the
 // reversed posting nor the volume coverage. Adding a presence byte would turn
 // that representation difference into a spurious stale-observation rejection.
-func RevertTargetDigest(postings []*commonpb.Posting, found bool) []byte {
+func RevertTargetDigest(postings []*ledgerpb.Posting, found bool) []byte {
 	h := NewObservationHasher()
 
 	if !found {

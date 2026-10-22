@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -129,7 +129,7 @@ func runGetLog(src *generation.Source, ctx context.Context, client servicepb.Buc
 		return
 	}
 
-	got := serverLogRows([]*commonpb.Log{log})[0]
+	got := serverLogRows([]*ledgerpb.Log{log})[0]
 
 	if !c.matchesModel(maxTicket, "GETLOG", func(base oracle.GlobalState) bool {
 		return committedLogMatches(base, target, got)

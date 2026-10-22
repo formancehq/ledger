@@ -1,8 +1,8 @@
 package commands
 
 import (
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/attribution"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // System component identifiers recorded on system/internal proposals, so their
@@ -20,7 +20,7 @@ const (
 
 // SystemCallerSnapshot builds the CallerSnapshot stamped onto a
 // system-initiated proposal.
-func SystemCallerSnapshot(component attribution.SystemActor) *commonpb.CallerSnapshot {
+func SystemCallerSnapshot(component attribution.SystemActor) *ledgerpb.CallerSnapshot {
 	capability, err := attribution.NewSystem(component)
 	if err != nil {
 		panic(err)

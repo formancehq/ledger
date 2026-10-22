@@ -7,8 +7,8 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -53,7 +53,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner("Fetching ledgers...")
 
-	all, cursors, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*commonpb.LedgerInfo, metadata.MD, error) {
+	all, cursors, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*ledgerpb.LedgerInfo, metadata.MD, error) {
 		page := pgn
 		page.Cursor = cur
 
@@ -79,7 +79,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	_ = spinner.Stop()
 
-	ledgers := make(map[string]*commonpb.LedgerInfo, len(all))
+	ledgers := make(map[string]*ledgerpb.LedgerInfo, len(all))
 	for _, l := range all {
 		ledgers[l.GetName()] = l
 	}

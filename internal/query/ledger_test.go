@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"math/big"
 	"testing"
 
@@ -9,10 +10,10 @@ import (
 
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -73,9 +74,9 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 
 	const ledgerName = "test-ledger"
 
-	createdAt := commonpb.NewTimestamp(libtime.Now())
+	createdAt := ledgerpb.NewTimestamp(libtime.Now())
 	batch := s.OpenWriteSession()
-	err := state.SaveLedger(batch, ledgerName, &commonpb.LedgerInfo{
+	err := state.SaveLedger(batch, ledgerName, &ledgerpb.LedgerInfo{
 		Name:      ledgerName,
 		CreatedAt: createdAt,
 	})
@@ -87,13 +88,13 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	worldKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "world"}, Asset: "USD"}
 	worldCanonicalKey := worldKey.Bytes()
 	_, err = attrs.Volume.Set(batch, worldCanonicalKey, &raftcmdpb.VolumePair{
-		Output: commonpb.NewUint256FromUint64(100),
+		Output: ledgerpb.NewUint256FromUint64(100),
 	})
 	require.NoError(t, err)
 
 	metadataKey := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "bank"}, Key: "key"}
 	metadataCanonicalKey := metadataKey.Bytes()
-	_, err = attrs.Metadata.Set(batch, metadataCanonicalKey, commonpb.NewStringValue("value"))
+	_, err = attrs.Metadata.Set(batch, metadataCanonicalKey, ledgerpb.NewStringValue("value"))
 	require.NoError(t, err)
 	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 1}
 	_, err = attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{
@@ -115,9 +116,9 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	require.Nil(t, ledgers[0].GetDeletedAt())
 
 	// Soft delete ledger
-	deletedAt := commonpb.NewTimestamp(libtime.Now())
+	deletedAt := ledgerpb.NewTimestamp(libtime.Now())
 	batch = s.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, ledgerName, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(batch, ledgerName, &ledgerpb.LedgerInfo{
 		Name:      ledgerName,
 		CreatedAt: createdAt,
 		DeletedAt: deletedAt,

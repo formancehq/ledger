@@ -12,8 +12,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -64,9 +64,9 @@ func pickIntrospectIndex(src *generation.Source, c *Checker, ledger string) *com
 	// outside the lock.
 	all := workloadIndexes()
 
-	for _, target := range []commonpb.TargetType{
-		commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-		commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+	for _, target := range []ledgerpb.TargetType{
+		ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
+		ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 	} {
 		for key := range ls.FieldTypesFor(target).All() {
 			id := indexes.MetadataID(target, key)
@@ -96,7 +96,7 @@ func runIndexList(src *generation.Source, ctx context.Context, client servicepb.
 		Ledger: ledger,
 	})
 
-	var entries []*commonpb.Index
+	var entries []*ledgerpb.Index
 	if err == nil {
 		entries, err = drainStream(stream)
 	}
@@ -228,7 +228,7 @@ func runIndexListFleet(src *generation.Source, ctx context.Context, client servi
 
 	stream, err := client.ListIndexes(readCtx, &servicepb.ListIndexesRequest{Scope: scope})
 
-	var entries []*commonpb.Index
+	var entries []*ledgerpb.Index
 	if err == nil {
 		entries, err = drainStream(stream)
 	}
@@ -382,7 +382,7 @@ func runIndexGet(src *generation.Source, ctx context.Context, client servicepb.B
 // owns. The model declares nothing there, so the only legal outcomes are
 // NotFound or an entry that is itself ledger-less — a ledger's entry surfacing
 // here would mean the two keyspaces had been conflated.
-func runBucketIndexGet(ctx context.Context, client servicepb.BucketServiceClient, c *Checker, id *commonpb.IndexID, canonical string) {
+func runBucketIndexGet(ctx context.Context, client servicepb.BucketServiceClient, c *Checker, id *ledgerpb.IndexID, canonical string) {
 	c.mu.Lock()
 	readID := c.registerRead()
 	c.mu.Unlock()

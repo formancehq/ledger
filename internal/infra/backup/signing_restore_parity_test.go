@@ -12,6 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
@@ -19,7 +20,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -73,7 +73,7 @@ func newSigningParityMachine(t *testing.T) (*state.Machine, *dal.Store, *attribu
 		func(*raftpb.Entry, *dal.WriteSession) error { return nil },
 	)
 	require.NoError(t, err)
-	policy := &commonpb.ClusterPolicy{
+	policy := &ledgerpb.ClusterPolicy{
 		Revision: 1, QueryCheckpointLimit: 10,
 		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
 		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes, MetadataMaxValueBytes: domain.DefaultMetadataMaxValueBytes,
@@ -93,7 +93,7 @@ func applySigningEntry(t *testing.T, machine *state.Machine, store *dal.Store, i
 	proposal := &raftcmdpb.Proposal{
 		Id:             index,
 		Orders:         orders,
-		Date:           &commonpb.Timestamp{Data: 1700000000 + index},
+		Date:           &ledgerpb.Timestamp{Data: 1700000000 + index},
 		ExecutionPlan:  &raftcmdpb.ExecutionPlan{},
 		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterConfig),
 	}
@@ -153,8 +153,8 @@ func TestBackup_UncommittedRejectionKeepsHLCParityAfterDelta(t *testing.T) {
 
 		return &raftcmdpb.Proposal{
 			Id: id, Orders: []*raftcmdpb.Order{order},
-			Date:           &commonpb.Timestamp{Data: auditedTimestamp + 1_000_000},
-			Idempotency:    &commonpb.Idempotency{Key: key},
+			Date:           &ledgerpb.Timestamp{Data: auditedTimestamp + 1_000_000},
+			Idempotency:    &ledgerpb.Idempotency{Key: key},
 			ExecutionPlan:  &raftcmdpb.ExecutionPlan{},
 			CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterConfig),
 		}

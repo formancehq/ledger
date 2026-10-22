@@ -9,6 +9,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
@@ -17,7 +18,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -61,7 +61,7 @@ func TestProposeTechnical_RetriesStaleProposal(t *testing.T) {
 	cmd := commands.NewCommand()
 	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterConfig)
 	cmd.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
-		Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{ClusterConfig: &commonpb.ClusterConfig{}},
+		Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{ClusterConfig: &ledgerpb.ClusterConfig{}},
 	}}
 	ops := []plan.WriteOperation{{Target: &cmd.GetTechnicalUpdates()[0].CoverageBits}}
 

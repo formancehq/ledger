@@ -16,6 +16,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/application/events"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
@@ -23,7 +24,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -110,7 +110,7 @@ func (p *directProposer) Propose(_ context.Context, proposal *node.Proposal) (*f
 				return f, nil
 			}
 		} else if update.GetError() != nil {
-			err := state.SetSinkStatus(batch, &commonpb.SinkStatus{
+			err := state.SetSinkStatus(batch, &ledgerpb.SinkStatus{
 				SinkName: update.GetSinkName(),
 				Cursor:   update.GetCursor(),
 				Error:    update.GetError(),
@@ -153,7 +153,7 @@ func newTestStore(t *testing.T) *dal.Store {
 	return s
 }
 
-func appendTestLogs(t *testing.T, s *dal.Store, logs ...*commonpb.Log) {
+func appendTestLogs(t *testing.T, s *dal.Store, logs ...*ledgerpb.Log) {
 	t.Helper()
 
 	batch := s.OpenWriteSession()
@@ -166,9 +166,9 @@ func registerLedger(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 
 	batch := s.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, name, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(batch, name, &ledgerpb.LedgerInfo{
 		Name:      name,
-		CreatedAt: commonpb.NewTimestamp(libtime.Now()),
+		CreatedAt: ledgerpb.NewTimestamp(libtime.Now()),
 	}))
 	require.NoError(t, batch.Commit())
 }
@@ -187,29 +187,29 @@ func TestEmitterIntegration_ProcessExistingLogs(t *testing.T) {
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreatedLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_CreateLedger{
+					CreateLedger: &ledgerpb.CreatedLedgerLog{
 						Name:      "orders",
-						CreatedAt: commonpb.NewTimestamp(now),
+						CreatedAt: ledgerpb.NewTimestamp(now),
 					},
 				},
 			},
 		},
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 2,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &ledgerpb.CreatedTransaction{
+									Transaction: ledgerpb.NewTransaction().
 										WithPostings(
-											commonpb.NewPosting("world", "bank", "USD", big.NewInt(1000)),
+											ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(1000)),
 										).
 										WithID(1).
 										WithTimestamp(now),
@@ -242,10 +242,10 @@ func TestEmitterIntegration_ProcessExistingLogs(t *testing.T) {
 
 	published := sink.getEvents()
 	require.Len(t, published, 2)
-	require.Equal(t, commonpb.EventType_CREATED_LEDGER, published[0].GetType())
+	require.Equal(t, ledgerpb.EventType_CREATED_LEDGER, published[0].GetType())
 	require.Equal(t, "orders", published[0].GetLedger())
 	require.Equal(t, uint64(1), published[0].GetLogSequence())
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[1].GetType())
+	require.Equal(t, ledgerpb.EventType_COMMITTED_TRANSACTION, published[1].GetType())
 	require.Equal(t, "orders", published[1].GetLedger())
 	require.Equal(t, uint64(2), published[1].GetLogSequence())
 
@@ -333,27 +333,27 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 
 	// Append 3 logs
 	appendTestLogs(t, store,
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreatedLedgerLog{
-						Name: "orders", CreatedAt: commonpb.NewTimestamp(now),
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_CreateLedger{
+					CreateLedger: &ledgerpb.CreatedLedgerLog{
+						Name: "orders", CreatedAt: ledgerpb.NewTimestamp(now),
 					},
 				},
 			},
 		},
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 2,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &ledgerpb.CreatedTransaction{
+									Transaction: ledgerpb.NewTransaction().
+										WithPostings(ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
 										WithID(1).WithTimestamp(now),
 								},
 							},
@@ -362,21 +362,21 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 				},
 			},
 		},
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 3,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_SavedMetadata{
-								SavedMetadata: &commonpb.SavedMetadata{
-									Target: &commonpb.Target{
-										Target: &commonpb.Target_Account{
-											Account: &commonpb.TargetAccount{Addr: "bank"},
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{
+								SavedMetadata: &ledgerpb.SavedMetadata{
+									Target: &ledgerpb.Target{
+										Target: &ledgerpb.Target_Account{
+											Account: &ledgerpb.TargetAccount{Addr: "bank"},
 										},
 									},
-									Metadata: commonpb.MetadataFromGoMap(map[string]string{"type": "asset"}),
+									Metadata: ledgerpb.MetadataFromGoMap(map[string]string{"type": "asset"}),
 								},
 							},
 						}).WithID(2).WithDate(now),
@@ -405,17 +405,17 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 
 	// Append more logs
 	appendTestLogs(t, store,
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 4,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("bank", "user", "USD", big.NewInt(50))).
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &ledgerpb.CreatedTransaction{
+									Transaction: ledgerpb.NewTransaction().
+										WithPostings(ledgerpb.NewPosting("bank", "user", "USD", big.NewInt(50))).
 										WithID(2).WithTimestamp(now),
 								},
 							},
@@ -439,7 +439,7 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 
 	published := sink2.getEvents()
 	require.Len(t, published, 1)
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].GetType())
+	require.Equal(t, ledgerpb.EventType_COMMITTED_TRANSACTION, published[0].GetType())
 	require.Equal(t, uint64(4), published[0].GetLogSequence())
 
 	// Final cursor should be at 4
@@ -463,28 +463,28 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 	// Write logs covering all 6 event types
 	appendTestLogs(t, store,
 		// 1: CREATED_LEDGER
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreatedLedgerLog{
-						Name: "test", CreatedAt: commonpb.NewTimestamp(now),
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_CreateLedger{
+					CreateLedger: &ledgerpb.CreatedLedgerLog{
+						Name: "test", CreatedAt: ledgerpb.NewTimestamp(now),
 					},
 				},
 			},
 		},
 		// 2: COMMITTED_TRANSACTION
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 2,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "test",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &ledgerpb.CreatedTransaction{
+									Transaction: ledgerpb.NewTransaction().
+										WithPostings(ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
 										WithID(1).WithTimestamp(now),
 								},
 							},
@@ -494,18 +494,18 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 			},
 		},
 		// 3: REVERTED_TRANSACTION
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 3,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "test",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-								RevertedTransaction: &commonpb.RevertedTransaction{
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+								RevertedTransaction: &ledgerpb.RevertedTransaction{
 									RevertedTransactionId: 1,
-									RevertTransaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("bank", "world", "USD", big.NewInt(100))).
+									RevertTransaction: ledgerpb.NewTransaction().
+										WithPostings(ledgerpb.NewPosting("bank", "world", "USD", big.NewInt(100))).
 										WithID(2).WithTimestamp(now),
 								},
 							},
@@ -515,21 +515,21 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 			},
 		},
 		// 4: SAVED_METADATA
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 4,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "test",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_SavedMetadata{
-								SavedMetadata: &commonpb.SavedMetadata{
-									Target: &commonpb.Target{
-										Target: &commonpb.Target_Account{
-											Account: &commonpb.TargetAccount{Addr: "bank"},
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{
+								SavedMetadata: &ledgerpb.SavedMetadata{
+									Target: &ledgerpb.Target{
+										Target: &ledgerpb.Target_Account{
+											Account: &ledgerpb.TargetAccount{Addr: "bank"},
 										},
 									},
-									Metadata: commonpb.MetadataFromGoMap(map[string]string{"k": "v"}),
+									Metadata: ledgerpb.MetadataFromGoMap(map[string]string{"k": "v"}),
 								},
 							},
 						}).WithID(3).WithDate(now),
@@ -538,18 +538,18 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 			},
 		},
 		// 5: DELETED_METADATA
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 5,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "test",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
-								DeletedMetadata: &commonpb.DeletedMetadata{
-									Target: &commonpb.Target{
-										Target: &commonpb.Target_Account{
-											Account: &commonpb.TargetAccount{Addr: "bank"},
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_DeletedMetadata{
+								DeletedMetadata: &ledgerpb.DeletedMetadata{
+									Target: &ledgerpb.Target{
+										Target: &ledgerpb.Target_Account{
+											Account: &ledgerpb.TargetAccount{Addr: "bank"},
 										},
 									},
 									Key: "k",
@@ -561,12 +561,12 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 			},
 		},
 		// 6: DELETED_LEDGER
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 6,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_DeleteLedger{
-					DeleteLedger: &commonpb.DeletedLedgerLog{
-						Name: "test", DeletedAt: commonpb.NewTimestamp(now),
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_DeleteLedger{
+					DeleteLedger: &ledgerpb.DeletedLedgerLog{
+						Name: "test", DeletedAt: ledgerpb.NewTimestamp(now),
 					},
 				},
 			},
@@ -587,13 +587,13 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 	published := sink.getEvents()
 	require.Len(t, published, 6)
 
-	expectedTypes := []commonpb.EventType{
-		commonpb.EventType_CREATED_LEDGER,
-		commonpb.EventType_COMMITTED_TRANSACTION,
-		commonpb.EventType_REVERTED_TRANSACTION,
-		commonpb.EventType_SAVED_METADATA,
-		commonpb.EventType_DELETED_METADATA,
-		commonpb.EventType_DELETED_LEDGER,
+	expectedTypes := []ledgerpb.EventType{
+		ledgerpb.EventType_CREATED_LEDGER,
+		ledgerpb.EventType_COMMITTED_TRANSACTION,
+		ledgerpb.EventType_REVERTED_TRANSACTION,
+		ledgerpb.EventType_SAVED_METADATA,
+		ledgerpb.EventType_DELETED_METADATA,
+		ledgerpb.EventType_DELETED_LEDGER,
 	}
 
 	for i, expected := range expectedTypes {
@@ -616,19 +616,19 @@ func TestEmitterIntegration_Batching(t *testing.T) {
 	now := libtime.Now()
 
 	// Write 10 logs
-	var logs []*commonpb.Log
+	var logs []*ledgerpb.Log
 	for i := uint64(1); i <= 10; i++ {
-		logs = append(logs, &commonpb.Log{
+		logs = append(logs, &ledgerpb.Log{
 			Sequence: i,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "test",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(int64(i*100)))).
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &ledgerpb.CreatedTransaction{
+									Transaction: ledgerpb.NewTransaction().
+										WithPostings(ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(int64(i*100)))).
 										WithID(i).WithTimestamp(now),
 								},
 							},
@@ -682,28 +682,28 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 	// Write logs covering 3 event types
 	appendTestLogs(t, store,
 		// 1: CREATED_LEDGER
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreatedLedgerLog{
-						Name: "test", CreatedAt: commonpb.NewTimestamp(now),
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_CreateLedger{
+					CreateLedger: &ledgerpb.CreatedLedgerLog{
+						Name: "test", CreatedAt: ledgerpb.NewTimestamp(now),
 					},
 				},
 			},
 		},
 		// 2: COMMITTED_TRANSACTION
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 2,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "test",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &ledgerpb.CreatedTransaction{
+									Transaction: ledgerpb.NewTransaction().
+										WithPostings(ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
 										WithID(1).WithTimestamp(now),
 								},
 							},
@@ -713,21 +713,21 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 			},
 		},
 		// 3: SAVED_METADATA
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 3,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "test",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_SavedMetadata{
-								SavedMetadata: &commonpb.SavedMetadata{
-									Target: &commonpb.Target{
-										Target: &commonpb.Target_Account{
-											Account: &commonpb.TargetAccount{Addr: "bank"},
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{
+								SavedMetadata: &ledgerpb.SavedMetadata{
+									Target: &ledgerpb.Target{
+										Target: &ledgerpb.Target_Account{
+											Account: &ledgerpb.TargetAccount{Addr: "bank"},
 										},
 									},
-									Metadata: commonpb.MetadataFromGoMap(map[string]string{"k": "v"}),
+									Metadata: ledgerpb.MetadataFromGoMap(map[string]string{"k": "v"}),
 								},
 							},
 						}).WithID(2).WithDate(now),
@@ -740,8 +740,8 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 	// Configure emitter to only accept COMMITTED_TRANSACTION events
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	cfg.EventTypes = map[commonpb.EventType]struct{}{
-		commonpb.EventType_COMMITTED_TRANSACTION: {},
+	cfg.EventTypes = map[ledgerpb.EventType]struct{}{
+		ledgerpb.EventType_COMMITTED_TRANSACTION: {},
 	}
 	emitter := events.NewEmitter(store, sink, "filter-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
@@ -757,7 +757,7 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 	// Only COMMITTED_TRANSACTION should be published; CREATED_LEDGER and SAVED_METADATA are filtered out
 	published := sink.getEvents()
 	require.Len(t, published, 1)
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].GetType())
+	require.Equal(t, ledgerpb.EventType_COMMITTED_TRANSACTION, published[0].GetType())
 	require.Equal(t, uint64(2), published[0].GetLogSequence())
 }
 

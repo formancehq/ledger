@@ -5,11 +5,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/kv"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -18,7 +18,7 @@ import (
 // gated Scope on the real apply path. Tests that drive partitionVolumes in
 // isolation must seed it — an unseeded ledger is an invariant violation, by
 // design (invariant #9).
-func gatedTypesFor(infos ...*commonpb.LedgerInfo) map[string]gatedLedgerType {
+func gatedTypesFor(infos ...*ledgerpb.LedgerInfo) map[string]gatedLedgerType {
 	types := make(map[string]gatedLedgerType, len(infos))
 	for _, info := range infos {
 		types[info.GetName()] = gatedLedgerType{
@@ -41,8 +41,8 @@ func TestIsVolumeZeroBalance(t *testing.T) {
 	t.Run("equal values", func(t *testing.T) {
 		t.Parallel()
 		v := &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(100),
-			Output: commonpb.NewUint256FromUint64(100),
+			Input:  ledgerpb.NewUint256FromUint64(100),
+			Output: ledgerpb.NewUint256FromUint64(100),
 		}
 		require.True(t, isVolumeZeroBalance(v))
 	})
@@ -50,8 +50,8 @@ func TestIsVolumeZeroBalance(t *testing.T) {
 	t.Run("different values", func(t *testing.T) {
 		t.Parallel()
 		v := &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(100),
-			Output: commonpb.NewUint256FromUint64(50),
+			Input:  ledgerpb.NewUint256FromUint64(100),
+			Output: ledgerpb.NewUint256FromUint64(50),
 		}
 		require.False(t, isVolumeZeroBalance(v))
 	})
@@ -59,7 +59,7 @@ func TestIsVolumeZeroBalance(t *testing.T) {
 	t.Run("input nil output set", func(t *testing.T) {
 		t.Parallel()
 		v := &raftcmdpb.VolumePair{
-			Output: commonpb.NewUint256FromUint64(100),
+			Output: ledgerpb.NewUint256FromUint64(100),
 		}
 		require.False(t, isVolumeZeroBalance(v))
 	})
@@ -67,7 +67,7 @@ func TestIsVolumeZeroBalance(t *testing.T) {
 	t.Run("input set output nil", func(t *testing.T) {
 		t.Parallel()
 		v := &raftcmdpb.VolumePair{
-			Input: commonpb.NewUint256FromUint64(100),
+			Input: ledgerpb.NewUint256FromUint64(100),
 		}
 		require.False(t, isVolumeZeroBalance(v))
 	})
@@ -75,8 +75,8 @@ func TestIsVolumeZeroBalance(t *testing.T) {
 	t.Run("both zero explicit", func(t *testing.T) {
 		t.Parallel()
 		v := &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(0),
-			Output: commonpb.NewUint256FromUint64(0),
+			Input:  ledgerpb.NewUint256FromUint64(0),
+			Output: ledgerpb.NewUint256FromUint64(0),
 		}
 		require.True(t, isVolumeZeroBalance(v))
 	})
@@ -84,8 +84,8 @@ func TestIsVolumeZeroBalance(t *testing.T) {
 	t.Run("large equal values all limbs", func(t *testing.T) {
 		t.Parallel()
 		v := &raftcmdpb.VolumePair{
-			Input:  &commonpb.Uint256{V0: 1, V1: 2, V2: 3, V3: 4},
-			Output: &commonpb.Uint256{V0: 1, V1: 2, V2: 3, V3: 4},
+			Input:  &ledgerpb.Uint256{V0: 1, V1: 2, V2: 3, V3: 4},
+			Output: &ledgerpb.Uint256{V0: 1, V1: 2, V2: 3, V3: 4},
 		}
 		require.True(t, isVolumeZeroBalance(v))
 	})
@@ -93,8 +93,8 @@ func TestIsVolumeZeroBalance(t *testing.T) {
 	t.Run("differ on high limb", func(t *testing.T) {
 		t.Parallel()
 		v := &raftcmdpb.VolumePair{
-			Input:  &commonpb.Uint256{V0: 1, V1: 2, V2: 3, V3: 4},
-			Output: &commonpb.Uint256{V0: 1, V1: 2, V2: 3, V3: 5},
+			Input:  &ledgerpb.Uint256{V0: 1, V1: 2, V2: 3, V3: 4},
+			Output: &ledgerpb.Uint256{V0: 1, V1: 2, V2: 3, V3: 5},
 		}
 		require.False(t, isVolumeZeroBalance(v))
 	})
@@ -106,14 +106,14 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 	machine, _, _ := newTestMachine(t)
 
 	// Register a ledger with an ephemeral account type.
-	ledgerInfo := &commonpb.LedgerInfo{
+	ledgerInfo := &ledgerpb.LedgerInfo{
 		Name: "test",
 		Id:   1,
-		AccountTypes: map[string]*commonpb.AccountType{
+		AccountTypes: map[string]*ledgerpb.AccountType{
 			"clearing": {
 				Name:        "clearing",
 				Pattern:     "clearing:{id}",
-				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+				Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 			},
 			"user": {
 				Name:    "user",
@@ -144,8 +144,8 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "clearing:tx1"}, Asset: "USD"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "clearing:tx1"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(100),
-				Output: commonpb.NewUint256FromUint64(100),
+				Input:  ledgerpb.NewUint256FromUint64(100),
+				Output: ledgerpb.NewUint256FromUint64(100),
 			},
 		},
 		{
@@ -153,8 +153,8 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "clearing:tx2"}, Asset: "EUR"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "clearing:tx2"}, Asset: "EUR"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(200),
-				Output: commonpb.NewUint256FromUint64(50),
+				Input:  ledgerpb.NewUint256FromUint64(200),
+				Output: ledgerpb.NewUint256FromUint64(50),
 			},
 		},
 		{
@@ -163,12 +163,12 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:alice"}, Asset: "USD"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:alice"}, Asset: "USD"}).Bytes(),
 			Old: kv.Some(&raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(0),
-				Output: commonpb.NewUint256FromUint64(0),
+				Input:  ledgerpb.NewUint256FromUint64(0),
+				Output: ledgerpb.NewUint256FromUint64(0),
 			}),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(0),
-				Output: commonpb.NewUint256FromUint64(0),
+				Input:  ledgerpb.NewUint256FromUint64(0),
+				Output: ledgerpb.NewUint256FromUint64(0),
 			},
 		},
 		{
@@ -176,8 +176,8 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "unknown:addr"}, Asset: "USD"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "unknown:addr"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(50),
-				Output: commonpb.NewUint256FromUint64(50),
+				Input:  ledgerpb.NewUint256FromUint64(50),
+				Output: ledgerpb.NewUint256FromUint64(50),
 			},
 		},
 	}
@@ -204,14 +204,14 @@ func TestPartitionVolumesTransient(t *testing.T) {
 
 	machine, _, _ := newTestMachine(t)
 
-	ledgerInfo := &commonpb.LedgerInfo{
+	ledgerInfo := &ledgerpb.LedgerInfo{
 		Name: "test",
 		Id:   1,
-		AccountTypes: map[string]*commonpb.AccountType{
+		AccountTypes: map[string]*ledgerpb.AccountType{
 			"staging": {
 				Name:        "staging",
 				Pattern:     "staging:{id}",
-				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+				Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 			},
 			"user": {
 				Name:    "user",
@@ -241,8 +241,8 @@ func TestPartitionVolumesTransient(t *testing.T) {
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:tx1"}, Asset: "USD"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:tx1"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(100),
-				Output: commonpb.NewUint256FromUint64(100),
+				Input:  ledgerpb.NewUint256FromUint64(100),
+				Output: ledgerpb.NewUint256FromUint64(100),
 			},
 		},
 		{
@@ -250,8 +250,8 @@ func TestPartitionVolumesTransient(t *testing.T) {
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:tx2"}, Asset: "EUR"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:tx2"}, Asset: "EUR"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(200),
-				Output: commonpb.NewUint256FromUint64(50),
+				Input:  ledgerpb.NewUint256FromUint64(200),
+				Output: ledgerpb.NewUint256FromUint64(50),
 			},
 		},
 		{
@@ -259,8 +259,8 @@ func TestPartitionVolumesTransient(t *testing.T) {
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:alice"}, Asset: "USD"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:alice"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(100),
-				Output: commonpb.NewUint256FromUint64(0),
+				Input:  ledgerpb.NewUint256FromUint64(100),
+				Output: ledgerpb.NewUint256FromUint64(0),
 			},
 		},
 	}
@@ -286,14 +286,14 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 
 	machine, _, _ := newTestMachine(t)
 
-	ledgerInfo := &commonpb.LedgerInfo{
+	ledgerInfo := &ledgerpb.LedgerInfo{
 		Name: "test",
 		Id:   1,
-		AccountTypes: map[string]*commonpb.AccountType{
+		AccountTypes: map[string]*ledgerpb.AccountType{
 			"staging": {
 				Name:        "staging",
 				Pattern:     "staging:{id}",
-				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+				Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 			},
 		},
 	}
@@ -314,8 +314,8 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 	}
 
 	preExistingUnbalanced := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(100),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(100),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
@@ -325,8 +325,8 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:draining"}, Asset: "USD"}).Bytes(),
 			Old:          kv.Some(preExistingUnbalanced),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(100),
-				Output: commonpb.NewUint256FromUint64(50),
+				Input:  ledgerpb.NewUint256FromUint64(100),
+				Output: ledgerpb.NewUint256FromUint64(50),
 			},
 		},
 		{
@@ -335,8 +335,8 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:rebalanced"}, Asset: "USD"}).Bytes(),
 			Old:          kv.Some(preExistingUnbalanced),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(100),
-				Output: commonpb.NewUint256FromUint64(100),
+				Input:  ledgerpb.NewUint256FromUint64(100),
+				Output: ledgerpb.NewUint256FromUint64(100),
 			},
 		},
 		{
@@ -345,8 +345,8 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:steady"}, Asset: "USD"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:steady"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(42),
-				Output: commonpb.NewUint256FromUint64(42),
+				Input:  ledgerpb.NewUint256FromUint64(42),
+				Output: ledgerpb.NewUint256FromUint64(42),
 			},
 		},
 		{
@@ -356,12 +356,12 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:zero-persisted"}, Asset: "USD"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:zero-persisted"}, Asset: "USD"}).Bytes(),
 			Old: kv.Some(&raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(0),
-				Output: commonpb.NewUint256FromUint64(0),
+				Input:  ledgerpb.NewUint256FromUint64(0),
+				Output: ledgerpb.NewUint256FromUint64(0),
 			}),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(1),
-				Output: commonpb.NewUint256FromUint64(1),
+				Input:  ledgerpb.NewUint256FromUint64(1),
+				Output: ledgerpb.NewUint256FromUint64(1),
 			},
 		},
 		{
@@ -372,12 +372,12 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:stranded"}, Asset: "USD"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:stranded"}, Asset: "USD"}).Bytes(),
 			Old: kv.Some(&raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(100),
-				Output: commonpb.NewUint256FromUint64(100),
+				Input:  ledgerpb.NewUint256FromUint64(100),
+				Output: ledgerpb.NewUint256FromUint64(100),
 			}),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(150),
-				Output: commonpb.NewUint256FromUint64(150),
+				Input:  ledgerpb.NewUint256FromUint64(150),
+				Output: ledgerpb.NewUint256FromUint64(150),
 			},
 		},
 	}
@@ -413,12 +413,12 @@ func TestTombstoneVolumeCache_MarksKeyStoreAbsent(t *testing.T) {
 	// into the parent KeyStore. Pre-fix, this state would survive the cache write
 	// step and leak into the next batch.
 	cumulativeA := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(100),
-		Output: commonpb.NewUint256FromUint64(100),
+		Input:  ledgerpb.NewUint256FromUint64(100),
+		Output: ledgerpb.NewUint256FromUint64(100),
 	}
 	cumulativeB := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(50),
-		Output: commonpb.NewUint256FromUint64(50),
+		Input:  ledgerpb.NewUint256FromUint64(50),
+		Output: ledgerpb.NewUint256FromUint64(50),
 	}
 
 	_, _, err := machine.Registry.Volumes.KeyStore().Put(keyA.Bytes(), cumulativeA)
@@ -480,8 +480,8 @@ func TestIsVolumeZeroBalance_Transient(t *testing.T) {
 		t.Parallel()
 
 		vol := &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(100),
-			Output: commonpb.NewUint256FromUint64(100),
+			Input:  ledgerpb.NewUint256FromUint64(100),
+			Output: ledgerpb.NewUint256FromUint64(100),
 		}
 		require.True(t, isVolumeZeroBalance(vol))
 	})
@@ -490,8 +490,8 @@ func TestIsVolumeZeroBalance_Transient(t *testing.T) {
 		t.Parallel()
 
 		vol := &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(100),
-			Output: commonpb.NewUint256FromUint64(50),
+			Input:  ledgerpb.NewUint256FromUint64(100),
+			Output: ledgerpb.NewUint256FromUint64(50),
 		}
 		require.False(t, isVolumeZeroBalance(vol))
 	})

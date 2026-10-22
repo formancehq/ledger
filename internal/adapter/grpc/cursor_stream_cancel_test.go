@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -29,9 +29,9 @@ type endingBucketServer struct {
 	endErr error
 }
 
-func (s *endingBucketServer) ListAccounts(_ *servicepb.ListAccountsRequest, stream ggrpc.ServerStreamingServer[commonpb.Account]) error {
+func (s *endingBucketServer) ListAccounts(_ *servicepb.ListAccountsRequest, stream ggrpc.ServerStreamingServer[ledgerpb.Account]) error {
 	for i := range s.rows {
-		if err := stream.Send(&commonpb.Account{Address: fmt.Sprintf("acc-%d", i)}); err != nil {
+		if err := stream.Send(&ledgerpb.Account{Address: fmt.Sprintf("acc-%d", i)}); err != nil {
 			return err
 		}
 	}
@@ -68,12 +68,12 @@ func dialBucketServer(t *testing.T, srv servicepb.BucketServiceServer) servicepb
 
 // drainPeekCursor consumes the cursor to its terminal error, the way
 // sendPagedToStream does, returning the items and that error.
-func drainPeekCursor(t *testing.T, ctx context.Context, stream ggrpc.ServerStreamingClient[commonpb.Account]) ([]*commonpb.Account, error) {
+func drainPeekCursor(t *testing.T, ctx context.Context, stream ggrpc.ServerStreamingClient[ledgerpb.Account]) ([]*ledgerpb.Account, error) {
 	t.Helper()
 
 	cur := NewUpstreamPeekCursor(ctx, stream)
 
-	var items []*commonpb.Account
+	var items []*ledgerpb.Account
 
 	for {
 		item, err := cur.Next()

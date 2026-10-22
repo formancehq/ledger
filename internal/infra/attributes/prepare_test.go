@@ -15,8 +15,8 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/pkg/tarutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -349,9 +349,9 @@ func TestPrepareForBackupRestorableOnFreshCluster(t *testing.T) {
 
 		defer func() { require.NoError(t, s.Close()) }()
 
-		ledgerAttr := NewAttribute[*commonpb.LedgerInfo](dal.SubAttrLedger)
+		ledgerAttr := NewAttribute[*ledgerpb.LedgerInfo](dal.SubAttrLedger)
 		batch := s.OpenWriteSession()
-		_, err = ledgerAttr.Set(batch, canonicalKey, &commonpb.LedgerInfo{Name: "test-ledger"})
+		_, err = ledgerAttr.Set(batch, canonicalKey, &ledgerpb.LedgerInfo{Name: "test-ledger"})
 		require.NoError(t, err)
 
 		boundaryAttr := NewAttribute[*raftcmdpb.LedgerBoundaries](dal.SubAttrBoundary)
@@ -397,7 +397,7 @@ func TestPrepareForBackupRestorableOnFreshCluster(t *testing.T) {
 
 		defer func() { require.NoError(t, s.Close()) }()
 
-		ledgerAttr := NewAttribute[*commonpb.LedgerInfo](dal.SubAttrLedger)
+		ledgerAttr := NewAttribute[*ledgerpb.LedgerInfo](dal.SubAttrLedger)
 		val, err := ledgerAttr.Get(s, canonicalKey)
 		require.NoError(t, err)
 		require.NotNil(t, val, "ledger must survive the backup->restore pipeline")

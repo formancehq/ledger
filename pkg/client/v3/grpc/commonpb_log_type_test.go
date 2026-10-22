@@ -5,55 +5,55 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // TestLogType_OrderSkippedJSONName pins the public discriminator spelling.
 func TestLogType_OrderSkippedJSONName(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "ORDER_SKIPPED", commonpb.OrderSkippedLogType.String())
+	require.Equal(t, "ORDER_SKIPPED", ledgerpb.OrderSkippedLogType.String())
 
-	got, err := commonpb.LogTypeFromString("ORDER_SKIPPED")
+	got, err := ledgerpb.LogTypeFromString("ORDER_SKIPPED")
 	require.NoError(t, err)
-	require.Equal(t, commonpb.OrderSkippedLogType, got)
+	require.Equal(t, ledgerpb.OrderSkippedLogType, got)
 }
 
 func TestGetLogType_OrderSkipped(t *testing.T) {
 	t.Parallel()
 
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{},
+	payload := &ledgerpb.LedgerLogPayload{
+		Payload: &ledgerpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &ledgerpb.OrderSkippedLog{},
 		},
 	}
 
-	require.Equal(t, commonpb.OrderSkippedLogType, commonpb.GetLogType(payload))
+	require.Equal(t, ledgerpb.OrderSkippedLogType, ledgerpb.GetLogType(payload))
 }
 
 // Every wire discriminator is pinned independently from the encoder/decoder
 // mapping, so a mutually consistent rename or missing variant still fails.
 func TestLogTypeJSONNames(t *testing.T) {
 	t.Parallel()
-	for kind, name := range map[commonpb.LogType]string{
-		commonpb.SetMetadataLogType:                   "SET_METADATA",
-		commonpb.NewTransactionLogType:                "NEW_TRANSACTION",
-		commonpb.RevertedTransactionLogType:           "REVERTED_TRANSACTION",
-		commonpb.DeleteMetadataLogType:                "DELETE_METADATA",
-		commonpb.SetMetadataFieldTypeLogType:          "SET_METADATA_FIELD_TYPE",
-		commonpb.RemovedMetadataFieldTypeLogType:      "REMOVED_METADATA_FIELD_TYPE",
-		commonpb.OrderSkippedLogType:                  "ORDER_SKIPPED",
-		commonpb.FillGapLogType:                       "FILL_GAP",
-		commonpb.CreateIndexLogType:                   "CREATE_INDEX",
-		commonpb.DropIndexLogType:                     "DROP_INDEX",
-		commonpb.AddedAccountTypeLogType:              "ADDED_ACCOUNT_TYPE",
-		commonpb.RemovedAccountTypeLogType:            "REMOVED_ACCOUNT_TYPE",
-		commonpb.UpdatedDefaultEnforcementModeLogType: "UPDATED_DEFAULT_ENFORCEMENT_MODE",
+	for kind, name := range map[ledgerpb.LogType]string{
+		ledgerpb.SetMetadataLogType:                   "SET_METADATA",
+		ledgerpb.NewTransactionLogType:                "NEW_TRANSACTION",
+		ledgerpb.RevertedTransactionLogType:           "REVERTED_TRANSACTION",
+		ledgerpb.DeleteMetadataLogType:                "DELETE_METADATA",
+		ledgerpb.SetMetadataFieldTypeLogType:          "SET_METADATA_FIELD_TYPE",
+		ledgerpb.RemovedMetadataFieldTypeLogType:      "REMOVED_METADATA_FIELD_TYPE",
+		ledgerpb.OrderSkippedLogType:                  "ORDER_SKIPPED",
+		ledgerpb.FillGapLogType:                       "FILL_GAP",
+		ledgerpb.CreateIndexLogType:                   "CREATE_INDEX",
+		ledgerpb.DropIndexLogType:                     "DROP_INDEX",
+		ledgerpb.AddedAccountTypeLogType:              "ADDED_ACCOUNT_TYPE",
+		ledgerpb.RemovedAccountTypeLogType:            "REMOVED_ACCOUNT_TYPE",
+		ledgerpb.UpdatedDefaultEnforcementModeLogType: "UPDATED_DEFAULT_ENFORCEMENT_MODE",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, name, kind.String())
-			decoded, err := commonpb.LogTypeFromString(name)
+			decoded, err := ledgerpb.LogTypeFromString(name)
 			require.NoError(t, err)
 			require.Equal(t, kind, decoded)
 		})

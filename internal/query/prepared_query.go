@@ -7,14 +7,14 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // ReadPreparedQuery reads a single prepared query by ledger and name from the attributes zone.
-func ReadPreparedQuery(ctx context.Context, attr *attributes.Attribute[*commonpb.PreparedQuery], reader dal.PebbleGetter, ledgerName string, name string) (*commonpb.PreparedQuery, error) {
+func ReadPreparedQuery(ctx context.Context, attr *attributes.Attribute[*ledgerpb.PreparedQuery], reader dal.PebbleGetter, ledgerName string, name string) (*ledgerpb.PreparedQuery, error) {
 	_, span := queryTracer.Start(ctx, "query.get_prepared_query",
 		trace.WithAttributes(
 			attribute.String("ledger", ledgerName),
@@ -26,7 +26,7 @@ func ReadPreparedQuery(ctx context.Context, attr *attributes.Attribute[*commonpb
 }
 
 // ReadPreparedQueries reads all prepared queries for a ledger from the attributes zone.
-func ReadPreparedQueries(ctx context.Context, attr *attributes.Attribute[*commonpb.PreparedQuery], reader dal.PebbleReader, ledgerName string) ([]*commonpb.PreparedQuery, error) {
+func ReadPreparedQueries(ctx context.Context, attr *attributes.Attribute[*ledgerpb.PreparedQuery], reader dal.PebbleReader, ledgerName string) ([]*ledgerpb.PreparedQuery, error) {
 	_, span := queryTracer.Start(ctx, "query.list_prepared_queries",
 		trace.WithAttributes(attribute.String("ledger", ledgerName)))
 	defer span.End()
@@ -41,7 +41,7 @@ func ReadPreparedQueries(ctx context.Context, attr *attributes.Attribute[*common
 		return nil, fmt.Errorf("scanning prepared queries for ledger %q: %w", ledgerName, err)
 	}
 
-	queries := make([]*commonpb.PreparedQuery, 0, len(entries))
+	queries := make([]*ledgerpb.PreparedQuery, 0, len(entries))
 	for _, entry := range entries {
 		queries = append(queries, entry.Value)
 	}

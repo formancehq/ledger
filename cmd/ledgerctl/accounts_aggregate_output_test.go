@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -25,7 +25,7 @@ type aggregateVolumesOutputServer struct {
 	asset string
 }
 
-func (s *aggregateVolumesOutputServer) AggregateVolumes(ctx context.Context, _ *servicepb.AggregateVolumesRequest) (*commonpb.AggregateResult, error) {
+func (s *aggregateVolumesOutputServer) AggregateVolumes(ctx context.Context, _ *servicepb.AggregateVolumesRequest) (*ledgerpb.AggregateResult, error) {
 	profile, err := proto.Marshal(&servicepb.QueryProfile{BarrierDurationUs: 1})
 	if err != nil {
 		return nil, err
@@ -35,11 +35,11 @@ func (s *aggregateVolumesOutputServer) AggregateVolumes(ctx context.Context, _ *
 		return nil, err
 	}
 
-	return &commonpb.AggregateResult{
-		Volumes: []*commonpb.AggregatedVolume{{
+	return &ledgerpb.AggregateResult{
+		Volumes: []*ledgerpb.AggregatedVolume{{
 			Asset:  s.asset,
-			Input:  commonpb.NewUint256FromUint64(1234),
-			Output: commonpb.NewUint256FromUint64(0),
+			Input:  ledgerpb.NewUint256FromUint64(1234),
+			Output: ledgerpb.NewUint256FromUint64(0),
 		}},
 	}, nil
 }

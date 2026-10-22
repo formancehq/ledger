@@ -6,7 +6,7 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
@@ -84,16 +84,16 @@ func TestModelAggregateOptionsMirrorTheResultStage(t *testing.T) {
 func TestServerAggregateKeysByAssetAndColor(t *testing.T) {
 	t.Parallel()
 
-	vol := func(asset, color string, in, out uint64) *commonpb.AggregatedVolume {
-		return &commonpb.AggregatedVolume{Asset: asset, Color: color, Input: commonpb.NewUint256(uint256.NewInt(in)), Output: commonpb.NewUint256(uint256.NewInt(out))}
+	vol := func(asset, color string, in, out uint64) *ledgerpb.AggregatedVolume {
+		return &ledgerpb.AggregatedVolume{Asset: asset, Color: color, Input: ledgerpb.NewUint256(uint256.NewInt(in)), Output: ledgerpb.NewUint256(uint256.NewInt(out))}
 	}
 
-	got, ok := serverAggregate(&commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{vol("USD/2", "", 3, 1), vol("USD/2", "a", 2, 2), vol("EUR/2", "", 0, 0)}})
+	got, ok := serverAggregate(&ledgerpb.AggregateResult{Volumes: []*ledgerpb.AggregatedVolume{vol("USD/2", "", 3, 1), vol("USD/2", "a", 2, 2), vol("EUR/2", "", 0, 0)}})
 	require.True(t, ok)
 	require.Len(t, got, 3, "every bucket the server sent is kept, so an invented zero bucket stays visible")
 	require.Equal(t, "3", got[assetColor{Asset: "USD/2"}].in.Dec())
 	require.Equal(t, "2", got[assetColor{Asset: "USD/2", Color: "a"}].out.Dec())
 
-	_, ok = serverAggregate(&commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{vol("USD/2", "a", 1, 1), vol("USD/2", "a", 1, 1)}})
+	_, ok = serverAggregate(&ledgerpb.AggregateResult{Volumes: []*ledgerpb.AggregatedVolume{vol("USD/2", "a", 1, 1), vol("USD/2", "a", 1, 1)}})
 	require.False(t, ok)
 }

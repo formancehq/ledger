@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -234,10 +234,10 @@ func TestHandleExecutePreparedQuery_AggregateEmitsColor(t *testing.T) {
 		func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 			return &servicepb.ExecutePreparedQueryResponse{
 				Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
-					Aggregate: &commonpb.AggregateResult{
-						Volumes: []*commonpb.AggregatedVolume{
-							{Asset: "USD", Color: "", Input: commonpb.NewUint256FromUint64(100), Output: commonpb.NewUint256FromUint64(30)},
-							{Asset: "USD", Color: "RED", Input: commonpb.NewUint256FromUint64(50), Output: commonpb.NewUint256FromUint64(0)},
+					Aggregate: &ledgerpb.AggregateResult{
+						Volumes: []*ledgerpb.AggregatedVolume{
+							{Asset: "USD", Color: "", Input: ledgerpb.NewUint256FromUint64(100), Output: ledgerpb.NewUint256FromUint64(30)},
+							{Asset: "USD", Color: "RED", Input: ledgerpb.NewUint256FromUint64(50), Output: ledgerpb.NewUint256FromUint64(0)},
 						},
 					},
 				},
@@ -258,7 +258,7 @@ func TestHandleExecutePreparedQuery_AggregateEmitsColor(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	resp := decodeResponse[struct {
-		Cursor          *commonpb.PreparedQueryCursor `json:"cursor"`
+		Cursor          *ledgerpb.PreparedQueryCursor `json:"cursor"`
 		AggregateResult *aggregateVolumesWireJSON     `json:"aggregateResult"`
 	}](t, w)
 	require.Nil(t, resp.Cursor, "aggregate response must not set the cursor variant")
@@ -299,13 +299,13 @@ func TestHandleExecutePreparedQuery_CursorShapeIsCamelCase(t *testing.T) {
 		func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 			return &servicepb.ExecutePreparedQueryResponse{
 				Result: &servicepb.ExecutePreparedQueryResponse_Cursor{
-					Cursor: &commonpb.PreparedQueryCursor{
+					Cursor: &ledgerpb.PreparedQueryCursor{
 						PageSize: 15,
 						HasMore:  true,
 						Next:     "nxt",
-						AccountData: []*commonpb.Account{
-							{Address: "alice", Volumes: []*commonpb.AccountVolume{
-								{Asset: "USD", Color: "", Volumes: &commonpb.VolumesWithBalance{Input: commonpb.MustBigUintFromDecimal("100"), Output: commonpb.MustBigUintFromDecimal("30"), Balance: commonpb.MustSignedBigIntFromDecimal("70")}},
+						AccountData: []*ledgerpb.Account{
+							{Address: "alice", Volumes: []*ledgerpb.AccountVolume{
+								{Asset: "USD", Color: "", Volumes: &ledgerpb.VolumesWithBalance{Input: ledgerpb.MustBigUintFromDecimal("100"), Output: ledgerpb.MustBigUintFromDecimal("30"), Balance: ledgerpb.MustSignedBigIntFromDecimal("70")}},
 							}},
 						},
 					},

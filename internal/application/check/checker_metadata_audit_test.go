@@ -8,9 +8,9 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -87,7 +87,7 @@ func TestCheck_SavedMetadataUsesAuditedOrderAsAuthority(t *testing.T) {
 	})
 }
 
-func auditedMetadataValue(t *testing.T, engine *testEngine, auditSequence uint64, key string) *commonpb.MetadataValue {
+func auditedMetadataValue(t *testing.T, engine *testEngine, auditSequence uint64, key string) *ledgerpb.MetadataValue {
 	t.Helper()
 
 	snap, err := engine.store.NewReadHandle()
@@ -111,7 +111,7 @@ func auditedMetadataValue(t *testing.T, engine *testEngine, auditSequence uint64
 	return order.GetLedgerScoped().GetApply().GetAddMetadata().GetMetadata()[key]
 }
 
-func metadataAuditFixture(t *testing.T) (*testEngine, *commonpb.Log) {
+func metadataAuditFixture(t *testing.T) (*testEngine, *ledgerpb.Log) {
 	t.Helper()
 
 	engine := newTestEngine(t)
@@ -122,7 +122,7 @@ func metadataAuditFixture(t *testing.T) (*testEngine, *commonpb.Log) {
 	return engine, logs[0]
 }
 
-func mirrorMetadataAuditFixture(t *testing.T) (*testEngine, *commonpb.Log) {
+func mirrorMetadataAuditFixture(t *testing.T) (*testEngine, *ledgerpb.Log) {
 	t.Helper()
 
 	engine := newTestEngine(t)
@@ -135,7 +135,7 @@ func mirrorMetadataAuditFixture(t *testing.T) (*testEngine, *commonpb.Log) {
 
 func createMirrorLedgerOrder(name string) *raftcmdpb.Order {
 	order := createLedgerOrder(name)
-	order.GetLedgerScoped().GetCreateLedger().Mode = commonpb.LedgerMode_LEDGER_MODE_MIRROR
+	order.GetLedgerScoped().GetCreateLedger().Mode = ledgerpb.LedgerMode_LEDGER_MODE_MIRROR
 
 	return order
 }
@@ -151,12 +151,12 @@ func mirrorSaveAccountMetadataOrder(ledger, account string, metadata map[string]
 							V2LogId: 1,
 							Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
 								SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
-									Target: &commonpb.Target{
-										Target: &commonpb.Target_Account{
-											Account: &commonpb.TargetAccount{Addr: account},
+									Target: &ledgerpb.Target{
+										Target: &ledgerpb.Target_Account{
+											Account: &ledgerpb.TargetAccount{Addr: account},
 										},
 									},
-									Metadata: commonpb.MetadataFromGoMap(metadata),
+									Metadata: ledgerpb.MetadataFromGoMap(metadata),
 								},
 							},
 						},
@@ -167,10 +167,10 @@ func mirrorSaveAccountMetadataOrder(ledger, account string, metadata map[string]
 	}
 }
 
-func tamperSavedMetadata(t *testing.T, engine *testEngine, log *commonpb.Log, ledger, account, key string, rewriteLog bool) {
+func tamperSavedMetadata(t *testing.T, engine *testEngine, log *ledgerpb.Log, ledger, account, key string, rewriteLog bool) {
 	t.Helper()
 
-	tampered := commonpb.NewStringValue("rejected")
+	tampered := ledgerpb.NewStringValue("rejected")
 	batch := engine.store.OpenWriteSession()
 	defer func() { _ = batch.Cancel() }() // Best-effort cleanup after commit or assertion failure.
 

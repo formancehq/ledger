@@ -6,7 +6,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -24,7 +24,7 @@ var _ = Describe("Strict index creation", func() {
 		defer cancel()
 		client := node.Client
 		const ledger = "strict-index-create"
-		const builtin = commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE
+		const builtin = ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
 		Expect(err).To(Succeed())
 
@@ -88,7 +88,7 @@ var _ = Describe("Strict index creation", func() {
 		for _, key := range rejectedKeys {
 			entry := auditEntryWithIdempotency(entries, key)
 			Expect(entry.GetFailure()).NotTo(BeNil())
-			Expect(entry.GetFailure().GetReason()).To(Equal(commonpb.ErrorReason_ERROR_REASON_INDEX_ALREADY_EXISTS))
+			Expect(entry.GetFailure().GetReason()).To(Equal(ledgerpb.ErrorReason_ERROR_REASON_INDEX_ALREADY_EXISTS))
 			full, err := client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{Sequence: entry.GetSequence()})
 			Expect(err).To(Succeed())
 			Expect(full.GetItems()).To(HaveLen(1))

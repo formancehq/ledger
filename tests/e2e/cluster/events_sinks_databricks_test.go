@@ -11,7 +11,7 @@ import (
 	"time"
 
 	_ "github.com/databricks/databricks-sql-go"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -74,15 +74,15 @@ var _ = Describe("Events Sinks Databricks", Ordered, func() {
 
 	It("Should deliver events to Databricks when transactions are created", func() {
 		// Add Databricks sink via Apply
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&ledgerpb.SinkConfig{
 			Name:         "databricks-e2e",
 			BatchSize:    10,
 			BatchDelayMs: 500,
-			Type: &commonpb.SinkConfig_Databricks{
-				Databricks: &commonpb.DatabricksSinkConfig{
+			Type: &ledgerpb.SinkConfig_Databricks{
+				Databricks: &ledgerpb.DatabricksSinkConfig{
 					ServerHostname: dbHost,
 					HttpPath:       dbHTTPPath,
-					Auth:           &commonpb.DatabricksSinkConfig_Token{Token: dbToken},
+					Auth:           &ledgerpb.DatabricksSinkConfig_Token{Token: dbToken},
 					Catalog:        dbCatalog,
 					Schema:         dbSchema,
 					Table:          table,
@@ -98,7 +98,7 @@ var _ = Describe("Events Sinks Databricks", Ordered, func() {
 
 		// Create a transaction (force=true to bypass balance checks)
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("db-test",
-			[]*commonpb.Posting{
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			},
 			nil,

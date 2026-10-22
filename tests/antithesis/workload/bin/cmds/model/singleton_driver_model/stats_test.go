@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
@@ -19,8 +19,8 @@ func TestModelUsage_CountsWhatTheUsagebuilderCounts(t *testing.T) {
 	// RevertedTransaction log.
 	ls := buildLedgerSeparateBulks(t,
 		oracletest.TxReqMulti(true,
-			commonpb.NewPosting("world", "acc:a", "USD", big.NewInt(10)),
-			commonpb.NewPosting("acc:a", "acc:b", "USD", big.NewInt(5)),
+			ledgerpb.NewPosting("world", "acc:a", "USD", big.NewInt(10)),
+			ledgerpb.NewPosting("acc:a", "acc:b", "USD", big.NewInt(5)),
 		),
 		oracletest.TxReqRefL("L", "ref-1", "world", "acc:c", "USD", 7),
 		oracletest.RevertReqL("L", 1, true),

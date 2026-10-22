@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -13,7 +13,7 @@ import (
 // populates ctx.Boundaries and ctx.LedgerInfo before dispatching to apply-
 // child handlers so children receive everything through a single uniform
 // Context.
-func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
 	s := ctx.Scope
 
 	// Check deletion status before boundaries: MarkLedgerForCleanup removes
@@ -37,7 +37,7 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 	boundaries := boundariesReader.Mutate()
 
 	// Block writes on mirror-mode ledgers.
-	if infoOk && ledgerInfoReader.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !isMirrorSafeApply(apply) {
+	if infoOk && ledgerInfoReader.GetMode() == ledgerpb.LedgerMode_LEDGER_MODE_MIRROR && !isMirrorSafeApply(apply) {
 		return nil, &domain.ErrLedgerInMirrorMode{Name: ledger}
 	}
 
@@ -74,7 +74,7 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 	}
 
 	var (
-		logPayload *commonpb.LedgerLogPayload
+		logPayload *ledgerpb.LedgerLogPayload
 		err        domain.SerializableError
 	)
 
@@ -113,11 +113,11 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 
 	s.Boundaries().Put(domain.LedgerKey{Name: ledger}, boundaries)
 
-	return &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
+	return &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_Apply{
+			Apply: &ledgerpb.ApplyLedgerLog{
 				LedgerName: ledger,
-				Log: &commonpb.LedgerLog{
+				Log: &ledgerpb.LedgerLog{
 					Data: logPayload,
 					Date: s.GetDate().Mutate(),
 					Id:   nextLogID,

@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -44,13 +44,13 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Create 3 transactions producing 4 accounts: world, bank:main, bank:fees, users:alice
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank:main", big.NewInt(1000), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("bank:main", "bank:fees", big.NewInt(10), "USD"),
 				}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("bank:main", "users:alice", big.NewInt(100), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -80,12 +80,12 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(0), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(1), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -127,10 +127,10 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "temporary:one", big.NewInt(1), "USD"),
 				}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("temporary:one", "world", big.NewInt(1), "USD"),
 				}, nil),
 			))
@@ -147,7 +147,7 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "temporary:one", big.NewInt(1), "USD"),
 				}, nil, nil),
 			))

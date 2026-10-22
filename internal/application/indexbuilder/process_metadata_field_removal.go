@@ -3,8 +3,8 @@ package indexbuilder
 import (
 	"fmt"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -33,14 +33,14 @@ func (b *Builder) handleRemovedMetadataFieldType(
 	kb *dal.KeyBuilder,
 	cfg *ledgerIndexConfig,
 	ledgerName string,
-	log *commonpb.RemovedMetadataFieldTypeLog,
+	log *ledgerpb.RemovedMetadataFieldTypeLog,
 ) error {
 	dropped := log.GetDroppedIndex()
 	if dropped == nil {
 		return nil
 	}
 
-	meta, ok := dropped.GetKind().(*commonpb.IndexID_Metadata)
+	meta, ok := dropped.GetKind().(*ledgerpb.IndexID_Metadata)
 	if !ok {
 		return nil
 	}
@@ -141,11 +141,11 @@ func deleteReadStoreRange(batch *dal.WriteSession, start []byte) error {
 	return batch.DeleteRangeNoSync(start, end)
 }
 
-func namespaceForTarget(t commonpb.TargetType) string {
+func namespaceForTarget(t ledgerpb.TargetType) string {
 	switch t {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 		return readstore.NamespaceAccount
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 		return readstore.NamespaceTransaction
 	default:
 		return ""

@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
@@ -21,7 +21,7 @@ func servedSet(canonicals ...string) map[string]bool {
 
 // metaIdxCanonical is the registry key of an account metadata index on key.
 func metaIdxCanonical(key string) string {
-	return indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+	return indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 }
 
 func TestIndexSetEqual(t *testing.T) {
@@ -29,8 +29,8 @@ func TestIndexSetEqual(t *testing.T) {
 
 	// A declared field plus its index, so the registry holds exactly one entry.
 	ls := buildLedger(t,
-		oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k1", commonpb.MetadataType_METADATA_TYPE_STRING),
-		oracletest.CreateIndexReq(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k1")),
+		oracletest.SetFieldTypeReq(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k1", ledgerpb.MetadataType_METADATA_TYPE_STRING),
+		oracletest.CreateIndexReq(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k1")),
 	)
 
 	one := metaIdxCanonical("k1")
@@ -59,15 +59,15 @@ func TestIndexSetEqual_FieldRemovalCascade(t *testing.T) {
 	t.Parallel()
 
 	declared := buildLedger(t,
-		oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k1", commonpb.MetadataType_METADATA_TYPE_STRING),
-		oracletest.CreateIndexReq(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k1")),
+		oracletest.SetFieldTypeReq(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k1", ledgerpb.MetadataType_METADATA_TYPE_STRING),
+		oracletest.CreateIndexReq(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k1")),
 	)
 	require.True(t, indexSetEqual(declared, servedSet(metaIdxCanonical("k1"))))
 
 	removed := buildLedger(t,
-		oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k1", commonpb.MetadataType_METADATA_TYPE_STRING),
-		oracletest.CreateIndexReq(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k1")),
-		oracletest.RemoveFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k1"),
+		oracletest.SetFieldTypeReq(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k1", ledgerpb.MetadataType_METADATA_TYPE_STRING),
+		oracletest.CreateIndexReq(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k1")),
+		oracletest.RemoveFieldTypeReq(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k1"),
 	)
 
 	require.True(t, indexSetEqual(removed, servedSet()))
@@ -80,8 +80,8 @@ func TestIndexStatePresence(t *testing.T) {
 	t.Parallel()
 
 	ls := buildLedger(t,
-		oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k1", commonpb.MetadataType_METADATA_TYPE_STRING),
-		oracletest.CreateIndexReq(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k1")),
+		oracletest.SetFieldTypeReq(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k1", ledgerpb.MetadataType_METADATA_TYPE_STRING),
+		oracletest.CreateIndexReq(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k1")),
 	)
 
 	exists, _ := ls.IndexState(metaIdxCanonical("k1"))

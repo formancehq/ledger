@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -39,7 +39,7 @@ func TestSetupLedgersCanRemainBlockedBeforeFirstOutcome(t *testing.T) {
 	setupCtx, cancelSetup := context.WithCancel(context.Background())
 	setupDone := make(chan bool, 1)
 	go func() {
-		setupDone <- setupLedgers(setupCtx, servicepb.NewBucketServiceClient(conn), []string{"model-blocked-0"}, map[string][]*commonpb.SetMetadataFieldTypeCommand{})
+		setupDone <- setupLedgers(setupCtx, servicepb.NewBucketServiceClient(conn), []string{"model-blocked-0"}, map[string][]*ledgerpb.SetMetadataFieldTypeCommand{})
 	}()
 
 	requireSignal(t, applyEntered, "first setup Apply was not entered")

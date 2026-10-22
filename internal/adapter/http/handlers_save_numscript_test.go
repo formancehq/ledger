@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -21,12 +21,12 @@ func TestHandleSaveNumscript_Success(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
 				{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_SavedNumscript{
-							SavedNumscript: &commonpb.SavedNumscriptLog{
-								Info: &commonpb.NumscriptInfo{
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_SavedNumscript{
+							SavedNumscript: &ledgerpb.SavedNumscriptLog{
+								Info: &ledgerpb.NumscriptInfo{
 									Name:    "my-script",
 									Version: "1.0.0",
 								},
@@ -60,28 +60,28 @@ func TestHandleSaveNumscript_Success(t *testing.T) {
 func TestHandleSaveNumscript_LogContractViolations(t *testing.T) {
 	t.Parallel()
 
-	saved := &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_SavedNumscript{SavedNumscript: &commonpb.SavedNumscriptLog{
-			Info: &commonpb.NumscriptInfo{Name: "my-script", Version: "1.0.0"},
+	saved := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_SavedNumscript{SavedNumscript: &ledgerpb.SavedNumscriptLog{
+			Info: &ledgerpb.NumscriptInfo{Name: "my-script", Version: "1.0.0"},
 		}},
 	}}
-	wrongPayload := &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger1"}},
+	wrongPayload := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "ledger1"}},
 	}}
-	emptyBody := &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_SavedNumscript{SavedNumscript: &commonpb.SavedNumscriptLog{Info: nil}},
+	emptyBody := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_SavedNumscript{SavedNumscript: &ledgerpb.SavedNumscriptLog{Info: nil}},
 	}}
 
 	cases := []struct {
 		name    string
-		logs    []*commonpb.Log
+		logs    []*ledgerpb.Log
 		wantMsg string
 	}{
-		{"zero logs", []*commonpb.Log{}, "apply did not return exactly one log"},
-		{"two logs", []*commonpb.Log{saved, saved}, "apply did not return exactly one log"},
-		{"nil sole log", []*commonpb.Log{nil}, "apply returned a nil log"},
-		{"wrong payload type", []*commonpb.Log{wrongPayload}, "apply returned an unexpected log payload type"},
-		{"empty payload body", []*commonpb.Log{emptyBody}, "apply returned a log with no payload body"},
+		{"zero logs", []*ledgerpb.Log{}, "apply did not return exactly one log"},
+		{"two logs", []*ledgerpb.Log{saved, saved}, "apply did not return exactly one log"},
+		{"nil sole log", []*ledgerpb.Log{nil}, "apply returned a nil log"},
+		{"wrong payload type", []*ledgerpb.Log{wrongPayload}, "apply returned an unexpected log payload type"},
+		{"empty payload body", []*ledgerpb.Log{emptyBody}, "apply returned a log with no payload body"},
 	}
 
 	for _, tc := range cases {

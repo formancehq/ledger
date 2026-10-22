@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -15,7 +16,6 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 

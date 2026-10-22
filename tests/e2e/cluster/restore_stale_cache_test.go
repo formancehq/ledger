@@ -14,9 +14,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -160,7 +160,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			// mallory's VolumePair (input=1000, output=0) is cache-resident when
 			// the checkpoint is taken: the threshold guarantees no rotation
 			// evicts it between this order and the backup.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "mallory", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -175,7 +175,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 
 		It("should take a full backup to S3", func() {
 			resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+				Storage: testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 					Bucket:   staleS3Bucket,
 					Region:   restoreS3Region,
 					Endpoint: minioEndpoint,
@@ -189,13 +189,13 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			// The drain lives only in the incremental export: after restore,
 			// 0xF1 says (1000, 1000) while the checkpoint's 0xFF cache entry
 			// still says (1000, 0).
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("mallory", "world", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
 			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+				Storage: testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 					Bucket:   staleS3Bucket,
 					Region:   restoreS3Region,
 					Endpoint: minioEndpoint,
@@ -245,7 +245,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 
 		It("should download and finalize", func() {
 			startResp, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{
-				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+				Storage: testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 					Bucket:   staleS3Bucket,
 					Region:   restoreS3Region,
 					Endpoint: minioEndpoint,
@@ -331,7 +331,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 		})
 
 		It("should apply against the drained volumes, not the checkpoint-era cache entry", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "mallory", big.NewInt(500), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())

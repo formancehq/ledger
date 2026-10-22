@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -16,7 +16,7 @@ func metadataScriptOrder(t testing.TB, script string) *raftcmdpb.Order {
 	return requestToOrder(t, &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
 		Ledger: "test-ledger",
 		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
-			Script: &commonpb.Script{Plain: script + `
+			Script: &ledgerpb.Script{Plain: script + `
     send [USD/2 100] (source = @world destination = @users:alice)
    `},
 		}}},
@@ -29,7 +29,7 @@ func metadataCommandScope(t *testing.T, ctrl *gomock.Controller) *MockScope {
 	policy := tightMetadataPolicy(10)
 	policy.MetadataMaxKeyBytes = 10
 	scope.EXPECT().GetClusterPolicy().Return(policy).AnyTimes()
-	scope.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
+	scope.EXPECT().GetDate().Return((&ledgerpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
 	scope.EXPECT().GetNextSequenceID().Return(uint64(1)).AnyTimes()
 	scope.EXPECT().IncrementNextSequenceID().Return(uint64(1), nil).AnyTimes()
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
@@ -38,7 +38,7 @@ func metadataCommandScope(t *testing.T, ctrl *gomock.Controller) *MockScope {
 		return boundaries.AsReader(), nil
 	})
 	boundaryStub.onPut(func(_ domain.LedgerKey, value *raftcmdpb.LedgerBoundaries) { boundaries = value })
-	expectGetLedger(scope, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(scope, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	setupNumscriptVolumeMocks(scope)
 	_, _ = stubsFor(scope).transactionStatesStubFor(scope)
 	_, _ = stubsFor(scope).accountMetadataStubFor(scope)
@@ -66,9 +66,9 @@ func TestProcessOrders_NumscriptCommandMetadataCeiling(t *testing.T) {
 		}},
 		{name: "later caller metadata", orders: func() []*raftcmdpb.Order {
 			later := requestToOrder(t, &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
-				Ledger: "test-ledger", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{AddMetadata: &commonpb.SaveMetadataCommand{
-					Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "users:bob"}}},
-					Metadata: map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("12345")},
+				Ledger: "test-ledger", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{AddMetadata: &ledgerpb.SaveMetadataCommand{
+					Target:   &ledgerpb.Target{Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: "users:bob"}}},
+					Metadata: map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewStringValue("12345")},
 				}}},
 			}}})
 
@@ -121,8 +121,8 @@ func TestProcessOrders_NumscriptCommandMetadataCallerWins(t *testing.T) {
 	order := metadataScriptOrder(t, `set_tx_meta("k", "overshadowed")
   set_account_meta(@users:alice, "k", "overshadowed")`)
 	payload := order.GetLedgerScoped().GetApply().GetCreateTransaction()
-	payload.Metadata = map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("1234")}
-	payload.AccountMetadata = map[string]*commonpb.MetadataMap{"users:alice": {Values: map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("1234")}}}
+	payload.Metadata = map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewStringValue("1234")}
+	payload.AccountMetadata = map[string]*ledgerpb.MetadataMap{"users:alice": {Values: map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewStringValue("1234")}}}
 	before := order.CloneVT()
 	result, procErr := processor.ProcessOrders([]*raftcmdpb.Order{order}, mockFactory(scope), noopSink{})
 	require.Nil(t, procErr)

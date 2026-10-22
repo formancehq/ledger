@@ -7,9 +7,9 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -274,7 +274,7 @@ func TestGlobalState_Apply_Volumes(t *testing.T) {
 func TestGlobalState_Apply_TransientNonZero(t *testing.T) {
 	t.Parallel()
 
-	s := NewGlobalState().Apply(bulkOf(oracletest.AddTypeReqP("t", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT))).State
+	s := NewGlobalState().Apply(bulkOf(oracletest.AddTypeReqP("t", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT))).State
 
 	// A single inflow leaves t:1 non-zero at end of bulk -> rejected.
 	bad := s.Apply(bulkOf(oracletest.TxReq("world", "t:1", "USD", 5)))
@@ -300,7 +300,7 @@ func TestGlobalState_Apply_TransientGrandfather(t *testing.T) {
 	// non-zero. The pre-existing balance grandfathers it, so the bulk commits
 	// rather than failing TRANSIENT_ACCOUNT_NON_ZERO.
 	res := s.Apply(bulkOf(
-		oracletest.AddTypeReqP("g", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+		oracletest.AddTypeReqP("g", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
 		oracletest.TxReq("world", "g:1", "USD", 3),
 	))
 	require.True(t, res.OK)
@@ -314,7 +314,7 @@ func TestGlobalState_Apply_TransientBalancedPersistedRowNotGrandfathered(t *test
 	// g:1 holds a persisted row at zero balance ({5, 5}) when g becomes TRANSIENT.
 	s := NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "g:1", "USD", 5))).State
 	s = s.Apply(bulkOf(oracletest.TxReq("g:1", "world", "USD", 5))).State
-	s = s.Apply(bulkOf(oracletest.AddTypeReqP("g", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT))).State
+	s = s.Apply(bulkOf(oracletest.AddTypeReqP("g", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT))).State
 	require.True(t, s.Ledger("L").volumes.Has(VolumeKey{"g:1", "USD", ""}))
 
 	// Only a non-zero pre-bulk balance is grandfathered, so leaving the
@@ -337,7 +337,7 @@ func TestGlobalState_Apply_AssetTouchExclusions(t *testing.T) {
 	// Transient at order time but un-churned within the same bulk: the
 	// end-of-bulk chart classifies the cell NORMAL, so the touch is recorded.
 	churned := NewGlobalState().Apply(bulkOf(
-		oracletest.AddTypeReqP("t", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+		oracletest.AddTypeReqP("t", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
 		oracletest.TxReq("world", "t:1", "USD", 5),
 		oracletest.TxReq("t:1", "world", "USD", 5),
 		oracletest.RemoveTypeReq("t"),
@@ -348,14 +348,14 @@ func TestGlobalState_Apply_AssetTouchExclusions(t *testing.T) {
 	// Steady-state transient (zero pre-bulk value, transient at end of bulk):
 	// carried on TransientVolumes, never recorded.
 	steady := NewGlobalState().Apply(bulkOf(
-		oracletest.AddTypeReqP("t", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+		oracletest.AddTypeReqP("t", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
 		oracletest.TxReq("world", "t:1", "USD", 5),
 		oracletest.TxReq("t:1", "world", "USD", 5),
 	))
 	require.True(t, steady.OK)
 	require.False(t, steady.State.Ledger("L").HasEverAsset("t:1", "USD", 0))
 
-	eph := NewGlobalState().Apply(bulkOf(oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))).State
+	eph := NewGlobalState().Apply(bulkOf(oracletest.AddTypeReqP("e", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))).State
 
 	// Ephemeral drained across two orders of one bulk: the purge is decided on
 	// the end-of-bulk balance, so the touch is excluded even though the first
@@ -379,7 +379,7 @@ func TestGlobalState_Apply_AssetTouchExclusions(t *testing.T) {
 	require.True(t, funded.State.Ledger("L").HasEverAsset("g:1", "USD", 0))
 
 	washed := funded.State.Apply(bulkOf(
-		oracletest.AddTypeReqP("g", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+		oracletest.AddTypeReqP("g", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
 		oracletest.TxReq("world", "g:1", "EUR", 3),
 		oracletest.TxReq("g:1", "world", "EUR", 3),
 	))
@@ -391,7 +391,7 @@ func TestGlobalState_Apply_AssetTouchExclusions(t *testing.T) {
 func TestGlobalState_Apply_EphemeralPurge(t *testing.T) {
 	t.Parallel()
 
-	s := NewGlobalState().Apply(bulkOf(oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))).State
+	s := NewGlobalState().Apply(bulkOf(oracletest.AddTypeReqP("e", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))).State
 
 	// Non-zero EPHEMERAL persists; zero-balance EPHEMERAL is purged.
 	nonZero := s.Apply(bulkOf(oracletest.TxReq("world", "e:1", "USD", 5)))
@@ -410,13 +410,13 @@ func TestGlobalState_Apply_EphemeralPurge(t *testing.T) {
 func TestMetaValueString(t *testing.T) {
 	t.Parallel()
 
-	cases := map[string]*commonpb.MetadataValue{
-		"s:hi":    commonpb.NewStringValue("hi"),
-		"i:-42":   commonpb.NewIntValue(-42),
-		"u:42":    commonpb.NewUintValue(42),
-		"b:true":  commonpb.NewBoolValue(true),
-		"n:orig":  commonpb.NewNullValue("orig"),
-		"d:-1000": commonpb.NewDatetimeValue(-1000),
+	cases := map[string]*ledgerpb.MetadataValue{
+		"s:hi":    ledgerpb.NewStringValue("hi"),
+		"i:-42":   ledgerpb.NewIntValue(-42),
+		"u:42":    ledgerpb.NewUintValue(42),
+		"b:true":  ledgerpb.NewBoolValue(true),
+		"n:orig":  ledgerpb.NewNullValue("orig"),
+		"d:-1000": ledgerpb.NewDatetimeValue(-1000),
 	}
 	for want, v := range cases {
 		require.Equal(t, want, MetaValueString(v))
@@ -517,8 +517,8 @@ func TestApplyTransaction_MultiPosting(t *testing.T) {
 	// within the same tx. The per-posting floor reads the running volumes, so the
 	// second posting spends what the first funded; PCV covers every touched cell.
 	ok := NewGlobalState().Apply(bulkOf(oracletest.TxReqMulti(false,
-		commonpb.NewPosting("world", "a:1", "USD", big.NewInt(10)),
-		commonpb.NewPosting("a:1", "b:1", "USD", big.NewInt(10)),
+		ledgerpb.NewPosting("world", "a:1", "USD", big.NewInt(10)),
+		ledgerpb.NewPosting("a:1", "b:1", "USD", big.NewInt(10)),
 	)))
 	require.True(t, ok.OK)
 	ls := ok.State.Ledger("L")
@@ -529,8 +529,8 @@ func TestApplyTransaction_MultiPosting(t *testing.T) {
 	// A later posting that exceeds a:1's running balance rejects the whole tx;
 	// the atomic bulk commits nothing.
 	over := NewGlobalState().Apply(bulkOf(oracletest.TxReqMulti(false,
-		commonpb.NewPosting("world", "a:1", "USD", big.NewInt(10)),
-		commonpb.NewPosting("a:1", "b:1", "USD", big.NewInt(15)),
+		ledgerpb.NewPosting("world", "a:1", "USD", big.NewInt(10)),
+		ledgerpb.NewPosting("a:1", "b:1", "USD", big.NewInt(15)),
 	)))
 	require.False(t, over.OK)
 	require.Equal(t, domain.ErrReasonInsufficientFunds, over.Reason)
@@ -542,7 +542,7 @@ func TestApplyTransaction_Timestamp(t *testing.T) {
 
 	// A user-supplied timestamp is stored verbatim on the transaction record.
 	req := oracletest.TxReq("world", "x:1", "USD", 5)
-	req.GetApply().GetAction().GetCreateTransaction().Timestamp = &commonpb.Timestamp{Data: 12345}
+	req.GetApply().GetAction().GetCreateTransaction().Timestamp = &ledgerpb.Timestamp{Data: 12345}
 	res := NewGlobalState().Apply(bulkOf(req))
 	require.True(t, res.OK)
 	require.Equal(t, uint64(12345), res.State.Ledger("L").Txs().Get(0).Timestamp().GetData())
@@ -550,7 +550,7 @@ func TestApplyTransaction_Timestamp(t *testing.T) {
 	// It survives a later metadata write — the reconstruction preserves it. (A
 	// lost timestamp would read back as nil, which reads skip, so only a unit
 	// test catches it.)
-	withMeta := res.State.Apply(bulkOf(oracletest.AddTxMetaReq(1, map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("v")})))
+	withMeta := res.State.Apply(bulkOf(oracletest.AddTxMetaReq(1, map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewStringValue("v")})))
 	require.True(t, withMeta.OK)
 	require.Equal(t, uint64(12345), withMeta.State.Ledger("L").Txs().Get(0).Timestamp().GetData())
 
@@ -566,7 +566,7 @@ func TestApplyRevert_AtEffectiveDate(t *testing.T) {
 
 	// Original transaction with a user timestamp.
 	create := oracletest.TxReq("world", "x:1", "USD", 10)
-	create.GetApply().GetAction().GetCreateTransaction().Timestamp = &commonpb.Timestamp{Data: 777}
+	create.GetApply().GetAction().GetCreateTransaction().Timestamp = &ledgerpb.Timestamp{Data: 777}
 	base := NewGlobalState().Apply(bulkOf(create))
 	require.True(t, base.OK)
 
@@ -636,8 +636,8 @@ func TestApplyTransaction_VolumeOverflow_SourceOutput(t *testing.T) {
 	// running Output (2^255 + 2^255 = 2^256).
 	half := new(big.Int).Lsh(big.NewInt(1), 255)
 	res := NewGlobalState().Apply(bulkOf(oracletest.TxReqMulti(false,
-		commonpb.NewPosting("world", "d:1", "USD", half),
-		commonpb.NewPosting("world", "d:1", "USD", half),
+		ledgerpb.NewPosting("world", "d:1", "USD", half),
+		ledgerpb.NewPosting("world", "d:1", "USD", half),
 	)))
 	require.False(t, res.OK)
 	require.Equal(t, domain.ErrReasonVolumeOverflow, res.Reason)
@@ -650,8 +650,8 @@ func TestApplyTransaction_VolumeOverflow_DestInput(t *testing.T) {
 	// skipped and neither source Output overflows): d:1's Input overflows.
 	half := new(big.Int).Lsh(big.NewInt(1), 255)
 	res := NewGlobalState().Apply(bulkOf(oracletest.TxReqMulti(true,
-		commonpb.NewPosting("world", "d:1", "USD", half),
-		commonpb.NewPosting("a:1", "d:1", "USD", half),
+		ledgerpb.NewPosting("world", "d:1", "USD", half),
+		ledgerpb.NewPosting("a:1", "d:1", "USD", half),
 	)))
 	require.False(t, res.OK)
 	require.Equal(t, domain.ErrReasonVolumeOverflow, res.Reason)
@@ -681,7 +681,7 @@ func TestHasAccount_MetadataOnlyMembership(t *testing.T) {
 	// metadata scan.
 	s := NewGlobalState().Apply(bulkOf(
 		oracletest.TxReq("world", "a:1", "USD", 5),
-		oracletest.AddAccountMetaReq("m:1", "k", commonpb.NewStringValue("v")),
+		oracletest.AddAccountMetaReq("m:1", "k", ledgerpb.NewStringValue("v")),
 	)).State
 
 	ls := s.Ledger("L")
@@ -698,9 +698,9 @@ func TestGlobalState_Apply_VolumeAnnotations(t *testing.T) {
 	t.Parallel()
 
 	base := NewGlobalState().Apply(bulkOf(
-		oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
-		oracletest.AddTypeReqP("t", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
-		oracletest.AddTypeReqP("n", commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
+		oracletest.AddTypeReqP("e", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
+		oracletest.AddTypeReqP("t", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+		oracletest.AddTypeReqP("n", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
 		oracletest.TxReq("world", "e:1", "USD", 7),
 	))
 	require.True(t, base.OK)
@@ -708,9 +708,9 @@ func TestGlobalState_Apply_VolumeAnnotations(t *testing.T) {
 	got := base.State.Apply(bulkOf(
 		oracletest.TxReq("e:1", "world", "USD", 7), // drains a funded ephemeral
 		oracletest.TxReqMulti(false, // three first writes in one order
-			commonpb.NewPosting("world", "n:3", "USD", big.NewInt(1)),
-			commonpb.NewPosting("world", "n:1", "USD", big.NewInt(1)),
-			commonpb.NewPosting("world", "n:2", "USD", big.NewInt(1)),
+			ledgerpb.NewPosting("world", "n:3", "USD", big.NewInt(1)),
+			ledgerpb.NewPosting("world", "n:1", "USD", big.NewInt(1)),
+			ledgerpb.NewPosting("world", "n:2", "USD", big.NewInt(1)),
 		),
 		oracletest.TxReq("world", "e:2", "USD", 4), // creates...
 		oracletest.TxReq("e:2", "world", "USD", 4), // ...and drains it in the same bulk
@@ -795,7 +795,7 @@ func TestGlobalState_Fingerprint_DistinguishesVolumeAnnotations(t *testing.T) {
 func TestGlobalState_Apply_CreateIndexRejectsDuplicates(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
+	id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
 
 	first := NewGlobalState().Apply(bulkOf(oracletest.CreateIndexReq(id)))
 	require.True(t, first.OK)
@@ -810,14 +810,14 @@ func TestGlobalState_Apply_CreateIndexRejectsDuplicates(t *testing.T) {
 	require.True(t, dropped.State.Apply(bulkOf(oracletest.CreateIndexReq(id))).OK)
 
 	// The schema check still owns a first creation over an undeclared field.
-	metaID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "undeclared")
+	metaID := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "undeclared")
 	require.Equal(t, domain.ErrReasonMetadataFieldNotInSchema,
 		NewGlobalState().Apply(bulkOf(oracletest.CreateIndexReq(metaID))).Reason)
 
 	// A metadata index is duplicable exactly like a builtin one, and dropping
 	// its declaration takes the index with it, so the name frees up again.
 	declared := NewGlobalState().Apply(bulkOf(
-		oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "undeclared", commonpb.MetadataType_METADATA_TYPE_STRING),
+		oracletest.SetFieldTypeReq(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "undeclared", ledgerpb.MetadataType_METADATA_TYPE_STRING),
 		oracletest.CreateIndexReq(metaID),
 	))
 	require.True(t, declared.OK)
@@ -825,7 +825,7 @@ func TestGlobalState_Apply_CreateIndexRejectsDuplicates(t *testing.T) {
 		declared.State.Apply(bulkOf(oracletest.CreateIndexReq(metaID))).Reason)
 
 	removed := declared.State.Apply(bulkOf(
-		oracletest.RemoveFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "undeclared"),
+		oracletest.RemoveFieldTypeReq(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "undeclared"),
 	))
 	require.True(t, removed.OK)
 	require.Equal(t, domain.ErrReasonMetadataFieldNotInSchema,
@@ -858,19 +858,19 @@ func TestApplyRevert_TargetCreatedInSameBatch(t *testing.T) {
 }
 
 // pqReq builds a CreatePreparedQuery request on ledger "L".
-func pqReq(name string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) *servicepb.Request {
+func pqReq(name string, target ledgerpb.QueryTarget, filter *ledgerpb.QueryFilter) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_CreatePreparedQuery{
 			CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 				Ledger: "L",
-				Query:  &commonpb.PreparedQuery{Name: name, Target: target, Filter: filter},
+				Query:  &ledgerpb.PreparedQuery{Name: name, Target: target, Filter: filter},
 			},
 		},
 	}
 }
 
 // pqUpdateReq builds an UpdatePreparedQuery request on ledger "L".
-func pqUpdateReq(name string, filter *commonpb.QueryFilter) *servicepb.Request {
+func pqUpdateReq(name string, filter *ledgerpb.QueryFilter) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_UpdatePreparedQuery{
 			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
@@ -893,11 +893,11 @@ func pqDeleteReq(name string) *servicepb.Request {
 
 // pqFilter builds an address-prefix filter, valid on every executable target
 // this test needs it for.
-func pqFilter(prefix string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Address{
-			Address: &commonpb.AddressMatch{
-				Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: prefix},
+func pqFilter(prefix string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Address{
+			Address: &ledgerpb.AddressMatch{
+				Match: &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: prefix},
 			},
 		},
 	}
@@ -908,17 +908,17 @@ func TestGlobalState_Apply_PreparedQueryLifecycle(t *testing.T) {
 
 	base := NewGlobalState()
 
-	created := base.Apply(bulkOf(pqReq("q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:"))))
+	created := base.Apply(bulkOf(pqReq("q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:"))))
 	require.True(t, created.OK)
 
 	stored, ok := created.State.Ledger("L").PreparedQuery("q")
 	require.True(t, ok)
-	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, stored.GetTarget())
+	require.Equal(t, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, stored.GetTarget())
 	require.Equal(t, "a:", stored.GetFilter().GetAddress().GetHardcodedPrefix())
 	// Immutability: deriving `created` never touched base.
 	require.False(t, base.Ledger("L").PreparedQueries().Has("q"))
 
-	dup := created.State.Apply(bulkOf(pqReq("q", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, pqFilter("b:"))))
+	dup := created.State.Apply(bulkOf(pqReq("q", ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, pqFilter("b:"))))
 	require.False(t, dup.OK)
 	require.Equal(t, domain.ErrReasonPreparedQueryAlreadyExists, dup.Reason)
 
@@ -930,7 +930,7 @@ func TestGlobalState_Apply_PreparedQueryLifecycle(t *testing.T) {
 	require.Equal(t, "b:", after.GetFilter().GetAddress().GetHardcodedPrefix())
 	// The target is fixed at creation: an update carries no target field, and
 	// the FSM validates the new filter against the stored one.
-	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, after.GetTarget())
+	require.Equal(t, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, after.GetTarget())
 
 	missingUpdate := base.Apply(bulkOf(pqUpdateReq("nope", pqFilter("c:"))))
 	require.False(t, missingUpdate.OK)
@@ -959,7 +959,7 @@ func TestGlobalState_Apply_PreparedQueryAppendsNoLog(t *testing.T) {
 	require.Equal(t, []uint64{1}, seeded.State.Ledger("L").LogIDs())
 
 	after := seeded.State.
-		Apply(bulkOf(pqReq("q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:")))).State.
+		Apply(bulkOf(pqReq("q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:")))).State.
 		Apply(bulkOf(pqUpdateReq("q", pqFilter("b:")))).State.
 		Apply(bulkOf(pqDeleteReq("q"))).State
 
@@ -978,7 +978,7 @@ func TestGlobalState_Apply_PreparedQueryAppendsNoLog(t *testing.T) {
 func TestLedgerState_Fingerprint_DistinguishesPreparedQueryFilters(t *testing.T) {
 	t.Parallel()
 
-	created := NewGlobalState().Apply(bulkOf(pqReq("q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:")))).State
+	created := NewGlobalState().Apply(bulkOf(pqReq("q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:")))).State
 	rewritten := created.Apply(bulkOf(pqUpdateReq("q", pqFilter("b:")))).State
 
 	require.NotEqual(t, hashState(created), hashState(rewritten))
@@ -991,9 +991,9 @@ func TestGlobalState_Apply_PreparedQueryValidation(t *testing.T) {
 	t.Parallel()
 
 	// An accounts-only condition is invalid on a LOGS target.
-	logsWithAddress := pqReq("bad-target-cond", commonpb.QueryTarget_QUERY_TARGET_LOGS, pqFilter("a:"))
+	logsWithAddress := pqReq("bad-target-cond", ledgerpb.QueryTarget_QUERY_TARGET_LOGS, pqFilter("a:"))
 
-	seeded := NewGlobalState().Apply(bulkOf(pqReq("q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:"))))
+	seeded := NewGlobalState().Apply(bulkOf(pqReq("q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:"))))
 	require.True(t, seeded.OK)
 
 	for _, tc := range []struct {
@@ -1002,9 +1002,9 @@ func TestGlobalState_Apply_PreparedQueryValidation(t *testing.T) {
 		req    *servicepb.Request
 		reason string
 	}{
-		{"empty name", NewGlobalState(), pqReq("", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:")), domain.ErrReasonValidation},
-		{"non-printable name", NewGlobalState(), pqReq("a\x01b", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:")), domain.ErrReasonValidation},
-		{"non-executable target", NewGlobalState(), pqReq("audit", commonpb.QueryTarget_QUERY_TARGET_AUDIT, nil), domain.ErrReasonValidation},
+		{"empty name", NewGlobalState(), pqReq("", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:")), domain.ErrReasonValidation},
+		{"non-printable name", NewGlobalState(), pqReq("a\x01b", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:")), domain.ErrReasonValidation},
+		{"non-executable target", NewGlobalState(), pqReq("audit", ledgerpb.QueryTarget_QUERY_TARGET_AUDIT, nil), domain.ErrReasonValidation},
 		// A target-invalid condition surfaces the filter compiler's own reason,
 		// not the generic validation one — the model reports whatever
 		// ValidateFilterForTarget reports, so the two cannot drift.
@@ -1026,7 +1026,7 @@ func TestGlobalState_Apply_PreparedQueryValidation(t *testing.T) {
 func TestGlobalState_Apply_PreparedQueryNilFilter(t *testing.T) {
 	t.Parallel()
 
-	created := NewGlobalState().Apply(bulkOf(pqReq("universe", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)))
+	created := NewGlobalState().Apply(bulkOf(pqReq("universe", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)))
 	require.True(t, created.OK)
 
 	stored, ok := created.State.Ledger("L").PreparedQuery("universe")
@@ -1052,13 +1052,13 @@ func TestGlobalState_Apply_PreparedQueryNilFilter(t *testing.T) {
 func TestGlobalState_Apply_PreparedQueryNoAliasing(t *testing.T) {
 	t.Parallel()
 
-	req := pqReq("q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:"))
+	req := pqReq("q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:"))
 
 	created := NewGlobalState().Apply(bulkOf(req))
 	require.True(t, created.OK)
 
 	submitted := req.GetType().(*servicepb.Request_CreatePreparedQuery).CreatePreparedQuery.GetQuery()
-	submitted.GetFilter().GetAddress().Match = &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "mutated:"}
+	submitted.GetFilter().GetAddress().Match = &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "mutated:"}
 
 	stored, ok := created.State.Ledger("L").PreparedQuery("q")
 	require.True(t, ok)
@@ -1073,8 +1073,8 @@ func TestGlobalState_MalformedPreparedQueryRefusedAtAdmission(t *testing.T) {
 
 	// Admission refuses the malformed filter before the FSM's idempotency
 	// lookup, so the reused key never gets to report a conflict.
-	malformed := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{}}}
-	got := seeded.State.Apply(keyedBulk("k", pqReq("q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, malformed)))
+	malformed := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{Address: &ledgerpb.AddressMatch{}}}
+	got := seeded.State.Apply(keyedBulk("k", pqReq("q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, malformed)))
 	require.False(t, got.OK)
 	require.Equal(t, domain.ErrReasonFilterCompilation, got.Reason)
 }

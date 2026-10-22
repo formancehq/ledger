@@ -14,7 +14,7 @@ type AccessorKey interface {
 // the operating types end-to-end:
 //
 //   - K is the canonical key (e.g. domain.LedgerKey, domain.VolumeKey).
-//   - V is the in-memory value the FSM writes (e.g. *commonpb.LedgerInfo).
+//   - V is the in-memory value the FSM writes (e.g. *ledgerpb.LedgerInfo).
 //   - R is the Reader view returned on read so callers cannot mutate
 //     cached state in place; call R.Mutate() to obtain a writeable clone
 //     before passing back through Put.

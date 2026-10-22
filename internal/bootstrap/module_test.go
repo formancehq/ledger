@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"encoding/json"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,7 +13,6 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestLoadScopeMapping_FromFile(t *testing.T) {

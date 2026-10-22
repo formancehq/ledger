@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -48,10 +48,10 @@ func TestEmptyLedgerLateIndexSkipsGlobalBackfill(t *testing.T) {
 
 	tests := []struct {
 		name string
-		id   *commonpb.IndexID
+		id   *ledgerpb.IndexID
 	}{
-		{"generic metadata", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")},
-		{"posting derived", indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)},
+		{"generic metadata", indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")},
+		{"posting derived", indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)},
 	}
 
 	for _, test := range tests {
@@ -62,7 +62,7 @@ func TestEmptyLedgerLateIndexSkipsGlobalBackfill(t *testing.T) {
 	}
 }
 
-func assertEmptyLedgerLateIndexSkipsGlobalBackfill(t *testing.T, id *commonpb.IndexID) {
+func assertEmptyLedgerLateIndexSkipsGlobalBackfill(t *testing.T, id *ledgerpb.IndexID) {
 	t.Helper()
 
 	b := newTestBuilderWithStore(t)
@@ -70,10 +70,10 @@ func assertEmptyLedgerLateIndexSkipsGlobalBackfill(t *testing.T, id *commonpb.In
 	b.notifications = signal.NewNotifications()
 
 	const ledger = "control-only"
-	writeLogToFSM(t, b, &commonpb.Log{
+	writeLogToFSM(t, b, &ledgerpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+			CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 		}},
 	})
 	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
@@ -83,35 +83,35 @@ func assertEmptyLedgerLateIndexSkipsGlobalBackfill(t *testing.T, id *commonpb.In
 	// The global log is mostly unrelated HISTORY for another ledger. A wrong
 	// backfill decision would traverse all of it even though the target ledger
 	// remains empty. Keep one target CONTROL entry as the cross-proposal guard.
-	writeLogToFSM(t, b, &commonpb.Log{
+	writeLogToFSM(t, b, &ledgerpb.Log{
 		Sequence: 2,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{Name: "busy-foreign-ledger"},
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+			CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "busy-foreign-ledger"},
 		}},
 	})
 	for seq := uint64(3); seq <= 32; seq++ {
-		writeLogToFSM(t, b, &commonpb.Log{
+		writeLogToFSM(t, b, &ledgerpb.Log{
 			Sequence: seq,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: "busy-foreign-ledger",
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_SavedMetadata{
-							SavedMetadata: &commonpb.SavedMetadata{},
+					Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{
+							SavedMetadata: &ledgerpb.SavedMetadata{},
 						},
 					}).WithID(seq),
 				},
 			}},
 		})
 	}
-	writeLogToFSM(t, b, &commonpb.Log{
+	writeLogToFSM(t, b, &ledgerpb.Log{
 		Sequence: 33,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+			Apply: &ledgerpb.ApplyLedgerLog{
 				LedgerName: ledger,
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-					Payload: &commonpb.LedgerLogPayload_AddedAccountType{
-						AddedAccountType: &commonpb.AddedAccountTypeLog{},
+				Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+					Payload: &ledgerpb.LedgerLogPayload_AddedAccountType{
+						AddedAccountType: &ledgerpb.AddedAccountTypeLog{},
 					},
 				}).WithID(1),
 			},
@@ -121,14 +121,14 @@ func assertEmptyLedgerLateIndexSkipsGlobalBackfill(t *testing.T, id *commonpb.In
 	require.NoError(t, err)
 	require.Equal(t, uint64(33), cursor)
 
-	writeLogToFSM(t, b, &commonpb.Log{
+	writeLogToFSM(t, b, &ledgerpb.Log{
 		Sequence: 34,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+			Apply: &ledgerpb.ApplyLedgerLog{
 				LedgerName: ledger,
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-					Payload: &commonpb.LedgerLogPayload_CreateIndex{
-						CreateIndex: &commonpb.CreatedIndexLog{Id: id},
+				Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+					Payload: &ledgerpb.LedgerLogPayload_CreateIndex{
+						CreateIndex: &ledgerpb.CreatedIndexLog{Id: id},
 					},
 				}).WithID(34),
 			},
@@ -167,12 +167,12 @@ func TestSeveralIndexesOnFreshLedgersSkipLargeForeignHistory(t *testing.T) {
 	b.batchSize = DefaultBatchSize
 	b.notifications = signal.NewNotifications()
 
-	writeLogToFSM(t, b, &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-		CreateLedger: &commonpb.CreatedLedgerLog{Name: "old-busy"},
+	writeLogToFSM(t, b, &ledgerpb.Log{Sequence: 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+		CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "old-busy"},
 	}}})
 	for seq := uint64(2); seq <= 101; seq++ {
-		writeLogToFSM(t, b, ledgerPayloadLog(seq, "old-busy", seq, &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{},
+		writeLogToFSM(t, b, ledgerPayloadLog(seq, "old-busy", seq, &ledgerpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &ledgerpb.OrderSkippedLog{},
 		}, seq*10))
 	}
 	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
@@ -180,29 +180,29 @@ func TestSeveralIndexesOnFreshLedgersSkipLargeForeignHistory(t *testing.T) {
 	require.Equal(t, uint64(101), cursor)
 
 	for seq, ledger := range map[uint64]string{102: "fresh-a", 103: "fresh-b"} {
-		writeLogToFSM(t, b, &commonpb.Log{Sequence: seq, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+		writeLogToFSM(t, b, &ledgerpb.Log{Sequence: seq, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+			CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 		}}})
 	}
 	cursor, err = b.processLogs(context.Background(), cursor, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, uint64(103), cursor)
 
-	indexesByLedger := map[string][]*commonpb.IndexID{
+	indexesByLedger := map[string][]*ledgerpb.IndexID{
 		"fresh-a": {
-			indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
-			indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+			indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+			indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
 		},
 		"fresh-b": {
-			indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
-			indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+			indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+			indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 		},
 	}
 	sequence := uint64(104)
 	for _, ledger := range []string{"fresh-a", "fresh-b"} {
 		for _, id := range indexesByLedger[ledger] {
-			writeLogToFSM(t, b, ledgerPayloadLog(sequence, ledger, sequence-103, &commonpb.LedgerLogPayload_CreateIndex{
-				CreateIndex: &commonpb.CreatedIndexLog{Id: id},
+			writeLogToFSM(t, b, ledgerPayloadLog(sequence, ledger, sequence-103, &ledgerpb.LedgerLogPayload_CreateIndex{
+				CreateIndex: &ledgerpb.CreatedIndexLog{Id: id},
 			}, sequence*10))
 			sequence++
 		}
@@ -228,22 +228,22 @@ func TestLedgerHistoryTrackerCategories(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		payload *commonpb.LedgerLogPayload
+		payload *ledgerpb.LedgerLogPayload
 		want    ledgerHistoryState
 	}{
-		{"created transaction", &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{}}, ledgerHistoryNonEmpty},
-		{"reverted transaction", &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RevertedTransaction{}}, ledgerHistoryNonEmpty},
-		{"saved metadata", &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SavedMetadata{}}, ledgerHistoryNonEmpty},
-		{"deleted metadata", &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_DeletedMetadata{}}, ledgerHistoryNonEmpty},
-		{"order skipped", &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{}}, ledgerHistoryNonEmpty},
-		{"set metadata type", &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{}}, ledgerHistoryEmpty},
-		{"remove metadata type", &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{}}, ledgerHistoryEmpty},
-		{"fill gap", &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_FillGap{}}, ledgerHistoryEmpty},
-		{"create index", &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreateIndex{}}, ledgerHistoryEmpty},
-		{"drop index", &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_DropIndex{}}, ledgerHistoryEmpty},
-		{"add account type", &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AddedAccountType{}}, ledgerHistoryEmpty},
-		{"remove account type", &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RemovedAccountType{}}, ledgerHistoryEmpty},
-		{"update default enforcement", &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode{}}, ledgerHistoryEmpty},
+		{"created transaction", &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{}}, ledgerHistoryNonEmpty},
+		{"reverted transaction", &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{}}, ledgerHistoryNonEmpty},
+		{"saved metadata", &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{}}, ledgerHistoryNonEmpty},
+		{"deleted metadata", &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_DeletedMetadata{}}, ledgerHistoryNonEmpty},
+		{"order skipped", &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_OrderSkipped{}}, ledgerHistoryNonEmpty},
+		{"set metadata type", &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_SetMetadataFieldType{}}, ledgerHistoryEmpty},
+		{"remove metadata type", &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_RemovedMetadataFieldType{}}, ledgerHistoryEmpty},
+		{"fill gap", &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_FillGap{}}, ledgerHistoryEmpty},
+		{"create index", &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreateIndex{}}, ledgerHistoryEmpty},
+		{"drop index", &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_DropIndex{}}, ledgerHistoryEmpty},
+		{"add account type", &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_AddedAccountType{}}, ledgerHistoryEmpty},
+		{"remove account type", &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_RemovedAccountType{}}, ledgerHistoryEmpty},
+		{"update default enforcement", &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_UpdatedDefaultEnforcementMode{}}, ledgerHistoryEmpty},
 	}
 
 	for _, test := range tests {
@@ -280,8 +280,8 @@ func TestControlVersusHistoryAcrossProposalsDrivesCreateIndex(t *testing.T) {
 		wantHistory ledgerHistoryState
 		wantTask    bool
 	}{
-		{"FilledGap stays EMPTY", &commonpb.LedgerLogPayload_FillGap{FillGap: &commonpb.FilledGapLog{}}, ledgerHistoryEmpty, false},
-		{"OrderSkipped becomes NON_EMPTY", &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{}}, ledgerHistoryNonEmpty, true},
+		{"FilledGap stays EMPTY", &ledgerpb.LedgerLogPayload_FillGap{FillGap: &ledgerpb.FilledGapLog{}}, ledgerHistoryEmpty, false},
+		{"OrderSkipped becomes NON_EMPTY", &ledgerpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &ledgerpb.OrderSkippedLog{}}, ledgerHistoryNonEmpty, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -290,17 +290,17 @@ func TestControlVersusHistoryAcrossProposalsDrivesCreateIndex(t *testing.T) {
 			b.batchSize = DefaultBatchSize
 			b.notifications = signal.NewNotifications()
 			ledger := "classification"
-			id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-			writeLogToFSM(t, b, &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+			id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+			writeLogToFSM(t, b, &ledgerpb.Log{Sequence: 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+				CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 			}}})
 			cursor, err := b.processLogs(context.Background(), 0, time.Time{})
 			require.NoError(t, err)
 			writeLogToFSM(t, b, ledgerPayloadLog(2, ledger, 1, test.payload, 20))
 			cursor, err = b.processLogs(context.Background(), cursor, time.Time{})
 			require.NoError(t, err)
-			writeLogToFSM(t, b, ledgerPayloadLog(3, ledger, 2, &commonpb.LedgerLogPayload_CreateIndex{
-				CreateIndex: &commonpb.CreatedIndexLog{Id: id},
+			writeLogToFSM(t, b, ledgerPayloadLog(3, ledger, 2, &ledgerpb.LedgerLogPayload_CreateIndex{
+				CreateIndex: &ledgerpb.CreatedIndexLog{Id: id},
 			}, 30))
 			cursor, err = b.processLogs(context.Background(), cursor, time.Time{})
 			require.NoError(t, err)
@@ -328,12 +328,12 @@ func TestHandleCreatedIndexLogHistoryStateMatrix(t *testing.T) {
 
 	indexTypes := []struct {
 		name string
-		id   *commonpb.IndexID
+		id   *ledgerpb.IndexID
 	}{
-		{"transaction builtin", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)},
-		{"metadata", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")},
-		{"posting", indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)},
-		{"log date", indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)},
+		{"transaction builtin", indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)},
+		{"metadata", indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")},
+		{"posting", indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)},
+		{"log date", indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)},
 	}
 
 	for _, indexType := range indexTypes {
@@ -348,7 +348,7 @@ func TestHandleCreatedIndexLogHistoryStateMatrix(t *testing.T) {
 				seedCachedLedgerHistory(b, "ledger", state)
 				batch := b.readStore.NewBatch()
 				b.initFoldBatch(batch)
-				require.NoError(t, b.handleCreatedIndexLog("ledger", &commonpb.CreatedIndexLog{Id: indexType.id}))
+				require.NoError(t, b.handleCreatedIndexLog("ledger", &ledgerpb.CreatedIndexLog{Id: indexType.id}))
 				require.NoError(t, b.wb.Flush())
 				b.commitFoldBatch()
 
@@ -375,8 +375,8 @@ func TestHandleCreatedIndexLogMissingHistoryFailsLoudly(t *testing.T) {
 	b := newTestBuilderWithStore(t)
 	batch := b.readStore.NewBatch()
 	b.initFoldBatch(batch)
-	err := b.handleCreatedIndexLog("missing", &commonpb.CreatedIndexLog{
-		Id: indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+	err := b.handleCreatedIndexLog("missing", &ledgerpb.CreatedIndexLog{
+		Id: indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
 	})
 	require.ErrorContains(t, err, "no EMPTY/NON_EMPTY history state")
 	require.NoError(t, batch.Cancel())
@@ -386,13 +386,13 @@ func TestHandleCreatedIndexLogMissingHistoryFailsLoudly(t *testing.T) {
 func TestHandleCreatedIndexLogRejectsInvalidStateAndMissingBatch(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	t.Run("invalid state", func(t *testing.T) {
 		t.Parallel()
 
 		b := newTestBuilderWithStore(t)
 		seedCachedLedgerHistory(b, "ledger", ledgerHistoryUnknown)
-		err := b.handleCreatedIndexLog("ledger", &commonpb.CreatedIndexLog{Id: id})
+		err := b.handleCreatedIndexLog("ledger", &ledgerpb.CreatedIndexLog{Id: id})
 		require.ErrorContains(t, err, "invalid history state")
 	})
 	t.Run("missing batch", func(t *testing.T) {
@@ -400,7 +400,7 @@ func TestHandleCreatedIndexLogRejectsInvalidStateAndMissingBatch(t *testing.T) {
 
 		b := newTestBuilderWithStore(t)
 		seedCachedLedgerHistory(b, "ledger", ledgerHistoryEmpty)
-		err := b.handleCreatedIndexLog("ledger", &commonpb.CreatedIndexLog{Id: id})
+		err := b.handleCreatedIndexLog("ledger", &ledgerpb.CreatedIndexLog{Id: id})
 		require.ErrorContains(t, err, "without an active readstore batch")
 	})
 }
@@ -410,7 +410,7 @@ func TestLedgerHistoryRestartKeepsEmptyIndexLive(t *testing.T) {
 
 	b := newTestBuilderWithStore(t)
 	const ledger = "restart-empty"
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 	canonical := indexes.Canonical(id)
 	persistLedgerAndIndexRegistry(t, b, ledger, id)
 	persistLedgerHistory(t, b, ledger, ledgerHistoryEmpty)
@@ -439,20 +439,20 @@ func TestFreshReadstoreReconstructsHistoryAndResolvesIndex(t *testing.T) {
 	b.batchSize = DefaultBatchSize
 	b.notifications = signal.NewNotifications()
 	const ledger = "restored"
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 	persistLedgerAndIndexRegistry(t, b, ledger, id)
 
-	writeLogToFSM(t, b, &commonpb.Log{
+	writeLogToFSM(t, b, &ledgerpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+			CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 		}},
 	})
-	writeLogToFSM(t, b, ledgerPayloadLog(2, ledger, 1, &commonpb.LedgerLogPayload_AddedAccountType{
-		AddedAccountType: &commonpb.AddedAccountTypeLog{},
+	writeLogToFSM(t, b, ledgerPayloadLog(2, ledger, 1, &ledgerpb.LedgerLogPayload_AddedAccountType{
+		AddedAccountType: &ledgerpb.AddedAccountTypeLog{},
 	}, 20))
-	writeLogToFSM(t, b, ledgerPayloadLog(3, ledger, 2, &commonpb.LedgerLogPayload_CreateIndex{
-		CreateIndex: &commonpb.CreatedIndexLog{Id: id},
+	writeLogToFSM(t, b, ledgerPayloadLog(3, ledger, 2, &ledgerpb.LedgerLogPayload_CreateIndex{
+		CreateIndex: &ledgerpb.CreatedIndexLog{Id: id},
 	}, 30))
 
 	cursor, _, err := b.bootInit(context.Background())
@@ -478,7 +478,7 @@ func TestFreshReadstoreFailsIfRegistryCreateWasNotReplayed(t *testing.T) {
 
 	b := newTestBuilderWithStore(t)
 	const ledger = "missing-create"
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 	persistLedgerAndIndexRegistry(t, b, ledger, id)
 	require.NoError(t, b.initIndexConfig(context.Background()))
 
@@ -494,7 +494,7 @@ func TestWorkerPublishesTerminalFailureWhenHistoryReplayIsIncomplete(t *testing.
 	b.notifications = signal.NewNotifications()
 	b.meter = metricnoop.Meter{}
 	persistLedgerAndIndexRegistry(t, b, "missing-create", indexes.MetadataID(
-		commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		"role",
 	))
 
@@ -523,7 +523,7 @@ func TestWorkerPublishesTerminalFailureForReplayTimeHistoryError(t *testing.T) {
 		1,
 		"missing-history",
 		1,
-		&commonpb.LedgerLogPayload_AddedAccountType{AddedAccountType: &commonpb.AddedAccountTypeLog{}},
+		&ledgerpb.LedgerLogPayload_AddedAccountType{AddedAccountType: &ledgerpb.AddedAccountTypeLog{}},
 		10,
 	))
 
@@ -607,9 +607,9 @@ func TestBootInitRejectsHistoryWithoutProgress(t *testing.T) {
 func TestLedgerHistoryInvariantFailures(t *testing.T) {
 	t.Parallel()
 
-	controlPayload := func() *commonpb.LedgerLogPayload {
-		return &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_FillGap{
-			FillGap: &commonpb.FilledGapLog{},
+	controlPayload := func() *ledgerpb.LedgerLogPayload {
+		return &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_FillGap{
+			FillGap: &ledgerpb.FilledGapLog{},
 		}}
 	}
 	tests := []struct {
@@ -637,7 +637,7 @@ func TestLedgerHistoryInvariantFailures(t *testing.T) {
 		{
 			name: "unclassified payload",
 			run: func(b *Builder) error {
-				return b.observeLedgerPayload("ledger", &commonpb.LedgerLogPayload{})
+				return b.observeLedgerPayload("ledger", &ledgerpb.LedgerLogPayload{})
 			},
 			want: "unclassified ledger log payload",
 		},
@@ -688,14 +688,14 @@ func TestDropLedgerBuilderStateRollbackRestoresAllState(t *testing.T) {
 	const ledger = "rollback"
 	config := newLedgerIndexConfig()
 	versions := map[string]readstore.IndexVersionState{"index": {CurrentVersion: 1, HighWater: 1}}
-	unresolved := map[string]*commonpb.Index{"index": {Ledger: ledger}}
+	unresolved := map[string]*ledgerpb.Index{"index": {Ledger: ledger}}
 	targetBackfill := &backfillTask{ledger: ledger}
 	otherBackfill := &backfillTask{ledger: "other"}
 	targetRewrite := &schemaRewriteTask{ledger: ledger}
 	otherRewrite := &schemaRewriteTask{ledger: "other"}
 	b.indexConfig[ledger] = config
 	b.indexVersions = map[string]map[string]readstore.IndexVersionState{ledger: versions}
-	b.unresolvedIndexes = map[string]map[string]*commonpb.Index{ledger: unresolved}
+	b.unresolvedIndexes = map[string]map[string]*ledgerpb.Index{ledger: unresolved}
 	b.backfillTasks = []*backfillTask{targetBackfill, otherBackfill}
 	b.schemaRewriteTasks = []*schemaRewriteTask{targetRewrite, otherRewrite}
 	b.nextBackfillIdx = 1
@@ -769,13 +769,13 @@ func TestProcessLogsRejectsMalformedLedgerLifecycle(t *testing.T) {
 
 	tests := []struct {
 		name string
-		log  *commonpb.Log
+		log  *ledgerpb.Log
 		want string
 	}{
 		{
 			name: "apply without tracker",
-			log: ledgerPayloadLog(1, "missing", 1, &commonpb.LedgerLogPayload_FillGap{
-				FillGap: &commonpb.FilledGapLog{},
+			log: ledgerPayloadLog(1, "missing", 1, &ledgerpb.LedgerLogPayload_FillGap{
+				FillGap: &ledgerpb.FilledGapLog{},
 			}, 10),
 			want: "no EMPTY/NON_EMPTY history state",
 		},
@@ -805,12 +805,12 @@ func TestProcessLogsAcceptsRepeatedDeleteLedger(t *testing.T) {
 	b.notifications = signal.NewNotifications()
 	const ledger = "delete-me-ledger"
 
-	writeLogToFSM(t, b, &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-		CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+	writeLogToFSM(t, b, &ledgerpb.Log{Sequence: 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+		CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 	}}})
 	for sequence := uint64(2); sequence <= 3; sequence++ {
-		writeLogToFSM(t, b, &commonpb.Log{Sequence: sequence, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{
-			DeleteLedger: &commonpb.DeletedLedgerLog{Name: ledger},
+		writeLogToFSM(t, b, &ledgerpb.Log{Sequence: sequence, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeleteLedger{
+			DeleteLedger: &ledgerpb.DeletedLedgerLog{Name: ledger},
 		}}})
 	}
 
@@ -826,13 +826,13 @@ func TestIndexLogEntryRejectsMalformedDelete(t *testing.T) {
 
 	b := newTestBuilderWithStore(t)
 	cfg := newLedgerIndexConfig()
-	err := b.indexLogEntry(cfg, &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{
+	err := b.indexLogEntry(cfg, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeleteLedger{
 		DeleteLedger: nil,
 	}}}, nil)
 	require.ErrorContains(t, err, "nil DeletedLedger payload")
 
-	err = b.indexLogEntry(cfg, &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{
-		DeleteLedger: &commonpb.DeletedLedgerLog{Name: "ledger"},
+	err = b.indexLogEntry(cfg, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeleteLedger{
+		DeleteLedger: &ledgerpb.DeletedLedgerLog{Name: "ledger"},
 	}}}, nil)
 	require.ErrorContains(t, err, "without an active readstore batch")
 }
@@ -873,15 +873,15 @@ func TestDeleteRecreateResetsLedgerHistoryIncarnation(t *testing.T) {
 			b.batchSize = DefaultBatchSize
 			b.notifications = signal.NewNotifications()
 			const ledger = "reused-name"
-			id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
-			logs := []*commonpb.Log{
-				{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger}}}},
-				ledgerPayloadLog(2, ledger, 1, &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{}}, 20),
-				ledgerPayloadLog(3, ledger, 2, &commonpb.LedgerLogPayload_CreateIndex{CreateIndex: &commonpb.CreatedIndexLog{Id: id}}, 30),
-				{Sequence: 4, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{DeleteLedger: &commonpb.DeletedLedgerLog{Name: ledger}}}},
-				{Sequence: 5, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger}}}},
-				ledgerPayloadLog(6, ledger, 1, &commonpb.LedgerLogPayload_AddedAccountType{AddedAccountType: &commonpb.AddedAccountTypeLog{}}, 60),
-				ledgerPayloadLog(7, ledger, 2, &commonpb.LedgerLogPayload_CreateIndex{CreateIndex: &commonpb.CreatedIndexLog{Id: id}}, 70),
+			id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+			logs := []*ledgerpb.Log{
+				{Sequence: 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger}}}},
+				ledgerPayloadLog(2, ledger, 1, &ledgerpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &ledgerpb.OrderSkippedLog{}}, 20),
+				ledgerPayloadLog(3, ledger, 2, &ledgerpb.LedgerLogPayload_CreateIndex{CreateIndex: &ledgerpb.CreatedIndexLog{Id: id}}, 30),
+				{Sequence: 4, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeleteLedger{DeleteLedger: &ledgerpb.DeletedLedgerLog{Name: ledger}}}},
+				{Sequence: 5, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger}}}},
+				ledgerPayloadLog(6, ledger, 1, &ledgerpb.LedgerLogPayload_AddedAccountType{AddedAccountType: &ledgerpb.AddedAccountTypeLog{}}, 60),
+				ledgerPayloadLog(7, ledger, 2, &ledgerpb.LedgerLogPayload_CreateIndex{CreateIndex: &ledgerpb.CreatedIndexLog{Id: id}}, 70),
 			}
 
 			limit := len(logs)
@@ -924,16 +924,16 @@ func TestCreateIndexTrackerAndVersionRollbackTogether(t *testing.T) {
 	b.batchSize = DefaultBatchSize
 	b.notifications = signal.NewNotifications()
 	const ledger = "atomic-empty"
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 	canonical := indexes.Canonical(id)
-	writeLogToFSM(t, b, &commonpb.Log{
+	writeLogToFSM(t, b, &ledgerpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+			CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 		}},
 	})
-	writeLogToFSM(t, b, ledgerPayloadLog(2, ledger, 1, &commonpb.LedgerLogPayload_CreateIndex{
-		CreateIndex: &commonpb.CreatedIndexLog{Id: id},
+	writeLogToFSM(t, b, ledgerPayloadLog(2, ledger, 1, &ledgerpb.LedgerLogPayload_CreateIndex{
+		CreateIndex: &ledgerpb.CreatedIndexLog{Id: id},
 	}, 20))
 
 	corruptKey := dal.NewKeyBuilder().
@@ -992,7 +992,7 @@ func TestCommitFailureRollsBackHistoryVersionTaskAndCursor(t *testing.T) {
 		logger:      noopLogger{},
 	}
 	const ledger = "commit-retry"
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 	canonical := indexes.Canonical(id)
 	attempts := 0
 	stage := func() error {
@@ -1002,12 +1002,12 @@ func TestCommitFailureRollsBackHistoryVersionTaskAndCursor(t *testing.T) {
 		if err := b.observeCreatedLedger(ledger); err != nil {
 			return err
 		}
-		if err := b.observeLedgerPayload(ledger, &commonpb.LedgerLogPayload{
-			Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{}},
+		if err := b.observeLedgerPayload(ledger, &ledgerpb.LedgerLogPayload{
+			Payload: &ledgerpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &ledgerpb.OrderSkippedLog{}},
 		}); err != nil {
 			return err
 		}
-		if err := b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id}); err != nil {
+		if err := b.handleCreatedIndexLog(ledger, &ledgerpb.CreatedIndexLog{Id: id}); err != nil {
 			return err
 		}
 		if err := b.readStore.WriteProgress(batch, 9); err != nil {
@@ -1055,12 +1055,12 @@ func TestCreateIndexRejectsHighWaterOverflow(t *testing.T) {
 
 	b := newTestBuilderWithStore(t)
 	const ledger = "version-exhausted"
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	seedCachedLedgerHistory(b, ledger, ledgerHistoryEmpty)
 	b.putVersionState(ledger, indexes.Canonical(id), readstore.IndexVersionState{HighWater: ^uint32(0)})
 	batch := b.readStore.NewBatch()
 	b.initFoldBatch(batch)
-	err := b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id})
+	err := b.handleCreatedIndexLog(ledger, &ledgerpb.CreatedIndexLog{Id: id})
 	require.ErrorContains(t, err, "high-water exhausted")
 	require.NoError(t, batch.Cancel())
 	b.wb.Reset()
@@ -1072,11 +1072,11 @@ func TestRetypeRejectsHighWaterOverflow(t *testing.T) {
 
 	b := newTestBuilderWithStore(t)
 	const ledger = "retype-version-exhausted"
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 	b.putVersionState(ledger, indexes.Canonical(id), readstore.IndexVersionState{HighWater: ^uint32(0)})
 	batch := b.readStore.NewBatch()
 	b.initFoldBatch(batch)
-	err := b.bumpPendingVersion(ledger, id, commonpb.MetadataType_METADATA_TYPE_STRING)
+	err := b.bumpPendingVersion(ledger, id, ledgerpb.MetadataType_METADATA_TYPE_STRING)
 	require.ErrorContains(t, err, "high-water exhausted")
 	require.NoError(t, batch.Cancel())
 	b.wb.Reset()
@@ -1088,23 +1088,23 @@ func TestLogDateBackfillIncludesControlAndHistory(t *testing.T) {
 
 	b := newTestBuilderWithStore(t)
 	const ledger = "dated"
-	id := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+	id := indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 	seedCachedLedgerHistory(b, ledger, ledgerHistoryNonEmpty)
 	batch := b.readStore.NewBatch()
 	b.initFoldBatch(batch)
-	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id}))
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &ledgerpb.CreatedIndexLog{Id: id}))
 	require.NoError(t, b.wb.Flush())
 	b.commitFoldBatch()
 	require.Len(t, b.backfillTasks, 1)
 
-	writeLogToFSM(t, b, ledgerPayloadLog(1, ledger, 11, &commonpb.LedgerLogPayload_AddedAccountType{
-		AddedAccountType: &commonpb.AddedAccountTypeLog{},
+	writeLogToFSM(t, b, ledgerPayloadLog(1, ledger, 11, &ledgerpb.LedgerLogPayload_AddedAccountType{
+		AddedAccountType: &ledgerpb.AddedAccountTypeLog{},
 	}, 101))
-	writeLogToFSM(t, b, ledgerPayloadLog(2, ledger, 12, &commonpb.LedgerLogPayload_OrderSkipped{
-		OrderSkipped: &commonpb.OrderSkippedLog{},
+	writeLogToFSM(t, b, ledgerPayloadLog(2, ledger, 12, &ledgerpb.LedgerLogPayload_OrderSkipped{
+		OrderSkipped: &ledgerpb.OrderSkippedLog{},
 	}, 202))
-	writeLogToFSM(t, b, ledgerPayloadLog(3, "foreign", 13, &commonpb.LedgerLogPayload_OrderSkipped{
-		OrderSkipped: &commonpb.OrderSkippedLog{},
+	writeLogToFSM(t, b, ledgerPayloadLog(3, "foreign", 13, &ledgerpb.LedgerLogPayload_OrderSkipped{
+		OrderSkipped: &ledgerpb.OrderSkippedLog{},
 	}, 303))
 
 	require.NoError(t, b.processBackfill(context.Background(), make(chan struct{}), b.backfillTasks[0], time.Now().Add(time.Hour)))
@@ -1129,15 +1129,15 @@ func TestEmptyLogDateFastPathIncludesEarlierControlLogs(t *testing.T) {
 			b.batchSize = DefaultBatchSize
 			b.notifications = signal.NewNotifications()
 			const ledger = "control-dates"
-			id := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
-			writeLogToFSM(t, b, &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+			id := indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+			writeLogToFSM(t, b, &ledgerpb.Log{Sequence: 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+				CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 			}}})
-			writeLogToFSM(t, b, ledgerPayloadLog(2, ledger, 1, &commonpb.LedgerLogPayload_AddedAccountType{
-				AddedAccountType: &commonpb.AddedAccountTypeLog{},
+			writeLogToFSM(t, b, ledgerPayloadLog(2, ledger, 1, &ledgerpb.LedgerLogPayload_AddedAccountType{
+				AddedAccountType: &ledgerpb.AddedAccountTypeLog{},
 			}, 100))
-			writeLogToFSM(t, b, ledgerPayloadLog(3, ledger, 2, &commonpb.LedgerLogPayload_AddedAccountType{
-				AddedAccountType: &commonpb.AddedAccountTypeLog{},
+			writeLogToFSM(t, b, ledgerPayloadLog(3, ledger, 2, &ledgerpb.LedgerLogPayload_AddedAccountType{
+				AddedAccountType: &ledgerpb.AddedAccountTypeLog{},
 			}, 200))
 			var cursor uint64
 			if mode != "same fold" {
@@ -1150,7 +1150,7 @@ func TestEmptyLogDateFastPathIncludesEarlierControlLogs(t *testing.T) {
 				// A new builder owns no prior in-memory history/config. Recover only
 				// committed read-store state through the real boot path.
 				mainBatch := b.pebbleStore.OpenWriteSession()
-				require.NoError(t, state.SaveLedger(mainBatch, ledger, &commonpb.LedgerInfo{Name: ledger}))
+				require.NoError(t, state.SaveLedger(mainBatch, ledger, &ledgerpb.LedgerInfo{Name: ledger}))
 				require.NoError(t, mainBatch.Commit())
 				restarted := newTestBuilderWithStore(t)
 				restarted.readStore = b.readStore
@@ -1164,8 +1164,8 @@ func TestEmptyLogDateFastPathIncludesEarlierControlLogs(t *testing.T) {
 				require.Equal(t, uint64(3), cursor)
 			}
 
-			writeLogToFSM(t, b, ledgerPayloadLog(4, ledger, 3, &commonpb.LedgerLogPayload_CreateIndex{
-				CreateIndex: &commonpb.CreatedIndexLog{Id: id},
+			writeLogToFSM(t, b, ledgerPayloadLog(4, ledger, 3, &ledgerpb.LedgerLogPayload_CreateIndex{
+				CreateIndex: &ledgerpb.CreatedIndexLog{Id: id},
 			}, 300))
 			cursor, err := b.processLogs(context.Background(), cursor, time.Time{})
 			require.NoError(t, err)
@@ -1188,11 +1188,11 @@ func TestSpeculativeLogDatesArePurgedOnFirstHistory(t *testing.T) {
 	b.batchSize = DefaultBatchSize
 	b.notifications = signal.NewNotifications()
 	const ledger = "no-date-index"
-	writeLogToFSM(t, b, &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-		CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+	writeLogToFSM(t, b, &ledgerpb.Log{Sequence: 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+		CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 	}}})
-	writeLogToFSM(t, b, ledgerPayloadLog(2, ledger, 1, &commonpb.LedgerLogPayload_AddedAccountType{
-		AddedAccountType: &commonpb.AddedAccountTypeLog{},
+	writeLogToFSM(t, b, ledgerPayloadLog(2, ledger, 1, &ledgerpb.LedgerLogPayload_AddedAccountType{
+		AddedAccountType: &ledgerpb.AddedAccountTypeLog{},
 	}, 100))
 	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
 	require.NoError(t, err)
@@ -1200,8 +1200,8 @@ func TestSpeculativeLogDatesArePurgedOnFirstHistory(t *testing.T) {
 	prefix := readstore.LedgerLogDateRangePrefix(dal.NewKeyBuilder(), ledger)
 	assert.Equal(t, 1, countReadstorePrefix(t, b, prefix))
 
-	writeLogToFSM(t, b, ledgerPayloadLog(3, ledger, 2, &commonpb.LedgerLogPayload_OrderSkipped{
-		OrderSkipped: &commonpb.OrderSkippedLog{},
+	writeLogToFSM(t, b, ledgerPayloadLog(3, ledger, 2, &ledgerpb.LedgerLogPayload_OrderSkipped{
+		OrderSkipped: &ledgerpb.OrderSkippedLog{},
 	}, 200))
 	cursor, err = b.processLogs(context.Background(), cursor, time.Time{})
 	require.NoError(t, err)
@@ -1215,16 +1215,16 @@ func TestEmptyLogDateDropRecreateRetainsControlDates(t *testing.T) {
 	b.batchSize = DefaultBatchSize
 	b.notifications = signal.NewNotifications()
 	const ledger = "date-recreate"
-	id := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
-	writeLogToFSM(t, b, &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger}},
+	id := indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+	writeLogToFSM(t, b, &ledgerpb.Log{Sequence: 1, Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger}},
 	}})
 	payloads := []any{
-		&commonpb.LedgerLogPayload_AddedAccountType{AddedAccountType: &commonpb.AddedAccountTypeLog{}},
-		&commonpb.LedgerLogPayload_CreateIndex{CreateIndex: &commonpb.CreatedIndexLog{Id: id}},
-		&commonpb.LedgerLogPayload_DropIndex{DropIndex: &commonpb.DroppedIndexLog{Id: id}},
-		&commonpb.LedgerLogPayload_AddedAccountType{AddedAccountType: &commonpb.AddedAccountTypeLog{}},
-		&commonpb.LedgerLogPayload_CreateIndex{CreateIndex: &commonpb.CreatedIndexLog{Id: id}},
+		&ledgerpb.LedgerLogPayload_AddedAccountType{AddedAccountType: &ledgerpb.AddedAccountTypeLog{}},
+		&ledgerpb.LedgerLogPayload_CreateIndex{CreateIndex: &ledgerpb.CreatedIndexLog{Id: id}},
+		&ledgerpb.LedgerLogPayload_DropIndex{DropIndex: &ledgerpb.DroppedIndexLog{Id: id}},
+		&ledgerpb.LedgerLogPayload_AddedAccountType{AddedAccountType: &ledgerpb.AddedAccountTypeLog{}},
+		&ledgerpb.LedgerLogPayload_CreateIndex{CreateIndex: &ledgerpb.CreatedIndexLog{Id: id}},
 	}
 	var cursor uint64
 	for i, payload := range payloads {
@@ -1245,7 +1245,7 @@ func TestEmptyLogDateCancelledFoldRetry(t *testing.T) {
 	t.Parallel()
 	b := newTestBuilderWithStore(t)
 	const ledger = "date-cancel"
-	id := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+	id := indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 	attempts := 0
 	for attempts < 2 {
 		attempts++
@@ -1253,7 +1253,7 @@ func TestEmptyLogDateCancelledFoldRetry(t *testing.T) {
 		b.initFoldBatch(batch)
 		require.NoError(t, b.observeCreatedLedger(ledger))
 		require.NoError(t, b.wb.WriteLedgerLogDateIndex(b.kb, ledger, 100, 1))
-		require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id}))
+		require.NoError(t, b.handleCreatedIndexLog(ledger, &ledgerpb.CreatedIndexLog{Id: id}))
 		require.NoError(t, b.readStore.WriteProgress(batch, 2))
 		if attempts == 1 {
 			require.NoError(t, batch.Cancel())
@@ -1289,10 +1289,10 @@ func TestHistoricalDeletePreservesCurrentGenerationBuildStateAcrossRestart(t *te
 
 	for _, test := range []struct {
 		name string
-		id   *commonpb.IndexID
+		id   *ledgerpb.IndexID
 	}{
-		{"generic", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")},
-		{"posting", indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)},
+		{"generic", indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")},
+		{"posting", indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -1303,15 +1303,15 @@ func TestHistoricalDeletePreservesCurrentGenerationBuildStateAcrossRestart(t *te
 			persistLedgerHistory(t, b, ledger, ledgerHistoryNonEmpty)
 			batch := b.readStore.NewBatch()
 			b.initFoldBatch(batch)
-			require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: test.id}))
+			require.NoError(t, b.handleCreatedIndexLog(ledger, &ledgerpb.CreatedIndexLog{Id: test.id}))
 			require.NoError(t, b.wb.Flush())
 			b.commitFoldBatch()
 			require.Len(t, b.backfillTasks, 1)
 
-			writeLogToFSM(t, b, ledgerPayloadLog(1, ledger, 1, &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{}}, 10))
-			writeLogToFSM(t, b, &commonpb.Log{Sequence: 2, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{DeleteLedger: &commonpb.DeletedLedgerLog{Name: ledger}}}})
-			writeLogToFSM(t, b, &commonpb.Log{Sequence: 3, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger}}}})
-			writeLogToFSM(t, b, ledgerPayloadLog(4, ledger, 1, &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{}}, 40))
+			writeLogToFSM(t, b, ledgerPayloadLog(1, ledger, 1, &ledgerpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &ledgerpb.OrderSkippedLog{}}, 10))
+			writeLogToFSM(t, b, &ledgerpb.Log{Sequence: 2, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeleteLedger{DeleteLedger: &ledgerpb.DeletedLedgerLog{Name: ledger}}}})
+			writeLogToFSM(t, b, &ledgerpb.Log{Sequence: 3, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger}}}})
+			writeLogToFSM(t, b, ledgerPayloadLog(4, ledger, 1, &ledgerpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &ledgerpb.OrderSkippedLog{}}, 40))
 
 			task := b.backfillTasks[0]
 			if isPostingIndex(test.id) {
@@ -1336,15 +1336,15 @@ func TestHistoricalDeletePreservesCurrentGenerationBuildStateAcrossRestart(t *te
 func TestHistoricalDeletePurgeSupportsEveryTransactionBuiltin(t *testing.T) {
 	t.Parallel()
 
-	for _, builtin := range []commonpb.TransactionBuiltinIndex{
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS,
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
+	for _, builtin := range []ledgerpb.TransactionBuiltinIndex{
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS,
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
 	} {
 		t.Run(builtin.String(), func(t *testing.T) {
 			t.Parallel()
@@ -1359,12 +1359,12 @@ func TestHistoricalDeletePurgeSupportsEveryTransactionBuiltin(t *testing.T) {
 	}
 }
 
-func persistLedgerAndIndexRegistry(t *testing.T, b *Builder, ledger string, id *commonpb.IndexID) {
+func persistLedgerAndIndexRegistry(t *testing.T, b *Builder, ledger string, id *ledgerpb.IndexID) {
 	t.Helper()
 
 	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
-	_, err := b.attrs.Index.Set(batch, domain.IndexKey{LedgerName: ledger, Canonical: indexes.Canonical(id)}.Bytes(), &commonpb.Index{
+	require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{Name: ledger}))
+	_, err := b.attrs.Index.Set(batch, domain.IndexKey{LedgerName: ledger, Canonical: indexes.Canonical(id)}.Bytes(), &ledgerpb.Index{
 		Ledger:                 ledger,
 		Id:                     id,
 		ForwardEncodingVersion: 1,
@@ -1388,31 +1388,31 @@ func countReadstorePrefix(t *testing.T, b *Builder, prefix []byte) int {
 	return count
 }
 
-func ledgerPayloadLog(sequence uint64, ledger string, ledgerLogID uint64, payload any, date uint64) *commonpb.Log {
-	data := &commonpb.LedgerLogPayload{}
+func ledgerPayloadLog(sequence uint64, ledger string, ledgerLogID uint64, payload any, date uint64) *ledgerpb.Log {
+	data := &ledgerpb.LedgerLogPayload{}
 	switch payload := payload.(type) {
-	case *commonpb.LedgerLogPayload_AddedAccountType:
+	case *ledgerpb.LedgerLogPayload_AddedAccountType:
 		data.Payload = payload
-	case *commonpb.LedgerLogPayload_CreateIndex:
+	case *ledgerpb.LedgerLogPayload_CreateIndex:
 		data.Payload = payload
-	case *commonpb.LedgerLogPayload_DropIndex:
+	case *ledgerpb.LedgerLogPayload_DropIndex:
 		data.Payload = payload
-	case *commonpb.LedgerLogPayload_FillGap:
+	case *ledgerpb.LedgerLogPayload_FillGap:
 		data.Payload = payload
-	case *commonpb.LedgerLogPayload_OrderSkipped:
+	case *ledgerpb.LedgerLogPayload_OrderSkipped:
 		data.Payload = payload
 	default:
 		panic("unsupported ledgerPayloadLog test payload")
 	}
 
-	return &commonpb.Log{
+	return &ledgerpb.Log{
 		Sequence: sequence,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+			Apply: &ledgerpb.ApplyLedgerLog{
 				LedgerName: ledger,
-				Log: &commonpb.LedgerLog{
+				Log: &ledgerpb.LedgerLog{
 					Id:   ledgerLogID,
-					Date: &commonpb.Timestamp{Data: date},
+					Date: &ledgerpb.Timestamp{Data: date},
 					Data: data,
 				},
 			},
@@ -1430,23 +1430,23 @@ func TestInitialIndexesBeforeHistoryInSameFoldSkipBackfill(t *testing.T) {
 	b.batchSize = DefaultBatchSize
 	b.notifications = signal.NewNotifications()
 	const ledger = "atomic-initial-indexes"
-	ids := []*commonpb.IndexID{
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
-		indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
-		indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "external:id"),
+	ids := []*ledgerpb.IndexID{
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+		indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+		indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "external:id"),
 	}
-	writeLogToFSM(t, b, &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-		CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+	writeLogToFSM(t, b, &ledgerpb.Log{Sequence: 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+		CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 	}}})
 	for i, id := range ids {
 		seq := uint64(i + 2)
-		writeLogToFSM(t, b, ledgerPayloadLog(seq, ledger, seq-1, &commonpb.LedgerLogPayload_CreateIndex{
-			CreateIndex: &commonpb.CreatedIndexLog{Id: id},
+		writeLogToFSM(t, b, ledgerPayloadLog(seq, ledger, seq-1, &ledgerpb.LedgerLogPayload_CreateIndex{
+			CreateIndex: &ledgerpb.CreatedIndexLog{Id: id},
 		}, seq*10))
 	}
 	// A skipped mirror source log is HISTORY even without a transaction payload.
-	writeLogToFSM(t, b, ledgerPayloadLog(5, ledger, 4, &commonpb.LedgerLogPayload_OrderSkipped{
-		OrderSkipped: &commonpb.OrderSkippedLog{},
+	writeLogToFSM(t, b, ledgerPayloadLog(5, ledger, 4, &ledgerpb.LedgerLogPayload_OrderSkipped{
+		OrderSkipped: &ledgerpb.OrderSkippedLog{},
 	}, 50))
 	writeAppliedProposalToFSM(t, b, 1, 1, 4)
 	writeAppliedProposalToFSM(t, b, 2, 5, 5)

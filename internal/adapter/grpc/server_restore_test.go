@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,10 +13,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -73,24 +74,24 @@ func TestInvalidCallerAttributionPreventsRestoreFinalization(t *testing.T) {
 	require.NoError(t, err)
 	entry := &auditpb.AuditEntry{
 		Sequence:       1,
-		Timestamp:      &commonpb.Timestamp{Data: 1},
+		Timestamp:      &ledgerpb.Timestamp{Data: 1},
 		ProposalId:     1,
-		HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
-		CallerSnapshot: &commonpb.CallerSnapshot{},
+		HashVersion:    uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		CallerSnapshot: &ledgerpb.CallerSnapshot{},
 		Outcome: &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{
 
-			Details: commonpb.MustFailureDetails("TARGET_REQUIRED", nil),
+			Details: ledgerpb.MustFailureDetails("TARGET_REQUIRED", nil),
 		}},
 	}
 	header, err := state.BuildHashedHeaderPayload(entry)
 	require.NoError(t, err)
-	_, entry.Hash = processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey).
+	_, entry.Hash = processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey).
 		Compute(nil, nil, [][]byte{header})
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig}, configBytes))
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, []byte(auditKey)))
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{Sequence: 1}}))
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{{Sequence: 1}}))
 	batch.KeyBuilder.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(entry.GetSequence())
 	require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), entry))
 	require.NoError(t, batch.Commit())

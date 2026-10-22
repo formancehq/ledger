@@ -7,7 +7,7 @@ import (
 
 	"github.com/formancehq/invariants"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // TestValidateWrapping pins the sentinel contract: these Validate* functions
@@ -77,36 +77,36 @@ func TestMetadataValidationRetainsKey(t *testing.T) {
 			t.Parallel()
 			require.ErrorIs(t, tc.err, tc.cause)
 			details := TypedFailureOf(tc.err)
-			require.Equal(t, tc.code, commonpb.FailureDetailsCode(details))
-			require.Equal(t, tc.key, commonpb.FailureDetailsFacts(details)["key"])
+			require.Equal(t, tc.code, ledgerpb.FailureDetailsCode(details))
+			require.Equal(t, tc.key, ledgerpb.FailureDetailsFacts(details)["key"])
 		})
 	}
 
 	details := TypedFailureOf(ValidateMetadataKey(""))
-	require.Equal(t, "METADATA_KEY_EMPTY", commonpb.FailureDetailsCode(details))
-	require.Empty(t, commonpb.FailureDetailsFacts(details))
+	require.Equal(t, "METADATA_KEY_EMPTY", ledgerpb.FailureDetailsCode(details))
+	require.Empty(t, ledgerpb.FailureDetailsFacts(details))
 }
 
-// TestValidateMetadataValue exercises the *commonpb.MetadataValue dispatch,
+// TestValidateMetadataValue exercises the *ledgerpb.MetadataValue dispatch,
 // which stays local to this package because it depends on the internal proto.
 func TestValidateMetadataValue(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name    string
-		input   *commonpb.MetadataValue
+		input   *ledgerpb.MetadataValue
 		wantErr error
 	}{
 		{name: "nil value"},
-		{name: "valid string", input: commonpb.NewStringValue("admin")},
-		{name: "empty string", input: commonpb.NewStringValue("")},
-		{name: "string contains null byte", input: commonpb.NewStringValue("admin\x00evil"), wantErr: ErrMetadataValueContainsNullByte},
-		{name: "valid null original", input: commonpb.NewNullValue("not-a-number")},
-		{name: "null original contains null byte", input: commonpb.NewNullValue("not\x00safe"), wantErr: ErrMetadataValueContainsNullByte},
-		{name: "nil null original", input: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_NullValue{}}},
-		{name: "int64", input: commonpb.NewIntValue(-42)},
-		{name: "uint64", input: commonpb.NewUintValue(42)},
-		{name: "bool", input: commonpb.NewBoolValue(true)},
+		{name: "valid string", input: ledgerpb.NewStringValue("admin")},
+		{name: "empty string", input: ledgerpb.NewStringValue("")},
+		{name: "string contains null byte", input: ledgerpb.NewStringValue("admin\x00evil"), wantErr: ErrMetadataValueContainsNullByte},
+		{name: "valid null original", input: ledgerpb.NewNullValue("not-a-number")},
+		{name: "null original contains null byte", input: ledgerpb.NewNullValue("not\x00safe"), wantErr: ErrMetadataValueContainsNullByte},
+		{name: "nil null original", input: &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_NullValue{}}},
+		{name: "int64", input: ledgerpb.NewIntValue(-42)},
+		{name: "uint64", input: ledgerpb.NewUintValue(42)},
+		{name: "bool", input: ledgerpb.NewBoolValue(true)},
 	}
 
 	for _, tt := range tests {

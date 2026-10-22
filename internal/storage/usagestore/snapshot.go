@@ -7,7 +7,7 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -58,7 +58,7 @@ func (s *Snapshot) GetCounter(ledgerName string, counterID byte) (uint64, error)
 
 // GetTemplateUsage reads a template usage record from this snapshot.
 // Returns (nil, nil) when the entry does not exist.
-func (s *Snapshot) GetTemplateUsage(ledgerName, templateName string) (*commonpb.TemplateUsage, error) {
+func (s *Snapshot) GetTemplateUsage(ledgerName, templateName string) (*ledgerpb.TemplateUsage, error) {
 	kb := dal.NewKeyBuilder()
 	key := TemplateUsageKey(kb, ledgerName, templateName)
 
@@ -73,7 +73,7 @@ func (s *Snapshot) GetTemplateUsage(ledgerName, templateName string) (*commonpb.
 
 	defer func() { _ = closer.Close() }()
 
-	usage := &commonpb.TemplateUsage{}
+	usage := &ledgerpb.TemplateUsage{}
 	if err := usage.UnmarshalVT(v); err != nil {
 		return nil, fmt.Errorf("unmarshaling template usage: %w", err)
 	}

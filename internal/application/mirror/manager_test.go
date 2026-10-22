@@ -15,13 +15,13 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -44,14 +44,14 @@ func quietV2Source(t *testing.T) string {
 }
 
 // mirrorLedgerInfo builds a LedgerInfo for a mirror ledger sourced from baseURL.
-func mirrorLedgerInfo(name, baseURL string) *commonpb.LedgerInfo {
-	return &commonpb.LedgerInfo{
+func mirrorLedgerInfo(name, baseURL string) *ledgerpb.LedgerInfo {
+	return &ledgerpb.LedgerInfo{
 		Name: name,
-		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-		MirrorSource: &commonpb.MirrorSourceConfig{
+		Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+		MirrorSource: &ledgerpb.MirrorSourceConfig{
 			LedgerName: "source-ledger",
-			Type: &commonpb.MirrorSourceConfig_Http{
-				Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: baseURL},
+			Type: &ledgerpb.MirrorSourceConfig_Http{
+				Http: &ledgerpb.HttpMirrorSourceConfig{BaseUrl: baseURL},
 			},
 		},
 	}
@@ -60,7 +60,7 @@ func mirrorLedgerInfo(name, baseURL string) *commonpb.LedgerInfo {
 // saveLedgerInfo persists a LedgerInfo where reconcile looks for it. Note this
 // is ZoneGlobal/SubGlobLedgerInfo (what query.ReadLedgers scans), NOT the
 // SubAttrLedger attribute row.
-func saveLedgerInfo(t *testing.T, store *dal.Store, info *commonpb.LedgerInfo) {
+func saveLedgerInfo(t *testing.T, store *dal.Store, info *ledgerpb.LedgerInfo) {
 	t.Helper()
 
 	session := store.OpenWriteSession()
@@ -160,9 +160,9 @@ func TestManager_ReconcileStopsWorkerOnPromotion(t *testing.T) {
 
 	// Promote: mode back to NORMAL and the source config cleared, matching
 	// processPromoteLedger.
-	saveLedgerInfo(t, store, &commonpb.LedgerInfo{
+	saveLedgerInfo(t, store, &ledgerpb.LedgerInfo{
 		Name: "promoted",
-		Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL,
+		Mode: ledgerpb.LedgerMode_LEDGER_MODE_NORMAL,
 	})
 
 	m.OnLeadershipChange(true)
@@ -188,7 +188,7 @@ func TestManager_ReconcileStopsWorkerOnDeletion(t *testing.T) {
 	requireWorkerNames(t, m, "deleted")
 
 	info := mirrorLedgerInfo("deleted", sourceURL)
-	info.DeletedAt = &commonpb.Timestamp{Data: 1}
+	info.DeletedAt = &ledgerpb.Timestamp{Data: 1}
 	saveLedgerInfo(t, store, info)
 
 	m.OnLeadershipChange(true)

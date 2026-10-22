@@ -7,9 +7,9 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -22,8 +22,8 @@ func volEntry(t *testing.T, ledgerName string, account, asset, color string, in,
 	return attributes.ComputedEntry[*raftcmdpb.VolumePair]{
 		CanonicalKey: vk.Bytes(),
 		Value: &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(uint64(in)),
-			Output: commonpb.NewUint256FromUint64(uint64(out)),
+			Input:  ledgerpb.NewUint256FromUint64(uint64(in)),
+			Output: ledgerpb.NewUint256FromUint64(uint64(out)),
 		},
 	}
 }
@@ -95,8 +95,8 @@ func TestAssembleAccount_CollapseColorsPreservesTotalsBeyondUint256(t *testing.T
 		return attributes.ComputedEntry[*raftcmdpb.VolumePair]{
 			CanonicalKey: domain.NewVolumeKey("test", "alice", "USD", color).Bytes(),
 			Value: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256(maxValue),
-				Output: commonpb.NewUint256(maxValue),
+				Input:  ledgerpb.NewUint256(maxValue),
+				Output: ledgerpb.NewUint256(maxValue),
 			},
 		}
 	}

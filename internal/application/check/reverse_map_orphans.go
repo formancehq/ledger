@@ -12,9 +12,9 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -97,7 +97,7 @@ type reverseMapOrphanScope struct {
 	// Every oracle term below is frozen at lastSequence, which is why the pass
 	// only reaches a verdict on an exactly aligned peer view.
 	liveLedgers     map[string]struct{}
-	replayedSchemas map[string]*commonpb.MetadataSchema
+	replayedSchemas map[string]*ledgerpb.MetadataSchema
 }
 
 // compareReverseMapOrphans reports reverse-map (rmap, prefix 0x03) rows in the
@@ -366,7 +366,7 @@ func (c *Checker) compareReverseMapOrphans(
 					// DropIndex; an undeclared (or removal-recorded) one against
 					// RemovedMetadataFieldType. The registry remains the sole
 					// liveness oracle.
-					_, declared := commonpb.SchemaFieldForTarget(scope.replayedSchemas[parsed.Ledger], target, parsed.MetadataKey)
+					_, declared := ledgerpb.SchemaFieldForTarget(scope.replayedSchemas[parsed.Ledger], target, parsed.MetadataKey)
 					if declared != nil {
 						verdict.lifecycleLabel = "DropIndex purge"
 					} else {
@@ -529,15 +529,15 @@ func emitReverseMapFindings(
 
 // targetTypeForReverseMapNamespace maps a reverse-map namespace to the index
 // target it addresses. The returned target is meaningless when ok is false.
-func targetTypeForReverseMapNamespace(ns string) (commonpb.TargetType, bool) {
+func targetTypeForReverseMapNamespace(ns string) (ledgerpb.TargetType, bool) {
 	switch ns {
 	case readstore.NamespaceAccount:
-		return commonpb.TargetType_TARGET_TYPE_ACCOUNT, true
+		return ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, true
 	case readstore.NamespaceTransaction:
-		return commonpb.TargetType_TARGET_TYPE_TRANSACTION, true
+		return ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, true
 	}
 
-	return commonpb.TargetType_TARGET_TYPE_ACCOUNT, false
+	return ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, false
 }
 
 // renderReverseMapEntity renders a decoded row's entity for an operator: a

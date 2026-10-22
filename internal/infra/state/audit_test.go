@@ -9,9 +9,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -51,7 +51,7 @@ func TestApplyProposalRejectsLogSequenceExhaustionWithoutPublishingBusinessWrite
 
 	for i := uint64(1); i <= 2; i++ {
 		proposal := makeProposal(i, createLedgerOrder("never-created"))
-		proposal.Idempotency = &commonpb.Idempotency{Key: "exhausted-allocator"}
+		proposal.Idempotency = &ledgerpb.Idempotency{Key: "exhausted-allocator"}
 		result, err := machine.ApplyEntries(
 			context.Background(),
 			dataStore,
