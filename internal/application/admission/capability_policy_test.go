@@ -61,9 +61,7 @@ func TestCapabilityPolicyProposerBlocksUnknownCapabilityAtFinalBoundary(t *testi
 	proposer := capabilityPolicyProposer{
 		delegate: delegate,
 		readPolicy: func() (*commonpb.ClusterPolicy, error) {
-			return &commonpb.ClusterPolicy{
-				CapabilityActivationArmed: true,
-			}, nil
+			return &commonpb.ClusterPolicy{}, nil
 		},
 		businessWrite: true,
 	}
@@ -80,9 +78,7 @@ func TestCapabilityPolicyProposerAllowsUnrelatedWrite(t *testing.T) {
 	proposer := capabilityPolicyProposer{
 		delegate: delegate,
 		readPolicy: func() (*commonpb.ClusterPolicy, error) {
-			return &commonpb.ClusterPolicy{
-				CapabilityActivationArmed: true,
-			}, nil
+			return &commonpb.ClusterPolicy{}, nil
 		},
 		businessWrite: true,
 	}
