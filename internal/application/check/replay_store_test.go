@@ -2,21 +2,22 @@ package check
 
 import (
 	"context"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"math/big"
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // decodeReplayMetaValue unmarshals the MetadataValue stored after the flag byte.
-func decodeReplayMetaValue(t *testing.T, val []byte) *commonpb.MetadataValue {
+func decodeReplayMetaValue(t *testing.T, val []byte) *ledgerpb.MetadataValue {
 	t.Helper()
 
-	mv := &commonpb.MetadataValue{}
+	mv := &ledgerpb.MetadataValue{}
 	require.NoError(t, mv.UnmarshalVT(val[1:]))
 
 	return mv
@@ -32,10 +33,10 @@ func newTestReplayStore(t *testing.T) *replayStore {
 	return rs
 }
 
-func strMetaMap(entries ...string) map[string]*commonpb.MetadataValue {
-	m := make(map[string]*commonpb.MetadataValue, len(entries)/2)
+func strMetaMap(entries ...string) map[string]*ledgerpb.MetadataValue {
+	m := make(map[string]*ledgerpb.MetadataValue, len(entries)/2)
 	for i := 0; i < len(entries); i += 2 {
-		m[entries[i]] = &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: entries[i+1]}}
+		m[entries[i]] = &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_StringValue{StringValue: entries[i+1]}}
 	}
 
 	return m
@@ -126,25 +127,25 @@ func TestReplayStoreMetadataSetAndRead(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00account\x00role")
 
-	require.NoError(t, rs.SetMetadata(key, commonpb.NewStringValue("admin")))
+	require.NoError(t, rs.SetMetadata(key, ledgerpb.NewStringValue("admin")))
 
 	val, closer, err := rs.db.Get(replayKey(replayPrefixMetadata, key))
 	require.NoError(t, err)
 	defer func() { _ = closer.Close() }()
 
 	require.Equal(t, byte(metaFlagSet), val[0])
-	require.True(t, decodeReplayMetaValue(t, val).EqualVT(commonpb.NewStringValue("admin")))
+	require.True(t, decodeReplayMetaValue(t, val).EqualVT(ledgerpb.NewStringValue("admin")))
 
 	// Typed values keep their arm — a bool must not come back as its string
 	// rendering.
 	boolKey := []byte("ledger\x00account\x00flag")
-	require.NoError(t, rs.SetMetadata(boolKey, commonpb.NewBoolValue(true)))
+	require.NoError(t, rs.SetMetadata(boolKey, ledgerpb.NewBoolValue(true)))
 
 	boolVal, boolCloser, err := rs.db.Get(replayKey(replayPrefixMetadata, boolKey))
 	require.NoError(t, err)
 	defer func() { _ = boolCloser.Close() }()
 
-	require.True(t, decodeReplayMetaValue(t, boolVal).EqualVT(commonpb.NewBoolValue(true)))
+	require.True(t, decodeReplayMetaValue(t, boolVal).EqualVT(ledgerpb.NewBoolValue(true)))
 }
 
 func TestReplayStoreMetadataOverwrite(t *testing.T) {
@@ -153,14 +154,14 @@ func TestReplayStoreMetadataOverwrite(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00account\x00role")
 
-	require.NoError(t, rs.SetMetadata(key, commonpb.NewStringValue("user")))
-	require.NoError(t, rs.SetMetadata(key, commonpb.NewStringValue("admin")))
+	require.NoError(t, rs.SetMetadata(key, ledgerpb.NewStringValue("user")))
+	require.NoError(t, rs.SetMetadata(key, ledgerpb.NewStringValue("admin")))
 
 	val, closer, err := rs.db.Get(replayKey(replayPrefixMetadata, key))
 	require.NoError(t, err)
 	defer func() { _ = closer.Close() }()
 
-	require.True(t, decodeReplayMetaValue(t, val).EqualVT(commonpb.NewStringValue("admin")))
+	require.True(t, decodeReplayMetaValue(t, val).EqualVT(ledgerpb.NewStringValue("admin")))
 }
 
 func TestReplayStoreMetadataDelete(t *testing.T) {
@@ -169,7 +170,7 @@ func TestReplayStoreMetadataDelete(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00account\x00role")
 
-	require.NoError(t, rs.SetMetadata(key, commonpb.NewStringValue("admin")))
+	require.NoError(t, rs.SetMetadata(key, ledgerpb.NewStringValue("admin")))
 	require.NoError(t, rs.DeleteMetadata(key))
 
 	val, closer, err := rs.db.Get(replayKey(replayPrefixMetadata, key))
@@ -202,7 +203,7 @@ func TestReplayStoreTransactionCreateWithTimestamp(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00tx:1")
 
-	ts := &commonpb.Timestamp{Data: 1_700_000_000_000_000}
+	ts := &ledgerpb.Timestamp{Data: 1_700_000_000_000_000}
 	require.NoError(t, rs.CreateTransaction(key, 7, ts, nil, nil, 0))
 
 	state := readTransaction(t, rs, key)
@@ -224,7 +225,7 @@ func TestReplayStoreTransactionCreatePreservesNilVsZeroTimestamp(t *testing.T) {
 	require.Nil(t, readTransaction(t, rs, keyNil).GetTimestamp())
 
 	keyZero := []byte("ledger\x00tx:2")
-	require.NoError(t, rs.CreateTransaction(keyZero, 2, &commonpb.Timestamp{Data: 0}, nil, nil, 0))
+	require.NoError(t, rs.CreateTransaction(keyZero, 2, &ledgerpb.Timestamp{Data: 0}, nil, nil, 0))
 	stateZero := readTransaction(t, rs, keyZero)
 	require.NotNil(t, stateZero.GetTimestamp())
 	require.Equal(t, uint64(0), stateZero.GetTimestamp().GetData())
@@ -248,7 +249,7 @@ func TestReplayStoreTransactionRevertedBy(t *testing.T) {
 
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00tx:1")
-	revertedAt := &commonpb.Timestamp{Data: 1_800_000_000_000_000}
+	revertedAt := &ledgerpb.Timestamp{Data: 1_800_000_000_000_000}
 
 	require.NoError(t, rs.CreateTransaction(key, 5, nil, nil, nil, 0))
 	require.NoError(t, rs.SetRevertedBy(key, 99, revertedAt))
@@ -329,7 +330,7 @@ func TestReplayStoreTransactionFullLifecycle(t *testing.T) {
 	require.NoError(t, rs.DeleteTxMetadata(key, "type"))
 
 	// Revert
-	revertedAt := &commonpb.Timestamp{Data: 1_800_000_000_000_000}
+	revertedAt := &ledgerpb.Timestamp{Data: 1_800_000_000_000_000}
 	require.NoError(t, rs.SetRevertedBy(key, 42, revertedAt))
 
 	state := readTransaction(t, rs, key)
@@ -348,7 +349,7 @@ func TestReplayStorePrefixIter(t *testing.T) {
 	// Write data across all three prefixes.
 	require.NoError(t, rs.AddVolumeDelta([]byte("k1"), big.NewInt(10), big.NewInt(0)))
 	require.NoError(t, rs.AddVolumeDelta([]byte("k2"), big.NewInt(20), big.NewInt(0)))
-	require.NoError(t, rs.SetMetadata([]byte("m1"), commonpb.NewStringValue("v1")))
+	require.NoError(t, rs.SetMetadata([]byte("m1"), ledgerpb.NewStringValue("v1")))
 	require.NoError(t, rs.CreateTransaction([]byte("t1"), 1, nil, nil, nil, 0))
 
 	// Volume prefix should yield exactly 2 entries.

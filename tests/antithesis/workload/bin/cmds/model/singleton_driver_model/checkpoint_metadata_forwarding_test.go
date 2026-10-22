@@ -15,8 +15,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -67,10 +67,10 @@ type checkpointFenceLeader struct {
 	checkpointMetadataServer
 }
 
-func (s *checkpointFenceLeader) GetLedger(context.Context, *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+func (s *checkpointFenceLeader) GetLedger(context.Context, *servicepb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 	s.fenced.Store(true)
 
-	return &commonpb.LedgerInfo{}, nil
+	return &ledgerpb.LedgerInfo{}, nil
 }
 
 func (*checkpointFenceLeader) Barrier(context.Context, *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
@@ -85,7 +85,7 @@ type checkpointFenceFollower struct {
 	localPolls atomic.Int32
 }
 
-func (s *checkpointFenceFollower) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+func (s *checkpointFenceFollower) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 	s.forwarded.Add(1)
 
 	return s.leader.GetLedger(ctx, req)

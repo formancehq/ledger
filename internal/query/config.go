@@ -3,6 +3,7 @@ package query
 import (
 	"errors"
 	"fmt"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -78,19 +79,10 @@ func ReadAuditKey(reader dal.PebbleGetter) ([]byte, error) {
 	return key, nil
 }
 
-// ReadClusterPolicy assembles the compatibility view from one read snapshot.
-// Released single-row stores remain readable until startup migration.
-func ReadClusterPolicy(reader dal.PebbleGetter) (*commonpb.ClusterPolicy, error) {
-	if store, ok := reader.(*dal.Store); ok {
-		handle, err := store.NewReadHandle()
-		if err != nil {
-			return nil, err
-		}
-		policy, readErr := ReadClusterPolicy(handle)
-
-		return policy, errors.Join(readErr, handle.Close())
-	}
-	policy, err := dal.ReadProto[*commonpb.ClusterPolicy](reader, []byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy})
+// ReadClusterPolicy loads the replicated cluster policy from the given reader.
+// Returns nil if the key does not exist (no policy committed yet).
+func ReadClusterPolicy(reader dal.PebbleGetter) (*ledgerpb.ClusterPolicy, error) {
+	policy, err := dal.ReadProto[*ledgerpb.ClusterPolicy](reader, []byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy})
 	if err != nil {
 		return nil, fmt.Errorf("loading cluster policy: %w", err)
 	}

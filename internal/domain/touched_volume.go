@@ -1,9 +1,9 @@
 package domain
 
-import "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+import "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 // TouchedVolumeSet builds an AccountAssetKey set from a list of
-// commonpb.TouchedVolume entries. Shared by the index builder (which
+// ledgerpb.TouchedVolume entries. Shared by the index builder (which
 // reads AppliedProposal.TransientVolumes and LedgerLog.PurgedVolumes
 // off the projection records) and the integrity checker (which mirrors
 // the same projections for its corruption-detection pass), so the
@@ -11,7 +11,7 @@ import "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 //
 // Returns nil for an empty input so callers can preserve their
 // "nothing to exclude" fast path without an extra len check.
-func TouchedVolumeSet(volumes []*commonpb.TouchedVolume) map[AccountAssetKey]struct{} {
+func TouchedVolumeSet(volumes []*ledgerpb.TouchedVolume) map[AccountAssetKey]struct{} {
 	if len(volumes) == 0 {
 		return nil
 	}

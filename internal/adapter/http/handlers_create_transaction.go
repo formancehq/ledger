@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -57,7 +57,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	logEntry := exactlyOneLog("create-transaction", logs, details)
 
 	ledgerLog := logEntry.GetPayload().GetApply().GetLog()
-	created, ok := ledgerLog.GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
+	created, ok := ledgerLog.GetData().GetPayload().(*ledgerpb.LedgerLogPayload_CreatedTransaction)
 	if !ok {
 		panic(unexpectedLogPayload("create-transaction", logEntry, details))
 	}

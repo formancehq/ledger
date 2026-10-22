@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -34,8 +34,8 @@ func TestIndexRevertedTransaction_WritesRevertedAtIndex(t *testing.T) {
 	b.wb.SetEventSequence(1)
 
 	cfg := newLedgerIndexConfig()
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT)
-	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+	id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT)
+	cfg.byCanonical[indexes.Canonical(id)] = &ledgerpb.Index{Id: id}
 
 	const (
 		originalID uint64 = 7
@@ -43,11 +43,11 @@ func TestIndexRevertedTransaction_WritesRevertedAtIndex(t *testing.T) {
 		revertTs   uint64 = 1_700_000_000_000_000
 	)
 
-	rt := &commonpb.RevertedTransaction{
+	rt := &ledgerpb.RevertedTransaction{
 		RevertedTransactionId: originalID,
-		RevertTransaction: &commonpb.Transaction{
+		RevertTransaction: &ledgerpb.Transaction{
 			Id:        revertID,
-			Timestamp: &commonpb.Timestamp{Data: revertTs},
+			Timestamp: &ledgerpb.Timestamp{Data: revertTs},
 		},
 	}
 

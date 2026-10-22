@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -50,7 +50,7 @@ func LoadResponseVerifyKey(cmd *cobra.Command) (ed25519.PublicKey, error) {
 
 // VerifyResponseSignatures verifies the response signatures on the given logs.
 // If no verify key is configured (--response-verify-key), this is a no-op.
-func VerifyResponseSignatures(cmd *cobra.Command, logs []*commonpb.Log) error {
+func VerifyResponseSignatures(cmd *cobra.Command, logs []*ledgerpb.Log) error {
 	pubKey, err := LoadResponseVerifyKey(cmd)
 	if err != nil {
 		return err

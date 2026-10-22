@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -31,7 +31,7 @@ import (
 func runAggregateQuery(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	ledger, absent := pickLedgerReadTarget(src, c.ledgerNamesSnapshot(), 2)
 
-	var filter *commonpb.QueryFilter
+	var filter *ledgerpb.QueryFilter
 	switch {
 	case oneIn(src, 3):
 		filter = genAccountFilterIndexed(src, c.sampleAccountFieldSeeds(ledger), 0)
@@ -42,7 +42,7 @@ func runAggregateQuery(src *generation.Source, ctx context.Context, client servi
 	refused := classifyRejectedFilter(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
 	needed := map[string]struct{}{}
-	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
+	neededIndexCanonicals(filter, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
 
 	opts := aggOptions{
 		collapseColors:  oneIn(src, 3),
@@ -91,7 +91,7 @@ func runAggregateQuery(src *generation.Source, ctx context.Context, client servi
 			return
 		}
 
-		if c.handleRejectedFilterError(maxTicket, refused, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledger, filter, err) {
+		if c.handleRejectedFilterError(maxTicket, refused, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledger, filter, err) {
 			return
 		}
 
@@ -117,7 +117,7 @@ func runAggregateQuery(src *generation.Source, ctx context.Context, client servi
 		return
 	}
 
-	if assertRefusedFilterServedNothing(refused, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledger, filter, len(res.GetVolumes())) {
+	if assertRefusedFilterServedNothing(refused, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledger, filter, len(res.GetVolumes())) {
 		return
 	}
 
@@ -197,7 +197,7 @@ func modelAggregate(ls oracle.LedgerState, filter *commonpb.QueryFilter, opts ag
 // modelAggregateGroups is the per-prefix prediction: one entry per requested
 // prefix, in request order, each folding the accounts that prefix claims. A
 // prefix no account matches still gets its (empty) entry.
-func modelAggregateGroups(ls oracle.LedgerState, filter *commonpb.QueryFilter, opts aggOptions) []aggGroup {
+func modelAggregateGroups(ls oracle.LedgerState, filter *ledgerpb.QueryFilter, opts aggOptions) []aggGroup {
 	groups := make([]aggGroup, 0, len(opts.groupByPrefixes))
 
 	for _, prefix := range opts.groupByPrefixes {
@@ -220,7 +220,7 @@ type aggGroup struct {
 
 // aggregateFold sums the volume cells of the accounts filter selects and keep
 // admits. A nil keep admits every matching account.
-func aggregateFold(ls oracle.LedgerState, filter *commonpb.QueryFilter, opts aggOptions, keep func(addr string) bool) map[assetColor]*aggPair {
+func aggregateFold(ls oracle.LedgerState, filter *ledgerpb.QueryFilter, opts aggOptions, keep func(addr string) bool) map[assetColor]*aggPair {
 	sums := map[assetColor]*aggPair{}
 
 	for k, vp := range ls.Volumes().All() {
@@ -303,7 +303,7 @@ func formatAsset(base string, precision uint8) string {
 // bucket the server sent is kept, zero totals included: a bucket it invented is
 // a divergence even when its amounts are zero. ok is false when a
 // bucket repeats, which the result's one-entry-per-bucket contract forbids.
-func serverAggregate(res *commonpb.AggregateResult) (out map[assetColor]*aggPair, ok bool) {
+func serverAggregate(res *ledgerpb.AggregateResult) (out map[assetColor]*aggPair, ok bool) {
 	out = map[assetColor]*aggPair{}
 
 	for _, av := range res.GetVolumes() {
@@ -330,9 +330,9 @@ func wrapUint256(total *commonpb.BigUint, dst *uint256.Int) {
 // serverAggregateGroups decodes the grouped arm of a result, preserving the
 // order the server listed the prefixes in. ok is false when a group repeats a
 // bucket.
-func serverAggregateGroups(res *commonpb.AggregateResult) (out []aggGroup, ok bool) {
+func serverAggregateGroups(res *ledgerpb.AggregateResult) (out []aggGroup, ok bool) {
 	for _, g := range res.GetGroups() {
-		sums, decoded := serverAggregate(&commonpb.AggregateResult{Volumes: g.GetVolumes()})
+		sums, decoded := serverAggregate(&ledgerpb.AggregateResult{Volumes: g.GetVolumes()})
 		if !decoded {
 			return nil, false
 		}
@@ -403,7 +403,7 @@ func renderAgg(m map[assetColor]*aggPair) string {
 // candidate base holds every index the filter reads and its fold under the
 // request's options equals the server's, bucket for bucket — or, when an index
 // is not ready on that base, iff the server refused the read.
-func (c *Checker) validateAggregate(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, opts aggOptions, needed map[string]struct{}, res *commonpb.AggregateResult, err error) {
+func (c *Checker) validateAggregate(maxTicket uint64, ledger string, filter *ledgerpb.QueryFilter, opts aggOptions, needed map[string]struct{}, res *ledgerpb.AggregateResult, err error) {
 	errKind, classified := classifyIndexedQueryError(err)
 	if !classified {
 		assert.Unreachable("singleton_driver_model: aggregate returned unexpected error", internal.Details{
@@ -454,7 +454,7 @@ func (c *Checker) validateAggregate(maxTicket uint64, ledger string, filter *com
 
 	rejectedIndex := rejectedIndexLabel(err)
 	matched := c.matchesModel(maxTicket, "AGG", func(base oracle.GlobalState) bool {
-		return indexedQueryOutcomeLegal(base.Ledger(ledger), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
+		return indexedQueryOutcomeLegal(base.Ledger(ledger), ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
 			if grouped {
 				return aggGroupsEqual(modelAggregateGroups(ls, filter, opts), serverGroups)
 			}

@@ -11,39 +11,39 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 func TestHandleGetLog_Success(t *testing.T) {
 	t.Parallel()
 
-	wantLog := &commonpb.LedgerLog{
+	wantLog := &ledgerpb.LedgerLog{
 		Id:   3,
-		Date: &commonpb.Timestamp{Data: 1_700_000_000_000_000},
-		Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransaction{
-				Transaction: &commonpb.Transaction{
+		Date: &ledgerpb.Timestamp{Data: 1_700_000_000_000_000},
+		Data: &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &ledgerpb.CreatedTransaction{
+				Transaction: &ledgerpb.Transaction{
 					Id:        1,
 					Reference: "order-123",
-					Postings: []*commonpb.Posting{
-						commonpb.NewColoredPosting("world", "alice", "USD/2", "pending", big.NewInt(1000)),
+					Postings: []*ledgerpb.Posting{
+						ledgerpb.NewColoredPosting("world", "alice", "USD/2", "pending", big.NewInt(1000)),
 					},
-					Metadata: map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("checkout")},
+					Metadata: map[string]*ledgerpb.MetadataValue{"note": ledgerpb.NewStringValue("checkout")},
 				},
-				AccountMetadata: map[string]*commonpb.MetadataMap{
-					"alice": {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")}},
+				AccountMetadata: map[string]*ledgerpb.MetadataMap{
+					"alice": {Values: map[string]*ledgerpb.MetadataValue{"tier": ledgerpb.NewStringValue("gold")}},
 				},
 			},
 		}},
 	}
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLog(gomock.Any(), uint64(7)).DoAndReturn(
-		func(_ context.Context, _ uint64) (*commonpb.Log, error) {
-			return &commonpb.Log{
+		func(_ context.Context, _ uint64) (*ledgerpb.Log, error) {
+			return &ledgerpb.Log{
 				Sequence: 7,
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_Apply{
-						Apply: &commonpb.ApplyLedgerLog{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_Apply{
+						Apply: &ledgerpb.ApplyLedgerLog{
 							LedgerName: "ledger1",
 							Log:        wantLog,
 						},
@@ -66,7 +66,7 @@ func TestHandleGetLog_Success(t *testing.T) {
 	// emits the synthetic `type` discriminator LedgerLog.MarshalJSON injects.
 	// protojson cannot emit it at all (it is not a proto field), so before this
 	// change the body carried no discriminator and disagreed with the logs-list
-	// route, which has always used sonic for the same commonpb.Log type.
+	// route, which has always used sonic for the same ledgerpb.Log type.
 	//
 	// The direct data payload is shared by the logs-list route, prepared
 	// queries, and JSON event sinks.
@@ -99,25 +99,25 @@ func TestHandleGetLog_Success(t *testing.T) {
 }
 
 // TestHandleGetLog_SerializesThroughMarshalJSON pins the property EN-1622 is
-// about: the single-log route must serialize its commonpb.Log through
+// about: the single-log route must serialize its ledgerpb.Log through
 // Log.MarshalJSON, matching the shape the logs-list route also produces. It
 // diverged because get-log used protojson while the list used sonic, so the
 // same type had two wire shapes depending on which route you asked.
 func TestHandleGetLog_SerializesThroughMarshalJSON(t *testing.T) {
 	t.Parallel()
 
-	logValue := func() *commonpb.Log {
-		return &commonpb.Log{
+	logValue := func() *ledgerpb.Log {
+		return &ledgerpb.Log{
 			Sequence: 7,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "ledger1",
-						Log: &commonpb.LedgerLog{
-							Data: &commonpb.LedgerLogPayload{
-								Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-									CreatedTransaction: &commonpb.CreatedTransaction{
-										Transaction: &commonpb.Transaction{Id: 1},
+						Log: &ledgerpb.LedgerLog{
+							Data: &ledgerpb.LedgerLogPayload{
+								Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+									CreatedTransaction: &ledgerpb.CreatedTransaction{
+										Transaction: &ledgerpb.Transaction{Id: 1},
 									},
 								},
 							},
@@ -133,7 +133,7 @@ func TestHandleGetLog_SerializesThroughMarshalJSON(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLog(gomock.Any(), uint64(7)).DoAndReturn(
-		func(_ context.Context, _ uint64) (*commonpb.Log, error) {
+		func(_ context.Context, _ uint64) (*ledgerpb.Log, error) {
 			return logValue(), nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -167,8 +167,8 @@ func TestHandleGetLog_NotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLog(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint64) (*commonpb.Log, error) {
-			return nil, commonpb.NewNotFoundError("log %d not found", 9999)
+		func(_ context.Context, _ uint64) (*ledgerpb.Log, error) {
+			return nil, ledgerpb.NewNotFoundError("log %d not found", 9999)
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

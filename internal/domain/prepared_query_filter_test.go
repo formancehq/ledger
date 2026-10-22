@@ -6,14 +6,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-func mustFilter(t *testing.T, raw string) *commonpb.QueryFilter {
+func mustFilter(t *testing.T, raw string) *ledgerpb.QueryFilter {
 	t.Helper()
 
-	f := &commonpb.QueryFilter{}
+	f := &ledgerpb.QueryFilter{}
 	require.NoError(t, json.Unmarshal([]byte(raw), f))
 
 	return f
@@ -22,13 +22,13 @@ func mustFilter(t *testing.T, raw string) *commonpb.QueryFilter {
 func TestIsPreparedQueryExecutableTarget(t *testing.T) {
 	t.Parallel()
 
-	require.True(t, domain.IsPreparedQueryExecutableTarget(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS))
-	require.True(t, domain.IsPreparedQueryExecutableTarget(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS))
+	require.True(t, domain.IsPreparedQueryExecutableTarget(ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS))
+	require.True(t, domain.IsPreparedQueryExecutableTarget(ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS))
 	// LOGS is executable as a prepared query since EN-1503 (query.EnrichLogs).
-	require.True(t, domain.IsPreparedQueryExecutableTarget(commonpb.QueryTarget_QUERY_TARGET_LOGS))
+	require.True(t, domain.IsPreparedQueryExecutableTarget(ledgerpb.QueryTarget_QUERY_TARGET_LOGS))
 	// AUDIT never is (no cursor field, no public target JSON mapping).
-	require.False(t, domain.IsPreparedQueryExecutableTarget(commonpb.QueryTarget_QUERY_TARGET_AUDIT))
-	require.False(t, domain.IsPreparedQueryExecutableTarget(commonpb.QueryTarget(999)))
+	require.False(t, domain.IsPreparedQueryExecutableTarget(ledgerpb.QueryTarget_QUERY_TARGET_AUDIT))
+	require.False(t, domain.IsPreparedQueryExecutableTarget(ledgerpb.QueryTarget(999)))
 }
 
 func TestValidateFilterForTarget(t *testing.T) {
@@ -37,80 +37,80 @@ func TestValidateFilterForTarget(t *testing.T) {
 	cases := []struct {
 		name    string
 		raw     string
-		target  commonpb.QueryTarget
+		target  ledgerpb.QueryTarget
 		wantErr string
 	}{
 		{
 			name:   "nil filter is nothing to validate",
 			raw:    "", // handled below as a nil filter
-			target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		},
 		{
 			name:   "metadata condition valid on accounts",
 			raw:    `{"$exists":{"metadata":"x"}}`,
-			target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		},
 		{
 			name:    "transaction-only reference rejected on accounts",
 			raw:     `{"$match":{"reference":"r"}}`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			wantErr: "accounts",
 		},
 		{
 			name:   "transaction-only reference valid on transactions",
 			raw:    `{"$match":{"reference":"r"}}`,
-			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		},
 		{
 			name:    "log-only logId rejected on accounts",
 			raw:     `{"$gt":{"logId":"5"}}`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			wantErr: "accounts",
 		},
 		{
 			name:    "log-only logId rejected on transactions",
 			raw:     `{"$gt":{"logId":"5"}}`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 			wantErr: "transactions",
 		},
 		{
 			name:   "log-only logId valid on logs",
 			raw:    `{"$gt":{"logId":"5"}}`,
-			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 		},
 		{
 			name:   "ledger condition valid on logs",
 			raw:    `{"$match":{"ledger":"main"}}`,
-			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 		},
 		{
 			name:    "address rejected on logs (no account→log translation)",
 			raw:     `{"$match":{"address":"world"}}`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 			wantErr: "logs",
 		},
 		{
 			name:    "metadata rejected on logs (no log-metadata index)",
 			raw:     `{"$match":{"metadata[k]":"v"}}`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 			wantErr: "logs",
 		},
 		{
 			name:    "metadata $exists rejected on logs (no log-metadata index)",
 			raw:     `{"$exists":{"metadata":"k"}}`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 			wantErr: "logs",
 		},
 		{
 			name:    "invalid condition nested in $and is rejected",
 			raw:     `{"$and":[{"$exists":{"metadata":"x"}},{"$gt":{"logId":"5"}}]}`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			wantErr: "accounts",
 		},
 		{
 			name:   "combinator with all-valid children passes",
 			raw:    `{"$or":[{"$exists":{"metadata":"x"}},{"$match":{"address":"world"}}]}`,
-			target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		},
 	}
 
@@ -118,7 +118,7 @@ func TestValidateFilterForTarget(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			var f *commonpb.QueryFilter
+			var f *ledgerpb.QueryFilter
 			if tc.raw != "" {
 				f = mustFilter(t, tc.raw)
 			}
@@ -147,12 +147,12 @@ func TestValidateFilterForTarget(t *testing.T) {
 func TestValidateFilterForTarget_RejectsDeeplyNestedFilter(t *testing.T) {
 	t.Parallel()
 
-	build := func(wrap func(child *commonpb.QueryFilter) *commonpb.QueryFilter) *commonpb.QueryFilter {
+	build := func(wrap func(child *ledgerpb.QueryFilter) *ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
 		// Innermost leaf is a valid LOGS condition so, absent the depth guard,
 		// the walk would traverse the whole chain and succeed.
-		var f = &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_LogId{
-				LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
+		var f = &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_LogId{
+				LogId: &ledgerpb.LogIdCondition{Cond: &ledgerpb.UintCondition{}},
 			},
 		}
 
@@ -163,23 +163,23 @@ func TestValidateFilterForTarget_RejectsDeeplyNestedFilter(t *testing.T) {
 		return f
 	}
 
-	andWrap := func(child *commonpb.QueryFilter) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{
-			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{child}},
+	andWrap := func(child *ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_And{
+			And: &ledgerpb.AndFilter{Filters: []*ledgerpb.QueryFilter{child}},
 		}}
 	}
-	orWrap := func(child *commonpb.QueryFilter) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{
-			Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{child}},
+	orWrap := func(child *ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Or{
+			Or: &ledgerpb.OrFilter{Filters: []*ledgerpb.QueryFilter{child}},
 		}}
 	}
-	notWrap := func(child *commonpb.QueryFilter) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{
-			Not: &commonpb.NotFilter{Filter: child},
+	notWrap := func(child *ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Not{
+			Not: &ledgerpb.NotFilter{Filter: child},
 		}}
 	}
 
-	for name, wrap := range map[string]func(*commonpb.QueryFilter) *commonpb.QueryFilter{
+	for name, wrap := range map[string]func(*ledgerpb.QueryFilter) *ledgerpb.QueryFilter{
 		"and": andWrap,
 		"or":  orWrap,
 		"not": notWrap,
@@ -187,7 +187,7 @@ func TestValidateFilterForTarget_RejectsDeeplyNestedFilter(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			err := domain.ValidateFilterForTarget(build(wrap), commonpb.QueryTarget_QUERY_TARGET_LOGS)
+			err := domain.ValidateFilterForTarget(build(wrap), ledgerpb.QueryTarget_QUERY_TARGET_LOGS)
 			require.NotNil(t, err, "deeply-nested %s filter must trip the depth guard", name)
 			require.Contains(t, err.Error(), "nesting depth")
 		})
@@ -201,10 +201,10 @@ func TestValidateFilterForTarget_RejectsDeeplyNestedFilter(t *testing.T) {
 	// N == MaxFilterDepth is rejected (leaf entered at depth MaxFilterDepth).
 	// A shallower write-time bound would persist prepared queries that fail to
 	// compile at execute time — the off-by-one this pins against.
-	nestedLogId := func(combinators int) *commonpb.QueryFilter {
-		var f = &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_LogId{
-				LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
+	nestedLogId := func(combinators int) *ledgerpb.QueryFilter {
+		var f = &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_LogId{
+				LogId: &ledgerpb.LogIdCondition{Cond: &ledgerpb.UintCondition{}},
 			},
 		}
 		for range combinators {
@@ -215,11 +215,11 @@ func TestValidateFilterForTarget_RejectsDeeplyNestedFilter(t *testing.T) {
 	}
 
 	require.Nil(t, domain.ValidateFilterForTarget(nestedLogId(domain.MaxFilterDepth-1),
-		commonpb.QueryTarget_QUERY_TARGET_LOGS),
+		ledgerpb.QueryTarget_QUERY_TARGET_LOGS),
 		"MaxFilterDepth-1 combinators must be accepted (matches query.Compile)")
 
 	atCap := domain.ValidateFilterForTarget(nestedLogId(domain.MaxFilterDepth),
-		commonpb.QueryTarget_QUERY_TARGET_LOGS)
+		ledgerpb.QueryTarget_QUERY_TARGET_LOGS)
 	require.NotNil(t, atCap,
 		"MaxFilterDepth combinators must be rejected (matches query.Compile)")
 	require.Contains(t, atCap.Error(), "nesting depth")
@@ -233,19 +233,19 @@ func TestValidateFilterForTarget_RejectsDeeplyNestedFilter(t *testing.T) {
 func TestValidateFilterForTarget_RejectsHasAssetPrecisionOverflow(t *testing.T) {
 	t.Parallel()
 
-	hasAsset := func(precision uint32) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_AccountHasAsset{
-			AccountHasAsset: &commonpb.AccountHasAssetCondition{AssetBase: "USD", Precision: precision},
+	hasAsset := func(precision uint32) *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_AccountHasAsset{
+			AccountHasAsset: &ledgerpb.AccountHasAssetCondition{AssetBase: "USD", Precision: precision},
 		}}
 	}
-	notWrap := func(child *commonpb.QueryFilter) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{Filter: child}}}
+	notWrap := func(child *ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Not{Not: &ledgerpb.NotFilter{Filter: child}}}
 	}
-	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	accounts := ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS
 
 	require.Nil(t, domain.ValidateFilterForTarget(hasAsset(domain.MaxHasAssetPrecision), accounts))
 
-	for name, f := range map[string]*commonpb.QueryFilter{
+	for name, f := range map[string]*ledgerpb.QueryFilter{
 		"bare":   hasAsset(domain.MaxHasAssetPrecision + 1),
 		"nested": notWrap(hasAsset(1038)),
 	} {
@@ -269,38 +269,38 @@ func TestValidateFilterForTarget_RejectsHasAssetPrecisionOverflow(t *testing.T) 
 func TestValidateFilterForTarget_RejectsMalformedLeaves(t *testing.T) {
 	t.Parallel()
 
-	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
-	transactions := commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
-	logs := commonpb.QueryTarget_QUERY_TARGET_LOGS
+	accounts := ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	transactions := ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+	logs := ledgerpb.QueryTarget_QUERY_TARGET_LOGS
 	one := uint64(1)
-	uintCond := &commonpb.UintCondition{Min: &one}
-	stringCond := &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "x"}}
+	uintCond := &ledgerpb.UintCondition{Min: &one}
+	stringCond := &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: "x"}}
 
-	field := func(fc *commonpb.FieldCondition) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{Field: fc}}
+	field := func(fc *ledgerpb.FieldCondition) *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{Field: fc}}
 	}
-	ref := &commonpb.FieldRef{Metadata: "colour"}
-	reference := func(c *commonpb.StringCondition) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{Cond: c}}}
+	ref := &ledgerpb.FieldRef{Metadata: "colour"}
+	reference := func(c *ledgerpb.StringCondition) *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reference{Reference: &ledgerpb.ReferenceCondition{Cond: c}}}
 	}
-	ledger := func(c *commonpb.StringCondition) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Ledger{Ledger: &commonpb.LedgerCondition{Cond: c}}}
+	ledger := func(c *ledgerpb.StringCondition) *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Ledger{Ledger: &ledgerpb.LedgerCondition{Cond: c}}}
 	}
-	builtinUint := func(f commonpb.TransactionBuiltinIndex, c *commonpb.UintCondition) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{Field: f, Cond: c}}}
+	builtinUint := func(f ledgerpb.TransactionBuiltinIndex, c *ledgerpb.UintCondition) *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{BuiltinUint: &ledgerpb.BuiltinUintCondition{Field: f, Cond: c}}}
 	}
-	logBuiltinUint := func(f commonpb.LogBuiltinIndex, c *commonpb.UintCondition) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{LogBuiltinUint: &commonpb.LogBuiltinUintCondition{Field: f, Cond: c}}}
+	logBuiltinUint := func(f ledgerpb.LogBuiltinIndex, c *ledgerpb.UintCondition) *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogBuiltinUint{LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{Field: f, Cond: c}}}
 	}
-	address := func(m *commonpb.AddressMatch) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: m}}
+	address := func(m *ledgerpb.AddressMatch) *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{Address: m}}
 	}
 
 	for _, tc := range []struct {
 		name      string
-		target    commonpb.QueryTarget
-		malformed *commonpb.QueryFilter
-		valid     *commonpb.QueryFilter
+		target    ledgerpb.QueryTarget
+		malformed *ledgerpb.QueryFilter
+		valid     *ledgerpb.QueryFilter
 		want      string
 	}{
 		{
@@ -313,7 +313,7 @@ func TestValidateFilterForTarget_RejectsMalformedLeaves(t *testing.T) {
 		{
 			name:      "reference with empty string condition",
 			target:    transactions,
-			malformed: reference(&commonpb.StringCondition{}),
+			malformed: reference(&ledgerpb.StringCondition{}),
 			valid:     reference(stringCond),
 			want:      "string condition has no value",
 		},
@@ -327,97 +327,97 @@ func TestValidateFilterForTarget_RejectsMalformedLeaves(t *testing.T) {
 		{
 			name:      "ledger with empty string condition",
 			target:    logs,
-			malformed: ledger(&commonpb.StringCondition{}),
+			malformed: ledger(&ledgerpb.StringCondition{}),
 			valid:     ledger(stringCond),
 			want:      "string condition has no value",
 		},
 		{
 			name:      "builtin uint without condition",
 			target:    transactions,
-			malformed: builtinUint(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, nil),
-			valid:     builtinUint(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, uintCond),
+			malformed: builtinUint(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, nil),
+			valid:     builtinUint(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, uintCond),
 			want:      "builtin uint condition has no value",
 		},
 		{
 			name:      "builtin uint on the reference field",
 			target:    transactions,
-			malformed: builtinUint(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE, uintCond),
-			valid:     builtinUint(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, uintCond),
+			malformed: builtinUint(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE, uintCond),
+			valid:     builtinUint(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, uintCond),
 			want:      "unsupported builtin uint field: TX_BUILTIN_INDEX_REFERENCE",
 		},
 		{
 			name:      "builtin uint on the address field",
 			target:    transactions,
-			malformed: builtinUint(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS, uintCond),
-			valid:     builtinUint(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT, uintCond),
+			malformed: builtinUint(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS, uintCond),
+			valid:     builtinUint(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT, uintCond),
 			want:      "unsupported builtin uint field: TX_BUILTIN_INDEX_ADDRESS",
 		},
 		{
 			name:      "log builtin uint without condition",
 			target:    logs,
-			malformed: logBuiltinUint(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, nil),
-			valid:     logBuiltinUint(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, uintCond),
+			malformed: logBuiltinUint(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, nil),
+			valid:     logBuiltinUint(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, uintCond),
 			want:      "log builtin uint condition has no value",
 		},
 		{
 			name:      "log builtin uint with unspecified field",
 			target:    logs,
-			malformed: logBuiltinUint(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED, uintCond),
-			valid:     logBuiltinUint(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, uintCond),
+			malformed: logBuiltinUint(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED, uintCond),
+			valid:     logBuiltinUint(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, uintCond),
 			want:      "unsupported log builtin uint field: LOG_BUILTIN_INDEX_UNSPECIFIED",
 		},
 		{
 			name:      "address without match",
 			target:    accounts,
-			malformed: address(&commonpb.AddressMatch{}),
-			valid:     address(&commonpb.AddressMatch{Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "users:"}}),
+			malformed: address(&ledgerpb.AddressMatch{}),
+			valid:     address(&ledgerpb.AddressMatch{Match: &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "users:"}}),
 			want:      "address condition has no match",
 		},
 		{
 			name:   "field without field reference",
 			target: accounts,
-			malformed: field(&commonpb.FieldCondition{
-				Condition: &commonpb.FieldCondition_StringCond{StringCond: stringCond},
+			malformed: field(&ledgerpb.FieldCondition{
+				Condition: &ledgerpb.FieldCondition_StringCond{StringCond: stringCond},
 			}),
-			valid: field(&commonpb.FieldCondition{
+			valid: field(&ledgerpb.FieldCondition{
 				Field:     ref,
-				Condition: &commonpb.FieldCondition_StringCond{StringCond: stringCond},
+				Condition: &ledgerpb.FieldCondition_StringCond{StringCond: stringCond},
 			}),
 			want: "field condition has no field reference",
 		},
 		{
 			name:      "field without condition",
 			target:    accounts,
-			malformed: field(&commonpb.FieldCondition{Field: ref}),
-			valid: field(&commonpb.FieldCondition{
+			malformed: field(&ledgerpb.FieldCondition{Field: ref}),
+			valid: field(&ledgerpb.FieldCondition{
 				Field:     ref,
-				Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+				Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{}},
 			}),
 			want: "field condition has no condition",
 		},
 		{
 			name:   "field with empty string condition",
 			target: accounts,
-			malformed: field(&commonpb.FieldCondition{
+			malformed: field(&ledgerpb.FieldCondition{
 				Field:     ref,
-				Condition: &commonpb.FieldCondition_StringCond{StringCond: &commonpb.StringCondition{}},
+				Condition: &ledgerpb.FieldCondition_StringCond{StringCond: &ledgerpb.StringCondition{}},
 			}),
-			valid: field(&commonpb.FieldCondition{
+			valid: field(&ledgerpb.FieldCondition{
 				Field:     ref,
-				Condition: &commonpb.FieldCondition_StringCond{StringCond: stringCond},
+				Condition: &ledgerpb.FieldCondition_StringCond{StringCond: stringCond},
 			}),
 			want: "string condition has no value",
 		},
 		{
 			name:   "field with empty bool condition",
 			target: accounts,
-			malformed: field(&commonpb.FieldCondition{
+			malformed: field(&ledgerpb.FieldCondition{
 				Field:     ref,
-				Condition: &commonpb.FieldCondition_BoolCond{BoolCond: &commonpb.BoolCondition{}},
+				Condition: &ledgerpb.FieldCondition_BoolCond{BoolCond: &ledgerpb.BoolCondition{}},
 			}),
-			valid: field(&commonpb.FieldCondition{
+			valid: field(&ledgerpb.FieldCondition{
 				Field:     ref,
-				Condition: &commonpb.FieldCondition_BoolCond{BoolCond: &commonpb.BoolCondition{Value: &commonpb.BoolCondition_Param{Param: "flag"}}},
+				Condition: &ledgerpb.FieldCondition_BoolCond{BoolCond: &ledgerpb.BoolCondition{Value: &ledgerpb.BoolCondition_Param{Param: "flag"}}},
 			}),
 			want: "bool condition has no value",
 		},
@@ -427,9 +427,9 @@ func TestValidateFilterForTarget_RejectsMalformedLeaves(t *testing.T) {
 
 			require.Nil(t, domain.ValidateFilterForTarget(tc.valid, tc.target))
 
-			for name, f := range map[string]*commonpb.QueryFilter{
+			for name, f := range map[string]*ledgerpb.QueryFilter{
 				"bare":   tc.malformed,
-				"nested": {Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{tc.valid, tc.malformed}}}},
+				"nested": {Filter: &ledgerpb.QueryFilter_And{And: &ledgerpb.AndFilter{Filters: []*ledgerpb.QueryFilter{tc.valid, tc.malformed}}}},
 			} {
 				err := domain.ValidateFilterForTarget(f, tc.target)
 				require.NotNil(t, err, name)

@@ -7,9 +7,9 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
@@ -171,8 +171,8 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 
 			// The checkpoint should contain the ledger we created.
 			stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{
-				Options: &commonpb.ListOptions{
-					Read: &commonpb.ReadOptions{CheckpointId: cpID},
+				Options: &ledgerpb.ListOptions{
+					Read: &ledgerpb.ReadOptions{CheckpointId: cpID},
 				},
 			})
 			Expect(err).To(Succeed())
@@ -296,7 +296,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 			firstCheckpointMaxSeq = resp.GetCheckpoints()[0].GetMaxSequence()
 
 			// Create a transaction (this happens after the first checkpoint)
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(1000), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())

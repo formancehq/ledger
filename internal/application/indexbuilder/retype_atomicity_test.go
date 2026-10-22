@@ -8,11 +8,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -36,7 +36,7 @@ func TestRetypeDuringBackfill_FailedFoldRollsBackThenRetriesAndRestarts(t *testi
 		key    = "role"
 	)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key)
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, key)
 	canonical := indexes.Canonical(id)
 	persistLedgerHistory(t, b, ledger, ledgerHistoryNonEmpty)
 	before := readstore.IndexVersionState{
@@ -56,16 +56,16 @@ func TestRetypeDuringBackfill_FailedFoldRollsBackThenRetriesAndRestarts(t *testi
 	require.NoError(t, progressBatch.Commit())
 
 	fsmBatch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &ledgerpb.LedgerInfo{
 		Name: ledger,
-		MetadataSchema: &commonpb.MetadataSchema{
-			TransactionFields: map[string]*commonpb.MetadataFieldSchema{
-				key: {Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
+		MetadataSchema: &ledgerpb.MetadataSchema{
+			TransactionFields: map[string]*ledgerpb.MetadataFieldSchema{
+				key: {Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64},
 			},
 		},
 	}))
 	indexKey := domain.IndexKey{LedgerName: ledger, Canonical: canonical}.Bytes()
-	_, err := b.attrs.Index.Set(fsmBatch, indexKey, &commonpb.Index{
+	_, err := b.attrs.Index.Set(fsmBatch, indexKey, &ledgerpb.Index{
 		Ledger:                 ledger,
 		Id:                     id,
 		ForwardEncodingVersion: 2,
@@ -73,17 +73,17 @@ func TestRetypeDuringBackfill_FailedFoldRollsBackThenRetriesAndRestarts(t *testi
 	require.NoError(t, err)
 	require.NoError(t, fsmBatch.Commit())
 
-	writeLogToFSM(t, b, &commonpb.Log{
+	writeLogToFSM(t, b, &ledgerpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+			Apply: &ledgerpb.ApplyLedgerLog{
 				LedgerName: ledger,
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-					Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
-						SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
-							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+				Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+					Payload: &ledgerpb.LedgerLogPayload_SetMetadataFieldType{
+						SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeLog{
+							TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 							Key:        key,
-							Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+							Type:       ledgerpb.MetadataType_METADATA_TYPE_UINT64,
 						},
 					},
 				}).WithID(1),
@@ -135,7 +135,7 @@ func TestRetypeDuringBackfill_FailedFoldRollsBackThenRetriesAndRestarts(t *testi
 	assert.Equal(t, uint32(2), after.PendingVersion)
 	assert.Equal(t, uint32(2), after.HighWater)
 	assert.True(t, after.PendingTypeDeclared)
-	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_UINT64, after.PendingType)
+	assert.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_UINT64, after.PendingType)
 	_, ok = b.readStore.ReadBackfillProgress(backfillKey)
 	assert.False(t, ok, "successful retry must commit the cursor reset")
 

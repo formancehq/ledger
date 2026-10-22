@@ -7,8 +7,8 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // NewListCommand creates the account-types list command.
@@ -97,14 +97,14 @@ func runList(cmd *cobra.Command, _ []string) error {
 }
 
 // FormatPersistence returns the canonical uppercase name for a persistence
-// enum. It delegates to the shared commonpb helper so the CLI, HTTP API, and
+// enum. It delegates to the shared ledgerpb helper so the CLI, HTTP API, and
 // OpenAPI spec stay in sync.
-func FormatPersistence(p commonpb.AccountTypePersistence) string {
-	return commonpb.PersistenceToString(p)
+func FormatPersistence(p ledgerpb.AccountTypePersistence) string {
+	return ledgerpb.PersistenceToString(p)
 }
 
 // ParsePersistence converts a persistence string to its enum. It delegates to
-// the shared commonpb helper (case-insensitive, empty defaults to NORMAL).
-func ParsePersistence(s string) (commonpb.AccountTypePersistence, error) {
-	return commonpb.ParsePersistence(s)
+// the shared ledgerpb helper (case-insensitive, empty defaults to NORMAL).
+func ParsePersistence(s string) (ledgerpb.AccountTypePersistence, error) {
+	return ledgerpb.ParsePersistence(s)
 }

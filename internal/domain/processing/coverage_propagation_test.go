@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // TestLoadLedgerPropagatesCoverageMiss pins the EN-1379 contract on the highest
@@ -85,11 +85,11 @@ func TestBuildPostCommitVolumesPropagatesCoverageMiss(t *testing.T) {
 	miss := coverageMissDescribable{}
 	expectGetVolume(mockStore, domain.NewVolumeKey("l-a", "alice", "USD", ""), nil, miss)
 
-	postings := []*commonpb.Posting{{
+	postings := []*ledgerpb.Posting{{
 		Source:      "alice",
 		Destination: "bob",
 		Asset:       "USD",
-		Amount:      commonpb.NewUint256FromUint64(10),
+		Amount:      ledgerpb.NewUint256FromUint64(10),
 	}}
 
 	volumes, err := buildPostCommitVolumes(mockStore, "l-a", postings)

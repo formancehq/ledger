@@ -402,11 +402,11 @@ func goEnumTypeName(desc protoreflect.EnumDescriptor) string {
 //
 // Generated shape (for LedgerAction):
 //
-//	func SkippableReasonsForLedgerAction(x *LedgerAction) []commonpb.ErrorReason {
+//	func SkippableReasonsForLedgerAction(x *LedgerAction) []ledgerpb.ErrorReason {
 //	    switch x.GetData().(type) {
 //	    case *LedgerAction_CreateTransaction:
-//	        return []commonpb.ErrorReason{
-//	            commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+//	        return []ledgerpb.ErrorReason{
+//	            ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 //	        }
 //	    default:
 //	        return nil

@@ -8,7 +8,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	"github.com/formancehq/ledger/pkg/proto/v3/json"
 )
 
 // BenchmarkMonetaryResponse compares native Sonic and the scoped v2 path using

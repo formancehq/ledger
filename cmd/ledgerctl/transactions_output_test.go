@@ -16,7 +16,7 @@ import (
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/grpc"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -43,11 +43,11 @@ func TestTransactionsGetStructuredOutputPreservesIntegers(t *testing.T) {
 	// HTTP/JSON on the way in could round the input before this CLI regression.
 	fixture := &transactionOutputServer{
 		response: &servicepb.GetTransactionResponse{
-			Transaction: &commonpb.Transaction{
+			Transaction: &ledgerpb.Transaction{
 				Id: positive,
-				Metadata: map[string]*commonpb.MetadataValue{
-					"positive": commonpb.NewUintValue(positive),
-					"negative": commonpb.NewIntValue(negative),
+				Metadata: map[string]*ledgerpb.MetadataValue{
+					"positive": ledgerpb.NewUintValue(positive),
+					"negative": ledgerpb.NewIntValue(negative),
 				},
 			},
 		},

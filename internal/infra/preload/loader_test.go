@@ -2,6 +2,7 @@ package preload
 
 import (
 	"errors"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -11,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -378,12 +379,12 @@ func TestCleanupToken_Release(t *testing.T) {
 	key4 := attributes.NewU128(4, 4)
 
 	_, err := loaders.Volumes.LoadOrWait(key1, 100, testCacheEpoch, func() (*raftcmdpb.VolumePair, error) {
-		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(42)}, nil
+		return &raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(42)}, nil
 	})
 	require.NoError(t, err)
 
 	_, err = loaders.Volumes.LoadOrWait(key2, 100, testCacheEpoch, func() (*raftcmdpb.VolumePair, error) {
-		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(43)}, nil
+		return &raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(43)}, nil
 	})
 	require.NoError(t, err)
 
@@ -408,7 +409,7 @@ func TestCleanupToken_Release(t *testing.T) {
 	_, err = loaders.Volumes.LoadOrWait(key1, 100, testCacheEpoch, func() (*raftcmdpb.VolumePair, error) {
 		volumeLoadCount++
 
-		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)}, nil
+		return &raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(100)}, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, volumeLoadCount, "Volumes key1 should reload after Release")
@@ -417,7 +418,7 @@ func TestCleanupToken_Release(t *testing.T) {
 	_, err = loaders.Volumes.LoadOrWait(key2, 100, testCacheEpoch, func() (*raftcmdpb.VolumePair, error) {
 		volumeLoadCount2++
 
-		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)}, nil
+		return &raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(100)}, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, volumeLoadCount2, "Volumes key2 should reload after Release")

@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // handleListSigningKeys handles GET /signing-keys to list registered
@@ -32,8 +32,8 @@ func (s *Server) handleListSigningKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	keyID := func(k *commonpb.SigningKey) string { return k.GetKeyId() }
-	slices.SortFunc(keys, func(a, b *commonpb.SigningKey) int { return strings.Compare(keyID(a), keyID(b)) })
+	keyID := func(k *ledgerpb.SigningKey) string { return k.GetKeyId() }
+	slices.SortFunc(keys, func(a, b *ledgerpb.SigningKey) int { return strings.Compare(keyID(a), keyID(b)) })
 
 	keys, links := pageSorted(page, keys, keyID)
 

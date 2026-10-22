@@ -8,8 +8,8 @@ import (
 
 	"github.com/formancehq/invariants"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // "fmt" is used below for error formatting.
@@ -18,7 +18,7 @@ import (
 // Volumes are listed per (account, asset, color); with --rescale, each account's
 // entries are instead merged per (base currency, color). The "" color is rendered
 // as "-" so the uncolored bucket stands out in the table.
-func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes, rescale *uint8) error {
+func renderPostCommitVolumes(pcv *ledgerpb.PostCommitVolumes, rescale *uint8) error {
 	if len(pcv.GetVolumesByAccount()) == 0 {
 		return nil
 	}

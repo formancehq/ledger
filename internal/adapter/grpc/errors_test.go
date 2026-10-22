@@ -20,13 +20,13 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // testLogger is the silent logger used by convertToGRPCError tests.
@@ -880,7 +880,7 @@ func TestConvertToGRPCError_MaintenanceMode(t *testing.T) {
 func TestConvertToGRPCError_NoLeader(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(commonpb.ErrNoLeader, testLogger())
+	grpcErr := convertToGRPCError(ledgerpb.ErrNoLeader, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.Unavailable, st.Code())
@@ -905,7 +905,7 @@ func TestConvertToGRPCError_LeadershipLost(t *testing.T) {
 func TestConvertToGRPCError_NotFoundError(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(commonpb.NewNotFoundError("ledger %s not found", "test"), testLogger())
+	grpcErr := convertToGRPCError(ledgerpb.NewNotFoundError("ledger %s not found", "test"), testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.NotFound, st.Code())

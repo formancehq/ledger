@@ -13,9 +13,9 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
@@ -30,14 +30,14 @@ func collectAuditEntries(ctx context.Context, client servicepb.BucketServiceClie
 }
 
 // auditStringFilter builds a single-condition string audit QueryFilter.
-func auditStringFilter(field commonpb.AuditField, value string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Audit{
-			Audit: &commonpb.AuditCondition{
+func auditStringFilter(field ledgerpb.AuditField, value string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Audit{
+			Audit: &ledgerpb.AuditCondition{
 				Field: field,
-				Condition: &commonpb.AuditCondition_StringCond{
-					StringCond: &commonpb.StringCondition{
-						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: value},
+				Condition: &ledgerpb.AuditCondition_StringCond{
+					StringCond: &ledgerpb.StringCondition{
+						Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: value},
 					},
 				},
 			},
@@ -46,8 +46,8 @@ func auditStringFilter(field commonpb.AuditField, value string) *commonpb.QueryF
 }
 
 // filterReq wraps a QueryFilter in a ListAuditEntriesRequest.
-func filterReq(filter *commonpb.QueryFilter) *servicepb.ListAuditEntriesRequest {
-	return &servicepb.ListAuditEntriesRequest{Options: &commonpb.ListOptions{Filter: filter}}
+func filterReq(filter *ledgerpb.QueryFilter) *servicepb.ListAuditEntriesRequest {
+	return &servicepb.ListAuditEntriesRequest{Options: &ledgerpb.ListOptions{Filter: filter}}
 }
 
 // decodeOrder unmarshals AuditItem.serialized_order back into a typed Order.
@@ -77,13 +77,13 @@ func auditEntryWithIdempotency(entries []*auditpb.AuditEntry, key string) *audit
 	return matches[0]
 }
 
-func auditSequenceMaxFilter(maxSequence uint64) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Audit{
-			Audit: &commonpb.AuditCondition{
-				Field: commonpb.AuditField_AUDIT_FIELD_SEQUENCE,
-				Condition: &commonpb.AuditCondition_UintCond{
-					UintCond: &commonpb.UintCondition{Max: &maxSequence},
+func auditSequenceMaxFilter(maxSequence uint64) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Audit{
+			Audit: &ledgerpb.AuditCondition{
+				Field: ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE,
+				Condition: &ledgerpb.AuditCondition_UintCond{
+					UintCond: &ledgerpb.UintCondition{Max: &maxSequence},
 				},
 			},
 		},
@@ -105,7 +105,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 			noiseKey       = "audit-success-unrelated-entry"
 		)
 
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())
@@ -128,7 +128,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 	It("Should record a failure audit entry for insufficient funds", func() {
 		const idempotencyKey = "audit-insufficient-funds"
 
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("empty:account", "bank", big.NewInt(99999), "USD"),
 		}, nil, nil)))
 		Expect(err).To(HaveOccurred())
@@ -151,7 +151,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Create a transaction on the second ledger
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(otherLedger, []*commonpb.Posting{
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(otherLedger, []*ledgerpb.Posting{
 			actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())
@@ -161,7 +161,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// async audit index, so poll until it has caught up (Eventually).
 		Eventually(func(g Gomega) {
 			filtered, err := collectAuditEntries(sharedCtx, sharedClient,
-				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, ledgerName)))
+				filterReq(auditStringFilter(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, ledgerName)))
 			g.Expect(err).To(Succeed())
 			g.Expect(filtered).NotTo(BeEmpty())
 
@@ -174,7 +174,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// Filter by the other ledger — should include at least 2 entries (create + transaction)
 		Eventually(func(g Gomega) {
 			otherFiltered, err := collectAuditEntries(sharedCtx, sharedClient,
-				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, otherLedger)))
+				filterReq(auditStringFilter(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, otherLedger)))
 			g.Expect(err).To(Succeed())
 			g.Expect(len(otherFiltered)).To(BeNumerically(">=", 2))
 		}).Should(Succeed())
@@ -182,13 +182,13 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 	It("Should filter audit entries by failures only", func() {
 		// Create a successful transaction
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())
 
 		// Create a failing transaction
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("empty:account", "bank", big.NewInt(99999), "USD"),
 		}, nil, nil)))
 		Expect(err).To(HaveOccurred())
@@ -197,7 +197,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// a failure. Served by the async audit index, so poll until caught up.
 		Eventually(func(g Gomega) {
 			failures, err := collectAuditEntries(sharedCtx, sharedClient,
-				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure")))
+				filterReq(auditStringFilter(ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, "failure")))
 			g.Expect(err).To(Succeed())
 			g.Expect(failures).NotTo(BeEmpty())
 			for _, entry := range failures {
@@ -208,7 +208,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 	It("Should support after_sequence pagination", func() {
 		// Create a transaction to ensure we have entries
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())
@@ -223,7 +223,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		maxSequence := allEntries[len(allEntries)-1].Sequence
 		Eventually(func(g Gomega) {
 			afterEntries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-				Options: &commonpb.ListOptions{
+				Options: &ledgerpb.ListOptions{
 					Cursor: pagecursor.Cursor{Key: strconv.FormatUint(afterSeq, 10)}.Encode(),
 					Filter: auditSequenceMaxFilter(maxSequence),
 				},
@@ -262,7 +262,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(firstOrder.GetLedgerScoped().GetCreateLedger()).NotTo(BeNil())
 
 		// Create a transaction — produces an Apply/CreateTransaction order
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(createTransactionKey, actions.CreateTransactionAction(ledgerForOrders, []*commonpb.Posting{
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(createTransactionKey, actions.CreateTransactionAction(ledgerForOrders, []*ledgerpb.Posting{
 			actions.NewPosting("world", "bank", big.NewInt(500), "EUR"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())
@@ -337,10 +337,10 @@ var _ = Describe("Audit Log", Ordered, func() {
 		const idempotencyKey = "audit-multiple-items"
 
 		// Submit multiple requests in a single Apply (batch)
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("world", "batch:a", big.NewInt(100), "USD"),
 		}, nil, nil),
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "batch:b", big.NewInt(200), "USD"),
 			}, nil, nil)))
 		Expect(err).To(Succeed())
@@ -379,7 +379,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 	It("Should have log_sequence=0 for failure items", func() {
 		// Create a failing transaction
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("empty:nofunds", "bank", big.NewInt(99999), "USD"),
 		}, nil, nil)))
 		Expect(err).To(HaveOccurred())
@@ -387,7 +387,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		var last *auditpb.AuditEntry
 		Eventually(func(g Gomega) {
 			entries, err := collectAuditEntries(sharedCtx, sharedClient,
-				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure")))
+				filterReq(auditStringFilter(ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, "failure")))
 			g.Expect(err).To(Succeed())
 			g.Expect(entries).NotTo(BeEmpty())
 			last = entries[len(entries)-1]
@@ -408,13 +408,13 @@ var _ = Describe("Audit Log", Ordered, func() {
 		const idempotencyKey = "audit-sequential-order-indexes"
 
 		// Submit 3 requests in a single batch
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("world", "seq:a", big.NewInt(10), "USD"),
 		}, nil, nil),
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "seq:b", big.NewInt(20), "USD"),
 			}, nil, nil),
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "seq:c", big.NewInt(30), "USD"),
 			}, nil, nil)))
 		Expect(err).To(Succeed())
@@ -437,7 +437,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		const idempotencyKey = "audit-log-sequence-correlation"
 
 		// Create a transaction to get a log sequence
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("world", "logcorr:dest", big.NewInt(500), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())
@@ -478,7 +478,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 	It("Should have ledgers field populated on list entries when filtering by ledger", func() {
 		Eventually(func(g Gomega) {
 			filtered, err := collectAuditEntries(sharedCtx, sharedClient,
-				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, ledgerName)))
+				filterReq(auditStringFilter(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, ledgerName)))
 			g.Expect(err).To(Succeed())
 			g.Expect(filtered).NotTo(BeEmpty())
 
@@ -510,14 +510,14 @@ var _ = Describe("Audit Log", Ordered, func() {
 	})
 
 	It("Should honor options.filter for outcome == success (shared contract)", func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("world", "filter:ok", big.NewInt(10), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())
 
 		Eventually(func(g Gomega) {
 			entries, err := collectAuditEntries(sharedCtx, sharedClient,
-				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "success")))
+				filterReq(auditStringFilter(ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, "success")))
 			g.Expect(err).To(Succeed())
 			g.Expect(entries).NotTo(BeEmpty())
 			for _, entry := range entries {
@@ -530,17 +530,17 @@ var _ = Describe("Audit Log", Ordered, func() {
 		orderTypeLedger := "audit-order-type"
 		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(orderTypeLedger, nil)))
 		Expect(err).To(Succeed())
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(orderTypeLedger, []*commonpb.Posting{
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(orderTypeLedger, []*ledgerpb.Posting{
 			actions.NewPosting("world", "ot:dest", big.NewInt(5), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())
 
 		// ledger == orderTypeLedger and order_type == create_transaction
-		filter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{
-					auditStringFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, orderTypeLedger),
-					auditStringFilter(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"),
+		filter := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_And{
+				And: &ledgerpb.AndFilter{Filters: []*ledgerpb.QueryFilter{
+					auditStringFilter(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, orderTypeLedger),
+					auditStringFilter(ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"),
 				}},
 			},
 		}
@@ -559,7 +559,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// Reverse iteration reads the audit zone directly (no filter), so it is
 		// strongly consistent — no Eventually needed.
 		asc, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-			Options: &commonpb.ListOptions{Reverse: false},
+			Options: &ledgerpb.ListOptions{Reverse: false},
 		})
 		Expect(err).To(Succeed())
 		Expect(len(asc)).To(BeNumerically(">=", 2))
@@ -567,7 +567,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		maxSequence := asc[len(asc)-1].Sequence
 		Eventually(func(g Gomega) {
 			desc, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-				Options: &commonpb.ListOptions{
+				Options: &ledgerpb.ListOptions{
 					Filter:  auditSequenceMaxFilter(maxSequence),
 					Reverse: true,
 				},
@@ -589,12 +589,12 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 		lo := all[0].GetSequence()
 		hi := all[len(all)-1].GetSequence() - 1
-		seqFilter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Audit{
-				Audit: &commonpb.AuditCondition{
-					Field: commonpb.AuditField_AUDIT_FIELD_SEQUENCE,
-					Condition: &commonpb.AuditCondition_UintCond{
-						UintCond: &commonpb.UintCondition{Min: &lo, Max: &hi},
+		seqFilter := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Audit{
+				Audit: &ledgerpb.AuditCondition{
+					Field: ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE,
+					Condition: &ledgerpb.AuditCondition_UintCond{
+						UintCond: &ledgerpb.UintCondition{Min: &lo, Max: &hi},
 					},
 				},
 			},
@@ -609,10 +609,10 @@ var _ = Describe("Audit Log", Ordered, func() {
 	})
 
 	It("Should reject an unsupported filter (not) with InvalidArgument", func() {
-		notFilter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Not{
-				Not: &commonpb.NotFilter{
-					Filter: auditStringFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure"),
+		notFilter := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Not{
+				Not: &ledgerpb.NotFilter{
+					Filter: auditStringFilter(ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, "failure"),
 				},
 			},
 		}
@@ -623,13 +623,13 @@ var _ = Describe("Audit Log", Ordered, func() {
 	})
 
 	It("Should reject a non-audit filter condition with InvalidArgument", func() {
-		metaFilter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "k"},
-					Condition: &commonpb.FieldCondition_StringCond{
-						StringCond: &commonpb.StringCondition{
-							Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "v"},
+		metaFilter := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "k"},
+					Condition: &ledgerpb.FieldCondition_StringCond{
+						StringCond: &ledgerpb.StringCondition{
+							Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: "v"},
 						},
 					},
 				},

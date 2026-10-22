@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 func TestCreateSink_NATS_FailsWithoutServer(t *testing.T) {
@@ -15,10 +15,10 @@ func TestCreateSink_NATS_FailsWithoutServer(t *testing.T) {
 
 	m := &Manager{}
 
-	cfg := &commonpb.SinkConfig{
+	cfg := &ledgerpb.SinkConfig{
 		Name: "nats-sink",
-		Type: &commonpb.SinkConfig_Nats{
-			Nats: &commonpb.NatsSinkConfig{
+		Type: &ledgerpb.SinkConfig_Nats{
+			Nats: &ledgerpb.NatsSinkConfig{
 				Url:   "nats://localhost:99999",
 				Topic: "test-events",
 			},

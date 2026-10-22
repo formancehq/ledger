@@ -15,12 +15,12 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -64,7 +64,7 @@ func applyStartupStatusUpdate(store *dal.Store, update *raftcmdpb.EventsSinkUpda
 	if update.GetClearError() {
 		err = state.ClearSinkStatus(batch, update.GetSinkName())
 	} else if update.GetError() != nil {
-		err = state.SetSinkStatus(batch, &commonpb.SinkStatus{SinkName: update.GetSinkName(), Error: update.GetError()})
+		err = state.SetSinkStatus(batch, &ledgerpb.SinkStatus{SinkName: update.GetSinkName(), Error: update.GetError()})
 	}
 	if err != nil {
 		_ = batch.Cancel()
@@ -181,13 +181,13 @@ func (p *delayedStartupStatusProposer) Propose(_ context.Context, proposal *node
 	return f, nil
 }
 
-func startupStatusView(store *dal.Store, config *commonpb.SinkConfig) (*commonpb.SinkStatus, error) {
+func startupStatusView(store *dal.Store, config *ledgerpb.SinkConfig) (*ledgerpb.SinkStatus, error) {
 	handle, err := store.NewDirectReadHandle()
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = handle.Close() }()
-	statuses, err := query.BuildSinkStatuses(handle, []*commonpb.SinkConfig{config})
+	statuses, err := query.BuildSinkStatuses(handle, []*ledgerpb.SinkConfig{config})
 	if err != nil {
 		return nil, err
 	}

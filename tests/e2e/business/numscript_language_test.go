@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
@@ -419,7 +419,7 @@ send $bonus (
 			Expect(createdTx.Transaction.Postings).To(HaveLen(3))
 			Expect(createdTx.Transaction.Postings[0].Asset).To(Equal("USD/2"))
 
-			meta := commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)
+			meta := ledgerpb.MetadataToGoMap(createdTx.Transaction.Metadata)
 			Expect(meta["note"]).To(Equal("typed-vars"))
 
 			// src sends 400 + 50 = 450 (1000 - 450 = 550 left).

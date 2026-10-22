@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,6 +17,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
@@ -26,7 +27,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -1504,7 +1504,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// must not advance the durable clock, so an uncommitted rejection cannot
 	// change the effective date of a later accepted proposal.
 	previousTimestamp := fsm.State.LastAppliedTimestamp
-	effectiveDate := &commonpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.GetDate().GetData())}
+	effectiveDate := &ledgerpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.GetDate().GetData())}
 
 	// Freeze the retention window for any idempotency outcome this apply stores,
 	// from the policy committed before this proposal. Computed once so the audit
@@ -1645,25 +1645,12 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	if err != nil {
-		// FAILURE: write audit entry and return business error. Uncommitted
-		// failures returned above; every remaining failure is an audited
-		// business rejection by contract.
-		audited, ok := errors.AsType[domain.SerializableError](err)
-		if !ok {
-			assert.Unreachable("non-auditable order failure reached the audit path", map[string]any{
-				"raftIndex":  raftIndex,
-				"proposalID": proposal.GetId(),
-				"reason":     err.Reason(),
-			})
-
-			return nil, fmt.Errorf("invariant: order failure %q is neither uncommitted nor auditable (raft index %d, proposal %d): %w",
-				err.Reason(), raftIndex, proposal.GetId(), err)
-		}
-
-		failureEntry := auditpb.AuditEntryFromVTPool()
-		failureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(audited)}
+		// FAILURE: write audit entry and return business error. `err` is
+		// produced by processor.ProcessOrders which now returns Describable
+		// directly — no boundary cast, no fallback path.
+		failureEntry := &auditpb.AuditEntry{}
+		failureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}
 		appendErr := writeAuditEntry(failureEntry, nil, "failure")
-		failureEntry.ReturnToVTPool()
 		if appendErr != nil {
 			return nil, appendErr
 		}
@@ -1715,22 +1702,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 			return result, nil
 		}
-		audited, ok := errors.AsType[domain.SerializableError](err)
-		if !ok {
-			assert.Unreachable("non-auditable transient validation failure reached the audit path", map[string]any{
-				"raftIndex":  raftIndex,
-				"proposalID": proposal.GetId(),
-				"reason":     err.Reason(),
-			})
-
-			return nil, fmt.Errorf("invariant: transient validation failure %q is neither uncommitted nor auditable (raft index %d, proposal %d): %w",
-				err.Reason(), raftIndex, proposal.GetId(), err)
-		}
-
-		transientFailureEntry := auditpb.AuditEntryFromVTPool()
-		transientFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(audited)}
+		transientFailureEntry := &auditpb.AuditEntry{}
+		transientFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}
 		appendErr := writeAuditEntry(transientFailureEntry, nil, "transient validation failure")
-		transientFailureEntry.ReturnToVTPool()
 		if appendErr != nil {
 			return nil, appendErr
 		}
@@ -1824,11 +1798,10 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// (see writeAuditEntry). The convention is to let that error
 	// propagate out of Run() and crash the process; a restart reloads
 	// from Pebble and Raft redelivers. Tracked for hardening in EN-1330.
-	auditEntry := auditpb.AuditEntryFromVTPool()
+	auditEntry := &auditpb.AuditEntry{}
 	auditEntry.Outcome = &auditpb.AuditEntry_Success{Success: auditSuccess}
 	appendErr := writeAuditEntry(auditEntry, logs, "success")
 	auditSequence := auditEntry.GetSequence()
-	auditEntry.ReturnToVTPool()
 	if appendErr != nil {
 		return nil, appendErr
 	}
@@ -1886,8 +1859,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 // current Pebble batch. Callers must propagate write failures: the in-memory
 // audit state may already have advanced and recovery must replay the entry.
 // EN-1330 tracks a transactional stage/commit rework for this failure window.
-func (fsm *Machine) writeProposalAuditEntry(batch *dal.WriteSession, proposal *raftcmdpb.Proposal, effectiveDate *commonpb.Timestamp, idempotencyExpiresAt uint64, serializedOrders [][]byte, entry *auditpb.AuditEntry, logs []*raftcmdpb.CreatedLogOrReference, label string) error {
-	orders := proposals.BatchOrders(proposal)
+func (fsm *Machine) writeProposalAuditEntry(batch *dal.WriteSession, proposal *raftcmdpb.Proposal, effectiveDate *ledgerpb.Timestamp, idempotencyExpiresAt uint64, serializedOrders [][]byte, entry *auditpb.AuditEntry, logs []*raftcmdpb.CreatedLogOrReference, label string) error {
+	orders := proposal.GetOrders()
 	// Sequence must be set BEFORE the header payload is built —
 	// BuildHashedHeaderPayload binds entry.Sequence, and the
 	// verifier rebuilds the payload from the persisted (non-zero)
@@ -1908,7 +1881,7 @@ func (fsm *Machine) writeProposalAuditEntry(batch *dal.WriteSession, proposal *r
 	// expiry back from the chain without a node-local TTL. Signature stays
 	// shared (ResetVT only nils it).
 	if idem := proposal.GetIdempotency(); idem.GetKey() != "" {
-		entry.Idempotency = &commonpb.Idempotency{Key: idem.GetKey(), ExpiresAt: idempotencyExpiresAt}
+		entry.Idempotency = &ledgerpb.Idempotency{Key: idem.GetKey(), ExpiresAt: idempotencyExpiresAt}
 	}
 	entry.Signature = proposal.GetSignature()
 	entry.RequiredCapabilities = slices.Clone(proposal.GetRequiredCapabilities())
@@ -2171,7 +2144,7 @@ type ApplyResult struct {
 	volumeUpdates      []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 	purgedVolumeKeys   []domain.VolumeKey // keys removed by ephemeral purge
 	deletedLedgerNames []string           // ledgers removed by successful deletion cascades
-	createdLogs        []*commonpb.Log
+	createdLogs        []*ledgerpb.Log
 	ledgerNames        []string // ledger names touched by this proposal (for post-commit balance check)
 
 	// Bounded outcome facts captured before the reusable WriteSet is reset.

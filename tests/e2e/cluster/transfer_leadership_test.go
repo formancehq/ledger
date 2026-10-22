@@ -8,8 +8,8 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -111,7 +111,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		// health worker has collected fresh WAL and data samples from every
 		// committed member. Leader discovery can complete just before that poll.
 		Eventually(func(g Gomega) {
-			_, err := servers[targetID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("transfer-test", []*commonpb.Posting{
+			_, err := servers[targetID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("transfer-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			g.Expect(err).To(Succeed())
@@ -119,7 +119,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 
 		// Create the remaining transactions through the now-open new leader.
 		for i := 0; i < 2; i++ {
-			_, err := servers[targetID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("transfer-test", []*commonpb.Posting{
+			_, err := servers[targetID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("transfer-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -160,7 +160,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		for i := 0; i < 3; i++ {
-			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*commonpb.Posting{
+			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -190,14 +190,14 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		// first current-epoch disk verdict. Retry the first write across that short
 		// fail-closed window; the unavailable old leader must not block it forever.
 		Eventually(func(g Gomega) {
-			_, err := servers[newLeaderID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*commonpb.Posting{
+			_, err := servers[newLeaderID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			g.Expect(err).To(Succeed())
 		}).Should(Succeed())
 
 		for i := 0; i < 2; i++ {
-			_, err := servers[newLeaderID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*commonpb.Posting{
+			_, err := servers[newLeaderID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())

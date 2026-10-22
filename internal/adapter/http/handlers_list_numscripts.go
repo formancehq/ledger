@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // handleListNumscripts handles GET /{ledgerName}/numscripts to list the greatest
@@ -28,8 +28,8 @@ func (s *Server) handleListNumscripts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := func(n *commonpb.NumscriptInfo) string { return n.GetName() }
-	slices.SortFunc(scripts, func(a, b *commonpb.NumscriptInfo) int { return strings.Compare(name(a), name(b)) })
+	name := func(n *ledgerpb.NumscriptInfo) string { return n.GetName() }
+	slices.SortFunc(scripts, func(a, b *ledgerpb.NumscriptInfo) int { return strings.Compare(name(a), name(b)) })
 
 	scripts, links := pageSorted(page, scripts, name)
 	writePageOK(w, r, scripts, links)

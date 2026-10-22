@@ -19,6 +19,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
@@ -31,7 +32,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/rafttransportpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -52,8 +52,8 @@ func TestRoutedController_GetLedgerFallbackDoesNotFenceCheckpointMetadata(t *tes
 	meters := noop.NewMeterProvider()
 	attrs := attributes.New()
 	leaderStore, followerStore := newTestStore(t), newTestStore(t)
-	seedRoutedCheckpointMetadata(t, leaderStore, 521, 7, "@every 960000h", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT)
-	seedRoutedCheckpointMetadata(t, followerStore, 155, 4, "@every 950000h", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
+	seedRoutedCheckpointMetadata(t, leaderStore, 521, 7, "@every 960000h", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT)
+	seedRoutedCheckpointMetadata(t, followerStore, 155, 4, "@every 950000h", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
 	leaderController := ctrl.NewDefaultController(nil, leaderStore, logger, attrs, nil, nil, meters.Meter("test"))
 	followerController := ctrl.NewDefaultController(nil, followerStore, logger, attrs, nil, nil, meters.Meter("test"))
 	var leaderReads atomic.Int32
@@ -107,7 +107,7 @@ func TestRoutedController_GetLedgerFallbackDoesNotFenceCheckpointMetadata(t *tes
 			require.NoError(t, err)
 			require.Equal(t, int32(1), barrierCalls.Load(), "the actual routed read must attempt its local barrier")
 			require.Equal(t, before+1, leaderReads.Load(), "fallback must cross the real leader gRPC connection")
-			require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, ledger.GetDefaultEnforcementMode(), "the response must come from the leader's updated store")
+			require.Equal(t, ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, ledger.GetDefaultEnforcementMode(), "the response must come from the leader's updated store")
 			require.Equal(t, uint64(155), follower.LastPersistedIndex(), "forwarding must not imply local catch-up")
 
 			listed, err := localMetadata.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
@@ -143,8 +143,8 @@ func TestClusterService_CheckpointFenceIdentityAndLocalProgress(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			leaderStore, followerStore := newTestStore(t), newTestStore(t)
-			seedRoutedCheckpointMetadata(t, leaderStore, 521, 7, "@every 960000h", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT)
-			seedRoutedCheckpointMetadata(t, followerStore, 155, 4, "@every 950000h", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
+			seedRoutedCheckpointMetadata(t, leaderStore, 521, 7, "@every 960000h", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT)
+			seedRoutedCheckpointMetadata(t, followerStore, 155, 4, "@every 950000h", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
 			leaderListener, followerListener := checkpointFenceListener(t), checkpointFenceListener(t)
 			leaderAddr, followerAddr := leaderListener.Addr().String(), followerListener.Addr().String()
 			leaderPool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
@@ -219,11 +219,11 @@ func checkpointMetadataHandler(store *dal.Store) clusterpb.ClusterServiceServer 
 	return grpcadp.NewClusterServiceServer(nil, nil, nil, nil, store, nil, nil, nil, nil, nil, nil, logging.Testing(), "", "", "", version.Info{})
 }
 
-func seedRoutedCheckpointMetadata(t *testing.T, store *dal.Store, applied, checkpoint uint64, cron string, mode commonpb.ChartEnforcementMode) {
+func seedRoutedCheckpointMetadata(t *testing.T, store *dal.Store, applied, checkpoint uint64, cron string, mode ledgerpb.ChartEnforcementMode) {
 	t.Helper()
 	batch := store.OpenWriteSession()
 	t.Cleanup(func() { require.NoError(t, batch.Cancel()) })
-	require.NoError(t, state.SaveLedger(batch, "L", &commonpb.LedgerInfo{Name: "L", Id: 1, CreatedAt: &commonpb.Timestamp{Data: 1}, DefaultEnforcementMode: mode}))
+	require.NoError(t, state.SaveLedger(batch, "L", &ledgerpb.LedgerInfo{Name: "L", Id: 1, CreatedAt: &ledgerpb.Timestamp{Data: 1}, DefaultEnforcementMode: mode}))
 	require.NoError(t, state.SaveQueryCheckpoint(batch, &raftcmdpb.QueryCheckpointState{CheckpointId: checkpoint, MaxSequence: applied}))
 	require.NoError(t, state.SaveQueryCheckpointSchedule(batch, cron))
 	require.NoError(t, state.SetAppliedIndex(batch, applied))

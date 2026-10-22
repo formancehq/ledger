@@ -7,8 +7,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -37,18 +37,18 @@ type priorIndex struct {
 
 // classifyRejectedFilter decides whether f must be refused on target, and which
 // indexes may answer not-ready before the refusal is reached.
-func classifyRejectedFilter(f *commonpb.QueryFilter, target commonpb.QueryTarget) rejectedFilter {
+func classifyRejectedFilter(f *ledgerpb.QueryFilter, target ledgerpb.QueryTarget) rejectedFilter {
 	if domain.ValidateFilterForTarget(f, target) == nil && len(collectParams(f)) == 0 {
 		return rejectedFilter{}
 	}
 
 	prior := map[string]priorIndex{}
 	stopped := false
-	visitLeaves(f, func(leaf *commonpb.QueryFilter) {
+	visitLeaves(f, func(leaf *ledgerpb.QueryFilter) {
 		if stopped {
 			return
 		}
-		if leaf != nil && (!commonpb.ConditionValidForTarget(target, commonpb.ConditionKindOf(leaf)) || domain.ValidateFilterLeaf(leaf) != nil) {
+		if leaf != nil && (!ledgerpb.ConditionValidForTarget(target, ledgerpb.ConditionKindOf(leaf)) || domain.ValidateFilterLeaf(leaf) != nil) {
 			stopped = true
 
 			return
@@ -56,7 +56,7 @@ func classifyRejectedFilter(f *commonpb.QueryFilter, target commonpb.QueryTarget
 
 		// A leaf checks its index before it resolves its parameters.
 		needed := map[string]struct{}{}
-		if target == commonpb.QueryTarget_QUERY_TARGET_LOGS {
+		if target == ledgerpb.QueryTarget_QUERY_TARGET_LOGS {
 			needed = neededLogIndexes(leaf)
 		} else {
 			neededIndexCanonicals(leaf, target, needed)
@@ -75,34 +75,34 @@ func classifyRejectedFilter(f *commonpb.QueryFilter, target commonpb.QueryTarget
 
 // serverIndexLabel is the label the compiler names leaf's index by in an
 // INDEX_NOT_FOUND / INDEX_BUILDING ErrorInfo (internal/query/compile.go).
-func serverIndexLabel(leaf *commonpb.QueryFilter, target commonpb.QueryTarget) string {
-	if target == commonpb.QueryTarget_QUERY_TARGET_LOGS {
+func serverIndexLabel(leaf *ledgerpb.QueryFilter, target ledgerpb.QueryTarget) string {
+	if target == ledgerpb.QueryTarget_QUERY_TARGET_LOGS {
 		return "log date"
 	}
 
 	switch x := leaf.GetFilter().(type) {
-	case *commonpb.QueryFilter_Field:
-		return fmt.Sprintf("metadata[%q] on %s", x.Field.GetField().GetMetadata(), commonpb.TargetHumanName(target))
-	case *commonpb.QueryFilter_AccountHasAsset:
+	case *ledgerpb.QueryFilter_Field:
+		return fmt.Sprintf("metadata[%q] on %s", x.Field.GetField().GetMetadata(), ledgerpb.TargetHumanName(target))
+	case *ledgerpb.QueryFilter_AccountHasAsset:
 		return "has asset"
-	case *commonpb.QueryFilter_Reference:
+	case *ledgerpb.QueryFilter_Reference:
 		return "reference"
-	case *commonpb.QueryFilter_Address:
+	case *ledgerpb.QueryFilter_Address:
 		switch x.Address.GetRole() {
-		case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
+		case ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE:
 			return "source"
-		case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
+		case ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION:
 			return "destination"
 		default:
 			return "address"
 		}
-	case *commonpb.QueryFilter_BuiltinUint:
+	case *ledgerpb.QueryFilter_BuiltinUint:
 		switch x.BuiltinUint.GetField() {
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 			return "timestamp"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 			return "inserted_at"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
 			return "reverted_at"
 		}
 	}
@@ -114,7 +114,7 @@ func serverIndexLabel(leaf *commonpb.QueryFilter, target commonpb.QueryTarget) s
 // InvalidArgument refusal, or a not-ready rejection from an index an earlier
 // leaf needs while some candidate base does not hold it active. Returns true
 // when it has fully handled err.
-func (c *Checker) handleRejectedFilterError(maxTicket uint64, rf rejectedFilter, target commonpb.QueryTarget, ledger string, filter *commonpb.QueryFilter, err error) bool {
+func (c *Checker) handleRejectedFilterError(maxTicket uint64, rf rejectedFilter, target ledgerpb.QueryTarget, ledger string, filter *ledgerpb.QueryFilter, err error) bool {
 	if !rf.rejected {
 		return false
 	}
@@ -123,9 +123,9 @@ func (c *Checker) handleRejectedFilterError(maxTicket uint64, rf rejectedFilter,
 		// Coverage: one literal per target — Antithesis catalogues assertions by
 		// literal.
 		switch target {
-		case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+		case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 			assert.Reachable("singleton_driver_model: refused account filter rejected", internal.Details{"ledger": ledger})
-		case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+		case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 			assert.Reachable("singleton_driver_model: refused transaction filter rejected", internal.Details{"ledger": ledger})
 		default:
 			assert.Reachable("singleton_driver_model: refused log filter rejected", internal.Details{"ledger": ledger})
@@ -154,7 +154,7 @@ func (c *Checker) handleRejectedFilterError(maxTicket uint64, rf rejectedFilter,
 
 // assertRefusedFilterServedNothing fires when a filter the server must refuse
 // produced a page. Returns true when rf is a refused filter.
-func assertRefusedFilterServedNothing(rf rejectedFilter, target commonpb.QueryTarget, ledger string, filter *commonpb.QueryFilter, rows int) bool {
+func assertRefusedFilterServedNothing(rf rejectedFilter, target ledgerpb.QueryTarget, ledger string, filter *ledgerpb.QueryFilter, rows int) bool {
 	if !rf.rejected {
 		return false
 	}
@@ -174,7 +174,7 @@ func assertRefusedFilterServedNothing(rf rejectedFilter, target commonpb.QueryTa
 // refused one needs, and that index is absent or not active, or is a metadata
 // index under an open retype window. A refusal naming any other index stays
 // illegal.
-func refusedFilterNotReadyLegal(ls oracle.LedgerState, rf rejectedFilter, target commonpb.QueryTarget, err error) bool {
+func refusedFilterNotReadyLegal(ls oracle.LedgerState, rf rejectedFilter, target ledgerpb.QueryTarget, err error) bool {
 	rejectedIndex := rejectedIndexLabel(err)
 	for canon, p := range rf.prior {
 		if p.label != "" && p.label != rejectedIndex {

@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"sort"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // CompactAccount holds only the fields needed for account analysis.
@@ -29,14 +29,14 @@ type CompactPosting struct {
 // CompactTransaction holds only the fields needed for transaction analysis.
 type CompactTransaction struct {
 	Postings     []CompactPosting
-	Timestamp    uint64 // microseconds since epoch (from commonpb.Timestamp.Data)
+	Timestamp    uint64 // microseconds since epoch (from ledgerpb.Timestamp.Data)
 	HasTimestamp bool   // true when the source proto had a non-nil Timestamp
 	Reverted     bool
 	MetadataKeys []string
 }
 
 // ExtractCompactTransaction extracts the minimal fields from a proto Transaction.
-func ExtractCompactTransaction(tx *commonpb.Transaction) CompactTransaction {
+func ExtractCompactTransaction(tx *ledgerpb.Transaction) CompactTransaction {
 	postings := make([]CompactPosting, len(tx.GetPostings()))
 	for i, p := range tx.GetPostings() {
 		postings[i] = CompactPosting{

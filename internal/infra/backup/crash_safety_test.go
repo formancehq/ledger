@@ -16,6 +16,11 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -418,4 +423,435 @@ func TestRunBackup_SecondBackupSucceedsEvenWhenDeletesFail(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, manifest.Checkpoint)
 	require.Empty(t, manifest.Exports)
+}
+
+// TestRunIncrementalBackup_SegmentUploadFailureLeavesManifestUntouched proves a
+// failed export segment upload never publishes a manifest referencing the
+// missing object. The manifest on storage must remain byte-identical to the one
+// present before the run, so a subsequent restore keeps working against the
+// last good backup.
+func TestRunIncrementalBackup_SegmentUploadFailureLeavesManifestUntouched(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+
+	store := newBackupTestStore(t)
+
+	batch := store.OpenWriteSession()
+	for seq := uint64(1); seq <= 5; seq++ {
+		require.NoError(t, batch.SetProto(coldLogKey(seq), createLedgerLog(seq, "ledger", uint32(seq))))
+		require.NoError(t, batch.SetProto(coldAuditKey(seq), auditSuccess(seq, seq, seq)))
+	}
+	require.NoError(t, batch.Commit())
+
+	storage, state := newCrashSafetyStorage(t)
+	// Fail every log-segment upload. The export writes the log segment first,
+	// so RunIncrementalBackup must abort before touching the manifest.
+	state.mu.Lock()
+	state.putErrKeys = []string{"/exports/logs-"}
+	state.mu.Unlock()
+
+	// A prior full-backup manifest with a known body.
+	base := &Manifest{Checkpoint: &CheckpointManifest{LastLogSequence: 0, LastAuditSequence: 0}}
+	require.NoError(t, WriteManifest(context.Background(), storage, ManifestKey(bucketID), base))
+
+	manifestBefore, err := storage.GetFile(context.Background(), ManifestKey(bucketID))
+	require.NoError(t, err)
+	beforeBytes, err := io.ReadAll(manifestBefore)
+	require.NoError(t, err)
+	_ = manifestBefore.Close()
+
+	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
+	require.Error(t, err, "a failed segment upload must fail the incremental backup")
+
+	// The manifest on storage is unchanged: the run never got to WriteManifest.
+	manifestAfter, err := storage.GetFile(context.Background(), ManifestKey(bucketID))
+	require.NoError(t, err)
+	afterBytes, err := io.ReadAll(manifestAfter)
+	require.NoError(t, err)
+	_ = manifestAfter.Close()
+
+	require.Equal(t, beforeBytes, afterBytes,
+		"manifest must be byte-identical after a failed segment upload")
+}
+
+// TestBackup_MultipleIncrementalsChain_RoundTrips exercises the full →
+// N-incrementals restore chain at the unit level: a full backup, then several
+// rounds of (write new logs/audits → incremental backup), accumulating export
+// segments in one manifest. Applying every accumulated segment onto a store
+// that already holds the pre-checkpoint content (here reproduced by log replay,
+// since raw SST checkpoint files cannot be ingested into a fresh Pebble store
+// via a WriteSession) and rebuilding must reconstruct every post-checkpoint
+// ledger across all incrementals. The end-to-end variant, including the opaque
+// SST checkpoint restore, lives in tests/e2e/cluster/restore_test.go.
+func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+
+	ctx := context.Background()
+	src := newBackupTestStore(t)
+	storage := newInMemoryBackupStorage()
+
+	seq := uint64(0)
+	writeLedgerLog := func(name string) {
+		seq++
+		b := src.OpenWriteSession()
+		require.NoError(t, b.SetProto(coldLogKey(seq), createLedgerLog(seq, name, uint32(seq))))
+		audit := auditSuccess(seq, seq, seq)
+		audit.Timestamp = &ledgerpb.Timestamp{Data: seq * 100}
+		require.NoError(t, b.SetProto(coldAuditKey(seq), audit))
+		require.NoError(t, state.StoreLastAppliedTimestamp(b, seq*100))
+		saveNextLedgerIDForBackupTest(t, b, uint32(seq+1))
+		require.NoError(t, b.Commit())
+	}
+
+	// Pre-checkpoint data.
+	writeLedgerLog("ledger-0")
+	require.NoError(t, src.Flush())
+
+	// Full backup captures ledger-0 in the checkpoint (LastLogSequence=1).
+	fullResult, err := RunBackup(ctx, logging.Testing(), src, storage, bucketID, "bk-full")
+	require.NoError(t, err)
+	require.Positive(t, fullResult.TotalFiles)
+	require.EqualValues(t, 1, fullResult.LastLogSequence)
+
+	// Three incremental rounds, each adding one post-checkpoint ledger.
+	var incrementalLedgers []string
+
+	for round := range 3 {
+		name := "ledger-inc-" + string(rune('a'+round))
+		incrementalLedgers = append(incrementalLedgers, name)
+		writeLedgerLog(name)
+
+		incResult, err := RunIncrementalBackup(ctx, logging.Testing(), src, storage, bucketID, 0)
+		require.NoError(t, err)
+		require.Positive(t, incResult.LogEntriesExported, "round %d must export the new log", round)
+	}
+
+	// The manifest now holds the checkpoint plus every incremental's segments.
+	manifest, err := ReadManifest(ctx, storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.NotNil(t, manifest.Checkpoint)
+	require.NotEmpty(t, manifest.Exports)
+
+	// Reproduce the checkpoint's logical content on a fresh store (pre-checkpoint
+	// log at seq 1), then apply every accumulated incremental export and rebuild.
+	dst := newBackupTestStore(t)
+
+	seedBatch := dst.OpenWriteSession()
+	require.NoError(t, seedBatch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger-0", 1)))
+	seedAudit := auditSuccess(1, 1, 1)
+	seedAudit.Timestamp = &ledgerpb.Timestamp{Data: 100}
+	require.NoError(t, seedBatch.SetProto(coldAuditKey(1), seedAudit))
+	require.NoError(t, state.StoreLastAppliedTimestamp(seedBatch, 100))
+	saveNextLedgerIDForBackupTest(t, seedBatch, 2)
+	require.NoError(t, seedBatch.Commit())
+
+	require.NoError(t, ApplyExportsAndRebuild(ctx, logging.Testing(), storage, dst, manifest))
+
+	// Verify: the last log sequence on the restored store equals the source's,
+	// and every incremental ledger is present in the rebuilt global zone.
+	handle, err := dst.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	restoredLastLog, err := query.ReadLastLog(handle)
+	require.NoError(t, err)
+	require.NotNil(t, restoredLastLog)
+	require.Equal(t, seq, restoredLastLog.GetSequence(),
+		"restored store must hold every log across the full + all incrementals")
+	restoredNextLedgerID, err := query.ReadNextLedgerID(handle)
+	require.NoError(t, err)
+	require.Equal(t, uint32(seq+1), restoredNextLedgerID,
+		"the next creation after restore must not reuse a post-checkpoint ledger ID")
+	restoredHLC, err := query.ReadLastAppliedTimestamp(handle)
+	require.NoError(t, err)
+	require.Equal(t, seq*100, restoredHLC,
+		"the next proposal must advance past every post-checkpoint audit timestamp")
+
+	for _, name := range incrementalLedgers {
+		info, err := query.GetLedgerByName(ctx, handle, name)
+		require.NoError(t, err, "ledger %q written post-checkpoint must be restored", name)
+		require.NotNil(t, info, "ledger %q must exist after full + multi-incremental restore", name)
+	}
+}
+
+// TestBackup_TruncatedIncrementalFailsThenHealthyRetrySucceeds reproduces a
+// stored export object that ends at a realistic record boundary: the producer
+// uploaded the header and complete entry, but the four-byte footer is absent.
+// The manifest still advertises the original object size and sequence range.
+// Restore must reject that artifact before reporting success, while a retry
+// against the intact object must remain safe and reconstruct the delta.
+func TestBackup_TruncatedIncrementalFailsThenHealthyRetrySucceeds(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket-truncated-export"
+
+	ctx := context.Background()
+	src := newBackupTestStore(t)
+	storage := newInMemoryBackupStorage()
+
+	writeHistory := func(seq uint64, name string) {
+		batch := src.OpenWriteSession()
+		require.NoError(t, batch.SetProto(coldLogKey(seq), createLedgerLog(seq, name, uint32(seq))))
+		require.NoError(t, batch.SetProto(coldAuditKey(seq), auditSuccess(seq, seq, seq)))
+		require.NoError(t, batch.Commit())
+	}
+
+	writeHistory(1, "checkpoint-ledger")
+	require.NoError(t, src.Flush())
+
+	full, err := RunBackup(ctx, logging.Testing(), src, storage, bucketID, "bk-full")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, full.LastLogSequence)
+
+	writeHistory(2, "delta-ledger")
+	incremental, err := RunIncrementalBackup(ctx, logging.Testing(), src, storage, bucketID, 0)
+	require.NoError(t, err)
+	require.Positive(t, incremental.LogEntriesExported, "the post-checkpoint delta must be non-empty")
+
+	manifest, err := ReadManifest(ctx, storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.NotEmpty(t, manifest.Exports)
+
+	var logSegment *ExportSegment
+	for i := range manifest.Exports {
+		if manifest.Exports[i].Type == "log" {
+			logSegment = &manifest.Exports[i]
+
+			break
+		}
+	}
+	require.NotNil(t, logSegment)
+
+	storage.mu.Lock()
+	healthyBody := bytes.Clone(storage.files[logSegment.Key])
+	require.Equal(t, logSegment.Size, int64(len(healthyBody)))
+	require.Greater(t, len(healthyBody), 4)
+	storage.files[logSegment.Key] = bytes.Clone(healthyBody[:len(healthyBody)-4])
+	storage.mu.Unlock()
+
+	dst := newBackupTestStore(t)
+	seed := dst.OpenWriteSession()
+	require.NoError(t, seed.SetProto(coldLogKey(1), createLedgerLog(1, "checkpoint-ledger", 1)))
+	require.NoError(t, seed.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	require.NoError(t, seed.Commit())
+
+	err = ApplyExportsAndRebuild(ctx, logging.Testing(), storage, dst, manifest)
+	require.ErrorContains(t, err, "reading key length: EOF",
+		"physical EOF must not be accepted as the explicit stream footer")
+	require.Equal(t, 1, countKeysInSub(t, dst, dal.SubHistoryLog),
+		"the unverified segment batch must leave only the checkpoint log")
+
+	failedInfo, err := query.GetLedgerByName(ctx, dst, "delta-ledger")
+	require.ErrorContains(t, err, "not found")
+	require.Nil(t, failedInfo, "rebuild must not publish derived delta state after the failed download")
+
+	storage.mu.Lock()
+	storage.files[logSegment.Key] = healthyBody
+	storage.mu.Unlock()
+
+	require.NoError(t, ApplyExportsAndRebuild(ctx, logging.Testing(), storage, dst, manifest),
+		"retrying the staged restore with the complete artifact must succeed")
+
+	handle, err := dst.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	restoredLastLog, err := query.ReadLastLog(handle)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, restoredLastLog.GetSequence())
+
+	info, err := query.GetLedgerByName(ctx, handle, "delta-ledger")
+	require.NoError(t, err)
+	require.NotNil(t, info, "the healthy retry must rebuild the post-checkpoint operation")
+}
+
+func TestBackup_PreparedQueryMutationsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	const (
+		bucketID = "bucket"
+		ledger   = "ledger"
+	)
+
+	ctx := context.Background()
+	attrs := attributes.New()
+	oldFilter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reverted{Reverted: &ledgerpb.RevertedCondition{Value: false}}}
+	newFilter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reverted{Reverted: &ledgerpb.RevertedCondition{Value: true}}}
+	queryQ := &ledgerpb.PreparedQuery{Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
+	queryR := &ledgerpb.PreparedQuery{Name: "r", Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
+	queryS := &ledgerpb.PreparedQuery{Name: "s", Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
+
+	preparedQueryLog := func(seq uint64, payload *ledgerpb.LogPayload) *ledgerpb.Log {
+		return &ledgerpb.Log{Sequence: seq, Payload: payload}
+	}
+
+	src := newBackupTestStore(t)
+	seed := src.OpenWriteSession()
+	require.NoError(t, seed.SetProto(coldLogKey(1), createLedgerLog(1, ledger, 1)))
+	require.NoError(t, seed.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	require.NoError(t, state.SavePreparedQuery(seed, ledger, queryQ))
+	require.NoError(t, state.SavePreparedQuery(seed, ledger, queryR))
+	require.NoError(t, seed.Commit())
+	require.NoError(t, src.Flush())
+
+	storage := newInMemoryBackupStorage()
+	full, err := RunBackup(ctx, logging.Testing(), src, storage, bucketID, "full")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, full.LastLogSequence)
+
+	delta := src.OpenWriteSession()
+	require.NoError(t, delta.SetProto(coldLogKey(2), preparedQueryLog(2, &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &ledgerpb.UpdatedPreparedQueryLog{Ledger: ledger, Name: "q", PreviousFilter: oldFilter, NewFilter: newFilter}}})))
+	require.NoError(t, delta.SetProto(coldLogKey(3), preparedQueryLog(3, &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &ledgerpb.DeletedPreparedQueryLog{Ledger: ledger, Name: "r"}}})))
+	require.NoError(t, delta.SetProto(coldLogKey(4), preparedQueryLog(4, &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedPreparedQuery{CreatedPreparedQuery: &ledgerpb.CreatedPreparedQueryLog{Ledger: ledger, Query: queryS}}})))
+	require.NoError(t, delta.SetProto(coldLogKey(5), preparedQueryLog(5, &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &ledgerpb.UpdatedPreparedQueryLog{Ledger: ledger, Name: "s", PreviousFilter: oldFilter, NewFilter: newFilter}}})))
+	require.NoError(t, delta.SetProto(coldLogKey(6), preparedQueryLog(6, &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &ledgerpb.DeletedPreparedQueryLog{Ledger: ledger, Name: "s"}}})))
+	for seq := uint64(2); seq <= 6; seq++ {
+		require.NoError(t, delta.SetProto(coldAuditKey(seq), auditSuccess(seq, seq, seq)))
+	}
+	updatedQ := queryQ.CloneVT()
+	updatedQ.Filter = newFilter
+	require.NoError(t, state.SavePreparedQuery(delta, ledger, updatedQ))
+	require.NoError(t, state.DeletePreparedQuery(delta, ledger, "r"))
+	require.NoError(t, delta.Commit())
+
+	inc, err := RunIncrementalBackup(ctx, logging.Testing(), src, storage, bucketID, 0)
+	require.NoError(t, err)
+	require.EqualValues(t, 5, inc.LogEntriesExported, "the post-checkpoint mutation delta must be non-empty")
+
+	manifest, err := ReadManifest(ctx, storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.NotEmpty(t, manifest.Exports)
+
+	// Reproduce the checkpoint state, then exercise the production export +
+	// rebuild composition. RebuildDelta commits all prepared-query mutations in
+	// this sub-5,000-log fixture in one durable batch.
+	dst := newBackupTestStore(t)
+	dstSeed := dst.OpenWriteSession()
+	require.NoError(t, dstSeed.SetProto(coldLogKey(1), createLedgerLog(1, ledger, 1)))
+	require.NoError(t, dstSeed.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	require.NoError(t, state.SavePreparedQuery(dstSeed, ledger, queryQ))
+	require.NoError(t, state.SavePreparedQuery(dstSeed, ledger, queryR))
+	require.NoError(t, dstSeed.Commit())
+
+	require.NoError(t, ApplyExportsAndRebuild(ctx, logging.Testing(), storage, dst, manifest))
+
+	sourceHandle, err := src.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = sourceHandle.Close() }()
+	restoredHandle, err := dst.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = restoredHandle.Close() }()
+
+	sourceQueries, err := query.ReadPreparedQueries(ctx, attrs.PreparedQuery, sourceHandle, ledger)
+	require.NoError(t, err)
+	restoredQueries, err := query.ReadPreparedQueries(ctx, attrs.PreparedQuery, restoredHandle, ledger)
+	require.NoError(t, err)
+	require.Equal(t, sourceQueries, restoredQueries)
+	require.Len(t, restoredQueries, 1)
+	require.True(t, restoredQueries[0].EqualVT(updatedQ), "the restored definition must contain the post-checkpoint filter")
+
+	for _, deletedName := range []string{"r", "s"} {
+		deleted, err := attrs.PreparedQuery.Get(restoredHandle, domain.PreparedQueryKey{LedgerName: ledger, Name: deletedName}.Bytes())
+		require.NoError(t, err)
+		require.Nil(t, deleted, "deleted prepared query %q must not survive restore", deletedName)
+	}
+}
+
+// TestBackup_RemovedEventSinkDoesNotSurviveIncrementalRestore pins the
+// checkpoint + delta composition for sink configuration lifecycle. The full
+// checkpoint seeds the restored fold with a configured sink; its removal is
+// committed only after that checkpoint, so the non-empty incremental export is
+// the sole evidence that RebuildDelta can use to delete the persisted
+// attribute. The source and restored keysets must both remain empty.
+func TestBackup_RemovedEventSinkDoesNotSurviveIncrementalRestore(t *testing.T) {
+	t.Parallel()
+
+	const (
+		bucketID = "removed-sink-bucket"
+		sinkName = "removed-sink"
+	)
+
+	ctx := context.Background()
+	storage := newInMemoryBackupStorage()
+	src := newBackupTestStore(t)
+	attrs := attributes.New()
+	sink := &ledgerpb.SinkConfig{
+		Name:         sinkName,
+		Format:       "json",
+		BatchSize:    1,
+		BatchDelayMs: 1,
+		Type: &ledgerpb.SinkConfig_Http{
+			Http: &ledgerpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
+		},
+	}
+	addLog := &ledgerpb.Log{
+		Sequence: 1,
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_AddedEventsSink{
+			AddedEventsSink: &ledgerpb.AddedEventsSinkLog{Config: sink},
+		}},
+	}
+
+	checkpointBatch := src.OpenWriteSession()
+	require.NoError(t, checkpointBatch.SetProto(coldLogKey(1), addLog))
+	require.NoError(t, checkpointBatch.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	_, err := attrs.SinkConfig.Set(checkpointBatch, domain.SinkConfigKey{Name: sinkName}.Bytes(), sink)
+	require.NoError(t, err)
+	require.NoError(t, checkpointBatch.Commit())
+	require.NoError(t, src.Flush())
+
+	fullResult, err := RunBackup(ctx, logging.Testing(), src, storage, bucketID, "sink-checkpoint")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, fullResult.LastLogSequence)
+
+	removeLog := &ledgerpb.Log{
+		Sequence: 2,
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_RemovedEventsSink{
+			RemovedEventsSink: &ledgerpb.RemovedEventsSinkLog{Name: sinkName},
+		}},
+	}
+	deltaBatch := src.OpenWriteSession()
+	require.NoError(t, deltaBatch.SetProto(coldLogKey(2), removeLog))
+	require.NoError(t, deltaBatch.SetProto(coldAuditKey(2), auditSuccess(2, 2, 2)))
+	require.NoError(t, attrs.SinkConfig.Delete(deltaBatch, domain.SinkConfigKey{Name: sinkName}.Bytes()))
+	require.NoError(t, deltaBatch.Commit())
+
+	incResult, err := RunIncrementalBackup(ctx, logging.Testing(), src, storage, bucketID, 0)
+	require.NoError(t, err)
+	require.Positive(t, incResult.LogEntriesExported, "the removal must be present in the exported delta")
+
+	manifest, err := ReadManifest(ctx, storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.NotEmpty(t, manifest.Exports, "the restore must exercise a non-empty post-checkpoint delta")
+
+	// Reproduce the checkpoint seed in a fresh store, then compose it with the
+	// exported delta through the production restore entry point.
+	dst := newBackupTestStore(t)
+	seedBatch := dst.OpenWriteSession()
+	require.NoError(t, seedBatch.SetProto(coldLogKey(1), addLog))
+	require.NoError(t, seedBatch.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	_, err = attrs.SinkConfig.Set(seedBatch, domain.SinkConfigKey{Name: sinkName}.Bytes(), sink)
+	require.NoError(t, err)
+	require.NoError(t, seedBatch.Commit())
+
+	require.NoError(t, ApplyExportsAndRebuild(ctx, logging.Testing(), storage, dst, manifest))
+	require.NoError(t, dst.Flush(), "the restored absence must be durable")
+
+	for _, candidate := range []struct {
+		label string
+		store *dal.Store
+	}{
+		{label: "source", store: src},
+		{label: "restored", store: dst},
+	} {
+		handle, err := candidate.store.NewDirectReadHandle()
+		require.NoError(t, err)
+		configs, readErr := query.ReadAllSinkConfigs(attrs.SinkConfig, handle)
+		closeErr := handle.Close()
+		require.NoError(t, readErr)
+		require.NoError(t, closeErr)
+		require.Empty(t, configs, "%s store must not contain the removed sink", candidate.label)
+	}
 }

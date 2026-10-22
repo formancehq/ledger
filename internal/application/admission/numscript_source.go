@@ -5,8 +5,8 @@ import (
 
 	"github.com/holiman/uint256"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -21,7 +21,7 @@ func foldCallerAccountMetadata(effects *batchEffects, ledgerName string, ct *raf
 			effects.setMetadata(domain.MetadataKey{
 				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 				Key:        k,
-			}, commonpb.MetadataValueToString(v))
+			}, ledgerpb.MetadataValueToString(v))
 		}
 	}
 }
@@ -230,5 +230,5 @@ func (s *admissionValueSource) Metadata(account, key string) (string, bool, erro
 	// present=false on str=="" would make a valid meta() read of an empty string
 	// resolve as absent, diverging from the FSM-side scopeValueSource and
 	// poisoning the resolution hash with the absent sentinel.
-	return commonpb.MetadataValueToString(value), true, nil
+	return ledgerpb.MetadataValueToString(value), true, nil
 }

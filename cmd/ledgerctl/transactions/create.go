@@ -10,8 +10,10 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/numscript"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -58,8 +60,112 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	// Get postings from flags or prompt for them interactively.
 	postingStrs, _ := cmd.Flags().GetStringArray("posting")
-	var postings []*commonpb.Posting
-	if len(postingStrs) > 0 {
+	scriptFile, _ := cmd.Flags().GetString("script")
+	varStrs, _ := cmd.Flags().GetStringArray("var")
+
+	// Validate mutual exclusivity
+	if scriptFile != "" && len(postingStrs) > 0 {
+		pterm.Error.Println("--script and --posting are mutually exclusive")
+
+		return cmdutil.Displayed(errors.New("--script and --posting are mutually exclusive"))
+	}
+
+	if scriptFile == "" && len(varStrs) > 0 {
+		pterm.Error.Println("--var can only be used with --script")
+
+		return cmdutil.Displayed(errors.New("--var can only be used with --script"))
+	}
+
+	var (
+		postings []*ledgerpb.Posting
+		script   *ledgerpb.Script
+	)
+
+	switch {
+	case scriptFile != "":
+		// Read Numscript file
+		scriptContent, err := os.ReadFile(scriptFile)
+		if err != nil {
+			pterm.Error.Printfln("Failed to read script file %q", scriptFile)
+
+			return cmdutil.Displayed(fmt.Errorf("failed to read script file %q: %w", scriptFile, err))
+		}
+
+		pterm.Info.Printfln("Using Numscript from %s", pterm.Cyan(scriptFile))
+
+		// Parse variables from flags
+		vars := make(map[string]string)
+
+		for _, v := range varStrs {
+			parts := strings.SplitN(v, "=", 2)
+			if len(parts) != 2 {
+				pterm.Error.Printfln("Invalid variable format %q: expected name=value", v)
+
+				return cmdutil.Displayed(fmt.Errorf("invalid variable format %q: expected name=value", v))
+			}
+
+			vars[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		}
+
+		// Parse the script to get required variables
+		parsed := numscript.Parse(string(scriptContent))
+
+		// Check for parsing errors
+		if errs := parsed.GetParsingErrors(); len(errs) > 0 {
+			pterm.Error.Println("Script parsing errors:")
+
+			for _, e := range errs {
+				pterm.Error.Printfln("  - %s", e.Msg)
+			}
+
+			return cmdutil.Displayed(fmt.Errorf("numscript parse error: %s", numscript.ParseErrorsToString(errs, parsed.GetSource())))
+		}
+
+		// Get required variables and prompt for missing ones
+		neededVars := parsed.GetNeededVariables()
+		if len(neededVars) > 0 {
+			// Sort variable names for consistent ordering
+			varNames := make([]string, 0, len(neededVars))
+			for name := range neededVars {
+				varNames = append(varNames, name)
+			}
+
+			sort.Strings(varNames)
+
+			// Check for missing variables and prompt for them
+			missingVars := make([]string, 0)
+
+			for _, name := range varNames {
+				if _, exists := vars[name]; !exists {
+					missingVars = append(missingVars, name)
+				}
+			}
+
+			if len(missingVars) > 0 {
+				pterm.Println()
+				pterm.DefaultSection.Println("Script Variables")
+				pterm.Info.Printfln("The script requires %d variable(s)", len(neededVars))
+				pterm.Println()
+
+				for _, name := range missingVars {
+					varType := neededVars[name]
+
+					value, err := promptVariable(name, varType)
+					if err != nil {
+						return err
+					}
+
+					vars[name] = value
+				}
+			}
+		}
+
+		script = &ledgerpb.Script{
+			Plain: string(scriptContent),
+			Vars:  vars,
+		}
+	case len(postingStrs) > 0:
+		// Parse postings from flags
 		for _, ps := range postingStrs {
 			posting, err := parsePosting(ps)
 			if err != nil {
@@ -80,8 +186,85 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			if err != nil {
 				return fmt.Errorf("failed to read input: %w", err)
 			}
-			if !addAnother {
-				break
+
+			scriptContent, err := os.ReadFile(scriptPath)
+			if err != nil {
+				pterm.Error.Printfln("Failed to read script file %q", scriptPath)
+
+				return cmdutil.Displayed(fmt.Errorf("failed to read script file %q: %w", scriptPath, err))
+			}
+
+			// Parse the script to get required variables
+			parsed := numscript.Parse(string(scriptContent))
+
+			// Check for parsing errors
+			if errs := parsed.GetParsingErrors(); len(errs) > 0 {
+				pterm.Error.Println("Script parsing errors:")
+
+				for _, e := range errs {
+					pterm.Error.Printfln("  - %s", e.Msg)
+				}
+
+				return cmdutil.Displayed(fmt.Errorf("numscript parse error: %s", numscript.ParseErrorsToString(errs, parsed.GetSource())))
+			}
+
+			// Get required variables and prompt for all of them
+			vars := make(map[string]string)
+
+			neededVars := parsed.GetNeededVariables()
+			if len(neededVars) > 0 {
+				varNames := make([]string, 0, len(neededVars))
+				for name := range neededVars {
+					varNames = append(varNames, name)
+				}
+
+				sort.Strings(varNames)
+
+				pterm.Println()
+				pterm.Println("Script variables:")
+
+				for _, name := range varNames {
+					varType := neededVars[name]
+
+					value, err := promptVariable(name, varType)
+					if err != nil {
+						return err
+					}
+
+					vars[name] = value
+				}
+			}
+
+			script = &ledgerpb.Script{
+				Plain: string(scriptContent),
+				Vars:  vars,
+			}
+		} else {
+			// Interactive posting creation
+			pterm.Println()
+			pterm.Println("Create postings (at least one required):")
+			pterm.Println()
+
+			for {
+				posting, err := promptPosting(len(postings) + 1)
+				if err != nil {
+					return err
+				}
+
+				postings = append(postings, posting)
+
+				addAnother, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
+					WithDefaultText("Add another posting?").
+					WithDefaultValue(false))
+				if err != nil {
+					return fmt.Errorf("failed to read input: %w", err)
+				}
+
+				if !addAnother {
+					break
+				}
+
+				pterm.Println()
 			}
 		}
 	}
@@ -111,7 +294,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 							CreateTransaction: &servicepb.CreateTransactionPayload{
 								Postings:  postings,
 								Reference: reference,
-								Metadata:  commonpb.MetadataFromGoMap(metadata),
+								Metadata:  ledgerpb.MetadataFromGoMap(metadata),
 								Force:     force,
 							},
 						},
@@ -243,7 +426,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		for key, value := range tx.GetMetadata() {
 			metadataTable = append(metadataTable, []string{
 				key,
-				commonpb.MetadataValueToString(value),
+				ledgerpb.MetadataValueToString(value),
 			})
 		}
 
@@ -269,7 +452,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 //   - "source,destination,amount,asset,color"      (colored,   5 fields)
 //
 // The color field is optional. An empty fifth field is treated as no color.
-func parsePosting(s string) (*commonpb.Posting, error) {
+func parsePosting(s string) (*ledgerpb.Posting, error) {
 	parts := strings.Split(s, ",")
 	if len(parts) != 4 && len(parts) != 5 {
 		return nil, errors.New("expected format: source,destination,amount,asset[,color]")
@@ -296,11 +479,11 @@ func parsePosting(s string) (*commonpb.Posting, error) {
 		return nil, errors.New("amount must be between 0 and 2^256 - 1")
 	}
 
-	return commonpb.NewColoredPosting(source, destination, asset, color, amount), nil
+	return ledgerpb.NewColoredPosting(source, destination, asset, color, amount), nil
 }
 
 // promptPosting prompts the user to enter a posting interactively using pterm.
-func promptPosting(index int) (*commonpb.Posting, error) {
+func promptPosting(index int) (*ledgerpb.Posting, error) {
 	pterm.FgLightCyan.Printfln("Posting #%d", index)
 
 	// Source
@@ -369,5 +552,5 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 		pterm.Yellow(asset),
 	)
 
-	return commonpb.NewPosting(source, destination, asset, amount), nil
+	return ledgerpb.NewPosting(source, destination, asset, amount), nil
 }

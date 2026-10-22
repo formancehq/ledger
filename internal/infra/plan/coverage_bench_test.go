@@ -8,11 +8,11 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -97,7 +97,7 @@ func benchmarkPipeline(b *testing.B, orders int, postingsPerOrder int) {
 	// Warm the cache with the exact key set every iteration exercises.
 	for orderIdx, spec := range specs {
 		ledgerID, _ := attributes.MakeKey(domain.LedgerKey{Name: spec.ledger}.Bytes())
-		c.Ledgers.Put(ledgerID, attributes.Entry[*commonpb.LedgerInfo]{Data: &commonpb.LedgerInfo{}})
+		c.Ledgers.Put(ledgerID, attributes.Entry[*ledgerpb.LedgerInfo]{Data: &ledgerpb.LedgerInfo{}})
 		c.Boundaries.Put(ledgerID, attributes.Entry[*raftcmdpb.LedgerBoundaries]{Data: &raftcmdpb.LedgerBoundaries{}})
 
 		for i := range spec.postings {

@@ -10,10 +10,10 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -48,10 +48,10 @@ func TestApplyCheckpointReplayWhileOriginalWaits(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			leader, mockCtrl := newCheckpointWaitHarness(t)
-			logs := []*commonpb.Log{{Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: 1, MaxSequence: 7}}}}}
+			logs := []*ledgerpb.Log{{Sequence: 7, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{CheckpointId: 1, MaxSequence: 7}}}}}
 			gomock.InOrder(
-				mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{logs[0].CloneVT()}}, nil),
-				mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{logs[0].CloneVT()}, Replayed: true}, nil),
+				mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*ledgerpb.Log{logs[0].CloneVT()}}, nil),
+				mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*ledgerpb.Log{logs[0].CloneVT()}, Replayed: true}, nil),
 			)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -126,8 +126,8 @@ func TestApplyCheckpointDeletedWhileFreshCreationWaits(t *testing.T) {
 	require.NoError(t, state.SaveQueryCheckpoint(batch, &raftcmdpb.QueryCheckpointState{CheckpointId: 1}))
 	require.NoError(t, state.StoreNextQueryCheckpointID(batch, 2))
 	require.NoError(t, batch.Commit())
-	log := &commonpb.Log{Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: 1, MaxSequence: 7}}}}
-	mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{log.CloneVT()}}, nil)
+	log := &ledgerpb.Log{Sequence: 7, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{CheckpointId: 1, MaxSequence: 7}}}}
+	mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*ledgerpb.Log{log.CloneVT()}}, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	observed := &checkpointWaitObservedContext{Context: ctx, observed: make(chan struct{})}

@@ -13,8 +13,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // pollingConn exercises the generated client and observes the context delivered
@@ -32,7 +32,7 @@ func (c pollingConn) Invoke(ctx context.Context, _ string, _, reply any, _ ...gr
 	state := reply.(*clusterpb.ClusterState)
 	state.Leader = 1
 	state.Nodes = []*clusterpb.NodeInfo{{Id: 1, Suffrage: "Voter"}}
-	state.ClusterConfig = &commonpb.ClusterConfig{}
+	state.ClusterConfig = &ledgerpb.ClusterConfig{}
 
 	return nil
 }
@@ -73,10 +73,10 @@ func pollingCases(t *testing.T) []pollingCase {
 			return WaitForVoters(ctx, clusterClient(request), 1, timeout, nil)
 		}},
 		{"leader_config", func(ctx context.Context, timeout time.Duration, request func(context.Context) error) bool {
-			return WaitForClusterConfig(ctx, clusterClient(request), func(*commonpb.ClusterConfig) bool { return true }, timeout)
+			return WaitForClusterConfig(ctx, clusterClient(request), func(*ledgerpb.ClusterConfig) bool { return true }, timeout)
 		}},
 		{"node_config", func(ctx context.Context, timeout time.Duration, request func(context.Context) error) bool {
-			return WaitForClusterConfigOnNode(ctx, clusterClient(request), 1, func(*commonpb.ClusterConfig) bool { return true }, timeout)
+			return WaitForClusterConfigOnNode(ctx, clusterClient(request), 1, func(*ledgerpb.ClusterConfig) bool { return true }, timeout)
 		}},
 		{"pod_gone", func(ctx context.Context, timeout time.Duration, request func(context.Context) error) bool {
 			client := kubeClient(request, `{"metadata":{"uid":"replacement"}}`)

@@ -16,9 +16,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -89,10 +89,10 @@ func (s *rejectingServer) GetTransaction(
 
 func (s *rejectingServer) ListLedgers(
 	_ *servicepb.ListLedgersRequest,
-	stream ggrpc.ServerStreamingServer[commonpb.LedgerInfo],
+	stream ggrpc.ServerStreamingServer[ledgerpb.LedgerInfo],
 ) error {
 	for range s.rowsBeforeError {
-		if err := stream.Send(&commonpb.LedgerInfo{Name: "some-ledger"}); err != nil {
+		if err := stream.Send(&ledgerpb.LedgerInfo{Name: "some-ledger"}); err != nil {
 			return err
 		}
 	}
@@ -245,7 +245,7 @@ func TestConn_StreamCanceledStaysCanceled(t *testing.T) {
 	require.Equal(t, codes.Canceled, status.Code(err))
 }
 
-// TestConn_BareNotFoundIsReconstructed covers the commonpb.NewNotFoundError
+// TestConn_BareNotFoundIsReconstructed covers the ledgerpb.NewNotFoundError
 // sites, which send no ErrorInfo.
 func TestConn_BareNotFoundIsReconstructed(t *testing.T) {
 	t.Parallel()
@@ -258,7 +258,7 @@ func TestConn_BareNotFoundIsReconstructed(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	_, ok := errors.AsType[*commonpb.NotFoundError](err)
+	_, ok := errors.AsType[*ledgerpb.NotFoundError](err)
 	require.True(t, ok)
 }
 

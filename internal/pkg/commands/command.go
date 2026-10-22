@@ -6,7 +6,7 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -28,7 +28,8 @@ func GenerateRandomID() uint64 {
 func NewCommand(orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 	cmd := &raftcmdpb.Proposal{
 		Id:            GenerateRandomID(),
-		Date:          commonpb.NewTimestamp(time.Now()),
+		Orders:        orders,
+		Date:          ledgerpb.NewTimestamp(time.Now()),
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{},
 	}
 	if len(orders) > 0 {

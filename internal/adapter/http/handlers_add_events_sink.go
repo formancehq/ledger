@@ -7,7 +7,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -20,7 +20,7 @@ func (s *Server) handleAddEventsSink(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	config := &commonpb.SinkConfig{}
+	config := &ledgerpb.SinkConfig{}
 	if err := protojson.Unmarshal(body, config); err != nil {
 		// Decoder diagnostics can contain credential values from the input.
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid event sink configuration JSON"))

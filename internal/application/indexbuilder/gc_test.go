@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -155,7 +155,7 @@ func TestRunEventGC_FollowUpCycleVisitsEventWrittenBehindResume(t *testing.T) {
 		ledger = "test"
 		key    = "status"
 	)
-	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("open"))
+	encoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewStringValue("open"))
 	for _, entity := range []string{"a", "c", "d"} {
 		seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte(entity), 5, readstore.MetadataEventAdd)
 		seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte(entity), 6, readstore.MetadataEventDel)
@@ -261,8 +261,8 @@ func TestFlushWriteBatchAdvancesOnlyCommittedDirtyZoneEpochs(t *testing.T) {
 		entity = "accounts:1"
 	)
 	reverseKey := readstore.AccountReverseMapKeyV(b.kb, ledger, entity, key, 1)
-	openValue := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("open"))
-	closedValue := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("closed"))
+	openValue := readstore.EncodeMetadataValue(nil, ledgerpb.NewStringValue("open"))
+	closedValue := readstore.EncodeMetadataValue(nil, ledgerpb.NewStringValue("closed"))
 
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
@@ -335,11 +335,11 @@ func TestProcessLogsSuccessfulEventCommitAdvancesDirtyZoneEpochs(t *testing.T) {
 		ledger = "test"
 		key    = "status"
 	)
-	declareFieldType(t, b, ledger, key, commonpb.MetadataType_METADATA_TYPE_STRING)
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	declareFieldType(t, b, ledger, key, ledgerpb.MetadataType_METADATA_TYPE_STRING)
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key)
 	canonical := indexes.Canonical(id)
 	cfg := newLedgerIndexConfig()
-	cfg.byCanonical[canonical] = &commonpb.Index{Id: id}
+	cfg.byCanonical[canonical] = &ledgerpb.Index{Id: id}
 	b.indexConfig[ledger] = cfg
 	b.putVersionState(ledger, canonical, readstore.IndexVersionState{CurrentVersion: 1, HighWater: 1})
 	seedCachedLedgerHistory(b, ledger, ledgerHistoryNonEmpty)
@@ -370,7 +370,7 @@ func TestGCVersionAt_PurgesForwardEidxAndRmap(t *testing.T) {
 		key     = "score"
 	)
 	entityID := []byte(account)
-	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(7))
+	encoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewIntValue(7))
 
 	// v=1 entries (target of the GC).
 	fwdV1 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 1, encoded, entityID, 1, readstore.MetadataEventAdd))
@@ -424,9 +424,9 @@ func TestPurgeOrphanVersions_SweepsKeyspacesOutsideCurrentAndPending(t *testing.
 		key     = "score"
 	)
 	entityID := []byte(account)
-	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(7))
+	encoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewIntValue(7))
 
-	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+	canonical := indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 	// Cache says current=3, pending=0. Anything at v=1 or v=2 is an
 	// orphan from prior switches.
 	b.putVersionState(ledger, canonical, readstore.IndexVersionState{
@@ -437,8 +437,8 @@ func TestPurgeOrphanVersions_SweepsKeyspacesOutsideCurrentAndPending(t *testing.
 	// Index must be registered in the ledger config — the sweep
 	// derives (target, key) from cfg.byCanonical.
 	cfg := newLedgerIndexConfig()
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
-	cfg.byCanonical[canonical] = &commonpb.Index{Id: id}
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	cfg.byCanonical[canonical] = &ledgerpb.Index{Id: id}
 	b.indexConfig[ledger] = cfg
 
 	// Seed orphan v=1 + v=2 entries and the live v=3 entries.
@@ -489,17 +489,17 @@ func TestPurgeOrphanVersions_PreservesPending(t *testing.T) {
 		key     = "score"
 	)
 	entityID := []byte(account)
-	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(7))
+	encoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewIntValue(7))
 
-	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+	canonical := indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 	b.putVersionState(ledger, canonical, readstore.IndexVersionState{
 		CurrentVersion: 2,
 		PendingVersion: 3,
 	})
 
 	cfg := newLedgerIndexConfig()
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
-	cfg.byCanonical[canonical] = &commonpb.Index{Id: id}
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	cfg.byCanonical[canonical] = &ledgerpb.Index{Id: id}
 	b.indexConfig[ledger] = cfg
 
 	// Seed an orphan v=1 alongside the live (v=2 current, v=3 pending).
@@ -538,8 +538,8 @@ func TestInitIndexConfig_PurgesOrphanVersionsOnBoot(t *testing.T) {
 		key     = "score"
 	)
 	entityID := []byte(account)
-	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(7))
-	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+	encoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewIntValue(7))
+	canonical := indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 	persistLedgerHistory(t, b, ledger, ledgerHistoryNonEmpty)
 
 	// Persist post-switch state: current=2 (the new live keyspace),
@@ -568,13 +568,13 @@ func TestInitIndexConfig_PurgesOrphanVersionsOnBoot(t *testing.T) {
 	// unknown indexes). LedgerInfo lives under ZoneGlobal+SubGlobLedgerInfo
 	// (state.SaveLedger); the Index row lives in the bucket-scoped
 	// SubAttrIndex zone (registry).
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key)
 	fsmBatch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &ledgerpb.LedgerInfo{
 		Name: ledger,
 	}))
 	indexKey := domain.IndexKey{LedgerName: ledger, Canonical: indexes.Canonical(id)}.Bytes()
-	_, err := b.attrs.Index.Set(fsmBatch, indexKey, &commonpb.Index{
+	_, err := b.attrs.Index.Set(fsmBatch, indexKey, &ledgerpb.Index{
 		Ledger:                 ledger,
 		Id:                     id,
 		ForwardEncodingVersion: 2,

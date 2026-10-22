@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 func TestFormatIDRoundTrip(t *testing.T) {
@@ -58,10 +58,10 @@ func TestFormatMetadataStringRoundTrip(t *testing.T) {
 func TestFormatAccountHasAsset(t *testing.T) {
 	t.Parallel()
 
-	hasAsset := func(base string, precision uint32) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_AccountHasAsset{
-				AccountHasAsset: &commonpb.AccountHasAssetCondition{AssetBase: base, Precision: precision},
+	hasAsset := func(base string, precision uint32) *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_AccountHasAsset{
+				AccountHasAsset: &ledgerpb.AccountHasAssetCondition{AssetBase: base, Precision: precision},
 			},
 		}
 	}
@@ -96,13 +96,13 @@ func TestFormat(t *testing.T) {
 
 	t.Run("metadata string equality", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "category"},
-					Condition: &commonpb.FieldCondition_StringCond{
-						StringCond: &commonpb.StringCondition{
-							Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "premium"},
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "category"},
+					Condition: &ledgerpb.FieldCondition_StringCond{
+						StringCond: &ledgerpb.StringCondition{
+							Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: "premium"},
 						},
 					},
 				},
@@ -113,13 +113,13 @@ func TestFormat(t *testing.T) {
 
 	t.Run("metadata string with spaces is quoted", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "name"},
-					Condition: &commonpb.FieldCondition_StringCond{
-						StringCond: &commonpb.StringCondition{
-							Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "hello world"},
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "name"},
+					Condition: &ledgerpb.FieldCondition_StringCond{
+						StringCond: &ledgerpb.StringCondition{
+							Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: "hello world"},
 						},
 					},
 				},
@@ -130,13 +130,13 @@ func TestFormat(t *testing.T) {
 
 	t.Run("metadata param", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "category"},
-					Condition: &commonpb.FieldCondition_StringCond{
-						StringCond: &commonpb.StringCondition{
-							Value: &commonpb.StringCondition_Param{Param: "val"},
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "category"},
+					Condition: &ledgerpb.FieldCondition_StringCond{
+						StringCond: &ledgerpb.StringCondition{
+							Value: &ledgerpb.StringCondition_Param{Param: "val"},
 						},
 					},
 				},
@@ -147,13 +147,13 @@ func TestFormat(t *testing.T) {
 
 	t.Run("metadata boolean true", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "active"},
-					Condition: &commonpb.FieldCondition_BoolCond{
-						BoolCond: &commonpb.BoolCondition{
-							Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: true},
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "active"},
+					Condition: &ledgerpb.FieldCondition_BoolCond{
+						BoolCond: &ledgerpb.BoolCondition{
+							Value: &ledgerpb.BoolCondition_Hardcoded{Hardcoded: true},
 						},
 					},
 				},
@@ -164,13 +164,13 @@ func TestFormat(t *testing.T) {
 
 	t.Run("metadata boolean false", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "active"},
-					Condition: &commonpb.FieldCondition_BoolCond{
-						BoolCond: &commonpb.BoolCondition{
-							Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: false},
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "active"},
+					Condition: &ledgerpb.FieldCondition_BoolCond{
+						BoolCond: &ledgerpb.BoolCondition{
+							Value: &ledgerpb.BoolCondition_Hardcoded{Hardcoded: false},
 						},
 					},
 				},
@@ -182,12 +182,12 @@ func TestFormat(t *testing.T) {
 	t.Run("metadata int equality", func(t *testing.T) {
 		t.Parallel()
 		v := int64(42)
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "age"},
-					Condition: &commonpb.FieldCondition_IntCond{
-						IntCond: &commonpb.IntCondition{Min: &v, Max: &v},
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "age"},
+					Condition: &ledgerpb.FieldCondition_IntCond{
+						IntCond: &ledgerpb.IntCondition{Min: &v, Max: &v},
 					},
 				},
 			},
@@ -198,12 +198,12 @@ func TestFormat(t *testing.T) {
 	t.Run("metadata int greater than", func(t *testing.T) {
 		t.Parallel()
 		v := int64(18)
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "age"},
-					Condition: &commonpb.FieldCondition_IntCond{
-						IntCond: &commonpb.IntCondition{Min: &v, MinExclusive: true},
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "age"},
+					Condition: &ledgerpb.FieldCondition_IntCond{
+						IntCond: &ledgerpb.IntCondition{Min: &v, MinExclusive: true},
 					},
 				},
 			},
@@ -214,12 +214,12 @@ func TestFormat(t *testing.T) {
 	t.Run("metadata int greater than or equal", func(t *testing.T) {
 		t.Parallel()
 		v := int64(18)
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "age"},
-					Condition: &commonpb.FieldCondition_IntCond{
-						IntCond: &commonpb.IntCondition{Min: &v},
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "age"},
+					Condition: &ledgerpb.FieldCondition_IntCond{
+						IntCond: &ledgerpb.IntCondition{Min: &v},
 					},
 				},
 			},
@@ -230,12 +230,12 @@ func TestFormat(t *testing.T) {
 	t.Run("metadata int less than", func(t *testing.T) {
 		t.Parallel()
 		v := int64(65)
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "age"},
-					Condition: &commonpb.FieldCondition_IntCond{
-						IntCond: &commonpb.IntCondition{Max: &v, MaxExclusive: true},
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "age"},
+					Condition: &ledgerpb.FieldCondition_IntCond{
+						IntCond: &ledgerpb.IntCondition{Max: &v, MaxExclusive: true},
 					},
 				},
 			},
@@ -246,12 +246,12 @@ func TestFormat(t *testing.T) {
 	t.Run("metadata int less than or equal", func(t *testing.T) {
 		t.Parallel()
 		v := int64(65)
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "age"},
-					Condition: &commonpb.FieldCondition_IntCond{
-						IntCond: &commonpb.IntCondition{Max: &v},
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "age"},
+					Condition: &ledgerpb.FieldCondition_IntCond{
+						IntCond: &ledgerpb.IntCondition{Max: &v},
 					},
 				},
 			},
@@ -261,12 +261,12 @@ func TestFormat(t *testing.T) {
 
 	t.Run("metadata int param min", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "age"},
-					Condition: &commonpb.FieldCondition_IntCond{
-						IntCond: &commonpb.IntCondition{ParamMin: "min", MinExclusive: true},
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "age"},
+					Condition: &ledgerpb.FieldCondition_IntCond{
+						IntCond: &ledgerpb.IntCondition{ParamMin: "min", MinExclusive: true},
 					},
 				},
 			},
@@ -276,12 +276,12 @@ func TestFormat(t *testing.T) {
 
 	t.Run("metadata int param max", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "age"},
-					Condition: &commonpb.FieldCondition_IntCond{
-						IntCond: &commonpb.IntCondition{ParamMax: "max", MaxExclusive: true},
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "age"},
+					Condition: &ledgerpb.FieldCondition_IntCond{
+						IntCond: &ledgerpb.IntCondition{ParamMax: "max", MaxExclusive: true},
 					},
 				},
 			},
@@ -291,11 +291,11 @@ func TestFormat(t *testing.T) {
 
 	t.Run("metadata exists", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field:     &commonpb.FieldRef{Metadata: "category"},
-					Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field:     &ledgerpb.FieldRef{Metadata: "category"},
+					Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{}},
 				},
 			},
 		}
@@ -304,11 +304,11 @@ func TestFormat(t *testing.T) {
 
 	t.Run("address exact", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{
-					Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "users:alice"},
-					Role:  commonpb.AddressRole_ADDRESS_ROLE_ANY,
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Address{
+				Address: &ledgerpb.AddressMatch{
+					Match: &ledgerpb.AddressMatch_HardcodedExact{HardcodedExact: "users:alice"},
+					Role:  ledgerpb.AddressRole_ADDRESS_ROLE_ANY,
 				},
 			},
 		}
@@ -317,11 +317,11 @@ func TestFormat(t *testing.T) {
 
 	t.Run("address prefix", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{
-					Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "users:"},
-					Role:  commonpb.AddressRole_ADDRESS_ROLE_ANY,
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Address{
+				Address: &ledgerpb.AddressMatch{
+					Match: &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "users:"},
+					Role:  ledgerpb.AddressRole_ADDRESS_ROLE_ANY,
 				},
 			},
 		}
@@ -330,11 +330,11 @@ func TestFormat(t *testing.T) {
 
 	t.Run("source exact", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{
-					Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "merchants:alice"},
-					Role:  commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Address{
+				Address: &ledgerpb.AddressMatch{
+					Match: &ledgerpb.AddressMatch_HardcodedExact{HardcodedExact: "merchants:alice"},
+					Role:  ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE,
 				},
 			},
 		}
@@ -343,11 +343,11 @@ func TestFormat(t *testing.T) {
 
 	t.Run("destination prefix", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{
-					Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "users:"},
-					Role:  commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Address{
+				Address: &ledgerpb.AddressMatch{
+					Match: &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "users:"},
+					Role:  ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION,
 				},
 			},
 		}
@@ -356,11 +356,11 @@ func TestFormat(t *testing.T) {
 
 	t.Run("address param exact", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{
-					Match: &commonpb.AddressMatch_ParamExact{ParamExact: "addr"},
-					Role:  commonpb.AddressRole_ADDRESS_ROLE_ANY,
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Address{
+				Address: &ledgerpb.AddressMatch{
+					Match: &ledgerpb.AddressMatch_ParamExact{ParamExact: "addr"},
+					Role:  ledgerpb.AddressRole_ADDRESS_ROLE_ANY,
 				},
 			},
 		}
@@ -369,11 +369,11 @@ func TestFormat(t *testing.T) {
 
 	t.Run("address param prefix", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{
-					Match: &commonpb.AddressMatch_ParamPrefix{ParamPrefix: "prefix"},
-					Role:  commonpb.AddressRole_ADDRESS_ROLE_ANY,
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Address{
+				Address: &ledgerpb.AddressMatch{
+					Match: &ledgerpb.AddressMatch_ParamPrefix{ParamPrefix: "prefix"},
+					Role:  ledgerpb.AddressRole_ADDRESS_ROLE_ANY,
 				},
 			},
 		}
@@ -382,10 +382,10 @@ func TestFormat(t *testing.T) {
 
 	t.Run("AND", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{
-					Filters: []*commonpb.QueryFilter{
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_And{
+				And: &ledgerpb.AndFilter{
+					Filters: []*ledgerpb.QueryFilter{
 						fieldStringFilter("a", "x"),
 						fieldStringFilter("b", "y"),
 					},
@@ -397,10 +397,10 @@ func TestFormat(t *testing.T) {
 
 	t.Run("OR", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Or{
-				Or: &commonpb.OrFilter{
-					Filters: []*commonpb.QueryFilter{
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Or{
+				Or: &ledgerpb.OrFilter{
+					Filters: []*ledgerpb.QueryFilter{
 						fieldStringFilter("a", "x"),
 						fieldStringFilter("b", "y"),
 					},
@@ -412,14 +412,14 @@ func TestFormat(t *testing.T) {
 
 	t.Run("NOT simple", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Not{
-				Not: &commonpb.NotFilter{
-					Filter: &commonpb.QueryFilter{
-						Filter: &commonpb.QueryFilter_Address{
-							Address: &commonpb.AddressMatch{
-								Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "users:"},
-								Role:  commonpb.AddressRole_ADDRESS_ROLE_ANY,
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Not{
+				Not: &ledgerpb.NotFilter{
+					Filter: &ledgerpb.QueryFilter{
+						Filter: &ledgerpb.QueryFilter_Address{
+							Address: &ledgerpb.AddressMatch{
+								Match: &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "users:"},
+								Role:  ledgerpb.AddressRole_ADDRESS_ROLE_ANY,
 							},
 						},
 					},
@@ -432,9 +432,9 @@ func TestFormat(t *testing.T) {
 	t.Run("NOT equality sugars to !=", func(t *testing.T) {
 		t.Parallel()
 		// not(metadata[category] == premium) → metadata[category] != premium
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Not{
-				Not: &commonpb.NotFilter{
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Not{
+				Not: &ledgerpb.NotFilter{
 					Filter: fieldStringFilter("category", "premium"),
 				},
 			},
@@ -444,13 +444,13 @@ func TestFormat(t *testing.T) {
 
 	t.Run("NOT with grouping", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Not{
-				Not: &commonpb.NotFilter{
-					Filter: &commonpb.QueryFilter{
-						Filter: &commonpb.QueryFilter_Or{
-							Or: &commonpb.OrFilter{
-								Filters: []*commonpb.QueryFilter{
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Not{
+				Not: &ledgerpb.NotFilter{
+					Filter: &ledgerpb.QueryFilter{
+						Filter: &ledgerpb.QueryFilter_Or{
+							Or: &ledgerpb.OrFilter{
+								Filters: []*ledgerpb.QueryFilter{
 									fieldStringFilter("a", "x"),
 									fieldStringFilter("b", "y"),
 								},
@@ -466,14 +466,14 @@ func TestFormat(t *testing.T) {
 	t.Run("OR inside AND needs parens", func(t *testing.T) {
 		t.Parallel()
 		// (a or b) and c
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{
-					Filters: []*commonpb.QueryFilter{
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_And{
+				And: &ledgerpb.AndFilter{
+					Filters: []*ledgerpb.QueryFilter{
 						{
-							Filter: &commonpb.QueryFilter_Or{
-								Or: &commonpb.OrFilter{
-									Filters: []*commonpb.QueryFilter{
+							Filter: &ledgerpb.QueryFilter_Or{
+								Or: &ledgerpb.OrFilter{
+									Filters: []*ledgerpb.QueryFilter{
 										fieldStringFilter("a", "x"),
 										fieldStringFilter("b", "y"),
 									},
@@ -490,10 +490,10 @@ func TestFormat(t *testing.T) {
 
 	t.Run("three-way AND", func(t *testing.T) {
 		t.Parallel()
-		f := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{
-					Filters: []*commonpb.QueryFilter{
+		f := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_And{
+				And: &ledgerpb.AndFilter{
+					Filters: []*ledgerpb.QueryFilter{
 						fieldStringFilter("a", "x"),
 						fieldStringFilter("b", "y"),
 						fieldStringFilter("c", "z"),
@@ -561,14 +561,14 @@ func TestFormatRoundTrip(t *testing.T) {
 }
 
 // fieldStringFilter is a test helper that creates a simple metadata string equality filter.
-func fieldStringFilter(key, value string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field: &commonpb.FieldRef{Metadata: key},
-				Condition: &commonpb.FieldCondition_StringCond{
-					StringCond: &commonpb.StringCondition{
-						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: value},
+func fieldStringFilter(key, value string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field: &ledgerpb.FieldRef{Metadata: key},
+				Condition: &ledgerpb.FieldCondition_StringCond{
+					StringCond: &ledgerpb.StringCondition{
+						Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: value},
 					},
 				},
 			},
@@ -579,12 +579,12 @@ func fieldStringFilter(key, value string) *commonpb.QueryFilter {
 // uintField wraps a UintCondition into a metadata FieldCondition for the
 // Format tests below — UintCondition has no surface syntax in the parser
 // (range operators always emit IntCondition), so we build it directly.
-func uintField(key string, uc *commonpb.UintCondition) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field:     &commonpb.FieldRef{Metadata: key},
-				Condition: &commonpb.FieldCondition_UintCond{UintCond: uc},
+func uintField(key string, uc *ledgerpb.UintCondition) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field:     &ledgerpb.FieldRef{Metadata: key},
+				Condition: &ledgerpb.FieldCondition_UintCond{UintCond: uc},
 			},
 		},
 	}
@@ -595,56 +595,56 @@ func TestFormatUintCondition(t *testing.T) {
 
 	t.Run("uint equality", func(t *testing.T) {
 		t.Parallel()
-		f := uintField("age", &commonpb.UintCondition{Min: new(uint64(42)), Max: new(uint64(42))})
+		f := uintField("age", &ledgerpb.UintCondition{Min: new(uint64(42)), Max: new(uint64(42))})
 		assert.Equal(t, "metadata[age] == 42", Format(f))
 	})
 
 	t.Run("uint greater than", func(t *testing.T) {
 		t.Parallel()
-		f := uintField("age", &commonpb.UintCondition{Min: new(uint64(18)), MinExclusive: true})
+		f := uintField("age", &ledgerpb.UintCondition{Min: new(uint64(18)), MinExclusive: true})
 		assert.Equal(t, "metadata[age] > 18", Format(f))
 	})
 
 	t.Run("uint greater than or equal", func(t *testing.T) {
 		t.Parallel()
-		f := uintField("age", &commonpb.UintCondition{Min: new(uint64(18))})
+		f := uintField("age", &ledgerpb.UintCondition{Min: new(uint64(18))})
 		assert.Equal(t, "metadata[age] >= 18", Format(f))
 	})
 
 	t.Run("uint less than", func(t *testing.T) {
 		t.Parallel()
-		f := uintField("age", &commonpb.UintCondition{Max: new(uint64(65)), MaxExclusive: true})
+		f := uintField("age", &ledgerpb.UintCondition{Max: new(uint64(65)), MaxExclusive: true})
 		assert.Equal(t, "metadata[age] < 65", Format(f))
 	})
 
 	t.Run("uint less than or equal", func(t *testing.T) {
 		t.Parallel()
-		f := uintField("age", &commonpb.UintCondition{Max: new(uint64(65))})
+		f := uintField("age", &ledgerpb.UintCondition{Max: new(uint64(65))})
 		assert.Equal(t, "metadata[age] <= 65", Format(f))
 	})
 
 	t.Run("uint param min", func(t *testing.T) {
 		t.Parallel()
-		f := uintField("age", &commonpb.UintCondition{ParamMin: "min", MinExclusive: true})
+		f := uintField("age", &ledgerpb.UintCondition{ParamMin: "min", MinExclusive: true})
 		assert.Equal(t, "metadata[age] > $min", Format(f))
 	})
 
 	t.Run("uint param max", func(t *testing.T) {
 		t.Parallel()
-		f := uintField("age", &commonpb.UintCondition{ParamMax: "max"})
+		f := uintField("age", &ledgerpb.UintCondition{ParamMax: "max"})
 		assert.Equal(t, "metadata[age] <= $max", Format(f))
 	})
 
 	t.Run("uint between inclusive", func(t *testing.T) {
 		t.Parallel()
-		f := uintField("age", &commonpb.UintCondition{Min: new(uint64(18)), Max: new(uint64(65))})
+		f := uintField("age", &ledgerpb.UintCondition{Min: new(uint64(18)), Max: new(uint64(65))})
 		assert.Equal(t, "metadata[age] between 18 and 65", Format(f))
 	})
 
 	t.Run("uint between with exclusive bounds normalized", func(t *testing.T) {
 		t.Parallel()
 		// Lower exclusive becomes Min+1; upper exclusive becomes Max-1.
-		f := uintField("age", &commonpb.UintCondition{
+		f := uintField("age", &ledgerpb.UintCondition{
 			Min: new(uint64(18)), MinExclusive: true,
 			Max: new(uint64(65)), MaxExclusive: true,
 		})
@@ -653,13 +653,13 @@ func TestFormatUintCondition(t *testing.T) {
 
 	t.Run("uint between with param bounds", func(t *testing.T) {
 		t.Parallel()
-		f := uintField("age", &commonpb.UintCondition{ParamMin: "lo", ParamMax: "hi"})
+		f := uintField("age", &ledgerpb.UintCondition{ParamMin: "lo", ParamMax: "hi"})
 		assert.Equal(t, "metadata[age] between $lo and $hi", Format(f))
 	})
 
 	t.Run("uint with no bounds set falls back to placeholder", func(t *testing.T) {
 		t.Parallel()
-		f := uintField("x", &commonpb.UintCondition{})
+		f := uintField("x", &ledgerpb.UintCondition{})
 		assert.Equal(t, "metadata[x] <uint?>", Format(f))
 	})
 }
@@ -667,12 +667,12 @@ func TestFormatUintCondition(t *testing.T) {
 func TestFormatIntConditionEdgeCases(t *testing.T) {
 	t.Parallel()
 
-	intField := func(key string, ic *commonpb.IntCondition) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field:     &commonpb.FieldRef{Metadata: key},
-					Condition: &commonpb.FieldCondition_IntCond{IntCond: ic},
+	intField := func(key string, ic *ledgerpb.IntCondition) *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field:     &ledgerpb.FieldRef{Metadata: key},
+					Condition: &ledgerpb.FieldCondition_IntCond{IntCond: ic},
 				},
 			},
 		}
@@ -680,19 +680,19 @@ func TestFormatIntConditionEdgeCases(t *testing.T) {
 
 	t.Run("int between mixes hardcoded lower with param upper", func(t *testing.T) {
 		t.Parallel()
-		f := intField("age", &commonpb.IntCondition{Min: new(int64(18)), ParamMax: "hi"})
+		f := intField("age", &ledgerpb.IntCondition{Min: new(int64(18)), ParamMax: "hi"})
 		assert.Equal(t, "metadata[age] between 18 and $hi", Format(f))
 	})
 
 	t.Run("int between mixes param lower with hardcoded upper", func(t *testing.T) {
 		t.Parallel()
-		f := intField("age", &commonpb.IntCondition{ParamMin: "lo", Max: new(int64(65))})
+		f := intField("age", &ledgerpb.IntCondition{ParamMin: "lo", Max: new(int64(65))})
 		assert.Equal(t, "metadata[age] between $lo and 65", Format(f))
 	})
 
 	t.Run("int between with exclusive bounds normalized", func(t *testing.T) {
 		t.Parallel()
-		f := intField("age", &commonpb.IntCondition{
+		f := intField("age", &ledgerpb.IntCondition{
 			Min: new(int64(18)), MinExclusive: true,
 			Max: new(int64(65)), MaxExclusive: true,
 		})
@@ -701,7 +701,7 @@ func TestFormatIntConditionEdgeCases(t *testing.T) {
 
 	t.Run("int with no bounds set falls back to placeholder", func(t *testing.T) {
 		t.Parallel()
-		f := intField("x", &commonpb.IntCondition{})
+		f := intField("x", &ledgerpb.IntCondition{})
 		assert.Equal(t, "metadata[x] <int?>", Format(f))
 	})
 }

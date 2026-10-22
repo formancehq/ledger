@@ -1,12 +1,13 @@
 package attributes
 
 import (
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"reflect"
 
 	"go.uber.org/fx"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -15,34 +16,34 @@ import (
 // Each instance has its own pre-allocated key buffer for thread-safe concurrent access.
 type Attributes struct {
 	Volume           *Attribute[*raftcmdpb.VolumePair]
-	Metadata         *Attribute[*commonpb.MetadataValue]
+	Metadata         *Attribute[*ledgerpb.MetadataValue]
 	References       *Attribute[*commonpb.TransactionReferenceValue]
-	Ledger           *Attribute[*commonpb.LedgerInfo]
+	Ledger           *Attribute[*ledgerpb.LedgerInfo]
 	Boundary         *Attribute[*raftcmdpb.LedgerBoundaries]
 	Transaction      *Attribute[*commonpb.TransactionState]
-	SinkConfig       *Attribute[*commonpb.SinkConfig]
+	SinkConfig       *Attribute[*ledgerpb.SinkConfig]
 	NumscriptVersion *Attribute[*commonpb.NumscriptVersionValue]
-	NumscriptContent *Attribute[*commonpb.NumscriptInfo]
-	PreparedQuery    *Attribute[*commonpb.PreparedQuery]
-	LedgerMetadata   *Attribute[*commonpb.MetadataValue]
-	Index            *Attribute[*commonpb.Index]
+	NumscriptContent *Attribute[*ledgerpb.NumscriptInfo]
+	PreparedQuery    *Attribute[*ledgerpb.PreparedQuery]
+	LedgerMetadata   *Attribute[*ledgerpb.MetadataValue]
+	Index            *Attribute[*ledgerpb.Index]
 }
 
 // New creates a new Attributes instance with all attribute types initialized.
 func New() *Attributes {
 	return &Attributes{
 		Volume:           NewAttribute[*raftcmdpb.VolumePair](dal.SubAttrVolume),
-		Metadata:         NewAttribute[*commonpb.MetadataValue](dal.SubAttrMetadata),
+		Metadata:         NewAttribute[*ledgerpb.MetadataValue](dal.SubAttrMetadata),
 		References:       NewAttribute[*commonpb.TransactionReferenceValue](dal.SubAttrReference),
-		Ledger:           NewAttribute[*commonpb.LedgerInfo](dal.SubAttrLedger),
+		Ledger:           NewAttribute[*ledgerpb.LedgerInfo](dal.SubAttrLedger),
 		Boundary:         NewAttribute[*raftcmdpb.LedgerBoundaries](dal.SubAttrBoundary),
 		Transaction:      NewAttribute[*commonpb.TransactionState](dal.SubAttrTransaction),
-		SinkConfig:       NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig),
+		SinkConfig:       NewAttribute[*ledgerpb.SinkConfig](dal.SubAttrSinkConfig),
 		NumscriptVersion: NewAttribute[*commonpb.NumscriptVersionValue](dal.SubAttrNumscriptVersion),
-		NumscriptContent: NewAttribute[*commonpb.NumscriptInfo](dal.SubAttrNumscriptContent),
-		PreparedQuery:    NewAttribute[*commonpb.PreparedQuery](dal.SubAttrPreparedQuery),
-		LedgerMetadata:   NewAttribute[*commonpb.MetadataValue](dal.SubAttrLedgerMetadata),
-		Index:            NewAttribute[*commonpb.Index](dal.SubAttrIndex),
+		NumscriptContent: NewAttribute[*ledgerpb.NumscriptInfo](dal.SubAttrNumscriptContent),
+		PreparedQuery:    NewAttribute[*ledgerpb.PreparedQuery](dal.SubAttrPreparedQuery),
+		LedgerMetadata:   NewAttribute[*ledgerpb.MetadataValue](dal.SubAttrLedgerMetadata),
+		Index:            NewAttribute[*ledgerpb.Index](dal.SubAttrIndex),
 	}
 }
 

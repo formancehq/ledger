@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -39,7 +39,7 @@ func TestMatchOrderSkip_AllowsListedReason(t *testing.T) {
 				Ledger: "L",
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{
-						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+						SkippableReasons: []ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 					},
 				},
 			},
@@ -57,7 +57,7 @@ func TestMatchOrderSkip_AllowsListedReason(t *testing.T) {
 
 	skipped := apply.GetLog().GetData().GetOrderSkipped()
 	require.NotNil(t, skipped)
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
+	require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
 
 	ctx := skipped.GetFacts()
 	require.Equal(t, "L", ctx["ledger"])
@@ -76,7 +76,7 @@ func TestMatchOrderSkip_RejectsNonWhitelistedReason(t *testing.T) {
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{
-						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+						SkippableReasons: []ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 					},
 				},
 			},
@@ -96,7 +96,7 @@ func TestMatchOrderSkip_RejectsNonWhitelistedReason(t *testing.T) {
 func TestMatchOrderSkip_RejectsKindInternal(t *testing.T) {
 	t.Parallel()
 
-	internalReason := commonpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN
+	internalReason := ledgerpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN
 	require.Equal(t, domain.KindInternal, domain.KindForReason(internalReason),
 		"this test assumes INVALID_EXECUTION_PLAN classifies as KindInternal")
 
@@ -105,7 +105,7 @@ func TestMatchOrderSkip_RejectsKindInternal(t *testing.T) {
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{
-						SkippableReasons: []commonpb.ErrorReason{internalReason},
+						SkippableReasons: []ledgerpb.ErrorReason{internalReason},
 					},
 				},
 			},
@@ -129,7 +129,7 @@ func TestMatchOrderSkip_UnspecifiedReason(t *testing.T) {
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{
-						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+						SkippableReasons: []ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 					},
 				},
 			},
@@ -148,7 +148,7 @@ func (unknownReasonErr) Kind() domain.ErrorKind {
 	return domain.KindForReason(domain.ReasonCode("THIS_IS_NOT_A_KNOWN_REASON"))
 }
 func (unknownReasonErr) Reason() string                           { return "THIS_IS_NOT_A_KNOWN_REASON" }
-func (unknownReasonErr) FailureDetails() *commonpb.FailureDetails { return nil }
+func (unknownReasonErr) FailureDetails() *ledgerpb.FailureDetails { return nil }
 
 var _ domain.SerializableError = unknownReasonErr{}
 
@@ -171,15 +171,15 @@ func TestAssignSkipLogIDAndDate_AllocatesLogIDAndDateOnParent(t *testing.T) {
 		require.Equal(t, uint64(43), b.GetNextLogId())
 	})
 	parent.EXPECT().Boundaries().Return(boundaries).AnyTimes()
-	parent.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1700}).AsReader())
+	parent.EXPECT().GetDate().Return((&ledgerpb.Timestamp{Data: 1700}).AsReader())
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "L"},
 		},
 	}
-	payload := wrapSkippedPayloadForOrder(order, &commonpb.OrderSkippedLog{
-		Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
+	payload := wrapSkippedPayloadForOrder(order, &ledgerpb.OrderSkippedLog{
+		Details: ledgerpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
 			"ledger": "L", "reference": "ref", "existingTransactionId": "1",
 		}),
 	})
@@ -208,7 +208,7 @@ func TestAssignSkipLogIDAndDateRejectsExhaustedLedgerLogWithoutMutation(t *testi
 	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
 		LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "L"},
 	}}
-	payload := wrapSkippedPayloadForOrder(order, &commonpb.OrderSkippedLog{})
+	payload := wrapSkippedPayloadForOrder(order, &ledgerpb.OrderSkippedLog{})
 
 	err := assignSkipLogIDAndDate(parent, order, payload)
 	var exhausted *domain.ErrSequenceExhausted
@@ -235,7 +235,7 @@ func TestAssignSkipLogIDAndDate_RefusesNonLedgerScoped(t *testing.T) {
 			SystemScoped: &raftcmdpb.SystemScopedOrder{},
 		},
 	}
-	payload := wrapSkippedPayloadForOrder(order, &commonpb.OrderSkippedLog{})
+	payload := wrapSkippedPayloadForOrder(order, &ledgerpb.OrderSkippedLog{})
 
 	err := assignSkipLogIDAndDate(parent, order, payload)
 	require.NotNil(t, err)
@@ -264,7 +264,7 @@ func TestAssignSkipLogIDAndDate_RefusesUnknownLedger(t *testing.T) {
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "L"},
 		},
 	}
-	payload := wrapSkippedPayloadForOrder(order, &commonpb.OrderSkippedLog{})
+	payload := wrapSkippedPayloadForOrder(order, &ledgerpb.OrderSkippedLog{})
 
 	err := assignSkipLogIDAndDate(parent, order, payload)
 	require.NotNil(t, err)

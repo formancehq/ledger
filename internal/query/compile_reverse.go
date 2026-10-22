@@ -3,6 +3,7 @@ package query
 import (
 	"fmt"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -85,7 +86,7 @@ func closeAllReverse(iters []readstore.ReverseIterator) {
 
 // compileRev is the descending twin of compile, including the depth guard and
 // the per-target condition validity check.
-func compileRev(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.ReverseIterator, error) {
+func compileRev(ctx *compileCtx, filter *ledgerpb.QueryFilter) (readstore.ReverseIterator, error) {
 	if filter == nil {
 		return compileUniverseRev(ctx)
 	}
@@ -102,29 +103,29 @@ func compileRev(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.Revers
 	}
 
 	switch f := filter.GetFilter().(type) {
-	case *commonpb.QueryFilter_Field:
+	case *ledgerpb.QueryFilter_Field:
 		return compileFieldConditionRev(ctx, f.Field)
-	case *commonpb.QueryFilter_Address:
+	case *ledgerpb.QueryFilter_Address:
 		return compileAddressMatchRev(ctx, f.Address)
-	case *commonpb.QueryFilter_And:
+	case *ledgerpb.QueryFilter_And:
 		return compileAndRev(ctx, f.And)
-	case *commonpb.QueryFilter_Or:
+	case *ledgerpb.QueryFilter_Or:
 		return compileOrRev(ctx, f.Or)
-	case *commonpb.QueryFilter_Not:
+	case *ledgerpb.QueryFilter_Not:
 		return compileNotRev(ctx, f.Not)
-	case *commonpb.QueryFilter_Reference:
+	case *ledgerpb.QueryFilter_Reference:
 		return compileReferenceConditionRev(ctx, f.Reference)
-	case *commonpb.QueryFilter_Reverted:
+	case *ledgerpb.QueryFilter_Reverted:
 		return compileRevertedConditionRev(ctx, f.Reverted)
-	case *commonpb.QueryFilter_AccountHasAsset:
+	case *ledgerpb.QueryFilter_AccountHasAsset:
 		return compileAccountHasAssetConditionRev(ctx, f.AccountHasAsset)
-	case *commonpb.QueryFilter_BuiltinUint:
+	case *ledgerpb.QueryFilter_BuiltinUint:
 		return compileBuiltinUintConditionRev(ctx, f.BuiltinUint)
-	case *commonpb.QueryFilter_LogBuiltinUint:
+	case *ledgerpb.QueryFilter_LogBuiltinUint:
 		return compileLogBuiltinUintConditionRev(ctx, f.LogBuiltinUint)
-	case *commonpb.QueryFilter_LogId:
+	case *ledgerpb.QueryFilter_LogId:
 		return compileLogIdConditionRev(ctx, f.LogId.GetCond())
-	case *commonpb.QueryFilter_Ledger:
+	case *ledgerpb.QueryFilter_Ledger:
 		return compileLedgerConditionRev(ctx, f.Ledger)
 	default:
 		return nil, domain.NewFilterCompilationError("unknown filter type: %T", filter.GetFilter())
@@ -135,7 +136,7 @@ func compileRev(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.Revers
 
 func compileUniverseRev(ctx *compileCtx) (readstore.ReverseIterator, error) {
 	switch ctx.target {
-	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 		iter, err := readstore.NewPebbleReverseAccountIterator(ctx.pebbleReader, ctx.ledgerName)
 		if err != nil {
 			return nil, fmt.Errorf("creating reverse account iterator: %w", err)
@@ -147,7 +148,7 @@ func compileUniverseRev(ctx *compileCtx) (readstore.ReverseIterator, error) {
 			Prefix: "pebble:attributes",
 		}), nil
 
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		iter, err := readstore.NewPebbleReverseTxIterator(ctx.pebbleReader, ctx.ledgerName)
 		if err != nil {
 			return nil, fmt.Errorf("creating reverse tx iterator: %w", err)
@@ -159,7 +160,7 @@ func compileUniverseRev(ctx *compileCtx) (readstore.ReverseIterator, error) {
 			Prefix: "pebble:txupdate",
 		}), nil
 
-	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		prefix := readstore.LedgerLogPrefix(ctx.kb, ctx.ledgerName)
 
 		iter, err := readstore.NewReversePrefixIterator(ctx.indexReader, prefix, len(prefix), 8)
@@ -182,7 +183,7 @@ func compileUniverseRev(ctx *compileCtx) (readstore.ReverseIterator, error) {
 // compileLedgerConditionRev mirrors compileLedgerCondition: the condition can
 // only name the executing ledger or nothing, and naming another ledger is
 // unsatisfiable rather than a silent "all logs".
-func compileLedgerConditionRev(ctx *compileCtx, lc *commonpb.LedgerCondition) (readstore.ReverseIterator, error) {
+func compileLedgerConditionRev(ctx *compileCtx, lc *ledgerpb.LedgerCondition) (readstore.ReverseIterator, error) {
 	want, err := resolveString(lc.GetCond(), ctx.params)
 	if err != nil {
 		return nil, err
@@ -195,8 +196,8 @@ func compileLedgerConditionRev(ctx *compileCtx, lc *commonpb.LedgerCondition) (r
 	return compileUniverseRev(ctx)
 }
 
-func compileAndRev(ctx *compileCtx, and *commonpb.AndFilter) (readstore.ReverseIterator, error) {
-	filters := mergeFieldRanges(and.GetFilters(), validateFieldCondition(ctx))
+func compileAndRev(ctx *compileCtx, and *ledgerpb.AndFilter) (readstore.ReverseIterator, error) {
+	filters := mergeFieldRanges(and.GetFilters())
 
 	children := make([]readstore.ReverseIterator, 0, len(filters))
 
@@ -241,7 +242,7 @@ func compileAndRev(ctx *compileCtx, and *commonpb.AndFilter) (readstore.ReverseI
 	return trackReverse(andIter, ctx.profile, stats), nil
 }
 
-func compileOrRev(ctx *compileCtx, or *commonpb.OrFilter) (readstore.ReverseIterator, error) {
+func compileOrRev(ctx *compileCtx, or *ledgerpb.OrFilter) (readstore.ReverseIterator, error) {
 	children := make([]readstore.ReverseIterator, 0, len(or.GetFilters()))
 
 	var childStats []*IteratorStats
@@ -279,7 +280,7 @@ func compileOrRev(ctx *compileCtx, or *commonpb.OrFilter) (readstore.ReverseIter
 	}), nil
 }
 
-func compileNotRev(ctx *compileCtx, not *commonpb.NotFilter) (readstore.ReverseIterator, error) {
+func compileNotRev(ctx *compileCtx, not *ledgerpb.NotFilter) (readstore.ReverseIterator, error) {
 	universe, err := compileUniverseRev(ctx)
 	if err != nil {
 		return nil, err
@@ -313,7 +314,7 @@ func compileNotRev(ctx *compileCtx, not *commonpb.NotFilter) (readstore.ReverseI
 
 // --- Leaves ---
 
-func compileRevertedConditionRev(ctx *compileCtx, cond *commonpb.RevertedCondition) (readstore.ReverseIterator, error) {
+func compileRevertedConditionRev(ctx *compileCtx, cond *ledgerpb.RevertedCondition) (readstore.ReverseIterator, error) {
 	bs, err := ReadReversionBitset(ctx.pebbleReader, ctx.ledgerName)
 	if err != nil {
 		return nil, fmt.Errorf("reading reversion bitset: %w", err)
@@ -359,30 +360,30 @@ func compileRevertedConditionRev(ctx *compileCtx, cond *commonpb.RevertedConditi
 // compileFieldConditionRev reuses resolveFieldMetadataCtx — the ascending
 // path's schema validation, index-readiness gate, retype-window binding and
 // condition coercion — and differs only in the leaf it builds.
-func compileFieldConditionRev(ctx *compileCtx, fc *commonpb.FieldCondition) (readstore.ReverseIterator, error) {
+func compileFieldConditionRev(ctx *compileCtx, fc *ledgerpb.FieldCondition) (readstore.ReverseIterator, error) {
 	fc, mc, err := resolveFieldMetadataCtx(ctx, fc)
 	if err != nil {
 		return nil, err
 	}
 
 	switch cond := fc.GetCondition().(type) {
-	case *commonpb.FieldCondition_StringCond:
+	case *ledgerpb.FieldCondition_StringCond:
 		return compileStringConditionRev(ctx, mc, cond.StringCond)
-	case *commonpb.FieldCondition_IntCond:
+	case *ledgerpb.FieldCondition_IntCond:
 		return compileIntConditionRev(ctx, mc, cond.IntCond)
-	case *commonpb.FieldCondition_UintCond:
+	case *ledgerpb.FieldCondition_UintCond:
 		return compileUintConditionRev(ctx, mc, cond.UintCond)
-	case *commonpb.FieldCondition_BoolCond:
+	case *ledgerpb.FieldCondition_BoolCond:
 		return compileBoolConditionRev(ctx, mc, cond.BoolCond)
-	case *commonpb.FieldCondition_ExistsCond:
+	case *ledgerpb.FieldCondition_ExistsCond:
 		return compileExistsConditionRev(ctx, mc, cond.ExistsCond)
 	default:
 		return nil, domain.NewFilterCompilationError("unknown condition type: %T", fc.GetCondition())
 	}
 }
 
-func compileStringConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.StringCondition) (readstore.ReverseIterator, error) {
-	fullPrefix, err := resolveStringMetadataPrefix(ctx, mc, cond)
+func compileStringConditionRev(ctx *compileCtx, mc *metadataCtx, cond *ledgerpb.StringCondition) (readstore.ReverseIterator, error) {
+	value, err := resolveString(cond, ctx.params)
 	if err != nil {
 		return nil, err
 	}
@@ -399,8 +400,8 @@ func compileStringConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.
 	}), nil
 }
 
-func compileBoolConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.BoolCondition) (readstore.ReverseIterator, error) {
-	fullPrefix, err := resolveBoolMetadataPrefix(ctx, mc, cond)
+func compileBoolConditionRev(ctx *compileCtx, mc *metadataCtx, cond *ledgerpb.BoolCondition) (readstore.ReverseIterator, error) {
+	value, err := resolveBool(cond, ctx.params)
 	if err != nil {
 		return nil, err
 	}
@@ -417,9 +418,9 @@ func compileBoolConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Bo
 	}), nil
 }
 
-func compileExistsConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.ExistsCondition) (readstore.ReverseIterator, error) {
-	nonNullPrefix, nullPrefix := resolveExistsPrefixes(ctx, mc, cond)
-	if nullPrefix == nil {
+func compileExistsConditionRev(ctx *compileCtx, mc *metadataCtx, cond *ledgerpb.ExistsCondition) (readstore.ReverseIterator, error) {
+	nonNullPrefix := readstore.EntityExistsNonNullPrefixV(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey, mc.version)
+	if !cond.GetIncludeNull() {
 		iter, err := readstore.NewReverseEventResolveIterator(ctx.indexReader, nonNullPrefix, ctx.pin)
 		if err != nil {
 			return nil, fmt.Errorf("creating reverse exists non-null event iterator: %w", err)
@@ -478,7 +479,7 @@ func compileExistsConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.
 
 // compileIntConditionRev streams the equality case (one value prefix, entity
 // ordered) and serves the general range from the materialized slice.
-func compileIntConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCondition) (readstore.ReverseIterator, error) {
+func compileIntConditionRev(ctx *compileCtx, mc *metadataCtx, cond *ledgerpb.IntCondition) (readstore.ReverseIterator, error) {
 	bounds, err := resolveIntBounds(cond, ctx.params)
 	if err != nil {
 		return nil, err
@@ -524,7 +525,7 @@ func compileIntConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Int
 	return trackReverse(matIter, ctx.profile, stats), nil
 }
 
-func compileUintConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintCondition) (readstore.ReverseIterator, error) {
+func compileUintConditionRev(ctx *compileCtx, mc *metadataCtx, cond *ledgerpb.UintCondition) (readstore.ReverseIterator, error) {
 	bounds, err := resolveUintBounds(cond, ctx.params)
 	if err != nil {
 		return nil, err
@@ -570,21 +571,44 @@ func compileUintConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Ui
 	return trackReverse(matIter, ctx.profile, stats), nil
 }
 
-func compileAddressMatchRev(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.ReverseIterator, error) {
-	match, err := resolveAddressMatch(ctx, am)
-	if err != nil {
-		return nil, err
+func compileAddressMatchRev(ctx *compileCtx, am *ledgerpb.AddressMatch) (readstore.ReverseIterator, error) {
+	role := am.GetRole()
+
+	if ctx.target == ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+		id, label := txAddressIndexID(role)
+		if _, err := requireIndexReady(ctx, id, label); err != nil {
+			return nil, err
+		}
 	}
 
-	if match.prefix {
-		return compileAddressPrefixRev(ctx, match.value, match.role)
+	switch m := am.GetMatch().(type) {
+	case *ledgerpb.AddressMatch_HardcodedPrefix:
+		return compileAddressPrefixRev(ctx, m.HardcodedPrefix, role)
+	case *ledgerpb.AddressMatch_HardcodedExact:
+		return compileAddressExactRev(ctx, m.HardcodedExact, role)
+	case *ledgerpb.AddressMatch_ParamPrefix:
+		value, err := extractString(ctx.params, m.ParamPrefix)
+		if err != nil {
+			return nil, err
+		}
+
+		return compileAddressPrefixRev(ctx, value, role)
+	case *ledgerpb.AddressMatch_ParamExact:
+		value, err := extractString(ctx.params, m.ParamExact)
+		if err != nil {
+			return nil, err
+		}
+
+		return compileAddressExactRev(ctx, value, role)
+	default:
+		return nil, domain.NewFilterCompilationError("unknown address match type: %T", am.GetMatch())
 	}
 
 	return compileAddressExactRev(ctx, match.value, match.role)
 }
 
-func compileAddressPrefixRev(ctx *compileCtx, addrPrefix string, role commonpb.AddressRole) (readstore.ReverseIterator, error) {
-	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+func compileAddressPrefixRev(ctx *compileCtx, addrPrefix string, role ledgerpb.AddressRole) (readstore.ReverseIterator, error) {
+	if ctx.target == ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
 		// Accounts are entity-ordered under the address prefix, so this
 		// streams descending.
 		iter, err := readstore.NewPebbleReverseAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
@@ -627,18 +651,17 @@ func compileAddressPrefixRev(ctx *compileCtx, addrPrefix string, role commonpb.A
 	}), nil
 }
 
-func compileAddressExactRev(ctx *compileCtx, exactAddr string, role commonpb.AddressRole) (readstore.ReverseIterator, error) {
-	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		// Keep current-account membership separate from retained transaction history.
-		exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
-		if err != nil {
-			return nil, fmt.Errorf("checking account existence: %w", err)
-		}
+func compileAddressExactRev(ctx *compileCtx, exactAddr string, role ledgerpb.AddressRole) (readstore.ReverseIterator, error) {
+	exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
+	if err != nil {
+		return nil, fmt.Errorf("checking account existence: %w", err)
+	}
 
-		if !exists {
-			return emptyReverse(), nil
-		}
+	if !exists {
+		return emptyReverse(), nil
+	}
 
+	if ctx.target == ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
 		iter := readstore.NewReverseSliceIterator([][]byte{[]byte(exactAddr)})
 
 		return trackReverse(iter, ctx.profile, &IteratorStats{
@@ -671,8 +694,14 @@ func compileAddressExactRev(ctx *compileCtx, exactAddr string, role commonpb.Add
 	}), nil
 }
 
-func compileReferenceConditionRev(ctx *compileCtx, rc *commonpb.ReferenceCondition) (readstore.ReverseIterator, error) {
-	value, prefix, err := resolveReferenceCondition(ctx, rc)
+func compileReferenceConditionRev(ctx *compileCtx, rc *ledgerpb.ReferenceCondition) (readstore.ReverseIterator, error) {
+	if _, err := requireIndexReady(ctx,
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+		"reference"); err != nil {
+		return nil, err
+	}
+
+	value, err := resolveString(rc.GetCond(), ctx.params)
 	if err != nil {
 		return nil, err
 	}
@@ -689,9 +718,10 @@ func compileReferenceConditionRev(ctx *compileCtx, rc *commonpb.ReferenceConditi
 	}), nil
 }
 
-func compileAccountHasAssetConditionRev(ctx *compileCtx, c *commonpb.AccountHasAssetCondition) (readstore.ReverseIterator, error) {
-	prefix, err := resolveAccountHasAssetPrefix(ctx, c)
-	if err != nil {
+func compileAccountHasAssetConditionRev(ctx *compileCtx, c *ledgerpb.AccountHasAssetCondition) (readstore.ReverseIterator, error) {
+	if _, err := requireIndexReady(ctx,
+		indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+		"has asset"); err != nil {
 		return nil, err
 	}
 
@@ -710,8 +740,8 @@ func compileAccountHasAssetConditionRev(ctx *compileCtx, c *commonpb.AccountHasA
 	}), nil
 }
 
-func compileBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.BuiltinUintCondition) (readstore.ReverseIterator, error) {
-	if cond.GetField() == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID {
+func compileBuiltinUintConditionRev(ctx *compileCtx, cond *ledgerpb.BuiltinUintCondition) (readstore.ReverseIterator, error) {
+	if cond.GetField() == ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID {
 		return compileTxIDConditionRev(ctx, cond.GetCond())
 	}
 
@@ -725,8 +755,8 @@ func compileBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.BuiltinUintC
 	return compileTimestampRangeConditionRev(ctx, cond.GetCond(), arm.prefix, arm.bucket, arm.stampPin)
 }
 
-func compileTxIDConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.ReverseIterator, error) {
-	bounds, txIDBytes, err := resolveTxIDCondition(ctx, cond)
+func compileTxIDConditionRev(ctx *compileCtx, cond *ledgerpb.UintCondition) (readstore.ReverseIterator, error) {
+	bounds, err := resolveUintBounds(cond, ctx.params)
 	if err != nil {
 		return nil, err
 	}
@@ -766,7 +796,7 @@ func compileTxIDConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (rea
 // unavoidable. Descending reuses it rather than building another one.
 func compileTimestampRangeConditionRev(
 	ctx *compileCtx,
-	cond *commonpb.UintCondition,
+	cond *ledgerpb.UintCondition,
 	ledgerPrefix []byte,
 	bucketLabel string,
 	stampPin uint64,
@@ -801,7 +831,7 @@ func compileTimestampRangeConditionRev(
 	return trackReverse(matIter, ctx.profile, stats), nil
 }
 
-func compileLogBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.LogBuiltinUintCondition) (readstore.ReverseIterator, error) {
+func compileLogBuiltinUintConditionRev(ctx *compileCtx, cond *ledgerpb.LogBuiltinUintCondition) (readstore.ReverseIterator, error) {
 	arm, err := resolveLogDateArm(ctx)
 	if err != nil {
 		return nil, err
@@ -822,7 +852,7 @@ func compileLogBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.LogBuilti
 	return trackReverse(iter, ctx.profile, &IteratorStats{Label: fmt.Sprintf("ReverseMonotoneDateIterator(lldt:%s range)", ctx.ledgerName), Kind: "Range", Prefix: arm.bucket}), nil
 }
 
-func compileLogIdConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.ReverseIterator, error) {
+func compileLogIdConditionRev(ctx *compileCtx, cond *ledgerpb.UintCondition) (readstore.ReverseIterator, error) {
 	if cond == nil {
 		return compileUniverseRev(ctx)
 	}

@@ -2,10 +2,11 @@ package processing
 
 import (
 	"fmt"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"testing"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -47,21 +48,21 @@ import (
 type benchScope struct {
 	Scope
 
-	ledgers      *kindStub[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]
+	ledgers      *kindStub[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader]
 	boundaries   *kindStub[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]
 	volumes      *kindStub[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
 	transactions *kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
 
-	date         commonpb.TimestampReader
+	date         ledgerpb.TimestampReader
 	nextSequence uint64
 
-	baseInfo          *commonpb.LedgerInfo
-	info              *commonpb.LedgerInfo
+	baseInfo          *ledgerpb.LedgerInfo
+	info              *ledgerpb.LedgerInfo
 	baseBoundaries    *raftcmdpb.LedgerBoundaries
 	currentBoundaries *raftcmdpb.LedgerBoundaries
 }
 
-func (s *benchScope) Ledgers() Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {
+func (s *benchScope) Ledgers() Accessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader] {
 	return s.ledgers
 }
 
@@ -77,7 +78,7 @@ func (s *benchScope) TransactionStates() Accessor[domain.TransactionKey, *common
 	return s.transactions
 }
 
-func (s *benchScope) GetDate() commonpb.TimestampReader {
+func (s *benchScope) GetDate() ledgerpb.TimestampReader {
 	return s.date
 }
 
@@ -107,8 +108,8 @@ func (s *benchScope) reset() {
 // benchLedgerConfig describes the ledger the scope exposes to ProcessOrders.
 type benchLedgerConfig struct {
 	name         string
-	accountTypes map[string]*commonpb.AccountType
-	metadata     map[string]*commonpb.MetadataValue
+	accountTypes map[string]*ledgerpb.AccountType
+	metadata     map[string]*ledgerpb.MetadataValue
 }
 
 func emptyLedgerConfig() benchLedgerConfig {
@@ -118,11 +119,11 @@ func emptyLedgerConfig() benchLedgerConfig {
 func smallLedgerConfig() benchLedgerConfig {
 	return benchLedgerConfig{
 		name: "bench-ledger",
-		accountTypes: map[string]*commonpb.AccountType{
+		accountTypes: map[string]*ledgerpb.AccountType{
 			"user":     {Name: "user", Pattern: "users:{id}"},
 			"merchant": {Name: "merchant", Pattern: "merchants:{id}"},
 		},
-		metadata: map[string]*commonpb.MetadataValue{
+		metadata: map[string]*ledgerpb.MetadataValue{
 			"region":   stringMetadata("eu-west"),
 			"platform": stringMetadata("checkout"),
 		},
@@ -130,12 +131,12 @@ func smallLedgerConfig() benchLedgerConfig {
 }
 
 func richLedgerConfig() benchLedgerConfig {
-	accountTypes := make(map[string]*commonpb.AccountType, 50)
-	metadata := make(map[string]*commonpb.MetadataValue, 50)
+	accountTypes := make(map[string]*ledgerpb.AccountType, 50)
+	metadata := make(map[string]*ledgerpb.MetadataValue, 50)
 
 	for i := range 50 {
 		name := fmt.Sprintf("type-%02d", i)
-		accountTypes[name] = &commonpb.AccountType{
+		accountTypes[name] = &ledgerpb.AccountType{
 			Name:    name,
 			Pattern: fmt.Sprintf("t%02d:{id}", i),
 		}
@@ -144,7 +145,7 @@ func richLedgerConfig() benchLedgerConfig {
 
 	// The transaction benchmark addresses users:{id}; keep that type present so
 	// the rich configuration still exercises the account-type matching path.
-	accountTypes["user"] = &commonpb.AccountType{Name: "user", Pattern: "users:{id}"}
+	accountTypes["user"] = &ledgerpb.AccountType{Name: "user", Pattern: "users:{id}"}
 
 	return benchLedgerConfig{
 		name:         "bench-ledger",
@@ -153,29 +154,29 @@ func richLedgerConfig() benchLedgerConfig {
 	}
 }
 
-func stringMetadata(value string) *commonpb.MetadataValue {
-	return &commonpb.MetadataValue{
-		Type: &commonpb.MetadataValue_StringValue{StringValue: value},
+func stringMetadata(value string) *ledgerpb.MetadataValue {
+	return &ledgerpb.MetadataValue{
+		Type: &ledgerpb.MetadataValue_StringValue{StringValue: value},
 	}
 }
 
 func newBenchScope(cfg benchLedgerConfig) *benchScope {
-	baseInfo := &commonpb.LedgerInfo{
+	baseInfo := &ledgerpb.LedgerInfo{
 		Name:                   cfg.name,
 		Id:                     1,
-		DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+		DefaultEnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
 		AccountTypes:           cfg.accountTypes,
 		Metadata:               cfg.metadata,
 	}
 	baseBoundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	zero := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	s := &benchScope{
-		date:              (&commonpb.Timestamp{Data: 1700000000}).AsReader(),
+		date:              (&ledgerpb.Timestamp{Data: 1700000000}).AsReader(),
 		nextSequence:      1,
 		baseInfo:          baseInfo,
 		info:              baseInfo,
@@ -183,11 +184,11 @@ func newBenchScope(cfg benchLedgerConfig) *benchScope {
 		currentBoundaries: baseBoundaries,
 	}
 
-	s.ledgers = &kindStub[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]{}
-	s.ledgers.onGet(func(domain.LedgerKey) (commonpb.LedgerInfoReader, error) {
+	s.ledgers = &kindStub[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader]{}
+	s.ledgers.onGet(func(domain.LedgerKey) (ledgerpb.LedgerInfoReader, error) {
 		return s.info.AsReader(), nil
 	})
-	s.ledgers.onPut(func(_ domain.LedgerKey, info *commonpb.LedgerInfo) {
+	s.ledgers.onPut(func(_ domain.LedgerKey, info *ledgerpb.LedgerInfo) {
 		s.info = info
 	})
 
@@ -217,11 +218,11 @@ func benchCreateTransactionOrder(ledger string, i int) *raftcmdpb.Order {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-							Postings: []*commonpb.Posting{
+							Postings: []*ledgerpb.Posting{
 								{
 									Source:      "world",
 									Destination: fmt.Sprintf("users:%06d", i),
-									Amount:      commonpb.NewUint256FromUint64(1),
+									Amount:      ledgerpb.NewUint256FromUint64(1),
 									Asset:       "USD",
 								},
 							},
@@ -243,7 +244,7 @@ func benchAddAccountTypeOrder(ledger string) *raftcmdpb.Order {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
 						AddAccountType: &raftcmdpb.AddAccountTypeOrder{
-							AccountType: &commonpb.AccountType{Name: "new-type", Pattern: "bench:{id}"},
+							AccountType: &ledgerpb.AccountType{Name: "new-type", Pattern: "bench:{id}"},
 						},
 					},
 					},
@@ -356,7 +357,7 @@ func BenchmarkProcessOrders_MirrorFillGap(b *testing.B) {
 				}
 
 				scope := newBenchScope(tc.cfg)
-				scope.baseInfo.Mode = commonpb.LedgerMode_LEDGER_MODE_MIRROR
+				scope.baseInfo.Mode = ledgerpb.LedgerMode_LEDGER_MODE_MIRROR
 				orders := make([]*raftcmdpb.Order, n)
 				for i := range orders {
 					orders[i] = &raftcmdpb.Order{

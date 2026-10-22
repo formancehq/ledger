@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -76,7 +76,7 @@ type auditCompiled struct {
 // to decide whether it must wait for the audit projection's Raft certificate
 // and open an aligned audit snapshot; compiling first would capture candidates
 // from an unverified projection snapshot.
-func AuditFilterNeedsIndex(filter *commonpb.QueryFilter) bool {
+func AuditFilterNeedsIndex(filter *ledgerpb.QueryFilter) bool {
 	return auditFilterNeedsIndex(filter, 0)
 }
 
@@ -84,13 +84,13 @@ func AuditFilterNeedsIndex(filter *commonpb.QueryFilter) bool {
 // without consulting the asynchronous audit index. Callers use it before a
 // readiness gate so malformed input keeps its InvalidArgument contract even
 // while the projection is disabled or rebuilding.
-func ValidateAuditFilter(filter *commonpb.QueryFilter) error {
+func ValidateAuditFilter(filter *ledgerpb.QueryFilter) error {
 	_, _, _, _, err := CompileAuditFilter(auditValidationIndex{}, filter)
 
 	return err
 }
 
-func auditFilterNeedsIndex(filter *commonpb.QueryFilter, depth int) bool {
+func auditFilterNeedsIndex(filter *ledgerpb.QueryFilter, depth int) bool {
 	if filter == nil {
 		return false
 	}
@@ -99,15 +99,15 @@ func auditFilterNeedsIndex(filter *commonpb.QueryFilter, depth int) bool {
 	}
 
 	switch f := filter.GetFilter().(type) {
-	case *commonpb.QueryFilter_Audit:
-		if f.Audit == nil || f.Audit.GetField() != commonpb.AuditField_AUDIT_FIELD_SEQUENCE {
+	case *ledgerpb.QueryFilter_Audit:
+		if f.Audit == nil || f.Audit.GetField() != ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE {
 			return true
 		}
 
 		_, err := compileAuditSeqBound(f.Audit)
 
 		return err != nil
-	case *commonpb.QueryFilter_And:
+	case *ledgerpb.QueryFilter_And:
 		if f.And == nil {
 			return true
 		}
@@ -119,7 +119,7 @@ func auditFilterNeedsIndex(filter *commonpb.QueryFilter, depth int) bool {
 		}
 
 		return false
-	case *commonpb.QueryFilter_Or:
+	case *ledgerpb.QueryFilter_Or:
 		// OR() compiles to the empty set without consulting an index. Every
 		// non-empty OR remains conservative here: validation/compilation owns
 		// the precise grammar error or index dispatch after the barrier.
@@ -144,7 +144,7 @@ func auditFilterNeedsIndex(filter *commonpb.QueryFilter, depth int) bool {
 // authoritative audit zone; indexed fields use the audit secondary index. An
 // expression neither access path can answer is refused rather than silently
 // degrading to a full-chain predicate scan (EN-1241).
-func CompileAuditFilter(idx AuditIndexReader, filter *commonpb.QueryFilter) (seqs []uint64, loSeq, hiSeq uint64, narrowed bool, err error) {
+func CompileAuditFilter(idx AuditIndexReader, filter *ledgerpb.QueryFilter) (seqs []uint64, loSeq, hiSeq uint64, narrowed bool, err error) {
 	if filter == nil {
 		return nil, 0, math.MaxUint64, false, nil
 	}
@@ -161,7 +161,7 @@ func CompileAuditFilter(idx AuditIndexReader, filter *commonpb.QueryFilter) (seq
 // and/or nesting so a maliciously (or accidentally) deep proto tree returns
 // InvalidArgument instead of overflowing the Go stack — mirroring the shared
 // query.Compile depth guard (MaxFilterDepth).
-func compileAuditNode(idx AuditIndexReader, filter *commonpb.QueryFilter, depth int) (auditCompiled, error) {
+func compileAuditNode(idx AuditIndexReader, filter *ledgerpb.QueryFilter, depth int) (auditCompiled, error) {
 	if depth >= MaxFilterDepth {
 		return auditCompiled{}, status.Errorf(codes.InvalidArgument,
 			"audit filter exceeds maximum nesting depth (%d)", MaxFilterDepth)
@@ -174,18 +174,18 @@ func compileAuditNode(idx AuditIndexReader, filter *commonpb.QueryFilter, depth 
 	// than as an undocumented exception. Concretely it admits audit-condition leaves
 	// and and/or, and rejects not and every non-audit condition — matching the
 	// dispatch below.
-	kind := commonpb.ConditionKindOf(filter)
-	if !commonpb.ConditionValidForTarget(commonpb.QueryTarget_QUERY_TARGET_AUDIT, kind) {
+	kind := ledgerpb.ConditionKindOf(filter)
+	if !ledgerpb.ConditionValidForTarget(ledgerpb.QueryTarget_QUERY_TARGET_AUDIT, kind) {
 		return auditCompiled{}, status.Errorf(codes.InvalidArgument,
 			"unsupported filter for audit entries: only bare audit fields combined with and/or are allowed")
 	}
 
 	switch f := filter.GetFilter().(type) {
-	case *commonpb.QueryFilter_Audit:
+	case *ledgerpb.QueryFilter_Audit:
 		return compileAuditLeaf(idx, f.Audit)
-	case *commonpb.QueryFilter_And:
+	case *ledgerpb.QueryFilter_And:
 		return compileAuditAnd(idx, f.And.GetFilters(), depth+1)
-	case *commonpb.QueryFilter_Or:
+	case *ledgerpb.QueryFilter_Or:
 		return compileAuditOr(idx, f.Or.GetFilters(), depth+1)
 	default:
 		// Unreachable: the table gate above admits only Audit/And/Or on the
@@ -202,25 +202,25 @@ func unconstrained() auditCompiled {
 	return auditCompiled{loSeq: 0, hiSeq: math.MaxUint64, narrowed: false}
 }
 
-func compileAuditLeaf(idx AuditIndexReader, cond *commonpb.AuditCondition) (auditCompiled, error) {
+func compileAuditLeaf(idx AuditIndexReader, cond *ledgerpb.AuditCondition) (auditCompiled, error) {
 	switch cond.GetField() {
-	case commonpb.AuditField_AUDIT_FIELD_SEQUENCE:
+	case ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE:
 		return compileAuditSeqBound(cond)
-	case commonpb.AuditField_AUDIT_FIELD_OUTCOME:
+	case ledgerpb.AuditField_AUDIT_FIELD_OUTCOME:
 		return compileAuditOutcome(idx, cond)
-	case commonpb.AuditField_AUDIT_FIELD_LEDGER:
+	case ledgerpb.AuditField_AUDIT_FIELD_LEDGER:
 		return indexStringLeaf(idx, readstore.AuditFieldLedger, cond)
-	case commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT:
+	case ledgerpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT:
 		return indexStringLeaf(idx, readstore.AuditFieldCallerSubject, cond)
-	case commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE:
+	case ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE:
 		return indexStringLeaf(idx, readstore.AuditFieldOrderType, cond)
-	case commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY:
+	case ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY:
 		return indexIdempotencyKeyLeaf(idx, cond)
-	case commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID:
+	case ledgerpb.AuditField_AUDIT_FIELD_PROPOSAL_ID:
 		return indexUintLeaf(idx, readstore.AuditFieldProposalID, cond)
-	case commonpb.AuditField_AUDIT_FIELD_TIMESTAMP:
+	case ledgerpb.AuditField_AUDIT_FIELD_TIMESTAMP:
 		return indexUintLeaf(idx, readstore.AuditFieldTimestamp, cond)
-	case commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE:
+	case ledgerpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE:
 		return indexUintLeaf(idx, readstore.AuditFieldLogSeq, cond)
 	default:
 		return auditCompiled{}, status.Errorf(codes.InvalidArgument,
@@ -228,19 +228,19 @@ func compileAuditLeaf(idx AuditIndexReader, cond *commonpb.AuditCondition) (audi
 	}
 }
 
-func indexIdempotencyKeyLeaf(idx AuditIndexReader, cond *commonpb.AuditCondition) (auditCompiled, error) {
+func indexIdempotencyKeyLeaf(idx AuditIndexReader, cond *ledgerpb.AuditCondition) (auditCompiled, error) {
 	var (
 		seqs []uint64
 		err  error
 	)
 	switch c := cond.GetCondition().(type) {
-	case *commonpb.AuditCondition_StringCond:
+	case *ledgerpb.AuditCondition_StringCond:
 		if c.StringCond.GetParam() != "" {
 			return auditCompiled{}, status.Error(codes.InvalidArgument,
 				"audit field AUDIT_FIELD_IDEMPOTENCY_KEY does not support parameters")
 		}
 		seqs, err = idx.AuditSeqsByString(readstore.AuditFieldIdempotencyKey, c.StringCond.GetHardcoded())
-	case *commonpb.AuditCondition_StringPrefix:
+	case *ledgerpb.AuditCondition_StringPrefix:
 		// NUL check here (before the readstore call) ensures ValidateAuditFilter
 		// and gRPC callers receive codes.InvalidArgument. auditSeqsByStringPrefix
 		// also guards the same invariant at the storage interface layer.
@@ -263,7 +263,7 @@ func indexIdempotencyKeyLeaf(idx AuditIndexReader, cond *commonpb.AuditCondition
 // compileAuditSeqBound turns an AUDIT_FIELD_SEQUENCE range into inclusive
 // audit-zone scan bounds rather than an index lookup — the sequence is the
 // zone key itself.
-func compileAuditSeqBound(cond *commonpb.AuditCondition) (auditCompiled, error) {
+func compileAuditSeqBound(cond *ledgerpb.AuditCondition) (auditCompiled, error) {
 	uc := cond.GetUintCond()
 	if uc == nil {
 		return auditCompiled{}, status.Error(codes.InvalidArgument,
@@ -297,7 +297,7 @@ func compileAuditSeqBound(cond *commonpb.AuditCondition) (auditCompiled, error) 
 	return out, nil
 }
 
-func compileAuditOutcome(idx AuditIndexReader, cond *commonpb.AuditCondition) (auditCompiled, error) {
+func compileAuditOutcome(idx AuditIndexReader, cond *ledgerpb.AuditCondition) (auditCompiled, error) {
 	sc := cond.GetStringCond()
 	if sc == nil {
 		return auditCompiled{}, status.Error(codes.InvalidArgument,
@@ -324,7 +324,7 @@ func compileAuditOutcome(idx AuditIndexReader, cond *commonpb.AuditCondition) (a
 	return auditCompiled{seqs: seqs, narrowed: true, loSeq: 0, hiSeq: math.MaxUint64}, nil
 }
 
-func indexStringLeaf(idx AuditIndexReader, field byte, cond *commonpb.AuditCondition) (auditCompiled, error) {
+func indexStringLeaf(idx AuditIndexReader, field byte, cond *ledgerpb.AuditCondition) (auditCompiled, error) {
 	sc := cond.GetStringCond()
 	if sc == nil {
 		return auditCompiled{}, status.Errorf(codes.InvalidArgument,
@@ -344,7 +344,7 @@ func indexStringLeaf(idx AuditIndexReader, field byte, cond *commonpb.AuditCondi
 	return auditCompiled{seqs: seqs, narrowed: true, loSeq: 0, hiSeq: math.MaxUint64}, nil
 }
 
-func indexUintLeaf(idx AuditIndexReader, field byte, cond *commonpb.AuditCondition) (auditCompiled, error) {
+func indexUintLeaf(idx AuditIndexReader, field byte, cond *ledgerpb.AuditCondition) (auditCompiled, error) {
 	uc := cond.GetUintCond()
 	if uc == nil {
 		return auditCompiled{}, status.Errorf(codes.InvalidArgument,
@@ -382,7 +382,7 @@ func indexUintLeaf(idx AuditIndexReader, field byte, cond *commonpb.AuditConditi
 	return auditCompiled{seqs: seqs, narrowed: true, loSeq: 0, hiSeq: math.MaxUint64}, nil
 }
 
-func compileAuditAnd(idx AuditIndexReader, filters []*commonpb.QueryFilter, depth int) (auditCompiled, error) {
+func compileAuditAnd(idx AuditIndexReader, filters []*ledgerpb.QueryFilter, depth int) (auditCompiled, error) {
 	if len(filters) == 0 {
 		// A conjunction over zero operands is vacuously true: unconstrained,
 		// matching compileAnd on the other targets.
@@ -402,7 +402,7 @@ func compileAuditAnd(idx AuditIndexReader, filters []*commonpb.QueryFilter, dept
 	return acc, nil
 }
 
-func compileAuditOr(idx AuditIndexReader, filters []*commonpb.QueryFilter, depth int) (auditCompiled, error) {
+func compileAuditOr(idx AuditIndexReader, filters []*ledgerpb.QueryFilter, depth int) (auditCompiled, error) {
 	if len(filters) == 0 {
 		return auditCompiled{seqs: nil, narrowed: true, loSeq: 0, hiSeq: math.MaxUint64}, nil
 	}

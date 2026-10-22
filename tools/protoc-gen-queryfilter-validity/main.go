@@ -5,7 +5,7 @@
 // oneof, and for each arm reads the `common.allowed_query_targets` field-option
 // extension declaring which `common.QueryTarget` values the condition is valid
 // on. From those annotations it emits query_target_validity.pb.go into the
-// commonpb package, containing:
+// ledgerpb package, containing:
 //
 //   - a ConditionKind enum (one constant per oneof arm, plus a zero Unknown),
 //   - ConditionKindOf(*QueryFilter) mapping a filter node to its kind,

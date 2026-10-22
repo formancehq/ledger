@@ -8,8 +8,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -33,12 +33,12 @@ func TestExecutePreparedQueryErrorClassification(t *testing.T) {
 	}{
 		{
 			name:    "aggregate on a non-accounts target",
-			err:     &query.ErrPreparedQueryAggregateTarget{Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+			err:     &query.ErrPreparedQueryAggregateTarget{Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
 			message: "invalid request",
 		},
 		{
 			name:    "unsupported query mode",
-			err:     &query.ErrQueryModeUnsupported{Mode: commonpb.QueryMode(99)},
+			err:     &query.ErrQueryModeUnsupported{Mode: ledgerpb.QueryMode(99)},
 			message: "invalid request",
 		},
 	} {

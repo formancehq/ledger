@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -35,9 +35,9 @@ func main() {
 			Type: &servicepb.Request_SetMetadataFieldType{
 				SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 					Ledger:     ledger,
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        metaKey,
-					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 				},
 			},
 		}))
@@ -50,8 +50,8 @@ func main() {
 			Type: &servicepb.Request_CreateIndex{
 				CreateIndex: &servicepb.CreateIndexRequest{
 					Ledger: ledger,
-					Id: &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
-						Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Id: &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_Metadata{Metadata: &ledgerpb.MetadataIndexID{
+						Target: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 						Key:    metaKey,
 					}}},
 				},
@@ -70,13 +70,13 @@ func main() {
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
-						AddMetadata: &commonpb.SaveMetadataCommand{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{Addr: address},
+						AddMetadata: &ledgerpb.SaveMetadataCommand{
+							Target: &ledgerpb.Target{
+								Target: &ledgerpb.Target_Account{
+									Account: &ledgerpb.TargetAccount{Addr: address},
 								},
 							},
-							Metadata: commonpb.MetadataFromGoMap(map[string]string{
+							Metadata: ledgerpb.MetadataFromGoMap(map[string]string{
 								metaKey: strconv.FormatInt(metaValue, 10),
 							}),
 						},
@@ -98,15 +98,15 @@ func main() {
 				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 					Ledger: ledger,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   queryName,
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-						Filter: &commonpb.QueryFilter{
-							Filter: &commonpb.QueryFilter_Field{
-								Field: &commonpb.FieldCondition{
-									Field: &commonpb.FieldRef{Metadata: metaKey},
-									Condition: &commonpb.FieldCondition_IntCond{
-										IntCond: &commonpb.IntCondition{
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: &ledgerpb.QueryFilter{
+							Filter: &ledgerpb.QueryFilter_Field{
+								Field: &ledgerpb.FieldCondition{
+									Field: &ledgerpb.FieldRef{Metadata: metaKey},
+									Condition: &ledgerpb.FieldCondition_IntCond{
+										IntCond: &ledgerpb.IntCondition{
 											Min: &minVal,
 											Max: &maxVal,
 										},
@@ -154,7 +154,7 @@ func main() {
 
 		if ok {
 			assert.AlwaysOrUnreachable(
-				fieldStatus.GetDeclaredType() == commonpb.MetadataType_METADATA_TYPE_INT64,
+				fieldStatus.GetDeclaredType() == ledgerpb.MetadataType_METADATA_TYPE_INT64,
 				"declared type should be INT64",
 				details,
 			)
@@ -162,17 +162,17 @@ func main() {
 
 		// 7. Change the type to exercise type migration paths.
 		// This should not crash even with existing data of the old type.
-		newTypes := []commonpb.MetadataType{
-			commonpb.MetadataType_METADATA_TYPE_STRING,
-			commonpb.MetadataType_METADATA_TYPE_BOOL,
-			commonpb.MetadataType_METADATA_TYPE_INT64,
+		newTypes := []ledgerpb.MetadataType{
+			ledgerpb.MetadataType_METADATA_TYPE_STRING,
+			ledgerpb.MetadataType_METADATA_TYPE_BOOL,
+			ledgerpb.MetadataType_METADATA_TYPE_INT64,
 		}
 		for _, newType := range newTypes {
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 				Type: &servicepb.Request_SetMetadataFieldType{
 					SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 						Ledger:     ledger,
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+						TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 						Key:        metaKey,
 						Type:       newType,
 					},
@@ -190,7 +190,7 @@ func main() {
 			Type: &servicepb.Request_RemoveMetadataFieldType{
 				RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
 					Ledger:     ledger,
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        metaKey,
 				},
 			},
@@ -228,13 +228,13 @@ func main() {
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
-						AddMetadata: &commonpb.SaveMetadataCommand{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{Addr: address},
+						AddMetadata: &ledgerpb.SaveMetadataCommand{
+							Target: &ledgerpb.Target{
+								Target: &ledgerpb.Target_Account{
+									Account: &ledgerpb.TargetAccount{Addr: address},
 								},
 							},
-							Metadata: commonpb.MetadataFromGoMap(map[string]string{
+							Metadata: ledgerpb.MetadataFromGoMap(map[string]string{
 								badKey: "not-a-number",
 							}),
 						},
@@ -247,9 +247,9 @@ func main() {
 				Type: &servicepb.Request_SetMetadataFieldType{
 					SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 						Ledger:     ledger,
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+						TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 						Key:        badKey,
-						Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 					},
 				},
 			}))
@@ -266,9 +266,9 @@ func main() {
 				Type: &servicepb.Request_SetMetadataFieldType{
 					SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 						Ledger:     ledger,
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+						TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 						Key:        metaKey,
-						Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+						Type:       ledgerpb.MetadataType_METADATA_TYPE_BOOL,
 					},
 				},
 			}))

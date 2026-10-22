@@ -1,7 +1,7 @@
 package query
 
 import (
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // mergeFieldRanges coalesces multiple IntCondition / UintCondition predicates
@@ -22,16 +22,7 @@ import (
 // at compile time. Mixed equality + range on the same field is also passed
 // through (equality is already optimal and won't benefit from intersection
 // with a wider range).
-//
-// When validate is set, each numeric metadata leaf is merged in its validated
-// form (validate's result) and a leaf validate rejects is passed through
-// unmerged. Intersection drops the looser bound, so merging an unvalidated
-// leaf could discard the very bound that makes it invalid, such as `n >= -1`
-// next to `n >= 0` on an unsigned field.
-func mergeFieldRanges(
-	filters []*commonpb.QueryFilter,
-	validate func(*commonpb.FieldCondition) (*commonpb.FieldCondition, error),
-) []*commonpb.QueryFilter {
+func mergeFieldRanges(filters []*ledgerpb.QueryFilter) []*ledgerpb.QueryFilter {
 	if len(filters) < 2 {
 		return filters
 	}
@@ -39,7 +30,7 @@ func mergeFieldRanges(
 	// Index of the entry holding the merged condition for each field key.
 	// Negative means "no mergeable condition seen yet for this key".
 	firstIdx := make(map[string]int, len(filters))
-	merged := make([]*commonpb.QueryFilter, 0, len(filters))
+	merged := make([]*ledgerpb.QueryFilter, 0, len(filters))
 
 	for _, original := range filters {
 		f, valid := validatedMergeCandidate(original, validate)
@@ -121,7 +112,7 @@ const (
 // Equality + range mixes are intentionally treated as non-mergeable: equality
 // already takes the streaming PrefixIterator fast path, intersecting with a
 // wider range would only add work.
-func mergeableFieldKey(f *commonpb.QueryFilter) (string, fieldKind, bool) {
+func mergeableFieldKey(f *ledgerpb.QueryFilter) (string, fieldKind, bool) {
 	fc := f.GetField()
 	if fc == nil {
 		return "", 0, false
@@ -133,13 +124,13 @@ func mergeableFieldKey(f *commonpb.QueryFilter) (string, fieldKind, bool) {
 	}
 
 	switch cond := fc.GetCondition().(type) {
-	case *commonpb.FieldCondition_IntCond:
+	case *ledgerpb.FieldCondition_IntCond:
 		if !isPureRange(cond.IntCond) {
 			return "", 0, false
 		}
 
 		return "int:" + metaKey, kindInt, true
-	case *commonpb.FieldCondition_UintCond:
+	case *ledgerpb.FieldCondition_UintCond:
 		if !isUintPureRange(cond.UintCond) {
 			return "", 0, false
 		}
@@ -153,7 +144,7 @@ func mergeableFieldKey(f *commonpb.QueryFilter) (string, fieldKind, bool) {
 // isPureRange returns true when the IntCondition has at least one bound, no
 // equality form (min == max), and no parameterized bound. These are exactly
 // the conditions the merger will combine.
-func isPureRange(ic *commonpb.IntCondition) bool {
+func isPureRange(ic *ledgerpb.IntCondition) bool {
 	if ic == nil {
 		return false
 	}
@@ -170,7 +161,7 @@ func isPureRange(ic *commonpb.IntCondition) bool {
 	return ic.Min != nil || ic.Max != nil
 }
 
-func isUintPureRange(uc *commonpb.UintCondition) bool {
+func isUintPureRange(uc *ledgerpb.UintCondition) bool {
 	if uc == nil {
 		return false
 	}
@@ -189,7 +180,7 @@ func isUintPureRange(uc *commonpb.UintCondition) bool {
 // can't be merged (different proto shapes). Bound values and exclusivity are
 // preserved so the overflow-aware downstream resolver can detect empty ranges
 // at the integer extrema.
-func mergeTwo(a, b *commonpb.QueryFilter, kind fieldKind) (*commonpb.QueryFilter, bool) {
+func mergeTwo(a, b *ledgerpb.QueryFilter, kind fieldKind) (*ledgerpb.QueryFilter, bool) {
 	field := a.GetField().GetField()
 
 	switch kind {
@@ -218,8 +209,8 @@ func mergeTwo(a, b *commonpb.QueryFilter, kind fieldKind) (*commonpb.QueryFilter
 // one of the inputs always has a Min, and at least one always has a Max, but
 // neither is required on both sides — that's the whole point of merging
 // half-ranges together.
-func intersectInt(a, b *commonpb.IntCondition) *commonpb.IntCondition {
-	out := &commonpb.IntCondition{}
+func intersectInt(a, b *ledgerpb.IntCondition) *ledgerpb.IntCondition {
+	out := &ledgerpb.IntCondition{}
 
 	lowA, hasLowA := intMin(a)
 	lowB, hasLowB := intMin(b)
@@ -262,7 +253,7 @@ func intersectInt(a, b *commonpb.IntCondition) *commonpb.IntCondition {
 	return out
 }
 
-func intMin(ic *commonpb.IntCondition) (int64, bool) {
+func intMin(ic *ledgerpb.IntCondition) (int64, bool) {
 	if ic.Min == nil {
 		return 0, false
 	}
@@ -270,7 +261,7 @@ func intMin(ic *commonpb.IntCondition) (int64, bool) {
 	return ic.GetMin(), true
 }
 
-func intMax(ic *commonpb.IntCondition) (int64, bool) {
+func intMax(ic *ledgerpb.IntCondition) (int64, bool) {
 	if ic.Max == nil {
 		return 0, false
 	}
@@ -278,8 +269,8 @@ func intMax(ic *commonpb.IntCondition) (int64, bool) {
 	return ic.GetMax(), true
 }
 
-func intersectUint(a, b *commonpb.UintCondition) *commonpb.UintCondition {
-	out := &commonpb.UintCondition{}
+func intersectUint(a, b *ledgerpb.UintCondition) *ledgerpb.UintCondition {
+	out := &ledgerpb.UintCondition{}
 
 	lowA, hasLowA := uintMin(a)
 	lowB, hasLowB := uintMin(b)
@@ -322,7 +313,7 @@ func intersectUint(a, b *commonpb.UintCondition) *commonpb.UintCondition {
 	return out
 }
 
-func uintMin(uc *commonpb.UintCondition) (uint64, bool) {
+func uintMin(uc *ledgerpb.UintCondition) (uint64, bool) {
 	if uc.Min == nil {
 		return 0, false
 	}
@@ -330,7 +321,7 @@ func uintMin(uc *commonpb.UintCondition) (uint64, bool) {
 	return uc.GetMin(), true
 }
 
-func uintMax(uc *commonpb.UintCondition) (uint64, bool) {
+func uintMax(uc *ledgerpb.UintCondition) (uint64, bool) {
 	if uc.Max == nil {
 		return 0, false
 	}
@@ -338,23 +329,23 @@ func uintMax(uc *commonpb.UintCondition) (uint64, bool) {
 	return uc.GetMax(), true
 }
 
-func wrapIntFieldCondition(field *commonpb.FieldRef, ic *commonpb.IntCondition) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
+func wrapIntFieldCondition(field *ledgerpb.FieldRef, ic *ledgerpb.IntCondition) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
 				Field:     field,
-				Condition: &commonpb.FieldCondition_IntCond{IntCond: ic},
+				Condition: &ledgerpb.FieldCondition_IntCond{IntCond: ic},
 			},
 		},
 	}
 }
 
-func wrapUintFieldCondition(field *commonpb.FieldRef, uc *commonpb.UintCondition) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
+func wrapUintFieldCondition(field *ledgerpb.FieldRef, uc *ledgerpb.UintCondition) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
 				Field:     field,
-				Condition: &commonpb.FieldCondition_UintCond{UintCond: uc},
+				Condition: &ledgerpb.FieldCondition_UintCond{UintCond: uc},
 			},
 		},
 	}

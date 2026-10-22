@@ -5,7 +5,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -194,7 +194,7 @@ func (c *Checker) insertPending(entry *pendingObservation) {
 }
 
 // Smallest non-zero Log.Sequence in logs, or 0 if none.
-func minLogSequence(logs []*commonpb.Log) uint64 {
+func minLogSequence(logs []*ledgerpb.Log) uint64 {
 	var lowest uint64
 	for _, l := range logs {
 		s := l.GetSequence()
@@ -210,7 +210,7 @@ func minLogSequence(logs []*commonpb.Log) uint64 {
 }
 
 // Largest Log.Sequence in logs, or 0 if none.
-func maxLogSequence(logs []*commonpb.Log) uint64 {
+func maxLogSequence(logs []*ledgerpb.Log) uint64 {
 	var highest uint64
 	for _, l := range logs {
 		if s := l.GetSequence(); s > highest {

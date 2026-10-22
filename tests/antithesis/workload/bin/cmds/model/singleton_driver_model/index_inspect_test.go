@@ -5,30 +5,30 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-func inspectValue(s string) *commonpb.MetadataValue {
-	return &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: s}}
+func inspectValue(s string) *ledgerpb.MetadataValue {
+	return &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_StringValue{StringValue: s}}
 }
 
 func TestInspectPageViolation_DistinctValues(t *testing.T) {
 	t.Parallel()
 
 	mode := servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES
-	page := func(vs []*commonpb.MetadataValue, hasMore bool, next string) *servicepb.InspectIndexResponse {
+	page := func(vs []*ledgerpb.MetadataValue, hasMore bool, next string) *servicepb.InspectIndexResponse {
 		return &servicepb.InspectIndexResponse{Result: &servicepb.InspectIndexResponse_DistinctValues{
 			DistinctValues: &servicepb.InspectDistinctValues{Values: vs, HasMore: hasMore, NextCursor: next},
 		}}
 	}
 
-	require.Empty(t, inspectPageViolation(page([]*commonpb.MetadataValue{inspectValue("a"), inspectValue("b")}, false, ""), mode, 2))
-	require.Equal(t, "page longer than requested", inspectPageViolation(page([]*commonpb.MetadataValue{inspectValue("a"), inspectValue("b")}, false, ""), mode, 1))
-	require.Equal(t, "value served twice", inspectPageViolation(page([]*commonpb.MetadataValue{inspectValue("a"), inspectValue("a")}, false, ""), mode, 5))
+	require.Empty(t, inspectPageViolation(page([]*ledgerpb.MetadataValue{inspectValue("a"), inspectValue("b")}, false, ""), mode, 2))
+	require.Equal(t, "page longer than requested", inspectPageViolation(page([]*ledgerpb.MetadataValue{inspectValue("a"), inspectValue("b")}, false, ""), mode, 1))
+	require.Equal(t, "value served twice", inspectPageViolation(page([]*ledgerpb.MetadataValue{inspectValue("a"), inspectValue("a")}, false, ""), mode, 5))
 	require.Equal(t, "more to serve but no resume cursor", inspectPageViolation(page(nil, true, ""), mode, 5))
 	require.Equal(t, "resume cursor on an exhausted scan", inspectPageViolation(page(nil, false, "k"), mode, 5))
 	require.Equal(t, "distinct-values mode answered another arm", inspectPageViolation(&servicepb.InspectIndexResponse{}, mode, 5))
@@ -78,9 +78,9 @@ func TestModelInspectCountsSplitsNullsFromCarriers(t *testing.T) {
 		actions.CreateLedgerAction("L", nil),
 		{Type: &servicepb.Request_SetMetadataFieldType{SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 			Ledger:     "L",
-			TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 			Key:        key,
-			Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+			Type:       ledgerpb.MetadataType_METADATA_TYPE_UINT64,
 		}}},
 		oracletest.AddTypeReq("acc"),
 		oracletest.TxReq("world", "acc:1", "USD", 10),
@@ -98,7 +98,7 @@ func TestModelInspectCountsSplitsNullsFromCarriers(t *testing.T) {
 	require.True(t, state.OK, state.Reason)
 
 	ls := state.State.Ledger("L")
-	counts := modelInspectCounts(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, key, commonpb.MetadataType_METADATA_TYPE_UINT64)
+	counts := modelInspectCounts(ls, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, key, ledgerpb.MetadataType_METADATA_TYPE_UINT64)
 
 	require.Equal(t, uint64(2), counts.entitiesWithKey, "only the two convertible accounts carry the key")
 	require.Equal(t, uint64(2), counts.entitiesWithNull, "the two unconvertible accounts are counted apart")
@@ -123,13 +123,13 @@ func TestModelInspectCountsIgnoresOtherKeysAndTargets(t *testing.T) {
 
 	ls := state.State.Ledger("L")
 
-	counts := modelInspectCounts(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, "rank", commonpb.MetadataType_METADATA_TYPE_STRING)
+	counts := modelInspectCounts(ls, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, "rank", ledgerpb.MetadataType_METADATA_TYPE_STRING)
 	require.Equal(t, inspectCounts{cardinality: 1, entitiesWithKey: 1}, counts)
 
 	// The same key on the other target is a different index entirely.
 	require.Equal(t, inspectCounts{},
-		modelInspectCounts(ls, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, "rank", commonpb.MetadataType_METADATA_TYPE_STRING))
+		modelInspectCounts(ls, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, "rank", ledgerpb.MetadataType_METADATA_TYPE_STRING))
 
 	require.Equal(t, inspectCounts{},
-		modelInspectCounts(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, "never-set", commonpb.MetadataType_METADATA_TYPE_STRING))
+		modelInspectCounts(ls, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, "never-set", ledgerpb.MetadataType_METADATA_TYPE_STRING))
 }

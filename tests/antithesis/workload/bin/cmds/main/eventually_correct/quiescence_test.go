@@ -21,10 +21,10 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/pkg/antithesistest"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
@@ -203,9 +203,9 @@ func TestQuiescenceServerProcess(t *testing.T) {
 				return err
 			}
 			if strings.HasSuffix(method, "/GetAccount") && (scenario == "divergence" || scenario == "unavailable" || scenario == "expired" || (scenario == "ambiguous_barrier" && lists.Load() == 1)) {
-				account := reply.(*commonpb.Account)
+				account := reply.(*ledgerpb.Account)
 				require.NotEmpty(t, account.GetVolumes())
-				account.Volumes[0].Volumes.Balance = commonpb.MustSignedBigIntFromDecimal("999")
+				account.Volumes[0].Volumes.Balance = ledgerpb.MustSignedBigIntFromDecimal("999")
 			}
 
 			return nil

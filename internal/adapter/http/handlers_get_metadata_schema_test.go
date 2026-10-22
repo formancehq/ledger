@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -21,11 +21,11 @@ func TestHandleGetMetadataSchema_Success(t *testing.T) {
 		func(_ context.Context, _ string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
 			return &servicepb.GetMetadataSchemaStatusResponse{
 				AccountFields: map[string]*servicepb.MetadataFieldStatus{
-					"role": {DeclaredType: commonpb.MetadataType_METADATA_TYPE_STRING},
+					"role": {DeclaredType: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 				},
 				TransactionFields: map[string]*servicepb.MetadataFieldStatus{},
 				LedgerFields: map[string]*servicepb.MetadataFieldStatus{
-					"env": {DeclaredType: commonpb.MetadataType_METADATA_TYPE_STRING},
+					"env": {DeclaredType: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 				},
 			}, nil
 		}).AnyTimes()
@@ -69,7 +69,7 @@ func TestHandleGetMetadataSchema_BackendError(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetMetadataSchemaStatus(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
-			return nil, commonpb.ErrNoLeader
+			return nil, ledgerpb.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

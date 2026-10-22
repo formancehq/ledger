@@ -19,12 +19,12 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
@@ -179,7 +179,7 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	}
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, callerConn.Close()) })
-	request := actions.WithIdempotencyKey("one-logical-transaction", actions.CreateTransactionAction("L", []*commonpb.Posting{commonpb.NewPosting("world", "user", "USD", big.NewInt(10))}, nil, nil))
+	request := actions.WithIdempotencyKey("one-logical-transaction", actions.CreateTransactionAction("L", []*ledgerpb.Posting{ledgerpb.NewPosting("world", "user", "USD", big.NewInt(10))}, nil, nil))
 	type result struct {
 		response *servicepb.ApplyResponse
 		err      error

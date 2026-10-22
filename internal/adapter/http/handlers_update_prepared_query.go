@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -44,13 +46,18 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	target, err := parsePreparedQueryTarget(*body.Target)
-	if err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", err)
-
-		return
-	}
-	filter, err := filterexpr.DecodeDualFormatStructuralOnly(body.Filter, target)
+	// The update request carries only the new filter, not the target: the target
+	// is immutable and lives on the stored prepared query, which this handler
+	// does not read. Per-target filter validity is therefore enforced against the
+	// stored target by the FSM (processUpdatePreparedQuery →
+	// domain.ValidateFilterForTarget), the only layer that sees it — so an update
+	// cannot smuggle in a condition invalid for the query's target (EN-1504).
+	// This handler stays purely structural: it accepts either the structured v2
+	// JSON DSL or a JSON-quoted textual filterexpr expression (EN-1511) and defers
+	// the target gate to the FSM. Bare-field resolution uses a non-audit target
+	// (EN-1549): prepared queries are only ever ACCOUNTS/TRANSACTIONS/LOGS, all of
+	// which resolve the bare intrinsic fields identically.
+	filter, err := filterexpr.DecodeDualFormatStructuralOnly(body.Filter, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 

@@ -3,8 +3,8 @@ package processing
 import (
 	"errors"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -14,7 +14,7 @@ import (
 // (notably *state.ErrCoverageMiss) propagates verbatim so the FSM rejects it
 // without auditing a storage fault (EN-1379); any other
 // error wraps into ErrStorageOperation. Mirrors the loadLedger pattern.
-func lookupPreparedQuery(s Scope, ledger, name string) (commonpb.PreparedQueryReader, domain.Describable) {
+func lookupPreparedQuery(s Scope, ledger, name string) (ledgerpb.PreparedQueryReader, domain.SerializableError) {
 	pq, err := s.PreparedQueries().Get(domain.PreparedQueryKey{LedgerName: ledger, Name: name})
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, nil
@@ -27,7 +27,7 @@ func lookupPreparedQuery(s Scope, ledger, name string) (commonpb.PreparedQueryRe
 	return pq, nil
 }
 
-func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQueryOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
 	s := ctx.Scope
 	// Validate payload BEFORE loading the ledger. After moving `ledger` off
 	// `PreparedQuery` onto the surrounding request (PR #522), a malformed
@@ -74,9 +74,9 @@ func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQu
 
 	s.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: q.GetName()}, q)
 
-	return &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreatedPreparedQuery{
-			CreatedPreparedQuery: &commonpb.CreatedPreparedQueryLog{
+	return &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_CreatedPreparedQuery{
+			CreatedPreparedQuery: &ledgerpb.CreatedPreparedQueryLog{
 				Ledger: ledger,
 				Query:  q,
 			},
@@ -84,7 +84,7 @@ func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQu
 	}, nil
 }
 
-func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQueryOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
 	s := ctx.Scope
 	if err := domain.ValidatePreparedQueryName(order.GetName()); err != nil {
 		return nil, err
@@ -137,14 +137,19 @@ func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQu
 		log.NewTarget = target.Enum()
 	}
 
-	return &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_UpdatedPreparedQuery{
-			UpdatedPreparedQuery: log,
+	return &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_UpdatedPreparedQuery{
+			UpdatedPreparedQuery: &ledgerpb.UpdatedPreparedQueryLog{
+				Ledger:         ledger,
+				Name:           order.GetName(),
+				PreviousFilter: previousFilter,
+				NewFilter:      order.GetFilter(),
+			},
 		},
 	}, nil
 }
 
-func processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+func processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQueryOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
 	s := ctx.Scope
 	if err := domain.ValidatePreparedQueryName(order.GetName()); err != nil {
 		return nil, err
@@ -170,9 +175,9 @@ func processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQu
 		return nil, domain.StoreFailure("deleting prepared query", err)
 	}
 
-	return &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_DeletedPreparedQuery{
-			DeletedPreparedQuery: &commonpb.DeletedPreparedQueryLog{
+	return &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_DeletedPreparedQuery{
+			DeletedPreparedQuery: &ledgerpb.DeletedPreparedQueryLog{
 				Ledger: ledger,
 				Name:   order.GetName(),
 			},

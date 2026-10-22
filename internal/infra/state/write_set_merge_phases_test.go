@@ -5,9 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -34,6 +34,6 @@ func TestAnnotateLogsKeepsOrderSlotsAcrossReplay(t *testing.T) {
 		{Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{CreatedLog: fresh}},
 	})
 	require.NoError(t, err)
-	require.Equal(t, []*commonpb.Log{fresh}, logs)
-	require.Equal(t, []*commonpb.TouchedVolume{{Account: "created", Asset: "USD"}}, fresh.GetPayload().GetApply().GetLog().GetNewKeptVolumes())
+	require.Equal(t, []*ledgerpb.Log{fresh}, logs)
+	require.Equal(t, []*ledgerpb.TouchedVolume{{Account: "created", Asset: "USD"}}, fresh.GetPayload().GetApply().GetLog().GetNewKeptVolumes())
 }

@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -26,8 +26,8 @@ func TestPredictSkippedLogPreservesAccountTypeName(t *testing.T) {
 	require.Equal(t, name, req.GetApply().GetAction().GetRemoveAccountType().GetName(), "model lookup keeps the raw identifier")
 }
 
-func skipRequest(req *servicepb.Request, reason commonpb.ErrorReason) *servicepb.Request {
-	req.GetApply().SkippableReasons = []commonpb.ErrorReason{reason}
+func skipRequest(req *servicepb.Request, reason ledgerpb.ErrorReason) *servicepb.Request {
+	req.GetApply().SkippableReasons = []ledgerpb.ErrorReason{reason}
 
 	return req
 }
@@ -37,7 +37,7 @@ func TestApplySkipsReferenceConflictAndContinues(t *testing.T) {
 	first := NewGlobalState().Apply(bulkOf(oracletest.TxReqRefL("L", "ref", "world", "a", "USD", 5)))
 	require.True(t, first.OK)
 	before := first.State.Fingerprint()
-	batch := keyedBulk("skip", skipRequest(oracletest.TxReqRefL("L", "ref", "world", "a", "USD", 99), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT), oracletest.TxReq("world", "a", "USD", 2))
+	batch := keyedBulk("skip", skipRequest(oracletest.TxReqRefL("L", "ref", "world", "a", "USD", 99), ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT), oracletest.TxReq("world", "a", "USD", 2))
 	got := first.State.Apply(batch)
 	require.True(t, got.OK, got.Reason)
 	require.Equal(t, before, first.State.Fingerprint(), "fork must not mutate its predecessor")
@@ -56,7 +56,7 @@ func TestApplySkipsReferenceConflictAndContinues(t *testing.T) {
 
 func TestApplySkippableAdmissionPrecedesBusinessFailure(t *testing.T) {
 	t.Parallel()
-	for _, reason := range []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND} {
+	for _, reason := range []ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED, ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND} {
 		t.Run(reason.String(), func(t *testing.T) {
 			t.Parallel()
 			bad := skipRequest(oracletest.TxReq("world", "a", "USD", 1), reason)
@@ -75,7 +75,7 @@ func TestApplySkippedOrderStillRollsBackWithLaterFailure(t *testing.T) {
 	require.True(t, first.OK)
 	got := first.State.Apply(bulkOf(
 		oracletest.TxReq("world", "a", "USD", 3),
-		skipRequest(oracletest.TxReqRefL("L", "ref", "world", "a", "USD", 99), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT),
+		skipRequest(oracletest.TxReqRefL("L", "ref", "world", "a", "USD", 99), ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT),
 		oracletest.RemoveTypeReq("absent"),
 	))
 	require.False(t, got.OK)
@@ -87,7 +87,7 @@ func TestApplySkippedOrderStillRollsBackWithLaterFailure(t *testing.T) {
 func TestApplySkippableOptInDoesNotSkipAnotherFailure(t *testing.T) {
 	t.Parallel()
 	base := NewGlobalState()
-	got := base.Apply(bulkOf(skipRequest(oracletest.TxReq("a", "b", "USD", 3), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)))
+	got := base.Apply(bulkOf(skipRequest(oracletest.TxReq("a", "b", "USD", 3), ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)))
 	require.False(t, got.OK)
 	require.Equal(t, "INSUFFICIENT_FUNDS", got.Reason)
 	require.Equal(t, base.Fingerprint(), got.State.Fingerprint())
@@ -96,12 +96,12 @@ func TestApplySkippableOptInDoesNotSkipAnotherFailure(t *testing.T) {
 func TestSkippedLogPayloadPinsReasonAndCorrelators(t *testing.T) {
 	t.Parallel()
 	base := NewGlobalState().Apply(bulkOf(oracletest.TxReqRefL("L", "ref", "world", "a", "USD", 5))).State
-	result := base.Apply(bulkOf(skipRequest(oracletest.TxReqRefL("L", "ref", "world", "a", "USD", 1), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)))
+	result := base.Apply(bulkOf(skipRequest(oracletest.TxReqRefL("L", "ref", "world", "a", "USD", 1), ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)))
 	require.True(t, result.OK)
 	expected := result.State.Ledger("L").LogRows()[1]
-	served := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{
+	served := &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &ledgerpb.OrderSkippedLog{
 
-		Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L", "reference": "ref", "existingTransactionId": "1"}),
+		Details: ledgerpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L", "reference": "ref", "existingTransactionId": "1"}),
 	}}}
 	require.Equal(t, expected.Payload, CanonicalServedLogPayload(served))
 	otherID := uint64(2)
@@ -109,6 +109,6 @@ func TestSkippedLogPayloadPinsReasonAndCorrelators(t *testing.T) {
 	require.NotEqual(t, expected.Payload, CanonicalServedLogPayload(served))
 	originalID := uint64(1)
 	served.GetOrderSkipped().GetDetails().GetTransactionReferenceConflict().ExistingTransactionId = &originalID
-	served.GetOrderSkipped().Details = commonpb.MustFailureDetails("TRANSACTION_ALREADY_REVERTED", map[string]string{"transactionId": "1"})
+	served.GetOrderSkipped().Details = ledgerpb.MustFailureDetails("TRANSACTION_ALREADY_REVERTED", map[string]string{"transactionId": "1"})
 	require.NotEqual(t, expected.Payload, CanonicalServedLogPayload(served))
 }

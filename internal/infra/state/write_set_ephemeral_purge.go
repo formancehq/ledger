@@ -3,10 +3,10 @@ package state
 import (
 	"fmt"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -108,7 +108,7 @@ func (b *WriteSet) partitionVolumes(
 		}
 
 		switch matched.GetPersistence() {
-		case commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
+		case ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
 			// A defined Old means a persisted row exists from before the
 			// transient pattern started matching the account (funded under a
 			// default-normal policy — its balance may already sit at zero,
@@ -128,7 +128,7 @@ func (b *WriteSet) partitionVolumes(
 				result.transient = append(result.transient, update)
 			}
 
-		case commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL:
+		case ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL:
 			if isVolumeZeroBalance(update.New) {
 				result.purged = append(result.purged, update)
 			} else {

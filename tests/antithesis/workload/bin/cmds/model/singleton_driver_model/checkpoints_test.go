@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 )
@@ -72,7 +72,7 @@ func TestCheckpointCapturesCommitOrderInsteadOfResponseOrder(t *testing.T) {
 	second := c.registerInflight(create)
 	third := c.registerInflight(after)
 	c.handleObservation(observation{ticket: third, bulk: after, resp: afterResponse, observeTicket: third})
-	c.handleObservation(observation{ticket: second, bulk: create, resp: &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 11, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: 1, MaxSequence: 10}}}}}}, observeTicket: third})
+	c.handleObservation(observation{ticket: second, bulk: create, resp: &servicepb.ApplyResponse{Logs: []*ledgerpb.Log{{Sequence: 11, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{CheckpointId: 1, MaxSequence: 10}}}}}}, observeTicket: third})
 	require.Empty(t, c.checkpoints, "an observed but undrained creation cannot be read")
 	c.handleObservation(observation{ticket: first, bulk: before, resp: beforeResponse, observeTicket: third})
 	require.Len(t, c.checkpoints, 1)
@@ -142,17 +142,17 @@ func TestPredictedCheckpointRejectsTombstonedLedger(t *testing.T) {
 		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
 	}}))
 	require.True(t, deleted.OK)
-	require.False(t, predictedCheckpointLedgerMatches(deleted.State, "L", &commonpb.LedgerInfo{}))
+	require.False(t, predictedCheckpointLedgerMatches(deleted.State, "L", &ledgerpb.LedgerInfo{}))
 }
 
-func checkpointMetadata(value string) map[string]*commonpb.MetadataValue {
-	return map[string]*commonpb.MetadataValue{"phase": {Type: &commonpb.MetadataValue_StringValue{StringValue: value}}}
+func checkpointMetadata(value string) map[string]*ledgerpb.MetadataValue {
+	return map[string]*ledgerpb.MetadataValue{"phase": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: value}}}
 }
 
 func checkpointMetadataWrite(value string, sequence uint64) (oracleBulk oracle.Bulk, response *servicepb.ApplyResponse) {
 	md := checkpointMetadata(value)
 
-	return bulkOf(&servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{Ledger: "L", Metadata: md}}}), &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: sequence, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_SavedLedgerMetadata{SavedLedgerMetadata: &commonpb.SavedLedgerMetadataLog{Ledger: "L", Metadata: md}}}}}}
+	return bulkOf(&servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{Ledger: "L", Metadata: md}}}), &servicepb.ApplyResponse{Logs: []*ledgerpb.Log{{Sequence: sequence, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_SavedLedgerMetadata{SavedLedgerMetadata: &ledgerpb.SavedLedgerMetadataLog{Ledger: "L", Metadata: md}}}}}}
 }
 
 func TestCheckpointDeletionRetainsFrozenSnapshotWithoutChangingReaders(t *testing.T) {
@@ -164,7 +164,7 @@ func TestCheckpointDeletionRetainsFrozenSnapshotWithoutChangingReaders(t *testin
 	c.validateBulkSuccess(create, checkpointCreateResponse(11, 1))
 	frozen := c.checkpoints[1]
 	del := bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: 1}}})
-	c.validateBulkSuccess(del, &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 12, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: 1}}}}}})
+	c.validateBulkSuccess(del, &servicepb.ApplyResponse{Logs: []*ledgerpb.Log{{Sequence: 12, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &ledgerpb.DeletedQueryCheckpointLog{CheckpointId: 1}}}}}})
 	require.Empty(t, c.checkpoints)
 	require.Equal(t, []uint64{1}, c.deletedCheckpoints)
 	require.True(t, ledgerMetaMatches(c.deletedCheckpointSnapshots[1].state.Ledger("L"), checkpointMetadata("frozen")))
@@ -188,7 +188,7 @@ func TestCheckpointReplayMustPreserveIdentityAndFrontier(t *testing.T) {
 }
 
 func checkpointCreateResponse(sequence, id uint64) *servicepb.ApplyResponse {
-	return &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: sequence, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: id, MaxSequence: sequence - 1}}}}}}
+	return &servicepb.ApplyResponse{Logs: []*ledgerpb.Log{{Sequence: sequence, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{CheckpointId: id, MaxSequence: sequence - 1}}}}}}
 }
 
 func TestDeletedCheckpointSnapshotsHaveBoundedRetention(t *testing.T) {
@@ -198,7 +198,7 @@ func TestDeletedCheckpointSnapshotsHaveBoundedRetention(t *testing.T) {
 	for id := uint64(1); id <= deletedCheckpointHistoryCap+1; id++ {
 		c.validateBulkSuccess(create, checkpointCreateResponse(id*2, id))
 		del := bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: id}}})
-		c.validateBulkSuccess(del, &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: id*2 + 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: id}}}}}})
+		c.validateBulkSuccess(del, &servicepb.ApplyResponse{Logs: []*ledgerpb.Log{{Sequence: id*2 + 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &ledgerpb.DeletedQueryCheckpointLog{CheckpointId: id}}}}}})
 	}
 	require.Len(t, c.deletedCheckpointSnapshots, deletedCheckpointHistoryCap)
 	require.Len(t, c.deletedCheckpoints, deletedCheckpointHistoryCap)

@@ -10,9 +10,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // buildGRPCError creates a gRPC status error with an ErrorInfo detail,
@@ -356,7 +356,7 @@ func TestDecode_ReasonFirst(t *testing.T) {
 func TestDecode_UnknownReasonFallsBackToCode(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
+	require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
 		domain.ReasonCode(unknownReason),
 		"precondition: the reason must be unknown to this build for the test to mean anything")
 
@@ -482,7 +482,7 @@ func TestFromStatusError_ReconstructedErrorIsNotItselfDescribable(t *testing.T) 
 	require.IsType(t, &apierr.Remote{}, d, "errors.AsType must unwrap to the decoded remote failure")
 }
 
-// TestFromStatusError_BareNotFound covers the ~20 commonpb.NewNotFoundError
+// TestFromStatusError_BareNotFound covers the ~20 ledgerpb.NewNotFoundError
 // sites, which send a bare codes.NotFound with no ErrorInfo. Without this the
 // forwarded lookup miss degrades to a 500.
 func TestFromStatusError_BareNotFound(t *testing.T) {
@@ -490,8 +490,8 @@ func TestFromStatusError_BareNotFound(t *testing.T) {
 
 	converted := FromStatusError(status.Error(codes.NotFound, "ledger foo not found"))
 
-	notFound, ok := errors.AsType[*commonpb.NotFoundError](converted)
-	require.True(t, ok, "handleError dispatches on *commonpb.NotFoundError for its 404 branch")
+	notFound, ok := errors.AsType[*ledgerpb.NotFoundError](converted)
+	require.True(t, ok, "handleError dispatches on *ledgerpb.NotFoundError for its 404 branch")
 	require.Equal(t, "ledger foo not found", notFound.Error())
 	require.Equal(t, codes.NotFound, status.Code(converted), "the code must survive")
 }
@@ -543,9 +543,9 @@ func TestFromStatusError_NonStatusErrors(t *testing.T) {
 // service is not ours to reinterpret.
 //
 // codes.NotFound is the row that matters. The bare-NotFound fallback exists
-// for the ~20 commonpb.NewNotFoundError sites, which carry no detail at all;
+// for the ~20 ledgerpb.NewNotFoundError sites, which carry no detail at all;
 // applied to a foreign typed failure it rewrote that service's contract into a
-// ledger *commonpb.NotFoundError, which is exactly what the domain check
+// ledger *ledgerpb.NotFoundError, which is exactly what the domain check
 // upstream of it declined to do.
 func TestFromStatusError_ForeignErrorDomain(t *testing.T) {
 	t.Parallel()
@@ -578,7 +578,7 @@ func TestFromStatusError_ForeignErrorDomain(t *testing.T) {
 			original := detailed.Err()
 			require.Equal(t, original, FromStatusError(original))
 
-			_, isNotFound := errors.AsType[*commonpb.NotFoundError](FromStatusError(original))
+			_, isNotFound := errors.AsType[*ledgerpb.NotFoundError](FromStatusError(original))
 			require.False(t, isNotFound,
 				"a foreign service's typed failure must not become a ledger NotFoundError")
 		})
@@ -635,14 +635,14 @@ func TestFromStatusError_CanceledWithUnknownReasonKeepsItsCode(t *testing.T) {
 
 // enumReasons returns every reason this build's ErrorReason enum knows,
 // excluding UNSPECIFIED (which is the "unknown reason" signal, not a reason).
-func enumReasons(t *testing.T) map[commonpb.ErrorReason]string {
+func enumReasons(t *testing.T) map[ledgerpb.ErrorReason]string {
 	t.Helper()
 
-	reasons := make(map[commonpb.ErrorReason]string, len(commonpb.ErrorReason_name))
+	reasons := make(map[ledgerpb.ErrorReason]string, len(ledgerpb.ErrorReason_name))
 
-	for value := range commonpb.ErrorReason_name {
-		code := commonpb.ErrorReason(value)
-		if code == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
+	for value := range ledgerpb.ErrorReason_name {
+		code := ledgerpb.ErrorReason(value)
+		if code == ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
 			continue
 		}
 
@@ -750,7 +750,7 @@ func TestDecode_InvalidReasonCodePairIsRejected(t *testing.T) {
 // the Reason() spelling of ERROR_REASON_UNSPECIFIED. No Describable carries it
 // (domain.TestEveryDomainErrorImplementsDescribable), so describableToGRPCStatus
 // cannot stamp it and a status carrying it did not come from a ledger server.
-var unspecifiedReason = domain.ReasonString(commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
+var unspecifiedReason = domain.ReasonString(ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
 
 // TestDecode_ExplicitUnspecifiedReasonIsRejected separates the two conditions
 // domain.ReasonCode collapses onto the zero value. A name this build's enum
@@ -767,7 +767,7 @@ func TestDecode_ExplicitUnspecifiedReasonIsRejected(t *testing.T) {
 
 	rc, known := domain.LookupReasonCode(unspecifiedReason)
 	require.True(t, known, "precondition: the sentinel is a name the enum declares")
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, rc)
+	require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED, rc)
 
 	_, knownUnknown := domain.LookupReasonCode(unknownReason)
 	require.False(t, knownUnknown, "precondition: a reason from a newer server is absent from the enum")

@@ -5,8 +5,8 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -53,7 +53,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	pgn := cmdutil.GetPaginationFlags(cmd)
 	cns := cmdutil.GetConsistencyFlags(cmd)
 
-	fetchPage := func(cur string) ([]*commonpb.NumscriptInfo, metadata.MD, error) {
+	fetchPage := func(cur string) ([]*ledgerpb.NumscriptInfo, metadata.MD, error) {
 		page := pgn
 		page.Cursor = cur
 

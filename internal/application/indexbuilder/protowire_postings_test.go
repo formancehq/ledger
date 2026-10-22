@@ -5,22 +5,22 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
-func makeCreatedTxLog(seq uint64, ledger string, txID uint64, postings []*commonpb.Posting) *commonpb.Log {
-	return &commonpb.Log{
+func makeCreatedTxLog(seq uint64, ledger string, txID uint64, postings []*ledgerpb.Posting) *ledgerpb.Log {
+	return &ledgerpb.Log{
 		Sequence: seq,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: &commonpb.LedgerLog{
+					Log: &ledgerpb.LedgerLog{
 						Id: 1,
-						Data: &commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: &commonpb.Transaction{
+						Data: &ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &ledgerpb.CreatedTransaction{
+									Transaction: &ledgerpb.Transaction{
 										Id:       txID,
 										Postings: postings,
 									},
@@ -34,20 +34,20 @@ func makeCreatedTxLog(seq uint64, ledger string, txID uint64, postings []*common
 	}
 }
 
-func makeRevertedTxLog(seq uint64, ledger string, revertedTxID, revertTxID uint64, postings []*commonpb.Posting) *commonpb.Log {
-	return &commonpb.Log{
+func makeRevertedTxLog(seq uint64, ledger string, revertedTxID, revertTxID uint64, postings []*ledgerpb.Posting) *ledgerpb.Log {
+	return &ledgerpb.Log{
 		Sequence: seq,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: &commonpb.LedgerLog{
+					Log: &ledgerpb.LedgerLog{
 						Id: 2,
-						Data: &commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-								RevertedTransaction: &commonpb.RevertedTransaction{
+						Data: &ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+								RevertedTransaction: &ledgerpb.RevertedTransaction{
 									RevertedTransactionId: revertedTxID,
-									RevertTransaction: &commonpb.Transaction{
+									RevertTransaction: &ledgerpb.Transaction{
 										Id:       revertTxID,
 										Postings: postings,
 									},
@@ -61,12 +61,12 @@ func makeRevertedTxLog(seq uint64, ledger string, revertedTxID, revertTxID uint6
 	}
 }
 
-func makeDeleteLedgerLog(seq uint64, name string) *commonpb.Log {
-	return &commonpb.Log{
+func makeDeleteLedgerLog(seq uint64, name string) *ledgerpb.Log {
+	return &ledgerpb.Log{
 		Sequence: seq,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_DeleteLedger{
-				DeleteLedger: &commonpb.DeletedLedgerLog{Name: name},
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_DeleteLedger{
+				DeleteLedger: &ledgerpb.DeletedLedgerLog{Name: name},
 			},
 		},
 	}
@@ -75,9 +75,9 @@ func makeDeleteLedgerLog(seq uint64, name string) *commonpb.Log {
 func TestParsePostingsFromLog_CreatedTransaction(t *testing.T) {
 	t.Parallel()
 
-	log := makeCreatedTxLog(42, "default", 100, []*commonpb.Posting{
-		{Source: "users:alice", Destination: "orders:1234", Amount: &commonpb.Uint256{V0: 1000}, Asset: "USD"},
-		{Source: "orders:1234", Destination: "merchants:bob", Amount: &commonpb.Uint256{V0: 900}, Asset: "USD"},
+	log := makeCreatedTxLog(42, "default", 100, []*ledgerpb.Posting{
+		{Source: "users:alice", Destination: "orders:1234", Amount: &ledgerpb.Uint256{V0: 1000}, Asset: "USD"},
+		{Source: "orders:1234", Destination: "merchants:bob", Amount: &ledgerpb.Uint256{V0: 900}, Asset: "USD"},
 	})
 
 	data, err := log.MarshalVT()
@@ -102,8 +102,8 @@ func TestParsePostingsFromLog_CreatedTransaction(t *testing.T) {
 func TestParsePostingsFromLog_RevertedTransaction(t *testing.T) {
 	t.Parallel()
 
-	log := makeRevertedTxLog(55, "prod", 10, 200, []*commonpb.Posting{
-		{Source: "merchants:bob", Destination: "users:alice", Amount: &commonpb.Uint256{V0: 1000}, Asset: "USD"},
+	log := makeRevertedTxLog(55, "prod", 10, 200, []*ledgerpb.Posting{
+		{Source: "merchants:bob", Destination: "users:alice", Amount: &ledgerpb.Uint256{V0: 1000}, Asset: "USD"},
 	})
 
 	data, err := log.MarshalVT()
@@ -125,17 +125,17 @@ func TestParsePostingsFromLog_NonDataLog(t *testing.T) {
 	t.Parallel()
 
 	// CreateIndex is a config mutation — should be skipped (LogType=0).
-	log := &commonpb.Log{
+	log := &ledgerpb.Log{
 		Sequence: 10,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: "default",
-					Log: &commonpb.LedgerLog{
+					Log: &ledgerpb.LedgerLog{
 						Id: 1,
-						Data: &commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreateIndex{
-								CreateIndex: &commonpb.CreatedIndexLog{},
+						Data: &ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_CreateIndex{
+								CreateIndex: &ledgerpb.CreatedIndexLog{},
 							},
 						},
 					},
@@ -179,11 +179,11 @@ func TestParsePostingsFromLog_NonApplyLog(t *testing.T) {
 	t.Parallel()
 
 	// CreateLedger is a non-apply log type.
-	log := &commonpb.Log{
+	log := &ledgerpb.Log{
 		Sequence: 5,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreatedLedgerLog{},
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_CreateLedger{
+				CreateLedger: &ledgerpb.CreatedLedgerLog{},
 			},
 		},
 	}
@@ -220,9 +220,9 @@ func TestParsePostingsFromLog_EmptyPostings(t *testing.T) {
 func TestParsePostingsFromLog_SliceReuse(t *testing.T) {
 	t.Parallel()
 
-	log1 := makeCreatedTxLog(1, "test", 1, []*commonpb.Posting{
-		{Source: "a", Destination: "b", Amount: &commonpb.Uint256{V0: 100}, Asset: "USD"},
-		{Source: "c", Destination: "d", Amount: &commonpb.Uint256{V0: 200}, Asset: "EUR"},
+	log1 := makeCreatedTxLog(1, "test", 1, []*ledgerpb.Posting{
+		{Source: "a", Destination: "b", Amount: &ledgerpb.Uint256{V0: 100}, Asset: "USD"},
+		{Source: "c", Destination: "d", Amount: &ledgerpb.Uint256{V0: 200}, Asset: "EUR"},
 	})
 
 	data1, err := log1.MarshalVT()
@@ -233,8 +233,8 @@ func TestParsePostingsFromLog_SliceReuse(t *testing.T) {
 	require.Len(t, parsed.Postings, 2)
 
 	// Second parse with fewer postings should still work and reuse the backing array.
-	log2 := makeCreatedTxLog(2, "test", 2, []*commonpb.Posting{
-		{Source: "x", Destination: "y", Amount: &commonpb.Uint256{V0: 300}, Asset: "GBP"},
+	log2 := makeCreatedTxLog(2, "test", 2, []*ledgerpb.Posting{
+		{Source: "x", Destination: "y", Amount: &ledgerpb.Uint256{V0: 300}, Asset: "GBP"},
 	})
 
 	data2, err := log2.MarshalVT()
@@ -247,10 +247,10 @@ func TestParsePostingsFromLog_SliceReuse(t *testing.T) {
 }
 
 func BenchmarkParsePostings(b *testing.B) {
-	postings := []*commonpb.Posting{
-		{Source: "users:alice", Destination: "orders:1234", Amount: &commonpb.Uint256{V0: 1000}, Asset: "USD/2"},
-		{Source: "orders:1234", Destination: "merchants:bob", Amount: &commonpb.Uint256{V0: 900}, Asset: "USD/2"},
-		{Source: "merchants:bob", Destination: "fees:platform", Amount: &commonpb.Uint256{V0: 100}, Asset: "USD/2"},
+	postings := []*ledgerpb.Posting{
+		{Source: "users:alice", Destination: "orders:1234", Amount: &ledgerpb.Uint256{V0: 1000}, Asset: "USD/2"},
+		{Source: "orders:1234", Destination: "merchants:bob", Amount: &ledgerpb.Uint256{V0: 900}, Asset: "USD/2"},
+		{Source: "merchants:bob", Destination: "fees:platform", Amount: &ledgerpb.Uint256{V0: 100}, Asset: "USD/2"},
 	}
 
 	log := makeCreatedTxLog(1, "default", 42, postings)
@@ -270,7 +270,7 @@ func BenchmarkParsePostings(b *testing.B) {
 	})
 
 	b.Run("UnmarshalVT+reset", func(b *testing.B) {
-		msg := &commonpb.Log{}
+		msg := &ledgerpb.Log{}
 
 		b.ReportAllocs()
 		b.ResetTimer()

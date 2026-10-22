@@ -7,7 +7,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -21,7 +21,7 @@ func inspectPageFixture(t *testing.T) (InspectParams, func(string) []byte) {
 	kb := dal.NewKeyBuilder()
 
 	encoded := func(v string) []byte {
-		return EncodeMetadataValue(nil, &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: v}})
+		return EncodeMetadataValue(nil, &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_StringValue{StringValue: v}})
 	}
 	put := func(value, entity string, seq uint64, op byte) {
 		require.NoError(t, s.DB().Set(
@@ -141,7 +141,7 @@ func TestInspectIndex_CapsPageSize(t *testing.T) {
 
 	batch := s.DB().NewBatch()
 	for i := range MaxInspectPageSize + 1 {
-		value := EncodeMetadataValue(nil, &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: fmt.Sprintf("v%06d", i)}})
+		value := EncodeMetadataValue(nil, &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_StringValue{StringValue: fmt.Sprintf("v%06d", i)}})
 		require.NoError(t, batch.Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, value, []byte("a:1"), 10, MetadataEventAdd), nil, nil))
 	}
 	require.NoError(t, batch.Commit(pebble.NoSync))

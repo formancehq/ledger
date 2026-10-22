@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -96,7 +96,7 @@ func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, []Mal
 
 // ReadSigningKeysCursor returns a cursor over all registered signing keys.
 // The number of keys is always small, so we load them all and use a slice cursor.
-func ReadSigningKeysCursor(ctx context.Context, reader dal.PebbleReader) (cursor.Cursor[*commonpb.SigningKey], error) {
+func ReadSigningKeysCursor(ctx context.Context, reader dal.PebbleReader) (cursor.Cursor[*ledgerpb.SigningKey], error) {
 	_, span := queryTracer.Start(ctx, "query.list_signing_keys")
 	defer span.End()
 
@@ -108,9 +108,9 @@ func ReadSigningKeysCursor(ctx context.Context, reader dal.PebbleReader) (cursor
 		return nil, err
 	}
 
-	items := make([]*commonpb.SigningKey, 0, len(keys))
+	items := make([]*ledgerpb.SigningKey, 0, len(keys))
 	for keyID, entry := range keys {
-		items = append(items, &commonpb.SigningKey{
+		items = append(items, &ledgerpb.SigningKey{
 			KeyId:       keyID,
 			PublicKey:   entry.PublicKey,
 			ParentKeyId: entry.ParentKeyID,

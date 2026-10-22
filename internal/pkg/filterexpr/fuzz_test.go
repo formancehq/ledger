@@ -3,7 +3,7 @@ package filterexpr
 import (
 	"testing"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // FuzzFilterExprParse fuzzes the filter expression DSL parser.

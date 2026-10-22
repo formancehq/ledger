@@ -7,7 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 )
@@ -196,7 +196,7 @@ type pendingObservation struct {
 // records the identical declared types at creation (populateInitialSchema), so
 // the model's schema state matches the server's from the first bulk. They are
 // seeded rather than applied: at creation they produce no ledger log.
-func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadataFieldTypeCommand) *Checker {
+func NewChecker(ledgerNames []string, schemas map[string][]*ledgerpb.SetMetadataFieldTypeCommand) *Checker {
 	modelState := oracle.NewGlobalState()
 	for _, ledger := range ledgerNames {
 		// setupLedgers created these outside the modeled Apply stream. Seed their
@@ -482,7 +482,7 @@ type committedBulk struct {
 
 // recordCommittedBulk remembers the boundaries a bulk committed at. Caller holds
 // c.mu.
-func (c *Checker) recordCommittedBulk(bulk oracle.Bulk, logs []*commonpb.Log) {
+func (c *Checker) recordCommittedBulk(bulk oracle.Bulk, logs []*ledgerpb.Log) {
 	var minSeq, maxSeq uint64
 
 	for _, l := range logs {
@@ -575,7 +575,7 @@ func requestLogKind(req *servicepb.Request) string {
 
 // learnLedgerLogSequences records the sequences of a committed bulk's logs
 // that carry no ledger-local id. Caller holds c.mu.
-func (c *Checker) learnLedgerLogSequences(bulk oracle.Bulk, logs []*commonpb.Log) {
+func (c *Checker) learnLedgerLogSequences(bulk oracle.Bulk, logs []*ledgerpb.Log) {
 	for i, req := range bulk.Requests {
 		if i >= len(logs) {
 			break
