@@ -1,6 +1,6 @@
 set dotenv-load
 
-pre-commit: fuzz-inventory-check generate generate-proto check-public-client test-rpcauth-generator operator-generate test-dashboards tidy lint
+pre-commit: fuzz-inventory-check generate generate-proto generate-public-client test-rpcauth-generator operator-generate test-dashboards tidy lint
 pc: pre-commit
 
 # Compare the service contract with the current PR or merge-queue target.
