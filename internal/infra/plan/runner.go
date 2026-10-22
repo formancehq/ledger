@@ -140,7 +140,7 @@ func (p *Builder) Run(
 	}
 
 	// Guarantee a unique command ID. The applier keys FSM futures by
-	// `cmd.Id` (`node.NewProposal(cmd.GetId(), data)` below); two in-flight
+	// `cmd.Id` (`node.NewProposal(cmd.GetId(), data, required)` below); two in-flight
 	// proposals sharing Id=0 would overwrite each other in
 	// `Applier.StoreFuture`, hanging one waiter and routing the apply
 	// result to the wrong caller. Several technical callers build
@@ -171,7 +171,8 @@ func (p *Builder) Run(
 	}
 
 	cmd.ExecutionPlan = build.ExecutionPlan
-	if err := capabilities.StampProposal(cmd); err != nil {
+	required, err := capabilities.PrepareProposal(cmd)
+	if err != nil {
 		build.ReleaseLoaders()
 
 		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
@@ -217,7 +218,8 @@ func (p *Builder) Run(
 		// possibly values.
 		result.Rebuilt = true
 		cmd.ExecutionPlan = updatedPreloads
-		if err := capabilities.StampProposal(cmd); err != nil {
+		required, err = capabilities.PrepareProposal(cmd)
+		if err != nil {
 			guard.ReleaseAll()
 
 			return nil, fmt.Errorf("%w (under guard): %w", ErrMarshalProposal, err)
@@ -241,14 +243,7 @@ func (p *Builder) Run(
 		data = AppendProposalPredictedIndex(data, cmd.GetPredictedIndex())
 	}
 
-	proposal := node.NewProposal(cmd.GetId(), data)
-	required, err := capabilities.RequiredCapabilities(cmd)
-	if err != nil {
-		guard.ReleaseAll()
-
-		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
-	}
-	proposal.RequireCapabilities(required...)
+	proposal := node.NewProposal(cmd.GetId(), data, required)
 
 	result.ProposeStartTime = time.Now()
 	fsmFuture, err := proposer.Propose(ctx, proposal)
@@ -351,7 +346,8 @@ func (p *Builder) runWithoutPreload(
 	} else {
 		cmd.ExecutionPlan = nil
 	}
-	if err := capabilities.StampProposal(cmd); err != nil {
+	required, err := capabilities.PrepareProposal(cmd)
+	if err != nil {
 		build.ReleaseLoaders()
 
 		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
@@ -379,14 +375,7 @@ func (p *Builder) runWithoutPreload(
 	cmd.PredictedIndex = p.TrackerNext()
 	data = AppendProposalPredictedIndex(data, cmd.GetPredictedIndex())
 
-	proposal := node.NewProposal(cmd.GetId(), data)
-	required, err := capabilities.RequiredCapabilities(cmd)
-	if err != nil {
-		guard.ReleaseLoaders()
-
-		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
-	}
-	proposal.RequireCapabilities(required...)
+	proposal := node.NewProposal(cmd.GetId(), data, required)
 
 	proposeStart := time.Now()
 	fsmFuture, err := proposer.Propose(ctx, proposal)

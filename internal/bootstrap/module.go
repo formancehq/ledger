@@ -1558,7 +1558,7 @@ func tryRefreshMembership(ctx context.Context, cfg Config, tlsCfg TLSConfig, log
 	}
 }
 
-func capabilityIDsAsUint32(ids []capabilities.ID) []uint32 {
+func capabilityIDsAsUint32(ids []capabilities.CapabilityID) []uint32 {
 	result := make([]uint32, len(ids))
 	for i, id := range ids {
 		result[i] = uint32(id)
@@ -1689,7 +1689,7 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 	reconcileClusterPolicyWithRegistry(ctx, admission, store, cfg, isLeader, capabilities.SupportedIDs, readMembers, logger)
 }
 
-func reconcileClusterPolicyWithRegistry(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, readSupported func() []capabilities.ID, readMembers func() []capabilities.Member, logger logging.Logger) {
+func reconcileClusterPolicyWithRegistry(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, readSupported func() []capabilities.CapabilityID, readMembers func() []capabilities.Member, logger logging.Logger) {
 	if !isLeader() {
 		return
 	}

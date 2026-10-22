@@ -100,13 +100,11 @@ func TestNodeHookStopCancellationRetainsRealCommitDrain(t *testing.T) {
 	command.ExecutionPlan = &raftcmdpb.ExecutionPlan{Attributes: []*raftcmdpb.AttributeCoverage{{
 		Id: &raftcmdpb.AttributeID{Id: ledgerKey[:]}, AttrCode: uint32(dal.SubAttrLedger),
 	}}}
-	require.NoError(t, capabilities.StampProposal(command))
+	required, err := capabilities.PrepareProposal(command)
+	require.NoError(t, err)
 	data, err := command.MarshalVT()
 	require.NoError(t, err)
-	required, err := capabilities.RequiredCapabilities(command)
-	require.NoError(t, err)
-	proposal := node.NewProposal(command.GetId(), data)
-	proposal.RequireCapabilities(required...)
+	proposal := node.NewProposal(command.GetId(), data, required)
 	future, err := n.Propose(ctx, proposal)
 	require.NoError(t, err)
 	select {

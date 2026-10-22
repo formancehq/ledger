@@ -65,14 +65,7 @@ func (p capabilityPolicyProposer) Propose(ctx context.Context, proposal *node.Pr
 		return nil, err
 	}
 
-	final := new(raftcmdpb.Proposal)
-	if err := final.UnmarshalVT(proposal.Data()); err != nil {
-		return nil, fmt.Errorf("decode proposal for capability admission: %w", err)
-	}
-	required := make([]capabilities.ID, len(final.GetRequiredCapabilities()))
-	for i, id := range final.GetRequiredCapabilities() {
-		required[i] = capabilities.ID(id)
-	}
+	required := proposal.RequiredCapabilities()
 	var members []capabilities.Member
 	if p.readMembers != nil {
 		members = p.readMembers()
@@ -1071,20 +1064,16 @@ func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
 	// capability declaration before serialization. The no-op command created by
 	// commands.NewCommand carries an empty ExecutionPlan, which is itself a
 	// protocol dependency for replaying the envelope.
-	if err := capabilities.StampProposal(cmd); err != nil {
-		return 0, fmt.Errorf("stamping barrier capabilities: %w", err)
-	}
-	requiredCapabilities, err := capabilities.RequiredCapabilities(cmd)
+	required, err := capabilities.PrepareProposal(cmd)
 	if err != nil {
-		return 0, fmt.Errorf("deriving barrier capabilities: %w", err)
+		return 0, fmt.Errorf("stamping barrier capabilities: %w", err)
 	}
 	proposalData, err := a.marshalCommand(ctx, cmd)
 	if err != nil {
 		return 0, fmt.Errorf("marshaling barrier command: %w", err)
 	}
 
-	proposal := node.NewProposal(cmd.GetId(), proposalData)
-	proposal.RequireCapabilities(requiredCapabilities...)
+	proposal := node.NewProposal(cmd.GetId(), proposalData, required)
 
 	// Lock the tracker to serialize the Increment with guarded proposals,
 	// preventing preload boundary mismatches in the FSM.

@@ -1,8 +1,6 @@
 package node
 
 import (
-	"slices"
-
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 )
@@ -12,29 +10,26 @@ type Proposal struct {
 
 	commandID            uint64
 	data                 []byte
-	declaredCapabilities []capabilities.ID
+	requiredCapabilities []capabilities.CapabilityID
 }
 
-// RequireCapabilities records the producer declaration that must match the
-// final serialized proposal. It is intentionally separate from the bytes so a
-// plan rebuild cannot silently retain stale capability metadata.
-func (p *Proposal) RequireCapabilities(ids ...capabilities.ID) {
-	p.declaredCapabilities = slices.Clone(ids)
-}
-
-func (p *Proposal) DeclaredCapabilities() []capabilities.ID {
-	return slices.Clone(p.declaredCapabilities)
-}
-
-func NewProposal(commandID uint64, data []byte) *Proposal {
+func NewProposal(commandID uint64, data []byte, required []capabilities.CapabilityID) *Proposal {
 	return &Proposal{
-		commandID: commandID,
-		data:      data,
-		Future:    futures.New[any](),
+		commandID:            commandID,
+		data:                 data,
+		requiredCapabilities: append([]capabilities.CapabilityID(nil), required...),
+		Future:               futures.New[any](),
 	}
 }
 
 // Data returns the serialized proposal data.
 func (p *Proposal) Data() []byte {
 	return p.data
+}
+
+// RequiredCapabilities returns the capabilities derived by the producer from
+// the final command before it was serialized. Admission reuses this typed
+// value instead of decoding the serialized proposal a second time.
+func (p *Proposal) RequiredCapabilities() []capabilities.CapabilityID {
+	return append([]capabilities.CapabilityID(nil), p.requiredCapabilities...)
 }

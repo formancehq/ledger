@@ -14,12 +14,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-type ID uint32
+// CapabilityID is the stable numeric identity of a consensus capability.
+// The wire representation remains uint32 at protobuf and Raft JSON boundaries.
+type CapabilityID uint32
 
 // SupportedIDs is the immutable capability set implemented by this binary.
 // No protocol feature is activated yet; this empty registry keeps the
 // membership-evidence plumbing ready for the first real capability.
-func SupportedIDs() []ID {
+func SupportedIDs() []CapabilityID {
 	return nil
 }
 
@@ -35,11 +37,11 @@ type Member struct {
 	InstanceID   []byte
 	Role         MemberRole
 	Reachable    bool
-	Capabilities []ID
+	Capabilities []CapabilityID
 }
 
 type State struct {
-	Activations map[ID]bool
+	Activations map[CapabilityID]bool
 }
 
 type Blocker struct {
@@ -85,7 +87,7 @@ var (
 // contract so a producer cannot make a feature-specific payload appear safe by
 // omitting required_capabilities. Predicates inspect only replicated fields,
 // which makes the result deterministic on every member.
-func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]ID, error) {
+func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) {
 	if proposal == nil {
 		return nil, fmt.Errorf("%w: nil proposal", ErrInvalidDeclaration)
 	}
@@ -98,16 +100,26 @@ func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]ID, error) {
 // execution plan and immediately before marshaling; repeated calls are safe on
 // retry and rebuild paths.
 func StampProposal(proposal *raftcmdpb.Proposal) error {
+	_, err := PrepareProposal(proposal)
+
+	return err
+}
+
+// PrepareProposal derives and stamps the semantic capability declaration and
+// returns the typed result for the caller to pass alongside the serialized
+// proposal. Keeping the result avoids decoding the same proposal again during
+// admission.
+func PrepareProposal(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) {
 	required, err := RequiredCapabilities(proposal)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	proposal.RequiredCapabilities = make([]uint32, len(required))
 	for i, id := range required {
 		proposal.RequiredCapabilities[i] = uint32(id)
 	}
 
-	return nil
+	return required, nil
 }
 
 func (s State) Validate() error {
@@ -115,20 +127,20 @@ func (s State) Validate() error {
 }
 
 func FromPolicy(policy *commonpb.ClusterPolicy) State {
-	s := State{Activations: make(map[ID]bool)}
+	s := State{Activations: make(map[CapabilityID]bool)}
 	if policy == nil {
 		return s
 	}
 	for _, activation := range policy.GetCapabilityActivations() {
 		if activation != nil {
-			s.Activations[ID(activation.GetId())] = activation.GetActive()
+			s.Activations[CapabilityID(activation.GetId())] = activation.GetActive()
 		}
 	}
 
 	return s
 }
 
-func Normalize(ids []ID) ([]ID, error) {
+func Normalize(ids []CapabilityID) ([]CapabilityID, error) {
 	result := slices.Clone(ids)
 	slices.Sort(result)
 	for i := 1; i < len(result); i++ {
@@ -144,7 +156,7 @@ func Normalize(ids []ID) ([]ID, error) {
 // by every current cluster member. Membership evidence is the acknowledgement
 // recorded by JoinAsLearner/RefreshMembership; an empty member set is never
 // considered ready.
-func Ready(supported []ID, members []Member) ([]ID, error) {
+func Ready(supported []CapabilityID, members []Member) ([]CapabilityID, error) {
 	if len(members) == 0 {
 		return nil, nil
 	}
@@ -155,7 +167,7 @@ func Ready(supported []ID, members []Member) ([]ID, error) {
 	if err := ValidateMembers(members); err != nil {
 		return nil, err
 	}
-	ready := make([]ID, 0, len(supported))
+	ready := make([]CapabilityID, 0, len(supported))
 	for _, id := range supported {
 		acknowledged := true
 		for _, member := range members {
@@ -175,7 +187,7 @@ func Ready(supported []ID, members []Member) ([]ID, error) {
 // Evaluate is pure. Reachability is reported separately from support: a
 // temporarily unreachable voter is still a blocker for activation, while a
 // learner is included because it must replay every committed entry.
-func Evaluate(state State, required []ID, _ bool, members []Member) Decision {
+func Evaluate(state State, required []CapabilityID, _ bool, members []Member) Decision {
 	if err := state.Validate(); err != nil {
 		return Decision{Reason: err.Error()}
 	}
@@ -208,49 +220,4 @@ func Evaluate(state State, required []ID, _ bool, members []Member) Decision {
 	}
 
 	return Decision{Allowed: true, Blockers: blockers}
-}
-
-// ValidateFinalProposal proves that the declaration belongs to the bytes that
-// will be proposed. Callers must invoke it after rebuilding an execution plan.
-func ValidateFinalProposal(data []byte, declared []ID) error {
-	proposal := new(raftcmdpb.Proposal)
-	if err := proposal.UnmarshalVT(data); err != nil {
-		return fmt.Errorf("decode final proposal: %w", err)
-	}
-	expected, err := RequiredCapabilities(proposal)
-	if err != nil {
-		return err
-	}
-	wire := make([]ID, len(proposal.GetRequiredCapabilities()))
-	for i, id := range proposal.GetRequiredCapabilities() {
-		wire[i] = ID(id)
-	}
-	wire, err = Normalize(wire)
-	if err != nil {
-		return err
-	}
-	declared, err = Normalize(declared)
-	if err != nil {
-		return err
-	}
-	if !bytes.Equal(idsBytes(wire), idsBytes(expected)) {
-		return fmt.Errorf("%w: wire declaration does not match semantic payload", ErrMissingCapability)
-	}
-	if !bytes.Equal(idsBytes(wire), idsBytes(declared)) {
-		return fmt.Errorf("%w: declaration does not match final payload", ErrMissingCapability)
-	}
-
-	return nil
-}
-
-func idsBytes(ids []ID) []byte {
-	result := make([]byte, len(ids)*4)
-	for i, id := range ids {
-		result[i*4] = byte(id)
-		result[i*4+1] = byte(id >> 8)
-		result[i*4+2] = byte(id >> 16)
-		result[i*4+3] = byte(id >> 24)
-	}
-
-	return result
 }

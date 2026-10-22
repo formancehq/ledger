@@ -434,7 +434,7 @@ func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 		require.ErrorIs(t, runErr, injected)
 		_, err = h.n.GetClusterState(context.Background())
 		require.ErrorIs(t, err, injected)
-		_, err = h.n.Propose(context.Background(), NewProposal(100, []byte("must not be admitted")))
+		_, err = h.n.Propose(context.Background(), NewProposal(100, []byte("must not be admitted"), nil))
 		require.ErrorIs(t, err, injected)
 
 		_, restartedVoters := h.restartedState(t)
@@ -486,7 +486,7 @@ func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 		}()
 		require.Eventually(t, func() bool { return len(h.n.clusterCommandCh) == 1 }, time.Second, time.Millisecond)
 
-		proposal := NewProposal(101, []byte("queued before terminal publication"))
+		proposal := NewProposal(101, []byte("queued before terminal publication"), nil)
 		trackerBefore := h.n.indexTracker.Next()
 		h.n.indexTracker.Lock()
 		fsmFuture, err := h.n.Propose(context.Background(), proposal)
