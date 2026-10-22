@@ -2440,6 +2440,10 @@ ledgerctl audit list [flags]
 |------|---------|-------------|
 | `--expand` | `false` | Expand orders within each audit entry |
 
+Each entry's header line ends with its batch signing key (`signature=<keyId>`)
+or `unsigned`. With `--expand`, that marker moves to a line above the orders,
+together with the batch `idempotency=<key>` when one is set.
+
 Audit has **no dedicated filter flags** — there is no `--failures-only` and no
 `--ledger`. Selecting failures or scoping to a ledger is done through the generic
 `--filter` (e.g. `--filter 'outcome == failure'`,
@@ -2495,7 +2499,6 @@ full-chain scan.
 - By default, shows the order count summary; use `--expand` to show full order details
 - Below each entry, all orders are listed in a tree structure with:
   - Order type and details (ledger name, reference, etc.)
-  - Signing key ID used (`key=<id>`) or `unsigned` if the order was not signed
   - Consecutive identical orders are grouped compactly (e.g. `MirrorIngest x500`)
 - If audit is disabled on the server, a warning message is displayed instead of an error
 - After the page, the command prints the [page hints](#page-tokens): `Previous page — go back with --cursor <token>` when an earlier page exists and `More results available — resume with --cursor <token>` when a later one does
@@ -2543,12 +2546,20 @@ ledgerctl audit list --json
 **Sample output:**
 
 ```
-  #1      2025-01-01T00:00:00Z  proposal=1    OK  logs=[1]
-    └─ CreateLedger name=default  key=unsigned
+  #1      2025-01-01T00:00:00Z  proposal=1    OK  logs=[1]  unsigned
+    └─ 1 orders
+  #2      2025-01-01T00:00:01Z  proposal=2    OK  logs=[2]  signature=admin-key
+    └─ 1 orders
+  #3      2025-01-01T00:00:02Z  proposal=3    FAIL  [INSUFFICIENT_FUNDS] ...  signature=admin-key
+    └─ 1 orders
+```
+
+With `--expand`:
+
+```
   #2      2025-01-01T00:00:01Z  proposal=2    OK  logs=[2]
-    └─ CreateTransaction ledger=default ref=tx-001  key=admin-key
-  #3      2025-01-01T00:00:02Z  proposal=3    FAIL  [INSUFFICIENT_FUNDS] ...
-    └─ CreateTransaction ledger=default  key=admin-key
+    signature=admin-key  idempotency=ik-1
+    └─ CreateTransaction ledger=default ref=tx-001
 ```
 
 #### audit get
@@ -2568,7 +2579,7 @@ ledgerctl audit get <sequence> [flags]
 
 **Behavior:**
 - Retrieves a single audit entry by sequence number
-- Displays the same tree format as `audit list` for the single entry
+- Displays the same tree format as `audit list --expand` for the single entry, including the batch `signature=<keyId>` / `unsigned` line and the `idempotency=<key>` when set
 - Returns an error if the entry does not exist
 
 **Example:**
