@@ -80,11 +80,12 @@ Before any server upgrade:
 
 Capability barriers are the prerequisite for any future incompatible Raft
 entry, execution-plan, replay, or snapshot format. Deploy barrier-aware Ledger
-servers to every voter and learner first, then arm the replicated policy. An
-old leader that predates the barrier is not made safe by upgrading other nodes.
-See the [capability contract](../technical/architecture/subsystems/consensus/capabilities.md)
-for the `FEATURE_ONLY` and `ALL_WRITES` admission policies, membership evidence,
-diagnostics, and downgrade boundary.
+servers to every voter and learner first. This release only deploys the
+capability-evidence mechanism; it does not provide an operator-facing arming
+procedure or activate a new capability automatically. An old leader that
+predates the barrier is not made safe by upgrading other nodes. See the
+[capability contract](../technical/architecture/subsystems/consensus/capabilities.md)
+for membership evidence and the downgrade boundary.
 
 Use this for RC updates after the mixed-version validation above passes:
 
