@@ -6,7 +6,7 @@ Client-facing transport layers (`internal/adapter/grpc`, `internal/adapter/http`
 
 | Document | Description |
 |----------|-------------|
-| [grpc-api.md](grpc-api.md) | gRPC service, methods, request/response types, type-owned public error details, unary peer-close normalization and its attribution limit, client examples, and restore-mode service lifetime. |
+| [grpc-api.md](grpc-api.md) | gRPC service, methods, request/response types, full-width cluster and store-metrics node identities, type-owned public error details, unary peer-close normalization and its attribution limit, client examples, and restore-mode service lifetime. |
 | [grpc-connections.md](grpc-connections.md) | gRPC connection mechanics, reconnection, and rolling deployment optimizations. |
 | [protocol-compatibility.md](protocol-compatibility.md) | Mandatory service protocol revision, client/server rejection behavior, diagnostics, and revision maintenance (EN-1851). |
 | [http-api.md](http-api.md) | HTTP endpoint lifecycle and failure shutdown, REST API endpoints, instance-wide event sink creation/removal, single-decoding metadata key and path identifier segments, response formats, type-based large-integer response negotiation, exact metadata number decoding, ledger-log JSON output and discriminators, error handling, and the `apierr`/`grpcerr` error boundary crossed by a forwarded write. |

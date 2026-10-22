@@ -1,5 +1,5 @@
 # Compiler
-FROM golang:1.27-trixie AS compiler
+FROM golang:1.27.3-trixie AS compiler
 ARG GOARCH
 ARG GOOS
 

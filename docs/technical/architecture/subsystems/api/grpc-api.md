@@ -32,6 +32,30 @@ Explicit `CancelDownload` is narrower: it cancels the selected job, performs a
 bounded wait for that job to drain, and leaves the restore-mode application
 running so another download can be attempted.
 
+## Cluster node identities
+
+Configured Raft node IDs are nonzero unsigned 64-bit integers. Cluster state
+must preserve their full value in node lists, leader/local identities and
+per-node address, version and replication progress attribution. In particular,
+IDs `1` and `4294967297` name different members despite sharing their low
+32 bits. Targeted state requests and manual leadership transfer use the same
+full-width identities. Store metrics requests (`GetPrimaryMetricsRequest.node_id`
+and `GetSecondaryMetricsRequest.node_id`) also preserve the full target ID;
+zero selects the local store. Unknown nonzero targets return the existing
+node-not-reachable error without falling back to a colliding member.
+Zero in `GetClusterStateRequest.node_id` still routes
+to the leader, while zero is invalid for leadership transfer.
+
+The six cluster identity fields use `uint64` at their original field numbers:
+`GetClusterStateRequest.node_id`, `NodeInfo.id`, `ClusterState.leader`,
+`ClusterState.local_node`, `TransferLeadershipRequest.transferee` and
+`TransferLeadershipResponse.new_leader`. No parallel compatibility fields are
+maintained. Both store-metrics target fields use `uint64` at field number 1.
+See [protocol compatibility](protocol-compatibility.md#cluster-node-id-width)
+for old-reader limits and rolling upgrades. These service projections and
+control requests do not change persisted membership, Raft entries, audit
+records, snapshots or backups.
+
 ## Connection
 
 ### Default Port

@@ -297,3 +297,21 @@ oneofs. Get/list fixtures in `internal/adapter/http/testdata/ledger_info_rewrite
 are shared routed-response and generated SDK operation inputs. Marshal failure must return sanitized 500 before
 headers. The confidentiality oracle belongs to sensitive-data-exposure-boundaries.
 See [LedgerInfo](../architecture/subsystems/api/ledger-info.md).
+
+## Cluster node identities
+
+Cluster state projections, targeted peer requests, per-node enrichment,
+leadership transfer and primary/secondary store-metrics targets must preserve
+uint64 IDs, including colliding low 32 bits
+(`1` and `4294967297`). Verify the real Node.GetClusterState projection against
+nested Raft status and capture actual adapter and Cobra RPC targets. Include
+small-ID controls, uint64 maximum, and pre-dial rejection of invalid, zero or
+overflowing transfer arguments. Metrics target zero remains local; unknown
+targets must not fall back to a colliding low-ID peer. Capture both metrics RPCs
+through Cobra and the forwarding adapter, including uint64 maximum. The six
+original cluster fields and two metrics target fields retain names,
+numbers and unsigned-varint encoding without a parallel compatibility field.
+This domain owns projection, parsing and routing fidelity; election correctness
+and member persistence remain in raft-membership-leadership. Varint decoding
+alone does not establish full-range support in old uint32 readers. Require the
+client/server rollout limitation documented in the service protocol contract.

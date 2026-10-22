@@ -2,6 +2,8 @@ module github.com/formancehq/ledger/v3/tests/antithesis/workload
 
 go 1.27.0
 
+toolchain go1.27.3
+
 // replace github.com/formancehq/ledger/v3/pkg/client => ../../pkg/client
 replace github.com/formancehq/ledger/v3 => ../../../
 
@@ -104,7 +106,7 @@ require (
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/formancehq/invariants v0.11.0 // indirect
-	github.com/formancehq/numscript v0.2.0 // indirect
+	github.com/formancehq/numscript v0.1.2 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/getkin/kin-openapi v0.144.0 // indirect

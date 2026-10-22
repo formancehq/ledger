@@ -84,7 +84,7 @@ var _ = Describe("Out-of-sync election", func() {
 
 		clusterState := func(g Gomega, id uint64) *clusterpb.ClusterState {
 			state, err := servers[id-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-				NodeId: uint32(id),
+				NodeId: uint64(id),
 			})
 			g.Expect(err).To(Succeed())
 
@@ -215,7 +215,7 @@ var _ = Describe("Out-of-sync election", func() {
 			started := make(chan struct{})
 			var pending sync.WaitGroup
 			for _, srv := range servers {
-				if uint64(srv.NodeID) != lid {
+				if srv.NodeID != lid {
 					// Join discovery is answered by the leader, and there is
 					// none until these very nodes have elected one. Their
 					// durable membership already names every peer.
@@ -245,7 +245,7 @@ var _ = Describe("Out-of-sync election", func() {
 
 			By("Requiring every store, the leader's included, to resynchronize from a peer")
 			for _, srv := range servers {
-				Eventually(syncStatus(uint64(srv.NodeID))).Within(60 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Equal("normal"))
+				Eventually(syncStatus(srv.NodeID)).Within(60 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Equal("normal"))
 			}
 
 			By("Writing through the recovered cluster")
