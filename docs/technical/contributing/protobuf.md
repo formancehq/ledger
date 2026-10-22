@@ -43,8 +43,10 @@ Raft transport generated code lives in `internal/proto/rafttransportpb/` (`raft_
 
 The public client contract is the generated protobuf projection under
 `pkg/client/v3/proto/`. The canonical source is `misc/proto/`; the projection
-selects the public service closure, removes backend-only messages, and rewrites
-the Go package path. The Go client is derived from that projection:
+selects the public service closure and rewrites the Go package path. The
+projection is file-level, not a message filter: backend-only declarations must
+be placed in an excluded schema such as `internal_state.proto`, never added to
+a selected public file. The Go client is derived from that projection:
 
 ```bash
 just generate-public-client
@@ -100,7 +102,9 @@ revision changes or `buf breaking` finds a wire-incompatible change in a type
 reachable from a gated service. Run it locally before pushing a `.proto`
 change; review behavior changes separately for client impact.
 
-1. Edit the `.proto` file in `misc/proto/`.
+1. Edit the `.proto` file in `misc/proto/`. Keep backend-only declarations in
+   excluded schemas such as `internal_state.proto`; selected public files are
+   published wholesale.
 2. Preserve published service and method names, request and response types,
    field numbers, wire types, field identity, and enum numbers. Internal-only
    fields may change only when existing persisted data remains readable or has
@@ -110,8 +114,10 @@ change; review behavior changes separately for client impact.
 3. **Audit the hand-rolled wire sites** before changing a field's encoding or
    adding a new field — see below.
 4. Run `just generate-proto` **immediately**
-5. Update Go code that uses the generated types
-6. Rebuild: `go build ./...`
+5. Run `just generate-public-client` when the change affects a selected public
+   schema or service.
+6. Update Go code that uses the generated types
+7. Rebuild: `go build ./...`
 
 ### Wire changes: audit the hand-rolled wire sites first
 

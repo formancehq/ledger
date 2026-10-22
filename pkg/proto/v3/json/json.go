@@ -10,6 +10,7 @@ import (
 	stdjson "encoding/json"
 	"encoding/json/jsontext"
 	jsonv2 "encoding/json/v2"
+	"errors"
 	"io"
 	"sync/atomic"
 )
@@ -17,7 +18,13 @@ import (
 // RawValue stores an encoded JSON value without interpreting it.
 type RawValue []byte
 
-func (r RawValue) MarshalJSON() ([]byte, error) { return r, nil }
+func (r RawValue) MarshalJSON() ([]byte, error) {
+	if len(r) == 0 {
+		return []byte("null"), nil
+	}
+
+	return r, nil
+}
 
 func (r *RawValue) UnmarshalJSON(data []byte) error {
 	if r != nil {
@@ -72,7 +79,18 @@ func Unmarshal(data []byte, v any) error { return current().Unmarshal(data, v) }
 func UnmarshalUseNumber(data []byte, v any) error {
 	decoder := stdjson.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
-	return decoder.Decode(v)
+	if err := decoder.Decode(v); err != nil {
+		return err
+	}
+
+	var trailing any
+	if err := decoder.Decode(&trailing); err == io.EOF {
+		return nil
+	} else if err == nil {
+		return errors.New("json: trailing data")
+	} else {
+		return err
+	}
 }
 
 func UnmarshalRead(r io.Reader, v any) error { return current().UnmarshalRead(r, v) }
@@ -101,9 +119,18 @@ func MarshalWriteWithOptions(w io.Writer, value any, opts ...jsonv2.Options) err
 
 func defaultCodec() Codec {
 	return Codec{
-		Marshal:       stdjson.Marshal,
-		Unmarshal:     stdjson.Unmarshal,
-		UnmarshalRead: func(r io.Reader, v any) error { return jsonv2.UnmarshalRead(r, v) },
-		MarshalWrite:  func(w io.Writer, v any) error { return jsonv2.MarshalWrite(w, v) },
+		Marshal:   stdjson.Marshal,
+		Unmarshal: stdjson.Unmarshal,
+		UnmarshalRead: func(r io.Reader, v any) error {
+			return jsonv2.UnmarshalRead(r, v, stdjson.DefaultOptionsV1())
+		},
+		MarshalWrite: func(w io.Writer, v any) error {
+			if err := jsonv2.MarshalWrite(w, v, stdjson.DefaultOptionsV1()); err != nil {
+				return err
+			}
+
+			_, err := io.WriteString(w, "\n")
+			return err
+		},
 	}
 }

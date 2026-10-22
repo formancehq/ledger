@@ -18,6 +18,7 @@ type BucketService_AnalyzeTransactionsServer = ledgerpb.BucketService_AnalyzeTra
 type BucketService_ListIndexesServer = ledgerpb.BucketService_ListIndexesServer
 type BucketService_ListNumscriptsServer = ledgerpb.BucketService_ListNumscriptsServer
 type BucketService_ListAuditEntriesClient = ledgerpb.BucketService_ListAuditEntriesClient
+type BucketService_ListLogsClient = ledgerpb.BucketService_ListLogsClient
 
 var NewBucketServiceClient = ledgerpb.NewBucketServiceClient
 var RegisterBucketServiceServer = ledgerpb.RegisterBucketServiceServer
