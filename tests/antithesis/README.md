@@ -52,6 +52,14 @@ outside Composer's template tree. It checks the Linux FFI loader, independent
 concurrent contexts and error propagation; it does not exercise Ledger or prove
 an Antithesis campaign outcome.
 
+Run the same smoke and complete workload build gates as CI from the repository
+root (neither command publishes images):
+
+```sh
+nix develop .#ci --command just --justfile tests/antithesis/Justfile hegel-smoke
+nix develop .#ci --command just --justfile tests/antithesis/Justfile workload-build-check
+```
+
 ## Focused driver checks and limits
 
 - Idempotency conflicts include a variant where only the amount changes, as
