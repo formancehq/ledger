@@ -22443,7 +22443,7 @@ const file_common_proto_rawDesc = "" +
 	"\x15PersistedClusterState\x12-\n" +
 	"\x06config\x18\x01 \x01(\v2\x15.common.ClusterConfigR\x06config\x12\x1f\n" +
 	"\vcache_epoch\x18\x02 \x01(\x06R\n" +
-	"cacheEpoch\"\xdc\x05\n" +
+	"cacheEpoch\"\xd6\x05\n" +
 	"\rClusterPolicy\x12\x1a\n" +
 	"\brevision\x18\x01 \x01(\x06R\brevision\x124\n" +
 	"\x16idempotency_ttl_micros\x18\x02 \x01(\x06R\x14idempotencyTtlMicros\x124\n" +
@@ -22456,8 +22456,7 @@ const file_common_proto_rawDesc = "" +
 	"\x1bcapability_activation_armed\x18\t \x01(\bR\x19capabilityActivationArmed\x126\n" +
 	"\x17minimum_replay_protocol\x18\v \x01(\rR\x15minimumReplayProtocol\x12D\n" +
 	"\x1ecapability_membership_revision\x18\f \x01(\x06R\x1ccapabilityMembershipRevision\x12S\n" +
-	"\x16capability_activations\x18\r \x03(\v2\x1c.common.CapabilityActivationR\x15capabilityActivationsJ\x04\b\n" +
-	"\x10\v\"^\n" +
+	"\x16capability_activations\x18\r \x03(\v2\x1c.common.CapabilityActivationR\x15capabilityActivations\"^\n" +
 	"\x17CreatedPreparedQueryLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +
 	"\x05query\x18\x02 \x01(\v2\x15.common.PreparedQueryR\x05query\"\xb7\x01\n" +
