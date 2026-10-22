@@ -53,12 +53,10 @@ func TestLookupReasonCodeResolvesEveryEnumName(t *testing.T) {
 	}
 }
 
-func TestCallerAttributionReasonIsDeprecatedButNotProduced(t *testing.T) {
+func TestCallerAttributionReasonIsInternalOnly(t *testing.T) {
 	t.Parallel()
 
 	code, known := LookupReasonCode("INVALID_CALLER_ATTRIBUTION")
-	require.True(t, known,
-		"revision 40 must retain the published enum member for wire compatibility")
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_INVALID_CALLER_ATTRIBUTION, code)
-	require.NotNil(t, commonpb.ErrorReason_ERROR_REASON_INVALID_CALLER_ATTRIBUTION.Descriptor().Values().ByNumber(72))
+	require.False(t, known, "the internal-only sentinel must not be a public reason")
+	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, code)
 }

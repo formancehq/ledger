@@ -137,7 +137,6 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED:
 		return KindResourceExhausted
 	case commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
-		commonpb.ErrorReason_ERROR_REASON_INVALID_CALLER_ATTRIBUTION,
 		commonpb.ErrorReason_ERROR_REASON_INDEX_INCONSISTENT,
 		commonpb.ErrorReason_ERROR_REASON_INVALID_ORDER_TYPE,
 		commonpb.ErrorReason_ERROR_REASON_INVALID_APPLY_TYPE,
