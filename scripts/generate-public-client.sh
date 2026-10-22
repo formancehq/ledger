@@ -21,5 +21,13 @@ protoc \
 	-I pkg/client/v3/proto \
 	"${public[@]/%/.proto}"
 
+# Keep the descriptor artifact in lockstep with the generated Go contract. It
+# is the language-neutral input for consumers such as TypeScript generators.
+protoc \
+	--descriptor_set_out=pkg/client/v3/proto/ledger-public.protoset \
+	--include_imports \
+	-I pkg/client/v3/proto \
+	"${public[@]/%/.proto}"
+
 go -C pkg/client/v3 mod tidy
 python3 scripts/generate-client-protocol.py

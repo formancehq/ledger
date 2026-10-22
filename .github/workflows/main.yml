@@ -41,6 +41,8 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
+      - name: Check public client contract
+        run: nix develop .#ci --command bash scripts/check-public-client.sh
       - run: >
           nix develop .#ci --command just pre-commit
       - name: Check service protocol revision

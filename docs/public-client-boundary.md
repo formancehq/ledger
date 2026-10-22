@@ -13,11 +13,18 @@ The public module is generated with only `protoc-gen-go` and
 not run for this module; their generated helpers belong to the server's
 internal protobuf packages.
 
-The two generated packages intentionally contain equivalent wire contracts.
+The public `.proto` files are the language-neutral source of truth for the
+published contract. The generated Go package is one consumer of that contract;
+other consumers (for example TypeScript generators) should use the public
+schemas or `ledger-public.protoset`, never the server's private descriptors.
+
+The two generated Go packages intentionally contain equivalent wire contracts.
 They must not be imported into the same process: protobuf descriptors are
 registered globally by file name, so loading both copies would register files
 such as `signature.proto` twice. The network serialization boundary performs
 the conversion between the private server types and public client types.
 
-Run `just generate-public-client` after changing a public schema. The CI
-contract check regenerates the client and fails if generated output drifts.
+Run `just generate-public-client` after changing a public schema. This regenerates
+the Go client and `ledger-public.protoset`. The CI contract check regenerates
+both and fails if any generated output drifts. The backend-only schemas remain
+under `misc/proto/` and are generated exclusively by `just generate-proto`.
