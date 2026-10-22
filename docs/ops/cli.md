@@ -3727,6 +3727,8 @@ ledgerctl queries create <name> --ledger <ledger-name> [flags]
 
 **Behavior:**
 - Submits a `create_prepared_query` action through `BucketService.Apply`, so the batch honours `--signing-key` like any other write
+- Omitting `--filter` creates a query that matches every entity in its target. A `--filter` that is set but empty or whitespace-only is refused, like `queries update`
+- Parameter names (`$name`, or `{"$param": "name"}` in JSON) must match `[a-zA-Z_][a-zA-Z0-9_]*` and must not be a filter keyword; the server refuses other names
 
 **Examples:**
 

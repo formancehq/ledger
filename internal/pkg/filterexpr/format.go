@@ -108,6 +108,14 @@ func formatLogBuiltinUintCondition(lc *commonpb.LogBuiltinUintCondition) (string
 // exclusivity survives the round-trip instead of being silently widened. The
 // field names are bare, disambiguated only by the re-parse target (EN-1549).
 func formatUintRange(field string, uc *commonpb.UintCondition, render func(uint64) string) (string, int) {
+	// A nil condition can only come from data persisted before admission
+	// refused it (domain.ValidateFilterAdmissionShape). Render the same
+	// unparseable placeholder as an unbounded range so export/apply fails
+	// loudly instead of crashing the CLI.
+	if uc == nil {
+		return field + " <uint?>", precLeaf
+	}
+
 	// A bound is a literal or a $param (ParamMin/ParamMax, resolved when a
 	// prepared query executes). Rendering both kinds is what keeps a
 	// parameterized range exportable: dropping the param side of a mixed range
@@ -147,11 +155,24 @@ func formatUintRange(field string, uc *commonpb.UintCondition, render func(uint6
 	return field + " <uint?>", precLeaf
 }
 
+// renderParam renders a parameter reference as `$name`. A name the textual
+// grammar cannot read back as one Ident (admission refuses it now, older data
+// may hold it) renders as `$<invalid param "...">` instead, which the parser
+// rejects: export/apply then fails loudly rather than re-creating a filter
+// whose name was spliced into extra conditions.
+func renderParam(name string) string {
+	if commonpb.IsTextualFilterParamName(name) {
+		return "$" + name
+	}
+
+	return fmt.Sprintf("$<invalid param %q>", name)
+}
+
 // renderUintBound renders one side of a uint range: `$name` for a parameter,
 // render(literal) otherwise. ok=false when the side has no bound.
 func renderUintBound(literal *uint64, param string, render func(uint64) string) (string, bool) {
 	if param != "" {
-		return "$" + param, true
+		return renderParam(param), true
 	}
 	if literal != nil {
 		return render(*literal), true
@@ -325,7 +346,7 @@ func formatFieldCondition(fc *commonpb.FieldCondition) string {
 func formatStringCondValue(sc *commonpb.StringCondition) string {
 	switch v := sc.GetValue().(type) {
 	case *commonpb.StringCondition_Param:
-		return "$" + v.Param
+		return renderParam(v.Param)
 	case *commonpb.StringCondition_Hardcoded:
 		return quoteIfNeeded(v.Hardcoded)
 	default:
@@ -336,7 +357,7 @@ func formatStringCondValue(sc *commonpb.StringCondition) string {
 func formatBoolCondValue(bc *commonpb.BoolCondition) string {
 	switch v := bc.GetValue().(type) {
 	case *commonpb.BoolCondition_Param:
-		return "$" + v.Param
+		return renderParam(v.Param)
 	case *commonpb.BoolCondition_Hardcoded:
 		if v.Hardcoded {
 			return "true"
@@ -384,7 +405,7 @@ func formatIntCondition(key string, ic *commonpb.IntCondition) string {
 				op = ">"
 			}
 
-			return fmt.Sprintf("metadata[%s] %s $%s", key, op, ic.GetParamMin())
+			return fmt.Sprintf("metadata[%s] %s %s", key, op, renderParam(ic.GetParamMin()))
 		}
 
 		op := ">="
@@ -401,7 +422,7 @@ func formatIntCondition(key string, ic *commonpb.IntCondition) string {
 				op = "<"
 			}
 
-			return fmt.Sprintf("metadata[%s] %s $%s", key, op, ic.GetParamMax())
+			return fmt.Sprintf("metadata[%s] %s %s", key, op, renderParam(ic.GetParamMax()))
 		}
 
 		op := "<="
@@ -420,7 +441,7 @@ func formatIntCondition(key string, ic *commonpb.IntCondition) string {
 // Caller must have verified the bound is present.
 func formatIntLowInclusive(ic *commonpb.IntCondition) string {
 	if ic.GetParamMin() != "" {
-		return "$" + ic.GetParamMin()
+		return renderParam(ic.GetParamMin())
 	}
 
 	v := ic.GetMin()
@@ -434,7 +455,7 @@ func formatIntLowInclusive(ic *commonpb.IntCondition) string {
 // formatIntHighInclusive is the symmetric helper for the upper bound.
 func formatIntHighInclusive(ic *commonpb.IntCondition) string {
 	if ic.GetParamMax() != "" {
-		return "$" + ic.GetParamMax()
+		return renderParam(ic.GetParamMax())
 	}
 
 	v := ic.GetMax()
@@ -466,7 +487,7 @@ func formatUintCondition(key string, uc *commonpb.UintCondition) string {
 				op = ">"
 			}
 
-			return fmt.Sprintf("metadata[%s] %s $%s", key, op, uc.GetParamMin())
+			return fmt.Sprintf("metadata[%s] %s %s", key, op, renderParam(uc.GetParamMin()))
 		}
 
 		op := ">="
@@ -483,7 +504,7 @@ func formatUintCondition(key string, uc *commonpb.UintCondition) string {
 				op = "<"
 			}
 
-			return fmt.Sprintf("metadata[%s] %s $%s", key, op, uc.GetParamMax())
+			return fmt.Sprintf("metadata[%s] %s %s", key, op, renderParam(uc.GetParamMax()))
 		}
 
 		op := "<="
@@ -499,7 +520,7 @@ func formatUintCondition(key string, uc *commonpb.UintCondition) string {
 
 func formatUintLowInclusive(uc *commonpb.UintCondition) string {
 	if uc.GetParamMin() != "" {
-		return "$" + uc.GetParamMin()
+		return renderParam(uc.GetParamMin())
 	}
 
 	v := uc.GetMin()
@@ -512,7 +533,7 @@ func formatUintLowInclusive(uc *commonpb.UintCondition) string {
 
 func formatUintHighInclusive(uc *commonpb.UintCondition) string {
 	if uc.GetParamMax() != "" {
-		return "$" + uc.GetParamMax()
+		return renderParam(uc.GetParamMax())
 	}
 
 	v := uc.GetMax()
@@ -538,9 +559,9 @@ func formatAddressMatch(am *commonpb.AddressMatch) string {
 	case *commonpb.AddressMatch_HardcodedPrefix:
 		return fmt.Sprintf("%s ^= %s", keyword, quoteIfNeeded(v.HardcodedPrefix))
 	case *commonpb.AddressMatch_ParamExact:
-		return fmt.Sprintf("%s == $%s", keyword, v.ParamExact)
+		return fmt.Sprintf("%s == %s", keyword, renderParam(v.ParamExact))
 	case *commonpb.AddressMatch_ParamPrefix:
-		return fmt.Sprintf("%s ^= $%s", keyword, v.ParamPrefix)
+		return fmt.Sprintf("%s ^= %s", keyword, renderParam(v.ParamPrefix))
 	default:
 		return keyword + " <unknown>"
 	}

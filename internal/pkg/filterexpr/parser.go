@@ -60,7 +60,9 @@ var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Dollar", Pattern: `\$`},
 	{Name: "String", Pattern: `"[^"]*"|'[^']*'`},
 	{Name: "Comma", Pattern: `,`},
-	{Name: "Keyword", Pattern: `\b(and|or|not|in|between|metadata|address|source|destination|ledger|exists|true|false)\b`},
+	// Built from commonpb.FilterGrammarKeywords, which IsTextualFilterParamName
+	// also reads, so a parameter name accepted at admission always lexes as Ident.
+	{Name: "Keyword", Pattern: `\b(` + strings.Join(commonpb.FilterGrammarKeywords, "|") + `)\b`},
 	{Name: "Number", Pattern: `-?[0-9]+`},
 	// AssetRef is the base/precision asset reference (e.g. USD/2) used only in the
 	// `has asset` position. It is its own token — matched before Ident — because

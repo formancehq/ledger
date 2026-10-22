@@ -1,6 +1,7 @@
 package queries
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/pterm/pterm"
@@ -67,7 +68,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	filter, err := parseCreateFilter(filterExpr, target)
+	filter, err := parseCreateFilter(filterExpr, cmd.Flags().Changed("filter"), target)
 	if err != nil {
 		return err
 	}
@@ -95,13 +96,24 @@ func runCreate(cmd *cobra.Command, args []string) error {
 }
 
 // parseCreateFilter decodes the --filter value in either form (textual grammar
-// or JSON DSL), resolving bare fields against the query's target. An empty
-// value creates an unfiltered query. Like the list commands, it leaves the
-// per-target validity gate to the server, which applies it on create.
-func parseCreateFilter(expr string, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+// or JSON DSL), resolving bare fields against the query's target. Omitting
+// --filter creates an unfiltered query; a --filter that is set but decodes to
+// no condition (empty or whitespace-only) is refused rather than silently
+// widened to match-all, mirroring `queries update`. Like the list commands, it
+// leaves the per-target validity gate to the server, which applies it on
+// create.
+func parseCreateFilter(expr string, set bool, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+	if !set {
+		return nil, nil
+	}
+
 	filter, err := filterexpr.DecodeDualFormatStructuralOnly([]byte(expr), target)
 	if err != nil {
 		return nil, fmt.Errorf("invalid filter expression: %w", err)
+	}
+
+	if filter == nil {
+		return nil, errors.New("--filter must contain at least one condition; omit the flag to create an unfiltered query")
 	}
 
 	return filter, nil

@@ -17,18 +17,23 @@ func TestParseCreateFilterAcceptsBothForms(t *testing.T) {
 
 	target := commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
 
-	fromText, err := parseCreateFilter(`reference == $ref`, target)
+	fromText, err := parseCreateFilter(`reference == $ref`, true, target)
 	require.NoError(t, err)
 	require.NotNil(t, fromText)
 
-	fromJSON, err := parseCreateFilter(`{"$match":{"reference":{"$param":"ref"}}}`, target)
+	fromJSON, err := parseCreateFilter(`{"$match":{"reference":{"$param":"ref"}}}`, true, target)
 	require.NoError(t, err)
 	require.True(t, proto.Equal(fromText, fromJSON))
 
-	empty, err := parseCreateFilter("", target)
+	omitted, err := parseCreateFilter("", false, target)
 	require.NoError(t, err)
-	require.Nil(t, empty, "an empty --filter creates an unfiltered query")
+	require.Nil(t, omitted, "omitting --filter creates an unfiltered query")
 
-	_, err = parseCreateFilter(`{"$match":{"bogus":"x"}}`, target)
+	for _, blank := range []string{"", "   ", "\t\n"} {
+		_, err = parseCreateFilter(blank, true, target)
+		require.ErrorContains(t, err, "--filter must contain at least one condition", "blank %q", blank)
+	}
+
+	_, err = parseCreateFilter(`{"$match":{"bogus":"x"}}`, true, target)
 	require.ErrorContains(t, err, "invalid filter expression")
 }

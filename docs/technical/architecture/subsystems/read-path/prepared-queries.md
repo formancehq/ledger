@@ -194,6 +194,20 @@ arm cannot silently drop a filter. The full DSL is documented under `QueryFilter
 `internal/proto/commonpb/query_filter_test.go`; the REST wire is asserted in
 `tests/e2e/business/prepared_query_rest_shape_test.go`.
 
+The codec itself accepts any non-empty `$param` name, but creating or updating a
+prepared query refuses a name the textual grammar cannot read back as a single
+`$name` reference: it must match `[a-zA-Z_][a-zA-Z0-9_]*` and must not be a
+grammar keyword (`commonpb.IsTextualFilterParamName`, which shares
+`commonpb.FilterGrammarKeywords` with the lexer). The same admission gate
+refuses a `logId` condition with no range. Both checks live in
+`domain.ValidateFilterAdmissionShape` and run at admission only. The FSM still
+re-runs `ValidateFilterForTarget`, which accepts both shapes, so a voter on this
+release applies an entry an older voter admitted exactly as that voter does.
+A prepared query stored before the gate can still hold either shape. The
+formatter renders them as `$<invalid param "...">` and `logId <uint?>`, which
+the parser refuses, so `ledgerctl ledgers configuration export` keeps working
+and a later `apply` fails loudly instead of re-creating a wider filter.
+
 This shape is shared by every filtered endpoint that accepts the structured JSON
 form: new conditions extend it as new `$match`/`$gt`/… over new field names, and
 the textual grammar gains the same field name in the same change

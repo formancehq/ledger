@@ -349,6 +349,60 @@ func ValidateFilterLeaf(f *commonpb.QueryFilter) SerializableError {
 	return nil
 }
 
+// ValidateFilterAdmissionShape rejects filter shapes that the FSM gate
+// (ValidateFilterForTarget) has always accepted but that admission must no
+// longer let through. It is an admission-only gate on purpose: the FSM re-runs
+// ValidateFilterForTarget on apply, and tightening that shared check would make
+// a voter on this release refuse a committed entry an older voter accepted.
+// It refuses a logId condition with no range, which the executor reads as
+// match-all and the textual grammar cannot render, and a parameter name the
+// textual grammar cannot read back as a single `$name` reference
+// (commonpb.IsTextualFilterParamName), which would export to text that
+// re-parses as different conditions. The walk is bounded by MaxFilterDepth
+// like ValidateFilterForTarget.
+func ValidateFilterAdmissionShape(f *commonpb.QueryFilter) SerializableError {
+	return validateFilterAdmissionShape(f, 0)
+}
+
+func validateFilterAdmissionShape(f *commonpb.QueryFilter, depth int) SerializableError {
+	if f == nil {
+		return nil
+	}
+
+	if depth >= MaxFilterDepth {
+		return ErrFilterTooDeep
+	}
+
+	switch v := f.GetFilter().(type) {
+	case *commonpb.QueryFilter_And:
+		for _, sub := range v.And.GetFilters() {
+			if err := validateFilterAdmissionShape(sub, depth+1); err != nil {
+				return err
+			}
+		}
+	case *commonpb.QueryFilter_Or:
+		for _, sub := range v.Or.GetFilters() {
+			if err := validateFilterAdmissionShape(sub, depth+1); err != nil {
+				return err
+			}
+		}
+	case *commonpb.QueryFilter_Not:
+		return validateFilterAdmissionShape(v.Not.GetFilter(), depth+1)
+	case *commonpb.QueryFilter_LogId:
+		if v.LogId.GetCond() == nil {
+			return filterShapeError("logId condition has no value")
+		}
+	}
+
+	for _, name := range commonpb.FilterLeafParamNames(f) {
+		if !commonpb.IsTextualFilterParamName(name) {
+			return filterShapeError(fmt.Sprintf("parameter name %q must be an identifier ([a-zA-Z_][a-zA-Z0-9_]*) and not a filter keyword", name))
+		}
+	}
+
+	return nil
+}
+
 func validateFieldConditionShape(fc *commonpb.FieldCondition) SerializableError {
 	if fc.GetField() == nil {
 		return filterShapeError("field condition has no field reference")

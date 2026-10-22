@@ -441,3 +441,15 @@ func TestValidateFilterForTarget_RejectsMalformedLeaves(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateFilterForTargetStillAcceptsLogIdWithoutCondition pins the FSM
+// side of the split: the shared gate keeps accepting a logId leaf with no range
+// so a voter on this release applies an entry admitted by an older one exactly
+// as that voter does. Only admission refuses it.
+func TestValidateFilterForTargetStillAcceptsLogIdWithoutCondition(t *testing.T) {
+	t.Parallel()
+
+	f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{}}}
+	require.NoError(t, domain.ValidateFilterForTarget(f, commonpb.QueryTarget_QUERY_TARGET_LOGS))
+	require.ErrorContains(t, domain.ValidateFilterAdmissionShape(f), "logId condition has no value")
+}
