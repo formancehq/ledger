@@ -141,7 +141,7 @@ func (s *Service) addLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 
 	var err error
 	if bootJoin {
-		err = s.node.JoinAsLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs)
+		err = s.node.JoinAsLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs)
 	} else {
 		err = s.node.AddLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs)
 	}
