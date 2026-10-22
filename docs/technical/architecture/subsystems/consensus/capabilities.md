@@ -119,8 +119,11 @@ Raft and applied to every member's peer store; a local restart-time upsert is
 not sufficient to activate a capability for admission. A fresh WAL instead
 uses `JoinAsLearner` and `ConfChangeAddLearnerNode`.
 
-The leader's existing cluster-policy reconciler does not activate a capability
-automatically. A future rollout can add an explicit `CapabilityActivation`
-entry once every current voter and learner has refreshed its membership proof.
-Until then the policy contains no active capability and this binary declares no
-protocol feature.
+The cluster-policy reconciler activates a capability automatically once every
+current voter and learner has refreshed membership with that capability. The
+candidate set is the intersection of the local binary registry and all
+committed membership evidence; an empty or incomplete membership set never
+activates anything. Membership commits trigger reconciliation immediately, and
+the periodic retry remains only as a self-healing fallback for leadership or
+proposal failures. Once committed, an activation is monotonic and a new member
+that does not advertise it is rejected.
