@@ -59,11 +59,9 @@ func TestClusterPolicyReconciler_TriggerIsCoalescedAndRaceSafe(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for range 100 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			r.Trigger()
-		}()
+		})
 	}
 	wg.Wait()
 	require.Eventually(t, func() bool { return count.Load() >= 2 }, time.Second, time.Millisecond,

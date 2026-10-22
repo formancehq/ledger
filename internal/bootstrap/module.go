@@ -1722,17 +1722,19 @@ func reconcileClusterPolicyWithRegistry(ctx context.Context, admission ctrl.Admi
 		ready, err := capabilities.Ready(readSupported(), readMembers())
 		if err != nil {
 			logger.WithFields(map[string]any{"error": err}).Errorf("Computing converged capability set")
+
 			return
 		}
 		for _, id := range ready {
 			found := false
-			for _, activation := range desired.CapabilityActivations {
+			for _, activation := range desired.GetCapabilityActivations() {
 				if activation != nil && activation.GetId() == uint32(id) {
 					if !activation.GetActive() {
 						activation.Active = true
 						activationChanged = true
 					}
 					found = true
+
 					break
 				}
 			}
