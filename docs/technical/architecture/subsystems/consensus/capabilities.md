@@ -5,8 +5,7 @@ rolling upgrade. It is separate from the client-facing gRPC protocol revision.
 
 ## Wire contract
 
-`common.ClusterPolicy` carries the replicated activation state and a monotonic
-minimum replay protocol.
+`common.ClusterPolicy` carries the replicated activation state.
 `raft.Proposal.required_capabilities` carries stable producer-owned capability
 IDs. The fields are optional and therefore backward-readable by binaries that
 predate this foundation. IDs are never reused; semantic dependencies must be
@@ -31,18 +30,12 @@ capability is active and every member advertises it. Proposals with no declared
 capability remain unaffected. FSM apply never consults node-local capability
 flags.
 
-The replay floor is monotonic, is bounded by the local replay protocol during
-policy apply, and is checked immediately after decoding an entry or snapshot
-that could require a newer protocol. This floor is intentionally not
-`pkg/grpcprotocol.Version`.
-
 ## Rollout and recovery
 
 Deploy barrier-aware binaries to every eligible member before arming an
 incompatible feature. An old leader that does not understand the barrier cannot
 be made safe by upgrading only the other nodes. Restart, snapshot install,
-restore, and downgrade code must preserve the policy and floor; a downgrade
-below the committed floor is refused. Membership changes racing activation are
+restore, and downgrade code must preserve the policy. Membership changes racing activation are
 serialized at the Raft proposal boundary and must be revalidated immediately
 before `rawNode.Propose`, because `Node.Propose` queues work. Removing a member
 remains allowed; adding, promoting, or refreshing one without all active

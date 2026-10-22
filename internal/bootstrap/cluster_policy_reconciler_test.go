@@ -14,7 +14,6 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -174,30 +173,5 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
 
 		require.Zero(t, admission.callCount(), "a newer applied revision must not be overwritten")
-	})
-
-	t.Run("preserves the committed replay floor on a higher revision", func(t *testing.T) {
-		t.Parallel()
-
-		store := newReconcilerTestStore(t)
-		cfg := validBaseConfig()
-		cfg.ClusterPolicyRevision++
-
-		batch := store.OpenWriteSession()
-		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
-			Revision:              cfg.ClusterPolicyRevision - 1,
-			QueryCheckpointLimit:  cfg.QueryCheckpointLimit,
-			MinimumReplayProtocol: capabilities.CurrentReplayProtocol,
-		}))
-		require.NoError(t, batch.Commit())
-
-		admission := &fakeAdmission{}
-		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
-
-		require.Equal(t, 1, admission.callCount())
-		admission.mu.Lock()
-		gotFloor := admission.lastPolicy.GetMinimumReplayProtocol()
-		admission.mu.Unlock()
-		require.Equal(t, capabilities.CurrentReplayProtocol, gotFloor)
 	})
 }

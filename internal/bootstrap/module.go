@@ -1696,11 +1696,6 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		MetadataMaxValueBytes:       cfg.MetadataMaxValueBytes,
 		MetadataMaxEntityBytes:      cfg.MetadataMaxEntityBytes,
 		MetadataMaxCommandBytes:     cfg.MetadataMaxCommandBytes,
-		// The replay floor is monotonic and is not a node-local config default.
-		// Preserve the committed value when the reconciler proposes a higher
-		// policy revision; otherwise every ordinary config reconciliation would
-		// accidentally attempt to lower the floor back to zero.
-		MinimumReplayProtocol: applied.GetMinimumReplayProtocol(),
 	}
 
 	appliedRev := applied.GetRevision()
