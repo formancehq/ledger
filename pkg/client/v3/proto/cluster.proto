@@ -1,3 +1,5 @@
+// Code generated from misc/proto/cluster.proto. DO NOT EDIT.
+
 syntax = "proto3";
 
 package cluster;
@@ -5,7 +7,6 @@ package cluster;
 import "common.proto";
 
 option go_package = "github.com/formancehq/ledger/pkg/client/v3/grpc";
-
 // ============================================================================
 // gRPC Service
 // ============================================================================

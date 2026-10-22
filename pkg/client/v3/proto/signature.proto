@@ -1,9 +1,10 @@
+// Code generated from misc/proto/signature.proto. DO NOT EDIT.
+
 syntax = "proto3";
 
 package signature;
 
 option go_package = "github.com/formancehq/ledger/pkg/client/v3/grpc";
-
 // SignedApplyBatch is the opaque envelope for a signed client batch.
 // The client serializes its ApplyBatch (the atomic unit: ordered requests
 // + idempotency key), signs those exact bytes, and ships

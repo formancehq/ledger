@@ -451,8 +451,12 @@ generate-proto:
         misc/proto/proposal.proto
     @go run ./scripts/fix-vtproto-capability-length.go
 
+# Generate the public protobuf projection from the canonical server schemas.
+generate-public-proto:
+    @python3 scripts/generate-public-protos.py
+
 # Generate the standalone public gRPC client without touching server protobufs
-generate-public-client:
+generate-public-client: generate-public-proto
     @bash scripts/generate-public-client.sh
 
 test-rpcauth-generator:
