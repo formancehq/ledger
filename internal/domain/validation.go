@@ -354,13 +354,19 @@ func ValidateFilterLeaf(f *commonpb.QueryFilter) SerializableError {
 // longer let through. It is an admission-only gate on purpose: the FSM re-runs
 // ValidateFilterForTarget on apply, and tightening that shared check would make
 // a voter on this release refuse a committed entry an older voter accepted.
-// It refuses a uint/int range with no bound (nil, or present with neither a
-// literal nor a parameter on either side), which the executor reads as
-// unbounded and the textual grammar cannot render, and a parameter name the
-// textual grammar cannot read back as a single `$name` reference
-// (commonpb.IsTextualFilterParamName), which would export to text that
-// re-parses as different conditions. The walk is bounded by MaxFilterDepth
-// like ValidateFilterForTarget.
+//
+// It refuses:
+//   - a logId condition with no range message, the same "no value" shape
+//     ValidateFilterLeaf already refuses on the other uint builtins. A range
+//     that is set but has no bound stays valid on every arm: it is a supported
+//     unbounded scan (every entity with a value for a metadata key, every
+//     reverted transaction);
+//   - a parameter name, including an empty one, that the textual grammar
+//     cannot read back as a single `$name` reference
+//     (commonpb.IsTextualFilterParamName), which would export to text that
+//     re-parses as different conditions.
+//
+// The walk is bounded by MaxFilterDepth like ValidateFilterForTarget.
 func ValidateFilterAdmissionShape(f *commonpb.QueryFilter) SerializableError {
 	return validateFilterAdmissionShape(f, 0)
 }
@@ -390,28 +396,8 @@ func validateFilterAdmissionShape(f *commonpb.QueryFilter, depth int) Serializab
 	case *commonpb.QueryFilter_Not:
 		return validateFilterAdmissionShape(v.Not.GetFilter(), depth+1)
 	case *commonpb.QueryFilter_LogId:
-		if !uintRangeHasBound(v.LogId.GetCond()) {
-			return filterShapeError("logId condition has no bound")
-		}
-	case *commonpb.QueryFilter_BuiltinUint:
-		if !uintRangeHasBound(v.BuiltinUint.GetCond()) {
-			return filterShapeError("builtin uint condition has no bound")
-		}
-	case *commonpb.QueryFilter_LogBuiltinUint:
-		if !uintRangeHasBound(v.LogBuiltinUint.GetCond()) {
-			return filterShapeError("log builtin uint condition has no bound")
-		}
-	case *commonpb.QueryFilter_Field:
-		switch c := v.Field.GetCondition().(type) {
-		case *commonpb.FieldCondition_UintCond:
-			if !uintRangeHasBound(c.UintCond) {
-				return filterShapeError("uint condition has no bound")
-			}
-		case *commonpb.FieldCondition_IntCond:
-			ic := c.IntCond
-			if ic.Min == nil && ic.Max == nil && ic.GetParamMin() == "" && ic.GetParamMax() == "" {
-				return filterShapeError("int condition has no bound")
-			}
+		if v.LogId.GetCond() == nil {
+			return filterShapeError("logId condition has no value")
 		}
 	}
 
@@ -422,12 +408,6 @@ func validateFilterAdmissionShape(f *commonpb.QueryFilter, depth int) Serializab
 	}
 
 	return nil
-}
-
-// uintRangeHasBound reports whether uc is set with at least one literal or
-// parameter bound.
-func uintRangeHasBound(uc *commonpb.UintCondition) bool {
-	return uc != nil && (uc.Min != nil || uc.Max != nil || uc.GetParamMin() != "" || uc.GetParamMax() != "")
 }
 
 func validateFieldConditionShape(fc *commonpb.FieldCondition) SerializableError {

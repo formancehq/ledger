@@ -199,15 +199,15 @@ prepared query refuses a name the textual grammar cannot read back as a single
 `$name` reference: it must match `[a-zA-Z_][a-zA-Z0-9_]*` and must not be a
 grammar keyword (`commonpb.IsTextualFilterParamName`, which shares
 `commonpb.FilterGrammarKeywords` with the lexer). A param arm set with an
-empty name is refused too. The same admission gate refuses a uint or int range
-with no bound (nil, or set with neither a literal nor a parameter on either
-side) on `logId`, the transaction and log builtins, and metadata. These checks
-live in
+empty name is refused too. The same admission gate refuses a `logId`
+condition with no range. A range that is set but has no bound stays valid: it
+is a supported unbounded scan. These checks live in
 `domain.ValidateFilterAdmissionShape` and run at admission only. The FSM still
 re-runs `ValidateFilterForTarget`, which accepts both shapes, so a voter on this
 release applies an entry an older voter admitted exactly as that voter does.
 A prepared query stored before the gate can still hold these shapes. The
-formatter renders them as `$<invalid param "...">` and `<field> <uint?>`, which
+formatter renders them as `$<invalid param "...">` and `<field> <uint?>` (also
+the rendering of an unbounded range, which has no textual form), which
 the parser refuses, so `ledgerctl ledgers configuration export` keeps working
 and a later `apply` fails loudly instead of re-creating a wider filter.
 

@@ -100,7 +100,7 @@ func TestValidateOrderUTF8HandlesDeeplyNestedMessages(t *testing.T) {
 func TestValidateOrderUTF8PreservesSupportedFilterDepth(t *testing.T) {
 	t.Parallel()
 	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
-		LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{Min: new(uint64(1))}},
+		LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
 	}}
 	for range domain.MaxFilterDepth - 1 {
 		filter = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{
@@ -1437,16 +1437,13 @@ func TestValidateOrder_PreparedQueryRejectsLogIdWithoutCondition(t *testing.T) {
 	t.Parallel()
 
 	bare := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{}}}
-	empty := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{
-		Cond: &commonpb.UintCondition{MinExclusive: true},
-	}}}
 	nested := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{
 		Filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{
 			Filters: []*commonpb.QueryFilter{bare},
 		}}},
 	}}}
 
-	for name, filter := range map[string]*commonpb.QueryFilter{"bare": bare, "empty range": empty, "nested": nested} {
+	for name, filter := range map[string]*commonpb.QueryFilter{"bare": bare, "nested": nested} {
 		create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 			Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
 				CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
@@ -1454,14 +1451,14 @@ func TestValidateOrder_PreparedQueryRejectsLogIdWithoutCondition(t *testing.T) {
 				}},
 			},
 		}}}
-		require.ErrorContains(t, validateOrder(create), "logId condition has no bound", "create %s", name)
+		require.ErrorContains(t, validateOrder(create), "logId condition has no value", "create %s", name)
 
 		update := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 			Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery{
 				UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{Name: "q", Filter: filter},
 			},
 		}}}
-		require.ErrorContains(t, validateOrder(update), "logId condition has no bound", "update %s", name)
+		require.ErrorContains(t, validateOrder(update), "logId condition has no value", "update %s", name)
 	}
 }
 
