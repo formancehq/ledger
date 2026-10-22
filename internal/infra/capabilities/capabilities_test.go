@@ -9,98 +9,46 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func armedState(policy AdmissionPolicy) State {
-	return State{Armed: true, Policy: policy, MembershipRevision: 7, Activations: map[ID]bool{IDExecutionPlanV1: false}}
+func armedState() State {
+	return State{Armed: true, MembershipRevision: 7, Activations: map[ID]bool{}}
 }
 
 func TestEvaluateIncludesVotersAndLearners(t *testing.T) {
-	state := armedState(FeatureOnly)
-	state.Activations[IDExecutionPlanV1] = true
-	decision := Evaluate(state, []ID{IDExecutionPlanV1}, true, []Member{
-		{NodeID: 1, Role: Voter, Reachable: true, Capabilities: []ID{IDExecutionPlanV1}},
+	state := armedState()
+	state.Activations[99] = true
+	decision := Evaluate(state, []ID{99}, true, []Member{
+		{NodeID: 1, Role: Voter, Reachable: true, Capabilities: []ID{99}},
 		{NodeID: 2, Role: Learner, Reachable: true},
 	})
 	require.False(t, decision.Allowed)
 	require.Equal(t, uint64(2), decision.Blockers[0].NodeID)
 }
 
-func TestFeatureOnlyBlocksInactiveRequiredCapability(t *testing.T) {
-	decision := Evaluate(armedState(FeatureOnly), []ID{IDExecutionPlanV1}, true, []Member{
-		{NodeID: 1, Role: Voter, Reachable: true, Capabilities: []ID{IDExecutionPlanV1}},
-		{NodeID: 2, Role: Learner, Reachable: true, Capabilities: []ID{IDExecutionPlanV1}},
-	})
-	require.False(t, decision.Allowed)
-	require.Contains(t, decision.Reason, ErrCapabilityUnsupported.Error())
-	require.Contains(t, decision.Blockers, Blocker{Reason: "capability 1 is inactive"})
-}
-
-func TestFeatureOnlyAllowsActiveRequiredCapabilityWhenMembersSupport(t *testing.T) {
-	state := armedState(FeatureOnly)
-	state.Activations[IDExecutionPlanV1] = true
-	decision := Evaluate(state, []ID{IDExecutionPlanV1}, true, []Member{
-		{NodeID: 1, Role: Voter, Reachable: true, Capabilities: []ID{IDExecutionPlanV1}},
-		{NodeID: 2, Role: Learner, Reachable: true, Capabilities: []ID{IDExecutionPlanV1}},
-	})
+func TestEvaluateAllowsUnrelatedWriteWhenNoFeatureIsDeclared(t *testing.T) {
+	decision := Evaluate(armedState(), nil, true, []Member{{NodeID: 1, Role: Voter, Reachable: true}})
 	require.True(t, decision.Allowed)
 }
 
-func TestAllWritesBlocksUnrelatedBusinessWrite(t *testing.T) {
-	decision := Evaluate(armedState(AllWrites), nil, true, nil)
-	require.False(t, decision.Allowed)
-	require.Contains(t, decision.Reason, "business writes")
-}
-
-func TestFeatureOnlyAllowsUnrelatedWrite(t *testing.T) {
-	decision := Evaluate(armedState(FeatureOnly), nil, true, []Member{{NodeID: 1, Role: Voter, Reachable: true}})
-	require.True(t, decision.Allowed)
-}
-
-func TestValidateFinalProposalRejectsMissingDeclaration(t *testing.T) {
-	data, err := (&raftcmdpb.Proposal{ExecutionPlan: &raftcmdpb.ExecutionPlan{}, RequiredCapabilities: []uint32{uint32(IDExecutionPlanV1)}}).MarshalVT()
-	require.NoError(t, err)
-	require.ErrorIs(t, ValidateFinalProposal(data, nil), ErrMissingCapability)
-}
-
-func TestValidateFinalProposalRejectsSemanticDependencyOmittedFromWire(t *testing.T) {
+func TestValidateFinalProposalHasNoCurrentDependencies(t *testing.T) {
 	data, err := (&raftcmdpb.Proposal{ExecutionPlan: &raftcmdpb.ExecutionPlan{}}).MarshalVT()
 	require.NoError(t, err)
-
-	require.ErrorIs(t, ValidateFinalProposal(data, nil), ErrMissingCapability)
+	require.NoError(t, ValidateFinalProposal(data, nil))
 }
 
-func TestValidateFinalProposalRequiresAllSemanticDependencies(t *testing.T) {
-	proposal := &raftcmdpb.Proposal{
-		ExecutionPlan: &raftcmdpb.ExecutionPlan{},
-		Idempotency:   &commonpb.Idempotency{Key: "retry"},
-	}
+func TestStampProposalClearsFutureDeclarations(t *testing.T) {
+	proposal := &raftcmdpb.Proposal{RequiredCapabilities: []uint32{99}}
 	require.NoError(t, StampProposal(proposal))
-	require.Equal(t, []uint32{uint32(IDExecutionPlanV1), uint32(IDSemanticReplayV1)}, proposal.GetRequiredCapabilities())
-
-	data, err := proposal.MarshalVT()
-	require.NoError(t, err)
-	require.NoError(t, ValidateFinalProposal(data, []ID{IDSemanticReplayV1, IDExecutionPlanV1}))
-
-	proposal.RequiredCapabilities = []uint32{uint32(IDExecutionPlanV1)}
-	data, err = proposal.MarshalVT()
-	require.NoError(t, err)
-	require.ErrorIs(t, ValidateFinalProposal(data, []ID{IDExecutionPlanV1}), ErrMissingCapability)
-}
-
-func TestRequiredCapabilitiesIsDeterministicForEmptyExecutionPlan(t *testing.T) {
-	required, err := RequiredCapabilities(&raftcmdpb.Proposal{ExecutionPlan: &raftcmdpb.ExecutionPlan{}})
-	require.NoError(t, err)
-	require.Equal(t, []ID{IDExecutionPlanV1}, required)
+	require.Empty(t, proposal.GetRequiredCapabilities())
 }
 
 func TestFromPolicyRoundTrip(t *testing.T) {
 	state := FromPolicy(&commonpb.ClusterPolicy{
 		CapabilityActivationArmed:    true,
-		CapabilityAdmissionPolicy:    commonpb.CapabilityAdmissionPolicy_CAPABILITY_ADMISSION_POLICY_ALL_WRITES,
 		MinimumReplayProtocol:        4,
 		CapabilityMembershipRevision: 9,
-		CapabilityActivations:        []*commonpb.CapabilityActivation{{Id: uint32(IDExecutionPlanV1), Active: true}},
+		CapabilityActivations:        []*commonpb.CapabilityActivation{{Id: 99, Active: true}},
 	})
-	require.Equal(t, AllWrites, state.Policy)
-	require.True(t, state.Activations[IDExecutionPlanV1])
+	require.True(t, state.Armed)
+	require.True(t, state.Activations[99])
 	require.NoError(t, state.Validate())
 }

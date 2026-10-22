@@ -517,11 +517,11 @@ message ClusterPolicy {
   fixed64 metadata_max_value_bytes = 6;
   fixed64 metadata_max_entity_bytes = 7;
   fixed64 metadata_max_command_bytes = 8;
-// Capability admission is replicated policy, never a node-local flag. The
+// Capability activation is replicated policy, never a node-local flag. The
 // fields are optional so nodes that predate the capability foundation decode
 // the policy with their existing defaults.
   bool capability_activation_armed = 9;
-  CapabilityAdmissionPolicy capability_admission_policy = 10;
+  reserved 10; // removed before release; never reuse this field number
   uint32 minimum_replay_protocol = 11;
   fixed64 capability_membership_revision = 12;
   repeated CapabilityActivation capability_activations = 13;
@@ -2738,16 +2738,6 @@ message ListOptions {
   // valid conditions depends on the endpoint's QueryTarget; the server
   // rejects unsupported variants with InvalidArgument.
   QueryFilter filter = 5;
-}
-
-// CapabilityAdmissionPolicy controls which proposals are closed when an
-// activation barrier is armed. FEATURE_ONLY closes only dependent proposals;
-// ALL_WRITES closes business writes while retaining the narrow control-plane
-// recovery path.
-enum CapabilityAdmissionPolicy {
-  CAPABILITY_ADMISSION_POLICY_UNSPECIFIED = 0;
-  CAPABILITY_ADMISSION_POLICY_FEATURE_ONLY = 1;
-  CAPABILITY_ADMISSION_POLICY_ALL_WRITES = 2;
 }
 
 // CapabilityActivation is intentionally small and wire-stable. IDs are fixed
