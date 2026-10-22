@@ -14,8 +14,7 @@ import (
 
 // CapabilityPolicyProposer rechecks the committed capability policy against
 // the final serialized proposal immediately before handing it to the Raft
-// proposer. Technical producers use businessWrite=false: ALL_WRITES blocks
-// business traffic while retaining the control-plane recovery path.
+// proposer.
 type CapabilityPolicyProposer struct {
 	delegate      Proposer
 	readPolicy    func() (*commonpb.ClusterPolicy, error)

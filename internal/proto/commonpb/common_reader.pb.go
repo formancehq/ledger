@@ -3523,7 +3523,6 @@ type ClusterPolicyReader interface {
 	GetMetadataMaxEntityBytes() uint64
 	GetMetadataMaxCommandBytes() uint64
 	GetCapabilityActivationArmed() bool
-	GetCapabilityAdmissionPolicy() CapabilityAdmissionPolicy
 	GetMinimumReplayProtocol() uint32
 	GetCapabilityMembershipRevision() uint64
 	GetCapabilityActivations() CapabilityActivationListReader
@@ -3566,10 +3565,6 @@ func (r *clusterPolicyReadonly) GetMetadataMaxCommandBytes() uint64 {
 
 func (r *clusterPolicyReadonly) GetCapabilityActivationArmed() bool {
 	return (*ClusterPolicy)(r).GetCapabilityActivationArmed()
-}
-
-func (r *clusterPolicyReadonly) GetCapabilityAdmissionPolicy() CapabilityAdmissionPolicy {
-	return (*ClusterPolicy)(r).GetCapabilityAdmissionPolicy()
 }
 
 func (r *clusterPolicyReadonly) GetMinimumReplayProtocol() uint32 {

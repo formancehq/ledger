@@ -5,8 +5,8 @@ rolling upgrade. It is separate from the client-facing gRPC protocol revision.
 
 ## Wire contract
 
-`common.ClusterPolicy` carries the replicated activation state, admission policy,
-membership revision under examination, and a monotonic minimum replay protocol.
+`common.ClusterPolicy` carries the replicated activation state, membership
+revision under examination, and a monotonic minimum replay protocol.
 `raft.Proposal.required_capabilities` carries stable producer-owned capability
 IDs. The fields are optional and therefore backward-readable by binaries that
 predate this foundation. IDs are never reused; semantic dependencies must be
@@ -27,10 +27,10 @@ blocks activation just as an incapable member does. Activation is bound to the
 membership revision observed by the proposer; a changed revision requires a
 fresh examination.
 
-While armed, `FEATURE_ONLY` rejects dependent proposals and allows unrelated
-business writes. `ALL_WRITES` rejects all business writes, with only the
-narrow control-plane recovery and activation path exempted by its producer
-inventory. FSM apply never consults node-local capability flags.
+While armed, a proposal that declares a capability is admitted only when that
+capability is active and every member advertises it. Proposals with no declared
+capability remain unaffected. FSM apply never consults node-local capability
+flags.
 
 The replay floor is monotonic, is bounded by the local replay protocol during
 policy apply, and is checked immediately after decoding an entry or snapshot
@@ -68,9 +68,8 @@ Raft and applied to every member's peer store; a local restart-time upsert is
 not sufficient to activate a capability for admission. A fresh WAL instead
 uses `JoinAsLearner` and `ConfChangeAddLearnerNode`.
 
-The leader's existing cluster-policy reconciler observes those committed peer
-rows. Once every current voter and learner advertises the complete capability
-set implemented by the binary, it proposes a new, audited policy revision with
-the capability gate armed in `FEATURE_ONLY` mode. This is a one-way transition:
-an already armed policy is preserved, and a missing or stale member proof keeps
-activation disarmed until that member completes `RefreshMembership`.
+The leader's existing cluster-policy reconciler does not activate a capability
+automatically. A future rollout can add an explicit `CapabilityActivation`
+entry once every current voter and learner has refreshed its membership proof.
+Until then the mechanism remains disarmed and this binary declares no protocol
+feature.
