@@ -134,6 +134,7 @@ func (impl *ClusterBootstrapServiceServerImpl) GetPeers(ctx context.Context, req
 			RaftAddress:    p.RaftAddress,
 			ServiceAddress: p.ServiceAddress,
 			InstanceId:     p.InstanceID,
+			Capabilities:   p.Capabilities,
 		})
 	}
 
@@ -223,7 +224,7 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 			req.GetNodeId(), req.GetInstanceId())
 	}
 
-	if err := impl.membership.JoinAsLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), req.GetInstanceId()); err != nil {
+	if err := impl.membership.JoinAsLearnerWithCapabilities(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), req.GetInstanceId(), req.GetCapabilities()); err != nil {
 		// EN-1436: a JoinAsLearner call reaches the leader only when the caller
 		// has no CLUSTER_JOINED marker on its WAL (see bootstrap/module.go
 		// tryAddLearner). If the leader's Progress already carries this
