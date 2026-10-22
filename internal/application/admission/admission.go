@@ -1076,7 +1076,7 @@ func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
 		return 0, fmt.Errorf("marshaling barrier command: %w", err)
 	}
 
-	proposal := node.NewProposal(cmd.GetId(), proposalData, required)
+	proposal := node.NewPreparedProposal(cmd.GetId(), proposalData, required)
 
 	// Lock the tracker to serialize the Increment with guarded proposals,
 	// preventing preload boundary mismatches in the FSM.

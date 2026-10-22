@@ -140,7 +140,7 @@ func (p *Builder) Run(
 	}
 
 	// Guarantee a unique command ID. The applier keys FSM futures by
-	// `cmd.Id` (`node.NewProposal(cmd.GetId(), data, required)` below); two in-flight
+	// `cmd.Id` (`node.NewPreparedProposal(cmd.GetId(), data, required)` below); two in-flight
 	// proposals sharing Id=0 would overwrite each other in
 	// `Applier.StoreFuture`, hanging one waiter and routing the apply
 	// result to the wrong caller. Several technical callers build
@@ -243,7 +243,7 @@ func (p *Builder) Run(
 		data = AppendProposalPredictedIndex(data, cmd.GetPredictedIndex())
 	}
 
-	proposal := node.NewProposal(cmd.GetId(), data, required)
+	proposal := node.NewPreparedProposal(cmd.GetId(), data, required)
 
 	result.ProposeStartTime = time.Now()
 	fsmFuture, err := proposer.Propose(ctx, proposal)
@@ -375,7 +375,7 @@ func (p *Builder) runWithoutPreload(
 	cmd.PredictedIndex = p.TrackerNext()
 	data = AppendProposalPredictedIndex(data, cmd.GetPredictedIndex())
 
-	proposal := node.NewProposal(cmd.GetId(), data, required)
+	proposal := node.NewPreparedProposal(cmd.GetId(), data, required)
 
 	proposeStart := time.Now()
 	fsmFuture, err := proposer.Propose(ctx, proposal)
