@@ -38,7 +38,7 @@ lint:
     (cd tests/antithesis/workload && golangci-lint run --fix --build-tags enable_antithesis_sdk --timeout 5m)
 
 # Go modules kept tidy by `just tidy` (and checked by the Dirty CI job).
-tidy_modules := ". misc/operator tests/antithesis/workload"
+tidy_modules := ". misc/operator tests/antithesis/workload pkg/client/v3 pkg/proto/v3"
 
 tidy:
     #!/usr/bin/env bash
