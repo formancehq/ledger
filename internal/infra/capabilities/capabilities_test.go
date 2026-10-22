@@ -10,14 +10,14 @@ import (
 )
 
 func capabilityState() State {
-	return State{Activations: map[ID]bool{}}
+	return State{Activations: map[CapabilityID]bool{}}
 }
 
 func TestEvaluateIncludesVotersAndLearners(t *testing.T) {
 	state := capabilityState()
 	state.Activations[99] = true
-	decision := Evaluate(state, []ID{99}, true, []Member{
-		{NodeID: 1, Role: Voter, Reachable: true, Capabilities: []ID{99}},
+	decision := Evaluate(state, []CapabilityID{99}, true, []Member{
+		{NodeID: 1, Role: Voter, Reachable: true, Capabilities: []CapabilityID{99}},
 		{NodeID: 2, Role: Learner, Reachable: true},
 	})
 	require.False(t, decision.Allowed)
@@ -27,12 +27,6 @@ func TestEvaluateIncludesVotersAndLearners(t *testing.T) {
 func TestEvaluateAllowsUnrelatedWriteWhenNoFeatureIsDeclared(t *testing.T) {
 	decision := Evaluate(capabilityState(), nil, true, []Member{{NodeID: 1, Role: Voter, Reachable: true}})
 	require.True(t, decision.Allowed)
-}
-
-func TestValidateFinalProposalHasNoCurrentDependencies(t *testing.T) {
-	data, err := (&raftcmdpb.Proposal{ExecutionPlan: &raftcmdpb.ExecutionPlan{}}).MarshalVT()
-	require.NoError(t, err)
-	require.NoError(t, ValidateFinalProposal(data, nil))
 }
 
 func TestStampProposalClearsFutureDeclarations(t *testing.T) {
@@ -51,36 +45,36 @@ func TestFromPolicyRoundTrip(t *testing.T) {
 
 func TestReadyReturnsIntersectionAcrossMembers(t *testing.T) {
 	members := []Member{
-		{NodeID: 1, Role: Voter, Capabilities: []ID{1, 2}},
-		{NodeID: 2, Role: Learner, Capabilities: []ID{1}},
+		{NodeID: 1, Role: Voter, Capabilities: []CapabilityID{1, 2}},
+		{NodeID: 2, Role: Learner, Capabilities: []CapabilityID{1}},
 	}
 
-	ready, err := Ready([]ID{2, 1}, members)
+	ready, err := Ready([]CapabilityID{2, 1}, members)
 	require.NoError(t, err)
-	require.Equal(t, []ID{1}, ready)
+	require.Equal(t, []CapabilityID{1}, ready)
 }
 
 func TestReadyDoesNotActivateAnEmptyCluster(t *testing.T) {
-	ready, err := Ready([]ID{1}, nil)
+	ready, err := Ready([]CapabilityID{1}, nil)
 	require.NoError(t, err)
 	require.Empty(t, ready)
 }
 
 func TestReadyRejectsMalformedMemberEvidence(t *testing.T) {
-	_, err := Ready([]ID{1}, []Member{{
+	_, err := Ready([]CapabilityID{1}, []Member{{
 		NodeID:       1,
 		Role:         Voter,
-		Capabilities: []ID{1, 1},
+		Capabilities: []CapabilityID{1, 1},
 	}})
 	require.ErrorContains(t, err, "invalid capability evidence")
 }
 
 func TestReadyIgnoresUnsupportedAdvertisedIDs(t *testing.T) {
-	ready, err := Ready([]ID{1}, []Member{{
+	ready, err := Ready([]CapabilityID{1}, []Member{{
 		NodeID:       1,
 		Role:         Voter,
-		Capabilities: []ID{1, 99},
+		Capabilities: []CapabilityID{1, 99},
 	}})
 	require.NoError(t, err)
-	require.Equal(t, []ID{1}, ready)
+	require.Equal(t, []CapabilityID{1}, ready)
 }

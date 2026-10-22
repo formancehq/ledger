@@ -31,9 +31,6 @@ type barrierTestProposer struct{}
 func (barrierTestProposer) InitialIndex() uint64 { return 1 }
 
 func (barrierTestProposer) Propose(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
-	if err := capabilities.ValidateFinalProposal(proposal.Data(), proposal.DeclaredCapabilities()); err != nil {
-		return nil, err
-	}
 	proposal.Resolve(nil, nil)
 	future := futures.New[state.ApplyResult]()
 	future.Resolve(state.ApplyResult{AppliedIndex: 1}, nil)
@@ -67,7 +64,7 @@ func TestCapabilityPolicyProposerBlocksUnknownCapabilityAtFinalBoundary(t *testi
 	}
 	data, err := (&raftcmdpb.Proposal{RequiredCapabilities: []uint32{99}}).MarshalVT()
 	require.NoError(t, err)
-	_, err = proposer.Propose(context.Background(), node.NewProposal(1, data))
+	_, err = proposer.Propose(context.Background(), node.NewProposal(1, data, []capabilities.CapabilityID{99}))
 	require.Error(t, err)
 	require.ErrorIs(t, err, capabilities.ErrCapabilityUnsupported)
 	require.False(t, delegate.called)
@@ -84,7 +81,7 @@ func TestCapabilityPolicyProposerAllowsUnrelatedWrite(t *testing.T) {
 	}
 	data, err := (&raftcmdpb.Proposal{}).MarshalVT()
 	require.NoError(t, err)
-	_, err = proposer.Propose(context.Background(), node.NewProposal(1, data))
+	_, err = proposer.Propose(context.Background(), node.NewProposal(1, data, nil))
 	require.NoError(t, err)
 	require.True(t, delegate.called)
 }

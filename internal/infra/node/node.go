@@ -98,7 +98,7 @@ var (
 	ErrNodeSyncing = errors.New("node is syncing")
 )
 
-func capabilityIDsAsUint32(ids []capabilities.ID) []uint32 {
+func capabilityIDsAsUint32(ids []capabilities.CapabilityID) []uint32 {
 	result := make([]uint32, len(ids))
 	for i, id := range ids {
 		result[i] = uint32(id)
@@ -2382,7 +2382,7 @@ func (node *Node) handleProposal(p *Proposal) {
 		}
 	}
 	if err == nil {
-		if validationErr := capabilities.ValidateFinalProposal(p.data, p.declaredCapabilities); validationErr != nil {
+		if validationErr := capabilities.ValidateFinalProposal(p.data, p.requiredCapabilities); validationErr != nil {
 			err = validationErr
 		} else {
 			err = node.rawNode.Propose(p.data)
@@ -2506,9 +2506,9 @@ func (node *Node) CapabilityMembers() []capabilities.Member {
 		member := capabilities.Member{NodeID: id, Role: role, Reachable: ok && peer.RaftAddress != "" && peer.ServiceAddress != ""}
 		if ok {
 			member.InstanceID = peer.InstanceID
-			member.Capabilities = make([]capabilities.ID, len(peer.Capabilities))
+			member.Capabilities = make([]capabilities.CapabilityID, len(peer.Capabilities))
 			for i, capabilityID := range peer.Capabilities {
-				member.Capabilities[i] = capabilities.ID(capabilityID)
+				member.Capabilities[i] = capabilities.CapabilityID(capabilityID)
 			}
 		}
 		result = append(result, member)
