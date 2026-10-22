@@ -27,9 +27,10 @@ require (
 	k8s.io/client-go v0.36.1
 )
 
+replace github.com/formancehq/ledger/pkg/proto/v3 => ../../../pkg/proto/v3
+
 require (
 	cel.dev/expr v0.25.2 // indirect
-	dario.cat/mergo v1.0.2 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1 // indirect

@@ -1,6 +1,9 @@
 # Protocol Buffers and gRPC
 
-The Raft transport layer and ledger service use gRPC for communication. Protocol buffer definitions are stored in `misc/proto/`, and generated Go code is placed in internal packages.
+The Raft transport layer and ledger service use gRPC for communication. Protocol
+buffer definitions are stored in `misc/proto/`. Public generated Go types and
+descriptors are owned by the shared module under `pkg/proto/v3`, while
+backend-only generated state remains in internal packages.
 
 ## File Locations
 

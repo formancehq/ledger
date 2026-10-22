@@ -42,7 +42,7 @@ func checkFuzzInventory(files []string) ([]finding, error) {
 		return nil, err
 	}
 
-	findings = append(findings, unreachableFuzzTargetFindings(actual)...)
+	findings = append(findings, unreachableFuzzTargetFindings(actual, runner)...)
 	findings = append(findings, compareFuzzTargets(actual, runner)...)
 	sortFindings(findings)
 
@@ -202,12 +202,21 @@ func fuzzFileConstraintReason(path string, source []byte, platformSuffixes map[s
 	return "", nil
 }
 
-func unreachableFuzzTargetFindings(targets []locatedFuzzTarget) []finding {
+func unreachableFuzzTargetFindings(targets []locatedFuzzTarget, runner []locatedFuzzTarget) []finding {
 	var findings []finding
+	runnerPackages := make(map[string]struct{}, len(runner))
+	for _, target := range runner {
+		runnerPackages[target.target.packagePath] = struct{}{}
+	}
 
 	for _, target := range targets {
 		if target.unreachableReason == "" {
 			continue
+		}
+		if strings.HasPrefix(target.unreachableReason, "the declaration belongs to nested Go module ") {
+			if _, ok := runnerPackages[target.target.packagePath]; ok {
+				continue
+			}
 		}
 
 		location := target.location
