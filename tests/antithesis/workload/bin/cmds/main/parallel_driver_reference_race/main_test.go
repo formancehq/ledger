@@ -20,7 +20,8 @@ import (
 )
 
 func TestDriverQueryOracles(t *testing.T) {
-	drivertest.CheckDriver(t, main, "a reference never maps to more than one committed transaction")
+	drivertest.CheckDriver(t, main, "a reference never maps to more than one committed transaction",
+		"an acknowledged reference create remains visible")
 }
 
 func TestReferenceOracleDetectsInjectedDuplicate(t *testing.T) {
@@ -43,7 +44,7 @@ func TestReferenceOracleDetectsInjectedDuplicate(t *testing.T) {
 		injectedID := ^uint64(0)
 		require.NotEqual(t, txID, injectedID)
 		interceptor := &duplicateReferenceClient{BucketServiceClient: client, injectedID: injectedID}
-		assertReferenceUnique(ctx, interceptor, ledger, reference, internal.Details{
+		assertReferenceUnique(ctx, interceptor, ledger, reference, true, internal.Details{
 			"ledger": ledger, "sensitivityInjection": injection,
 			"expectedTxIds": fmt.Sprint([]uint64{txID, injectedID}),
 		})
@@ -120,4 +121,94 @@ func (s *duplicateReferenceStream) Recv() (*commonpb.Transaction, error) {
 	}
 
 	return nil, err
+}
+
+// A successful query that omits a committed row must not certify an acked
+// create. Without an acknowledgement, both empty and nonempty results remain
+// possible (for example, a lost RPC response before or after commit).
+func TestReferenceOracleAcknowledgedPresence(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		acknowledged bool
+		hide         bool
+	}{
+		{"acked_visible", true, false},
+		{"acked_missing", true, true},
+		{"ambiguous_visible", false, false},
+		{"ambiguous_missing", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			drivertest.CheckEmissions(t, func() {
+				ctx, client := drivertest.StartServer(t)
+				const ledger, reference = "refrace-presence", "presence-reference"
+				require.NoError(t, internal.CreateQueryOracleLedger(ctx, client, ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
+				resp, err := createWithReference(ctx, client, ledger, reference, "presence-destination")
+				require.NoError(t, err)
+				txID, ok := actions.GetCreatedTransactionID(resp)
+				require.True(t, ok)
+				ids, err := internal.ReadOracleTransactions(ctx, client, ledger, actions.ReferenceFilter(reference))
+				require.NoError(t, err)
+				require.Equal(t, []uint64{txID}, ids)
+				interceptor := &hiddenReferenceClient{BucketServiceClient: client, hide: tc.hide}
+				assertReferenceUnique(ctx, interceptor, ledger, reference, tc.acknowledged, internal.Details{"ledger": ledger})
+				require.NotNil(t, interceptor.stream)
+				require.Equal(t, tc.hide, interceptor.stream.hidden)
+			}, func(records []drivertest.Assertion) {
+				presenceHits, uniqueHits := 0, 0
+				for _, record := range records {
+					if !record.Hit {
+						continue
+					}
+					switch record.Message {
+					case "an acknowledged reference create remains visible":
+						presenceHits++
+						require.Equal(t, !tc.hide, record.Condition)
+						require.Equal(t, "presence-reference", record.Details["reference"])
+					case "a reference never maps to more than one committed transaction":
+						uniqueHits++
+						require.True(t, record.Condition)
+					}
+				}
+				require.Equal(t, 1, uniqueHits)
+				if tc.acknowledged {
+					require.Equal(t, 1, presenceHits)
+				} else {
+					require.Zero(t, presenceHits, "ambiguous RPC outcomes do not establish a lower bound")
+				}
+			})
+		})
+	}
+}
+
+// This interceptor preserves the real query and its errors, but can hide its
+// rows to test oracle sensitivity. It does not simulate an engine data loss.
+type hiddenReferenceClient struct {
+	servicepb.BucketServiceClient
+	hide   bool
+	stream *hiddenReferenceStream
+}
+
+func (c *hiddenReferenceClient) ListTransactions(ctx context.Context, req *servicepb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error) {
+	stream, err := c.BucketServiceClient.ListTransactions(ctx, req, opts...)
+	if err != nil {
+		return nil, err
+	}
+	c.stream = &hiddenReferenceStream{ServerStreamingClient: stream, hide: c.hide}
+	return c.stream, nil
+}
+
+type hiddenReferenceStream struct {
+	grpc.ServerStreamingClient[commonpb.Transaction]
+	hide   bool
+	hidden bool
+}
+
+func (s *hiddenReferenceStream) Recv() (*commonpb.Transaction, error) {
+	for {
+		tx, err := s.ServerStreamingClient.Recv()
+		if err != nil || !s.hide {
+			return tx, err
+		}
+		s.hidden = true
+	}
 }

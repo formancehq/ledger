@@ -65,11 +65,10 @@ func createWithReference(
 	}))
 }
 
-// writeMarker commits a reference-less marker transaction and returns its log
-// sequence. The marker is proposed after every assertion-relevant response was
-// received, so a subsequent linearizable read covers any write those responses
-// could correspond to. Returns
-// (0, false) when the barrier could not be established (inconclusive).
+// writeMarker commits a reference-less marker after the create calls return.
+// Subsequent linearizable reads cover acknowledged writes. An ambiguous RPC
+// may still commit later; the marker does not establish its final outcome.
+// Returns false when the barrier could not be established (inconclusive).
 func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledger string) bool {
 	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -112,11 +111,14 @@ func countTransactionsWithReference(
 
 // assertReferenceUnique is the shared end-state oracle for both halves of the
 // driver: after a marker barrier, a reference must map to at most one
-// committed transaction. Single call site per assertion message.
+// committed transaction. An acknowledged create also requires a nonempty
+// result; ambiguous RPC outcomes alone cannot establish that lower bound.
+// Single call site per assertion message.
 func assertReferenceUnique(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	ledger, ref string,
+	acknowledged bool,
 	details internal.Details,
 ) {
 	if !writeMarker(ctx, client, ledger) {
@@ -126,6 +128,12 @@ func assertReferenceUnique(
 	ids, conclusive := countTransactionsWithReference(ctx, client, ledger, ref)
 	if !conclusive {
 		return
+	}
+
+	if acknowledged {
+		assert.Always(len(ids) > 0,
+			"an acknowledged reference create remains visible",
+			details.With(internal.Details{"reference": ref, "txIds": fmt.Sprintf("%v", ids)}))
 	}
 
 	assert.Always(len(ids) <= 1,
@@ -197,13 +205,14 @@ func main() {
 			"at most one concurrent same-reference create is acked",
 			raceDetails)
 
-		// Coverage: prove the race actually produced a loser at least once
-		// across the run, so the Always above is not vacuously green.
+		// Coverage: observe a winner and a loser at least once across the run.
+		// This does not prove overlap inside admission: the scheduler may
+		// serialize the requests despite launching separate goroutines.
 		assert.Sometimes(okCount == 1 && conflictCount > 0,
 			"concurrent same-reference race produced a winner and a conflict loser",
 			raceDetails)
 
-		assertReferenceUnique(ctx, client, ledger, raceRef, raceDetails)
+		assertReferenceUnique(ctx, client, ledger, raceRef, okCount > 0, raceDetails)
 
 		// ---- Half 2: aged-reference reuse ------------------------------------
 
@@ -258,6 +267,6 @@ func main() {
 				agedDetails.With(internal.Details{"error": err.Error()}))
 		}
 
-		assertReferenceUnique(ctx, client, ledger, agedRef, agedDetails)
+		assertReferenceUnique(ctx, client, ledger, agedRef, true, agedDetails)
 	})
 }
