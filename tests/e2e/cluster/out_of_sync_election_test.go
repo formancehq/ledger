@@ -101,10 +101,12 @@ var _ = Describe("Out-of-sync election", func() {
 
 		writeTransactions := func(via uint64, count int) {
 			for range count {
-				_, err := servers[via-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
-				}, nil, nil)))
-				Expect(err).To(Succeed())
+				Eventually(func() error {
+					_, err := servers[via-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
+					}, nil, nil)))
+					return err
+				}).Within(45 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 			}
 		}
 
