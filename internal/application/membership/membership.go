@@ -50,6 +50,7 @@ type Peer struct {
 	RaftAddress    string
 	ServiceAddress string
 	InstanceID     []byte
+	Capabilities   []uint32
 }
 
 // Service is the single owner of cluster membership operations.
@@ -90,7 +91,7 @@ func (s *Service) IsRemoved(nodeID uint64, instanceID []byte) (bool, error) {
 // Returns node.ErrNodeAlreadyInCluster on idempotent retries; adapters
 // map that to their transport-specific "already-exists" status.
 func (s *Service) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	return s.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, false)
+	return s.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, nil, false)
 }
 
 // JoinAsLearner registers a node that is booting with an empty WAL and no
@@ -98,7 +99,13 @@ func (s *Service) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 // AddLearner operation preserves EN-1436's stale-progress fail-fast without
 // inferring caller intent from a missing instanceID sentinel.
 func (s *Service) JoinAsLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	return s.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, true)
+	return s.JoinAsLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, nil)
+}
+
+// JoinAsLearnerWithCapabilities is the bootstrap path carrying the joining
+// binary's capability evidence through the committed ConfChange.
+func (s *Service) JoinAsLearnerWithCapabilities(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
+	return s.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs, true)
 }
 
 // RefreshMembership updates the durable identity, endpoints and capability
@@ -116,7 +123,7 @@ func (s *Service) RefreshMembership(ctx context.Context, nodeID uint64, raftAddr
 	return nil
 }
 
-func (s *Service) addLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, bootJoin bool) error {
+func (s *Service) addLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32, bootJoin bool) error {
 	if err := validatePeer(nodeID, raftAddr, serviceAddr, instanceID); err != nil {
 		return err
 	}
@@ -134,9 +141,9 @@ func (s *Service) addLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 
 	var err error
 	if bootJoin {
-		err = s.node.JoinAsLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID)
+		err = s.node.JoinAsLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs)
 	} else {
-		err = s.node.AddLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID)
+		err = s.node.AddLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs)
 	}
 	if err != nil {
 		return fmt.Errorf("adding learner: %w", err)
@@ -214,6 +221,7 @@ func (s *Service) ListPeers(ctx context.Context) ([]Peer, error) {
 			RaftAddress:    raftAddr,
 			ServiceAddress: serviceAddr,
 			InstanceID:     peer.InstanceID,
+			Capabilities:   append([]uint32(nil), peer.Capabilities...),
 		})
 	}
 
