@@ -1729,6 +1729,10 @@ func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, build
 // The write-readiness gate exempts this non-business proposal so it is never
 // blocked by its own cluster-policy gate.
 func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, readMembers func() []capabilities.Member, logger logging.Logger) {
+	reconcileClusterPolicyWithRegistry(ctx, admission, store, cfg, isLeader, capabilities.SupportedIDs, readMembers, logger)
+}
+
+func reconcileClusterPolicyWithRegistry(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, readSupported func() []capabilities.ID, readMembers func() []capabilities.Member, logger logging.Logger) {
 	if !isLeader() {
 		return
 	}
@@ -1758,7 +1762,7 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		}
 	}
 	if readMembers != nil {
-		ready, err := capabilities.Ready(capabilities.SupportedIDs(), readMembers())
+		ready, err := capabilities.Ready(readSupported(), readMembers())
 		if err != nil {
 			logger.WithFields(map[string]any{"error": err}).Errorf("Computing converged capability set")
 			return

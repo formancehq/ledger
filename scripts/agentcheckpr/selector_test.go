@@ -84,6 +84,11 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 			expected: []string{"pre-commit", "agent-check", "test-tooling", "proto-lint"},
 		},
 		{
+			name:     "Raft protocol change requires capability contract",
+			paths:    []string{"misc/proto/common.proto"},
+			expected: []string{"agent-check-full", "test-e2e", "protocol-revision", "capability-contract"},
+		},
+		{
 			name:     "protocol revision only",
 			paths:    []string{"pkg/grpcprotocol/protocol.go"},
 			expected: []string{"agent-check-full", "protocol-revision"},
