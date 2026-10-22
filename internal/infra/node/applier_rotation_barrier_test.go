@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 
@@ -165,34 +166,46 @@ func TestRotationPreloadReadsCommittedValue(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("pre-rotation batch was not prepared")
 	}
-	// Without the barrier, index 5 was already prepared and rotated while
-	// the index-3 write was still absent from Pebble. Capture that stale seed
-	// before committing; release the work even when the assertion will fail.
-	rotatedBeforeCommit := setup.fsm.Registry.Cache.CurrentGeneration() == 1
-	var status cache.CacheStatus
-	var seed *commonpb.LedgerInfo
-	var seedErr error
-	if rotatedBeforeCommit {
-		status, seed, seedErr = readSeed()
-	}
-	require.NoError(t, setup.fsm.CommitPreparedBatch(ctx, previous.prepared))
-	previous.done <- nil
+	// Give the applier time to reach a forbidden early rotation. Keep draining
+	// its commit work even if this assertion fails, so the test cannot hang.
+	rotationWaited := assert.Never(t, func() bool {
+		return setup.fsm.Registry.Cache.CurrentGeneration() != 0
+	}, 100*time.Millisecond, 5*time.Millisecond)
+	status, seed, seedErr := readSeed()
+	observedRotation := !rotationWaited
 
-	if !rotatedBeforeCommit {
-		var rotating commitWork
-		select {
-		case rotating = <-setup.applier.commitCh:
-		case <-time.After(5 * time.Second):
-			t.Fatal("rotating batch was not prepared after the previous commit")
-		}
-		status, seed, seedErr = readSeed()
-		require.NoError(t, setup.fsm.CommitPreparedBatch(ctx, rotating.prepared))
-		rotating.done <- nil
+	commit := func(work commitWork) {
+		err := setup.fsm.CommitPreparedBatch(ctx, work.prepared)
+		work.done <- err
+		require.NoError(t, err)
 	}
-	require.NoError(t, <-result)
+	commit(previous)
+
+	// The apply loop can submit more than one batch before returning. Service
+	// every submission, including on the regression path, before asserting.
+	var applyErr error
+	deadline := time.After(5 * time.Second)
+drain:
+	for {
+		select {
+		case work := <-setup.applier.commitCh:
+			if !observedRotation && setup.fsm.Registry.Cache.CurrentGeneration() != 0 {
+				status, seed, seedErr = readSeed()
+				observedRotation = true
+			}
+			commit(work)
+		case applyErr = <-result:
+			break drain
+		case <-deadline:
+			t.Fatal("applier did not finish after draining commit work")
+		}
+	}
+	require.NoError(t, applyErr)
 	require.NoError(t, setup.applier.waitPendingCommit(ctx))
+	require.True(t, observedRotation, "the test must observe a cache rotation")
 	require.Equal(t, cache.CacheMiss, status, "index 9 cannot use this Gen1-only ledger")
 	require.NoError(t, seedErr, "the required preload seed must already be durable")
+	require.NotNil(t, seed)
 	require.Equal(t, ledgerName, seed.GetName())
 }
 
