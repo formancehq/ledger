@@ -294,6 +294,15 @@ func (fsm *Machine) LastAppliedIndex() uint64 {
 	return fsm.State.LastAppliedIndex
 }
 
+// ClusterPolicy returns the policy state at the current apply position. It is
+// intended for callbacks invoked while PrepareEntries holds fsm.mu.
+func (fsm *Machine) ClusterPolicy() *commonpb.ClusterPolicy {
+	if fsm.State.ClusterPolicy == nil {
+		return nil
+	}
+	return fsm.State.ClusterPolicy.CloneVT()
+}
+
 // RestoreState atomically replaces the FSM-level state. The intended callers
 // are Recovery (at boot) and Synchronizer (after install-snapshot), which
 // build a fresh FSMState from Pebble via LoadFSMStateFromStore and swap it

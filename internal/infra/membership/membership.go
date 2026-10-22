@@ -627,6 +627,18 @@ func (m *Membership) OnSnapshotInstalled() {
 // Promotions repeat the existing peer registration, making replay independent
 // of the node-local membership cache.
 func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSession) error {
+	return m.writeConfChange(entry, session, nil, false)
+}
+
+// WriteConfChangeWithPolicy applies a ConfChange using the policy state at the
+// entry's position in the current FSM batch. This avoids validating a
+// membership change against the policy that was durable before an earlier
+// SetClusterPolicy order in the same batch.
+func (m *Membership) WriteConfChangeWithPolicy(entry *raftpb.Entry, session *dal.WriteSession, policy *commonpb.ClusterPolicy) error {
+	return m.writeConfChange(entry, session, policy, true)
+}
+
+func (m *Membership) writeConfChange(entry *raftpb.Entry, session *dal.WriteSession, effectivePolicy *commonpb.ClusterPolicy, hasEffectivePolicy bool) error {
 	cc, ok, err := UnmarshalConfChangeV2(entry)
 	if err != nil {
 		return fmt.Errorf("decoding ConfChange entry: %w", err)
@@ -643,14 +655,20 @@ func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSess
 		if err := ValidateCapabilities(ctx.Capabilities); err != nil {
 			return fmt.Errorf("invalid capability evidence for peer %d: %w", nodeID, err)
 		}
-		m.mu.RLock()
-		provider := m.capabilityPolicyProvider
-		m.mu.RUnlock()
-		if provider != nil {
-			policy, err := provider()
-			if err != nil {
-				return fmt.Errorf("reading committed cluster policy for peer %d: %w", nodeID, err)
+		policy := effectivePolicy
+		if !hasEffectivePolicy {
+			m.mu.RLock()
+			provider := m.capabilityPolicyProvider
+			m.mu.RUnlock()
+			if provider != nil {
+				var err error
+				policy, err = provider()
+				if err != nil {
+					return fmt.Errorf("reading committed cluster policy for peer %d: %w", nodeID, err)
+				}
 			}
+		}
+		if policy != nil || hasEffectivePolicy {
 			required := make([]uint32, 0)
 			if policy != nil {
 				required = make([]uint32, 0, len(policy.GetCapabilityActivations()))
