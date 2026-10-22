@@ -239,13 +239,8 @@ func Module() fx.Option {
 				durableStore *dal.Store,
 				logger logging.Logger,
 			) (*raftmembership.Membership, error) {
-				policyProvider := func() *commonpb.ClusterPolicy {
-					policy, err := query.ReadClusterPolicy(durableStore)
-					if err != nil {
-						return nil
-					}
-
-					return policy
+				policyProvider := func() (*commonpb.ClusterPolicy, error) {
+					return query.ReadClusterPolicy(durableStore)
 				}
 
 				return raftmembership.NewMembership(peerStore, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, logger, policyProvider)
