@@ -675,6 +675,12 @@ The fixture also passes the actual forwarded close error to
 
 All business errors carry an `ErrorInfo` detail with a machine-readable reason. The reason constants are defined in `internal/domain/processing/errors.go` and shared between server and client.
 
+The caller-attribution guard is not a business error: it is an internal
+trust-boundary violation. It has no `ErrorReason`, `ErrorInfo`, or public
+diagnostic text. Admission rejects it before proposing, and the FSM rejects a
+malformed committed entry before audit or business-state mutation; gRPC returns
+only `INTERNAL` with the generic `internal error` message.
+
 | Error | gRPC Code | Reason | Metadata |
 |-------|-----------|--------|----------|
 | Ledger already exists | `ALREADY_EXISTS` | `LEDGER_ALREADY_EXISTS` | `name` |

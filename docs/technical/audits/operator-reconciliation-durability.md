@@ -93,6 +93,19 @@ as the availability/data oracle in the TLS-disable Chainsaw fixture. Fake
 clients establish API-write ordering, not StatefulSet adoption, admission,
 rolling-update behavior or real peer/CLI connectivity; disclose those limits.
 
+## Sequential RC and storage transition boundary
+
+For an RC target, trace the running image rather than assuming the desired CR
+is the predecessor. Reject a skipped RC or an unfinished source rollout before
+mutating the StatefulSet. When an adjacent RC change coincides with an immutable
+WAL/data claim-template change, the interim image rollout must retain the old
+Pod storage volumes and mounts as well as the old claim templates. Only after
+the RC rollout converges may orphan/recreate install the requested storage
+layout. Test both hostPath-to-PVC and PVC-to-hostPath against a Kubernetes API
+server: a fake client does not validate the interim Pod template. Reconstruct
+an interrupted rollout with a fresh reconciler, and inspect retained Pods or
+PVCs when the StatefulSet is absent so source verification cannot be skipped.
+
 ## Severity
 
 Use the native P0–P3 scale with demonstrated impact and explicit preconditions:

@@ -358,6 +358,12 @@ Three paths need correlated server-side diagnostics because the raw value can co
 2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Classifiable` or a known sentinel.
 3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply generic public messages (`index is inconsistent` and `preload coverage miss`). Other recognized errors render from stable facts; diagnostic text and outer prefixes are omitted.
 
+The caller-attribution trust-boundary guard is the exception within
+`KindInternal`: it has no public reason or facts. Admission rejects it before a
+proposal, and the FSM rejects malformed committed entries before audit or
+business-state mutation. Both adapters therefore return only the generic
+internal error while retaining the detail in server diagnostics.
+
 Type-owned public details are selected through `domain.PublicErrorDetails` at the response boundary. The authoritative audit chain records a structured failure reason, code and source-validated facts for freezable business failures. Diagnostic `Error()` text is used for server logs and is not hashed into that outcome.
 
 Every path logs the raw cause **server-side** with a `correlation_id` field. When the request span is recording, the log also carries `trace_id` and `span_id`, and the span records both the correlation ID and the error. Panic spans additionally carry the panic value and stack. Unmapped errors and panics remain sanitized identically to the gRPC adapter, so the client receives only a generic body:
@@ -478,8 +484,9 @@ its error returns as `SerializableError`. `UncommittedFailure` returns before
 public code and facts without admitting the error to the audit chain. This is
 used for admission and read failures such as plan-size and aggregate overflow.
 The FSM can also reject a committed proposal before audit capture for
-maintenance mode or malformed caller attribution; those errors remain public
-but do not implement `SerializableError`. The write gate's
+maintenance mode or malformed caller attribution. Maintenance mode remains a
+public operational error; malformed caller attribution is internal-only and
+has no public reason. Neither implements `SerializableError`. The write gate's
 `WRITES_BLOCKED_*` sentinels and `AUDIT_DISABLED` likewise have no audited
 details.
 

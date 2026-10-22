@@ -119,6 +119,32 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil // Don't requeue; wait for spec change.
 	}
 
+	// Check the live image before reconciling any resource. The Cluster API has
+	// no source-version field: the current StatefulSet template is the source of
+	// truth for an RC transition.
+	existingStatefulSet, err := r.fetchExistingStatefulSet(ctx, ledger)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("fetching StatefulSet for RC upgrade validation: %w", err)
+	}
+	var rcUpgradeError error
+	if existingStatefulSet == nil {
+		rcUpgradeError = r.validateRCUpgradeWithoutStatefulSet(ctx, ledger)
+	} else {
+		rcUpgradeError = validateRCUpgrade(ledger.Spec.Image.Tag, existingStatefulSet)
+	}
+	if rcUpgradeError != nil {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               "ConfigValid",
+			Status:             metav1.ConditionFalse,
+			Reason:             "ValidationFailed",
+			Message:            rcUpgradeError.Error(),
+			ObservedGeneration: ledger.Generation,
+		})
+		ledger.Status.Phase = "Error"
+
+		return ctrl.Result{}, nil
+	}
+
 	// Clear any previous validation failure.
 	meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 		Type:               "ConfigValid",

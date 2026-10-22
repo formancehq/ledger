@@ -11,9 +11,11 @@ when a format changes; a wipe or external reconstruction is not an upgrade.
 Changes to behavior or configuration can ship when client impact and upgrade
 steps are documented. Follow [the upgrade policy](docs/ops/upgrades.md#release-requirement-from-v300-rc1).
 
-Each RC update must also support a direct rolling server upgrade from every
-earlier published RC in the same line. Old and new voters must communicate and
-apply the same committed entries identically while they coexist.
+Each RC update is upgraded sequentially from the immediately preceding RC in
+the same release line. The operator rejects skipped RCs by comparing the
+current StatefulSet image tag with the requested Cluster image tag. Old and new
+voters must communicate and apply the same committed entries identically while
+they coexist.
 
 - Classify persisted, Raft, snapshot, backup, and audit changes against the RC
   baseline. Include a tested migration or prove existing data remains valid.

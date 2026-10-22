@@ -25,7 +25,9 @@ var ErrNotFound = errors.New("not found")
 // switch remains the single source of truth, because a frozen failure replayed
 // from the idempotency projection carries only a reason and must re-derive the
 // same classification. TestEveryDomainErrorImplementsDescribable enforces the
-// agreement. Anything with no Kind at all (signing.*, raft.*, ctx errors, AWS
+// agreement for public domain errors. The caller-attribution guard is the
+// deliberate exception: it exposes only Classifiable because it must never
+// acquire a public reason. Anything with no Kind at all (signing.*, raft.*, ctx errors, AWS
 // smithy, etc.) is sanitised by convertToGRPCError's defence-in-depth default
 // branch. See #431 and EN-2081.
 type ErrorKind int
@@ -364,7 +366,6 @@ const (
 	ErrReasonSequenceExhausted             = "SEQUENCE_EXHAUSTED"
 	ErrReasonMetadataLimitExceeded         = "METADATA_LIMIT_EXCEEDED"
 	ErrReasonRevertTargetCreatedInBatch    = "REVERT_TARGET_CREATED_IN_BATCH"
-	ErrReasonInvalidCallerAttribution      = "INVALID_CALLER_ATTRIBUTION"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -1707,7 +1708,10 @@ func (*ErrInvalidExecutionPlan) Reason() string  { return ErrReasonInvalidExecut
 
 // ErrInvalidCallerAttribution means a write reached admission or the FSM
 // without a complete, canonical caller principal. This is a server-side trust
-// boundary violation rather than a client-correctable payload error.
+// boundary violation rather than a client-correctable payload error. It is
+// Classifiable for transport routing but has no public reason or audit failure:
+// admission rejects it before proposing, and the FSM rejects a malformed
+// committed entry before audit or business-state mutation.
 type ErrInvalidCallerAttribution struct {
 	Detail string
 }
@@ -1716,7 +1720,6 @@ func (e *ErrInvalidCallerAttribution) Error() string {
 	return "invalid caller attribution: " + e.Detail
 }
 func (*ErrInvalidCallerAttribution) Kind() ErrorKind { return KindInternal }
-func (*ErrInvalidCallerAttribution) Reason() string  { return ErrReasonInvalidCallerAttribution }
 
 // ErrExecutionPlanTooLarge is raised by plan.Builder.Build when the
 // aggregated ExecutionPlan exceeds the configured cap. The cap is a
