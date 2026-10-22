@@ -884,10 +884,9 @@ func Module() fx.Option {
 					RequestShutdown: shutdownRequester(shutdowner),
 				}))
 			},
-			// Wire Observer: handle LeadershipChange and LeaderReady events.
-			// ConfChange events are no longer dispatched here — Membership
-			// owns the transport / service-pool wiring and reacts directly
-			// to peer mutations (EN-1413).
+			// Wire Observer: handle LeadershipChange, LeaderReady and capability
+			// membership events. Membership owns transport / service-pool wiring;
+			// the capability event wakes policy reconciliation immediately.
 			func(
 				n *node.Node,
 				store *dal.Store,
@@ -898,6 +897,7 @@ func Module() fx.Option {
 				mirrorManager *mirror.Manager,
 				backupOrchestrator *backupapp.Orchestrator,
 				healthChecker *clusterhealth.HealthChecker,
+				reconciler *ClusterPolicyReconciler,
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
@@ -929,6 +929,8 @@ func Module() fx.Option {
 						// can block on its own commit.
 						handleLeaderReadyEvent(eventsManager, mirrorManager, logger)
 						proposeClusterConfigIfNeeded(e.Context, n, builder, store, cfg, logger)
+					case node.CapabilityMembershipChangedEvent:
+						reconciler.Trigger()
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)
 					}

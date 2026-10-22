@@ -2493,13 +2493,7 @@ func (node *Node) CapabilityMembers() []capabilities.Member {
 		return nil
 	}
 	addresses := node.membership.PeerAddresses()
-	roles := make(map[uint64]capabilities.MemberRole)
-	for _, id := range confState.GetVoters() {
-		roles[id] = capabilities.Voter
-	}
-	for _, id := range confState.GetLearners() {
-		roles[id] = capabilities.Learner
-	}
+	roles := capabilityMemberRoles(confState)
 	result := make([]capabilities.Member, 0, len(roles))
 	for id, role := range roles {
 		peer, ok := addresses[id]
@@ -2525,6 +2519,28 @@ func (node *Node) CapabilityMembers() []capabilities.Member {
 	})
 
 	return result
+}
+
+func capabilityMemberRoles(confState *raftpb.ConfState) map[uint64]capabilities.MemberRole {
+	roles := make(map[uint64]capabilities.MemberRole)
+	for _, ids := range [][]uint64{
+		confState.GetVoters(),
+		confState.GetVotersOutgoing(),
+	} {
+		for _, id := range ids {
+			roles[id] = capabilities.Voter
+		}
+	}
+	for _, ids := range [][]uint64{
+		confState.GetLearners(),
+		confState.GetLearnersNext(),
+	} {
+		for _, id := range ids {
+			roles[id] = capabilities.Learner
+		}
+	}
+
+	return roles
 }
 
 // Logger returns the node's logger.

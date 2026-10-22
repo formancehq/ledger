@@ -116,12 +116,16 @@ validate their capability evidence separately.
 ## Restart refresh
 
 A normal restart does not run `JoinAsLearner`: the node restores its existing
-WAL `ConfState` and keeps the same `(node_id, instance_id)` incarnation. Before
-inbound Raft traffic is enabled, a node whose WAL carries `CLUSTER_JOINED`
-sends an internal `RefreshMembership` request to a configured peer. Followers
-forward that request to the current leader over the Raft gRPC server. The
-leader validates the identity and capability evidence against the active policy,
-then proposes a
+WAL `ConfState` and keeps the same `(node_id, instance_id)` incarnation. After
+the node and its Raft gRPC server are started, a node whose WAL carries
+`CLUSTER_JOINED` sends an internal `RefreshMembership` request to a configured
+peer. Followers forward that request to the current leader over the Raft gRPC
+server. The node can therefore receive inbound Raft traffic before the refresh
+commits; the refresh is an evidence update, not a pre-traffic barrier. During
+the rc.1/rc.2 rolling upgrade, an older peer that returns `Unimplemented` is
+treated as transient and the node retries until a compatible peer is available.
+The leader validates the identity and capability evidence against the active
+policy, then proposes a
 `ConfChangeUpdateNode` containing the current endpoints and capabilities.
 
 Only the committed change is authoritative. The update is replicated through
@@ -129,11 +133,14 @@ Raft and applied to every member's peer store; a local restart-time upsert is
 not sufficient to activate a capability for admission. A fresh WAL instead
 uses `JoinAsLearner` and `ConfChangeAddLearnerNode`.
 
-The cluster-policy reconciler activates a capability automatically once every
-current voter and learner has refreshed membership with that capability. The
-candidate set is the intersection of the local binary registry and all
-committed membership evidence; an empty or incomplete membership set never
-activates anything. Membership commits trigger reconciliation immediately, and
-the periodic retry remains only as a self-healing fallback for leadership or
-proposal failures. Once committed, an activation is monotonic and a new member
-that does not advertise it is rejected.
+The cluster-policy reconciler currently maintains the replicated policy and
+preserves its committed capability activations; it does not automatically arm
+or activate a newly advertised capability. A future explicit activation path
+must first verify the candidate against every current voter and learner. The
+candidate set should be the intersection of the local binary registry and all
+committed membership evidence; an empty or incomplete membership set must not
+activate anything. Membership commits trigger reconciliation immediately, and
+the periodic retry remains as a self-healing fallback for leadership or
+proposal failures. Once an activation path exists and an activation is
+committed, it is monotonic and a new member that does not advertise it is
+rejected.
