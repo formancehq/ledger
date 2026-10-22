@@ -52,6 +52,30 @@ outside Composer's template tree. It checks the Linux FFI loader, independent
 concurrent contexts and error propagation; it does not exercise Ledger or prove
 an Antithesis campaign outcome.
 
+## Focused driver checks and limits
+
+- Idempotency conflicts include a variant where only the amount changes, as
+  well as the original destination/asset variant. Equal generated amounts are
+  made distinct without overflowing `uint64`.
+- Reference races require a visible transaction after an acknowledged create
+  and a successful marker/read, in addition to the existing uniqueness check.
+  An ambiguous RPC may still commit later; goroutines alone do not prove
+  overlapping admission.
+- Concurrent reverts check each successful response against the submitted
+  postings, ledger and target transaction. This checks the acknowledged log,
+  not final shared-account volumes or uniqueness of persisted reversal effects.
+- List completeness checks the requested page-size limit as well as ordering,
+  uniqueness and acknowledged-row coverage after a complete traversal. It does
+  not require a snapshot across pages under concurrent writes.
+
+The manual `Run Antithesis` workflow reports acceptance only when its launch
+step succeeds. A failed, skipped, cancelled or unknown launch outcome does not
+confirm acceptance. Workflow completion is not a campaign result.
+
+The model's `restore cycle completed` marker records orchestration completion.
+It does not independently prove that a nonempty post-checkpoint business delta
+was restored and checked by the model oracle.
+
 ## Model checkpoint coverage
 
 The model template exclusively owns the checkpoint timeline, with no other
