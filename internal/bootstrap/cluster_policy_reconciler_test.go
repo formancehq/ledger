@@ -195,4 +195,25 @@ func TestReconcileClusterPolicy(t *testing.T) {
 
 		require.Zero(t, admission.callCount(), "a newer applied revision must not be overwritten")
 	})
+
+	t.Run("preserves committed capability activations on a revision bump", func(t *testing.T) {
+		t.Parallel()
+
+		store := newReconcilerTestStore(t)
+		cfg := validBaseConfig()
+		batch := store.OpenWriteSession()
+		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+			Revision: cfg.ClusterPolicyRevision - 1,
+			CapabilityActivations: []*commonpb.CapabilityActivation{{
+				Id: 7, Active: true,
+			}},
+		}))
+		require.NoError(t, batch.Commit())
+
+		admission := &fakeAdmission{}
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
+
+		require.Equal(t, 1, admission.callCount())
+		require.Equal(t, []*commonpb.CapabilityActivation{{Id: 7, Active: true}}, admission.lastPolicy.GetCapabilityActivations())
+	})
 }
