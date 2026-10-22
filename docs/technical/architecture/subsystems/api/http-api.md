@@ -472,7 +472,7 @@ so a layer commits only to what it can actually honour (EN-2081):
 
 | Interface | Adds | Who implements it | What an adapter does with it |
 |---|---|---|---|
-| `Classifiable` | `Kind() ErrorKind` | anything that names no business outcome — the gRPC envelope guard, the admission idempotency-key and checkpoint-order guards, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one |
+| `Classifiable` | `Kind() ErrorKind` | anything that names no business outcome — the gRPC envelope guard, the admission idempotency-key and checkpoint-order guards, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one (a bulk element answers the generic `ERROR`) |
 | `Describable` | `Reason() string` | every domain business error | adds the `ErrorInfo` / `errorCode` clients pattern-match on |
 | `SerializableError` | `FailureDetails()` | FSM-returned errors, including uncommitted technical failures | supplies typed details for audited outcomes; uncommitted failures have no audited details |
 
@@ -524,7 +524,9 @@ A failure that is only `Classifiable` has no `Reason` for `Describe` to
 normalise, so `handleError` answers it from its kind directly, with the coarse
 error code it already uses for a reason-less classified status
 (`INVALID_REQUEST`, `UNAVAILABLE`, …). `KindInternal` still goes to the
-sanitizer.
+sanitizer. A bulk element takes its status and message from the same
+`classifyError` dispatch, but its `errorCode` is the generic `ERROR` for every
+failure without a reason.
 
 `Message` and `Metadata` are the client-safe presentation, not the diagnostic
 identity. A locally raised serializable failure renders them from its stable

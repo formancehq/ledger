@@ -1541,7 +1541,7 @@ The REST adapter uses the same `Describable.Reason()` as the JSON `errorCode` fi
 
 Every response the table maps to 503 also carries `Retry-After: 1` — the kind is by definition retry-now, so the header covers the whole class, not just the no-leader sentinel.
 
-**Classified failures with no reason (EN-2081).** A `domain.Classifiable` declares a `Kind` and nothing else, so it has no `Reason()` to publish. The status code comes from the same table, but the response carries a coarse kind-level `errorCode` — `INVALID_REQUEST`, `UNAVAILABLE`, `CONFLICT`, … — and the gRPC surface sends no `ErrorInfo` at all.
+**Classified failures with no reason (EN-2081).** A `domain.Classifiable` declares a `Kind` and nothing else, so it has no `Reason()` to publish. The status code comes from the same table, but the response carries a coarse kind-level `errorCode` — `INVALID_REQUEST`, `UNAVAILABLE`, `CONFLICT`, … — and the gRPC surface sends no `ErrorInfo` at all. A bulk element answers the same status and message with the generic element `errorCode` `ERROR`.
 
 This is the tier for failures that name no business outcome a client could branch on:
 
