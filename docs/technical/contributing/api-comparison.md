@@ -234,7 +234,7 @@ against the v3 code and the v2 source (`openapi/v2.yaml` and `internal/` of
 
 | Rule | v2 | v3 |
 |------|----|----|
-| Asset | `[A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/\d{1,6})?` (v2 `pkg/assets/asset.go`) | `[A-Z][A-Z0-9]{0,16}(/[1-9]\d{0,2})?`, precision 1–255 (`invariants` v0.11.0 `asset.go`) |
+| Asset | `[A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/\d{1,6})?` (v2 `pkg/assets/asset.go`) | `[A-Z][A-Z0-9]{0,16}(/([1-9]\|[1-9][0-9]\|1[0-9]{2}\|2[0-4][0-9]\|25[0-5]))?`, precision 1–255 (`invariants` v0.11.0 `asset.go`) |
 | Precision `/0`, leading zeros (`/02`), precision above 255 | Accepted | Rejected |
 | Underscore suffix (`USDT_ETHEREUM/6`, `LOYALTY_POINTS`) | Accepted | Rejected |
 | Account address | `[a-zA-Z0-9_-]+(:[a-zA-Z0-9_-]+)*`, no length limit | Same alphabet and segment rule, at most 256 bytes |
