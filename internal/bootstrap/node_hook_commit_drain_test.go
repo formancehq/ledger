@@ -104,7 +104,7 @@ func TestNodeHookStopCancellationRetainsRealCommitDrain(t *testing.T) {
 	require.NoError(t, err)
 	data, err := command.MarshalVT()
 	require.NoError(t, err)
-	proposal := node.NewProposal(command.GetId(), data, required)
+	proposal := node.NewPreparedProposal(command.GetId(), data, required)
 	future, err := n.Propose(ctx, proposal)
 	require.NoError(t, err)
 	select {
