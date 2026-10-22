@@ -44,7 +44,6 @@ func TestStampProposalClearsFutureDeclarations(t *testing.T) {
 func TestFromPolicyRoundTrip(t *testing.T) {
 	state := FromPolicy(&commonpb.ClusterPolicy{
 		CapabilityActivationArmed: true,
-		MinimumReplayProtocol:     4,
 		CapabilityActivations:     []*commonpb.CapabilityActivation{{Id: 99, Active: true}},
 	})
 	require.True(t, state.Armed)
