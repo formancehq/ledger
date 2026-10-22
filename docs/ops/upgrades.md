@@ -119,14 +119,18 @@ wire-compatible.
 `MirrorSourceConfig.asset_mappings` (field 6) is an additive optional field on
 a message stored in `LedgerInfo` and in the audited `CreatedLedgerLog`. Existing
 mirrors have an empty list, and their persisted state and audit hashes remain
-valid. No migration is required. A voter without the field preserves it as an
-unknown field, so old and new voters hash and apply the same committed entry
-identically.
+valid. No migration is required.
 
-The mappings are applied by the leader's mirror worker, not by the FSM. A
-leader running a release without asset-mapping support ignores the field and
-ingests assets verbatim. Upgrade every node before creating a mirror with
-`assetMappings`. See
+Creating a mirror with `assetMappings` is not mixed-version safe. A voter
+without the field keeps it as an unknown field, and the deterministic order
+encoding appends unknown fields after the `http`/`postgres` source, while a
+voter that declares field 6 writes it before the source. The two voters
+therefore derive different `serialized_order` bytes, audit hash-chain entries
+and proposal hashes for the same committed `CreateLedger` entry, and their
+audit chains diverge from it. A leader running a release without asset-mapping
+support also ignores the field and ingests assets verbatim. Every voter and
+learner must run a release that declares field 6 before any mirror is created
+with `assetMappings`. See
 [asset mappings](../technical/architecture/subsystems/events-mirror/mirror.md#asset-mappings).
 
 A worker that finds assets v3 cannot represent among a mirror's stored volumes
