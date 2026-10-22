@@ -15,8 +15,10 @@ internal protobuf packages.
 
 The protobufs under `misc/proto/` are the canonical source. The public `.proto`
 files under `pkg/client/v3/proto/` are a generated projection of that source:
-they contain the public service closure, use the public Go package path, and
-exclude backend-only messages. The generated Go package is one consumer of the
+they contain the public service closure and use the public Go package path. The
+projection is file-level: backend-only declarations must live in an excluded
+schema such as `internal_state.proto`; adding a private message to a selected
+public file publishes it. The generated Go package is one consumer of the
 projection; other consumers (for example TypeScript generators) should use the
 projection, never edit the projection by hand.
 

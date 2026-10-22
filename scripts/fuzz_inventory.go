@@ -20,6 +20,10 @@ import (
 
 const fuzzRunnerInventoryPath = "scripts/fuzz-targets.txt"
 
+var supportedNestedFuzzModules = map[string]struct{}{
+	"pkg/proto/v3": {},
+}
+
 type fuzzTarget struct {
 	packagePath string
 	name        string
@@ -42,7 +46,7 @@ func checkFuzzInventory(files []string) ([]finding, error) {
 		return nil, err
 	}
 
-	findings = append(findings, unreachableFuzzTargetFindings(actual, runner)...)
+	findings = append(findings, unreachableFuzzTargetFindings(actual)...)
 	findings = append(findings, compareFuzzTargets(actual, runner)...)
 	sortFindings(findings)
 
@@ -80,7 +84,9 @@ func discoverRepositoryFuzzTargets(files []string) ([]locatedFuzzTarget, error) 
 		}
 		var reason string
 		if module := nestedGoModuleForPath(path, nestedModules); module != "" {
-			reason = "the declaration belongs to nested Go module " + module
+			if _, supported := supportedNestedFuzzModules[module]; !supported {
+				reason = "the declaration belongs to unsupported nested Go module " + module
+			}
 		} else {
 			if platformSuffixes == nil {
 				platformSuffixes, err = goPlatformSuffixes()
@@ -202,26 +208,17 @@ func fuzzFileConstraintReason(path string, source []byte, platformSuffixes map[s
 	return "", nil
 }
 
-func unreachableFuzzTargetFindings(targets []locatedFuzzTarget, runner []locatedFuzzTarget) []finding {
+func unreachableFuzzTargetFindings(targets []locatedFuzzTarget) []finding {
 	var findings []finding
-	runnerPackages := make(map[string]struct{}, len(runner))
-	for _, target := range runner {
-		runnerPackages[target.target.packagePath] = struct{}{}
-	}
 
 	for _, target := range targets {
 		if target.unreachableReason == "" {
 			continue
 		}
-		if strings.HasPrefix(target.unreachableReason, "the declaration belongs to nested Go module ") {
-			if _, ok := runnerPackages[target.target.packagePath]; ok {
-				continue
-			}
-		}
 
 		location := target.location
 		resolution := "move it to an unconstrained test file or extend the runner explicitly"
-		if strings.HasPrefix(target.unreachableReason, "the declaration belongs to nested Go module ") {
+		if strings.HasPrefix(target.unreachableReason, "the declaration belongs to unsupported nested Go module ") {
 			resolution = "extend the runner to invoke targets from that module before adding the target"
 		}
 		location.message = fmt.Sprintf(
