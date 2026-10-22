@@ -1,6 +1,7 @@
 package filterexpr
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -749,4 +750,33 @@ func TestFormatInvalidParamNameFailsReparse(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+}
+
+// TestFormatStringWithQuotesRoundTrips pins that a string value carrying a
+// quote character exports to text that re-parses as the same value: the
+// lexer's String token has no escapes, so a value with `"` must use single
+// quotes, and a value with both quote kinds must fail re-parse loudly rather
+// than round-trip into a different value.
+func TestFormatStringWithQuotesRoundTrips(t *testing.T) {
+	t.Parallel()
+
+	target := commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+
+	for _, ref := range []string{`a"b`, `it's`, `"`, `'`} {
+		raw := []byte(`{"$match":{"reference":` + strconv.Quote(ref) + `}}`)
+		f, err := DecodeDualFormatStructuralOnly(raw, target)
+		require.NoError(t, err, ref)
+
+		back, err := Parse(Format(f), target)
+		require.NoError(t, err, "ref %q exported as %s", ref, Format(f))
+		assert.Equal(t, ref, back.GetReference().GetCond().GetHardcoded(), "ref %q", ref)
+	}
+
+	both := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
+		Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: `a"b'c`}},
+	}}}
+	out := Format(both)
+	assert.Contains(t, out, "<unrepresentable string")
+	_, err := Parse(out, target)
+	require.Error(t, err)
 }

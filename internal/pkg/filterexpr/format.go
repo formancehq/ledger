@@ -571,12 +571,26 @@ func formatAddressMatch(am *commonpb.AddressMatch) string {
 // token that Parse reads back as the same value. Since a bare Ident is
 // plain-alphanumeric (EN-1547), anything with a special char (`-`, `:`, `.`, `/`,
 // spaces, …) must be quoted to round-trip.
+// quoteIfNeeded renders s as a bare Ident when that re-parses as s, and as a
+// quoted String otherwise. The lexer's String token has no escapes: it is
+// `"..."` or `'...'` with no inner occurrence of its own delimiter. So a value
+// containing `"` is single-quoted, and a value containing both quote kinds has
+// no textual form at all: it renders as a `<unrepresentable string ...>`
+// placeholder the parser refuses, so export/apply fails loudly instead of
+// emitting text that re-parses as a different value.
 func quoteIfNeeded(s string) string {
-	if needsQuoting(s) {
-		return `"` + s + `"`
+	if !needsQuoting(s) {
+		return s
 	}
 
-	return s
+	switch {
+	case !strings.Contains(s, `"`):
+		return `"` + s + `"`
+	case !strings.Contains(s, "'"):
+		return "'" + s + "'"
+	default:
+		return fmt.Sprintf("<unrepresentable string %q>", s)
+	}
 }
 
 var (

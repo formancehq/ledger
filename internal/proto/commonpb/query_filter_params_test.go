@@ -45,3 +45,22 @@ func TestFilterLeafParamNamesCoversEveryParamField(t *testing.T) {
 		require.NotEmpty(t, FilterLeafParamNames(f), name)
 	}
 }
+
+// TestFilterLeafParamNamesReportsEmptyParamArms pins that a param oneof arm set
+// with an empty name is still reported, so admission can refuse it.
+func TestFilterLeafParamNamesReportsEmptyParamArms(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]*QueryFilter{
+		"string":  {Filter: &QueryFilter_Reference{Reference: &ReferenceCondition{Cond: &StringCondition{Value: &StringCondition_Param{}}}}},
+		"bool":    {Filter: &QueryFilter_Field{Field: &FieldCondition{Condition: &FieldCondition_BoolCond{BoolCond: &BoolCondition{Value: &BoolCondition_Param{}}}}}},
+		"address": {Filter: &QueryFilter_Address{Address: &AddressMatch{Match: &AddressMatch_ParamPrefix{}}}},
+	}
+
+	for name, f := range cases {
+		require.Equal(t, []string{""}, FilterLeafParamNames(f), name)
+	}
+
+	literal := &QueryFilter{Filter: &QueryFilter_LogId{LogId: &LogIdCondition{Cond: &UintCondition{Min: new(uint64(1))}}}}
+	require.Empty(t, FilterLeafParamNames(literal))
+}

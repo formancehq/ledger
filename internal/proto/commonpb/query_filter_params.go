@@ -30,47 +30,58 @@ func IsTextualFilterParamName(name string) bool {
 }
 
 // FilterLeafParamNames returns the parameter names a leaf condition
-// references, across every condition kind that can carry one. Combinators
-// return nothing; callers walk the tree.
+// references, across every condition kind that can carry one. A param oneof
+// arm that is set (string, bool and address conditions) is reported even when
+// its name is empty, so a caller validating names sees it; the int/uint
+// ParamMin/ParamMax fields are plain strings where empty means "no param".
+// Combinators return nothing; callers walk the tree.
 func FilterLeafParamNames(f *QueryFilter) []string {
 	var names []string
 
-	add := func(name string) {
-		if name != "" {
-			names = append(names, name)
+	addRange := func(lo, hi string) {
+		for _, name := range []string{lo, hi} {
+			if name != "" {
+				names = append(names, name)
+			}
 		}
 	}
-	addUint := func(uc *UintCondition) {
-		add(uc.GetParamMin())
-		add(uc.GetParamMax())
+	addString := func(sc *StringCondition) {
+		if v, ok := sc.GetValue().(*StringCondition_Param); ok {
+			names = append(names, v.Param)
+		}
 	}
 
 	switch v := f.GetFilter().(type) {
 	case *QueryFilter_Field:
 		switch c := v.Field.GetCondition().(type) {
 		case *FieldCondition_StringCond:
-			add(c.StringCond.GetParam())
+			addString(c.StringCond)
 		case *FieldCondition_BoolCond:
-			add(c.BoolCond.GetParam())
+			if p, ok := c.BoolCond.GetValue().(*BoolCondition_Param); ok {
+				names = append(names, p.Param)
+			}
 		case *FieldCondition_IntCond:
-			add(c.IntCond.GetParamMin())
-			add(c.IntCond.GetParamMax())
+			addRange(c.IntCond.GetParamMin(), c.IntCond.GetParamMax())
 		case *FieldCondition_UintCond:
-			addUint(c.UintCond)
+			addRange(c.UintCond.GetParamMin(), c.UintCond.GetParamMax())
 		}
 	case *QueryFilter_Address:
-		add(v.Address.GetParamExact())
-		add(v.Address.GetParamPrefix())
+		switch m := v.Address.GetMatch().(type) {
+		case *AddressMatch_ParamExact:
+			names = append(names, m.ParamExact)
+		case *AddressMatch_ParamPrefix:
+			names = append(names, m.ParamPrefix)
+		}
 	case *QueryFilter_Reference:
-		add(v.Reference.GetCond().GetParam())
+		addString(v.Reference.GetCond())
 	case *QueryFilter_Ledger:
-		add(v.Ledger.GetCond().GetParam())
+		addString(v.Ledger.GetCond())
 	case *QueryFilter_BuiltinUint:
-		addUint(v.BuiltinUint.GetCond())
+		addRange(v.BuiltinUint.GetCond().GetParamMin(), v.BuiltinUint.GetCond().GetParamMax())
 	case *QueryFilter_LogBuiltinUint:
-		addUint(v.LogBuiltinUint.GetCond())
+		addRange(v.LogBuiltinUint.GetCond().GetParamMin(), v.LogBuiltinUint.GetCond().GetParamMax())
 	case *QueryFilter_LogId:
-		addUint(v.LogId.GetCond())
+		addRange(v.LogId.GetCond().GetParamMin(), v.LogId.GetCond().GetParamMax())
 	}
 
 	return names
