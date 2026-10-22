@@ -67,3 +67,10 @@ Only the committed change is authoritative. The update is replicated through
 Raft and applied to every member's peer store; a local restart-time upsert is
 not sufficient to activate a capability for admission. A fresh WAL instead
 uses `JoinAsLearner` and `ConfChangeAddLearnerNode`.
+
+The leader's existing cluster-policy reconciler observes those committed peer
+rows. Once every current voter and learner advertises the complete capability
+set implemented by the binary, it proposes a new, audited policy revision with
+the capability gate armed in `FEATURE_ONLY` mode. This is a one-way transition:
+an already armed policy is preserved, and a missing or stale member proof keeps
+activation disarmed until that member completes `RefreshMembership`.
