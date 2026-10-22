@@ -107,6 +107,12 @@ func (c errorClass) publicMessage(r *http.Request, err error) string {
 // definition a retry-now condition.
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	c := classifyError(err)
+	if c.message == "" {
+		writeInternalServerError(w, r, err)
+
+		return
+	}
+
 	if c.status == http.StatusServiceUnavailable {
 		w.Header().Set("Retry-After", "1")
 	}
