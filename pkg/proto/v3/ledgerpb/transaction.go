@@ -4,9 +4,7 @@ import (
 	"encoding/json/jsontext"
 	"slices"
 	"sort"
-
-	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
-	"github.com/formancehq/go-libs/v5/pkg/types/time"
+	"time"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/json"
 )
@@ -52,7 +50,7 @@ func (tx *Transaction) WithReference(ref string) *Transaction {
 }
 
 // WithTimestamp sets the timestamp of the transaction.
-func (tx *Transaction) WithTimestamp(ts time.Time) *Transaction {
+func (tx *Transaction) WithTimestamp(ts interface{ UnixMicro() int64 }) *Transaction {
 	if tx == nil {
 		tx = NewTransaction()
 	}
@@ -63,7 +61,7 @@ func (tx *Transaction) WithTimestamp(ts time.Time) *Transaction {
 }
 
 // WithMetadata sets the metadata of the transaction.
-func (tx *Transaction) WithMetadata(m metadata.Metadata) *Transaction {
+func (tx *Transaction) WithMetadata(m map[string]string) *Transaction {
 	if tx == nil {
 		tx = NewTransaction()
 	}
@@ -74,7 +72,7 @@ func (tx *Transaction) WithMetadata(m metadata.Metadata) *Transaction {
 }
 
 // WithInsertedAt sets the inserted_at timestamp.
-func (tx *Transaction) WithInsertedAt(date time.Time) *Transaction {
+func (tx *Transaction) WithInsertedAt(date interface{ UnixMicro() int64 }) *Transaction {
 	if tx == nil {
 		tx = NewTransaction()
 	}
@@ -85,7 +83,7 @@ func (tx *Transaction) WithInsertedAt(date time.Time) *Transaction {
 }
 
 // WithUpdatedAt sets the updated_at timestamp.
-func (tx *Transaction) WithUpdatedAt(at time.Time) *Transaction {
+func (tx *Transaction) WithUpdatedAt(at interface{ UnixMicro() int64 }) *Transaction {
 	if tx == nil {
 		tx = NewTransaction()
 	}
@@ -96,7 +94,7 @@ func (tx *Transaction) WithUpdatedAt(at time.Time) *Transaction {
 }
 
 // WithRevertedAt sets the reverted_at timestamp and marks the transaction as reverted.
-func (tx *Transaction) WithRevertedAt(timestamp time.Time) *Transaction {
+func (tx *Transaction) WithRevertedAt(timestamp interface{ UnixMicro() int64 }) *Transaction {
 	if tx == nil {
 		tx = NewTransaction()
 	}
