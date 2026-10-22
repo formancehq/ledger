@@ -31,6 +31,10 @@ func TestAdmitRejectsMissingAttributionBeforeDependencies(t *testing.T) {
 
 	var invalid *domain.ErrInvalidCallerAttribution
 	require.ErrorAs(t, err, &invalid)
+	_, business := errors.AsType[*domain.BusinessError](err)
+	require.False(t, business, "trust-boundary failures must not enter the public BusinessError contract")
+	_, describable := errors.AsType[domain.Describable](err)
+	require.False(t, describable, "trust-boundary failures must not expose a public reason")
 }
 
 func TestAdmitAcceptsCredentialDerivedPrincipalVariants(t *testing.T) {
