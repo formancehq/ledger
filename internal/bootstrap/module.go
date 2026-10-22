@@ -1707,6 +1707,14 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		MetadataMaxEntityBytes:      cfg.MetadataMaxEntityBytes,
 		MetadataMaxCommandBytes:     cfg.MetadataMaxCommandBytes,
 	}
+	if applied != nil {
+		desired.CapabilityActivations = make([]*commonpb.CapabilityActivation, 0, len(applied.GetCapabilityActivations()))
+		for _, activation := range applied.GetCapabilityActivations() {
+			if activation != nil {
+				desired.CapabilityActivations = append(desired.CapabilityActivations, activation.CloneVT())
+			}
+		}
+	}
 
 	appliedRev := applied.GetRevision()
 
