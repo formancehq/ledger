@@ -23,11 +23,11 @@ func TestValidateCapabilityEvidenceRequiresActiveCapabilities(t *testing.T) {
 
 func TestWriteConfChangeRejectsCapabilitiesMissingFromCommittedPolicy(t *testing.T) {
 	m := newTestMembership(t)
-	m.SetCapabilityPolicyProvider(func() *commonpb.ClusterPolicy {
+	m.capabilityPolicyProvider = func() *commonpb.ClusterPolicy {
 		return &commonpb.ClusterPolicy{
 			CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 7, Active: true}},
 		}
-	})
+	}
 
 	data, err := MarshalConfChangeContext(ConfChangeContext{
 		RaftAddress:    "peer:7777",

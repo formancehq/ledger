@@ -233,14 +233,24 @@ func Module() fx.Option {
 			// via constructor.
 			raftmembership.NewPeerStore,
 			fx.Annotate(func(
-				store *raftmembership.PeerStore,
+				peerStore *raftmembership.PeerStore,
 				defaultTransport *node.DefaultTransport,
 				servicePool *transport.ConnectionPool,
 				cfg node.NodeConfig,
+				durableStore *dal.Store,
 				logger logging.Logger,
 			) (*raftmembership.Membership, error) {
-				return raftmembership.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, logger)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
+				policyProvider := func() *commonpb.ClusterPolicy {
+					policy, err := query.ReadClusterPolicy(durableStore)
+					if err != nil {
+						return nil
+					}
+
+					return policy
+				}
+
+				return raftmembership.NewMembership(peerStore, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, logger, policyProvider)
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker
 			// mutex around its proposer.Propose call. Wrapping the node in a

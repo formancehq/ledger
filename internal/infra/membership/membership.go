@@ -101,7 +101,7 @@ type Membership struct {
 // Failure to read the peer rows is fatal: without them the node would
 // boot with an empty cache while the WAL ConfState still claims the
 // cluster has voters.
-func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
+func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger, policyProviders ...func() *commonpb.ClusterPolicy) (*Membership, error) {
 	if err := ValidateInstanceID(selfInstanceID); err != nil {
 		return nil, fmt.Errorf("invalid self identity: %w", err)
 	}
@@ -115,16 +115,22 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 		"peerCount": len(addresses),
 	}).Infof("Loaded cluster membership from Pebble")
 
+	var policyProvider func() *commonpb.ClusterPolicy
+	if len(policyProviders) > 0 {
+		policyProvider = policyProviders[0]
+	}
+
 	return &Membership{
-		store:           store,
-		transport:       transport,
-		pool:            pool,
-		selfNodeID:      selfNodeID,
-		selfRaftAddr:    selfRaftAddr,
-		selfServiceAddr: selfServiceAddr,
-		selfInstanceID:  bytes.Clone(selfInstanceID),
-		logger:          logger,
-		addresses:       addresses,
+		store:                    store,
+		transport:                transport,
+		pool:                     pool,
+		selfNodeID:               selfNodeID,
+		selfRaftAddr:             selfRaftAddr,
+		selfServiceAddr:          selfServiceAddr,
+		selfInstanceID:           bytes.Clone(selfInstanceID),
+		logger:                   logger,
+		capabilityPolicyProvider: policyProvider,
+		addresses:                addresses,
 	}, nil
 }
 
@@ -238,15 +244,6 @@ func (m *Membership) SetCapabilityGate(required []uint32) error {
 	m.requiredCapabilities = append([]uint32(nil), required...)
 
 	return nil
-}
-
-// SetCapabilityPolicyProvider installs the authoritative committed-policy
-// view used while applying a ConfChange. It is called only by the FSM apply
-// path, where the policy and membership entries are processed in Raft order.
-func (m *Membership) SetCapabilityPolicyProvider(provider func() *commonpb.ClusterPolicy) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.capabilityPolicyProvider = provider
 }
 
 // CapabilityGate returns the current committed activation gate.
