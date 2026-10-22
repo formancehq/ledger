@@ -16,18 +16,16 @@ func TestValidateCapabilityEvidenceRequiresActiveCapabilities(t *testing.T) {
 		Capabilities: []uint32{1, 2},
 	}
 
-	require.NoError(t, ValidateCapabilityEvidence(ctx, true, []uint32{1, 2}))
-	require.ErrorContains(t, ValidateCapabilityEvidence(ctx, true, []uint32{1, 3}), "capability 3")
-	require.NoError(t, ValidateCapabilityEvidence(&ConfChangeContext{InstanceID: bytesN(0x42)}, true, nil))
-	require.NoError(t, ValidateCapabilityEvidence(&ConfChangeContext{InstanceID: bytesN(0x42)}, false, nil))
+	require.NoError(t, ValidateCapabilityEvidence(ctx, []uint32{1, 2}))
+	require.ErrorContains(t, ValidateCapabilityEvidence(ctx, []uint32{1, 3}), "capability 3")
+	require.NoError(t, ValidateCapabilityEvidence(&ConfChangeContext{InstanceID: bytesN(0x42)}, nil))
 }
 
 func TestWriteConfChangeRejectsCapabilitiesMissingFromCommittedPolicy(t *testing.T) {
 	m := newTestMembership(t)
 	m.SetCapabilityPolicyProvider(func() *commonpb.ClusterPolicy {
 		return &commonpb.ClusterPolicy{
-			CapabilityActivationArmed: true,
-			CapabilityActivations:     []*commonpb.CapabilityActivation{{Id: 7, Active: true}},
+			CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 7, Active: true}},
 		}
 	})
 
