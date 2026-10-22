@@ -137,6 +137,35 @@ func Normalize(ids []ID) ([]ID, error) {
 	return result, nil
 }
 
+// Ready returns the capabilities implemented by this binary and acknowledged
+// by every current cluster member. Membership evidence is the acknowledgement
+// recorded by JoinAsLearner/RefreshMembership; an empty member set is never
+// considered ready.
+func Ready(supported []ID, members []Member) ([]ID, error) {
+	if len(members) == 0 {
+		return nil, nil
+	}
+	supported, err := Normalize(supported)
+	if err != nil {
+		return nil, err
+	}
+	ready := make([]ID, 0, len(supported))
+	for _, id := range supported {
+		acknowledged := true
+		for _, member := range members {
+			if !slices.Contains(member.Capabilities, id) {
+				acknowledged = false
+				break
+			}
+		}
+		if acknowledged {
+			ready = append(ready, id)
+		}
+	}
+
+	return ready, nil
+}
+
 // Evaluate is pure. Reachability is reported separately from support: a
 // temporarily unreachable voter is still a blocker for activation, while a
 // learner is included because it must replay every committed entry.

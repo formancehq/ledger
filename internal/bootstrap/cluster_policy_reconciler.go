@@ -23,6 +23,7 @@ const clusterPolicyReconcileInterval = 1 * time.Second
 type ClusterPolicyReconciler struct {
 	reconcile func(context.Context)
 	interval  time.Duration
+	trigger   chan struct{}
 	w         worker.Worker
 }
 
@@ -33,7 +34,17 @@ func NewClusterPolicyReconciler(reconcile func(context.Context)) *ClusterPolicyR
 	return &ClusterPolicyReconciler{
 		reconcile: reconcile,
 		interval:  clusterPolicyReconcileInterval,
+		trigger:   make(chan struct{}, 1),
 		w:         worker.New(),
+	}
+}
+
+// Trigger asks the running reconciler to converge immediately. The signal is
+// coalesced because several ConfChanges may be committed in one Ready batch.
+func (r *ClusterPolicyReconciler) Trigger() {
+	select {
+	case r.trigger <- struct{}{}:
+	default:
 	}
 }
 
@@ -42,7 +53,18 @@ func (r *ClusterPolicyReconciler) Start() {
 	r.w.Run(func(stop <-chan struct{}) {
 		ctx := worker.ContextFromStop(stop)
 		r.reconcile(ctx)
-		worker.RunTicker(stop, r.interval, func() { r.reconcile(ctx) })
+		ticker := time.NewTicker(r.interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				r.reconcile(ctx)
+			case <-r.trigger:
+				r.reconcile(ctx)
+			}
+		}
 	})
 }
 
