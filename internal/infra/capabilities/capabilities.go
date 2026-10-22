@@ -18,6 +18,19 @@ import (
 // The wire representation remains uint32 at protobuf and Raft JSON boundaries.
 type CapabilityID uint32
 
+// PreparedProposal is the opaque capability metadata produced while preparing
+// a final proposal. Callers can inspect it through RequiredCapabilities, but
+// cannot construct the declaration by passing an arbitrary slice to the node
+// proposal factory.
+type PreparedProposal struct {
+	required []CapabilityID
+}
+
+// RequiredCapabilities returns a defensive copy of the derived declaration.
+func (p PreparedProposal) RequiredCapabilities() []CapabilityID {
+	return slices.Clone(p.required)
+}
+
 // SupportedIDs is the immutable capability set implemented by this binary.
 // No protocol feature is activated yet; this empty registry keeps the
 // membership-evidence plumbing ready for the first real capability.
@@ -109,17 +122,17 @@ func StampProposal(proposal *raftcmdpb.Proposal) error {
 // returns the typed result for the caller to pass alongside the serialized
 // proposal. Keeping the result avoids decoding the same proposal again during
 // admission.
-func PrepareProposal(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) {
+func PrepareProposal(proposal *raftcmdpb.Proposal) (PreparedProposal, error) {
 	required, err := RequiredCapabilities(proposal)
 	if err != nil {
-		return nil, err
+		return PreparedProposal{}, err
 	}
 	proposal.RequiredCapabilities = make([]uint32, len(required))
 	for i, id := range required {
 		proposal.RequiredCapabilities[i] = uint32(id)
 	}
 
-	return required, nil
+	return PreparedProposal{required: required}, nil
 }
 
 func (s State) Validate() error {

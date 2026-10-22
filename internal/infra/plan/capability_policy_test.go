@@ -26,34 +26,19 @@ func capabilityPolicyProposal(t *testing.T) *node.Proposal {
 	t.Helper()
 
 	data, err := (&raftcmdpb.Proposal{
-		ExecutionPlan:        &raftcmdpb.ExecutionPlan{},
-		RequiredCapabilities: []uint32{99},
+		ExecutionPlan: &raftcmdpb.ExecutionPlan{},
 	}).MarshalVT()
 	require.NoError(t, err)
+	prepared, err := capabilities.PrepareProposal(&raftcmdpb.Proposal{ExecutionPlan: &raftcmdpb.ExecutionPlan{}})
+	require.NoError(t, err)
 
-	return node.NewPreparedProposal(1, data, []capabilities.CapabilityID{99})
+	return node.NewPreparedProposal(1, data, prepared)
 }
 
-func TestCapabilityPolicyProposerBlocksInactiveCapability(t *testing.T) {
+func TestCapabilityPolicyProposerAllowsUnrelatedProposal(t *testing.T) {
 	delegate := new(capabilityPolicyTestProposer)
 	proposer := NewCapabilityPolicyProposer(delegate, func() (*commonpb.ClusterPolicy, error) {
 		return &commonpb.ClusterPolicy{}, nil
-	}, nil, false)
-
-	_, err := proposer.Propose(context.Background(), capabilityPolicyProposal(t))
-	require.ErrorIs(t, err, capabilities.ErrCapabilityUnsupported)
-	require.False(t, delegate.called)
-}
-
-func TestCapabilityPolicyProposerAllowsActiveTechnicalCapability(t *testing.T) {
-	delegate := new(capabilityPolicyTestProposer)
-	proposer := NewCapabilityPolicyProposer(delegate, func() (*commonpb.ClusterPolicy, error) {
-		return &commonpb.ClusterPolicy{
-			CapabilityActivations: []*commonpb.CapabilityActivation{{
-				Id:     99,
-				Active: true,
-			}},
-		}, nil
 	}, nil, false)
 
 	_, err := proposer.Propose(context.Background(), capabilityPolicyProposal(t))

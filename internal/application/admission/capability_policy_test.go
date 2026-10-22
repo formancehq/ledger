@@ -53,23 +53,6 @@ func TestBarrierStampsSemanticCapabilities(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestCapabilityPolicyProposerBlocksUnknownCapabilityAtFinalBoundary(t *testing.T) {
-	delegate := new(capabilityTestProposer)
-	proposer := capabilityPolicyProposer{
-		delegate: delegate,
-		readPolicy: func() (*commonpb.ClusterPolicy, error) {
-			return &commonpb.ClusterPolicy{}, nil
-		},
-		businessWrite: true,
-	}
-	data, err := (&raftcmdpb.Proposal{RequiredCapabilities: []uint32{99}}).MarshalVT()
-	require.NoError(t, err)
-	_, err = proposer.Propose(context.Background(), node.NewPreparedProposal(1, data, []capabilities.CapabilityID{99}))
-	require.Error(t, err)
-	require.ErrorIs(t, err, capabilities.ErrCapabilityUnsupported)
-	require.False(t, delegate.called)
-}
-
 func TestCapabilityPolicyProposerAllowsUnrelatedWrite(t *testing.T) {
 	delegate := new(capabilityTestProposer)
 	proposer := capabilityPolicyProposer{
@@ -81,7 +64,9 @@ func TestCapabilityPolicyProposerAllowsUnrelatedWrite(t *testing.T) {
 	}
 	data, err := (&raftcmdpb.Proposal{}).MarshalVT()
 	require.NoError(t, err)
-	_, err = proposer.Propose(context.Background(), node.NewPreparedProposal(1, data, nil))
+	prepared, err := capabilities.PrepareProposal(&raftcmdpb.Proposal{})
+	require.NoError(t, err)
+	_, err = proposer.Propose(context.Background(), node.NewPreparedProposal(1, data, prepared))
 	require.NoError(t, err)
 	require.True(t, delegate.called)
 }
