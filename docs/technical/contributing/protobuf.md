@@ -35,6 +35,22 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 
 Raft transport generated code lives in `internal/proto/rafttransportpb/` (`raft_transport.pb.go`, `raft_transport_grpc.pb.go`).
 
+### Public client contract (`pkg/client/v3/`)
+
+The public client contract is the checked-in protobuf subset under
+`pkg/client/v3/proto/`. These schemas are the language-neutral source of truth
+for published clients. The Go client and the descriptor artifact used by other
+language generators are derived from them:
+
+```bash
+just generate-public-client
+```
+
+This command updates `pkg/client/v3/grpc/` and
+`pkg/client/v3/proto/ledger-public.protoset`. Keep backend-only messages and
+options in `misc/proto/`; they must not be copied into the public schemas.
+The public-client check regenerates both outputs and is required in CI.
+
 ## Regenerating Code
 
 ```bash
