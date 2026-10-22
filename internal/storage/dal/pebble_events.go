@@ -1,6 +1,7 @@
 package dal
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -116,8 +117,24 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 		},
 		CompactionEnd: func(info pebble.CompactionInfo) {
 			// Real failures are reported through BackgroundError. Pebble does
-			// not report expected cancelled compactions there.
+			// not report expected cancellations there, so close their start log.
 			if info.Err != nil {
+				if errors.Is(info.Err, pebble.ErrCancelledCompaction) {
+					inBytes := inputBytes(info.Input)
+					level := "debug"
+					if inBytes >= 1<<30 {
+						level = "info"
+					} else if !logger.Enabled(logging.DebugLevel) {
+						return
+					}
+					enqueue(pebbleLogEvent{level: level, message: "Pebble compaction cancelled", fields: map[string]any{
+						"jobID":          info.JobID,
+						"reason":         info.Reason,
+						"inputBytes":     inBytes,
+						"inputSizeHuman": humanize.IBytes(inBytes),
+					}})
+				}
+
 				return
 			}
 			inBytes := inputBytes(info.Input)

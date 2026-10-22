@@ -17,12 +17,18 @@ import (
 type blockingPebbleLogger struct {
 	logging.Logger
 
-	entered       chan struct{}
-	release       chan struct{}
-	once          sync.Once
-	debugEnabled  bool
-	logs          chan string
-	droppedEvents chan uint64
+	entered      chan struct{}
+	release      chan struct{}
+	once         sync.Once
+	debugEnabled bool
+	logs         chan string
+	fields       map[string]any
+	errorLogs    chan capturedPebbleErrorLog
+}
+
+type capturedPebbleErrorLog struct {
+	message string
+	fields  map[string]any
 }
 
 type recordingPebbleLogger struct {
@@ -49,13 +55,14 @@ func (l *recordingPebbleLogger) Errorf(format string, args ...any) {
 func TestPebbleEventLogLevelsAndFailureDeduplication(t *testing.T) {
 	t.Parallel()
 
-	logger := &recordingPebbleLogger{Logger: logging.NopZap(), events: make(chan string, 9), debugEnabled: true}
+	logger := &recordingPebbleLogger{Logger: logging.NopZap(), events: make(chan string, 10), debugEnabled: true}
 	listener := NewPebbleEventLogger(logger, "test")
 	listener.CompactionBegin(pebble.CompactionInfo{})
 	listener.CompactionBegin(pebble.CompactionInfo{Input: []pebble.LevelInfo{{Tables: []pebble.TableInfo{{Size: 1 << 30}}}}})
 	listener.CompactionEnd(pebble.CompactionInfo{})
 	listener.CompactionEnd(pebble.CompactionInfo{TotalDuration: 10 * time.Second})
 	listener.CompactionEnd(pebble.CompactionInfo{Input: []pebble.LevelInfo{{Tables: []pebble.TableInfo{{Size: 1 << 30}}}}})
+	listener.CompactionEnd(pebble.CompactionInfo{Input: []pebble.LevelInfo{{Tables: []pebble.TableInfo{{Size: 1 << 30}}}}, Err: pebble.ErrCancelledCompaction})
 	listener.CompactionEnd(pebble.CompactionInfo{Err: errors.New("compaction failure")})
 	listener.FlushBegin(pebble.FlushInfo{})
 	listener.FlushEnd(pebble.FlushInfo{Err: errors.New("pebble: empty table")})
@@ -69,6 +76,7 @@ func TestPebbleEventLogLevelsAndFailureDeduplication(t *testing.T) {
 		"debug: Pebble compaction completed",
 		"info: Pebble compaction completed",
 		"info: Pebble compaction completed",
+		"info: Pebble compaction cancelled",
 		"debug: Pebble flush started",
 		"debug: Pebble flush completed",
 		"info: Pebble slow flush completed",
@@ -84,9 +92,7 @@ func TestPebbleEventLogLevelsAndFailureDeduplication(t *testing.T) {
 }
 
 func (l *blockingPebbleLogger) WithFields(fields map[string]any) logging.Logger {
-	if count, ok := fields["droppedEvents"].(uint64); ok && l.droppedEvents != nil {
-		l.droppedEvents <- count
-	}
+	l.fields = fields
 
 	return l
 }
@@ -104,7 +110,12 @@ func (l *blockingPebbleLogger) blockf(format string, args ...any) {
 
 func (l *blockingPebbleLogger) Infof(format string, args ...any)  { l.blockf(format, args...) }
 func (l *blockingPebbleLogger) Debugf(format string, args ...any) { l.blockf(format, args...) }
-func (l *blockingPebbleLogger) Errorf(format string, args ...any) { l.blockf(format, args...) }
+func (l *blockingPebbleLogger) Errorf(format string, args ...any) {
+	l.blockf(format, args...)
+	if l.errorLogs != nil {
+		l.errorLogs <- capturedPebbleErrorLog{message: fmt.Sprintf(format, args...), fields: l.fields}
+	}
+}
 
 func TestPebbleEventLoggingDoesNotBlockCallbacks(t *testing.T) {
 	t.Parallel()
@@ -194,10 +205,10 @@ func TestPebbleEventQueueReportsDroppedLogs(t *testing.T) {
 	t.Parallel()
 
 	logger := &blockingPebbleLogger{
-		Logger:        logging.NopZap(),
-		entered:       make(chan struct{}),
-		release:       make(chan struct{}),
-		droppedEvents: make(chan uint64, 1),
+		Logger:    logging.NopZap(),
+		entered:   make(chan struct{}),
+		release:   make(chan struct{}),
+		errorLogs: make(chan capturedPebbleErrorLog, 1),
 	}
 	defer func() {
 		select {
@@ -218,8 +229,9 @@ func TestPebbleEventQueueReportsDroppedLogs(t *testing.T) {
 	}
 	close(logger.release)
 	select {
-	case count := <-logger.droppedEvents:
-		require.Equal(t, uint64(32), count)
+	case record := <-logger.errorLogs:
+		require.Equal(t, "Pebble event logs dropped", record.message)
+		require.Equal(t, uint64(32), record.fields["droppedEvents"])
 	case <-time.After(time.Second):
 		t.Fatal("dropped Pebble event logs were not reported")
 	}
