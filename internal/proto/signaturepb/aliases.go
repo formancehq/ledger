@@ -9,4 +9,3 @@ type SignedApplyBatch = ledgerpb.SignedApplyBatch
 type SignedApplyBatchReader = ledgerpb.SignedApplyBatchReader
 type SignedLog = ledgerpb.SignedLog
 type SignedLogReader = ledgerpb.SignedLogReader
-
