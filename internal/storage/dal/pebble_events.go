@@ -25,9 +25,21 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 	// An idle worker exits so reopened stores do not retain goroutines.
 	var queueMu sync.Mutex
 	var eventQueue chan pebbleLogEvent
+	var dropped uint64
 	logEvents := func(queue chan pebbleLogEvent) {
 		idle := time.NewTimer(time.Minute)
 		defer idle.Stop()
+		reportDrops := func() {
+			queueMu.Lock()
+			count := uint64(0)
+			if len(queue) == 0 {
+				count, dropped = dropped, 0
+			}
+			queueMu.Unlock()
+			if count > 0 {
+				logger.WithFields(map[string]any{"droppedEvents": count}).Errorf("Pebble event logs dropped")
+			}
+		}
 		for {
 			select {
 			case event := <-queue:
@@ -40,8 +52,10 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 				case "error":
 					withFields.Errorf("%s", event.message)
 				}
+				reportDrops()
 				idle.Reset(time.Minute)
 			case <-idle.C:
+				reportDrops()
 				queueMu.Lock()
 				if len(queue) == 0 {
 					eventQueue = nil
@@ -63,6 +77,7 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 		select {
 		case eventQueue <- event:
 		default: // The logging sink is blocked; never block Pebble.
+			dropped++
 		}
 		queueMu.Unlock()
 	}
@@ -89,6 +104,8 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 			level := "debug"
 			if bytes >= 1<<30 {
 				level = "info"
+			} else if !logger.Enabled(logging.DebugLevel) {
+				return
 			}
 			enqueue(pebbleLogEvent{level: level, message: "Pebble compaction started", fields: map[string]any{
 				"jobID":          info.JobID,
@@ -104,11 +121,13 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 				return
 			}
 			inBytes := inputBytes(info.Input)
-			outBytes := tableBytes(info.Output.Tables)
 			level := "debug"
-			if info.TotalDuration >= 10*time.Second {
+			if info.TotalDuration >= 10*time.Second || inBytes >= 1<<30 {
 				level = "info"
+			} else if !logger.Enabled(logging.DebugLevel) {
+				return
 			}
+			outBytes := tableBytes(info.Output.Tables)
 			fields := map[string]any{
 				"jobID":           info.JobID,
 				"reason":          info.Reason,
@@ -123,6 +142,9 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 			enqueue(pebbleLogEvent{level: level, message: "Pebble compaction completed", fields: fields})
 		},
 		FlushBegin: func(info pebble.FlushInfo) {
+			if !logger.Enabled(logging.DebugLevel) {
+				return
+			}
 			enqueue(pebbleLogEvent{level: "debug", message: "Pebble flush started", fields: map[string]any{
 				"jobID":          info.JobID,
 				"reason":         info.Reason,
@@ -137,6 +159,9 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 			}
 			// Pebble reports real flush failures through BackgroundError too.
 			if info.Err != nil {
+				return
+			}
+			if info.TotalDuration < 10*time.Second && !logger.Enabled(logging.DebugLevel) {
 				return
 			}
 			fields := map[string]any{
