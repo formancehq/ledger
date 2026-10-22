@@ -21,13 +21,21 @@ that depends on a capability but omits its declaration is invalid.
 The pure decision contract in `internal/infra/capabilities` evaluates every
 current voter and learner. A member is represented by `(node_id, instance_id)`;
 an identity refresh is a new incarnation and cannot silently inherit evidence
-from the old one. Reachability and support are separate: an unreachable member
-blocks activation just as an incapable member does. Once a capability is
-active, every new membership announcement must include that capability.
+from the old one. Capability activation uses committed support evidence, not a
+live health poll: a member that has already acknowledged the capability may be
+temporarily unreachable when the activation is committed. Reachability still
+blocks admission of capability-dependent writes until that member is reachable
+again. Once a capability is active, every new membership announcement must
+include that capability.
 
 A proposal that declares a capability is admitted only when that capability is
 active and every member advertises it. Proposals with no declared capability
 remain unaffected. FSM apply never consults node-local capability flags.
+Membership evidence is an authenticated cluster fact, not a proof of code
+inspection: a node can only cause activation for IDs in the leader's local
+registry, and malformed (zero, duplicate, or unsorted) declarations are
+rejected. Operators must therefore treat a compromised binary as outside the
+trust model of this barrier.
 
 ## Capabilities that change FSM semantics
 
