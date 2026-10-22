@@ -12,6 +12,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
+	"github.com/dustin/go-humanize"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 
@@ -540,19 +541,36 @@ func (a *Applier) setOutOfSync() {
 // it marks the applier as out-of-sync so SynchronizeWithLeader runs.
 // Returns true when the store was up to date and replay succeeded.
 func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
+	recoveryStart := time.Now()
+	a.logger.Infof("Startup recovery started")
+
 	// Reset the spool unconditionally: any data from a previous run is stale.
 	// A SIGKILL can leave a partially-written spool that causes corrupt record
 	// errors and entry index gaps during post-sync replay.
+	spoolResetStart := time.Now()
+	a.logger.Infof("Resetting startup spool")
 	if err := a.spool.Reset(); err != nil {
 		return false, fmt.Errorf("resetting spool: %w", err)
 	}
+	a.logger.WithFields(map[string]any{
+		"duration": time.Since(spoolResetStart).String(),
+	}).Infof("Startup spool reset")
 
+	storeCheckStart := time.Now()
+	a.logger.Infof("Checking startup store against WAL snapshot")
 	isStoreUpToDate, err := a.synchronizer.IsStoreUpToDate(ctx)
 	if err != nil {
 		return false, fmt.Errorf("checking if store is up to date: %w", err)
 	}
+	a.logger.WithFields(map[string]any{
+		"duration":      time.Since(storeCheckStart).String(),
+		"storeUpToDate": isStoreUpToDate,
+	}).Infof("Startup store check completed")
 
 	if !isStoreUpToDate {
+		a.logger.WithFields(map[string]any{
+			"duration": time.Since(recoveryStart).String(),
+		}).Infof("Startup recovery requires synchronization with leader")
 		if a.logger.Enabled(logging.DebugLevel) {
 			a.logger.Debugf("Store is not up to date, resuming from snapshot and tagging node as out of sync")
 		}
@@ -566,9 +584,14 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	// NewMachine → RecoverState in the constructor and Pebble has not changed
 	// since (InstallSnapshot only touches in-memory state, and the
 	// SynchronizeWithLeader path exits earlier via setOutOfSync).
+	cacheStart := time.Now()
+	a.logger.Infof("Restoring startup cache from Pebble")
 	if err := a.recovery.RestoreCacheFromStore(); err != nil {
 		return false, fmt.Errorf("restoring cache from store on restart: %w", err)
 	}
+	a.logger.WithFields(map[string]any{
+		"duration": time.Since(cacheStart).String(),
+	}).Infof("Startup cache restored")
 
 	storeLastAppliedIndex, err := query.ReadLastAppliedIndex(a.store)
 	if err != nil {
@@ -578,9 +601,16 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	// The live store still sits at the applied index it had when the process
 	// died, so a query checkpoint whose main store was left unmaterialized at
 	// that index can be rebuilt from it — before WAL replay moves the store on.
+	checkpointStart := time.Now()
+	a.logger.WithFields(map[string]any{
+		"lastAppliedIndex": storeLastAppliedIndex,
+	}).Infof("Recovering query checkpoint main stores")
 	if err := recoverQueryCheckpointMainStores(a.store, a.logger, storeLastAppliedIndex); err != nil {
 		return false, fmt.Errorf("recovering query checkpoint main stores: %w", err)
 	}
+	a.logger.WithFields(map[string]any{
+		"duration": time.Since(checkpointStart).String(),
+	}).Infof("Query checkpoint main stores recovered")
 
 	replayStart := time.Now()
 
@@ -589,6 +619,9 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	if err := a.replayWAL(ctx, storeLastAppliedIndex); err != nil {
 		return false, fmt.Errorf("replaying WAL: %w", err)
 	}
+	a.logger.WithFields(map[string]any{
+		"duration": time.Since(recoveryStart).String(),
+	}).Infof("Startup recovery completed")
 
 	assert.Reachable("startup recovery completed", map[string]any{
 		"duration": time.Since(replayStart).String(),
@@ -1904,10 +1937,20 @@ func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
 
 	commitIndex := hardState.GetCommit()
 	if commitIndex <= afterIndex {
+		a.logger.WithFields(map[string]any{
+			"lastAppliedIndex": afterIndex,
+			"commitIndex":      commitIndex,
+		}).Infof("Startup WAL replay not needed")
+
 		return nil
 	}
 
 	lo := afterIndex + 1
+	a.logger.WithFields(map[string]any{
+		"fromIndex": lo,
+		"toIndex":   commitIndex,
+	}).Infof("Reading committed WAL entries for startup replay")
+	readStart := time.Now()
 
 	if a.logger.Enabled(logging.DebugLevel) {
 		a.logger.WithFields(map[string]any{
@@ -1920,17 +1963,42 @@ func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
 	if err != nil {
 		return fmt.Errorf("reading WAL entries [%d, %d): %w", lo, commitIndex+1, err)
 	}
+	var payloadBytes int64
+	for _, entry := range entries {
+		payloadBytes += int64(len(entry.GetData()))
+	}
+	a.logger.WithFields(map[string]any{
+		"duration":         time.Since(readStart).String(),
+		"entryCount":       len(entries),
+		"payloadBytes":     payloadBytes,
+		"payloadSizeHuman": humanize.IBytes(uint64(payloadBytes)),
+	}).Infof("Committed WAL entries loaded for startup replay")
 
 	if len(entries) == 0 {
 		return nil
 	}
 
+	replayStart := time.Now()
 	for i := 0; i < len(entries); i += a.replayBatchSize {
 		end := min(i+a.replayBatchSize, len(entries))
+		batchStart := time.Now()
+		a.logger.WithFields(map[string]any{
+			"fromIndex": entries[i].GetIndex(),
+			"toIndex":   entries[end-1].GetIndex(),
+			"processed": i,
+			"total":     len(entries),
+		}).Infof("Applying startup WAL batch")
 
 		if err := a.applyReplayEntries(ctx, entries[i:end]); err != nil {
 			return fmt.Errorf("applying WAL entries: %w", err)
 		}
+		a.logger.WithFields(map[string]any{
+			"appliedIndex":  entries[end-1].GetIndex(),
+			"processed":     end,
+			"total":         len(entries),
+			"batchDuration": time.Since(batchStart).String(),
+			"duration":      time.Since(replayStart).String(),
+		}).Infof("Startup WAL replay progressed")
 	}
 
 	if a.logger.Enabled(logging.DebugLevel) {
