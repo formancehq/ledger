@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -10,6 +9,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // nextCursorTrailer is the gRPC trailer the streaming list handlers publish the
@@ -99,15 +99,15 @@ var malformedCursors = []string{
 
 // rollMalformedCursor returns a token the server must reject, one read in
 // sixteen.
-func rollMalformedCursor() (string, bool) {
-	if !oneIn(16) {
+func rollMalformedCursor(src *generation.Source) (string, bool) {
+	if !oneIn(src, 16) {
 		return "", false
 	}
 
 	// Half are not page tokens at all; half are well-formed tokens whose key the
 	// endpoint cannot read.
-	bad := random.RandomChoice(malformedCursors)
-	if oneIn(2) {
+	bad := generation.Choice(src, malformedCursors)
+	if oneIn(src, 2) {
 		return pagecursor.Cursor{Key: bad}.Encode(), true
 	}
 

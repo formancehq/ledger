@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
@@ -25,14 +27,22 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
+	if err := generation.RunOnce(func(src *generation.Source) {
+		run(ctx, client, src)
+	}); err != nil {
+		assert.Unreachable("Hegel driver generation failed", internal.Details{"driver": "parallel_driver_event_sinks", "error": err.Error()})
+	}
+}
+
+func run(ctx context.Context, client servicepb.BucketServiceClient, src *generation.Source) {
 	r := internal.Rand()
 	sinkName := fmt.Sprintf("nats-sink-%d", r.Uint64())
-	topic := fmt.Sprintf("ledger.events.%d", r.Uint64()%10)
+	topic := fmt.Sprintf("ledger.events.%d", src.Intn(10))
 
 	details := internal.Details{"sinkName": sinkName, "topic": topic}
 
 	// 1. Add a NATS event sink.
-	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_AddEventsSink{
 			AddEventsSink: &servicepb.AddEventsSinkRequest{
 				Config: &commonpb.SinkConfig{
@@ -88,7 +98,7 @@ func main() {
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: internal.RandomPostings(),
+						Postings: internal.GeneratedPostings(src),
 						Force:    true,
 					},
 				}},

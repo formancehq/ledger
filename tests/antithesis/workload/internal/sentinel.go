@@ -11,6 +11,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // Sentinel records a committed transaction whose survival across an operational
@@ -23,22 +25,32 @@ type Sentinel struct {
 	TxID      uint64
 }
 
-// PreCommitSentinel commits a deterministic-looking transaction with a unique
-// reference and returns a Sentinel that can be re-verified after a disruption.
-// The transaction uses `world -> sentinel:<uniq>` with a fixed amount so it
+// PreCommitSentinel commits a transaction with a unique reference and a
+// Hegel-generated amount, and returns a Sentinel to verify after a disruption.
+// The transaction uses `world -> sentinel:<uniq>` with Force so it
 // never depends on prior state, and so it doesn't interfere with other drivers
 // that touch `users:N`.
 func PreCommitSentinel(ctx context.Context, client servicepb.BucketServiceClient, ledger string) (*Sentinel, error) {
+	// Keep technical identities on Antithesis entropy to avoid Hegel boundary
+	// bias causing reference collisions across shared-cluster episodes.
 	ref := fmt.Sprintf("sentinel-%d-%d", Rand().Uint64(), Rand().Uint64())
 	destination := fmt.Sprintf("sentinel:%d", Rand().Uint64())
 
+	var posting *commonpb.Posting
+	if err := RunOperationalGeneration("sentinel", func(src *generation.Source) {
+		posting = commonpb.NewPosting("world", destination, "COIN", GeneratedBigInt(src))
+	}); err != nil {
+		return nil, fmt.Errorf("generate sentinel: %w", err)
+	}
+
+	// Only values leave the callback; generation cannot replay the RPC.
 	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings:  []*commonpb.Posting{commonpb.NewPosting("world", destination, "COIN", RandomBigInt())},
+						Postings:  []*commonpb.Posting{posting},
 						Reference: ref,
 						Force:     true,
 					},

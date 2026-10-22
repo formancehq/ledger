@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -20,6 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // runAuditQuery exercises ListAuditEntries with the audit filter leaves and
@@ -29,16 +29,16 @@ import (
 // ledgers those logs belong to. A failed entry names ledgers and a reason; it
 // must be a rejection the model explained. Entries for bulks the model has not
 // yet drained are admissible only while such bulks are in flight.
-func runAuditQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	filter, probe := c.genAuditFilter()
+func runAuditQuery(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	filter, probe := c.genAuditFilter(src)
 
-	requestedPageSize, pageSize := queryPageSize()
+	requestedPageSize, pageSize := queryPageSize(src)
 	noteClampedPageSize(requestedPageSize, pageSize)
-	reverse := random.RandomChoice([]uint8{0, 1}) == 1
+	reverse := generation.Choice(src, []uint8{0, 1}) == 1
 
-	cursor, afterSeq := c.rollAuditCursor()
+	cursor, afterSeq := c.rollAuditCursor(src)
 
-	malformed, rolled := rollMalformedCursor()
+	malformed, rolled := rollMalformedCursor(src)
 	if rolled {
 		cursor, afterSeq = malformed, 0
 	}
@@ -142,7 +142,7 @@ func runAuditQuery(ctx context.Context, client servicepb.BucketServiceClient, c 
 		return
 	}
 
-	c.noteAuditSamples(entries)
+	c.noteAuditSamples(src, entries)
 
 	details := internal.Details{
 		"filter":     describeFilter(filter),
@@ -837,20 +837,20 @@ func lastAuditKey(entries []auditEntry) string {
 // rollAuditCursor picks a resume token for an audit page half the time: a
 // sequence the trail served earlier, a few below it, so the skip lands inside
 // the zone instead of past its head. Acquires c.mu.
-func (c *Checker) rollAuditCursor() (string, uint64) {
-	if !oneIn(2) {
+func (c *Checker) rollAuditCursor(src *generation.Source) (string, uint64) {
+	if !oneIn(src, 2) {
 		return "", 0
 	}
 
 	c.mu.Lock()
 	var sample auditSample
 	if len(c.auditSamples) > 0 {
-		sample = c.auditSamples[internal.Rand().Intn(len(c.auditSamples))]
+		sample = c.auditSamples[src.Intn(len(c.auditSamples))]
 	}
 	c.mu.Unlock()
 
 	seq := sample.seq
-	seq -= min(seq, internal.Rand().Uint64()%8)
+	seq -= min(seq, src.Uint64Range(0, 8-1))
 
 	if seq == 0 {
 		return "", 0
@@ -1005,7 +1005,7 @@ type auditSample struct {
 const auditSampleCap = 64
 
 // noteAuditSamples remembers the indexed fields of a served page. Acquires c.mu.
-func (c *Checker) noteAuditSamples(entries []auditEntry) {
+func (c *Checker) noteAuditSamples(src *generation.Source, entries []auditEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -1017,26 +1017,26 @@ func (c *Checker) noteAuditSamples(entries []auditEntry) {
 			continue
 		}
 
-		c.auditSamples[internal.Rand().Intn(auditSampleCap)] = sample
+		c.auditSamples[src.Intn(auditSampleCap)] = sample
 	}
 }
 
 // genAuditFilter rolls a ListAuditEntries filter: nothing, one leaf on any of
 // the eight audit fields, an And or Or of leaves, or one of the two shapes the
 // audit grammar refuses. Acquires c.mu.
-func (c *Checker) genAuditFilter() (*commonpb.QueryFilter, auditProbe) {
+func (c *Checker) genAuditFilter(src *generation.Source) (*commonpb.QueryFilter, auditProbe) {
 	c.mu.Lock()
 	var sample auditSample
 	if len(c.auditSamples) > 0 {
-		sample = c.auditSamples[internal.Rand().Intn(len(c.auditSamples))]
+		sample = c.auditSamples[src.Intn(len(c.auditSamples))]
 	}
 	state := c.modelState
 	c.mu.Unlock()
 
-	logSeq, _, _ := pickLogSequence(state)
+	logSeq, _, _ := pickLogSequence(src, state)
 
 	ledgers := c.ledgerNamesSnapshot()
-	leaf := func() *commonpb.QueryFilter { return genAuditLeaf(ledgers, sample, logSeq.sequence) }
+	leaf := func() *commonpb.QueryFilter { return genAuditLeaf(src, ledgers, sample, logSeq.sequence) }
 	indexed := func() *commonpb.QueryFilter {
 		for {
 			if f := leaf(); f.GetAudit().GetField() != commonpb.AuditField_AUDIT_FIELD_SEQUENCE {
@@ -1049,23 +1049,23 @@ func (c *Checker) genAuditFilter() (*commonpb.QueryFilter, auditProbe) {
 	// two arms guarding on the same odds are two independent draws, not the
 	// repeated constant dupCase reads them as.
 	switch {
-	case oneIn(6):
+	case oneIn(src, 6):
 		return nil, auditProbeNone
-	case oneIn(8):
-		if oneIn(2) {
+	case oneIn(src, 8):
+		if oneIn(src, 2) {
 			return filterNot(leaf()), auditProbeNot
 		}
 
-		return filterOr(filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, satisfiableSeqRange(sample.seq)), indexed()), auditProbeSeqInOr
-	case oneIn(4):
+		return filterOr(filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, satisfiableSeqRange(src, sample.seq)), indexed()), auditProbeSeqInOr
+	case oneIn(src, 4):
 		// One slot of the read mix reaches this read at all, so a refusal rolled
 		// much rarer than this is never drawn in a whole local run — the four
 		// arms below split whatever share this branch gets. Ordered after the
 		// grammar refusals so it does not take theirs.
-		return genRefusedAuditLeaf(sample)
-	case oneIn(4): //nolint:gocritic // dupCase: a fresh roll, not the arm above
-		return filterAnd(genChildren(maxQueryGenDepth, func(int) *commonpb.QueryFilter { return leaf() })...), auditProbeNone
-	case oneIn(6): //nolint:gocritic // dupCase: a fresh roll, not the first arm
+		return genRefusedAuditLeaf(src, sample)
+	case oneIn(src, 4): //nolint:gocritic // dupCase: a fresh roll, not the arm above
+		return filterAnd(genChildren(src, maxQueryGenDepth, func(int) *commonpb.QueryFilter { return leaf() })...), auditProbeNone
+	case oneIn(src, 6): //nolint:gocritic // dupCase: a fresh roll, not the first arm
 		return filterOr(indexed(), indexed()), auditProbeNone
 	default:
 		return leaf(), auditProbeNone
@@ -1075,38 +1075,38 @@ func (c *Checker) genAuditFilter() (*commonpb.QueryFilter, auditProbe) {
 // genAuditLeaf rolls one audit leaf, aimed at a served entry's values so ranges
 // straddle live entries: the model's committed log sequences for
 // log_sequence, the fleet for ledger, the indexer's tokens for order_type.
-func genAuditLeaf(ledgers []string, sample auditSample, logSeq uint64) *commonpb.QueryFilter {
-	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8}) {
+func genAuditLeaf(src *generation.Source, ledgers []string, sample auditSample, logSeq uint64) *commonpb.QueryFilter {
+	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8}) {
 	case 0:
-		ledger := random.RandomChoice(ledgers)
-		if oneIn(8) {
+		ledger := generation.Choice(src, ledgers)
+		if oneIn(src, 8) {
 			ledger = "no-such-ledger"
 		}
 
 		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_LEDGER, ledger)
 	case 1:
-		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_OUTCOME, random.RandomChoice([]string{"success", "failure"}))
+		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_OUTCOME, generation.Choice(src, []string{"success", "failure"}))
 	case 2:
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, uintRangeAround(sample.seq, 16))
+		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, uintRangeAround(src, sample.seq, 16))
 	case 3:
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, uintRangeAround(sample.proposalID, 16))
+		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, uintRangeAround(src, sample.proposalID, 16))
 	case 4:
 		// A second either side of a served timestamp, in microseconds.
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, uintRangeAround(sample.timestamp, 1_000_000))
+		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, uintRangeAround(src, sample.timestamp, 1_000_000))
 	case 5:
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintRangeAround(logSeq, 8))
+		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintRangeAround(src, logSeq, 8))
 	case 6:
 		subject := sample.subject
-		if subject == "" || oneIn(8) {
-			subject = random.RandomChoice([]string{"nobody", ""})
+		if subject == "" || oneIn(src, 8) {
+			subject = generation.Choice(src, []string{"nobody", ""})
 		}
 
 		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, subject)
 	case 7:
-		return genIdempotencyKeyLeaf(sample)
+		return genIdempotencyKeyLeaf(src, sample)
 	default:
-		token := random.RandomChoice(auditOrderTypes)
-		if oneIn(8) {
+		token := generation.Choice(src, auditOrderTypes)
+		if oneIn(src, 8) {
 			token = "no_such_order"
 		}
 
@@ -1118,19 +1118,19 @@ func genAuditLeaf(ledgers []string, sample auditSample, logSeq uint64) *commonpb
 // prefix form. The prefix arm alternates between the driver's own key namespace
 // — which every entry this run produced shares, so the page is unfiltered in
 // practice — and a proper prefix of a key the trail served, which selects one.
-func genIdempotencyKeyLeaf(sample auditSample) *commonpb.QueryFilter {
+func genIdempotencyKeyLeaf(src *generation.Source, sample auditSample) *commonpb.QueryFilter {
 	key := sample.idemKey
-	if key == "" || oneIn(8) {
+	if key == "" || oneIn(src, 8) {
 		key = "model-no-such-key"
 	}
 
-	if !oneIn(2) {
+	if !oneIn(src, 2) {
 		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, key)
 	}
 
 	prefix := idempotencyKeyNamespace
-	if oneIn(2) && len(key) > len(idempotencyKeyNamespace) {
-		prefix = key[:len(idempotencyKeyNamespace)+internal.Rand().Intn(len(key)-len(idempotencyKeyNamespace))]
+	if oneIn(src, 2) && len(key) > len(idempotencyKeyNamespace) {
+		prefix = key[:len(idempotencyKeyNamespace)+src.Intn(len(key)-len(idempotencyKeyNamespace))]
 	}
 
 	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
@@ -1141,17 +1141,17 @@ func genIdempotencyKeyLeaf(sample auditSample) *commonpb.QueryFilter {
 
 // genRefusedAuditLeaf rolls a leaf the audit compiler must refuse, with the
 // refusal it is built to draw. Each is a distinct guard in compileAuditLeaf.
-func genRefusedAuditLeaf(sample auditSample) (*commonpb.QueryFilter, auditProbe) {
-	switch random.RandomChoice([]uint8{0, 1, 2, 3}) {
+func genRefusedAuditLeaf(src *generation.Source, sample auditSample) (*commonpb.QueryFilter, auditProbe) {
+	switch generation.Choice(src, []uint8{0, 1, 2, 3}) {
 	case 0:
 		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_UNSPECIFIED, "anything"), auditProbeUnspecifiedField
 	case 1:
 		// A string operand on a uint field, or a numeric one on a string field.
-		if oneIn(2) {
+		if oneIn(src, 2) {
 			return filterAuditString(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, "not-a-number"), auditProbeTypeMismatch
 		}
 
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_LEDGER, uintRangeAround(sample.seq, 16)), auditProbeTypeMismatch
+		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_LEDGER, uintRangeAround(src, sample.seq, 16)), auditProbeTypeMismatch
 	case 2:
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
 			Field: commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
@@ -1173,20 +1173,20 @@ func genRefusedAuditLeaf(sample auditSample) (*commonpb.QueryFilter, auditProbe)
 // an IMPOSSIBLE range instead compiles to an empty narrowed set, which the union
 // represents happily (compileAuditSeqBound), so the Or would then serve a page.
 // A probe built on an arbitrary range is therefore not a probe.
-func satisfiableSeqRange(center uint64) *commonpb.UintCondition {
-	lo := center - min(center, internal.Rand().Uint64()%16)
-	hi := lo + internal.Rand().Uint64()%16
+func satisfiableSeqRange(src *generation.Source, center uint64) *commonpb.UintCondition {
+	lo := center - min(center, src.Uint64Range(0, 16-1))
+	hi := lo + src.Uint64Range(0, 16-1)
 
 	return &commonpb.UintCondition{Min: &lo, Max: &hi}
 }
 
 // uintRangeAround rolls a two-sided range within spread of center, then opens
 // or makes exclusive either side the way the other range leaves do.
-func uintRangeAround(center, spread uint64) *commonpb.UintCondition {
-	lo := center - min(center, internal.Rand().Uint64()%spread)
-	hi := center + internal.Rand().Uint64()%spread
+func uintRangeAround(src *generation.Source, center, spread uint64) *commonpb.UintCondition {
+	lo := center - min(center, src.Uint64Range(0, spread-1))
+	hi := center + src.Uint64Range(0, spread-1)
 	cond := &commonpb.UintCondition{Min: &lo, Max: &hi}
-	rollOpenOrExclusive(cond)
+	rollOpenOrExclusive(src, cond)
 
 	return cond
 }
@@ -1265,8 +1265,8 @@ func (c *Checker) describeServedLogAt(ctx context.Context, client servicepb.Buck
 // carries an entry's per-order items, so it is what makes the item checks in
 // auditSuccessMismatch reachable at all — a listing leaves items empty. A
 // sequence past anything the trail can hold must resolve NotFound.
-func runAuditEntryRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	seq, absent := c.pickAuditSequence()
+func runAuditEntryRead(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	seq, absent := c.pickAuditSequence(src)
 	if seq == 0 {
 		return
 	}
@@ -1344,8 +1344,8 @@ func runAuditEntryRead(ctx context.Context, client servicepb.BucketServiceClient
 
 // pickAuditSequence chooses a sequence to fetch: one the trail served earlier,
 // or — one read in four — a sequence no audit zone can reach. Acquires c.mu.
-func (c *Checker) pickAuditSequence() (seq uint64, absent bool) {
-	if oneIn(4) {
+func (c *Checker) pickAuditSequence(src *generation.Source) (seq uint64, absent bool) {
+	if oneIn(src, 4) {
 		return math.MaxUint64, true
 	}
 
@@ -1356,7 +1356,7 @@ func (c *Checker) pickAuditSequence() (seq uint64, absent bool) {
 		return 0, false
 	}
 
-	return c.auditSamples[internal.Rand().Intn(len(c.auditSamples))].seq, false
+	return c.auditSamples[src.Intn(len(c.auditSamples))].seq, false
 }
 
 // validateAuditEntry holds one directly-fetched entry to the rules a page's

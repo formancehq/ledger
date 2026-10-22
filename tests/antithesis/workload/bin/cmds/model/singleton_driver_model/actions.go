@@ -3,12 +3,10 @@ package main
 import (
 	"fmt"
 	"math/big"
-	"math/bits"
 	"slices"
 	"strconv"
 	"strings"
 
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -18,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // applyRequest renders a bulk into a sendable ApplyRequest. Idempotency is per
@@ -52,13 +51,13 @@ var (
 )
 
 // rollReplayTrack reports whether to stamp a bulk as a replayable original.
-func rollReplayTrack() bool {
-	return random.RandomChoice(replayTrackPool) == 0
+func rollReplayTrack(src *generation.Source) bool {
+	return generation.Choice(src, replayTrackPool) == 0
 }
 
 // rollConflict reports whether to reuse a committed key on a different body.
-func rollConflict() bool {
-	return random.RandomChoice(replayConflictPool) == 0
+func rollConflict(src *generation.Source) bool {
+	return generation.Choice(src, replayConflictPool) == 0
 }
 
 // Pool: every type name and every tx address uses a "t-N" prefix where
@@ -66,25 +65,31 @@ func rollConflict() bool {
 // (race-add, race-remove, untyped tx) are the test's chaos surface.
 
 // "t-3"-style name.
-func poolName() string {
-	return fmt.Sprintf("t-%d", random.RandomChoice(typePool))
+func poolName(src *generation.Source) string {
+	return fmt.Sprintf("t-%d", generation.Choice(src, typePool))
 }
 
 // "t-N:i" — same prefix space as type names. numIDsPerPrefix is
 // small enough that re-targeting the same cell is frequent.
-func poolAddress() string {
-	return fmt.Sprintf("%s:%d", poolName(), internal.Rand().Uint64()%numIDsPerPrefix)
+func poolAddress(src *generation.Source) string {
+	return fmt.Sprintf("%s:%d", poolName(src), src.Uint64Range(0, numIDsPerPrefix-1))
 }
 
-// randomColor draws a posting color: the trailing-zero count of one uniform
-// draw, which is geometric with p=1/2 — "" half the time, "A" a quarter, "B" an
-// eighth, on down to a 65th bucket at 2^-64. The head keeps same-(account,
+// randomColor uses explicit equal-probability decisions for the geometric
+// distribution: "" half the time, "A" a quarter, "B" an eighth, on down to
+// a 65th bucket at 2^-64. The head keeps same-(account,
 // asset) color collisions frequent, which is what exposes a leak between
 // buckets; the tail keeps producing buckets touched once and never again,
 // where a leak has no re-touch to give it away. Drawn at the point of decision
-// so Antithesis controls it.
-func randomColor() string {
-	return colorName(bits.TrailingZeros64(internal.Rand().Uint64()))
+// so Hegel controls it. A biased uint64 followed by trailing-zero counting
+// would distort the head frequencies and overrepresent extreme buckets.
+func randomColor(src *generation.Source) string {
+	depth := 0
+	for depth < 64 && src.Bool() {
+		depth++
+	}
+
+	return colorName(depth)
 }
 
 // colorName encodes k as bijective base-26 letters — 0 is the uncolored
@@ -126,27 +131,27 @@ func pickAtOrAfter[K, V any](m oracle.Map[K, V], probe K) (K, V, bool) {
 // (overdraftable) about half the time to keep accounts funded, otherwise any
 // pool address — most of which are underfunded, so a non-forced debit exercises
 // the INSUFFICIENT_FUNDS floor.
-func sourceAddress() string {
-	if random.RandomChoice([]uint8{0, 1}) == 0 {
+func sourceAddress(src *generation.Source) string {
+	if generation.Choice(src, []uint8{0, 1}) == 0 {
 		return "world"
 	}
 
-	return poolAddress()
+	return poolAddress(src)
 }
 
 // generateBulk plans the next bulk. Most bulks target a single ledger;
 // occasionally a bulk spreads its requests across a few, exercising the
 // server's atomic-across-ledgers semantics. Runs lock-free on a state
 // snapshot (a published GlobalState is never mutated — Apply forks first).
-func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, liveTarget int) oracle.Bulk {
+func generateBulk(src *generation.Source, g oracle.GlobalState, ledgers []string, newLedger string, liveTarget int) oracle.Bulk {
 	active := activeLedgers(g, ledgers)
-	if req := generateLifecycle(g, ledgers, newLedger, liveTarget); req != nil {
+	if req := generateLifecycle(src, g, ledgers, newLedger, liveTarget); req != nil {
 		return oracle.Bulk{Requests: []*servicepb.Request{req}}
 	}
 	if len(active) == 0 {
 		return oracle.Bulk{}
 	}
-	picks := pickLedgers(active)
+	picks := pickLedgers(src, active)
 
 	// Whole-bulk transient shapes fund and drain the same cell, so they only
 	// make sense single-ledger. Gate them by the same back-pressure as
@@ -155,14 +160,14 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 	if len(picks) == 1 {
 		ledger := picks[0]
 		ls := g.Ledger(ledger)
-		if rollTransaction(ls) {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}) {
+		if rollTransaction(src, ls) {
+			switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}) {
 			case 0:
-				if reqs := generateTransientBalancedBulk(ledger, ls); reqs != nil {
+				if reqs := generateTransientBalancedBulk(src, ledger, ls); reqs != nil {
 					return oracle.Bulk{Requests: reqs}
 				}
 			case 1:
-				if reqs := generateTransientUnbalancedBulk(ledger, ls); reqs != nil {
+				if reqs := generateTransientUnbalancedBulk(src, ledger, ls); reqs != nil {
 					return oracle.Bulk{Requests: reqs}
 				}
 			}
@@ -172,8 +177,8 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 	// An index create/drop is its own single-request bulk (single-ledger, since
 	// the index is ledger-scoped). Emitting it alone keeps the model's index
 	// lifecycle a clean sequence of committed CreateIndex/DropIndex orders.
-	if len(picks) == 1 && rollIndexOp(g.Ledger(picks[0])) {
-		if req := generateIndexOp(g, picks[0]); req != nil {
+	if len(picks) == 1 && rollIndexOp(src, g.Ledger(picks[0])) {
+		if req := generateIndexOp(src, g, picks[0]); req != nil {
 			return oracle.Bulk{Requests: []*servicepb.Request{req}}
 		}
 	}
@@ -182,61 +187,61 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 	// registry is ledger-scoped, and keeping the lifecycle a clean sequence of
 	// committed create/update/delete orders is what lets an execution read
 	// validate against a candidate base's stored definition.
-	if len(picks) == 1 && rollPreparedQueryOp() {
-		if req := generatePreparedQueryOp(g, picks[0]); req != nil {
+	if len(picks) == 1 && rollPreparedQueryOp(src) {
+		if req := generatePreparedQueryOp(src, g, picks[0]); req != nil {
 			return oracle.Bulk{Requests: []*servicepb.Request{req}}
 		}
 	}
 
-	size := bulkSize()
+	size := bulkSize(src)
 	requests := make([]*servicepb.Request, 0, size)
 	appendRequest := func(ls oracle.LedgerState, req *servicepb.Request) {
-		requests = append(requests, maybeAddSkippableReason(ls, req))
+		requests = append(requests, maybeAddSkippableReason(src, ls, req))
 	}
 
 	for range size {
-		ledger := random.RandomChoice(picks)
+		ledger := generation.Choice(src, picks)
 		ls := g.Ledger(ledger)
 
-		if random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) == 0 {
-			appendRequest(ls, generateEnforcementMode(ledger))
+		if generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) == 0 {
+			appendRequest(ls, generateEnforcementMode(src, ledger))
 
 			continue
 		}
-		if rollChartOp() {
-			if req := generateChartOp(ledger); req != nil {
+		if rollChartOp(src) {
+			if req := generateChartOp(src, ledger); req != nil {
 				appendRequest(ls, req)
 
 				continue
 			}
 		}
 
-		if rollSchemaOp() {
-			if req := generateSchemaOp(ledger, ls); req != nil {
+		if rollSchemaOp(src) {
+			if req := generateSchemaOp(src, ledger, ls); req != nil {
 				appendRequest(ls, req)
 
 				continue
 			}
 		}
 
-		if rollMetadataOp() {
-			if req := generateMetadataOp(ledger, ls); req != nil {
+		if rollMetadataOp(src) {
+			if req := generateMetadataOp(src, ledger, ls); req != nil {
 				appendRequest(ls, req)
 
 				continue
 			}
 		}
 
-		if rollRevert() {
-			if req := generateRevert(ledger, ls); req != nil {
+		if rollRevert(src) {
+			if req := generateRevert(src, ledger, ls); req != nil {
 				appendRequest(ls, req)
 
 				continue
 			}
 		}
 
-		if rollTransaction(ls) {
-			if req := generateTransaction(ledger, ls); req != nil {
+		if rollTransaction(src, ls) {
+			if req := generateTransaction(src, ledger, ls); req != nil {
 				appendRequest(ls, req)
 
 				continue
@@ -246,7 +251,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 		// Transaction back-pressure kicked in: emit a metadata op instead so the
 		// slot stays productive and the workload exercises existing state rather
 		// than creating ever more transactions as the ledger fills up.
-		if req := generateMetadataOp(ledger, ls); req != nil {
+		if req := generateMetadataOp(src, ledger, ls); req != nil {
 			appendRequest(ls, req)
 		}
 	}
@@ -256,8 +261,8 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 	// always commits; the rest stay trailing, where the skip proves only that it
 	// did not fail the bulk.
 	if n := len(requests); n > 0 && len(requests[n-1].GetApply().GetSkippableReasons()) > 0 &&
-		random.RandomChoice([]uint8{0, 1}) == 0 {
-		requests = append(requests, generateAddMetadata(requests[n-1].GetApply().GetLedger()))
+		generation.Choice(src, []uint8{0, 1}) == 0 {
+		requests = append(requests, generateAddMetadata(src, requests[n-1].GetApply().GetLedger()))
 	}
 
 	return oracle.Bulk{Requests: requests}
@@ -278,33 +283,33 @@ func activeLedgers(g oracle.GlobalState, ledgers []string) []string {
 // generateLifecycle mixes administrative transitions into the same concurrent
 // stream as business writes. Creation is biased when deletions shrink the live
 // pool, providing the same bounded-state back-pressure as transaction creation.
-func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string, liveTarget int) *servicepb.Request {
+func generateLifecycle(src *generation.Source, g oracle.GlobalState, ledgers []string, newLedger string, liveTarget int) *servicepb.Request {
 	live, deleted := partitionLifecycleLedgers(g, ledgers)
-	if len(deleted) > 0 && random.RandomChoice(indexPool(32)) == 0 {
-		return actions.CreateLedgerAction(random.RandomChoice(deleted), nil)
+	if len(deleted) > 0 && generation.Choice(src, indexPool(32)) == 0 {
+		return actions.CreateLedgerAction(generation.Choice(src, deleted), nil)
 	}
 	if len(live) < liveTarget {
-		if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
+		if generation.Choice(src, []uint8{0, 1, 2, 3}) == 0 {
 			return &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
 				Name: newLedger, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-				Metadata:     randomMetaMap(),
+				Metadata:     randomMetaMap(src),
 				MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "unused"},
 			}}}
 		}
 
 		request := actions.CreateLedgerAction(newLedger, nil)
-		request.GetCreateLedger().Metadata = randomMetaMap()
+		request.GetCreateLedger().Metadata = randomMetaMap(src)
 
 		return request
 	}
-	if random.RandomChoice(indexPool(24)) != 0 {
+	if generation.Choice(src, indexPool(24)) != 0 {
 		return nil
 	}
 
-	switch random.RandomChoice([]uint8{0, 1, 2, 3}) {
+	switch generation.Choice(src, []uint8{0, 1, 2, 3}) {
 	case 0:
 		if len(live) > 0 {
-			return actions.DeleteLedgerAction(random.RandomChoice(live))
+			return actions.DeleteLedgerAction(generation.Choice(src, live))
 		}
 
 		return nil
@@ -319,12 +324,12 @@ func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string,
 			return nil
 		}
 
-		return &servicepb.Request{Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: random.RandomChoice(mirrors)}}}
+		return &servicepb.Request{Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: generation.Choice(src, mirrors)}}}
 	default:
 		// Enables stop every business worker for the recovery window, so generate
 		// them much less often than disables. An active maintenance window still
 		// gets the full toggle probability and closes promptly.
-		if !g.MaintenanceMode() && random.RandomChoice(indexPool(8)) != 0 {
+		if !g.MaintenanceMode() && generation.Choice(src, indexPool(8)) != 0 {
 			return nil
 		}
 
@@ -337,14 +342,14 @@ func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string,
 // entry of which candidateBases clones and hashes on each fold — doesn't grow
 // without bound. Counting only referenced transactions would miss the
 // unreferenced records (reverts, drains, transient helpers) that also accumulate.
-func rollTransaction(ls oracle.LedgerState) bool {
+func rollTransaction(src *generation.Source, ls oracle.LedgerState) bool {
 	switch n := ls.Txs().Len(); {
 	case n < txEmitFull:
 		return true
 	case n < txEmitTaper:
-		return random.RandomChoice([]uint8{0, 1}) == 0
+		return generation.Choice(src, []uint8{0, 1}) == 0
 	case n < txEmitStop:
-		return random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) == 0
+		return generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7}) == 0
 	default:
 		return false
 	}
@@ -352,26 +357,26 @@ func rollTransaction(ls oracle.LedgerState) bool {
 
 // pickLedgers returns the ledger(s) a bulk's requests draw from: usually one,
 // ~1-in-6 a distinct 2-3 so the bulk spans ledgers.
-func pickLedgers(ledgers []string) []string {
-	if len(ledgers) < 2 || random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) != 0 {
-		return []string{random.RandomChoice(ledgers)}
+func pickLedgers(src *generation.Source, ledgers []string) []string {
+	if len(ledgers) < 2 || generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5}) != 0 {
+		return []string{generation.Choice(src, ledgers)}
 	}
 
 	n := 2
-	if len(ledgers) >= 3 && random.RandomChoice([]uint8{0, 1}) == 0 {
+	if len(ledgers) >= 3 && generation.Choice(src, []uint8{0, 1}) == 0 {
 		n = 3
 	}
 
-	return sampleDistinct(ledgers, n)
+	return sampleDistinct(src, ledgers, n)
 }
 
 // sampleDistinct picks n distinct ledgers via the Antithesis RNG (rejection
 // sampling; n <= len(ledgers) so it terminates).
-func sampleDistinct(ledgers []string, n int) []string {
+func sampleDistinct(src *generation.Source, ledgers []string, n int) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, n)
 	for len(out) < n {
-		c := random.RandomChoice(ledgers)
+		c := generation.Choice(src, ledgers)
 		if !seen[c] {
 			seen[c] = true
 			out = append(out, c)
@@ -382,8 +387,8 @@ func sampleDistinct(ledgers []string, n int) []string {
 }
 
 // ~30%: a chart op fills this bulk slot, else a transaction.
-func rollChartOp() bool {
-	return random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) < 3
+func rollChartOp(src *generation.Source) bool {
+	return generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) < 3
 }
 
 // ~1-in-48: a metadata-schema op (declare/remove a field type) fills this slot.
@@ -391,43 +396,43 @@ func rollChartOp() bool {
 // (indexPollInterval apart) before its next retype, so its window can close;
 // the exponential gap tail still chains retypes within a poll often enough to
 // exercise window extension.
-func rollSchemaOp() bool {
-	return internal.Rand().Uint64()%48 == 0
+func rollSchemaOp(src *generation.Source) bool {
+	return src.Uint64Range(0, 48-1) == 0
 }
 
 // ~25%: a metadata op fills this bulk slot, when a chart/schema op didn't.
-func rollMetadataOp() bool {
-	return random.RandomChoice([]uint8{0, 1, 2, 3}) == 0
+func rollMetadataOp(src *generation.Source) bool {
+	return generation.Choice(src, []uint8{0, 1, 2, 3}) == 0
 }
 
 // ~1-in-6: revert a committed transaction in this slot.
-func rollRevert() bool {
-	return random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) == 0
+func rollRevert(src *generation.Source) bool {
+	return generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5}) == 0
 }
 
 // Picks Add vs Remove.
-func generateChartOp(ledger string) *servicepb.Request {
-	if random.RandomChoice([]uint8{0, 1}) == 0 {
-		return generateAddAccountType(ledger)
+func generateChartOp(src *generation.Source, ledger string) *servicepb.Request {
+	if generation.Choice(src, []uint8{0, 1}) == 0 {
+		return generateAddAccountType(src, ledger)
 	}
 
-	return generateRemoveAccountType(ledger)
+	return generateRemoveAccountType(src, ledger)
 }
 
 // Heavy tail toward 1: 5/8 single, 2/8 pair, 1/8 in {3,4,5}.
-func bulkSize() int {
-	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
+func bulkSize(src *generation.Source) int {
+	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
 	case 0, 1, 2, 3, 4:
 		return 1
 	case 5, 6:
 		return 2
 	default:
-		return int(random.RandomChoice([]uint8{3, 4, 5}))
+		return int(generation.Choice(src, []uint8{3, 4, 5}))
 	}
 }
 
 // randomTransientType returns a random TRANSIENT type from ls's chart, or nil.
-func randomTransientType(ls oracle.LedgerState) *oracle.TypeState {
+func randomTransientType(src *generation.Source, ls oracle.LedgerState) *oracle.TypeState {
 	// Types().All() iterates in key order, so names is already sorted —
 	// replayable / steerable via the Antithesis RNG.
 	var names []string
@@ -441,7 +446,7 @@ func randomTransientType(ls oracle.LedgerState) *oracle.TypeState {
 		return nil
 	}
 
-	t, _ := ls.Types().Get(random.RandomChoice(names))
+	t, _ := ls.Types().Get(generation.Choice(src, names))
 
 	return &t
 }
@@ -453,9 +458,9 @@ func randomTransientType(ls oracle.LedgerState) *oracle.TypeState {
 // resolves typing, the balance floor, intra-transaction posting composition,
 // and — with force — overdrafts uniformly; or, ~1/4 of the time, a deliberate
 // drain of an EPHEMERAL cell to exercise the purge sweep.
-func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
-		if req := generateDrainTransaction(ledger, ls); req != nil {
+func generateTransaction(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
+	if generation.Choice(src, []uint8{0, 1, 2, 3}) == 0 {
+		if req := generateDrainTransaction(src, ledger, ls); req != nil {
 			return req
 		}
 	}
@@ -463,8 +468,8 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 	// Keep the bounded CI run deterministic enough to exercise the reference-
 	// conflict skip path even after lifecycle operations consume generation
 	// slots. The ordinary malformed branch below still emits unskipped conflicts.
-	if random.RandomChoice(indexPool(16)) == 0 {
-		if req := duplicateReferenceTransaction(ledger, ls); req != nil {
+	if generation.Choice(src, indexPool(16)) == 0 {
+		if req := duplicateReferenceTransaction(src, ledger, ls); req != nil {
 			req.GetApply().SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
 
 			return req
@@ -474,22 +479,22 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 	// ~1/16: a deliberately-malformed transaction exercising a create rejection
 	// branch (empty / duplicate-reference / volume-overflow). The server rejects
 	// it and the oracle reproduces the reason, so validateFailure explains it.
-	if random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) == 0 {
-		if req := generateRejectedTransaction(ledger, ls); req != nil {
+	if generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) == 0 {
+		if req := generateRejectedTransaction(src, ledger, ls); req != nil {
 			return req
 		}
 	}
 
 	// Force (~1/8) skips the balance floor, letting a non-world source overdraft.
-	force := random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) == 0
+	force := generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7}) == 0
 
 	// 1–4 postings, each between blindly-picked accounts. Multiple postings
 	// commit atomically and compose in order — an earlier posting can fund a
 	// later one's source (the running balance floor is per-posting).
-	n := 1 + int(random.RandomChoice([]uint8{0, 1, 2, 3}))
+	n := 1 + int(generation.Choice(src, []uint8{0, 1, 2, 3}))
 	postings := make([]*commonpb.Posting, n)
 	for i := range postings {
-		postings[i] = commonpb.NewColoredPosting(sourceAddress(), poolAddress(), assets[int(random.RandomChoice([]uint8{0, 1, 2}))], randomColor(), internal.RandomBigInt())
+		postings[i] = commonpb.NewColoredPosting(sourceAddress(src), poolAddress(src), assets[int(generation.Choice(src, []uint8{0, 1, 2}))], randomColor(src), internal.GeneratedBigInt(src))
 	}
 
 	// Every transaction gets a unique reference so it is targetable by later
@@ -500,23 +505,23 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 		Force:     force,
 	}
 
-	if random.RandomChoice([]uint8{0, 1}) == 0 {
-		payload.Metadata = randomMetaMap()
+	if generation.Choice(src, []uint8{0, 1}) == 0 {
+		payload.Metadata = randomMetaMap(src)
 	}
 
 	// ~half also carry a user-supplied timestamp — stored verbatim and echoed on
 	// reads (it does not feed the HLC / log order). Backdated to stay non-future.
-	if random.RandomChoice([]uint8{0, 1}) == 0 {
-		payload.Timestamp = &commonpb.Timestamp{Data: 1 + internal.Rand().Uint64()%1_500_000_000_000_000}
+	if generation.Choice(src, []uint8{0, 1}) == 0 {
+		payload.Timestamp = &commonpb.Timestamp{Data: 1 + src.Uint64Range(0, 1_500_000_000_000_000-1)}
 	}
 
 	// ~1/3 also set account metadata via the transaction payload, applied
 	// atomically with the tx. Target a posting's own destination: it already
 	// passes the posting chart check when the tx commits, so the account-metadata
 	// write never introduces a chart rejection.
-	if random.RandomChoice([]uint8{0, 1, 2}) == 0 {
+	if generation.Choice(src, []uint8{0, 1, 2}) == 0 {
 		payload.AccountMetadata = map[string]*commonpb.MetadataMap{
-			postings[n-1].GetDestination(): {Values: randomMetaMap()},
+			postings[n-1].GetDestination(): {Values: randomMetaMap(src)},
 		}
 	}
 
@@ -544,14 +549,14 @@ func applyCreate(ledger string, payload *servicepb.CreateTransactionPayload, ski
 // cycling the create rejection branches that valid traffic never triggers.
 // Returns nil when the chosen branch is not currently applicable (no committed
 // reference to duplicate yet).
-func generateRejectedTransaction(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	switch random.RandomChoice([]uint8{0, 1, 2}) {
+func generateRejectedTransaction(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
+	switch generation.Choice(src, []uint8{0, 1, 2}) {
 	case 0:
 		return emptyTransaction(ledger)
 	case 1:
-		return duplicateReferenceTransaction(ledger, ls)
+		return duplicateReferenceTransaction(src, ledger, ls)
 	default:
-		return overflowTransaction(ledger)
+		return overflowTransaction(src, ledger)
 	}
 }
 
@@ -564,14 +569,14 @@ func emptyTransaction(ledger string) *servicepb.Request {
 // duplicateReferenceTransaction reuses a committed reference; the FSM rejects it
 // with TRANSACTION_REFERENCE_CONFLICT before any floor/chart check. Nil when the
 // ledger holds no committed reference yet.
-func duplicateReferenceTransaction(ledger string, ls oracle.LedgerState) *servicepb.Request {
+func duplicateReferenceTransaction(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
 	ref, _, ok := pickTxRef(ls)
 	if !ok {
 		return nil
 	}
 
 	return applyCreate(ledger, &servicepb.CreateTransactionPayload{
-		Postings:  []*commonpb.Posting{commonpb.NewPosting("world", poolAddress(), assets[0], big.NewInt(1))},
+		Postings:  []*commonpb.Posting{commonpb.NewPosting("world", poolAddress(src), assets[0], big.NewInt(1))},
 		Reference: ref,
 	})
 }
@@ -579,9 +584,9 @@ func duplicateReferenceTransaction(ledger string, ls oracle.LedgerState) *servic
 // overflowTransaction sends two near-maximal (2^255) amounts from world to the
 // same account, so the running volume exceeds 2^256 and the server rejects with
 // VOLUME_OVERFLOW (the world Output overflows on the second posting).
-func overflowTransaction(ledger string) *servicepb.Request {
+func overflowTransaction(src *generation.Source, ledger string) *servicepb.Request {
 	half := new(big.Int).Lsh(big.NewInt(1), 255)
-	dst := poolAddress()
+	dst := poolAddress(src)
 
 	return applyCreate(ledger, &servicepb.CreateTransactionPayload{
 		Postings: []*commonpb.Posting{
@@ -595,10 +600,10 @@ func overflowTransaction(ledger string) *servicepb.Request {
 // persistence. Collisions and remove-races are expected; the new
 // persistence wins when the add succeeds, and both sides stay in
 // lockstep.
-func generateAddAccountType(ledger string) *servicepb.Request {
-	name := poolName()
+func generateAddAccountType(src *generation.Source, ledger string) *servicepb.Request {
+	name := poolName(src)
 	pattern := name + ":{id}"
-	persistence := pickPersistence()
+	persistence := pickPersistence(src)
 
 	return &servicepb.Request{
 		Type: &servicepb.Request_AddAccountType{
@@ -616,8 +621,8 @@ func generateAddAccountType(ledger string) *servicepb.Request {
 
 // NORMAL ~1/2, EPHEMERAL ~1/3, TRANSIENT ~1/6 — both non-NORMAL kinds
 // exercise distinct end-of-bulk machinery.
-func pickPersistence() commonpb.AccountTypePersistence {
-	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) {
+func pickPersistence(src *generation.Source) commonpb.AccountTypePersistence {
+	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5}) {
 	case 0, 1:
 		return commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL
 	case 2:
@@ -655,10 +660,10 @@ func txRequest(ledger, src, dest, asset, color string, amount *big.Int, force bo
 // drainable one — a positive balance (input > output) on an EPHEMERAL-matched
 // address — so the pick costs O(scan window), not a volume-table walk.
 // Returns nil if the window holds no eligible cell.
-func generateDrainTransaction(ledger string, ls oracle.LedgerState) *servicepb.Request {
+func generateDrainTransaction(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
 	const scanCap = 64
 
-	probe := oracle.VolumeKey{Address: poolAddress(), Asset: random.RandomChoice(assets)}
+	probe := oracle.VolumeKey{Address: poolAddress(src), Asset: generation.Choice(src, assets)}
 
 	var (
 		srcKey  oracle.VolumeKey
@@ -717,8 +722,8 @@ func generateDrainTransaction(ledger string, ls oracle.LedgerState) *servicepb.R
 }
 
 // RemoveAccountType for a random pool name.
-func generateRemoveAccountType(ledger string) *servicepb.Request {
-	return removeRequest(ledger, poolName())
+func generateRemoveAccountType(src *generation.Source, ledger string) *servicepb.Request {
+	return removeRequest(ledger, poolName(src))
 }
 
 // --- Metadata -------------------------------------------------------------
@@ -733,68 +738,68 @@ func accountTarget(addr string) *commonpb.Target {
 }
 
 // "k2"-style key from the small metadata-key pool.
-func metaKey() string {
-	return fmt.Sprintf("k%d", random.RandomChoice(metaKeyPool))
+func metaKey(src *generation.Source) string {
+	return fmt.Sprintf("k%d", generation.Choice(src, metaKeyPool))
 }
 
 // Picks a ledger-level op (~1/5), a transaction-level op (~1/5, falling back to
 // account when no transaction exists yet), or an account-level op — each Add
 // (~2/3) vs Delete (~1/3). A delete falls back to its add when the model holds no
 // metadata of that kind yet.
-func generateMetadataOp(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4}) {
+func generateMetadataOp(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
+	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4}) {
 	case 0:
-		if random.RandomChoice([]uint8{0, 1, 2}) == 0 {
-			if req := generateDeleteLedgerMetadata(ledger, ls); req != nil {
+		if generation.Choice(src, []uint8{0, 1, 2}) == 0 {
+			if req := generateDeleteLedgerMetadata(src, ledger, ls); req != nil {
 				return req
 			}
 		}
 
-		return generateSaveLedgerMetadata(ledger)
+		return generateSaveLedgerMetadata(src, ledger)
 	case 1:
-		if req := generateTxMetadataOp(ledger, ls); req != nil {
+		if req := generateTxMetadataOp(src, ledger, ls); req != nil {
 			return req
 		}
 	}
 
-	if random.RandomChoice([]uint8{0, 1, 2}) == 0 {
-		if req := generateDeleteMetadata(ledger, ls); req != nil {
+	if generation.Choice(src, []uint8{0, 1, 2}) == 0 {
+		if req := generateDeleteMetadata(src, ledger, ls); req != nil {
 			return req
 		}
 	}
 
-	return generateAddMetadata(ledger)
+	return generateAddMetadata(src, ledger)
 }
 
 // randomMetaValue picks a value across every MetadataValue wire kind — string,
 // int64, uint64, bool, null, datetime — from the small pools. The server stores
 // values verbatim, so each kind must round-trip unchanged regardless of any
 // declared field type.
-func randomMetaValue() *commonpb.MetadataValue {
-	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) {
+func randomMetaValue(src *generation.Source) *commonpb.MetadataValue {
+	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5}) {
 	case 0:
-		return commonpb.NewIntValue(random.RandomChoice(metaIntPool))
+		return commonpb.NewIntValue(generation.Choice(src, metaIntPool))
 	case 1:
-		return commonpb.NewUintValue(random.RandomChoice(metaUintPool))
+		return commonpb.NewUintValue(generation.Choice(src, metaUintPool))
 	case 2:
-		return commonpb.NewBoolValue(random.RandomChoice([]uint8{0, 1}) == 0)
+		return commonpb.NewBoolValue(generation.Choice(src, []uint8{0, 1}) == 0)
 	case 3:
-		return commonpb.NewNullValue(random.RandomChoice(metaNullOriginalPool))
+		return commonpb.NewNullValue(generation.Choice(src, metaNullOriginalPool))
 	case 4:
-		return commonpb.NewDatetimeValue(random.RandomChoice(metaDatetimePool))
+		return commonpb.NewDatetimeValue(generation.Choice(src, metaDatetimePool))
 	default:
-		return commonpb.NewStringValue(random.RandomChoice(metaValuePool))
+		return commonpb.NewStringValue(generation.Choice(src, metaValuePool))
 	}
 }
 
 // randomMetaMap builds a 1-2 key metadata map from the small key/value pools.
 // Small pools make concurrent sets of the same key to different values frequent
 // — the ordering chaos the model exists to check.
-func randomMetaMap() map[string]*commonpb.MetadataValue {
-	n := 1 + int(random.RandomChoice([]uint8{0, 1}))
+func randomMetaMap(src *generation.Source) map[string]*commonpb.MetadataValue {
+	n := 1 + int(generation.Choice(src, []uint8{0, 1}))
 	md := make(map[string]*commonpb.MetadataValue, n)
 	for range n {
-		md[metaKey()] = randomMetaValue()
+		md[metaKey(src)] = randomMetaValue(src)
 	}
 
 	return md
@@ -802,9 +807,9 @@ func randomMetaMap() map[string]*commonpb.MetadataValue {
 
 // SaveMetadata on a blindly-picked pool address (so the server resolves typing)
 // with 1-2 keys from the small pools.
-func generateAddMetadata(ledger string) *servicepb.Request {
-	addr := poolAddress()
-	md := randomMetaMap()
+func generateAddMetadata(src *generation.Source, ledger string) *servicepb.Request {
+	addr := poolAddress(src)
+	md := randomMetaMap(src)
 
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -827,8 +832,8 @@ func generateAddMetadata(ledger string) *servicepb.Request {
 // key outside the write pool, so the miss that exercises METADATA_NOT_FOUND does
 // not depend on a four-key pool failing to collide. Returns nil when the model
 // holds no metadata.
-func generateDeleteMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	chosen, _, ok := pickAtOrAfter(ls.Metadata(), oracle.MetaKey{Address: poolAddress(), Key: metaKey()})
+func generateDeleteMetadata(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
+	chosen, _, ok := pickAtOrAfter(ls.Metadata(), oracle.MetaKey{Address: poolAddress(src), Key: metaKey(src)})
 	if !ok {
 		return nil
 	}
@@ -838,9 +843,9 @@ func generateDeleteMetadata(ledger string, ls oracle.LedgerState) *servicepb.Req
 	// Half the misses opt into the skip so the reason is reached at the rate the
 	// branch is rolled; the rest stay bare, where the miss rejects the bulk.
 	var skippable []commonpb.ErrorReason
-	if random.RandomChoice([]uint8{0, 1}) == 0 {
-		key = "absent-" + metaKey()
-		if random.RandomChoice([]uint8{0, 1}) == 0 {
+	if generation.Choice(src, []uint8{0, 1}) == 0 {
+		key = "absent-" + metaKey(src)
+		if generation.Choice(src, []uint8{0, 1}) == 0 {
 			skippable = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND}
 		}
 	}
@@ -866,19 +871,19 @@ func generateDeleteMetadata(ledger string, ls oracle.LedgerState) *servicepb.Req
 // generateTxMetadataOp targets a committed transaction by reference: Delete
 // (~1/3) of an existing (reference, key), else Add. Returns nil when the model
 // holds no transactions yet (caller falls back to account metadata).
-func generateTxMetadataOp(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	if random.RandomChoice([]uint8{0, 1, 2}) == 0 {
-		if req := generateDeleteTxMetadata(ledger, ls); req != nil {
+func generateTxMetadataOp(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
+	if generation.Choice(src, []uint8{0, 1, 2}) == 0 {
+		if req := generateDeleteTxMetadata(src, ledger, ls); req != nil {
 			return req
 		}
 	}
 
-	return generateAddTxMetadata(ledger, ls)
+	return generateAddTxMetadata(src, ledger, ls)
 }
 
 // generateAddTxMetadata sets 1-2 metadata keys on a committed transaction picked
 // by reference. Returns nil when no transaction exists yet.
-func generateAddTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
+func generateAddTxMetadata(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
 	_, id, ok := pickTxRef(ls)
 	if !ok {
 		return nil
@@ -892,7 +897,7 @@ func generateAddTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.Requ
 					Data: &servicepb.LedgerAction_AddMetadata{
 						AddMetadata: &commonpb.SaveMetadataCommand{
 							Target:   txTarget(uint64(id)),
-							Metadata: randomMetaMap(),
+							Metadata: randomMetaMap(src),
 						},
 					},
 				},
@@ -905,7 +910,7 @@ func generateAddTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.Requ
 // occasionally a freshly-rolled key on a known reference to exercise
 // METADATA_NOT_FOUND. Seek-picks a few transactions and returns nil when none
 // of them carries metadata.
-func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
+func generateDeleteTxMetadata(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
 	txs := ls.Txs()
 	for range 8 {
 		_, id, ok := pickTxRef(ls)
@@ -926,9 +931,9 @@ func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.R
 		}
 		slices.Sort(keys)
 
-		key := random.RandomChoice(keys)
-		if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
-			key = "absent-" + metaKey()
+		key := generation.Choice(src, keys)
+		if generation.Choice(src, []uint8{0, 1, 2, 3}) == 0 {
+			key = "absent-" + metaKey(src)
 		}
 
 		return &servicepb.Request{
@@ -963,7 +968,7 @@ func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.R
 // validation. Targeting any committed reference exercises both the success path
 // and the TRANSACTION_ALREADY_REVERTED rejection (a reference picked after a
 // prior revert committed).
-func generateRevert(ledger string, ls oracle.LedgerState) *servicepb.Request {
+func generateRevert(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
 	_, id, ok := pickTxRef(ls)
 	if !ok {
 		return nil
@@ -971,16 +976,16 @@ func generateRevert(ledger string, ls oracle.LedgerState) *servicepb.Request {
 
 	payload := &servicepb.RevertTransactionPayload{
 		TransactionId: uint64(id),
-		Force:         random.RandomChoice([]uint8{0, 1}) == 0,
+		Force:         generation.Choice(src, []uint8{0, 1}) == 0,
 		// ~half at the original's effective date: the revert inherits the
 		// original's timestamp instead of the server's current date.
-		AtEffectiveDate: random.RandomChoice([]uint8{0, 1}) == 0,
+		AtEffectiveDate: generation.Choice(src, []uint8{0, 1}) == 0,
 	}
 
 	// ~half the reverts carry metadata on the revert transaction, echoed
 	// verbatim on its log (see validateBulkSuccess's revert check).
-	if random.RandomChoice([]uint8{0, 1}) == 0 {
-		payload.Metadata = randomMetaMap()
+	if generation.Choice(src, []uint8{0, 1}) == 0 {
+		payload.Metadata = randomMetaMap(src)
 	}
 
 	return &servicepb.Request{
@@ -1023,8 +1028,8 @@ func txTarget(id uint64) *commonpb.Target {
 // SaveLedgerMetadata with 1-2 keys from the small pools. The key space is shared
 // across all workers on the ledger, so concurrent sets of the same key to
 // different values are frequent — the ledger-level ordering chaos.
-func generateSaveLedgerMetadata(ledger string) *servicepb.Request {
-	md := randomMetaMap()
+func generateSaveLedgerMetadata(src *generation.Source, ledger string) *servicepb.Request {
+	md := randomMetaMap(src)
 
 	return &servicepb.Request{
 		Type: &servicepb.Request_SaveLedgerMetadata{
@@ -1039,7 +1044,7 @@ func generateSaveLedgerMetadata(ledger string) *servicepb.Request {
 // DeleteLedgerMetadata of an existing key from the model — occasionally a
 // freshly-rolled key to exercise METADATA_NOT_FOUND. Returns nil when the ledger
 // holds no metadata.
-func generateDeleteLedgerMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
+func generateDeleteLedgerMetadata(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
 	// LedgerMeta().All() iterates in key order, so keys is already sorted.
 	keys := make([]string, 0, ls.LedgerMeta().Len())
 	for k := range ls.LedgerMeta().All() {
@@ -1050,9 +1055,9 @@ func generateDeleteLedgerMetadata(ledger string, ls oracle.LedgerState) *service
 		return nil
 	}
 
-	key := random.RandomChoice(keys)
-	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
-		key = metaKey()
+	key := generation.Choice(src, keys)
+	if generation.Choice(src, []uint8{0, 1, 2, 3}) == 0 {
+		key = metaKey(src)
 	}
 
 	return &servicepb.Request{
@@ -1067,14 +1072,14 @@ func generateDeleteLedgerMetadata(ledger string, ls oracle.LedgerState) *service
 
 // Picks Set (~3/4) vs Remove (~1/4) of a metadata field type. Remove falls back
 // to Set when the model declares no field types yet.
-func generateSchemaOp(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
-		if req := generateRemoveMetadataFieldType(ledger, ls); req != nil {
+func generateSchemaOp(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
+	if generation.Choice(src, []uint8{0, 1, 2, 3}) == 0 {
+		if req := generateRemoveMetadataFieldType(src, ledger, ls); req != nil {
 			return req
 		}
 	}
 
-	return generateSetMetadataFieldType(ledger, ls)
+	return generateSetMetadataFieldType(src, ledger, ls)
 }
 
 // SetMetadataFieldType for an account- or ledger-target key, with a type from the
@@ -1086,9 +1091,9 @@ func generateSchemaOp(ledger string, ls oracle.LedgerState) *servicepb.Request {
 // window (oracle.RetypeWindow): until the driver observes every replica's
 // atomic switch, queries on the key are legal under the old type or the new,
 // each as a whole window — so indexed keys are retyped like any other.
-func generateSetMetadataFieldType(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	target := random.RandomChoice(metaTargetPool)
-	key := metaKey()
+func generateSetMetadataFieldType(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
+	target := generation.Choice(src, metaTargetPool)
+	key := metaKey(src)
 
 	return &servicepb.Request{
 		Type: &servicepb.Request_SetMetadataFieldType{
@@ -1096,7 +1101,7 @@ func generateSetMetadataFieldType(ledger string, ls oracle.LedgerState) *service
 				Ledger:     ledger,
 				TargetType: target,
 				Key:        key,
-				Type:       random.RandomChoice(metaTypePool),
+				Type:       generation.Choice(src, metaTypePool),
 			},
 		},
 	}
@@ -1105,7 +1110,7 @@ func generateSetMetadataFieldType(ledger string, ls oracle.LedgerState) *service
 // RemoveMetadataFieldType for a declared (target, key) from the model —
 // occasionally a freshly-rolled one (a no-op on the server). Returns nil when the
 // model declares no field types.
-func generateRemoveMetadataFieldType(ledger string, ls oracle.LedgerState) *servicepb.Request {
+func generateRemoveMetadataFieldType(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
 	type fieldRef struct {
 		target commonpb.TargetType
 		key    string
@@ -1128,12 +1133,12 @@ func generateRemoveMetadataFieldType(ledger string, ls oracle.LedgerState) *serv
 		return nil
 	}
 
-	chosen := random.RandomChoice(fields)
+	chosen := generation.Choice(src, fields)
 
 	target, key := chosen.target, chosen.key
-	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
-		target = random.RandomChoice(metaTargetPool)
-		key = metaKey()
+	if generation.Choice(src, []uint8{0, 1, 2, 3}) == 0 {
+		target = generation.Choice(src, metaTargetPool)
+		key = metaKey(src)
 	}
 
 	return &servicepb.Request{
@@ -1150,20 +1155,20 @@ func generateRemoveMetadataFieldType(ledger string, ls oracle.LedgerState) *serv
 // 2-request fund+drain pair against a TRANSIENT-typed cell — exercises
 // the end-of-batch transient zero check. Returns nil if no TRANSIENT
 // type exists (other generators still cover other surfaces).
-func generateTransientBalancedBulk(ledger string, ls oracle.LedgerState) []*servicepb.Request {
-	t := randomTransientType(ls)
+func generateTransientBalancedBulk(src *generation.Source, ledger string, ls oracle.LedgerState) []*servicepb.Request {
+	t := randomTransientType(src, ls)
 	if t == nil {
 		return nil
 	}
 
-	dest, err := sampleAddress(t.Pattern)
+	dest, err := sampleAddress(src, t.Pattern)
 	if err != nil {
 		return nil
 	}
 
-	asset := assets[int(random.RandomChoice([]uint8{0, 1, 2}))]
-	color := randomColor()
-	amount := internal.RandomBigInt()
+	asset := assets[int(generation.Choice(src, []uint8{0, 1, 2}))]
+	color := randomColor(src)
+	amount := internal.GeneratedBigInt(src)
 
 	return []*servicepb.Request{
 		txRequest(ledger, "world", dest, asset, color, amount, true),
@@ -1173,22 +1178,22 @@ func generateTransientBalancedBulk(ledger string, ls oracle.LedgerState) []*serv
 
 // Single fund of a TRANSIENT cell, no drain — server is expected to
 // reject the bulk with ErrTransientAccountNonZero.
-func generateTransientUnbalancedBulk(ledger string, ls oracle.LedgerState) []*servicepb.Request {
-	t := randomTransientType(ls)
+func generateTransientUnbalancedBulk(src *generation.Source, ledger string, ls oracle.LedgerState) []*servicepb.Request {
+	t := randomTransientType(src, ls)
 	if t == nil {
 		return nil
 	}
 
-	dest, err := sampleAddress(t.Pattern)
+	dest, err := sampleAddress(src, t.Pattern)
 	if err != nil {
 		return nil
 	}
 
-	asset := assets[int(random.RandomChoice([]uint8{0, 1, 2}))]
-	amount := internal.RandomBigInt()
+	asset := assets[int(generation.Choice(src, []uint8{0, 1, 2}))]
+	amount := internal.GeneratedBigInt(src)
 
 	return []*servicepb.Request{
-		txRequest(ledger, "world", dest, asset, randomColor(), amount, true),
+		txRequest(ledger, "world", dest, asset, randomColor(src), amount, true),
 	}
 }
 
@@ -1215,7 +1220,7 @@ func idempotencyKey() string {
 
 // Concrete address matching pattern; variable segments get random
 // numeric ids.
-func sampleAddress(pattern string) (string, error) {
+func sampleAddress(src *generation.Source, pattern string) (string, error) {
 	segs, err := accounttype.ParsePattern(pattern)
 	if err != nil {
 		return "", err
@@ -1229,7 +1234,7 @@ func sampleAddress(pattern string) (string, error) {
 			parts[i] = seg.Value
 		case accounttype.SegmentVariable:
 			// Small range so addresses recur and volumes accumulate.
-			parts[i] = strconv.FormatUint(internal.Rand().Uint64()%1000, 10)
+			parts[i] = strconv.FormatUint(src.Uint64Range(0, 1000-1), 10)
 		}
 	}
 

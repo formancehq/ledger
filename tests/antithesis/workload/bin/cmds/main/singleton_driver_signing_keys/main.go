@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
@@ -27,16 +28,16 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
-	r := internal.Rand()
-	keyID := fmt.Sprintf("test-key-%d", r.Uint64())
+	// Key IDs are unique technical identities on the shared cluster.
+	keyID := fmt.Sprintf("test-key-%d", internal.Rand().Uint64())
+	var privateKey ed25519.PrivateKey
+	if err := internal.RunOperationalGeneration("signing-keys", func(src *generation.Source) {
+		privateKey = generatedSigningKey(src)
+	}); err != nil {
+		log.Printf("signing-keys: generation failed: %s", err)
 
-	// Generate a random Ed25519 key pair.
-	seed := make([]byte, ed25519.SeedSize)
-	for i := range seed {
-		seed[i] = byte(r.Uint64())
+		return
 	}
-
-	privateKey := ed25519.NewKeyFromSeed(seed)
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 
 	details := internal.Details{"keyId": keyID}
@@ -119,4 +120,15 @@ func main() {
 	}
 
 	log.Printf("Signing key lifecycle complete: %s", keyID)
+}
+
+// generatedSigningKey draws all 32 seed bytes directly, then derives a coherent
+// Ed25519 key pair. The Source never escapes into signing or RPC execution.
+func generatedSigningKey(src *generation.Source) ed25519.PrivateKey {
+	seed := make([]byte, ed25519.SeedSize)
+	for i := range seed {
+		seed[i] = byte(src.Intn(256))
+	}
+
+	return ed25519.NewKeyFromSeed(seed)
 }

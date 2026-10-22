@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -19,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // Checkpoint data is compared only with the drained state captured at creation.
@@ -51,7 +51,7 @@ func checkpointNotFound(err error) bool {
 
 // Keep both clients and the Raft identity paired. Bound a read on a down
 // replica so it cannot indefinitely hold the model's ordered drain gate.
-func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Checker) {
+func runCheckpointRead(src *generation.Source, ctx context.Context, node *internal.PerNodeConn, c *Checker) {
 	bucket := node.Bucket
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -62,12 +62,12 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		return
 	}
 	readID := c.registerRead()
-	id, frozen, deleted := c.pickCheckpointReadTarget()
+	id, frozen, deleted := c.pickCheckpointReadTarget(src)
 	c.mu.Unlock()
 	defer c.finishRead(readID)
 	ledgerNames := liveLedgerNames(frozen, c.ledgerNamesSnapshot())
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
-	choice := internal.Rand().Uint64() % 10
+	choice := src.Uint64Range(0, 10-1)
 	if choice == 0 || id == 0 {
 		runCheckpointListRead(readCtx, node, c)
 
@@ -88,13 +88,13 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 	case 2:
 		var address string
 		var ok bool
-		ledger, address, _, _, _, ok = pickReadTarget(frozen, ledgerNames)
+		ledger, address, _, _, _, ok = pickReadTarget(src, frozen, ledgerNames)
 		if !ok {
 			return
 		}
 		// A frozen store folds colours the same way a live one does, so the
 		// option is rolled here too rather than only on the live read.
-		collapsed := oneIn(3)
+		collapsed := oneIn(src, 3)
 
 		var account *commonpb.Account
 		account, err = bucket.GetAccount(readCtx, &servicepb.GetAccountRequest{
@@ -111,7 +111,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 	case 3:
 		var txID uint64
 		var ok bool
-		ledger, txID, _, ok = pickTransactionID(frozen, ledgerNames)
+		ledger, txID, _, ok = pickTransactionID(src, frozen, ledgerNames)
 		if !ok {
 			return
 		}
@@ -127,7 +127,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		}
 
 		// A frozen store answers the boundaries it froze, exactly.
-		ledger = ledgerNames[internal.Rand().Uint64()%uint64(len(ledgerNames))]
+		ledger = ledgerNames[src.Uint64Range(0, (uint64(len(ledgerNames)))-1)]
 
 		var stats *commonpb.LedgerStats
 		stats, err = bucket.GetLedgerStats(readCtx, &servicepb.GetLedgerStatsRequest{Ledger: ledger, CheckpointId: id})
@@ -139,7 +139,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 			stats.GetLogCount() == uint64(len(frozenLS.LogDates()))
 		concrete = err == nil && stats.GetLogCount() > 0
 	case 8:
-		target, learned, ok := pickLogSequence(frozen)
+		target, learned, ok := pickLogSequence(src, frozen)
 		if !ok {
 			return
 		}
@@ -165,10 +165,10 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 			return
 		}
 
-		ledger = ledgerNames[internal.Rand().Uint64()%uint64(len(ledgerNames))]
+		ledger = ledgerNames[src.Uint64Range(0, (uint64(len(ledgerNames)))-1)]
 		// A nil filter keeps the frozen fold clear of index readiness: every cell
 		// the checkpoint holds is required by its own primary-store state.
-		opts := aggOptions{collapseColors: oneIn(3), useMaxPrecision: oneIn(4), groupByPrefixes: genGroupPrefixes()}
+		opts := aggOptions{collapseColors: oneIn(src, 3), useMaxPrecision: oneIn(src, 4), groupByPrefixes: genGroupPrefixes(src)}
 
 		var res *commonpb.AggregateResult
 		res, err = bucket.AggregateVolumes(readCtx, &servicepb.AggregateVolumesRequest{
@@ -188,12 +188,12 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 	case 9:
 		// A frozen fleet cannot move under a resumed page, so the window, its
 		// resume token and every row's whole record are predicted exactly.
-		pageSize := 1 + int(internal.Rand().Uint64()%16)
-		reverse := percentChance(50)
+		pageSize := 1 + int(src.Uint64Range(0, 16-1))
+		reverse := percentChance(src, 50)
 
 		var cursor string
-		if oneIn(2) {
-			cursor = random.RandomChoice(c.ledgerNamesSnapshot())
+		if oneIn(src, 2) {
+			cursor = generation.Choice(src, c.ledgerNamesSnapshot())
 		}
 
 		stream, streamErr := bucket.ListLedgers(readCtx, &servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{
@@ -248,9 +248,9 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		if len(ledgerNames) == 0 {
 			return
 		}
-		ledger = ledgerNames[internal.Rand().Uint64()%uint64(len(ledgerNames))]
-		pageSize := 1 + int(internal.Rand().Uint64()%16)
-		reverse := percentChance(50)
+		ledger = ledgerNames[src.Uint64Range(0, (uint64(len(ledgerNames)))-1)]
+		pageSize := 1 + int(src.Uint64Range(0, 16-1))
+		reverse := percentChance(src, 50)
 		details["ledger"], details["pageSize"], details["reverse"] = ledger, pageSize, reverse
 		options := &commonpb.ListOptions{Read: &commonpb.ReadOptions{CheckpointId: id}, PageSize: uint32(pageSize), Reverse: reverse}
 		// Nil filters deliberately avoid asynchronous index readiness: every row
@@ -259,8 +259,8 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 			// The frozen state cannot move under a resumed page, so a cursor here
 			// is the one window the model predicts exactly.
 			var cursor string
-			if oneIn(2) {
-				cursor = poolAddress()
+			if oneIn(src, 2) {
+				cursor = poolAddress(src)
 			}
 
 			options.Cursor = pageToken(cursor)
@@ -296,8 +296,8 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 				afterID uint64
 			)
 
-			if oneIn(2) {
-				afterID = 1 + internal.Rand().Uint64()%256
+			if oneIn(src, 2) {
+				afterID = 1 + src.Uint64Range(0, 256-1)
 				cursor = strconv.FormatUint(afterID, 10)
 			}
 
@@ -400,7 +400,7 @@ func predictedCheckpointLedgerMatches(state oracle.GlobalState, ledger string, i
 // Whether the ID is live or deleted is derived from its owning registry and is
 // used only to credit a definitive post-deletion NotFound observation.
 // Caller holds c.mu.
-func (c *Checker) pickCheckpointReadTarget() (uint64, oracle.GlobalState, bool) {
+func (c *Checker) pickCheckpointReadTarget(src *generation.Source) (uint64, oracle.GlobalState, bool) {
 	ids := make([]uint64, 0, len(c.checkpoints)+len(c.deletedCheckpoints))
 	for id := range c.checkpoints {
 		ids = append(ids, id)
@@ -410,7 +410,7 @@ func (c *Checker) pickCheckpointReadTarget() (uint64, oracle.GlobalState, bool) 
 		return 0, oracle.GlobalState{}, false
 	}
 	slices.Sort(ids)
-	id := ids[internal.Rand().Uint64()%uint64(len(ids))]
+	id := ids[src.Uint64Range(0, (uint64(len(ids)))-1)]
 	if snapshot, ok := c.checkpoints[id]; ok {
 		return id, snapshot.state, false
 	}

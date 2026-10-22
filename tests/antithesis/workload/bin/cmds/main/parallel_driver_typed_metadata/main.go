@@ -13,14 +13,15 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_typed_metadata", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunGeneratedDriver("parallel_driver_typed_metadata", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
 		r := internal.Rand()
 		metaKey := fmt.Sprintf("score-%d", r.Uint64())
-		metaValue := int64(r.Uint64() % 1000)
-		address := internal.GetRandomAddress()
+		metaValue := int64(src.Uint64Range(0, 999))
+		address := internal.GeneratedAddress(src)
 
 		details := internal.Details{
 			"ledger":  ledger,

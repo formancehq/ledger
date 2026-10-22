@@ -4,9 +4,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"hegel.dev/go/hegel"
 
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func TestModelKnowsAccount(t *testing.T) {
@@ -39,45 +42,51 @@ func TestLiveLedgerNamesFiltersTombstones(t *testing.T) {
 // probes.
 func TestPickAbsentAccount(t *testing.T) {
 	t.Parallel()
+	hegel.Test(t, func(ht *hegel.T) {
+		src := generation.NewSource(ht)
 
-	c := NewChecker([]string{"L"}, nil)
-	c.modelState = c.modelState.Apply(bulkOf(oracletest.TxReq("world", "t-0:5", "USD/2", 10))).State
-	ls := c.modelState.Ledger("L")
+		c := NewChecker([]string{"L"}, nil)
+		c.modelState = c.modelState.Apply(bulkOf(oracletest.TxReq("world", "t-0:5", "USD/2", 10))).State
+		ls := c.modelState.Ledger("L")
 
-	for range 100 {
-		ledger, addr, asset, ok := pickAbsentAccount(c.modelState, []string{"L"})
-		require.True(t, ok)
-		require.Equal(t, "L", ledger)
-		require.False(t, modelKnowsAccount(ls, addr), "returned a known account: %s", addr)
-		require.Contains(t, assets, asset)
-	}
+		for range 100 {
+			ledger, addr, asset, ok := pickAbsentAccount(src, c.modelState, []string{"L"})
+			require.True(t, ok)
+			require.Equal(t, "L", ledger)
+			require.False(t, modelKnowsAccount(ls, addr), "returned a known account: %s", addr)
+			require.Contains(t, assets, asset)
+		}
 
-	// No ledgers -> nothing to probe.
-	_, _, _, ok := pickAbsentAccount(c.modelState, nil)
-	require.False(t, ok)
+		// No ledgers -> nothing to probe.
+		_, _, _, ok := pickAbsentAccount(src, c.modelState, nil)
+		require.False(t, ok)
+	}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))
 }
 
 // absentLedgerName must never collide with the fleet, and pickLedgerReadTarget's
 // absent branch must hand back exactly those absent names.
 func TestPickLedgerReadTarget(t *testing.T) {
 	t.Parallel()
+	hegel.Test(t, func(ht *hegel.T) {
+		src := generation.NewSource(ht)
 
-	fleet := []string{"L", "L2", "L3"}
-	known := map[string]bool{"L": true, "L2": true, "L3": true}
+		fleet := []string{"L", "L2", "L3"}
+		known := map[string]bool{"L": true, "L2": true, "L3": true}
 
-	for range 200 {
-		require.False(t, known[absentLedgerName(fleet)], "absent name collided with fleet")
+		for range 200 {
+			require.False(t, known[absentLedgerName(fleet)], "absent name collided with fleet")
 
-		// 50% here just to exercise both branches; runLedgerRead/runSchemaRead use 2%/3%.
-		ledger, absent := pickLedgerReadTarget(fleet, 50)
-		if absent {
-			require.False(t, known[ledger], "absent target is a fleet ledger: %s", ledger)
-		} else {
-			require.True(t, known[ledger], "known target is not a fleet ledger: %s", ledger)
+			// 50% here just to exercise both branches; runLedgerRead/runSchemaRead use 2%/3%.
+			ledger, absent := pickLedgerReadTarget(src, fleet, 50)
+			if absent {
+				require.False(t, known[ledger], "absent target is a fleet ledger: %s", ledger)
+			} else {
+				require.True(t, known[ledger], "known target is not a fleet ledger: %s", ledger)
+			}
 		}
-	}
 
-	ledger, absent := pickLedgerReadTarget(nil, 0)
-	require.True(t, absent)
-	require.NotEmpty(t, ledger)
+		ledger, absent := pickLedgerReadTarget(src, nil, 0)
+		require.True(t, absent)
+		require.NotEmpty(t, ledger)
+	}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))
 }

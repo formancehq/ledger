@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
@@ -26,6 +28,14 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
+	if err := generation.RunOnce(func(src *generation.Source) {
+		run(ctx, client, src)
+	}); err != nil {
+		assert.Unreachable("Hegel driver generation failed", internal.Details{"driver": "parallel_driver_delete_ledger", "error": err.Error()})
+	}
+}
+
+func run(ctx context.Context, client servicepb.BucketServiceClient, src *generation.Source) {
 	ledgerName := internal.PrefixEphemeral.New()
 	details := internal.Details{"ledger": ledgerName}
 
@@ -37,14 +47,14 @@ func main() {
 	}
 
 	// Create a transaction in it so it's not empty.
-	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{
-							commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
+							commonpb.NewPosting("world", "users:0", "USD/2", internal.GeneratedBigInt(src)),
 						},
 						Force: true,
 					},

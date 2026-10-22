@@ -28,7 +28,6 @@ import (
 	"sync"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -36,6 +35,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // createWithReference attempts a single CreateTransaction carrying ref.
@@ -134,7 +134,8 @@ func assertReferenceUnique(
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_reference_race", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunGeneratedDriver("parallel_driver_reference_race", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
+		// This identity isolates the oracle ledger and its retry/reference keys.
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -148,7 +149,7 @@ func main() {
 		// ---- Half 1: concurrent same-reference creates ----------------------
 
 		// Menu axis: degree of concurrency on the shared reference.
-		goroutines := antirandom.RandomChoice([]int{2, 4, 8})
+		goroutines := generation.Choice(src, []int{2, 4, 8})
 		raceRef := fmt.Sprintf("refrace-%d-race", run)
 
 		var (
@@ -219,7 +220,7 @@ func main() {
 		// CACHE_ROTATION_THRESHOLD=50, so ~100+ subsequent entries push the
 		// original reference out of gen0+gen1 and onto the Pebble→preload→
 		// bloom path; 60 stays within the window as a control point.
-		fillerCount := antirandom.RandomChoice([]int{60, 120, 250})
+		fillerCount := generation.Choice(src, []int{60, 120, 250})
 
 		written := 0
 

@@ -20,6 +20,7 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
+	// Fixed lifecycle inputs; SDK entropy only isolates the technical identity.
 	id := internal.Rand().Uint64() % 1e6
 	ledger := fmt.Sprintf("ledger-%d", id)
 

@@ -25,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 const probeAccount = "minseq-probe:main"
@@ -39,12 +40,24 @@ func isInconclusiveProjectionRead(err error) bool {
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_projection_alignment", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
-		runProjectionAlignment(ctx, client, "USD", 2)
+	internal.RunGeneratedDriver("parallel_driver_projection_alignment", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
+		assetBase, precision := projectionProbe(src)
+		runProjectionAlignment(ctx, client, assetBase, precision)
 	})
 }
 
+// Keep the original USD/2 unit witness as an explicit regression branch.
+// The generated branch changes both sides of the same asset-presence probe.
+func projectionProbe(src *generation.Source) (string, uint32) {
+	if src.Intn(2) == 0 {
+		return "USD", 2
+	}
+
+	return generation.Choice(src, []string{"USD", "EUR", "COIN"}), uint32(src.Intn(domain.MaxHasAssetPrecision + 1))
+}
+
 func runProjectionAlignment(ctx context.Context, client servicepb.BucketServiceClient, assetBase string, precision uint32) {
+	// SDK entropy isolates technical identities independently of business draws.
 	r := internal.Rand()
 
 	run := r.Uint64()
@@ -57,7 +70,7 @@ func runProjectionAlignment(ctx context.Context, client servicepb.BucketServiceC
 	indexIdempotencyKey := fmt.Sprintf("projection-index-%d", run)
 	queryIdempotencyKey := fmt.Sprintf("projection-query-%d", run)
 	probeIdempotencyKey := fmt.Sprintf("projection-probe-%d", run)
-	details := internal.Details{"ledger": ledger, "queryName": queryName}
+	details := internal.Details{"ledger": ledger, "queryName": queryName, "assetBase": assetBase, "precision": precision}
 
 	// AccountHasAsset requires the account asset-presence index. Create it
 	// with a stable idempotency key so a timed-out setup call can be retried
