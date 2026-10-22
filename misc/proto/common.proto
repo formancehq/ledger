@@ -521,7 +521,6 @@ message ClusterPolicy {
 // fields are optional so nodes that predate the capability foundation decode
 // the policy with their existing defaults.
   bool capability_activation_armed = 9;
-  reserved 10; // removed before release; never reuse this field number
   uint32 minimum_replay_protocol = 11;
   fixed64 capability_membership_revision = 12;
   repeated CapabilityActivation capability_activations = 13;
