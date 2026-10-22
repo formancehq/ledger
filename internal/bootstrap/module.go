@@ -1542,7 +1542,7 @@ func tryRefreshMembership(ctx context.Context, cfg Config, tlsCfg TLSConfig, log
 				return nil
 			}
 
-			if st, ok := status.FromError(callErr); ok && st.Code() == codes.Unavailable {
+			if isRetryableMembershipRefreshError(callErr) {
 				continue
 			}
 
@@ -1556,6 +1556,24 @@ func tryRefreshMembership(ctx context.Context, cfg Config, tlsCfg TLSConfig, log
 		}
 		backoff = min(backoff*2, 5*time.Second)
 	}
+}
+
+func isRetryableMembershipRefreshError(err error) bool {
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+
+	if st.Code() == codes.Unavailable {
+		return true
+	}
+
+	// TODO(rc.3): remove this compatibility retry once every supported peer
+	// implements RefreshMembership. During the rc.1/rc.2 rolling upgrade, an
+	// older peer returns Unimplemented rather than Unavailable for this newly
+	// introduced RPC; treating it as transient lets the node keep trying newer
+	// peers without making the startup hook fail immediately.
+	return st.Code() == codes.Unimplemented
 }
 
 func capabilityIDsAsUint32(ids []capabilities.CapabilityID) []uint32 {
