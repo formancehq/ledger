@@ -44,8 +44,8 @@ func ValidateCapabilities(ids []uint32) error {
 // ValidateCapabilityEvidence validates the proof attached to a membership
 // transition. Unarmed clusters retain backwards-compatible empty evidence;
 // once the capability barrier is armed, every Add/Update/Promote transition
-// must carry a fresh revision-bound capability set.
-func ValidateCapabilityEvidence(ctx *ConfChangeContext, armed bool, expectedRevision uint64) error {
+// must announce all currently active capabilities.
+func ValidateCapabilityEvidence(ctx *ConfChangeContext, armed bool, required []uint32) error {
 	if ctx == nil {
 		return errors.New("missing capability membership evidence")
 	}
@@ -55,14 +55,10 @@ func ValidateCapabilityEvidence(ctx *ConfChangeContext, armed bool, expectedRevi
 	if !armed {
 		return nil
 	}
-	if expectedRevision == 0 {
-		return errors.New("capability membership revision is not configured")
-	}
-	if ctx.CapabilityMembershipRevision != expectedRevision {
-		return fmt.Errorf("capability membership revision %d does not match active revision %d", ctx.CapabilityMembershipRevision, expectedRevision)
-	}
-	if len(ctx.Capabilities) == 0 {
-		return errors.New("capability evidence is empty while activation is armed")
+	for _, id := range required {
+		if !slices.Contains(ctx.Capabilities, id) {
+			return fmt.Errorf("capability %d is required by the active policy", id)
+		}
 	}
 
 	return nil
@@ -80,12 +76,11 @@ type ConfChangeContext struct {
 	RaftAddress    string `json:"raftAddress"`
 	ServiceAddress string `json:"serviceAddress"`
 	InstanceID     []byte `json:"instanceId,omitempty"`
-	// Capabilities and CapabilityMembershipRevision are the signed-by-
-	// consensus membership evidence for this concrete peer incarnation. They
-	// travel in every registration context and are persisted in PeerAddress so
-	// activation cannot accidentally inherit support from a replaced pod.
-	Capabilities                 []uint32 `json:"capabilities,omitempty"`
-	CapabilityMembershipRevision uint64   `json:"capabilityMembershipRevision,omitempty"`
+	// Capabilities are the signed-by-consensus membership evidence for this
+	// concrete peer incarnation. They travel in every registration context and
+	// are persisted in PeerAddress so activation cannot accidentally inherit
+	// support from a replaced pod.
+	Capabilities []uint32 `json:"capabilities,omitempty"`
 	// ProposalID is a leader-local correlation token. It is committed with the
 	// ConfChange so the proposing leader can resolve only the matching waiter;
 	// FSM apply deliberately ignores it.
@@ -100,8 +95,7 @@ func (c ConfChangeContext) Equal(other ConfChangeContext) bool {
 	return c.RaftAddress == other.RaftAddress &&
 		c.ServiceAddress == other.ServiceAddress &&
 		bytes.Equal(c.InstanceID, other.InstanceID) &&
-		slices.Equal(c.Capabilities, other.Capabilities) &&
-		c.CapabilityMembershipRevision == other.CapabilityMembershipRevision
+		slices.Equal(c.Capabilities, other.Capabilities)
 }
 
 // MarshalConfChangeContext serialises a ConfChangeContext to JSON bytes

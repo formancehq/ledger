@@ -38,8 +38,7 @@ func TestCapabilityPolicyProposerBlocksInactiveCapability(t *testing.T) {
 	delegate := new(capabilityPolicyTestProposer)
 	proposer := NewCapabilityPolicyProposer(delegate, func() (*commonpb.ClusterPolicy, error) {
 		return &commonpb.ClusterPolicy{
-			CapabilityActivationArmed:    true,
-			CapabilityMembershipRevision: 1,
+			CapabilityActivationArmed: true,
 		}, nil
 	}, nil, false)
 
@@ -52,8 +51,6 @@ func TestCapabilityPolicyProposerAllowsActiveTechnicalCapability(t *testing.T) {
 	delegate := new(capabilityPolicyTestProposer)
 	proposer := NewCapabilityPolicyProposer(delegate, func() (*commonpb.ClusterPolicy, error) {
 		return &commonpb.ClusterPolicy{
-			CapabilityActivationArmed:    true,
-			CapabilityMembershipRevision: 1,
 			CapabilityActivations: []*commonpb.CapabilityActivation{{
 				Id:     99,
 				Active: true,

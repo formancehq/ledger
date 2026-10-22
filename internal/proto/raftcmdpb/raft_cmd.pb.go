@@ -5417,10 +5417,9 @@ type PeerAddress struct {
 	// Capability evidence is bound to this concrete (node_id, instance_id)
 	// incarnation. It is persisted with the peer row so a restart cannot
 	// accidentally reuse evidence from an older WAL/PVC incarnation.
-	Capabilities                 []uint32 `protobuf:"fixed32,5,rep,packed,name=capabilities,proto3" json:"capabilities,omitempty"`
-	CapabilityMembershipRevision uint64   `protobuf:"fixed64,6,opt,name=capability_membership_revision,json=capabilityMembershipRevision,proto3" json:"capability_membership_revision,omitempty"`
-	unknownFields                protoimpl.UnknownFields
-	sizeCache                    protoimpl.SizeCache
+	Capabilities  []uint32 `protobuf:"fixed32,5,rep,packed,name=capabilities,proto3" json:"capabilities,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PeerAddress) Reset() {
@@ -5486,13 +5485,6 @@ func (x *PeerAddress) GetCapabilities() []uint32 {
 		return x.Capabilities
 	}
 	return nil
-}
-
-func (x *PeerAddress) GetCapabilityMembershipRevision() uint64 {
-	if x != nil {
-		return x.CapabilityMembershipRevision
-	}
-	return 0
 }
 
 // RemovedMemberEntry is the persisted blacklist row keyed by
@@ -5991,15 +5983,14 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\n" +
 	"base_index\x18\x01 \x01(\x06R\tbaseIndex\"B\n" +
 	"\x11CacheSnapshotMeta\x12-\n" +
-	"\x12current_generation\x18\x01 \x01(\x06R\x11currentGeneration\"\xfd\x01\n" +
+	"\x12current_generation\x18\x01 \x01(\x06R\x11currentGeneration\"\xb7\x01\n" +
 	"\vPeerAddress\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +
 	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\x12\x1f\n" +
 	"\vinstance_id\x18\x04 \x01(\fR\n" +
 	"instanceId\x12\"\n" +
-	"\fcapabilities\x18\x05 \x03(\aR\fcapabilities\x12D\n" +
-	"\x1ecapability_membership_revision\x18\x06 \x01(\x06R\x1ccapabilityMembershipRevision\"\x85\x01\n" +
+	"\fcapabilities\x18\x05 \x03(\aR\fcapabilities\"\x85\x01\n" +
 	"\x12RemovedMemberEntry\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x1f\n" +
 	"\vinstance_id\x18\x02 \x01(\fR\n" +

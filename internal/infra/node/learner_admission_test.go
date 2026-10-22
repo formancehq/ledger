@@ -143,7 +143,7 @@ func TestRefreshMembershipProposesUpdateForExistingIdentity(t *testing.T) {
 	defer cancel()
 	results := make(chan error, 1)
 	go func() {
-		results <- n.RefreshMembership(ctx, 2, "refreshed:7777", "refreshed:8888", []byte("peer-instance-id"), []uint32{1, 2}, 0)
+		results <- n.RefreshMembership(ctx, 2, "refreshed:7777", "refreshed:8888", []byte("peer-instance-id"), []uint32{1, 2})
 	}()
 
 	cmd := <-n.clusterCommandCh

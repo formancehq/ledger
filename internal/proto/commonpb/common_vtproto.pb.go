@@ -1275,7 +1275,6 @@ func (m *ClusterPolicy) CloneVT() *ClusterPolicy {
 	r.MetadataMaxCommandBytes = m.MetadataMaxCommandBytes
 	r.CapabilityActivationArmed = m.CapabilityActivationArmed
 	r.MinimumReplayProtocol = m.MinimumReplayProtocol
-	r.CapabilityMembershipRevision = m.CapabilityMembershipRevision
 	if rhs := m.CapabilityActivations; rhs != nil {
 		tmpContainer := make([]*CapabilityActivation, len(rhs))
 		for k, v := range rhs {
@@ -11057,9 +11056,6 @@ func (this *ClusterPolicy) EqualVT(that *ClusterPolicy) bool {
 		return false
 	}
 	if this.MinimumReplayProtocol != that.MinimumReplayProtocol {
-		return false
-	}
-	if this.CapabilityMembershipRevision != that.CapabilityMembershipRevision {
 		return false
 	}
 	if len(this.CapabilityActivations) != len(that.CapabilityActivations) {
@@ -26315,12 +26311,6 @@ func (m *ClusterPolicy) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i--
 			dAtA[i] = 0x6a
 		}
-	}
-	if m.CapabilityMembershipRevision != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CapabilityMembershipRevision))
-		i--
-		dAtA[i] = 0x61
 	}
 	if m.MinimumReplayProtocol != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinimumReplayProtocol))
@@ -44825,9 +44815,6 @@ func (m *ClusterPolicy) SizeVT() (n int) {
 	if m.MinimumReplayProtocol != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.MinimumReplayProtocol))
 	}
-	if m.CapabilityMembershipRevision != 0 {
-		n += 9
-	}
 	if len(m.CapabilityActivations) > 0 {
 		for _, e := range m.CapabilityActivations {
 			l = e.SizeVT()
@@ -59488,16 +59475,6 @@ func (m *ClusterPolicy) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 12:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CapabilityMembershipRevision", wireType)
-			}
-			m.CapabilityMembershipRevision = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.CapabilityMembershipRevision = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
 		case 13:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CapabilityActivations", wireType)
