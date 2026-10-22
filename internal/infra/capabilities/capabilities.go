@@ -64,6 +64,9 @@ func ValidateMembers(members []Member) error {
 		if previous, ok := seen[member.NodeID]; ok && !bytes.Equal(previous, identity) {
 			return fmt.Errorf("%w: node %d has multiple incarnations", ErrInvalidState, member.NodeID)
 		}
+		if _, err := Normalize(member.Capabilities); err != nil {
+			return fmt.Errorf("%w: node %d has invalid capability evidence: %w", ErrInvalidState, member.NodeID, err)
+		}
 		seen[member.NodeID] = identity
 	}
 
@@ -147,6 +150,9 @@ func Ready(supported []ID, members []Member) ([]ID, error) {
 	}
 	supported, err := Normalize(supported)
 	if err != nil {
+		return nil, err
+	}
+	if err := ValidateMembers(members); err != nil {
 		return nil, err
 	}
 	ready := make([]ID, 0, len(supported))

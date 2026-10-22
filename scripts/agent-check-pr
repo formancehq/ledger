@@ -106,6 +106,17 @@ classify_path() {
         misc/proto/*|pkg/grpcprotocol/*) needs_protocol=true ;;
     esac
 
+    # A protocol-semantic change does not have to alter the protobuf schema.
+    # Require the capability contract gate for production FSM/admission code
+    # as well, while allowing focused tests to evolve independently.
+    case "$path" in
+        internal/domain/processing/*.go|internal/application/admission/*.go|internal/infra/plan/*.go|internal/infra/membership/*.go|internal/infra/node/*.go)
+            if [[ "$path" != *_test.go ]]; then
+                needs_capability_contract=true
+            fi
+            ;;
+    esac
+
     case "$status" in
         A|D|M) ;;
         *) needs_full=true ;;

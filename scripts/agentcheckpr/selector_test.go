@@ -82,6 +82,11 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 			expected: []string{"agent-check-full", "test-e2e", "protocol-revision", "capability-contract"},
 		},
 		{
+			name:     "FSM behavior change requires capability contract",
+			paths:    []string{"internal/domain/processing/processor.go"},
+			expected: []string{"agent-check-full", "capability-contract"},
+		},
+		{
 			name:     "protocol revision only",
 			paths:    []string{"pkg/grpcprotocol/protocol.go"},
 			expected: []string{"agent-check-full", "protocol-revision"},
