@@ -9,12 +9,12 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func armedState() State {
-	return State{Armed: true, Activations: map[ID]bool{}}
+func capabilityState() State {
+	return State{Activations: map[ID]bool{}}
 }
 
 func TestEvaluateIncludesVotersAndLearners(t *testing.T) {
-	state := armedState()
+	state := capabilityState()
 	state.Activations[99] = true
 	decision := Evaluate(state, []ID{99}, true, []Member{
 		{NodeID: 1, Role: Voter, Reachable: true, Capabilities: []ID{99}},
@@ -25,7 +25,7 @@ func TestEvaluateIncludesVotersAndLearners(t *testing.T) {
 }
 
 func TestEvaluateAllowsUnrelatedWriteWhenNoFeatureIsDeclared(t *testing.T) {
-	decision := Evaluate(armedState(), nil, true, []Member{{NodeID: 1, Role: Voter, Reachable: true}})
+	decision := Evaluate(capabilityState(), nil, true, []Member{{NodeID: 1, Role: Voter, Reachable: true}})
 	require.True(t, decision.Allowed)
 }
 
@@ -43,10 +43,8 @@ func TestStampProposalClearsFutureDeclarations(t *testing.T) {
 
 func TestFromPolicyRoundTrip(t *testing.T) {
 	state := FromPolicy(&commonpb.ClusterPolicy{
-		CapabilityActivationArmed: true,
-		CapabilityActivations:     []*commonpb.CapabilityActivation{{Id: 99, Active: true}},
+		CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 99, Active: true}},
 	})
-	require.True(t, state.Armed)
 	require.True(t, state.Activations[99])
 	require.NoError(t, state.Validate())
 }

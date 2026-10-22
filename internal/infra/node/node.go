@@ -3034,7 +3034,7 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 
 // AddLearnerWithCapabilities proposes a learner registration carrying the
 // caller's capability proof. The proof is persisted with the peer identity and
-// is required once the capability activation gate is armed.
+// is required by the active capability policy.
 func (node *Node) AddLearnerWithCapabilities(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
 	return node.addLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs, false)
 }
@@ -3128,8 +3128,8 @@ func (node *Node) RefreshMembership(ctx context.Context, nodeID uint64, raftAddr
 
 // SetCapabilityGate updates the leader-side membership admission gate from a
 // committed ClusterPolicy projection.
-func (node *Node) SetCapabilityGate(armed bool, required []uint32) error {
-	return node.membership.SetCapabilityGate(armed, required)
+func (node *Node) SetCapabilityGate(required []uint32) error {
+	return node.membership.SetCapabilityGate(required)
 }
 
 // addLearner is kept as a compatibility shim for package-local tests and

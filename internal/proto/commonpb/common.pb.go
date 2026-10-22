@@ -4461,13 +4461,10 @@ type ClusterPolicy struct {
 	MetadataMaxValueBytes       uint64 `protobuf:"fixed64,6,opt,name=metadata_max_value_bytes,json=metadataMaxValueBytes,proto3" json:"metadata_max_value_bytes,omitempty"`
 	MetadataMaxEntityBytes      uint64 `protobuf:"fixed64,7,opt,name=metadata_max_entity_bytes,json=metadataMaxEntityBytes,proto3" json:"metadata_max_entity_bytes,omitempty"`
 	MetadataMaxCommandBytes     uint64 `protobuf:"fixed64,8,opt,name=metadata_max_command_bytes,json=metadataMaxCommandBytes,proto3" json:"metadata_max_command_bytes,omitempty"`
-	// Capability activation is replicated policy, never a node-local flag. The
-	// fields are optional so nodes that predate the capability foundation decode
-	// the policy with their existing defaults.
-	CapabilityActivationArmed bool                    `protobuf:"varint,9,opt,name=capability_activation_armed,json=capabilityActivationArmed,proto3" json:"capability_activation_armed,omitempty"`
-	CapabilityActivations     []*CapabilityActivation `protobuf:"bytes,13,rep,name=capability_activations,json=capabilityActivations,proto3" json:"capability_activations,omitempty"`
-	unknownFields             protoimpl.UnknownFields
-	sizeCache                 protoimpl.SizeCache
+	// Capability activation is replicated policy, never a node-local flag.
+	CapabilityActivations []*CapabilityActivation `protobuf:"bytes,13,rep,name=capability_activations,json=capabilityActivations,proto3" json:"capability_activations,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *ClusterPolicy) Reset() {
@@ -4554,13 +4551,6 @@ func (x *ClusterPolicy) GetMetadataMaxCommandBytes() uint64 {
 		return x.MetadataMaxCommandBytes
 	}
 	return 0
-}
-
-func (x *ClusterPolicy) GetCapabilityActivationArmed() bool {
-	if x != nil {
-		return x.CapabilityActivationArmed
-	}
-	return false
 }
 
 func (x *ClusterPolicy) GetCapabilityActivations() []*CapabilityActivation {
@@ -22427,7 +22417,7 @@ const file_common_proto_rawDesc = "" +
 	"\x15PersistedClusterState\x12-\n" +
 	"\x06config\x18\x01 \x01(\v2\x15.common.ClusterConfigR\x06config\x12\x1f\n" +
 	"\vcache_epoch\x18\x02 \x01(\x06R\n" +
-	"cacheEpoch\"\xd8\x04\n" +
+	"cacheEpoch\"\x98\x04\n" +
 	"\rClusterPolicy\x12\x1a\n" +
 	"\brevision\x18\x01 \x01(\x06R\brevision\x124\n" +
 	"\x16idempotency_ttl_micros\x18\x02 \x01(\x06R\x14idempotencyTtlMicros\x124\n" +
@@ -22436,8 +22426,7 @@ const file_common_proto_rawDesc = "" +
 	"\x16metadata_max_key_bytes\x18\x05 \x01(\x06R\x13metadataMaxKeyBytes\x127\n" +
 	"\x18metadata_max_value_bytes\x18\x06 \x01(\x06R\x15metadataMaxValueBytes\x129\n" +
 	"\x19metadata_max_entity_bytes\x18\a \x01(\x06R\x16metadataMaxEntityBytes\x12;\n" +
-	"\x1ametadata_max_command_bytes\x18\b \x01(\x06R\x17metadataMaxCommandBytes\x12>\n" +
-	"\x1bcapability_activation_armed\x18\t \x01(\bR\x19capabilityActivationArmed\x12S\n" +
+	"\x1ametadata_max_command_bytes\x18\b \x01(\x06R\x17metadataMaxCommandBytes\x12S\n" +
 	"\x16capability_activations\x18\r \x03(\v2\x1c.common.CapabilityActivationR\x15capabilityActivations\"^\n" +
 	"\x17CreatedPreparedQueryLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +

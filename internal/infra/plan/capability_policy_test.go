@@ -37,9 +37,7 @@ func capabilityPolicyProposal(t *testing.T) *node.Proposal {
 func TestCapabilityPolicyProposerBlocksInactiveCapability(t *testing.T) {
 	delegate := new(capabilityPolicyTestProposer)
 	proposer := NewCapabilityPolicyProposer(delegate, func() (*commonpb.ClusterPolicy, error) {
-		return &commonpb.ClusterPolicy{
-			CapabilityActivationArmed: true,
-		}, nil
+		return &commonpb.ClusterPolicy{}, nil
 	}, nil, false)
 
 	_, err := proposer.Propose(context.Background(), capabilityPolicyProposal(t))
