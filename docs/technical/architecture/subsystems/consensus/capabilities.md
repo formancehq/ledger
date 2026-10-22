@@ -11,10 +11,12 @@ IDs. The fields are optional and therefore backward-readable by binaries that
 predate this foundation. IDs are never reused; semantic dependencies must be
 declared even when they do not add bytes to a proposal.
 
-The final serialized proposal is the source of truth. A producer must rebuild
-its plan first, then validate that the declared IDs exactly match
-`required_capabilities`, immediately before enqueueing the proposal. A payload
-that depends on a capability but omits its declaration is invalid.
+The producer must rebuild its plan first, derive the capabilities from that
+final plan, stamp `required_capabilities`, and pass the typed result alongside
+the serialized proposal. Admission reuses that result without decoding the
+proposal a second time. A payload that depends on a capability but omits its
+declaration is invalid; the shared builder and stamping helper are the
+enforcement boundary for producers.
 
 ## Admission and membership
 
