@@ -10,7 +10,6 @@ def snapshot():
     paths = [root / "pkg/client/v3/go.mod", root / "pkg/client/v3/go.sum"]
     paths.extend((root / "pkg/client/v3/grpc").glob("*.go"))
     paths.extend((root / "pkg/client/v3/proto").glob("*"))
-    paths.extend((root / "internal/proto").rglob("*.pb.go"))
     return {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in paths if path.is_file()}
 
