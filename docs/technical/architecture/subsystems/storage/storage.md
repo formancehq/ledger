@@ -60,13 +60,14 @@ its duration and applied index afterward. If startup stops mid-batch, the last
 payloads and customer data are never logged.
 
 The main Pebble store, read index, and usage store label background compaction
-and flush events with their store name. Compaction start and completion are
-visible at info level; ordinary flushes are debug-only, while flushes taking
-at least ten seconds and Pebble disk-slow events are visible at info level.
-Disk-slow logging uses a bounded, nonblocking handoff because Pebble invokes
-the callback on its disk-health goroutine. If the log sink remains blocked and
-the handoff fills, additional disk-slow log records are dropped; the main
-store's disk-slow metrics callback still runs independently.
+and flush events with their store name. Ordinary compactions and flushes are
+debug-only; compactions with at least 1 GiB of input, operations taking at
+least ten seconds, and Pebble disk-slow events are visible at info level.
+Pebble background errors are logged once through the background-error callback.
+Event logging uses a bounded, nonblocking handoff because some callbacks run
+under Pebble's DB mutex and disk-slow callbacks run on its health goroutine.
+If the log sink remains blocked and the handoff fills, additional event log
+records are dropped; the main store's metrics listener runs independently.
 The main store retains its existing Pebble metrics listener. These events may
 run concurrently with `pebble.Open`: a compaction reported at the end of Open
 does not by itself explain Open's elapsed time.

@@ -10,37 +10,61 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
+type pebbleLogEvent struct {
+	level   string
+	message string
+	fields  map[string]any
+}
+
 // NewPebbleEventLogger reports background work that can delay recovery or
 // consume disk bandwidth. The store name distinguishes independent Pebble DBs.
 func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventListener {
 	logger = logger.WithFields(map[string]any{"pebbleStore": store})
-	// DiskSlow runs on Pebble's disk-health goroutine. Keep its handoff bounded
-	// and let an idle worker exit so reopened stores do not retain goroutines.
-	var diskSlowMu sync.Mutex
-	var diskSlowQueue chan pebble.DiskSlowInfo
-	logDiskSlow := func(queue chan pebble.DiskSlowInfo) {
+	// Some callbacks run with Pebble's DB mutex held; DiskSlow runs on its
+	// disk-health goroutine. Never wait for a logging sink in either path.
+	// An idle worker exits so reopened stores do not retain goroutines.
+	var queueMu sync.Mutex
+	var eventQueue chan pebbleLogEvent
+	logEvents := func(queue chan pebbleLogEvent) {
 		idle := time.NewTimer(time.Minute)
 		defer idle.Stop()
 		for {
 			select {
-			case info := <-queue:
-				logger.WithFields(map[string]any{
-					"operation": info.OpType.String(),
-					"duration":  info.Duration.String(),
-				}).Infof("Pebble disk operation slow")
+			case event := <-queue:
+				withFields := logger.WithFields(event.fields)
+				switch event.level {
+				case "debug":
+					withFields.Debugf("%s", event.message)
+				case "info":
+					withFields.Infof("%s", event.message)
+				case "error":
+					withFields.Errorf("%s", event.message)
+				}
 				idle.Reset(time.Minute)
 			case <-idle.C:
-				diskSlowMu.Lock()
+				queueMu.Lock()
 				if len(queue) == 0 {
-					diskSlowQueue = nil
-					diskSlowMu.Unlock()
+					eventQueue = nil
+					queueMu.Unlock()
 
 					return
 				}
-				diskSlowMu.Unlock()
+				queueMu.Unlock()
 				idle.Reset(time.Minute)
 			}
 		}
+	}
+	enqueue := func(event pebbleLogEvent) {
+		queueMu.Lock()
+		if eventQueue == nil {
+			eventQueue = make(chan pebbleLogEvent, 32)
+			go logEvents(eventQueue)
+		}
+		select {
+		case eventQueue <- event:
+		default: // The logging sink is blocked; never block Pebble.
+		}
+		queueMu.Unlock()
 	}
 	tableBytes := func(tables []pebble.TableInfo) uint64 {
 		var total uint64
@@ -62,16 +86,29 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 	return &pebble.EventListener{
 		CompactionBegin: func(info pebble.CompactionInfo) {
 			bytes := inputBytes(info.Input)
-			logger.WithFields(map[string]any{
+			level := "debug"
+			if bytes >= 1<<30 {
+				level = "info"
+			}
+			enqueue(pebbleLogEvent{level: level, message: "Pebble compaction started", fields: map[string]any{
 				"jobID":          info.JobID,
 				"reason":         info.Reason,
 				"inputBytes":     bytes,
 				"inputSizeHuman": humanize.IBytes(bytes),
-			}).Infof("Pebble compaction started")
+			}})
 		},
 		CompactionEnd: func(info pebble.CompactionInfo) {
+			// Real failures are reported through BackgroundError. Pebble does
+			// not report expected cancelled compactions there.
+			if info.Err != nil {
+				return
+			}
 			inBytes := inputBytes(info.Input)
 			outBytes := tableBytes(info.Output.Tables)
+			level := "debug"
+			if info.TotalDuration >= 10*time.Second {
+				level = "info"
+			}
 			fields := map[string]any{
 				"jobID":           info.JobID,
 				"reason":          info.Reason,
@@ -82,23 +119,26 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 				"outputBytes":     outBytes,
 				"outputSizeHuman": humanize.IBytes(outBytes),
 				"outputLevel":     info.Output.Level,
-				"error":           info.Err,
 			}
-			if info.Err != nil {
-				logger.WithFields(fields).Errorf("Pebble compaction failed")
-			} else {
-				logger.WithFields(fields).Infof("Pebble compaction completed")
-			}
+			enqueue(pebbleLogEvent{level: level, message: "Pebble compaction completed", fields: fields})
 		},
 		FlushBegin: func(info pebble.FlushInfo) {
-			logger.WithFields(map[string]any{
+			enqueue(pebbleLogEvent{level: "debug", message: "Pebble flush started", fields: map[string]any{
 				"jobID":          info.JobID,
 				"reason":         info.Reason,
 				"inputBytes":     info.InputBytes,
 				"inputSizeHuman": humanize.IBytes(info.InputBytes),
-			}).Debugf("Pebble flush started")
+			}})
 		},
 		FlushEnd: func(info pebble.FlushInfo) {
+			if info.Err != nil && info.Err.Error() == "pebble: empty table" {
+				// Pebble uses an unexported sentinel for a successful no-op flush.
+				info.Err = nil
+			}
+			// Pebble reports real flush failures through BackgroundError too.
+			if info.Err != nil {
+				return
+			}
 			fields := map[string]any{
 				"jobID":          info.JobID,
 				"reason":         info.Reason,
@@ -108,33 +148,20 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 				"totalDuration":  info.TotalDuration.String(),
 			}
 			switch {
-			case info.Err != nil && info.Err.Error() == "pebble: empty table":
-				// Pebble reports a successful flush with no output table using an
-				// unexported sentinel error. It is not a background failure.
-				logger.WithFields(fields).Infof("Pebble empty flush completed")
-			case info.Err != nil:
-				fields["error"] = info.Err
-				logger.WithFields(fields).Errorf("Pebble flush failed")
 			case info.TotalDuration >= 10*time.Second:
-				logger.WithFields(fields).Infof("Pebble slow flush completed")
+				enqueue(pebbleLogEvent{level: "info", message: "Pebble slow flush completed", fields: fields})
 			default:
-				logger.WithFields(fields).Debugf("Pebble flush completed")
+				enqueue(pebbleLogEvent{level: "debug", message: "Pebble flush completed", fields: fields})
 			}
 		},
 		DiskSlow: func(info pebble.DiskSlowInfo) {
-			diskSlowMu.Lock()
-			if diskSlowQueue == nil {
-				diskSlowQueue = make(chan pebble.DiskSlowInfo, 32)
-				go logDiskSlow(diskSlowQueue)
-			}
-			select {
-			case diskSlowQueue <- info:
-			default: // The logging sink is blocked; never block disk monitoring.
-			}
-			diskSlowMu.Unlock()
+			enqueue(pebbleLogEvent{level: "info", message: "Pebble disk operation slow", fields: map[string]any{
+				"operation": info.OpType.String(),
+				"duration":  info.Duration.String(),
+			}})
 		},
 		BackgroundError: func(err error) {
-			logger.WithFields(map[string]any{"error": err}).Errorf("Pebble background error")
+			enqueue(pebbleLogEvent{level: "error", message: "Pebble background error", fields: map[string]any{"error": err.Error()}})
 		},
 	}
 }
