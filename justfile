@@ -421,10 +421,6 @@ generate-public-proto:
 generate-public-client:
     @bash scripts/generate-public-client.sh
 
-# Check the generated public client contract and its dependency boundary.
-check-public-client:
-    @bash scripts/check-public-client.sh
-
 test-rpcauth-generator:
     go -C tools/protoc-gen-rpcauth test ./...
 
