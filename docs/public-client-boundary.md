@@ -20,14 +20,19 @@ exclude backend-only messages. The generated Go package is one consumer of the
 projection; other consumers (for example TypeScript generators) should use the
 projection, never edit the projection by hand.
 
-The two generated Go packages intentionally contain equivalent wire contracts.
-They must not be imported into the same process: protobuf descriptors are
-registered globally by file name, so loading both copies would register files
-such as `signature.proto` twice. The network serialization boundary performs
-the conversion between the private server types and public client types.
+The shared module `pkg/proto/v3` owns the public generated Go types and their
+protobuf descriptors. Backend packages import those types directly; the
+`internal/proto/*` packages retain only private generated state and small alias
+facades for compatibility. This gives a server and its public client one
+descriptor owner in the same process, so files such as `signature.proto` are
+registered only once. The standalone `pkg/client/v3` module aliases the shared
+types and adds the public gRPC client surface; it does not generate a second
+descriptor copy.
 
 Run `just generate-public-client` after changing a schema in `misc/proto/`.
 This regenerates the public projection and the Go client. The generated client
 is checked for drift by the existing CI dirty check.
-Backend-only schemas remain under
-`misc/proto/` and are generated exclusively by `just generate-proto`.
+Backend-only schemas remain under `misc/proto/` and are generated exclusively
+by `just generate-proto`. Server-only generators and helpers remain private;
+the shared module contains only generators and helpers that are deliberately
+part of the public contract.

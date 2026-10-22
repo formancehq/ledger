@@ -133,7 +133,7 @@ func TestUnreachableFuzzTargetFindingsReportsNestedModule(t *testing.T) {
 			unreachableReason: "the declaration belongs to nested Go module misc/operator",
 		},
 	}
-	findings := unreachableFuzzTargetFindings(targets)
+	findings := unreachableFuzzTargetFindings(targets, nil)
 
 	require.Len(t, findings, 1)
 	require.Contains(t, findings[0].message, "nested Go module misc/operator")
