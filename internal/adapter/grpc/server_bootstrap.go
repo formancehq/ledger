@@ -333,7 +333,7 @@ func (impl *ClusterBootstrapServiceServerImpl) RefreshMembership(ctx context.Con
 		return nil, status.Errorf(codes.FailedPrecondition, "node %d (instance %x) was previously removed from this cluster", req.GetNodeId(), req.GetInstanceId())
 	}
 
-	if err := impl.membership.RefreshMembership(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), req.GetInstanceId(), req.GetCapabilities(), req.GetCapabilityMembershipRevision()); err != nil {
+	if err := impl.membership.RefreshMembership(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), req.GetInstanceId(), req.GetCapabilities()); err != nil {
 		return nil, convertToGRPCErrorWithContext(ctx, err, impl.logger)
 	}
 

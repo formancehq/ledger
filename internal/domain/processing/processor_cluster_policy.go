@@ -1,6 +1,8 @@
 package processing
 
 import (
+	"fmt"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -42,6 +44,28 @@ func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Contex
 	current := ctx.Scope.GetClusterPolicy()
 	appliedRev := current.GetRevision()
 	newRev := newPolicy.GetRevision()
+	if current.GetCapabilityActivationArmed() && !newPolicy.GetCapabilityActivationArmed() {
+		return nil, &domain.ErrClusterPolicyInvalid{Detail: "capability activation cannot be disarmed"}
+	}
+	active := make(map[uint32]struct{})
+	for _, activation := range current.GetCapabilityActivations() {
+		if activation != nil && activation.GetActive() {
+			active[activation.GetId()] = struct{}{}
+		}
+	}
+	for id := range active {
+		found := false
+		for _, activation := range newPolicy.GetCapabilityActivations() {
+			if activation != nil && activation.GetId() == id && activation.GetActive() {
+				found = true
+
+				break
+			}
+		}
+		if !found {
+			return nil, &domain.ErrClusterPolicyInvalid{Detail: fmt.Sprintf("capability %d cannot be deactivated", id)}
+		}
+	}
 
 	// A policy may only raise the floor to a replay protocol this binary can
 	// execute. Rejecting it at the FSM boundary prevents a committed policy

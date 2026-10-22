@@ -4464,12 +4464,11 @@ type ClusterPolicy struct {
 	// Capability activation is replicated policy, never a node-local flag. The
 	// fields are optional so nodes that predate the capability foundation decode
 	// the policy with their existing defaults.
-	CapabilityActivationArmed    bool                    `protobuf:"varint,9,opt,name=capability_activation_armed,json=capabilityActivationArmed,proto3" json:"capability_activation_armed,omitempty"`
-	MinimumReplayProtocol        uint32                  `protobuf:"varint,11,opt,name=minimum_replay_protocol,json=minimumReplayProtocol,proto3" json:"minimum_replay_protocol,omitempty"`
-	CapabilityMembershipRevision uint64                  `protobuf:"fixed64,12,opt,name=capability_membership_revision,json=capabilityMembershipRevision,proto3" json:"capability_membership_revision,omitempty"`
-	CapabilityActivations        []*CapabilityActivation `protobuf:"bytes,13,rep,name=capability_activations,json=capabilityActivations,proto3" json:"capability_activations,omitempty"`
-	unknownFields                protoimpl.UnknownFields
-	sizeCache                    protoimpl.SizeCache
+	CapabilityActivationArmed bool                    `protobuf:"varint,9,opt,name=capability_activation_armed,json=capabilityActivationArmed,proto3" json:"capability_activation_armed,omitempty"`
+	MinimumReplayProtocol     uint32                  `protobuf:"varint,11,opt,name=minimum_replay_protocol,json=minimumReplayProtocol,proto3" json:"minimum_replay_protocol,omitempty"`
+	CapabilityActivations     []*CapabilityActivation `protobuf:"bytes,13,rep,name=capability_activations,json=capabilityActivations,proto3" json:"capability_activations,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
 }
 
 func (x *ClusterPolicy) Reset() {
@@ -4568,13 +4567,6 @@ func (x *ClusterPolicy) GetCapabilityActivationArmed() bool {
 func (x *ClusterPolicy) GetMinimumReplayProtocol() uint32 {
 	if x != nil {
 		return x.MinimumReplayProtocol
-	}
-	return 0
-}
-
-func (x *ClusterPolicy) GetCapabilityMembershipRevision() uint64 {
-	if x != nil {
-		return x.CapabilityMembershipRevision
 	}
 	return 0
 }
@@ -22443,7 +22435,7 @@ const file_common_proto_rawDesc = "" +
 	"\x15PersistedClusterState\x12-\n" +
 	"\x06config\x18\x01 \x01(\v2\x15.common.ClusterConfigR\x06config\x12\x1f\n" +
 	"\vcache_epoch\x18\x02 \x01(\x06R\n" +
-	"cacheEpoch\"\xd6\x05\n" +
+	"cacheEpoch\"\x90\x05\n" +
 	"\rClusterPolicy\x12\x1a\n" +
 	"\brevision\x18\x01 \x01(\x06R\brevision\x124\n" +
 	"\x16idempotency_ttl_micros\x18\x02 \x01(\x06R\x14idempotencyTtlMicros\x124\n" +
@@ -22454,8 +22446,7 @@ const file_common_proto_rawDesc = "" +
 	"\x19metadata_max_entity_bytes\x18\a \x01(\x06R\x16metadataMaxEntityBytes\x12;\n" +
 	"\x1ametadata_max_command_bytes\x18\b \x01(\x06R\x17metadataMaxCommandBytes\x12>\n" +
 	"\x1bcapability_activation_armed\x18\t \x01(\bR\x19capabilityActivationArmed\x126\n" +
-	"\x17minimum_replay_protocol\x18\v \x01(\rR\x15minimumReplayProtocol\x12D\n" +
-	"\x1ecapability_membership_revision\x18\f \x01(\x06R\x1ccapabilityMembershipRevision\x12S\n" +
+	"\x17minimum_replay_protocol\x18\v \x01(\rR\x15minimumReplayProtocol\x12S\n" +
 	"\x16capability_activations\x18\r \x03(\v2\x1c.common.CapabilityActivationR\x15capabilityActivations\"^\n" +
 	"\x17CreatedPreparedQueryLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +

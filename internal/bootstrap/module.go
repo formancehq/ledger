@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -640,6 +641,20 @@ func Module() fx.Option {
 				return NewClusterPolicyReconciler(func(ctx context.Context) {
 					if !raftNode.IsLeader() {
 						return
+					}
+					if policy, err := query.ReadClusterPolicy(store); err == nil {
+						required := make([]uint32, 0, len(policy.GetCapabilityActivations()))
+						for _, activation := range policy.GetCapabilityActivations() {
+							if activation != nil && activation.GetActive() {
+								required = append(required, activation.GetId())
+							}
+						}
+						slices.Sort(required)
+						if err := raftNode.SetCapabilityGate(policy.GetCapabilityActivationArmed(), required); err != nil {
+							logger.WithFields(map[string]any{"error": err}).Errorf("Invalid capability gate in committed cluster policy")
+
+							return
+						}
 					}
 					if err := proposeAuditKeyIfNeeded(ctx, raftNode, builder, store); err != nil {
 						logger.WithFields(map[string]any{"error": err}).Errorf("Audit key initialization failed; will retry")

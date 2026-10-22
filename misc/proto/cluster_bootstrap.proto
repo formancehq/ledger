@@ -49,7 +49,6 @@ message JoinAsLearnerRequest {
   string service_address = 3;  // Service API address of the learner
   bytes instance_id = 4;       // 16-byte UUID identifying this peer's WAL/PVC incarnation (EN-1045); required
   repeated fixed32 capabilities = 5; // capabilities supported by this binary
-  fixed64 capability_membership_revision = 6; // revision examined by the joiner, 0 lets leader bind current revision
 }
 
 message JoinAsLearnerResponse {}
@@ -64,7 +63,6 @@ message RefreshMembershipRequest {
   string service_address = 3;
   bytes instance_id = 4;
   repeated fixed32 capabilities = 5;
-  fixed64 capability_membership_revision = 6;
 }
 
 message RefreshMembershipResponse {}

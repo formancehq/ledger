@@ -650,7 +650,7 @@ func TestPeerStore_PersistsCapabilityEvidenceWithIdentity(t *testing.T) {
 	ps := newTestPeerStore(t)
 	caps := []uint32{1, 2}
 	identity := fixedInstanceID(0x7a)
-	require.NoError(t, ps.PutWithEvidence(9, "raft:9", "service:9", identity, caps, 11))
+	require.NoError(t, ps.PutWithEvidence(9, "raft:9", "service:9", identity, caps))
 
 	rows, err := ps.LoadAll()
 	require.NoError(t, err)
@@ -658,7 +658,6 @@ func TestPeerStore_PersistsCapabilityEvidenceWithIdentity(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, identity, row.InstanceID)
 	require.Equal(t, caps, row.Capabilities)
-	require.Equal(t, uint64(11), row.CapabilityMembershipRevision)
 }
 
 // TestMembership_ReconcileAgainstConfState pins the boot-time cleanup

@@ -2010,7 +2010,6 @@ func (m *PeerAddress) CloneVT() *PeerAddress {
 	r.NodeId = m.NodeId
 	r.RaftAddress = m.RaftAddress
 	r.ServiceAddress = m.ServiceAddress
-	r.CapabilityMembershipRevision = m.CapabilityMembershipRevision
 	if rhs := m.InstanceId; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -5529,9 +5528,6 @@ func (this *PeerAddress) EqualVT(that *PeerAddress) bool {
 		if vx != vy {
 			return false
 		}
-	}
-	if this.CapabilityMembershipRevision != that.CapabilityMembershipRevision {
-		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -10450,12 +10446,6 @@ func (m *PeerAddress) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.CapabilityMembershipRevision != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CapabilityMembershipRevision))
-		i--
-		dAtA[i] = 0x31
-	}
 	if len(m.Capabilities) > 0 {
 		for iNdEx := len(m.Capabilities) - 1; iNdEx >= 0; iNdEx-- {
 			i -= 4
@@ -12892,9 +12882,6 @@ func (m *PeerAddress) SizeVT() (n int) {
 	}
 	if len(m.Capabilities) > 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(len(m.Capabilities)*4)) + len(m.Capabilities)*4
-	}
-	if m.CapabilityMembershipRevision != 0 {
-		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -24496,16 +24483,6 @@ func (m *PeerAddress) UnmarshalVT(dAtA []byte) error {
 			} else {
 				return fmt.Errorf("proto: wrong wireType = %d for field Capabilities", wireType)
 			}
-		case 6:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CapabilityMembershipRevision", wireType)
-			}
-			m.CapabilityMembershipRevision = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.CapabilityMembershipRevision = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
