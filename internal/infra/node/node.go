@@ -3135,6 +3135,86 @@ func (node *Node) JoinAsLearnerWithCapabilities(ctx context.Context, nodeID uint
 	return node.addLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs, membershipRevision, true)
 }
 
+// RefreshMembership proposes a committed UpdateNode for an existing member.
+// Unlike JoinAsLearner, this path is used by a node with an already populated
+// WAL after a normal restart. It requires the same persisted instance identity
+// and replaces the committed endpoint/capability evidence through Raft.
+// Must be called on the leader.
+func (node *Node) RefreshMembership(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32, membershipRevision uint64) error {
+	if err := membership.ValidateInstanceID(instanceID); err != nil {
+		return fmt.Errorf("invalid member identity: %w", err)
+	}
+	if armed, activeRevision := node.membership.CapabilityGate(); armed && membershipRevision == 0 {
+		membershipRevision = activeRevision
+	}
+
+	proposalID := uuid.NewString()
+	ccCtx, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{
+		RaftAddress:                  raftAddr,
+		ServiceAddress:               serviceAddr,
+		InstanceID:                   instanceID,
+		Capabilities:                 append([]uint32(nil), capabilityIDs...),
+		CapabilityMembershipRevision: membershipRevision,
+		ProposalID:                   proposalID,
+	})
+	if err != nil {
+		return fmt.Errorf("marshaling membership refresh context: %w", err)
+	}
+
+	return node.retryConfChange(ctx, proposalID, nodeID, "RefreshMembership", []raftpb.ConfChangeType{
+		raftpb.ConfChangeUpdateNode,
+	}, func() error {
+		status := node.rawNode.Status()
+		if status.RaftState != raft.StateLeader {
+			return ErrNotLeader
+		}
+
+		if _, ok := status.Progress[nodeID]; !ok {
+			return ErrNodeNotInCluster
+		}
+
+		existing, ok := node.membership.GetInstanceID(nodeID)
+		if !ok {
+			return fmt.Errorf("member %d has no persisted identity", nodeID)
+		}
+		if err := membership.ValidateInstanceID(existing); err != nil {
+			return fmt.Errorf("member %d has invalid persisted identity: %w", nodeID, err)
+		}
+		if !bytes.Equal(existing, instanceID) {
+			return fmt.Errorf("member %d identity does not match the active incarnation", nodeID)
+		}
+
+		if err := node.membership.ValidateTransitionEvidence(&membership.ConfChangeContext{
+			RaftAddress:                  raftAddr,
+			ServiceAddress:               serviceAddr,
+			InstanceID:                   instanceID,
+			Capabilities:                 capabilityIDs,
+			CapabilityMembershipRevision: membershipRevision,
+		}); err != nil {
+			return err
+		}
+
+		if node.isRemovalPending(nodeID, instanceID) {
+			return ErrNodeRemoved
+		}
+		removed, checkErr := node.membership.IsRemoved(nodeID, instanceID)
+		if checkErr != nil {
+			return fmt.Errorf("checking removed-member registry for %d: %w", nodeID, checkErr)
+		}
+		if removed {
+			return ErrNodeRemoved
+		}
+
+		return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
+			Changes: []*raftpb.ConfChangeSingle{{
+				Type:   new(raftpb.ConfChangeUpdateNode),
+				NodeId: new(nodeID),
+			}},
+			Context: ccCtx,
+		})
+	}, nil)
+}
+
 // addLearner is kept as a compatibility shim for package-local tests and
 // callers that exercise the pre-evidence admission path directly.
 func (node *Node) addLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, bootJoin bool) error {

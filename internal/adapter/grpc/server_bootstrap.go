@@ -15,6 +15,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/application/membership"
+	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -291,6 +292,52 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 	}
 
 	return &clusterbootstrappb.JoinAsLearnerResponse{}, nil
+}
+
+// RefreshMembership forwards a normal-restart membership refresh to the
+// leader. Unlike JoinAsLearner, this endpoint only accepts an incarnation that
+// is already present in the committed membership and proposes UpdateNode.
+func (impl *ClusterBootstrapServiceServerImpl) RefreshMembership(ctx context.Context, req *clusterbootstrappb.RefreshMembershipRequest) (*clusterbootstrappb.RefreshMembershipResponse, error) {
+	if err := impl.checkClusterID(ctx); err != nil {
+		return nil, err
+	}
+
+	if err := raftmembership.ValidateInstanceID(req.GetInstanceId()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	if !impl.node.IsLeader() {
+		conn, err := impl.leaderRaftConn()
+		if err != nil {
+			return nil, convertToGRPCErrorWithContext(ctx, err, impl.logger)
+		}
+
+		outCtx := ctx
+		if impl.clusterID != "" {
+			outCtx = metadata.AppendToOutgoingContext(ctx, node.MetadataKeyClusterID, impl.clusterID)
+		}
+
+		resp, err := clusterbootstrappb.NewClusterBootstrapServiceClient(conn).RefreshMembership(outCtx, req)
+		if err != nil {
+			return nil, forwardedCallError(err)
+		}
+
+		return resp, nil
+	}
+
+	removed, err := impl.membership.IsRemoved(req.GetNodeId(), req.GetInstanceId())
+	if err != nil {
+		return nil, status.Error(codes.Internal, "reading removed-member registry")
+	}
+	if removed {
+		return nil, status.Errorf(codes.FailedPrecondition, "node %d (instance %x) was previously removed from this cluster", req.GetNodeId(), req.GetInstanceId())
+	}
+
+	if err := impl.membership.RefreshMembership(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), req.GetInstanceId(), req.GetCapabilities(), req.GetCapabilityMembershipRevision()); err != nil {
+		return nil, convertToGRPCErrorWithContext(ctx, err, impl.logger)
+	}
+
+	return &clusterbootstrappb.RefreshMembershipResponse{}, nil
 }
 
 // forwardedCallError maps the failure of a call forwarded to the leader.

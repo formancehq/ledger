@@ -52,3 +52,18 @@ business and technical producers (including mirror, events, maintenance, and
 backup flows). Direct `Node.Propose` callers remain low-level APIs and must
 stamp their proposal before use; membership `ConfChange` operations carry and
 validate their capability evidence separately.
+
+## Restart refresh
+
+A normal restart does not run `JoinAsLearner`: the node restores its existing
+WAL `ConfState` and keeps the same `(node_id, instance_id)` incarnation. Before
+inbound Raft traffic is enabled, a node whose WAL carries `CLUSTER_JOINED`
+sends an internal `RefreshMembership` request to a configured peer. Followers
+forward that request to the current leader over the Raft gRPC server. The
+leader validates the identity and capability evidence, then proposes a
+`ConfChangeUpdateNode` containing the current endpoints and capabilities.
+
+Only the committed change is authoritative. The update is replicated through
+Raft and applied to every member's peer store; a local restart-time upsert is
+not sufficient to activate a capability for admission. A fresh WAL instead
+uses `JoinAsLearner` and `ConfChangeAddLearnerNode`.

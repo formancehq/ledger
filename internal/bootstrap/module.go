@@ -914,8 +914,18 @@ func Module() fx.Option {
 					}
 				}))
 			},
-			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, logger logging.Logger) (*node.Node, error) {
+			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, cfg Config, logger logging.Logger) (*node.Node, error) {
 				lc.Append(nodeHook(node, logger))
+
+				// A WAL that already joined the cluster must not take the learner
+				// bootstrap path again. It does, however, need to publish the
+				// capabilities of the restarted binary and any changed endpoints.
+				// This hook runs after the Raft server, transport and node are live;
+				// an UpdateNode for an existing voter may need that node to contribute
+				// to the commit quorum.
+				if shouldRunMembershipRefresh(cfg, logger) {
+					lc.Append(membershipRefreshHook(cfg, logger))
+				}
 
 				return node, nil
 			},
@@ -1162,6 +1172,24 @@ func shouldRunJoinPreflight(cfg Config, logger logging.Logger) bool {
 	return true
 }
 
+// shouldRunMembershipRefresh selects the normal-restart path. A fresh WAL is
+// handled by joinPreflightHook; a bootstrap node has no remote leader to
+// notify. The CLUSTER_JOINED marker is the durable boundary between those two
+// startup protocols.
+func shouldRunMembershipRefresh(cfg Config, logger logging.Logger) bool {
+	if cfg.RaftConfig.Bootstrap || len(cfg.RaftConfig.Peers) == 0 {
+		return false
+	}
+
+	if !wal.IsClusterJoined(cfg.RaftConfig.WalDir) {
+		return false
+	}
+
+	logger.Infof("CLUSTER_JOINED marker present, refreshing membership evidence")
+
+	return true
+}
+
 func registerSnapshotServiceLifecycle(lc fx.Lifecycle, server snapshotpb.SnapshotServiceServer) {
 	lc.Append(fx.Hook{
 		OnStart: func(_ context.Context) error {
@@ -1239,6 +1267,20 @@ func joinPreflightHook(cfg Config, logger logging.Logger) fx.Hook {
 			}).Infof("Join mode: requesting peer to add this node as learner (preflight, before Raft traffic)")
 
 			return tryAddLearner(ctx, cfg, cfg.TLSConfig, logger)
+		},
+	}
+}
+
+func membershipRefreshHook(cfg Config, logger logging.Logger) fx.Hook {
+	return fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			logger.WithFields(map[string]any{
+				"nodeID":         cfg.RaftConfig.NodeID,
+				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
+				"serviceAddress": cfg.ServiceAdvertiseAddr(),
+			}).Infof("Restart mode: refreshing membership capabilities")
+
+			return tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logger)
 		},
 	}
 }
@@ -1420,6 +1462,70 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 		}
 
 		backoff = min(backoff*2, maxBackoff)
+	}
+}
+
+// tryRefreshMembership publishes this incarnation's current endpoints and
+// capabilities through the leader. It is deliberately separate from
+// tryAddLearner: a node with a populated WAL already owns Raft progress and
+// must never be admitted through the empty-WAL learner path.
+func tryRefreshMembership(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger) error {
+	instanceID, err := wal.EnsureInstanceID(cfg.RaftConfig.WalDir)
+	if err != nil {
+		return fmt.Errorf("ensuring instance id for membership refresh: %w", err)
+	}
+
+	req := &clusterbootstrappb.RefreshMembershipRequest{
+		NodeId:         cfg.RaftConfig.NodeID,
+		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
+		ServiceAddress: cfg.ServiceAdvertiseAddr(),
+		InstanceId:     instanceID,
+		Capabilities:   capabilityIDsAsUint32(capabilities.SupportedIDs()),
+	}
+
+	creds, _, err := ClientTransportCredentials(tlsCfg)
+	if err != nil {
+		return fmt.Errorf("loading TLS credentials for membership refresh: %w", err)
+	}
+
+	dialOpts := []ggrpc.DialOption{ggrpc.WithTransportCredentials(creds)}
+	if cfg.ClusterSecret != "" {
+		dialOpts = append(dialOpts, transport.BearerTokenDialOption(cfg.ClusterSecret))
+	}
+	if cfg.ClusterID != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, node.MetadataKeyClusterID, cfg.ClusterID)
+	}
+
+	backoff := 500 * time.Millisecond
+	for {
+		for _, peer := range cfg.RaftConfig.Peers {
+			conn, dialErr := ggrpc.NewClient(peer.Address, dialOpts...)
+			if dialErr != nil {
+				logger.WithFields(map[string]any{"peer": peer.ID, "address": peer.Address, "error": dialErr}).Infof("Failed to dial peer for membership refresh, will retry")
+				continue
+			}
+
+			_, callErr := clusterbootstrappb.NewClusterBootstrapServiceClient(conn).RefreshMembership(ctx, req)
+			_ = conn.Close()
+			if callErr == nil {
+				logger.WithFields(map[string]any{"peer": peer.ID}).Infof("Successfully refreshed membership capabilities")
+
+				return nil
+			}
+
+			if st, ok := status.FromError(callErr); ok && st.Code() == codes.Unavailable {
+				continue
+			}
+
+			return fmt.Errorf("failed to refresh membership via peer %d (%s): %w", peer.ID, peer.Address, callErr)
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, 5*time.Second)
 	}
 }
 
