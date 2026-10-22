@@ -415,11 +415,15 @@ generate-proto:
 
 # Generate the public protobuf projection from the canonical server schemas.
 generate-public-proto:
-    @python3 scripts/generate-public-protos.py
+    @bash scripts/generate-public-client.sh --proto-only
 
 # Generate the standalone public gRPC client without touching server protobufs
-generate-public-client: generate-public-proto
+generate-public-client:
     @bash scripts/generate-public-client.sh
+
+# Check the generated public client contract and its dependency boundary.
+check-public-client:
+    @bash scripts/check-public-client.sh
 
 test-rpcauth-generator:
     go -C tools/protoc-gen-rpcauth test ./...
