@@ -1,12 +1,15 @@
-# API Comparison: ledger vs github.com/formancehq/ledger
+# API Comparison: Ledger v2 vs Ledger v3
 
-This document compares the POC's API with the original Formance ledger API and documents missing features.
+This document compares the Ledger v3 API with the Ledger v2 API
+(`github.com/formancehq/ledger` v2, `openapi/v2.yaml`) and lists what a v2
+client must change when it migrates. "v2" below means the v2 HTTP API; Ledger v2
+has no gRPC API.
 
-> **URL prefix.** All business endpoints in this POC are served under the
+> **URL prefix.** All business endpoints in Ledger v3 are served under the
 > `/v3` prefix (e.g. `POST /v3/{ledgerName}/transactions`). Ops endpoints
 > (`/health`, `/livez`, `/readyz`, `/clusterz`, `/_info`, `/debug/pprof`) are
-> intentionally unversioned. The original ledger's `/v2` is **not** preserved
-> by this POC — there is no compatibility shim.
+> intentionally unversioned. The v2 `/v2` routes are **not** preserved —
+> there is no compatibility shim.
 
 For the per-operation Ledger v2 → v3 path mapping, see
 [`v2-to-v3-endpoint-map.json`](v2-to-v3-endpoint-map.json). Update it in the same
@@ -110,14 +113,15 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 
 ### Feature comparison
 
-| Feature | POC | Original | Notes |
+| Feature | v3 | v2 | Notes |
 |---------|-----|----------|-------|
 | **Transactions (Write)** |
 | Create transaction (postings) | ✅ | ✅ | |
 | Create transaction (numscript) | ✅ | ✅ | |
 | Revert transaction | ✅ | ✅ | |
-| Revert with `force` | ✅ | ✅ | |
-| Revert with `atEffectiveDate` | ✅ | ✅ | |
+| Revert with `force` | ✅ | ✅ | JSON body only in v3; v2 reads a query parameter, which v3 ignores |
+| Revert with `atEffectiveDate` | ✅ | ✅ | JSON body only in v3; v2 reads a query parameter, which v3 ignores |
+| Dry run (`dryRun`) | ❌ | ✅ | Removed. v3 ignores the parameter, so the request commits |
 | Revert by reference | ❌ | ❌ | Not supported — only numeric `id` targets are accepted |
 | Set/delete tx metadata by reference | ❌ | ❌ | Not supported — only numeric `targetId` is accepted |
 | Create transaction with `force` | ✅ | ✅ | Bypasses balance checks |
@@ -129,8 +133,8 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Delete account metadata | ✅ | ✅ | |
 | Save transaction metadata | ✅ | ✅ | |
 | Delete transaction metadata | ✅ | ✅ | |
-| Save ledger metadata | ✅ | ❌ | New in v3 |
-| Delete ledger metadata | ✅ | ❌ | New in v3 |
+| Save ledger metadata | ✅ | ✅ | v2 `PUT /v2/{ledger}/metadata`; v3 `POST /v3/{ledgerName}/metadata` |
+| Delete ledger metadata | ✅ | ✅ | |
 | **Bulk** |
 | Bulk CREATE_TRANSACTION | ✅ | ✅ | |
 | Bulk ADD_METADATA | ✅ | ✅ | |
@@ -142,7 +146,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Create ledger | ✅ | ✅ | HTTP + gRPC accept the full model: `initialSchema`, `accountTypes` (name/pattern/persistence/segmentTypes), `defaultEnforcementMode` |
 | Create mirror ledger | ✅ | ❌ | HTTP or PostgreSQL source |
 | Promote mirror ledger | ✅ | ❌ | Mirror → Normal mode |
-| Delete ledger | ✅ | ✅ | |
+| Delete ledger | ✅ | ❌ | New in v3. v2 can only delete a whole bucket (`DELETE /v2/_/buckets/{bucket}`) |
 | Get ledger | ✅ | ✅ | |
 | List ledgers | ✅ | ✅ | |
 | **Account Types** |
@@ -152,17 +156,17 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Remove account type | ✅ | ❌ | Remove a type from a ledger |
 | **Accounts (Read)** |
 | Get account | ✅ | ✅ | Includes volumes per asset |
-| List accounts | ✅ | ✅ | Supports rich boolean filter (metadata equality/range/existence, address) with schema validation and cursor pagination. No date filtering or date ordering — see [account date fields](#6--account-date-fields-first_usage-insertion_date-updated_at) |
-| Get account balances | ⚠️ | ✅ | Included in account volumes |
-| Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
+| List accounts | ✅ | ✅ | Supports rich boolean filter (metadata equality/range/existence, address) with schema validation and cursor pagination. No date filtering or date ordering — see [account date fields](#account-date-fields) |
+| Get account balances | ✅ | ✅ | Included in account volumes. v2 returns them with `expand=volumes`; v3 always returns them |
+| Get account volumes | ✅ | ✅ | Returns input/output/balance per asset and color |
 | Analyze accounts | ✅ | ❌ | Suggest Chart of Accounts from address patterns |
 | Aggregate volumes | ✅ | ✅ | Per-asset aggregated volumes for filtered accounts (direct RPC, no prepared query needed) |
-| Account date fields (`firstUsage`/`insertionDate`/`updatedAt`) | ❌ | ✅ | Intentionally removed — not returned, not filterable, not paginatable. Replacement: typed `datetime` account metadata + index ([details](#6--account-date-fields-first_usage-insertion_date-updated_at)) |
+| Account date fields (`firstUsage`/`insertionDate`/`updatedAt`) | ❌ | ✅ | Intentionally removed — not returned, not filterable, not paginatable. Replacement: typed `datetime` account metadata + index ([details](#account-date-fields)) |
 | **Logs** |
 | List logs | ✅ | ✅ | gRPC stream, supports `--filter 'ledger == "foo"'` for per-ledger listing (opt-in index) |
 | **Import/Export** |
-| Import logs | ⚠️ | ✅ | Interface defined but not implemented |
-| Export logs | ⚠️ | ✅ | Interface defined but not implemented |
+| Import logs | ❌ | ✅ | Removed. Use a [mirror ledger](#8-mirror-ledgers) to bring v2 history into v3 |
+| Export logs | ❌ | ✅ | Removed. v3 offers store backups, event sinks and the log list endpoints instead |
 | **Idempotency** |
 | Idempotency key | ✅ | ✅ | |
 | **Reference Uniqueness** |
@@ -175,11 +179,12 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | List numscript versions | ✅ | ❌ | Per-ledger, `GET .../numscripts/{name}/versions`, current latest + every stored version |
 | **Audit Log** |
 | Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
-| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`cursor`/`reverse` ([pagination](#pagination)) + a bare-audit-field filter expression (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`, `order_type`, `idempotency_key`; the last supports `==`, `in`, and `^=` prefix matching), resolved against the audit query target in both the textual and the structured JSON form (`{"$match":{"outcome":"failure"}}`; the `^=` prefix is textual-only) — EN-1549 replaced the old `audit[...]` namespaced syntax — see [Filter input formats](#filter-input-formats-dual-format-contract-en-1511) |
+| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`cursor`/`reverse` ([pagination](#pagination)) + a bare-audit-field filter expression (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`, `order_type`, `idempotency_key`; the last supports `==`, `in`, and `^=` prefix matching), resolved against the audit query target in both the textual and the structured JSON form (`{"$match":{"outcome":"failure"}}`; the `^=` prefix is textual-only) — EN-1549 replaced the old `audit[...]` namespaced syntax — see [Filter input formats](#10-filter-input-formats-dual-format-contract-en-1511) |
 | Get audit entry by sequence | ✅ | ❌ | `GET /v3/_/audit-entries/{sequence}` (HTTP) + gRPC. Populates per-order `items` |
 | Audit log disable/enable | ❌ | ❌ | Not implemented |
 | **Error Handling** |
-| Structured gRPC error codes | ✅ | ✅ | BusinessError with ErrorInfo details |
+| Structured gRPC error codes | ✅ | ❌ | `ErrorInfo` details on every business error. v2 has no gRPC API |
+| HTTP `errorCode` / `errorMessage` envelope | ✅ | ✅ | Same envelope, different code values — see [Error codes](#error-codes) |
 | **Security** |
 | Request signing (Ed25519) | ✅ | ❌ | Envelope pattern with signed_payload |
 | Dynamic key management | ✅ | ❌ | Register/revoke/list keys via gRPC API (bootstrap: first key unsigned) |
@@ -215,6 +220,149 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | preCommitEffectiveVolumes | ❌ | ✅ | Intentionally removed |
 
 **Legend:** ✅ Implemented | ⚠️ Partially/Not implemented | ❌ Absent
+
+---
+
+## Contract-wide changes for v2 clients
+
+These changes apply to every operation, including those the
+[endpoint map](v2-to-v3-endpoint-map.json) marks as `moved`. Each was verified
+against the v3 code and the v2 source (`openapi/v2.yaml` and `internal/` of
+`github.com/formancehq/ledger` v2).
+
+### Asset, address and color grammar
+
+| Rule | v2 | v3 |
+|------|----|----|
+| Asset | `[A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/\d{1,6})?` (v2 `pkg/assets/asset.go`) | `[A-Z][A-Z0-9]{0,16}(/([1-9]\|[1-9][0-9]\|1[0-9]{2}\|2[0-4][0-9]\|25[0-5]))?`, precision 1–255 (`invariants` v0.11.0 `asset.go`) |
+| Precision `/0`, leading zeros (`/02`), precision above 255 | Accepted | Rejected |
+| Underscore suffix (`USDT_ETHEREUM/6`, `LOYALTY_POINTS`) | Accepted | Rejected |
+| Account address | `[a-zA-Z0-9_-]+(:[a-zA-Z0-9_-]+)*`, no length limit | Same alphabet and segment rule, at most 256 bytes |
+| Color | None | Optional posting `color`: `^[A-Z]*$`, at most 32 bytes; empty is the uncolored bucket |
+
+A bare asset code has precision 0, so `USD` replaces v2 `USD/0`. Invalid assets
+and addresses are rejected with HTTP 400, `errorCode` `VALIDATION` (failure codes
+`ASSET_INVALID`, `ACCOUNT_ADDRESS_INVALID_CHAR`, `ACCOUNT_ADDRESS_EMPTY_SEGMENT`,
+`ACCOUNT_ADDRESS_TOO_LONG`, `COLOR_INVALID`, `COLOR_TOO_LONG`).
+
+Rename v2 assets that use an underscore suffix before migrating. Where the
+suffix qualifies the origin or network of the same asset (`USDT_ETHEREUM/6`,
+`USDT_TRON/6`), the recommended v3 model is one asset with a color:
+`USDT/6` with color `ETHEREUM`. Colored balances are strictly segregated per
+`(account, asset, color)`, so they keep the separation the suffix provided.
+Where the suffix names a different asset (`LOYALTY_POINTS`), choose a code
+without an underscore (`LOYALTYPOINTS`, `LOYALTY`). In Numscript, colors need
+the in-script `#![feature("experimental-asset-colors")]` pragma and are limited
+to `^[A-Z]{1,16}$`; there is no ledger-level flag. See
+[Numscript colors](numscript.md#colors-are-supported-scope-qualified-access-is-rejected).
+
+### Amounts and timestamps
+
+- Posting amounts are capped at 2^256 − 1. v2 accepts any non-negative integer.
+  A larger amount fails JSON decoding with HTTP 400 `INVALID_REQUEST`. Both
+  integer tokens and decimal strings are accepted.
+- Timestamps before 1970-01-01T00:00:00Z are rejected with HTTP 400
+  `INVALID_REQUEST`, on writes and on `startDate`/`endDate`. v2 has no such
+  check.
+
+### Response envelopes and status codes
+
+| Response | v2 | v3 |
+|----------|----|----|
+| Create transaction | `200`, `{"data": {...transaction}}` | `201`, `{"data": {"transaction": {...}, "accountMetadata": {...}}}` |
+| Revert transaction | `201`, `{"data": {...transaction}}` | `201`, `{"data": {"revertedTransactionId": N, "revertTransaction": {...}}}` |
+| Get transaction | `{"data": {...transaction}}` | `{"data": {"transaction": {...}}}` |
+| Get account | `{"data": {...account}}` | `{"data": {...account}}` (no wrapper key) |
+| Lists | `{"cursor": {"pageSize", "hasMore", "previous", "next", "data": [...]}}` | `{"data": [...], "next", "previous", "hasMore"}`; see [Pagination](#pagination) |
+| Account volumes | Map of asset to `{input, output, balance}`, returned with `expand=volumes` | Always returned: array of `{"asset", "color", "volumes": {input, output, balance}}` |
+| `postCommitVolumes` | Map of account to asset to volumes | Map of account to array of `{asset, color, input, output}` |
+
+Page size defaults to 100 and is clamped to 1000 (v2: default 15, clamped to
+100). v2 cursors are not valid v3 page tokens.
+
+### Ignored v2 parameters
+
+The v3 HTTP layer does not reject unknown query parameters or unknown JSON body
+fields: a v2-only parameter is **silently ignored**, and the request runs with
+the v3 defaults. In particular:
+
+- `dryRun` is ignored on every route. A v2 dry run sent to v3 **commits**. v3
+  has no dry-run mode; remove the parameter before migrating.
+- `force` and `atEffectiveDate` are read from the revert JSON body only. v2
+  reads them from query parameters, so a v2 revert with `?force=true` runs
+  without `force` in v3. On create, `force` is read from the body only (v2
+  accepts query or body).
+- `pit`, `oot`, `expand`, `order`, `sort`, `schemaVersion`, `runtime` and
+  `parallel` are ignored.
+
+Malformed values of parameters that v3 does read (`pageSize`, `cursor`, `filter`)
+still fail with HTTP 400 `INVALID_REQUEST`.
+
+### Filter syntax
+
+Lists take the filter in the `filter` query parameter, either as the textual
+expression or as the structured JSON form, which is close to the v2 DSL (see
+[query-filter.md](../architecture/subsystems/read-path/query-filter.md)). The
+structured form differs from v2:
+
+| v2 | v3 |
+|----|----|
+| `$like`, `$in` | Rejected (`$in: not supported for this filter surface`, `unknown operator "$like"`) |
+| `account` field on transactions | Rejected (`$match: unsupported field "account"`); use `address` |
+| `balance[ASSET]`, `first_usage`, `insertion_date`, `updated_at` on accounts | Rejected; see [account date fields](#account-date-fields) |
+| Snake-case fields `inserted_at`, `reverted_at` | Rejected; use `insertedAt`, `revertedAt` |
+| `updated_at` on transactions | Rejected; no v3 equivalent |
+| Log `id` range | Use `logId` |
+
+Filter errors return HTTP 400 `INVALID_REQUEST`. Several filters also need an
+index; the [endpoint map](v2-to-v3-endpoint-map.json) lists them per operation.
+
+**Partial addresses.** v2 treats an address with an empty segment or a trailing
+`...` segment as a pattern: on accounts, `users::main` matches three-segment
+addresses with `users` first and `main` last, and `users:` matches every address
+under `users`. v3 has no segment wildcards: a structured `$match` on `address`,
+`source` or `destination` is a byte prefix match when the value ends with `:`,
+and an exact match otherwise (`internal/proto/commonpb/query_filter.go`). So
+`users:` matches every address that starts with `users:`, while `users::main`
+and `users:...` are exact values that match nothing, because v3 addresses cannot
+contain empty segments or dots. The textual form also offers `address ^= "users"`.
+Rewrite segment-pattern filters as a prefix match, or with an account type and
+metadata.
+
+### Error codes
+
+The `{"errorCode", "errorMessage"}` envelope is unchanged; the codes are not.
+Match on the v3 `errorCode` and the HTTP status:
+
+| Failure | v2 `errorCode` (status) | v3 `errorCode` (status) |
+|---------|--------------------------|--------------------------|
+| Insufficient funds | `INSUFFICIENT_FUND` (400) | `INSUFFICIENT_FUNDS` (400) |
+| Numscript parse error | `INTERPRETER_PARSE` (400) | `NUMSCRIPT_PARSE_ERROR` (400) |
+| Numscript compilation or invalid variables | `COMPILATION_FAILED` (400) | `NUMSCRIPT_COMPILE_ERROR` (400) |
+| Numscript execution failure | `INTERPRETER_RUNTIME` (400) | `NUMSCRIPT_EXECUTION_ERROR` (400); `NUMSCRIPT_RUNTIME` (500) for a technical failure |
+| No postings | `NO_POSTINGS` (400) | `VALIDATION` (400, failure code `EMPTY_TRANSACTION`) |
+| Reference conflict | `CONFLICT` (409) | `TRANSACTION_REFERENCE_CONFLICT` (409) |
+| Already reverted | `ALREADY_REVERT` (400) | `TRANSACTION_ALREADY_REVERTED` (409) |
+| Transaction not found | `NOT_FOUND` (404) | `TRANSACTION_NOT_FOUND` (404) |
+| Ledger not found | `LEDGER_NOT_FOUND` (404) | `LEDGER_NOT_FOUND` (404) |
+| Ledger already exists | `LEDGER_ALREADY_EXISTS` (400) | `LEDGER_ALREADY_EXISTS` (409) |
+| Idempotency key reused with different content | `VALIDATION` (400) | `IDEMPOTENCY_KEY_CONFLICT` (409) |
+| Malformed request | `VALIDATION` (400) | `INVALID_REQUEST` (400) for decoding and parameter errors; `VALIDATION` (400) for domain validation |
+| Delete a metadata key that does not exist | `204` for accounts, `NOT_FOUND` (404) for transactions | `METADATA_NOT_FOUND` (404) for accounts, transactions and ledgers |
+| Bulk element limit exceeded | `BULK_SIZE_EXCEEDED` | `BULK_SIZE_EXCEEDED` (413) |
+
+The full v3 list is in [gRPC Error Mapping](#grpc-error-mapping) and
+[REST/HTTP Error Mapping](#resthttp-error-mapping). Deleting an absent metadata
+key is now an error for accounts: retry loops that delete the same key twice
+must accept 404 or use the bulk `DELETE_METADATA` element with
+`skippableReasons: ["METADATA_NOT_FOUND"]`.
+
+### Idempotency and revert
+
+The idempotency scope and conflict code changed (see
+[Idempotency](#4-idempotency)), and reverts keep the original posting order
+with a posting-by-posting balance check (see
+[Posting Order in Revert](#3-posting-order-in-revert)).
 
 ---
 
@@ -299,7 +447,7 @@ for the full discriminator list and the information retained in the projection.
 
 ---
 
-## Features Implemented in POC
+## Features Implemented in v3
 
 ### 1. Transaction Creation
 
@@ -322,15 +470,16 @@ for the full discriminator list and the information retained in the projection.
 - ✅ Asset colors — promoted to first-class posting field. Postings carry
   `color: string` and balances are strictly segregated per
   `(account, asset, color)`. The empty color is the uncolored bucket and
-  is itself segregated from every colored bucket. Color values match
-  `^[A-Z]*$` and are immutable once carried by funds. See "Color of money
+  is itself segregated from every colored bucket. Posting color values match
+  `^[A-Z]*$` (at most 32 bytes); Numscript colors match `^[A-Z]{1,16}$`.
+  Colors are immutable once carried by funds. See "Color of money
   semantics" below.
 - ✅ `get_amount()` / `get_asset()` functions
 - ✅ Mid-script function calls (balance queries during execution)
 - ✅ `oneof` selector (conditional routing)
 - ✅ `overdraft()` function (dynamic overdraft calculation)
 
-**Color of money semantics (new in this POC):**
+**Color of money semantics (new in v3):**
 - `Posting.color` is exposed on every read/write path. Direct postings
   accept the new field as the optional fifth component of the
   `--posting source,destination,amount,asset[,color]` syntax on
@@ -553,7 +702,7 @@ The v2 schemaVersion/parallel options are not added to v3 by this correction.
 - `GET /v3/{ledgerName}` - Get ledger info (read)
 - `GET /v3/` - List all ledgers (read)
 
-### 5b. Account Types
+### 6. Account Types
 
 **Endpoints:**
 - `GET /v3/{ledgerName}/account-types` - List all account types for a ledger
@@ -570,7 +719,7 @@ The v2 schemaVersion/parallel options are not added to v3 by this correction.
 - ✅ Account types can be set at ledger creation time or added later
 - ✅ Persistence modes: `NORMAL` (default), `EPHEMERAL` (purged when zero balance), `TRANSIENT` (never persisted, must be zero at end of batch)
 
-### 6. Transaction Read
+### 7. Transaction Read
 
 **Endpoint:** `GET /v3/{ledgerName}/transactions/{transactionId}`
 
@@ -678,7 +827,8 @@ A never-invoked template returns a zero-valued response (not 404), so clients ha
 - `lastUsed` (string, date-time, nullable): Timestamp of the most recent invocation. Absent when count is 0.
 
 On a fresh ledger the counter builds up organically from cursor=0.
-### Filter input formats (dual-format contract, EN-1511)
+
+### 10. Filter input formats (dual-format contract, EN-1511)
 
 Every filtered surface accepts one `filter` in either the textual `filterexpr`
 grammar or the structured v2 JSON DSL; both compile to the same
@@ -690,7 +840,7 @@ classification, the field parity table and operator asymmetries, date coercion
 (EN-1540) — is documented once in
 [query-filter.md](../architecture/subsystems/read-path/query-filter.md).
 
-### 10. Prepared Queries and User-Configurable Indexes
+### 11. Prepared Queries and User-Configurable Indexes
 
 Prepared queries are reusable, named queries stored per-ledger. A nil filter is
 a match-all definition for the selected target. HTTP create accepts omitted or
@@ -768,37 +918,9 @@ ledgerctl indexes list --ledger my-ledger
 
 ## Missing Features
 
-### 1. ❌ Log Import
+### 1. ✅ Unique Reference Validation
 
-**Description:** Import logs from another ledger for migration or synchronization.
-
-**Current status:** 
-- Interface defined in `Ledger.Import(ctx, stream chan *commonpb.Log) error`
-- Implementation returns `ErrNotFound`
-
-**To implement:**
-- HTTP endpoint (probably `POST /v3/{ledgerName}/_import`)
-- Log validation
-- Sequential insertion with consistency verification
-- Streaming support for large volumes
-
-### 2. ❌ Log Export
-
-**Description:** Export all logs from a ledger for backup or migration.
-
-**Current status:**
-- Interface defined in `Ledger.Export(ctx, w ExportWriter) error`
-- Implementation returns `ErrNotFound`
-
-**To implement:**
-- HTTP endpoint (probably `GET /v3/{ledgerName}/_export`)
-- Log streaming
-- Output format (JSON lines, protobuf, etc.)
-- Pagination/cursor for large volumes
-
-### 3. ✅ Unique Reference Validation
-
-**Description:** In the original ledger, transaction reference must be unique within a ledger.
+**Description:** In v2, a transaction reference must be unique within a ledger.
 
 **Current status:** Fully implemented.
 - Transaction references are validated for uniqueness within a ledger using the attribute system
@@ -807,9 +929,11 @@ ledgerctl indexes list --ledger my-ledger
 - Empty references are allowed and not validated
 - The same reference can exist in different ledgers
 
-### 4. ✅ Ledger Metadata Update
+### 2. ✅ Ledger Metadata Update
 
-**Description:** Ability to add/modify metadata on a ledger after creation.
+**Description:** Ability to add/modify metadata on a ledger after creation. v2
+offers the same capability through `PUT /v2/{ledger}/metadata` and
+`DELETE /v2/{ledger}/metadata/{key}`; v3 changes the save method to `POST`.
 
 **Current status:** Fully implemented.
 - `POST /v3/{ledgerName}/metadata` - Add/modify metadata
@@ -822,16 +946,18 @@ the default scope mapping. SDK metadata-key parameters take the raw key, such
 as `formance.com/reviewed`, and encode it as one path segment. Direct HTTP
 clients perform that encoding themselves; the server decodes exactly once.
 
-### 5. ❌ Ledger Configuration Update
+### 3. ❌ Ledger Configuration Update
 
-**Description:** Modify certain ledger parameters after creation (e.g., maintenanceInterval).
+**Description:** Modify ledger configuration after creation. Neither v2 nor v3
+has a generic configuration update endpoint; v3 changes individual settings
+through dedicated routes (ledger metadata, account types, default enforcement
+mode, metadata schema) and promotes a mirror ledger with `POST /v3/{ledgerName}/promote`.
 
-**To implement:**
-- `PATCH /v3/{ledgerName}` or `PUT /v3/{ledgerName}/config`
+<a id="account-date-fields"></a>
 
-### 6. ❌ Account date fields (`first_usage`, `insertion_date`, `updated_at`)
+### 4. ❌ Account date fields (`first_usage`, `insertion_date`, `updated_at`)
 
-**Description:** the original ledger carries three date fields on every account —
+**Description:** Ledger v2 carries three date fields on every account —
 `firstUsage`, `insertionDate`, `updatedAt` (`internal/account.go:21-23` on
 `release/v2.4`) — and declares all three filterable and paginatable
 (`internal/queries/resources.go:23-30`, `NewDateField().Paginated()`). They back
@@ -856,7 +982,7 @@ decision in [ledger#2025](https://github.com/formancehq/ledger/issues/2025)).
   `parseMetadataKey` and 400s as `$match: unsupported field "first_usage"`.
 - **Not paginatable.** Account cursor pagination is by address.
 
-**Why it is removed rather than pending:** the original ledger maintains
+**Why it is removed rather than pending:** Ledger v2 maintains
 `first_usage` with a read-modify-write upsert — its `UpsertAccounts` statement
 reads the stored row and lowers the value whenever the incoming write carries an
 earlier one (`internal/storage/ledger/accounts.go:170` on `release/v2.4`; the
@@ -965,7 +1091,7 @@ at least one posting (`domain.ErrEmptyTransaction`), so this is clean where
 there is a real opening transaction and awkward where accounts appear
 implicitly.
 
-**Migration from the original ledger — scope.** Everything below is about
+**Migration from Ledger v2 — scope.** Everything below is about
 `first_usage`, which is the only one of the three with a reconstruction story
 worth writing down. The other two are straight cut-over copies into typed
 `datetime` keys of their own, and neither is recoverable afterwards in a way
@@ -1052,14 +1178,14 @@ also keyed per `(account, asset, color)` while `first_usage` is per address.
 
 ### 1. Post-Commit Volumes (Always Present) / Pre-Commit Volumes (Removed)
 
-**Description:** In the original ledger, transaction creation responses include volumes before and after the commit:
+**Description:** In v2, transaction responses can include volumes before and after the commit:
 
 - `postCommitVolumes` - Volumes after transaction application
 - `preCommitVolumes` - Volumes before transaction application
 - `postCommitEffectiveVolumes` - Effective volumes after application (with effective timestamp)
 - `preCommitEffectiveVolumes` - Effective volumes before application (with effective timestamp)
 
-**POC Status:**
+**v3 status:**
 - `postCommitVolumes` is part of **every** persisted transaction. It rides on the `transaction` object (not a sibling field), so create, revert, bulk, unitary get, list, and prepared-query results all expose the same value. It is an immutable historical snapshot captured at the transaction's sequence — the volumes (input/output) per `(account, asset, color)` tuple touched by the transaction, right after it applied — never recomputed from current balances.
 - `preCommitVolumes`, `postCommitEffectiveVolumes`, and `preCommitEffectiveVolumes` remain **intentionally removed**.
 
@@ -1084,52 +1210,88 @@ also keyed per `(account, asset, color)` while `first_usage` is per address.
 - Each account maps to a flat list of `(asset, color)` rows; the empty color is the uncolored bucket.
 - `preCommitVolumes` and effective volumes remain removed; use dedicated read endpoints if needed.
 
+### 2. Log Import and Export
+
+**v2:** `POST /v2/{ledger}/logs/import` replays a stream of JSON-encoded logs
+into a ledger, and `POST /v2/{ledger}/logs/export` streams every log of a ledger
+as newline-delimited JSON.
+
+**v3:** Neither endpoint exists, and no import/export implementation remains in
+the codebase. To bring v2 history into v3, create a
+[mirror ledger](#8-mirror-ledgers): it replays the v2 logs from the v2 HTTP API
+or PostgreSQL database and is promoted to a normal ledger at cut-over. For
+backups use the store backup and restore operations; to stream changes out,
+use event sinks or page through `GET /v3/{ledgerName}/logs`. The endpoint map
+lists both v2 operations as `removed`.
+
 ---
 
 ## Behavior Differences to Note
 
 ### 1. Negative Balance Handling
 
-**POC:** Strict balance verification by default. The `force` flag on transaction creation or revert bypasses balance checks, allowing accounts to go negative.
+**v3:** Strict balance verification by default. The `force` flag on transaction creation or revert bypasses balance checks, allowing accounts to go negative. Numscript sources can also declare `allowing overdraft up to [...]` or `allowing unbounded overdraft`.
 
-**Original:** Same behavior, but the original ledger has configuration options for "unbounded" accounts.
+**v2:** Same behavior: `force` on create and revert, and the same Numscript overdraft clauses.
 
 **Status:** ✅ Compliant (via `force` flag)
 
 ### 2. "world" Account
 
-**POC:** The "world" account has infinite funds (universal source).
+**v3:** The "world" account has infinite funds (universal source).
 
-**Original:** Same behavior.
+**v2:** Same behavior.
 
 **Status:** ✅ Compliant
 
 ### 3. Posting Order in Revert
 
-**POC:** Postings are reversed (source ↔ destination) AND the order is reversed.
+**v3:** Each posting's source and destination are swapped, and the
+compensating postings keep the **original order**: posting *i* of the revert
+reverses posting *i* of the original
+([`processRevertTransaction`](../../../internal/domain/processing/processor_revert_transaction.go)).
+Color carries over from the original posting.
 
-**Original:** Same behavior.
+**v2:** Source and destination are swapped **and** the posting order is
+reversed: the last original posting becomes the first compensating posting
+(`Postings.Reverse` in v2 `internal/posting.go`).
 
-**Status:** ✅ Compliant
+**Status:** ⚠️ Different. Clients that compare a revert's postings with the
+original by index, or that expect v2's reversed order, must be updated.
+
+Balance checks also differ. v2 checks each account's *net* balance after all
+compensating postings (`revertTransaction` in v2
+`internal/controller/ledger/controller_default.go`). v3 checks the source
+balance posting by posting, in the order above. For an original `A → B` then
+`B → C`, v3 applies `B → A` before `C → B`, so the revert fails with
+`INSUFFICIENT_FUNDS` when `B` has already passed the funds on, while v2 accepts
+it because `B` nets to zero. Use `force` when such a chained revert must go
+through.
 
 ### 4. Idempotency
 
-**POC:**
+**v3:**
 - Supported via `Idempotency-Key` header (HTTP) or `ApplyBatch.idempotency_key` (gRPC) — keyed per atomic batch
-- System-level scope (not per-ledger)
+- System-level scope (not per-ledger): the same key used on two ledgers identifies the same batch
 - Hash-based content verification (BLAKE3)
 - Stored in generation-based cache and persisted to Pebble
 - Maximum key length: 256 characters (validated at admission)
+- Reusing a key with different content fails with HTTP 409 / gRPC `AlreadyExists`, `errorCode` `IDEMPOTENCY_KEY_CONFLICT`
 
-**Original:** Same mechanism.
+**v2:**
+- `Idempotency-Key` header, or the per-element `ik` in bulk
+- Scoped per ledger (unique on `(ledger, idempotency_key)` in the logs table)
+- Reusing a key with different content fails with HTTP 400 `VALIDATION` (500 `INTERNAL` on revert)
 
-**Status:** ✅ Compliant
+**Status:** ⚠️ Different. Clients that reuse one key across ledgers must make
+keys unique per operation, and clients that detect a reused key must match
+409 `IDEMPOTENCY_KEY_CONFLICT` instead of 400 `VALIDATION`.
 
 See [Idempotency](../architecture/subsystems/admission/idempotency.md) for detailed documentation.
 
 ### 5. Index readiness and metadata schema retypes (EN-1323)
 
-**POC:** Index "readiness" is a per-replica concept driven by the
+**v3:** Index "readiness" is a per-replica concept driven by the
 local `IndexVersionState` (`current_version`, `pending_version`), not
 by a cluster-wide flag.
 
@@ -1182,9 +1344,8 @@ rely on the eventual-consistency window (typically seconds)
 inherent to background rewrites. `pkg/actions` ships this as
 `MetadataIndexCurrentVersion` + `WaitForMetadataIndexRewrite`.
 
-**Original:** No equivalent — the original ledger has no
-per-replica versioning and reaches "ready" via a single
-synchronously-applied schema migration.
+**v2:** No equivalent — v2 stores ledgers in PostgreSQL and has no
+per-replica index versioning or readiness state.
 
 **Status:** ⚠️ Different model — readiness is per-replica version
 state (`IndexEntry.current_version` / `pending_version`), with no
@@ -1194,17 +1355,15 @@ cluster-wide ready flag on the wire.
 
 ## Read Features
 
-Read endpoints comparison with the original ledger:
+Endpoint comparison with Ledger v2:
 
-| Endpoint | POC | Original | Notes |
+| Endpoint | v3 | v2 | Notes |
 |----------|-----|----------|-------|
 | `GET /v3/{ledgerName}/transactions/{id}` | ✅ | ✅ | Get a transaction by ID |
 | `GET /v3/{ledgerName}/transactions` | ✅ | ✅ | List transactions: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (reference selection via `filter={"$match":{"reference":"..."}}`) |
-| `GET /v3/{ledgerName}/accounts` | ✅ | ✅ | List accounts (rich boolean filter, cursor pagination). No `first_usage` / `insertion_date` / `updated_at` filter or ordering ([details](#6--account-date-fields-first_usage-insertion_date-updated_at)) |
+| `GET /v3/{ledgerName}/accounts` | ✅ | ✅ | List accounts (rich boolean filter, cursor pagination). No `first_usage` / `insertion_date` / `updated_at` filter or ordering ([details](#account-date-fields)) |
 | `GET /v3/{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
-| `GET /v3/{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
-| `GET /v3/{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
-| `GET /v3/{ledgerName}/volumes` | ✅ | ✅ | Aggregate volumes (per-asset, generic account `filter`) |
+| `GET /v3/{ledgerName}/volumes` | ✅ | ✅ | Aggregate volumes (per-asset and color, generic account `filter`). Replaces v2 `GET /v2/{ledger}/aggregate/balances`; for v2 `GET /v2/{ledger}/volumes` (per-account volumes) read the `volumes` of `GET /v3/{ledgerName}/accounts` |
 | `GET /v3/{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs, ascending by ledger-local log id unless `reverse=true` ([pagination](#pagination)). Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`) on both transports |
 | `GET /v3/{ledgerName}/stats` | ✅ | ✅ | Ledger usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts). A missing or deleted ledger returns `404 LEDGER_NOT_FOUND` |
 | `GET /v3/{ledgerName}` | ✅ | ✅ | Get ledger info |
@@ -1245,15 +1404,15 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/_/indexes/status?ledger=` | ✅ | ❌ | Aggregate indexer progress + IndexEntry list |
 | `GET /v3/_/indexes/{canonicalId}` | ✅ | ❌ | Get a single bucket-scoped Index entry |
 | `GET /v3/_/indexes/{canonicalId}/status` | ✅ | ❌ | Bucket-scoped IndexEntry |
-| `POST /v3/{ledgerName}/bulk` | ✅ | ❌ | Bulk operations (alternate path without underscore) |
-| `GET /_info` | ✅ | ❌ | Server build info (`version`, `commit`, `buildDate`, `goVersion`); unauthenticated, flat JSON (no `data` envelope) |
+| `POST /v3/{ledgerName}/bulk` | ✅ | ✅ | Bulk operations. v2 path is `POST /v2/{ledger}/_bulk`; v3 has no underscore |
+| `GET /_info` | ✅ | ✅ | Server build info (`version`, `commit`, `buildDate`, `goVersion`); unauthenticated, flat JSON (no `data` envelope). v2 serves `GET /v2/_/info` (`data` envelope with `server`, `version` and storage configuration) and `GET /v2/{ledger}/_info` (storage migration status) |
 
 **Read consistency selector.** Every `/v3` read accepts `X-Consistency:
 stale` over HTTP, matching the gRPC `x-consistency: stale` metadata. The
 receiving node serves the read from its own store, with no ReadIndex barrier
 and no forwarding. The default and `linearizable` keep the barrier. HTTP rejects
 an unknown or repeated value with `400 INVALID_REQUEST`; gRPC ignores unknown
-values. The original ledger has no equivalent. See
+values. Ledger v2 has no equivalent. See
 [HTTP API: Read consistency](../architecture/subsystems/api/http-api.md#read-consistency).
 
 ### Pagination
@@ -1293,19 +1452,9 @@ repeats the same `reverse` and filter.
 
 ---
 
-## Priority Recommendations
-
-### High Priority
-1. **Import/Export** - Critical for migration and backups
-
-### Low Priority
-2. **Ledger config update** - Can be done manually via recreation
-
----
-
 ## Architecture Notes
 
-The POC uses a different architecture with Raft for replication:
+Ledger v3 uses a different architecture from v2, which stores each ledger in PostgreSQL. v3 replicates with Raft:
 - A single Raft group manages all ledgers and their transactions
 - Write operations go through the leader
 - Logs are stored via the Store (Pebble)
@@ -1313,8 +1462,7 @@ The POC uses a different architecture with Raft for replication:
 
 This architecture impacts certain implementation decisions:
 - **Bulk atomicity is handled at the Raft level** - All actions in a bulk request are submitted as a single Raft command, enabling system-level atomicity
-- Import must respect log sequence
-- Export can be done from any node (local read)
+- Reads can be served by any node; see the read consistency selector above
 
 See [Global Log Architecture](../architecture/subsystems/consensus/global-log.md) for details on how the two-level log architecture enables cross-ledger atomic operations.
 
@@ -1322,7 +1470,7 @@ See [Global Log Architecture](../architecture/subsystems/consensus/global-log.md
 
 ## gRPC API
 
-The POC provides a gRPC API for internal service communication (Raft node forwarding to leader) and can be used by clients.
+Ledger v3 provides a gRPC API for internal service communication (Raft node forwarding to leader) and for clients. Ledger v2 has no gRPC API, so every entry below is new in v3.
 
 ### Cluster node ID width
 
@@ -1355,8 +1503,6 @@ Paged list RPCs follow the shared `ListOptions` contract and publish the
 
 | Method | Description | Status |
 |--------|-------------|--------|
-| `CreateLedger` | Create a new ledger | ✅ |
-| `DeleteLedger` | Delete a ledger | ✅ |
 | `ListLedgers` | Stream ledgers, paged by name | ✅ |
 | `GetLedger` | Get ledger by name or ID | ✅ |
 | `GetTransaction` | Get transaction by ID | ✅ |
@@ -1393,6 +1539,13 @@ Paged list RPCs follow the shared `ListOptions` contract and publish the
 | `GetLedgerStats` | Get aggregate usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts) | ✅ |
 | `AggregateVolumes` | Per-asset aggregated volumes for filtered accounts | ✅ |
 | `InspectIndex` | Inspect metadata index (distinct values, facets, summary) | ✅ |
+| `GetIndex` | Get a single index registry entry | ✅ |
+| `GetIndexEntryStatus` | Get one index's backfill cursor and per-replica version state | ✅ |
+| `ListIndexes` | List indexes, scoped `ALL` / `BUCKET` / `LEDGER` | ✅ |
+| `GetTemplateUsage` | Get a numscript template's invocation count and last-used timestamp | ✅ |
+
+There are no dedicated `CreateLedger`, `DeleteLedger`, transaction, or metadata
+write RPCs: every write is an `Apply` request variant (see below).
 
 ### Apply Method
 
@@ -1405,18 +1558,20 @@ The `Apply` method is the **single entry point for all ledger write operations**
 - Simplified client logic
 - Efficient forwarding between Raft nodes
 
-**Request:** `ApplyRequest` containing a `LedgerAction` with:
-- `ledger_id`: Target ledger ID
-- `idempotency_key`: Optional idempotency key (on the enclosing `ApplyBatch` — one per atomic batch)
-- `skip_response`: When `true`, strips log payloads from the response (only `sequence` is returned per log). Useful for historical ingestion where the client does not need the full response on success.
-- One of:
+**Request** (`misc/proto/bucket.proto`):
+- `ApplyRequest` carries either an `unsigned` `ApplyBatch` or a `signed` `SignedApplyBatch`, plus:
+  - `skip_response`: When `true`, strips log payloads from the response (only `sequence` is returned per log). Useful for historical ingestion where the client does not need the full response on success.
+  - `forwarded_caller_snapshot`: Set only by a forwarding follower; a direct client value is rejected.
+- `ApplyBatch` is the atomic, idempotency and signing unit: an ordered list of `requests` and one optional `idempotency_key`.
+- Each `Request` is one of the system or ledger operations: `apply` (a `LedgerApplyRequest`), `create_ledger`, `delete_ledger`, `promote_ledger`, `save_ledger_metadata`, `delete_ledger_metadata`, `set_metadata_field_type`, `remove_metadata_field_type`, `create_index`, `drop_index`, `save_numscript`, `add_account_type`, `remove_account_type`, `set_default_enforcement_mode`, the prepared-query, query-checkpoint, signing-key, events-sink and maintenance-mode variants.
+- `LedgerApplyRequest` has `ledger` (the target ledger name), `action` (a `LedgerAction`) and optional `skippable_reasons`. `LedgerAction` is one of:
   - `create_transaction`: Create a new transaction
   - `add_metadata`: Add metadata to an account or transaction
   - `revert_transaction`: Revert a transaction
   - `delete_metadata`: Delete metadata from an account or transaction
-  - `save_numscript`: Save an immutable numscript version (explicit full semver)
+  - `add_account_type`, `remove_account_type`, `set_default_enforcement_mode`: Account-type operations
 
-**Response:** `common.Log` - The log entry created by the action (stripped to `sequence` only when `skip_response` is set)
+**Response:** `ApplyResponse.logs` - one `common.Log` per log the batch created (stripped to `sequence` only when `skip_response` is set)
 
 **Note:** Individual RPC methods like `CreateTransaction`, `RevertTransaction`, `SaveAccountMetadata`, etc. have been consolidated into the `Apply` method for a cleaner API.
 
