@@ -3,10 +3,13 @@ module github.com/formancehq/ledger/pkg/client/v3
 go 1.27.0
 
 require (
+	github.com/formancehq/ledger/pkg/proto/v3 v3.0.0
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.11
 )
+
+replace github.com/formancehq/ledger/pkg/proto/v3 => ../../proto/v3
 
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect

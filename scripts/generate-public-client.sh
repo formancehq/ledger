@@ -54,7 +54,6 @@ for name in "${public[@]}"; do
 done
 
 protoc \
-	--go_out=pkg/client/v3 --go_opt=module="${client_module}" \
 	--go-grpc_out=pkg/client/v3 --go-grpc_opt=module="${client_module}" \
 	-I pkg/client/v3/proto \
 	"${proto_files[@]}"
