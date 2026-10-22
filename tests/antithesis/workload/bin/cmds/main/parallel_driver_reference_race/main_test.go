@@ -184,6 +184,7 @@ func TestReferenceOracleAcknowledgedPresence(t *testing.T) {
 // rows to test oracle sensitivity. It does not simulate an engine data loss.
 type hiddenReferenceClient struct {
 	servicepb.BucketServiceClient
+
 	hide   bool
 	stream *hiddenReferenceStream
 }
@@ -194,11 +195,13 @@ func (c *hiddenReferenceClient) ListTransactions(ctx context.Context, req *servi
 		return nil, err
 	}
 	c.stream = &hiddenReferenceStream{ServerStreamingClient: stream, hide: c.hide}
+
 	return c.stream, nil
 }
 
 type hiddenReferenceStream struct {
 	grpc.ServerStreamingClient[commonpb.Transaction]
+
 	hide   bool
 	hidden bool
 }

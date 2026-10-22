@@ -76,6 +76,11 @@ The model's `restore cycle completed` marker records orchestration completion.
 It does not independently prove that a nonempty post-checkpoint business delta
 was restored and checked by the model oracle.
 
+Aggregate comparisons retain stored zero-volume cells, including those created
+by zero-amount postings. These cells participate in precision normalization and
+color grouping. Purged cells are removed from the oracle state instead; missing
+or invented zero buckets still fail the comparison.
+
 ## Model checkpoint coverage
 
 The model template exclusively owns the checkpoint timeline, with no other

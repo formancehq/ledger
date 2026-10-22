@@ -31,6 +31,7 @@ func reversalFixture() (*servicepb.ApplyResponse, []*commonpb.Posting, *commonpb
 			}},
 		}}},
 	}}}
+
 	return resp, original, tx
 }
 
@@ -45,7 +46,7 @@ func TestValidateReversal(t *testing.T) {
 		want   string
 	}{
 		{"missing log", func(r *servicepb.ApplyResponse, _ *commonpb.Transaction) { r.Logs = nil }, "expected one revert log"},
-		{"duplicate effect", func(r *servicepb.ApplyResponse, _ *commonpb.Transaction) { r.Logs = append(r.Logs, r.Logs[0]) }, "expected one revert log"},
+		{"duplicate effect", func(r *servicepb.ApplyResponse, _ *commonpb.Transaction) { r.Logs = append(r.Logs, r.GetLogs()[0]) }, "expected one revert log"},
 		{"missing payload", func(r *servicepb.ApplyResponse, _ *commonpb.Transaction) { r.Logs[0] = nil }, "missing apply log"},
 		{"wrong ledger", func(r *servicepb.ApplyResponse, _ *commonpb.Transaction) {
 			r.Logs[0].GetPayload().GetApply().LedgerName = "other"
@@ -58,11 +59,11 @@ func TestValidateReversal(t *testing.T) {
 		}, "missing reversal"},
 		{"reused identity", func(_ *servicepb.ApplyResponse, tx *commonpb.Transaction) { tx.Id = 0 }, "invalid reversal identity"},
 		{"wrong reverse link", func(_ *servicepb.ApplyResponse, tx *commonpb.Transaction) { tx.RevertsTransaction = 8 }, "invalid reversal identity"},
-		{"missing posting", func(_ *servicepb.ApplyResponse, tx *commonpb.Transaction) { tx.Postings = tx.Postings[:1] }, "expected 2 reversed postings"},
+		{"missing posting", func(_ *servicepb.ApplyResponse, tx *commonpb.Transaction) { tx.Postings = tx.GetPostings()[:1] }, "expected 2 reversed postings"},
 		{"missing amount", func(_ *servicepb.ApplyResponse, tx *commonpb.Transaction) { tx.Postings[1].Amount = nil }, "posting 1 is incomplete"},
 		{"wrong direction", func(_ *servicepb.ApplyResponse, tx *commonpb.Transaction) { tx.Postings[1].Source = "world" }, "posting 1 does not exactly reverse"},
 		{"wrong amount", func(_ *servicepb.ApplyResponse, tx *commonpb.Transaction) {
-			tx.Postings[1].Amount = commonpb.NewPosting("a", "b", "COIN", big.NewInt(1)).Amount
+			tx.Postings[1].Amount = commonpb.NewPosting("a", "b", "COIN", big.NewInt(1)).GetAmount()
 		}, "posting 1 does not exactly reverse"},
 		{"wrong asset", func(_ *servicepb.ApplyResponse, tx *commonpb.Transaction) { tx.Postings[1].Asset = "USD/2" }, "posting 1 does not exactly reverse"},
 	} {

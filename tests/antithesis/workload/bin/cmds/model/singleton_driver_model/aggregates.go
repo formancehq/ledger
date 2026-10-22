@@ -172,8 +172,6 @@ func (o aggOptions) prefixOf(addr string) (string, bool) {
 // aggPair is one bucket's summed volumes.
 type aggPair struct{ in, out uint256.Int }
 
-func (p *aggPair) zero() bool { return p.in.IsZero() && p.out.IsZero() }
-
 func addAgg(sums map[assetColor]*aggPair, key assetColor, in, out *uint256.Int) {
 	p := sums[key]
 	if p == nil {
@@ -188,8 +186,9 @@ func addAgg(sums map[assetColor]*aggPair, key assetColor, in, out *uint256.Int) 
 // modelAggregate folds the volume cells of every filter-matching account into
 // per-(asset, color) sums the way the server's result stage does: precisions
 // of one base merged under the highest seen with lower amounts rescaled, then
-// colors summed into the uncolored bucket, each when asked. Fully-zero sums are
-// dropped (a purge can zero a cell the server no longer reports).
+// colors summed into the uncolored bucket, each when asked. Stored zero cells
+// contribute buckets too: zero postings create normal volume cells, while
+// oracle.purgeZeroBalance removes purged cells from Volumes entirely.
 func modelAggregate(ls oracle.LedgerState, filter *commonpb.QueryFilter, opts aggOptions) map[assetColor]*aggPair {
 	return aggregateFold(ls, filter, opts, nil)
 }
@@ -248,12 +247,6 @@ func aggregateFold(ls oracle.LedgerState, filter *commonpb.QueryFilter, opts agg
 		sums = collapsed
 	}
 
-	for key, p := range sums {
-		if p.zero() {
-			delete(sums, key)
-		}
-	}
-
 	return sums
 }
 
@@ -307,7 +300,7 @@ func formatAsset(base string, precision uint8) string {
 
 // serverAggregate decodes an AggregateResult into per-(asset, color) sums. Every
 // bucket the server sent is kept, zero totals included: a bucket it invented is
-// a divergence the model side's drop would otherwise absorb. ok is false when a
+// a divergence even when its amounts are zero. ok is false when a
 // bucket repeats, which the result's one-entry-per-bucket contract forbids.
 func serverAggregate(res *commonpb.AggregateResult) (out map[assetColor]*aggPair, ok bool) {
 	out = map[assetColor]*aggPair{}

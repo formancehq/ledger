@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -25,7 +26,7 @@ func validateReversal(resp *servicepb.ApplyResponse, ledger string, txID uint64,
 	}
 	tx := reverted.GetRevertTransaction()
 	if tx.GetId() == txID || tx.GetRevertsTransaction() != txID {
-		return fmt.Errorf("invalid reversal identity or target")
+		return errors.New("invalid reversal identity or target")
 	}
 	if len(tx.GetPostings()) != len(postings) {
 		return fmt.Errorf("expected %d reversed postings, got %d", len(postings), len(tx.GetPostings()))
@@ -43,5 +44,6 @@ func validateReversal(resp *servicepb.ApplyResponse, ledger string, txID uint64,
 			return fmt.Errorf("posting %d does not exactly reverse the original", i)
 		}
 	}
+
 	return nil
 }

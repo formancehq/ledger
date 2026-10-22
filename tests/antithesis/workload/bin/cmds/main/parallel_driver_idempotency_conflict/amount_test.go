@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/drivertest"
 )
@@ -23,6 +24,7 @@ import (
 // Capture actual outgoing requests while delegating all behavior to the real server.
 type recordingClient struct {
 	servicepb.BucketServiceClient
+
 	requests []*servicepb.ApplyRequest
 	errors   []error
 }
@@ -31,6 +33,7 @@ func (c *recordingClient) Apply(ctx context.Context, req *servicepb.ApplyRequest
 	c.requests = append(c.requests, proto.Clone(req).(*servicepb.ApplyRequest))
 	resp, err := c.BucketServiceClient.Apply(ctx, req, opts...)
 	c.errors = append(c.errors, err)
+
 	return resp, err
 }
 
@@ -54,11 +57,11 @@ func TestConflictVariants(t *testing.T) {
 				first, second := recording.requests[0], recording.requests[1]
 				posting := second.GetUnsigned().GetRequests()[0].GetApply().GetAction().GetCreateTransaction().GetPostings()[0]
 				if amountOnly {
-					require.False(t, proto.Equal(commonpb.NewUint256FromUint64(amounts[0]), posting.Amount))
+					require.False(t, proto.Equal(commonpb.NewUint256FromUint64(amounts[0]), posting.GetAmount()))
 				} else {
-					require.Equal(t, "users:1", posting.Destination)
-					require.Equal(t, "EUR/2", posting.Asset)
-					require.True(t, proto.Equal(commonpb.NewUint256FromUint64(amounts[1]), posting.Amount))
+					require.Equal(t, "users:1", posting.GetDestination())
+					require.Equal(t, "EUR/2", posting.GetAsset())
+					require.True(t, proto.Equal(commonpb.NewUint256FromUint64(amounts[1]), posting.GetAmount()))
 					posting.Destination = "users:0"
 					posting.Asset = "USD/2"
 				}
