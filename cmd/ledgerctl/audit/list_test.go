@@ -94,20 +94,12 @@ func TestPrintAuditEntry_BatchSignature(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			test.entry.Items = []*auditpb.AuditItem{{SerializedOrder: serialized}}
 
-			var out bytes.Buffer
-			pterm.SetDefaultOutput(&out)
-			pterm.DisableStyling()
-			t.Cleanup(func() {
-				pterm.SetDefaultOutput(os.Stdout)
-				pterm.EnableStyling()
-			})
-
-			printAuditEntry(test.entry, true)
+			out := captureOutput(func() { printAuditEntry(test.entry, true) })
 
 			for _, want := range test.want {
-				require.Contains(t, out.String(), want)
+				require.Contains(t, out, want)
 			}
-			require.NotContains(t, out.String(), "key=unsigned")
+			require.NotContains(t, out, "key=unsigned")
 		})
 	}
 }
@@ -130,17 +122,30 @@ func TestPrintAuditEntry_CompactSignature(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			var out bytes.Buffer
-			pterm.SetDefaultOutput(&out)
-			pterm.DisableStyling()
-			t.Cleanup(func() {
-				pterm.SetDefaultOutput(os.Stdout)
-				pterm.EnableStyling()
-			})
+			out := captureOutput(func() { printAuditEntry(test.entry, false) })
 
-			printAuditEntry(test.entry, false)
-
-			require.Contains(t, out.String(), test.want+"\n")
+			require.Contains(t, out, test.want+"\n")
 		})
 	}
+}
+
+// captureOutput returns what fn prints through pterm, unstyled. pterm has no
+// getter for its writer, so it is restored to its default, os.Stdout.
+func captureOutput(fn func()) string {
+	var out bytes.Buffer
+	wasRaw := pterm.RawOutput
+
+	pterm.SetDefaultOutput(&out)
+	pterm.DisableStyling()
+
+	defer func() {
+		pterm.SetDefaultOutput(os.Stdout)
+		if !wasRaw {
+			pterm.EnableStyling()
+		}
+	}()
+
+	fn()
+
+	return out.String()
 }
