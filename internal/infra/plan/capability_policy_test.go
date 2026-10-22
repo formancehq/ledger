@@ -27,7 +27,7 @@ func capabilityPolicyProposal(t *testing.T) *node.Proposal {
 
 	data, err := (&raftcmdpb.Proposal{
 		ExecutionPlan:        &raftcmdpb.ExecutionPlan{},
-		RequiredCapabilities: []uint32{uint32(capabilities.IDExecutionPlanV1)},
+		RequiredCapabilities: []uint32{99},
 	}).MarshalVT()
 	require.NoError(t, err)
 
@@ -39,7 +39,6 @@ func TestCapabilityPolicyProposerBlocksInactiveCapability(t *testing.T) {
 	proposer := NewCapabilityPolicyProposer(delegate, func() (*commonpb.ClusterPolicy, error) {
 		return &commonpb.ClusterPolicy{
 			CapabilityActivationArmed:    true,
-			CapabilityAdmissionPolicy:    commonpb.CapabilityAdmissionPolicy_CAPABILITY_ADMISSION_POLICY_FEATURE_ONLY,
 			CapabilityMembershipRevision: 1,
 		}, nil
 	}, nil, false)
@@ -54,10 +53,9 @@ func TestCapabilityPolicyProposerAllowsActiveTechnicalCapability(t *testing.T) {
 	proposer := NewCapabilityPolicyProposer(delegate, func() (*commonpb.ClusterPolicy, error) {
 		return &commonpb.ClusterPolicy{
 			CapabilityActivationArmed:    true,
-			CapabilityAdmissionPolicy:    commonpb.CapabilityAdmissionPolicy_CAPABILITY_ADMISSION_POLICY_FEATURE_ONLY,
 			CapabilityMembershipRevision: 1,
 			CapabilityActivations: []*commonpb.CapabilityActivation{{
-				Id:     uint32(capabilities.IDExecutionPlanV1),
+				Id:     99,
 				Active: true,
 			}},
 		}, nil

@@ -16,17 +16,11 @@ import (
 
 type ID uint32
 
-// IDs are protocol constants. Once published, an ID is never reused.
-const (
-	IDExecutionPlanV1  ID = 1
-	IDSemanticReplayV1 ID = 2
-)
-
 // SupportedIDs is the immutable capability set implemented by this binary.
-// It is used as membership evidence during join; callers must copy the result
-// before attaching it to a mutable wire message.
+// No protocol feature is activated yet; this empty registry keeps the
+// membership-evidence plumbing ready for the first real capability.
 func SupportedIDs() []ID {
-	return []ID{IDExecutionPlanV1, IDSemanticReplayV1}
+	return nil
 }
 
 // CurrentReplayProtocol is the replay encoding understood by this binary.
@@ -35,13 +29,6 @@ func SupportedIDs() []ID {
 // binary whose supported floor is lower must refuse to open the store rather
 // than decode state it cannot execute deterministically.
 const CurrentReplayProtocol uint32 = 1
-
-type AdmissionPolicy uint8
-
-const (
-	FeatureOnly AdmissionPolicy = iota + 1
-	AllWrites
-)
 
 type MemberRole uint8
 
@@ -60,7 +47,6 @@ type Member struct {
 
 type State struct {
 	Armed              bool
-	Policy             AdmissionPolicy
 	MinimumReplay      uint32
 	MembershipRevision uint64
 	Activations        map[ID]bool
@@ -128,21 +114,7 @@ func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]ID, error) {
 		return nil, fmt.Errorf("%w: nil proposal", ErrInvalidDeclaration)
 	}
 
-	var required []ID
-	// ExecutionPlan is the admission/apply coverage contract. Its presence is
-	// significant even when the message is empty (for no-read proposals): an
-	// old binary cannot safely replay the envelope without understanding it.
-	if proposal.GetExecutionPlan() != nil {
-		required = append(required, IDExecutionPlanV1)
-	}
-	// Idempotency freezes a proposal's semantic outcome for replay. Attach the
-	// dependency to the envelope rather than to the number of orders so an
-	// empty or metadata-only proposal cannot evade the barrier.
-	if proposal.GetIdempotency() != nil {
-		required = append(required, IDSemanticReplayV1)
-	}
-
-	return Normalize(required)
+	return nil, nil
 }
 
 // StampProposal replaces required_capabilities with the deterministic result
@@ -178,9 +150,6 @@ func (s State) Validate() error {
 	if !s.Armed {
 		return nil
 	}
-	if s.Policy != FeatureOnly && s.Policy != AllWrites {
-		return fmt.Errorf("%w: admission policy %d", ErrInvalidState, s.Policy)
-	}
 	if s.MembershipRevision == 0 {
 		return fmt.Errorf("%w: zero membership revision", ErrInvalidState)
 	}
@@ -196,11 +165,6 @@ func FromPolicy(policy *commonpb.ClusterPolicy) State {
 	s.Armed = policy.GetCapabilityActivationArmed()
 	s.MinimumReplay = policy.GetMinimumReplayProtocol()
 	s.MembershipRevision = policy.GetCapabilityMembershipRevision()
-	if policy.GetCapabilityAdmissionPolicy() == commonpb.CapabilityAdmissionPolicy_CAPABILITY_ADMISSION_POLICY_ALL_WRITES {
-		s.Policy = AllWrites
-	} else if policy.GetCapabilityAdmissionPolicy() == commonpb.CapabilityAdmissionPolicy_CAPABILITY_ADMISSION_POLICY_FEATURE_ONLY {
-		s.Policy = FeatureOnly
-	}
 	for _, activation := range policy.GetCapabilityActivations() {
 		if activation != nil {
 			s.Activations[ID(activation.GetId())] = activation.GetActive()
@@ -225,7 +189,7 @@ func Normalize(ids []ID) ([]ID, error) {
 // Evaluate is pure. Reachability is reported separately from support: a
 // temporarily unreachable voter is still a blocker for activation, while a
 // learner is included because it must replay every committed entry.
-func Evaluate(state State, required []ID, businessWrite bool, members []Member) Decision {
+func Evaluate(state State, required []ID, _ bool, members []Member) Decision {
 	if err := state.Validate(); err != nil {
 		return Decision{Reason: err.Error()}
 	}
@@ -256,11 +220,8 @@ func Evaluate(state State, required []ID, businessWrite bool, members []Member) 
 			}
 		}
 	}
-	if len(blockers) > 0 && (businessWrite && state.Policy == AllWrites || len(required) > 0) {
+	if len(blockers) > 0 {
 		return Decision{Reason: ErrCapabilityUnsupported.Error(), Blockers: blockers}
-	}
-	if businessWrite && state.Policy == AllWrites && len(required) == 0 {
-		return Decision{Reason: "business writes are blocked while capability activation is armed", Blockers: blockers}
 	}
 
 	return Decision{Allowed: true, Blockers: blockers}

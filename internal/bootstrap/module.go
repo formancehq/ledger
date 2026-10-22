@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -634,7 +633,7 @@ func Module() fx.Option {
 
 				return clusterhealth.NewGRPCHealthUpdater(n, hs, clusterPolicyReady, rs.ReadProjectionHealthy)
 			},
-			func(admission ctrl.Admission, store *dal.Store, builder *plan.Builder, cfg Config, raftNode *node.Node, raftMembership *raftmembership.Membership, logger logging.Logger) *ClusterPolicyReconciler {
+			func(admission ctrl.Admission, store *dal.Store, builder *plan.Builder, cfg Config, raftNode *node.Node, logger logging.Logger) *ClusterPolicyReconciler {
 				return NewClusterPolicyReconciler(func(ctx context.Context) {
 					if !raftNode.IsLeader() {
 						return
@@ -644,7 +643,7 @@ func Module() fx.Option {
 
 						return
 					}
-					reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger, raftMembership)
+					reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger)
 				})
 			},
 		),
@@ -1661,7 +1660,7 @@ func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, build
 // through AdmitClusterPolicy as an internal audited SetClusterPolicy order so
 // the checker can re-derive it; the write-readiness gate exempts this
 // non-business proposal so it is never blocked by its own cluster-policy gate.
-func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, logger logging.Logger, memberships ...*raftmembership.Membership) {
+func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, logger logging.Logger) {
 	if !isLeader() {
 		return
 	}
@@ -1671,22 +1670,6 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		logger.WithFields(map[string]any{"error": err}).Errorf("Reading applied cluster policy for reconciliation")
 
 		return
-	}
-	var raftMembership *raftmembership.Membership
-	if len(memberships) > 0 {
-		raftMembership = memberships[0]
-	}
-
-	// Publish the committed gate before handling the next membership refresh.
-	// The leader is the only node that can propose a ConfChange, so syncing it
-	// from the same ticker closes the window between policy commit and the next
-	// refresh without adding another poller.
-	if raftMembership != nil {
-		if err := raftMembership.SetCapabilityGate(applied.GetCapabilityActivationArmed(), applied.GetCapabilityMembershipRevision()); err != nil {
-			logger.WithFields(map[string]any{"error": err}).Errorf("Invalid committed capability gate")
-
-			return
-		}
 	}
 
 	desired := &commonpb.ClusterPolicy{
@@ -1703,28 +1686,6 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		// policy revision; otherwise every ordinary config reconciliation would
 		// accidentally attempt to lower the floor back to zero.
 		MinimumReplayProtocol: applied.GetMinimumReplayProtocol(),
-	}
-
-	// Capability activation is a one-way, replicated transition. Once every
-	// current member has refreshed its membership row with this binary's
-	// complete capability set, arm the feature-only gate automatically. The
-	// policy revision is bumped so this transition is auditable and cannot be
-	// confused with the node-local configuration revision.
-	if applied.GetCapabilityActivationArmed() {
-		desired.CapabilityActivationArmed = true
-		desired.CapabilityAdmissionPolicy = applied.GetCapabilityAdmissionPolicy()
-		desired.CapabilityMembershipRevision = applied.GetCapabilityMembershipRevision()
-		desired.CapabilityActivations = cloneCapabilityActivations(applied.GetCapabilityActivations())
-	} else if raftMembership != nil && allMembersAdvertiseCapabilities(raftMembership.PeerAddresses()) {
-		desired.CapabilityActivationArmed = true
-		desired.CapabilityAdmissionPolicy = commonpb.CapabilityAdmissionPolicy_CAPABILITY_ADMISSION_POLICY_FEATURE_ONLY
-		desired.CapabilityMembershipRevision = max(applied.GetCapabilityMembershipRevision(), uint64(1))
-		for _, id := range capabilities.SupportedIDs() {
-			desired.CapabilityActivations = append(desired.CapabilityActivations, &commonpb.CapabilityActivation{Id: uint32(id), Active: true})
-		}
-		if desired.GetRevision() <= applied.GetRevision() {
-			desired.Revision = applied.GetRevision() + 1
-		}
 	}
 
 	appliedRev := applied.GetRevision()
@@ -1754,33 +1715,6 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		// the next tick retries while this node stays leader.
 		logger.WithFields(map[string]any{"error": err}).Errorf("Cluster policy proposal failed; will retry")
 	}
-}
-
-func allMembersAdvertiseCapabilities(peers map[uint64]raftmembership.ConfChangeContext) bool {
-	if len(peers) == 0 {
-		return false
-	}
-
-	for _, peer := range peers {
-		for _, id := range capabilities.SupportedIDs() {
-			if !slices.Contains(peer.Capabilities, uint32(id)) {
-				return false
-			}
-		}
-	}
-
-	return true
-}
-
-func cloneCapabilityActivations(activations []*commonpb.CapabilityActivation) []*commonpb.CapabilityActivation {
-	cloned := make([]*commonpb.CapabilityActivation, len(activations))
-	for i, activation := range activations {
-		if activation != nil {
-			cloned[i] = activation.CloneVT()
-		}
-	}
-
-	return cloned
 }
 
 // buildResponseSigner returns the Ed25519 response signer for the gRPC

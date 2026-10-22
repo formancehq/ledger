@@ -56,20 +56,19 @@ func TestBarrierStampsSemanticCapabilities(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestCapabilityPolicyProposerBlocksAllWritesAtFinalBoundary(t *testing.T) {
+func TestCapabilityPolicyProposerBlocksUnknownCapabilityAtFinalBoundary(t *testing.T) {
 	delegate := new(capabilityTestProposer)
 	proposer := capabilityPolicyProposer{
 		delegate: delegate,
 		readPolicy: func() (*commonpb.ClusterPolicy, error) {
 			return &commonpb.ClusterPolicy{
 				CapabilityActivationArmed:    true,
-				CapabilityAdmissionPolicy:    commonpb.CapabilityAdmissionPolicy_CAPABILITY_ADMISSION_POLICY_ALL_WRITES,
 				CapabilityMembershipRevision: 1,
 			}, nil
 		},
 		businessWrite: true,
 	}
-	data, err := (&raftcmdpb.Proposal{}).MarshalVT()
+	data, err := (&raftcmdpb.Proposal{RequiredCapabilities: []uint32{99}}).MarshalVT()
 	require.NoError(t, err)
 	_, err = proposer.Propose(context.Background(), node.NewProposal(1, data))
 	require.Error(t, err)
@@ -77,14 +76,13 @@ func TestCapabilityPolicyProposerBlocksAllWritesAtFinalBoundary(t *testing.T) {
 	require.False(t, delegate.called)
 }
 
-func TestCapabilityPolicyProposerAllowsFeatureOnlyUnrelatedWrite(t *testing.T) {
+func TestCapabilityPolicyProposerAllowsUnrelatedWrite(t *testing.T) {
 	delegate := new(capabilityTestProposer)
 	proposer := capabilityPolicyProposer{
 		delegate: delegate,
 		readPolicy: func() (*commonpb.ClusterPolicy, error) {
 			return &commonpb.ClusterPolicy{
 				CapabilityActivationArmed:    true,
-				CapabilityAdmissionPolicy:    commonpb.CapabilityAdmissionPolicy_CAPABILITY_ADMISSION_POLICY_FEATURE_ONLY,
 				CapabilityMembershipRevision: 1,
 			}, nil
 		},

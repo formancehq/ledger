@@ -1274,7 +1274,6 @@ func (m *ClusterPolicy) CloneVT() *ClusterPolicy {
 	r.MetadataMaxEntityBytes = m.MetadataMaxEntityBytes
 	r.MetadataMaxCommandBytes = m.MetadataMaxCommandBytes
 	r.CapabilityActivationArmed = m.CapabilityActivationArmed
-	r.CapabilityAdmissionPolicy = m.CapabilityAdmissionPolicy
 	r.MinimumReplayProtocol = m.MinimumReplayProtocol
 	r.CapabilityMembershipRevision = m.CapabilityMembershipRevision
 	if rhs := m.CapabilityActivations; rhs != nil {
@@ -11055,9 +11054,6 @@ func (this *ClusterPolicy) EqualVT(that *ClusterPolicy) bool {
 		return false
 	}
 	if this.CapabilityActivationArmed != that.CapabilityActivationArmed {
-		return false
-	}
-	if this.CapabilityAdmissionPolicy != that.CapabilityAdmissionPolicy {
 		return false
 	}
 	if this.MinimumReplayProtocol != that.MinimumReplayProtocol {
@@ -26330,11 +26326,6 @@ func (m *ClusterPolicy) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinimumReplayProtocol))
 		i--
 		dAtA[i] = 0x58
-	}
-	if m.CapabilityAdmissionPolicy != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CapabilityAdmissionPolicy))
-		i--
-		dAtA[i] = 0x50
 	}
 	if m.CapabilityActivationArmed {
 		i--
@@ -44831,9 +44822,6 @@ func (m *ClusterPolicy) SizeVT() (n int) {
 	if m.CapabilityActivationArmed {
 		n += 2
 	}
-	if m.CapabilityAdmissionPolicy != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.CapabilityAdmissionPolicy))
-	}
 	if m.MinimumReplayProtocol != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.MinimumReplayProtocol))
 	}
@@ -59481,25 +59469,6 @@ func (m *ClusterPolicy) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.CapabilityActivationArmed = bool(v != 0)
-		case 10:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CapabilityAdmissionPolicy", wireType)
-			}
-			m.CapabilityAdmissionPolicy = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.CapabilityAdmissionPolicy |= CapabilityAdmissionPolicy(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		case 11:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MinimumReplayProtocol", wireType)
