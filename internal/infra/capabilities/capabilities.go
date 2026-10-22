@@ -173,6 +173,7 @@ func Ready(supported []CapabilityID, members []Member) ([]CapabilityID, error) {
 		for _, member := range members {
 			if !slices.Contains(member.Capabilities, id) {
 				acknowledged = false
+
 				break
 			}
 		}
