@@ -510,8 +510,8 @@ End-to-end coverage lives in `tests/e2e/business/color_numscript_test.go` (color
 
 When several orders arrive in one atomic batch, the FSM applies them **sequentially** against a single mutated `WriteSet`, so a later order sees the balances and metadata written by earlier orders in the same batch. Admission mirrors this during discovery: each order is resolved against the pre-batch Pebble snapshot **with the accumulated effects of every preceding order layered on top** (`internal/application/admission/numscript_source.go`, `batchEffects`). Concretely, the balance/metadata effect of every preceding **mutating** order is folded — not just `CreateTransaction`:
 
-- **`CreateTransaction`** — script/postings net `(input − output)` **balance deltas** per `(ledger, account, asset)`, plus `set_account_meta` writes; the caller-supplied `AccountMetadata` is folded **after** the script's writes because the FSM merges it with precedence over `set_account_meta` for the same key;
-- **`RevertTransaction`** — the reversed-posting balance deltas (original destination → source, original source → destination), the inverse of the original postings, matching `processRevertTransaction`;
+- **`CreateTransaction`** — script/postings net `(input − output)` **balance deltas** per `(ledger, account, asset, color)` volume key, plus `set_account_meta` writes; the caller-supplied `AccountMetadata` is folded **after** the script's writes because the FSM merges it with precedence over `set_account_meta` for the same key;
+- **`RevertTransaction`** — the reversed-posting balance deltas (original destination → source, original source → destination) on each posting's own color bucket, the inverse of the original postings, matching `processRevertTransaction`;
 - **`AddMetadata`** (account target) — the metadata value it writes;
 - **`DeleteMetadata`** (account target) — a **tombstone** for the key, so a later `meta()` resolves *absent* even if the pre-batch snapshot still holds a value.
 

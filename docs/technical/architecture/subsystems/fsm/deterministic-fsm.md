@@ -320,12 +320,12 @@ func DiscoverNumscriptDependencies(
 ```
 
 The `DiscoveryResult` contains:
-- `ReadVolumes`: `(account, asset)` balances resolution consulted (bounded sources, capped/allotment amounts, `balance()`/`overdraft()` in vars or selectors);
-- `WriteVolumes`: `(account, asset)` pairs the script credits or debits (sources — including unbounded ones — and destinations); a key can be in both;
+- `ReadVolumes`: `(ledger, account, asset, color)` volume keys (`domain.VolumeKey`) of the balances resolution consulted (bounded sources, capped/allotment amounts, `balance()`/`overdraft()` in vars or selectors);
+- `WriteVolumes`: `(ledger, account, asset, color)` volume keys the script credits or debits (sources — including unbounded ones — and destinations); a colored posting resolves its own bucket, and a key can be in both;
 - `ReadMetadata`: `(account, key)` entries `meta()` consulted;
 - `WriteMetadata`: `(account, key)` entries `set_account_meta` writes;
 - `InputsHash`: the stale-inputs hash, `nil` for a fully static script that read no balance or metadata;
-- `NetBalanceDeltas` / `MetadataWrites`: the script's would-be effects, used to layer an earlier order's writes into a later same-batch order's resolution (EN-1406 P1-1, intra-batch effect accumulation — see the Numscript contributing doc).
+- `NetBalanceDeltas` / `MetadataWrites`: the script's would-be effects (balance deltas keyed by the same colored volume key), used to layer an earlier order's writes into a later same-batch order's resolution (EN-1406 P1-1, intra-batch effect accumulation — see the Numscript contributing doc).
 
 Admission preloads the union of `ReadVolumes` and `WriteVolumes` (and `ReadMetadata`/`WriteMetadata`) so the FSM apply path reads and mutates every touched key from cache.
 
