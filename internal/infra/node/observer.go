@@ -18,6 +18,11 @@ type LeaderReadyEvent struct {
 	Context context.Context
 }
 
+// CapabilityMembershipChangedEvent is emitted after a committed membership
+// change has updated the local capability evidence cache. A leader can use it
+// to immediately reconcile capability activations without polling the cache.
+type CapabilityMembershipChangedEvent struct{}
+
 // EventHandler is a callback invoked synchronously for each emitted event.
 // Consumers use a type switch on the event to handle concrete types.
 type EventHandler func(event any)
