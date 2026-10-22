@@ -38,7 +38,9 @@ The complementary rule is in [`feedback_admission_structural_fsm_invariant`](../
 
 ## Shared sentinels
 
-Where admission and the FSM can both reach the same end-state, they raise the **same** `domain.ErrXxx`, wrapped in a `domain.BusinessError`. The gRPC layer maps the business error to a stable gRPC status code, so the client sees the same code regardless of which layer produced the error.
+Where admission and the FSM can both reach the same **business** end-state, they raise the **same** `domain.ErrXxx`, wrapped in a `domain.BusinessError`. The gRPC layer maps the business error to a stable gRPC status code, so the client sees the same code regardless of which layer produced the error.
+
+Trust-boundary violations are an explicit exception: caller-attribution failures are internal `Classifiable` errors, not `domain.BusinessError` values. Admission and the FSM return the sentinel directly so malformed or forged provenance cannot acquire a public reason, `ErrorInfo`, HTTP failure facts, or an auditable business outcome. See [the admission pipeline](pipeline.md#validation-structural-vs-behavioural) for the rationale.
 
 Example: an empty account address can be caught by `ValidateAccountAddress` at admission (the request had `""`) **or** by the FSM if a numscript program generates an empty source/destination at runtime. Both paths return `domain.ErrAccountAddressEmpty`. The client sees a uniform error contract; the auditor sees the FSM-side rejection in the audit chain when it happens that way.
 
