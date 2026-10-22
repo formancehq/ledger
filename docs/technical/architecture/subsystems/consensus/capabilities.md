@@ -52,14 +52,19 @@ The capability has two roles in this case:
 2. The order declares the capability that selects the behavior during FSM
    apply.
 
-The order must carry the semantic marker explicitly:
+The serialized proposal currently carries `required_capabilities` at proposal
+scope. That is sufficient only when every order in the proposal has the same
+semantic contract. A proposal can batch multiple orders, so a future change
+that mixes old and new semantics must either add a persisted marker to each
+order (and dispatch apply from that marker) or reject mixed-semantic batches.
+The conceptual marker for a homogeneous proposal is:
 
 ```text
-old order:  required_capabilities = []
-new order:  required_capabilities = [MirrorIngestRejectInvalidAssetV2]
+old proposal:  required_capabilities = []
+new proposal:  required_capabilities = [MirrorIngestRejectInvalidAssetV2]
 ```
 
-The FSM must use the order's declaration to select the behavior. It must not
+The FSM must use the persisted declaration to select the behavior. It must not
 infer the behavior from the current policy alone. An old order can be replayed
 after the capability becomes active, and it must keep its old semantics.
 
