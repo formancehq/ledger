@@ -159,6 +159,7 @@ func TestHandleBulk_MatchesSingleRequestClassification(t *testing.T) {
 		{"classified-unavailable", classifiedOnly{domain.KindUnavailable}, http.StatusServiceUnavailable, "UNAVAILABLE"},
 		{"classified-internal", classifiedOnly{domain.KindInternal}, http.StatusInternalServerError, "INTERNAL_ERROR"},
 		{"typed-not-found", commonpb.NewNotFoundError("ledger %s not found", "ledger1"), http.StatusNotFound, "NOT_FOUND"},
+		{"typed-not-found-empty-message", commonpb.NewNotFoundError(""), http.StatusNotFound, "NOT_FOUND"},
 		{"not-found-sentinel", fmt.Errorf("reading ledger: %w", domain.ErrNotFound), http.StatusNotFound, "NOT_FOUND"},
 		{"grpc-invalid-argument", status.Error(codes.InvalidArgument, "bad filter"), http.StatusBadRequest, "INVALID_REQUEST"},
 		{"grpc-unavailable", status.Error(codes.Unavailable, "stream torn down"), http.StatusServiceUnavailable, "UNAVAILABLE"},

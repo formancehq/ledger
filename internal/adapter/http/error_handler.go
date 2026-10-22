@@ -77,13 +77,16 @@ func classifiedErrorCode(k domain.ErrorKind) string {
 
 // errorClass is the public HTTP rendering of a server-side error. Single
 // requests and bulk elements both derive theirs from classifyError, so one
-// failure answers the same status, code and message on either surface.
+// failure answers the same status and message on either surface; bulk
+// elements answer their own generic code for a failure without a reason (see
+// bulkElementError).
 type errorClass struct {
-	status int
-	code   string
-	// message is the client-visible text. Empty means the error must not be
-	// echoed: publicMessage answers the generic correlated internal error.
+	status  int
+	code    string
 	message string
+	// sanitized withholds message: the client receives the generic correlated
+	// internal error instead.
+	sanitized bool
 }
 
 // publicMessage returns the client-visible message. A 500 is recorded under
@@ -95,7 +98,7 @@ func (c errorClass) publicMessage(r *http.Request, err error) string {
 
 	id := correlationID(r)
 	recordHTTPInternalError(r, id, err)
-	if c.message != "" {
+	if !c.sanitized {
 		return c.message
 	}
 
@@ -107,7 +110,7 @@ func (c errorClass) publicMessage(r *http.Request, err error) string {
 // definition a retry-now condition.
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	c := classifyError(err)
-	if c.message == "" {
+	if c.sanitized {
 		writeInternalServerError(w, r, err)
 
 		return
@@ -165,7 +168,7 @@ func classifyError(err error) errorClass {
 	// GRPCStatus, so it would reach the sanitizer below anyway; this branch
 	// states the contract instead of relying on that method set.
 	if _, ok := apierr.InvalidWire(err); ok {
-		return errorClass{status: http.StatusInternalServerError, code: "INTERNAL_ERROR"}
+		return errorClass{status: http.StatusInternalServerError, code: "INTERNAL_ERROR", sanitized: true}
 	}
 
 	// The boundary contract: every typed *Err* and sentinel in internal/domain
@@ -224,5 +227,5 @@ func classifyError(err error) errorClass {
 		}
 	}
 
-	return errorClass{status: http.StatusInternalServerError, code: "INTERNAL_ERROR"}
+	return errorClass{status: http.StatusInternalServerError, code: "INTERNAL_ERROR", sanitized: true}
 }
