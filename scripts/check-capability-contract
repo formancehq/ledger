@@ -18,6 +18,11 @@ for path in "${changed[@]}"; do
         misc/proto/common.proto|misc/proto/raft_cmd.proto)
             protocol_changed=true
             ;;
+        internal/domain/processing/*.go|internal/application/admission/*.go|internal/infra/plan/*.go|internal/infra/membership/*.go|internal/infra/node/*.go)
+            if [[ "$path" != *_test.go ]]; then
+                protocol_changed=true
+            fi
+            ;;
         internal/infra/capabilities/*|docs/technical/architecture/subsystems/consensus/capabilities.md)
             contract_changed=true
             ;;

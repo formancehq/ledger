@@ -65,3 +65,22 @@ func TestReadyDoesNotActivateAnEmptyCluster(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, ready)
 }
+
+func TestReadyRejectsMalformedMemberEvidence(t *testing.T) {
+	_, err := Ready([]ID{1}, []Member{{
+		NodeID:       1,
+		Role:         Voter,
+		Capabilities: []ID{1, 1},
+	}})
+	require.ErrorContains(t, err, "invalid capability evidence")
+}
+
+func TestReadyIgnoresUnsupportedAdvertisedIDs(t *testing.T) {
+	ready, err := Ready([]ID{1}, []Member{{
+		NodeID:       1,
+		Role:         Voter,
+		Capabilities: []ID{1, 99},
+	}})
+	require.NoError(t, err)
+	require.Equal(t, []ID{1}, ready)
+}
