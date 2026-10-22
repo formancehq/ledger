@@ -215,13 +215,13 @@ func TestReconcileClusterPolicyAutoActivatesOnlyAfterConvergence(t *testing.T) {
 
 	readMembers := func() []capabilities.Member {
 		return []capabilities.Member{
-			{NodeID: 1, Role: capabilities.Voter, Capabilities: []capabilities.ID{7}},
-			{NodeID: 2, Role: capabilities.Learner, Capabilities: []capabilities.ID{7}},
+			{NodeID: 1, Role: capabilities.Voter, Capabilities: []capabilities.CapabilityID{7}},
+			{NodeID: 2, Role: capabilities.Learner, Capabilities: []capabilities.CapabilityID{7}},
 		}
 	}
 	admission := &fakeAdmission{}
 	reconcileClusterPolicyWithRegistry(context.Background(), admission, store, cfg,
-		func() bool { return true }, func() []capabilities.ID { return []capabilities.ID{7} }, readMembers, logging.Testing())
+		func() bool { return true }, func() []capabilities.CapabilityID { return []capabilities.CapabilityID{7} }, readMembers, logging.Testing())
 
 	require.Equal(t, 1, admission.callCount())
 	require.Equal(t, uint64(cfg.ClusterPolicyRevision+1), admission.lastPolicy.GetRevision())
@@ -243,9 +243,9 @@ func TestReconcileClusterPolicyDoesNotActivateBeforeConvergence(t *testing.T) {
 
 	admission := &fakeAdmission{}
 	reconcileClusterPolicyWithRegistry(context.Background(), admission, store, cfg,
-		func() bool { return true }, func() []capabilities.ID { return []capabilities.ID{7} }, func() []capabilities.Member {
+		func() bool { return true }, func() []capabilities.CapabilityID { return []capabilities.CapabilityID{7} }, func() []capabilities.Member {
 			return []capabilities.Member{
-				{NodeID: 1, Role: capabilities.Voter, Capabilities: []capabilities.ID{7}},
+				{NodeID: 1, Role: capabilities.Voter, Capabilities: []capabilities.CapabilityID{7}},
 				{NodeID: 2, Role: capabilities.Learner},
 			}
 		}, logging.Testing())

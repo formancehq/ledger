@@ -9,12 +9,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // CapabilityPolicyProposer rechecks the committed capability policy against
-// the final serialized proposal immediately before handing it to the Raft
-// proposer.
+// the capabilities derived by the producer from the final proposal immediately
+// before handing it to the Raft proposer.
 type CapabilityPolicyProposer struct {
 	delegate      Proposer
 	readPolicy    func() (*commonpb.ClusterPolicy, error)
@@ -50,15 +49,7 @@ func (p CapabilityPolicyProposer) Propose(ctx context.Context, proposal *node.Pr
 		return nil, err
 	}
 
-	final := new(raftcmdpb.Proposal)
-	if err := final.UnmarshalVT(proposal.Data()); err != nil {
-		return nil, fmt.Errorf("decode proposal for capability admission: %w", err)
-	}
-
-	required := make([]capabilities.ID, len(final.GetRequiredCapabilities()))
-	for i, id := range final.GetRequiredCapabilities() {
-		required[i] = capabilities.ID(id)
-	}
+	required := proposal.RequiredCapabilities()
 	var members []capabilities.Member
 	if p.readMembers != nil {
 		members = p.readMembers()
