@@ -174,30 +174,42 @@ func TestRotationPreloadReadsCommittedValue(t *testing.T) {
 	status, seed, seedErr := readSeed()
 	observedRotation := !rotationWaited
 
-	commit := func(work commitWork) {
+	serviceCommit := func(work commitWork) {
+		if !observedRotation && setup.fsm.Registry.Cache.CurrentGeneration() != 0 {
+			status, seed, seedErr = readSeed()
+			observedRotation = true
+		}
 		err := setup.fsm.CommitPreparedBatch(ctx, work.prepared)
 		work.done <- err
 		require.NoError(t, err)
 	}
-	commit(previous)
+	serviceCommit(previous)
 
 	// The apply loop can submit more than one batch before returning. Service
 	// every submission, including on the regression path, before asserting.
 	var applyErr error
 	deadline := time.After(5 * time.Second)
-drain:
+	applyDone := false
+	for !applyDone {
+		select {
+		case work := <-setup.applier.commitCh:
+			serviceCommit(work)
+		case applyErr = <-result:
+			applyDone = true
+		case <-deadline:
+			t.Fatal("applier did not finish after draining commit work")
+		}
+	}
+	// result is sent only after the applier has queued its final commit. Both
+	// channels may be ready in the select above, so drain the buffered work
+	// before waiting on the final commit's completion.
+drainQueued:
 	for {
 		select {
 		case work := <-setup.applier.commitCh:
-			if !observedRotation && setup.fsm.Registry.Cache.CurrentGeneration() != 0 {
-				status, seed, seedErr = readSeed()
-				observedRotation = true
-			}
-			commit(work)
-		case applyErr = <-result:
-			break drain
-		case <-deadline:
-			t.Fatal("applier did not finish after draining commit work")
+			serviceCommit(work)
+		default:
+			break drainQueued
 		}
 	}
 	require.NoError(t, applyErr)
