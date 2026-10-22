@@ -275,6 +275,7 @@ message AddLearnerRequest {
   string raft_address = 2;     // Raft transport address of the learner
   string service_address = 3;  // Service API address of the learner
   bytes instance_id = 4;       // 16-byte UUID from the learner's persisted INSTANCE_ID marker; required
+  repeated fixed32 capabilities = 5; // Capabilities supported by the learner binary
 }
 
 message AddLearnerResponse {}
