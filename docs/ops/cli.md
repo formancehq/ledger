@@ -2493,7 +2493,6 @@ full-chain scan.
 - By default, shows the order count summary; use `--expand` to show full order details
 - Below each entry, all orders are listed in a tree structure with:
   - Order type and details (ledger name, reference, etc.)
-  - Signing key ID used (`key=<id>`) or `unsigned` if the order was not signed
   - Consecutive identical orders are grouped compactly (e.g. `MirrorIngest x500`)
 - If audit is disabled on the server, a warning message is displayed instead of an error
 - After the page, the command prints the [page hints](#page-tokens): `Previous page — go back with --cursor <token>` when an earlier page exists and `More results available — resume with --cursor <token>` when a later one does
@@ -2541,12 +2540,20 @@ ledgerctl audit list --json
 **Sample output:**
 
 ```
-  #1      2025-01-01T00:00:00Z  proposal=1    OK  logs=[1]
-    └─ CreateLedger name=default  key=unsigned
+  #1      2025-01-01T00:00:00Z  proposal=1    OK  logs=[1]  unsigned
+    └─ 1 orders
+  #2      2025-01-01T00:00:01Z  proposal=2    OK  logs=[2]  signature=admin-key
+    └─ 1 orders
+  #3      2025-01-01T00:00:02Z  proposal=3    FAIL  [INSUFFICIENT_FUNDS] ...  signature=admin-key
+    └─ 1 orders
+```
+
+With `--expand`:
+
+```
   #2      2025-01-01T00:00:01Z  proposal=2    OK  logs=[2]
-    └─ CreateTransaction ledger=default ref=tx-001  key=admin-key
-  #3      2025-01-01T00:00:02Z  proposal=3    FAIL  [INSUFFICIENT_FUNDS] ...
-    └─ CreateTransaction ledger=default  key=admin-key
+    signature=admin-key  idempotency=ik-1
+    └─ CreateTransaction ledger=default ref=tx-001
 ```
 
 #### audit get

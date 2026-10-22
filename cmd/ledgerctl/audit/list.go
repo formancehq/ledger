@@ -277,10 +277,22 @@ func printBatchIdentity(entry *auditpb.AuditEntry) {
 	line := signatureLabel(entry)
 
 	if key := entry.GetIdempotency().GetKey(); key != "" {
-		line += "  idempotency=" + pterm.Yellow(key)
+		line += "  idempotency=" + pterm.Yellow(sanitizeDisplayText(key))
 	}
 
 	pterm.Printf("    %s\n", line)
+}
+
+// sanitizeDisplayText replaces control characters in client-supplied text so
+// it cannot inject escape sequences or forged lines into the terminal.
+func sanitizeDisplayText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+			return '.'
+		}
+
+		return r
+	}, s)
 }
 
 // callerSourceString renders an authenticated identity source for display.

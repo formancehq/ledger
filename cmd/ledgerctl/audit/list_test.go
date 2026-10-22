@@ -112,6 +112,13 @@ func TestPrintAuditEntry_BatchSignature(t *testing.T) {
 	}
 }
 
+func TestSanitizeDisplayText(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "ik-1", sanitizeDisplayText("ik-1"))
+	require.Equal(t, "a.b.[2K.c", sanitizeDisplayText("a\rb\x1b[2K\x7fc"))
+}
+
 func TestPrintAuditEntry_CompactSignature(t *testing.T) {
 	tests := map[string]struct {
 		entry *auditpb.AuditEntry
