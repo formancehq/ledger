@@ -496,7 +496,7 @@ operator-docker-build-pr image: (_assert-pr-image image)
     # GITHUB_TOKEN is removed on purpose: a PR build must never reach the GitHub
     # releases API, even if a release step were enabled by mistake.
     env -u GITHUB_TOKEN -u GH_TOKEN \
-        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive,release
+        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive
 
 # Package and publish operator Helm charts to GHCR. Args are positional: version then suffix.
 operator-helm-publish version='' suffix='':
@@ -524,7 +524,7 @@ docker-build-pr image: (_assert-pr-image image)
     # GITHUB_TOKEN is removed on purpose: a PR build must never reach the GitHub
     # releases API, even if a release step were enabled by mistake.
     env -u GITHUB_TOKEN -u GH_TOKEN \
-        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive,release
+        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive
 
 # Refuse any PR image reference that is not `<repository>:pr-<num>-<sha7>`, so a
 # PR build cannot move `latest`, `nightly` or a release tag.
