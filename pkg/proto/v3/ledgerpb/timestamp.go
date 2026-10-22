@@ -3,9 +3,7 @@ package ledgerpb
 import (
 	"errors"
 	"fmt"
-	libtime "time"
-
-	"github.com/formancehq/go-libs/v5/pkg/types/time"
+	"time"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/json"
 )
@@ -15,17 +13,17 @@ import (
 // cannot be represented correctly.
 var ErrTimestampBeforeEpoch = errors.New("timestamp before Unix epoch (1970-01-01T00:00:00Z) is not supported")
 
-// NewTimestamp creates a Timestamp from a time.Time.
+// NewTimestamp creates a Timestamp from a value exposing UnixMicro, such as time.Time.
 // Caller must ensure the time is not before the Unix epoch; pre-epoch times
 // will silently overflow the uint64 Data field.
-func NewTimestamp(time time.Time) *Timestamp {
+func NewTimestamp(value interface{ UnixMicro() int64 }) *Timestamp {
 	return &Timestamp{
-		Data: uint64(time.UnixMicro()),
+		Data: uint64(value.UnixMicro()),
 	}
 }
 
 func (x *Timestamp) AsTime() time.Time {
-	return time.New(libtime.UnixMicro(int64(x.GetData())))
+	return time.UnixMicro(int64(x.GetData())).UTC()
 }
 
 func (x *Timestamp) MarshalJSON() ([]byte, error) {
@@ -40,7 +38,7 @@ func (x *Timestamp) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	t, err := time.ParseTime(v)
+	t, err := time.Parse(time.RFC3339Nano, v)
 	if err != nil {
 		return err
 	}
@@ -49,7 +47,7 @@ func (x *Timestamp) UnmarshalJSON(data []byte) error {
 		return ErrTimestampBeforeEpoch
 	}
 
-	x.Data = uint64(t.UnixMicro())
+	x.Data = uint64(t.UTC().Round(time.Microsecond).UnixMicro())
 
 	return nil
 }
