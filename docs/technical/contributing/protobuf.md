@@ -37,19 +37,20 @@ Raft transport generated code lives in `internal/proto/rafttransportpb/` (`raft_
 
 ### Public client contract (`pkg/client/v3/`)
 
-The public client contract is the checked-in protobuf subset under
-`pkg/client/v3/proto/`. These schemas are the language-neutral source of truth
-for published clients. The Go client and the descriptor artifact used by other
-language generators are derived from them:
+The public client contract is the generated protobuf projection under
+`pkg/client/v3/proto/`. The canonical source is `misc/proto/`; the projection
+selects the public service closure, removes backend-only messages, and rewrites
+the Go package path. The Go client and the descriptor artifact used by other
+language generators are derived from that projection:
 
 ```bash
 just generate-public-client
 ```
 
-This command updates `pkg/client/v3/grpc/` and
-`pkg/client/v3/proto/ledger-public.protoset`. Keep backend-only messages and
-options in `misc/proto/`; they must not be copied into the public schemas.
-The public-client check regenerates both outputs and is required in CI.
+This command updates `pkg/client/v3/proto/`, `pkg/client/v3/grpc/`, and
+`pkg/client/v3/proto/ledger-public.protoset`. Do not edit the projection by
+hand. Keep backend-only messages in `misc/proto/`; the public-client check
+regenerates the projection and all outputs and is required in CI.
 
 ## Regenerating Code
 
