@@ -379,7 +379,7 @@ Controller → query.ReadNumscript(versionAttr, contentAttr, reader, ledger, nam
 | Semver | `internal/pkg/semver/semver.go` | `Version`, `Parse`, `ParsePartial`, `Compare` |
 | DAL keys | `internal/domain/keys.go` | `NumscriptVersionKey`, `NumscriptEntryKey` |
 | DAL codes | `internal/storage/dal/store.go` | `SubAttrNumscriptVersion`, `SubAttrNumscriptContent` |
-| Proto | `misc/proto/common.proto` | `NumscriptInfo`, `NumscriptVersionValue`, `NumscriptVersionEntry` |
+| Proto | `misc/proto/common.proto`, `misc/proto/internal_state.proto` | `NumscriptInfo`, `NumscriptVersionValue`, `NumscriptVersionEntry` |
 | Proto | `misc/proto/raft_cmd.proto` | `SaveNumscriptOrder` |
 | Proto | `misc/proto/bucket.proto` | gRPC service methods, `ScriptReference` |
 | gRPC errors | `internal/adapter/grpc/errors.go` | Error-to-gRPC-status mapping |

@@ -10,6 +10,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 |------|----------|
 | `raft_transport.proto` | Raft transport messages |
 | `common.proto` | Common types (Posting, Transaction, Log, Uint256, etc.) |
+| `internal_state.proto` | Backend-only persisted state and projection values |
 | `raft_cmd.proto` | FSM command types (CreateLedger, DeleteLedger, CreateLog, etc.) |
 | `bucket.proto` | gRPC service definitions (BucketService), includes mirror sync, promote |
 | `cluster.proto` | Cluster management (ClusterService) |
