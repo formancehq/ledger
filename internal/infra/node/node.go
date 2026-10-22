@@ -3049,14 +3049,9 @@ func (node *Node) AddLearnerWithCapabilities(ctx context.Context, nodeID uint64,
 
 // JoinAsLearner is the bootstrap admission path for a process with an empty
 // WAL. It deliberately keeps EN-1436's stricter stale-progress handling
-// separate from administrative AddLearner retries.
-func (node *Node) JoinAsLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	return node.JoinAsLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, nil)
-}
-
-// JoinAsLearnerWithCapabilities is the bootstrap admission variant carrying
-// the joining node's capability proof.
-func (node *Node) JoinAsLearnerWithCapabilities(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
+// separate from administrative AddLearner retries and carries the joining
+// node's capability evidence.
+func (node *Node) JoinAsLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
 	return node.addLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs, true)
 }
 
