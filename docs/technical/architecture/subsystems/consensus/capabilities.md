@@ -57,6 +57,35 @@ If a producer cannot mark the new orders, the change must remain backward
 compatible or add an explicit semantic version to the order. A capability by
 itself is an admission barrier; it is not a historical replay version.
 
+## Adding a protocol-breaking capability
+
+Use this workflow when a change can make an order apply differently on two
+binary versions.
+
+1. Name the semantic contract. Describe the old behavior, the new behavior,
+   and the orders that use each behavior.
+2. Allocate a new capability ID. Never reuse an ID for a different contract.
+3. Add the capability to the binary registry and derive it from the final
+   proposal in `RequiredCapabilities`.
+4. Stamp the capability on every new order that needs the new behavior. Do not
+   infer it from the current policy during FSM apply.
+5. Keep the old behavior for orders that do not carry the capability. Add
+   replay tests that apply both order forms with the new binary.
+6. Add admission tests for an inactive capability, an active capability, and a
+   member that does not advertise it.
+7. Deploy the compatible binary to all current members. Let each restarted
+   member refresh its membership evidence before activating the capability.
+8. Activate the capability through the replicated `ClusterPolicy`. The FSM
+   rejects a new member or membership refresh that omits an active capability.
+9. Keep the capability active after activation. The policy processor rejects
+   removal of an active capability.
+10. Update this document in the same change. Record the capability ID, the
+    semantic contract, the replay rule, and the rollout order.
+
+Do not add a capability for a bug fix that restores the intended behavior when
+the old behavior was invalid. Add one when valid historical orders need to keep
+their old behavior while new orders use a different rule.
+
 ## Rollout and recovery
 
 Deploy barrier-aware binaries to every eligible member before arming an
