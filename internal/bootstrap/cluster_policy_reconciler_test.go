@@ -13,6 +13,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -38,6 +39,29 @@ func TestClusterPolicyReconciler_TicksUntilStopped(t *testing.T) {
 	settled := count.Load()
 	require.Never(t, func() bool { return count.Load() > settled }, 100*time.Millisecond, 10*time.Millisecond,
 		"no reconcile must run after Stop")
+}
+
+func TestClusterPolicyReconciler_TriggerIsCoalescedAndRaceSafe(t *testing.T) {
+	t.Parallel()
+
+	var count atomic.Int32
+	r := NewClusterPolicyReconciler(func(context.Context) { count.Add(1) })
+	r.interval = time.Hour
+	r.Start()
+	require.Eventually(t, func() bool { return count.Load() >= 1 }, time.Second, time.Millisecond)
+
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.Trigger()
+		}()
+	}
+	wg.Wait()
+	require.Eventually(t, func() bool { return count.Load() >= 2 }, time.Second, time.Millisecond,
+		"a membership event must wake reconciliation without waiting for the ticker")
+	r.Stop()
 }
 
 type fakeAdmission struct {
@@ -167,4 +191,57 @@ func TestReconcileClusterPolicy(t *testing.T) {
 
 		require.Zero(t, admission.callCount(), "a newer applied revision must not be overwritten")
 	})
+}
+
+func TestReconcileClusterPolicyAutoActivatesOnlyAfterConvergence(t *testing.T) {
+	t.Parallel()
+
+	cfg := validBaseConfig()
+	store := newReconcilerTestStore(t)
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+		Revision:             cfg.ClusterPolicyRevision,
+		IdempotencyTtlMicros: uint64(cfg.IdempotencyTTL.Microseconds()),
+		QueryCheckpointLimit: cfg.QueryCheckpointLimit,
+	}))
+	require.NoError(t, batch.Commit())
+
+	readMembers := func() []capabilities.Member {
+		return []capabilities.Member{
+			{NodeID: 1, Role: capabilities.Voter, Capabilities: []capabilities.ID{7}},
+			{NodeID: 2, Role: capabilities.Learner, Capabilities: []capabilities.ID{7}},
+		}
+	}
+	admission := &fakeAdmission{}
+	reconcileClusterPolicyWithRegistry(context.Background(), admission, store, cfg,
+		func() bool { return true }, func() []capabilities.ID { return []capabilities.ID{7} }, readMembers, logging.Testing())
+
+	require.Equal(t, 1, admission.callCount())
+	require.Equal(t, uint64(cfg.ClusterPolicyRevision+1), admission.lastPolicy.GetRevision())
+	require.Equal(t, []*commonpb.CapabilityActivation{{Id: 7, Active: true}}, admission.lastPolicy.GetCapabilityActivations())
+}
+
+func TestReconcileClusterPolicyDoesNotActivateBeforeConvergence(t *testing.T) {
+	t.Parallel()
+
+	cfg := validBaseConfig()
+	store := newReconcilerTestStore(t)
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+		Revision:             cfg.ClusterPolicyRevision,
+		IdempotencyTtlMicros: uint64(cfg.IdempotencyTTL.Microseconds()),
+		QueryCheckpointLimit: cfg.QueryCheckpointLimit,
+	}))
+	require.NoError(t, batch.Commit())
+
+	admission := &fakeAdmission{}
+	reconcileClusterPolicyWithRegistry(context.Background(), admission, store, cfg,
+		func() bool { return true }, func() []capabilities.ID { return []capabilities.ID{7} }, func() []capabilities.Member {
+			return []capabilities.Member{
+				{NodeID: 1, Role: capabilities.Voter, Capabilities: []capabilities.ID{7}},
+				{NodeID: 2, Role: capabilities.Learner},
+			}
+		}, logging.Testing())
+
+	require.Zero(t, admission.callCount())
 }

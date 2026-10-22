@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+base_sha=${1:-${AI_REVIEW_BASE_SHA:-}}
+if [[ -z "$base_sha" ]]; then
+    echo "check-capability-contract: review base SHA is required" >&2
+    exit 1
+fi
+
+mapfile -t changed < <(
+    git diff --name-only "$base_sha" --
+    git ls-files --others --exclude-standard
+)
+protocol_changed=false
+contract_changed=false
+for path in "${changed[@]}"; do
+    case "$path" in
+        misc/proto/common.proto|misc/proto/raft_cmd.proto)
+            protocol_changed=true
+            ;;
+        internal/infra/capabilities/*|docs/technical/architecture/subsystems/consensus/capabilities.md)
+            contract_changed=true
+            ;;
+    esac
+done
+
+if [[ "$protocol_changed" == true && "$contract_changed" != true ]]; then
+    echo "CAPABILITY_CONTRACT=FAIL" >&2
+    echo "A Raft/FSM protocol schema changed without a capability registry or consensus capability-document change." >&2
+    echo "If the change is backward-compatible, document why in the capability document; otherwise add an ID, derivation, admission/replay tests, and rollout documentation." >&2
+    exit 1
+fi
+
+echo "CAPABILITY_CONTRACT=PASS"
