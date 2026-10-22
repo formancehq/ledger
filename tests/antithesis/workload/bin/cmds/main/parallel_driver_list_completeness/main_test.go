@@ -4,7 +4,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/drivertest"
 )
@@ -60,7 +61,7 @@ func TestListCompletenessPageBoundaries(t *testing.T) {
 					require.True(t, observed.requests[i].GetOptions().GetReverse())
 					wantCursor := ""
 					if len(gotIDs) > 0 {
-						wantCursor = pagecursor.Cursor{Key: fmt.Sprint(gotIDs[len(gotIDs)-1])}.Encode()
+						wantCursor = pagecursor.Cursor{Key: strconv.FormatUint(gotIDs[len(gotIDs)-1], 10)}.Encode()
 					}
 					require.Equal(t, wantCursor, observed.requests[i].GetOptions().GetCursor())
 					gotIDs = append(gotIDs, page.ids...)
@@ -92,6 +93,7 @@ func TestListCompletenessPageBoundaries(t *testing.T) {
 // must pass, and only the new page-size assertion must reject the response.
 type pageBoundaryClient struct {
 	servicepb.BucketServiceClient
+
 	widenFirst bool
 	requests   []*servicepb.ListTransactionsRequest
 	pages      []*observedPage
@@ -109,11 +111,13 @@ func (c *pageBoundaryClient) ListTransactions(ctx context.Context, req *servicep
 	}
 	page := &observedPage{ServerStreamingClient: stream}
 	c.pages = append(c.pages, page)
+
 	return page, nil
 }
 
 type observedPage struct {
 	grpc.ServerStreamingClient[commonpb.Transaction]
+
 	ids []uint64
 }
 
@@ -122,5 +126,6 @@ func (s *observedPage) Recv() (*commonpb.Transaction, error) {
 	if err == nil {
 		s.ids = append(s.ids, tx.GetId())
 	}
+
 	return tx, err
 }

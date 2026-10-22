@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -158,57 +159,73 @@ func TestLostEnableResponseStillSchedulesItsRecovery(t *testing.T) {
 	require.NoError(t, err)
 
 	client := &scriptedApplyClient{
-		responses: []*servicepb.ApplyResponse{nil, nil, {}},
+		responses: []*servicepb.ApplyResponse{nil, nil, {}, {}},
 		errors: []error{
 			status.Error(codes.Canceled, "response lost"),
 			maintenanceStatus.Err(),
-			nil,
+			nil, // The enable retry succeeds.
+			nil, // Its scheduled disable succeeds.
 		},
 	}
 
 	c := NewChecker([]string{"L"}, nil)
-	ctx, cancel := context.WithCancel(t.Context())
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	enable := bulkOf(actions.SetMaintenanceModeAction(true))
 	done := make(chan struct{})
+	defer func() {
+		cancel()
+		<-done
+		c.recoveries.Wait()
+	}()
 
 	go func() {
 		runGeneration(func(src *generation.Source) { dispatchBulk(src, ctx, client, nil, c, enable) })
 		close(done)
 	}()
 
-	obs := <-c.incoming
-	require.Equal(t, 3, client.calls)
-	require.NoError(t, obs.err, "the enable committed, so the driver must observe a success")
+	// The recovery delay may be zero, so either observation can arrive first.
+	// Keep both unprocessed until we have checked that recovery stays active.
+	var enabled, disabled observation
+	for range 2 {
+		select {
+		case obs := <-c.incoming:
+			require.NoError(t, obs.err, "both the retried enable and its disable must succeed")
+			require.Len(t, obs.bulk.Requests, 1)
+			toggle := obs.bulk.Requests[0].GetSetMaintenanceMode()
+			require.NotNil(t, toggle)
+			if toggle.GetEnabled() {
+				require.Zero(t, enabled.ticket, "only one enable observation is expected")
+				enabled = obs
+			} else {
+				require.Zero(t, disabled.ticket, "only one disable observation is expected")
+				disabled = obs
+			}
+		case <-ctx.Done():
+			t.Fatal("timed out waiting for the enable and its scheduled disable")
+		}
+	}
+	require.NotZero(t, enabled.ticket)
+	require.NotZero(t, disabled.ticket)
+	require.NotEqual(t, enabled.bulk.IdempotencyKey, disabled.bulk.IdempotencyKey,
+		"the disable must use a fresh idempotency key")
 
 	c.mu.Lock()
 	scheduled := c.maintenanceRecoveryActive
-	c.removeInflight(obs.ticket)
+	c.removeInflight(enabled.ticket)
+	c.removeInflight(disabled.ticket)
 	c.mu.Unlock()
-	markObservationProcessed(obs)
-	require.True(t, scheduled, "the enable's success must arm the disable that ends the window")
+	require.True(t, scheduled, "recovery must stay active until its observation is processed")
+	markObservationProcessed(enabled)
+	markObservationProcessed(disabled)
 	<-done
-
-	// No processor runs here, so absorb whatever the recovery publishes rather
-	// than letting it block on an observation nobody drains.
-	drained := make(chan struct{})
-	go func() {
-		defer close(drained)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case recovery := <-c.incoming:
-				c.mu.Lock()
-				c.removeInflight(recovery.ticket)
-				c.mu.Unlock()
-				markObservationProcessed(recovery)
-			}
-		}
-	}()
-
-	cancel()
 	c.recoveries.Wait()
-	<-drained
+
+	// Read the script only after both dispatchers finish: the disable can run
+	// before the test receives the enable, even with a nonzero recovery delay.
+	require.Equal(t, 4, client.calls, "three enable attempts and exactly one disable are required")
+	require.False(t, c.maintenanceRecoveryActive)
+	require.Empty(t, c.reads)
+	require.Empty(t, c.inflight)
 }
 
 func TestResponseHighWaterExcludesWriterBlockedBeforeRegistration(t *testing.T) {

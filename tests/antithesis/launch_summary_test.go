@@ -28,7 +28,7 @@ func TestLaunchSummaryRequiresSuccessfulLaunch(t *testing.T) {
 		t.Fatal("launch summary shell body not found")
 	}
 	var script strings.Builder
-	for _, line := range strings.Split(strings.TrimSuffix(body, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSuffix(body, "\n"), "\n") {
 		if !strings.HasPrefix(line, "          ") {
 			t.Fatalf("unexpected summary body line: %q", line)
 		}
