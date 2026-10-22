@@ -6,8 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -128,33 +126,6 @@ func TestDecodeEntries(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, decoded)
 	})
-}
-
-func TestDecodeEntriesRejectsUnsupportedReplayFloor(t *testing.T) {
-	t.Parallel()
-
-	cmd := &raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{
-		{
-			Type: &raftcmdpb.Order_SystemScoped{
-				SystemScoped: &raftcmdpb.SystemScopedOrder{
-					Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
-						SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{
-							Policy: &commonpb.ClusterPolicy{
-								Revision:              1,
-								MinimumReplayProtocol: capabilities.CurrentReplayProtocol + 1,
-							},
-						},
-					},
-				},
-			},
-		},
-	}}
-	data, err := cmd.MarshalVT()
-	require.NoError(t, err)
-
-	decoded, err := DecodeEntries([]*raftpb.Entry{entWith(42, 1, raftpb.EntryNormal, data)})
-	require.ErrorIs(t, err, capabilities.ErrReplayProtocolUnsupported)
-	require.Nil(t, decoded)
 }
 
 func TestReleaseDecodedEntries(t *testing.T) {

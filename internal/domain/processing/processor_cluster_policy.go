@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -65,20 +64,6 @@ func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Contex
 		if !found {
 			return nil, &domain.ErrClusterPolicyInvalid{Detail: fmt.Sprintf("capability %d cannot be deactivated", id)}
 		}
-	}
-
-	// A policy may only raise the floor to a replay protocol this binary can
-	// execute. Rejecting it at the FSM boundary prevents a committed policy
-	// from making the current node unable to replay its own state after restart.
-	if err := capabilities.ValidateReplayFloor(newPolicy.GetMinimumReplayProtocol(), capabilities.CurrentReplayProtocol); err != nil {
-		return nil, &domain.ErrClusterPolicyInvalid{Detail: err.Error()}
-	}
-
-	// The replay floor is a durable safety boundary, not a revision-scoped
-	// setting that can be rolled back by a later policy. Validate it before the
-	// revision switch so every replica rejects a downgrade deterministically.
-	if _, err := capabilities.AdvanceReplayFloor(current.GetMinimumReplayProtocol(), newPolicy.GetMinimumReplayProtocol()); err != nil {
-		return nil, &domain.ErrClusterPolicyInvalid{Detail: err.Error()}
 	}
 
 	switch {
