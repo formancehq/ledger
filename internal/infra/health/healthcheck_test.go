@@ -32,6 +32,8 @@ type snapshotRecoveryTestNode struct {
 	generation uint64
 }
 
+type learnerSamplingTestNode struct{ snapshotRecoveryTestNode }
+
 func (n *snapshotRecoveryTestNode) IsLeader() bool      { return true }
 func (n *snapshotRecoveryTestNode) GetNodeID() uint64   { return 7 }
 func (n *snapshotRecoveryTestNode) MemberIDs() []uint64 { return []uint64{7, 8} }
@@ -43,6 +45,8 @@ func (n *snapshotRecoveryTestNode) SnapshotRecoveryPending(uint64) (uint64, bool
 }
 func (n *snapshotRecoveryTestNode) ConfirmSnapshotRecovery(uint64, uint64) { n.pending = false }
 func (n *snapshotRecoveryTestNode) RecoveryGeneration() uint64             { return n.generation }
+func (n *learnerSamplingTestNode) MemberIDs() []uint64                     { return []uint64{7, 8, 9} }
+func (n *learnerSamplingTestNode) VoterIDs() []uint64                      { return []uint64{7, 8} }
 
 func newFreshCollector(t *testing.T) *diskusage.Collector {
 	t.Helper()
@@ -166,6 +170,7 @@ func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
 	ns := NewMocknodeState(gomock.NewController(t))
 	ns.EXPECT().IsLeader().Return(true).AnyTimes()
 	ns.EXPECT().GetNodeID().Return(uint64(7)).AnyTimes()
+	ns.EXPECT().MemberIDs().Return([]uint64{7, 8}).AnyTimes()
 	ns.EXPECT().VoterIDs().Return([]uint64{7, 8}).AnyTimes()
 
 	hc := &HealthChecker{
@@ -188,6 +193,47 @@ func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
 	require.Equal(t, int64(1), handler.calls.Load())
 	require.NoError(t, hc.CheckWritesAllowed())
 	require.False(t, hc.gate.Load().diskBlocked)
+}
+
+func TestHealthChecker_SamplesCommittedLearnerForDiskGate(t *testing.T) {
+	t.Parallel()
+
+	collector := newFreshCollector(t)
+	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := grpc.NewServer()
+	handler := &diskUsageTestServer{}
+	clusterpb.RegisterClusterServiceServer(server, handler)
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		server.Stop()
+		require.NoError(t, <-serveErr)
+	})
+	require.NoError(t, pool.AddPeer(8, listener.Addr().String()))
+	require.NoError(t, pool.AddPeer(9, listener.Addr().String()))
+
+	hc := &HealthChecker{
+		node:        &learnerSamplingTestNode{},
+		collector:   collector,
+		servicePool: pool,
+		logger:      logging.Testing(),
+		thresholds: Thresholds{
+			WALBlock:   1.1,
+			WALResume:  0.000000001,
+			DataBlock:  1.1,
+			DataResume: 0.000000001,
+		},
+	}
+
+	hc.OnLeadershipChange(true)
+	hc.check(make(chan struct{}))
+
+	require.Equal(t, int64(2), handler.calls.Load(), "committed learners must be sampled by the disk gate")
+	require.NoError(t, hc.CheckWritesAllowed())
 }
 
 func TestHealthChecker_BlocksWhenNoOtherVoterIsCheckpointable(t *testing.T) {
@@ -214,6 +260,7 @@ func TestHealthChecker_BlocksWhenNoOtherVoterIsCheckpointable(t *testing.T) {
 	ns := NewMocknodeState(gomock.NewController(t))
 	ns.EXPECT().IsLeader().Return(true).AnyTimes()
 	ns.EXPECT().GetNodeID().Return(uint64(7)).AnyTimes()
+	ns.EXPECT().MemberIDs().Return([]uint64{7, 8}).AnyTimes()
 	ns.EXPECT().VoterIDs().Return([]uint64{7, 8}).AnyTimes()
 	hc := &HealthChecker{
 		node:        ns,
@@ -335,6 +382,7 @@ func TestHealthChecker_NewLeaderBlocksWithUnavailablePeer(t *testing.T) {
 	ns := NewMocknodeState(gomock.NewController(t))
 	ns.EXPECT().IsLeader().Return(true)
 	ns.EXPECT().GetNodeID().Return(uint64(7))
+	ns.EXPECT().MemberIDs().Return([]uint64{7, 8})
 	ns.EXPECT().VoterIDs().Return([]uint64{7, 8})
 	hc := &HealthChecker{
 		node:         ns,
@@ -365,6 +413,7 @@ func TestHealthChecker_NewLeaderRequiresFreshLocalSample(t *testing.T) {
 	ns := NewMocknodeState(gomock.NewController(t))
 	ns.EXPECT().IsLeader().Return(true)
 	ns.EXPECT().GetNodeID().Return(uint64(7))
+	ns.EXPECT().MemberIDs().Return([]uint64{7})
 	ns.EXPECT().VoterIDs().Return([]uint64{7})
 	hc := &HealthChecker{
 		node:        ns,
@@ -417,6 +466,7 @@ func TestHealthChecker_MissingCommittedPeerCannotClearDiskGate(t *testing.T) {
 	ns := NewMocknodeState(gomock.NewController(t))
 	ns.EXPECT().IsLeader().Return(true)
 	ns.EXPECT().GetNodeID().Return(uint64(7))
+	ns.EXPECT().MemberIDs().Return([]uint64{7, 8})
 	ns.EXPECT().VoterIDs().Return([]uint64{7, 8})
 
 	hc := &HealthChecker{

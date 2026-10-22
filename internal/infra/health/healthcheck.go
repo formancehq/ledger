@@ -274,6 +274,13 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	}
 	checkpointable := map[uint64]bool{}
 	voterIDs := hc.node.VoterIDs()
+	voterSet := make(map[uint64]struct{}, len(voterIDs))
+	for _, voterID := range voterIDs {
+		voterSet[voterID] = struct{}{}
+	}
+	// Disk and clock-skew gates apply to every committed member, including
+	// learners. Only checkpointable quorum accounting is restricted to voters.
+	memberIDs := hc.node.MemberIDs()
 
 	now := time.Now()
 	localWAL := hc.collector.WALVolume.Load()
@@ -315,7 +322,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	// Raft membership is authoritative: a committed peer that failed to enter
 	// the service pool is still an unreachable sample and cannot clear an
 	// existing disk write gate.
-	for _, peerID := range voterIDs {
+	for _, peerID := range memberIDs {
 		if peerID == localNodeID {
 			continue
 		}
@@ -413,7 +420,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 					"node_id": peerID,
 					"error":   stateErr,
 				}).Infof("Failed to get peer recovery state")
-			} else if clusterState.GetSyncProgress().GetStatus() == "normal" {
+			} else if _, isVoter := voterSet[peerID]; isVoter && clusterState.GetSyncProgress().GetStatus() == "normal" {
 				// A MsgSnap marks the start of recovery, not its completion:
 				// Raft may already have returned to Replicate while the
 				// checkpoint is still being downloaded/restored. Only the
