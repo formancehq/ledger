@@ -144,11 +144,13 @@ func TestService_LearnerRegistrationCommitsAndPreservesCallerIntent(t *testing.T
 			s := newMembershipServiceNode(t)
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
-			register := s.AddLearner
-			if bootJoin {
-				register = s.JoinAsLearner
+			register := func(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilities []uint32) error {
+				if bootJoin {
+					return s.JoinAsLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilities)
+				}
+				return s.AddLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilities)
 			}
-			require.NoError(t, register(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id")))
+			require.NoError(t, register(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id"), nil))
 			peers, err := s.ListPeers(ctx)
 			require.NoError(t, err)
 			require.Contains(t, peers, Peer{
@@ -159,7 +161,7 @@ func TestService_LearnerRegistrationCommitsAndPreservesCallerIntent(t *testing.T
 			// retry is idempotent, while a fresh-WAL boot against that progress
 			// must report stale state, even with the same persisted identity.
 			before := s.infraMembership.PeerAddresses()
-			err = register(ctx, 1, "replacement:7777", "replacement:8888", []byte("self-instance-id"))
+			err = register(ctx, 1, "replacement:7777", "replacement:8888", []byte("self-instance-id"), nil)
 			if bootJoin {
 				require.ErrorIs(t, err, node.ErrNodeStaleProgress)
 			} else {
@@ -212,4 +214,17 @@ func TestService_JoinAsLearnerWithCapabilitiesPersistsEvidence(t *testing.T) {
 		ID: 2, RaftAddress: "peer:7777", ServiceAddress: "peer:8888",
 		InstanceID: []byte("peer-instance-id"), Capabilities: []uint32{7, 9},
 	})
+}
+
+func TestService_AddLearnerWithCapabilitiesPersistsEvidence(t *testing.T) {
+	t.Parallel()
+
+	s := newMembershipServiceNode(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	require.NoError(t, s.AddLearnerWithCapabilities(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id"), []uint32{7, 9}))
+
+	peer := s.infraMembership.PeerAddresses()[2]
+	require.Equal(t, []uint32{7, 9}, peer.Capabilities)
 }

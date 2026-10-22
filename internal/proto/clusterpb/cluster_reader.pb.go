@@ -6,6 +6,7 @@ package clusterpb
 import (
 	bytes "bytes"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	slices "slices"
 )
 
 // GetClusterStateRequestReader provides read-only access to GetClusterStateRequest.
@@ -1202,6 +1203,7 @@ type AddLearnerRequestReader interface {
 	GetRaftAddress() string
 	GetServiceAddress() string
 	GetInstanceId() []byte
+	GetCapabilities() []uint32
 	Mutate() *AddLearnerRequest
 }
 
@@ -1221,6 +1223,10 @@ func (r *addLearnerRequestReadonly) GetServiceAddress() string {
 
 func (r *addLearnerRequestReadonly) GetInstanceId() []byte {
 	return bytes.Clone((*AddLearnerRequest)(r).GetInstanceId())
+}
+
+func (r *addLearnerRequestReadonly) GetCapabilities() []uint32 {
+	return slices.Clone((*AddLearnerRequest)(r).GetCapabilities())
 }
 
 func (r *addLearnerRequestReadonly) Mutate() *AddLearnerRequest {

@@ -26,6 +26,7 @@ func NewAddLearnerCommand() *cobra.Command {
 	}
 
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
+	cmd.Flags().StringSlice("capability", nil, "Capability ID supported by the learner binary (repeatable)")
 
 	return cmd
 }
@@ -60,11 +61,25 @@ func runAddLearner(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
+	capabilityValues, err := cmd.Flags().GetStringSlice("capability")
+	if err != nil {
+		return fmt.Errorf("invalid capability: %w", err)
+	}
+	capabilities := make([]uint32, len(capabilityValues))
+	for i, value := range capabilityValues {
+		parsed, parseErr := strconv.ParseUint(value, 10, 32)
+		if parseErr != nil {
+			return fmt.Errorf("invalid capability %q: %w", value, parseErr)
+		}
+		capabilities[i] = uint32(parsed)
+	}
+
 	_, err = client.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 		NodeId:         nodeID,
 		RaftAddress:    raftAddress,
 		ServiceAddress: serviceAddress,
 		InstanceId:     instanceID,
+		Capabilities:   capabilities,
 	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to add learner", err)

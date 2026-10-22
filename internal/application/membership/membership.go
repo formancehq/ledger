@@ -91,7 +91,13 @@ func (s *Service) IsRemoved(nodeID uint64, instanceID []byte) (bool, error) {
 // Returns node.ErrNodeAlreadyInCluster on idempotent retries; adapters
 // map that to their transport-specific "already-exists" status.
 func (s *Service) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	return s.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, nil, false)
+	return s.AddLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, nil)
+}
+
+// AddLearnerWithCapabilities registers a learner and carries the joining
+// binary's capability evidence in the committed ConfChange.
+func (s *Service) AddLearnerWithCapabilities(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
+	return s.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs, false)
 }
 
 // JoinAsLearner registers a node that is booting with an empty WAL and no
