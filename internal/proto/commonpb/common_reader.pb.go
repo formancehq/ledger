@@ -9684,6 +9684,68 @@ func NewMirrorRewriteRuleInvalidDetailsListReader(s []*MirrorRewriteRuleInvalidD
 	return mirrorRewriteRuleInvalidDetailsListReadonly(s)
 }
 
+// MirrorAssetMappingInvalidDetailsReader provides read-only access to MirrorAssetMappingInvalidDetails.
+// Call Mutate() to obtain a mutable clone.
+type MirrorAssetMappingInvalidDetailsReader interface {
+	Mutate() *MirrorAssetMappingInvalidDetails
+}
+
+type mirrorAssetMappingInvalidDetailsReadonly MirrorAssetMappingInvalidDetails
+
+func (r *mirrorAssetMappingInvalidDetailsReadonly) Mutate() *MirrorAssetMappingInvalidDetails {
+	return (*MirrorAssetMappingInvalidDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this MirrorAssetMappingInvalidDetails.
+func (m *MirrorAssetMappingInvalidDetails) AsReader() MirrorAssetMappingInvalidDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*mirrorAssetMappingInvalidDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this MirrorAssetMappingInvalidDetails.
+func (m *MirrorAssetMappingInvalidDetails) Mutate() *MirrorAssetMappingInvalidDetails {
+	return m.CloneVT()
+}
+
+// MirrorAssetMappingInvalidDetailsListReader provides read-only iteration over []*MirrorAssetMappingInvalidDetails.
+type MirrorAssetMappingInvalidDetailsListReader interface {
+	Len() int
+	Get(i int) MirrorAssetMappingInvalidDetailsReader
+	Range(yield func(int, MirrorAssetMappingInvalidDetailsReader) bool)
+}
+
+type mirrorAssetMappingInvalidDetailsListReadonly []*MirrorAssetMappingInvalidDetails
+
+func (l mirrorAssetMappingInvalidDetailsListReadonly) Len() int { return len(l) }
+
+func (l mirrorAssetMappingInvalidDetailsListReadonly) Get(i int) MirrorAssetMappingInvalidDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l mirrorAssetMappingInvalidDetailsListReadonly) Range(yield func(int, MirrorAssetMappingInvalidDetailsReader) bool) {
+	for i, v := range l {
+		var r MirrorAssetMappingInvalidDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMirrorAssetMappingInvalidDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMirrorAssetMappingInvalidDetailsListReader(s []*MirrorAssetMappingInvalidDetails) MirrorAssetMappingInvalidDetailsListReader {
+	return mirrorAssetMappingInvalidDetailsListReadonly(s)
+}
+
 // NumscriptAssetMismatchDetailsReader provides read-only access to NumscriptAssetMismatchDetails.
 // Call Mutate() to obtain a mutable clone.
 type NumscriptAssetMismatchDetailsReader interface {
@@ -16760,6 +16822,7 @@ type MirrorSourceConfigReader interface {
 	GetLedgerName() string
 	GetBatchSize() uint32
 	GetRewriteRules() MirrorRewriteRuleListReader
+	GetAssetMappings() MirrorAssetMappingListReader
 	GetType() isMirrorSourceConfig_Type
 	Mutate() *MirrorSourceConfig
 }
@@ -16776,6 +16839,10 @@ func (r *mirrorSourceConfigReadonly) GetBatchSize() uint32 {
 
 func (r *mirrorSourceConfigReadonly) GetRewriteRules() MirrorRewriteRuleListReader {
 	return NewMirrorRewriteRuleListReader((*MirrorSourceConfig)(r).GetRewriteRules())
+}
+
+func (r *mirrorSourceConfigReadonly) GetAssetMappings() MirrorAssetMappingListReader {
+	return NewMirrorAssetMappingListReader((*MirrorSourceConfig)(r).GetAssetMappings())
 }
 
 func (r *mirrorSourceConfigReadonly) GetType() isMirrorSourceConfig_Type {
@@ -16834,6 +16901,83 @@ func (l mirrorSourceConfigListReadonly) Range(yield func(int, MirrorSourceConfig
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewMirrorSourceConfigListReader(s []*MirrorSourceConfig) MirrorSourceConfigListReader {
 	return mirrorSourceConfigListReadonly(s)
+}
+
+// MirrorAssetMappingReader provides read-only access to MirrorAssetMapping.
+// Call Mutate() to obtain a mutable clone.
+type MirrorAssetMappingReader interface {
+	GetSourceAsset() string
+	GetAsset() string
+	GetColor() string
+	Mutate() *MirrorAssetMapping
+}
+
+type mirrorAssetMappingReadonly MirrorAssetMapping
+
+func (r *mirrorAssetMappingReadonly) GetSourceAsset() string {
+	return (*MirrorAssetMapping)(r).GetSourceAsset()
+}
+
+func (r *mirrorAssetMappingReadonly) GetAsset() string {
+	return (*MirrorAssetMapping)(r).GetAsset()
+}
+
+func (r *mirrorAssetMappingReadonly) GetColor() string {
+	return (*MirrorAssetMapping)(r).GetColor()
+}
+
+func (r *mirrorAssetMappingReadonly) Mutate() *MirrorAssetMapping {
+	return (*MirrorAssetMapping)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this MirrorAssetMapping.
+func (m *MirrorAssetMapping) AsReader() MirrorAssetMappingReader {
+	if m == nil {
+		return nil
+	}
+	return (*mirrorAssetMappingReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this MirrorAssetMapping.
+func (m *MirrorAssetMapping) Mutate() *MirrorAssetMapping {
+	return m.CloneVT()
+}
+
+// MirrorAssetMappingListReader provides read-only iteration over []*MirrorAssetMapping.
+type MirrorAssetMappingListReader interface {
+	Len() int
+	Get(i int) MirrorAssetMappingReader
+	Range(yield func(int, MirrorAssetMappingReader) bool)
+}
+
+type mirrorAssetMappingListReadonly []*MirrorAssetMapping
+
+func (l mirrorAssetMappingListReadonly) Len() int { return len(l) }
+
+func (l mirrorAssetMappingListReadonly) Get(i int) MirrorAssetMappingReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l mirrorAssetMappingListReadonly) Range(yield func(int, MirrorAssetMappingReader) bool) {
+	for i, v := range l {
+		var r MirrorAssetMappingReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMirrorAssetMappingListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMirrorAssetMappingListReader(s []*MirrorAssetMapping) MirrorAssetMappingListReader {
+	return mirrorAssetMappingListReadonly(s)
 }
 
 // MirrorRewriteRuleReader provides read-only access to MirrorRewriteRule.

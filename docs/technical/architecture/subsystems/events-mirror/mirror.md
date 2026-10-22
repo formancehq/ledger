@@ -211,6 +211,71 @@ Properties:
 - **Compile-checked at admission** — rules are validated by `celrewrite.NewRewriter` via `ErrMirrorRewriteRuleInvalid` before the config is persisted; at translation time a rewrite that produces an invalid address fails the batch, so the cursor does not advance and the worker retries (the standard translation-error path).
 - **Drop preserves IDs** — a `drop` action emits a `FillGap` carrying the dropped transaction ID in `skipped_transaction_ids`, so log-ID contiguity and transaction-ID advancement are both preserved.
 
+### Asset mappings
+
+v2 and v3 disagree on what an asset string may contain. v2 encodes a Numscript
+color into the asset name (`USDT_ETHEREUM/6`), and v2.4+ also accepts `_` in
+plain asset names. v3 forbids `_`, requires a precision in `[1, 255]` without a
+leading zero, and carries the color in the separate `Posting.Color` field. An
+asset copied verbatim from v2 can therefore be unrepresentable in v3, or alias
+another asset: `ParseAssetPrecision` reads `USD/0`, `USD/02` and `USD/1000` as
+different spellings of existing buckets.
+
+Optional `asset_mappings` on `MirrorSourceConfig` translate such assets. Each
+`MirrorAssetMapping` maps one v2 `source_asset` to one v3 `(asset, color)`
+bucket:
+
+- **Exact match** — `source_asset` is compared byte for byte with the posting
+  asset. There are no patterns or prefixes.
+- **After rewrite rules** — `TranslateBatch` applies the mappings to each entry
+  once the CEL rules have run, to the postings of `CreatedTransaction` and the
+  reverse postings of `RevertedTransaction`. Rule `match` predicates therefore
+  see v2 asset names, and a `drop` rule can discard a transaction whose assets
+  have no v3 representation before mapping rejects it.
+- **Every proposed posting is validated** — an unmapped posting passes through
+  unchanged and must already be a valid v3 asset and color. Validation runs in
+  the mirror worker before proposal, never in the FSM, so apply stays
+  independent of the node's binary version.
+- **Pass-through collision** — an unmapped asset equal to the `asset` of a
+  mapping whose `color` is empty would share that mapping's bucket with a
+  different v2 asset. Translation rejects it.
+
+Translation fails the batch on the first rejected posting. The cursor does not
+advance, the worker retries with backoff, and the error is persisted as the
+mirror's sync error until the mirror is recreated. `MirrorSyncError.message` is
+`(sensitive)`, so ledger reads return it as `[redacted]` with its `occurredAt`;
+the full text is in the worker's `Mirror sync error` log line. The messages are:
+
+```text
+mapping assets of v2 log N (type=NEW_TRANSACTION): no mapping for v2 asset "X"; add an assetMappings entry or drop the transaction with a rewrite rule
+mapping assets of v2 log N (type=NEW_TRANSACTION): pass-through asset "X" collides with mapping target ("X", "") of sourceAsset "S"; add an assetMappings entry for it
+```
+
+Admission compiles the list with `v2.NewAssetMapper`, the same function the
+worker uses, and rejects an invalid list with `MIRROR_ASSET_MAPPING_INVALID`.
+A valid list has at most 256 entries. Each entry has a unique non-empty
+`source_asset` of at most 64 bytes, a valid v3 `asset`, and a `color` matching
+`^[A-Z]{0,32}$`. No two entries share an `(asset, color)` target.
+
+**Stored-asset inventory.** A mirror that ingested v2 logs before mappings were
+validated may already hold volumes whose asset or color v3 cannot represent.
+When a worker starts, it scans the ledger's volumes once
+(`Worker.checkStoredAssets`). If any stored `(asset, color)` fails v3
+validation, the worker persists the following sync error, naming at most ten
+offenders, and ingests nothing for its lifetime:
+
+```text
+ledger contains assets ingested before asset-mapping support: A, B; delete and recreate the mirror with assetMappings
+```
+
+The scan cannot detect precision aliasing that already happened. A v2 `USD/0`
+stored before validation landed in the valid `USD` bucket and reads as valid.
+
+**Fixing a stalled mirror.** Mirror source configuration is immutable, so
+mappings cannot be added to an existing mirror. Delete the mirror ledger and
+recreate it with the needed `asset_mappings` or `drop` rules; it re-ingests the
+source from the first log.
+
 ## The Raft command
 
 `misc/proto/raft_cmd.proto:200-212` — `MirrorIngestOrder{MirrorLogEntry entry}`. Each order ingests **one** v2 log entry. A batch of 100 fetched logs becomes 100 orders inside one proposal.
@@ -267,10 +332,19 @@ message MirrorSourceConfig {
     PostgresMirrorSourceConfig postgres = 3;
   }
   uint32 batch_size = 4;
-  reserved 5;  // was address_rewrite_rules (regex); replaced by rewrite_rules
-  repeated MirrorRewriteRule rewrite_rules = 6;  // see "CEL rewrite rules"
+  repeated MirrorRewriteRule  rewrite_rules  = 5;  // see "CEL rewrite rules"
+  repeated MirrorAssetMapping asset_mappings = 6;  // see "Asset mappings"
+}
+
+message MirrorAssetMapping {
+  string source_asset = 1;  // v2 asset, matched exactly
+  string asset        = 2;  // v3 asset
+  string color        = 3;  // v3 color, empty for the uncolored bucket
 }
 ```
+
+The whole `MirrorSourceConfig`, including rewrite rules and asset mappings, is
+fixed at ledger creation.
 
 A ledger created with `mirror_source` set has `LedgerInfo.mode = MIRROR`, which is what the manager looks at to decide whether to spin up a worker.
 

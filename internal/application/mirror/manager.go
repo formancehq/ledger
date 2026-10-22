@@ -276,6 +276,13 @@ func (m *Manager) reconcileGeneration(leadership managerLeadership) {
 			continue
 		}
 
+		assets, err := v2.NewAssetMapper(info.GetMirrorSource().GetAssetMappings())
+		if err != nil {
+			m.logger.WithFields(map[string]any{"ledger": name}).Errorf("Failed to build mirror asset mapper: %v", err)
+
+			continue
+		}
+
 		source, err := createSource(leadership.initializationCtx, info.GetMirrorSource())
 		if err != nil {
 			if !m.isCurrentLeader(generation) {
@@ -298,7 +305,7 @@ func (m *Manager) reconcileGeneration(leadership managerLeadership) {
 			batchSize = m.maxBatchSize
 		}
 
-		w := NewWorker(name, batchSize, source, rewriter, m.store, m.proposer, m.builder, m.logger, m.meterProvider)
+		w := NewWorker(name, batchSize, source, v2.TranslateOptions{Rewriter: rewriter, Assets: assets}, m.store, m.proposer, m.builder, m.logger, m.meterProvider)
 		w.Start()
 		if !m.isCurrentLeader(generation) {
 			w.Stop()

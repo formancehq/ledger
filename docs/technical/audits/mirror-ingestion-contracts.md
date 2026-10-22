@@ -53,8 +53,9 @@ audited SHA; historical line numbers in subsystem docs are not stable evidence.
 | Source interface and HTTP | `internal/adapter/v2/source.go`, `source_http.go`, `source_http_test.go`, `types.go` in that directory | `FetchLogs` continuation and `GetLatestLogID` head observation; HTTP `after`, page size, returned order and `hasMore`. |
 | PostgreSQL | `internal/adapter/v2/source_postgres.go`, `source_postgres_test.go` | `_system.ledgers` bucket discovery, per-ledger filtering, strict `id > afterID`, ascending order, lookahead and typed date normalization. Authentication and pool shutdown are excluded. |
 | Translation | `internal/adapter/v2/translator.go`, `translator_test.go`, `translator_rewrite_test.go` | Four supported business variants; exact amount/target/metadata conversion, source dates, synthesized gaps and configured rewrite output. |
+| Asset mapping | `internal/adapter/v2/asset_mapping.go`, `translator.go`, `internal/application/admission/validate_order.go`, `misc/proto/common.proto` | Exact-match mapping after rewriting, v3 validation of every proposed posting asset/color, uncolored-target collision rejection and admission compilation. |
 | CEL | `internal/adapter/v2/celrewrite/`, `internal/application/admission/validate_order.go`, `misc/proto/common.proto` | Rule compilation, scope/action oneofs, order/stop, address and metadata actions, drop, expression failure policy and typed coercion. |
-| Worker | `internal/application/mirror/worker.go`, `worker_test.go`, `worker_rotation_test.go`, `manager.go` | Applied-boundary resume, speculative translation/prefetch, confirmation and error invalidation; manager is context for the mode transition only. |
+| Worker | `internal/application/mirror/worker.go`, `worker_test.go`, `worker_rotation_test.go`, `manager.go` | Applied-boundary resume, speculative translation/prefetch, confirmation and error invalidation, and the startup stored-asset inventory block; manager is context for the mode transition and mapper construction only. |
 | Apply and promotion | `internal/domain/processing/processor_mirror.go`, `processor_mirror_test.go`, `processor_apply.go`, `misc/proto/raft_cmd.proto` | Mirror mode gate, source prefix, skipped transaction IDs, imported fields, promotion and the maintenance whitelist in `isMirrorSafeApply`. |
 | Progress | `internal/query/mirror.go`, `mirror_test.go`, `internal/infra/state/machine_technical_updates.go` | Applied cursor versus observed head and error reporting; reporting does not authorize consumption. |
 | Destination integration | `tests/e2e/cluster/mirror_test.go` | Existing HTTP fixture, import, rewrite/drop, source insertion dates and promotion followed by normal writes. |
@@ -67,10 +68,10 @@ alongside these sources. At preparation time, several passages need qualificatio
   default first HTTP page as newest-first. Neither that pair of comments nor
   ordered HTTP test fixtures proves actual v2 pagination. Establish the supported
   upstream contract before treating a first-page mismatch as a product finding.
-- The mirror doc's protobuf example contains an old rewrite field number. Read
-  `misc/proto/common.proto`; compatibility with development formats before
-  `v3.0.0-rc.1` is outside scope. Published field numbers from the RC onward
-  must remain stable or have a tested migration for stored data.
+- Read field numbers from `misc/proto/common.proto`, not documentation
+  examples. Compatibility with development formats before `v3.0.0-rc.1` is
+  outside scope. Published field numbers from the RC onward must remain stable
+  or have a tested migration for stored data.
 - CEL prose saying actions never evaluate CEL predates `value_expr`. The current
   implementation in `value_expr.go` and its tests establishes expression
   evaluation during leader-side translation, before proposal, not follower apply.
@@ -130,6 +131,18 @@ ingestion boundary. Use
 to distinguish these roles, and load routed FSM/storage documentation if a
 hypothesis requires tracing rollback or durable writes beyond this boundary.
 
+Asset mappings are part of the configured projection. They match a posting's
+v2 asset exactly and run after rewriting, so a drop rule can discard a
+transaction before mapping inspects it. Every posting asset and color that
+reaches a proposal must pass v3 validation in the worker, never in apply. An
+unmapped asset equal to an uncolored mapping target is rejected. A rejection
+stalls the mirror at that source log without advancing the boundary. On start
+the worker scans stored volumes once and blocks ingestion while any stored
+asset or color is invalid. That scan cannot see precision aliases stored before
+validation, such as `USD/0` stored as `USD`; treat such a case as a documented
+limit unless the audited SHA promises detection. Mirror source configuration is
+immutable, so recovery is delete-and-recreate.
+
 Promotion sets the ledger to `NORMAL`, clears its source and emits the named
 promotion log. Subsequent mirror ingest rejects at the mode gate; normal writes
 continue from retained boundaries. The manager reconciles the committed change.
@@ -151,7 +164,7 @@ loading their routed docs. Classify by the mechanism requiring correction:
 | `idempotency-retries-partial-failures` | Owns generic proposal/ack ambiguity, atomicity and retry mechanisms, including existing mirror replay protection. This domain uses those protections to evaluate source continuation and speculative worker state; a shared guard defect is one finding under its owner. |
 | `concurrency-lifecycle-shutdown` | Owns worker Stop/join, resource lifetime, leadership fencing and stale generation callbacks, including EN-1997. This domain owns ordered ingestion/promotion effects, not shutdown timing. |
 | `api-boundary-contracts` | Owns public HTTP/gRPC/CLI codecs, create/promote request building, statuses and wire envelopes. This domain owns consuming the external v2 source and translating it into mirror orders. |
-| `configuration-startup-contracts` | Owns static server parameter selection, defaults, validation and wiring. This domain owns the semantics of persisted, selected mirror source and rewrite rules during ingestion, including rewrite compilation. |
+| `configuration-startup-contracts` | Owns static server parameter selection, defaults, validation and wiring. This domain owns the semantics of persisted, selected mirror source, rewrite rules and asset mappings during ingestion, including their compilation. |
 | `operator-reconciliation-durability` | Owns Ledger CR reconciliation, pod-exec, status/spec identity and managed indexes. Merely creating a mirror through the operator does not move that work here. |
 | `read-consistency-projections` | Owns query/index consistency and client pagination. External source pagination is here; a correct imported value served incorrectly by the readstore belongs there. |
 | `raft-membership-leadership`, `process-boundary-recovery` | Own consensus, leader activation and process crash/reopen mechanisms. They remain assumptions to establish, not extra campaigns in this domain. |

@@ -404,8 +404,10 @@ The ledger name is a positional argument for `ledgers create`, `ledgers delete`,
 | `--mirror-aws-iam-region` | | When set, enables AWS RDS IAM authentication for the `postgres` source. Credentials are taken from the ambient AWS chain (IRSA, instance profile, env vars, profile). |
 | `--mirror-aws-iam-assume-role-arn` | | Optional STS role ARN to assume before minting the RDS IAM token (cross-account / multi-tenant mirrors). Requires `--mirror-aws-iam-region`. |
 | `--mirror-batch-size` | `0` | Max logs per batch (0 = server default, capped by `--mirror-max-batch-size`) |
-| `--mirror-rewrite-file` | | Path to a YAML/JSON file with CEL rewrite rules (`[{match, cel, stop}]`) applied to every mirror log entry during translation |
-| `--mirror-rewrite-rule` | | A single CEL rewrite rule as a JSON object `{"match":..,"cel":..,"stop":..}` (repeatable; appended after any `--mirror-rewrite-file` rules) |
+| `--mirror-rewrite-file` | | Path to a YAML/JSON list of `MirrorRewriteRule` objects applied to every mirror log entry during translation. Each rule sets exactly one scope (`createdTransaction`, `revertedTransaction`, `savedMetadata`, `deletedMetadata` or `anyVariant`) holding an optional CEL `match` predicate, typed `actions` and an optional `stop`. See [CEL rewrite rules](../technical/architecture/subsystems/events-mirror/cel-rewrite.md) |
+| `--mirror-rewrite-rule` | | A single `MirrorRewriteRule` as a YAML/JSON object, for example `{"anyVariant":{"actions":[{"rewriteAddress":{"pattern":":worker:\\d+","replacement":""}}]}}` (repeatable; appended after any `--mirror-rewrite-file` rules) |
+| `--mirror-asset-mapping` | | Asset mapping `SOURCE=ASSET[:COLOR]`: the v2 asset `SOURCE`, matched exactly, is mirrored as the v3 `ASSET` with optional `COLOR` (repeatable; appended after any `--mirror-asset-mapping-file` entries). See [asset mappings](../technical/architecture/subsystems/events-mirror/mirror.md#asset-mappings) |
+| `--mirror-asset-mapping-file` | | Path to a YAML/JSON list of `{sourceAsset, asset, color}` asset mappings |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
@@ -453,12 +455,19 @@ ledgerctl ledgers create my-mirror \
   --mirror-source-type postgres \
   --mirror-dsn "postgres://user:pass@host:5432/ledger?sslmode=disable"
 
-# Create a mirror ledger with CEL rewrite rules (rewrite.yaml holds
-# [{match, cel, stop}] rules applied to every mirror log entry)
+# Create a mirror ledger with CEL rewrite rules (rewrite.yaml holds a list of
+# MirrorRewriteRule objects applied to every mirror log entry)
 ledgerctl ledgers create my-mirror \
   --mode mirror \
   --mirror-base-url https://v2-api.example.com \
   --mirror-rewrite-file rewrite.yaml
+
+# Create a mirror ledger that maps v2 colored and underscore assets to v3
+ledgerctl ledgers create my-mirror \
+  --mode mirror \
+  --mirror-base-url https://v2-api.example.com \
+  --mirror-asset-mapping USDT_ETHEREUM/6=USDT/6:ETHEREUM \
+  --mirror-asset-mapping EUR_LEGACY/2=EUR/2
 
 # Create a mirror ledger from an AWS RDS v2 source using IAM authentication
 ledgerctl ledgers create my-mirror \

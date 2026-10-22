@@ -1243,6 +1243,56 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 			},
 			wantErr: ErrMirrorRewriteRuleInvalid,
 		},
+		{
+			name: "valid asset mappings accepted",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				AssetMappings: []*commonpb.MirrorAssetMapping{
+					{SourceAsset: "USDT_ETHEREUM/6", Asset: "USDT/6", Color: "ETHEREUM"},
+					{SourceAsset: "USD/0", Asset: "USD"},
+				},
+			},
+		},
+		{
+			name: "duplicate asset mapping source rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				AssetMappings: []*commonpb.MirrorAssetMapping{
+					{SourceAsset: "USD/0", Asset: "USD"},
+					{SourceAsset: "USD/0", Asset: "USDZERO"},
+				},
+			},
+			wantErr: ErrMirrorAssetMappingInvalid,
+		},
+		{
+			name: "asset mapping to an invalid v3 asset rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				AssetMappings: []*commonpb.MirrorAssetMapping{
+					{SourceAsset: "USDT_ETHEREUM/6", Asset: "USDT_ETHEREUM/6"},
+				},
+			},
+			wantErr: ErrMirrorAssetMappingInvalid,
+		},
+		{
+			name: "asset mappings sharing a target rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				AssetMappings: []*commonpb.MirrorAssetMapping{
+					{SourceAsset: "USD/0", Asset: "USD"},
+					{SourceAsset: "USD/00", Asset: "USD"},
+				},
+			},
+			wantErr: ErrMirrorAssetMappingInvalid,
+		},
 	}
 
 	for _, tt := range tests {

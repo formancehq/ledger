@@ -946,6 +946,7 @@ message FailureDetails {
     NumscriptScopedMetadataNotFoundDetails numscript_scoped_metadata_not_found = 146 [(failure_reason) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
     NumscriptScopedNegativeBalanceDetails numscript_scoped_negative_balance = 147 [(failure_reason) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
     NumscriptVersionNotFoundDetails numscript_version_not_found = 148 [(failure_reason) = ERROR_REASON_NUMSCRIPT_NOT_FOUND];
+    MirrorAssetMappingInvalidDetails mirror_asset_mapping_invalid = 149 [(failure_reason) = ERROR_REASON_VALIDATION];
   }
 }
 
@@ -1180,6 +1181,9 @@ message MirrorIamRequiresTlsDetails {
 }
 
 message MirrorRewriteRuleInvalidDetails {
+}
+
+message MirrorAssetMappingInvalidDetails {
 }
 
 
@@ -1668,6 +1672,26 @@ message MirrorSourceConfig {
   // translated into v3 orders. Each rule can rename address segments, transform
   // metadata, or drop transactions. See MirrorRewriteRule.
   repeated MirrorRewriteRule rewrite_rules = 5;
+  // Exact-match translation of v2 posting assets that v3 cannot represent
+  // (underscore "colour" suffixes, non-canonical precisions). Applied after
+  // rewrite_rules to created and reverted postings. A posting whose asset has
+  // no mapping passes through unchanged and must already be a valid v3 asset.
+  // Fixed at ledger creation. See MirrorAssetMapping.
+  repeated MirrorAssetMapping asset_mappings = 6;
+}
+
+// MirrorAssetMapping rewrites one v2 posting asset into a v3 asset bucket.
+//
+// source_asset is matched byte-for-byte against the v2 posting asset. The
+// target asset must satisfy the v3 asset grammar and color the v3 color
+// grammar; an empty color is the uncoloured bucket. Target (asset, color)
+// pairs are unique across a mirror's mappings, and a pass-through asset may
+// not equal a target with an empty color, so two source assets never merge
+// into one v3 balance.
+message MirrorAssetMapping {
+  string source_asset = 1;
+  string asset = 2;
+  string color = 3;
 }
 
 // MirrorRewriteRule transforms a mirror log entry during v2->v3 translation.
