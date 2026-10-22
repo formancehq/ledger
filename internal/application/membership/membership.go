@@ -101,6 +101,21 @@ func (s *Service) JoinAsLearner(ctx context.Context, nodeID uint64, raftAddr, se
 	return s.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, true)
 }
 
+// RefreshMembership updates the durable identity, endpoints and capability
+// evidence of an existing member. The node must already be present in the
+// committed Raft membership; the leader commits the update through Raft.
+func (s *Service) RefreshMembership(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32, membershipRevision uint64) error {
+	if err := validatePeer(nodeID, raftAddr, serviceAddr, instanceID); err != nil {
+		return err
+	}
+
+	if err := s.node.RefreshMembership(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs, membershipRevision); err != nil {
+		return fmt.Errorf("refreshing membership: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Service) addLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, bootJoin bool) error {
 	if err := validatePeer(nodeID, raftAddr, serviceAddr, instanceID); err != nil {
 		return err
