@@ -1,0 +1,1575 @@
+// Code generated from misc/proto/bucket.proto. DO NOT EDIT.
+
+
+syntax = "proto3";
+
+package ledger;
+
+option go_package = "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb";
+import "common.proto";
+import "audit.proto";
+import "signature.proto";
+import "google/protobuf/descriptor.proto";
+
+// allowed_skippable_reasons annotates a oneof case inside LedgerAction.data
+// with the business ErrorReasons a caller may list in
+// LedgerApplyRequest.skippable_reasons for that action. protoc-gen-skippable
+// (misc/proto → tools/protoc-gen-skippable) reads these annotations and
+// generates internal/proto/servicepb/bucket_skippable.pb.go — admission's
+// extractSkippableReasonsFromApply consumes that generated table so the
+// whitelist stays co-located with the wire declaration.
+//
+// A oneof case without the annotation has NO whitelist: any non-empty
+// LedgerApplyRequest.skippable_reasons on that action is rejected at
+// admission.
+//
+// Field number 71001 sits in a range outside the taken slots of
+// transitive dependencies (etcd uses 50000-50003, gogoproto uses
+// 62000-65012, google.api uses 72295728+) — collisions in the
+// same-message×same-number key would panic at runtime during package init.
+extend google.protobuf.FieldOptions {
+  repeated common.ErrorReason allowed_skippable_reasons = 71001;
+}
+
+// ============================================================================
+// gRPC Service
+// ============================================================================
+
+// BucketService provides ledger operations
+service BucketService {
+  // ListLedgers streams all ledgers info in the cluster
+  rpc ListLedgers(ListLedgersRequest) returns (stream common.LedgerInfo) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
+  }
+  // GetLedger returns a ledger info by its name or ID
+  rpc GetLedger(GetLedgerRequest) returns (common.LedgerInfo) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
+  }
+  // GetAccount retrieves an account by address
+  rpc GetAccount(GetAccountRequest) returns (common.Account) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_ACCOUNT_READ };
+  }
+  // GetTransaction retrieves a transaction by ID
+  rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_TRANSACTION_READ };
+  }
+  // ListTransactions streams all transactions for a ledger (newest first)
+  rpc ListTransactions(ListTransactionsRequest) returns (stream common.Transaction) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_TRANSACTION_READ };
+  }
+  // ListAccounts streams all accounts for a ledger (alphabetical order)
+  rpc ListAccounts(ListAccountsRequest) returns (stream common.Account) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_ACCOUNT_READ };
+  }
+  // Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
+  rpc Apply(ApplyRequest) returns (ApplyResponse) {
+    option (common.auth_policy) = { dynamic_resolver: DYNAMIC_AUTH_RESOLVER_APPLY };
+  }
+  // GetPrimaryMetrics returns metrics from the primary Pebble store. Supports node_id targeting.
+  rpc GetPrimaryMetrics(GetPrimaryMetricsRequest) returns (GetPrimaryMetricsResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
+  // GetSecondaryMetrics returns metrics from the secondary (read index) Pebble store. Supports node_id targeting.
+  rpc GetSecondaryMetrics(GetSecondaryMetricsRequest) returns (GetSecondaryMetricsResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
+  // CheckStore verifies store integrity (hash chain and derived data consistency)
+  rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
+  // ListAuditEntries streams audit trail entries (success and failure)
+  rpc ListAuditEntries(ListAuditEntriesRequest) returns (stream audit.AuditEntry) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_AUDIT_READ };
+  }
+  // GetAuditEntry returns a single audit entry by sequence number
+  rpc GetAuditEntry(GetAuditEntryRequest) returns (audit.AuditEntry) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_AUDIT_READ };
+  }
+  // GetEventsSinks returns the current per-sink configurations and statuses
+  rpc GetEventsSinks(GetEventsSinksRequest) returns (GetEventsSinksResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
+  // ListLogs streams system logs; when ledger is set, streams only logs for that ledger
+  rpc ListLogs(ListLogsRequest) returns (stream common.Log) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
+  }
+  // GetLog returns a single system log by sequence number
+  rpc GetLog(GetLogRequest) returns (common.Log) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
+  // ListSigningKeys streams all registered signing keys
+  rpc ListSigningKeys(ListSigningKeysRequest) returns (stream common.SigningKey) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
+  // Discovery returns server capabilities and configuration for clients
+  rpc Discovery(DiscoveryRequest) returns (DiscoveryResponse) {
+    option (common.auth_policy) = { public: true };
+  }
+  // GetMetadataSchemaStatus returns the declared type of every metadata field.
+  rpc GetMetadataSchemaStatus(GetMetadataSchemaStatusRequest) returns (GetMetadataSchemaStatusResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_ACCOUNT_READ };
+  }
+  // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts
+  rpc AnalyzeAccounts(AnalyzeAccountsRequest) returns (stream AnalyzeAccountsEvent) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_ACCOUNT_READ };
+  }
+  // AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns
+  rpc AnalyzeTransactions(AnalyzeTransactionsRequest) returns (stream AnalyzeTransactionsEvent) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_TRANSACTION_READ };
+  }
+  // ListPreparedQueries lists all prepared queries for a ledger
+  rpc ListPreparedQueries(ListPreparedQueriesRequest) returns (ListPreparedQueriesResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
+  }
+  // ExecutePreparedQuery executes a prepared query against the read index store
+  rpc ExecutePreparedQuery(ExecutePreparedQueryRequest) returns (ExecutePreparedQueryResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
+  }
+  // GetIndexStatus returns the current state of the read index builder
+  rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
+  // GetIndex returns a single Index registry entry by (ledger, id).
+  rpc GetIndex(GetIndexRequest) returns (common.Index) {
+    option (common.auth_policy) = { dynamic_resolver: DYNAMIC_AUTH_RESOLVER_GET_INDEX };
+  }
+  // GetIndexEntryStatus returns the per-index status view (registry entry +
+  // backfill cursor + per-replica IndexVersionState) for a single index.
+  rpc GetIndexEntryStatus(GetIndexEntryStatusRequest) returns (IndexEntry) {
+    option (common.auth_policy) = { dynamic_resolver: DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS };
+  }
+  // ListIndexes streams the bucket-scoped index registry, optionally filtered
+  // to a single ledger (or to bucket-scoped indexes when ledger is empty).
+  rpc ListIndexes(ListIndexesRequest) returns (stream common.Index) {
+    option (common.auth_policy) = { dynamic_resolver: DYNAMIC_AUTH_RESOLVER_LIST_INDEXES };
+  }
+  // GetLedgerStats returns aggregate statistics for a ledger
+  rpc GetLedgerStats(GetLedgerStatsRequest) returns (common.LedgerStats) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
+  }
+  // AggregateVolumes returns per-asset aggregated volumes for filtered accounts
+  rpc AggregateVolumes(AggregateVolumesRequest) returns (common.AggregateResult) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_ACCOUNT_READ };
+  }
+  // GetNumscript returns a numscript by name and optional version
+  rpc GetNumscript(GetNumscriptRequest) returns (common.NumscriptInfo) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
+  }
+  // ListNumscripts streams all numscripts (latest version of each)
+  rpc ListNumscripts(ListNumscriptsRequest) returns (stream common.NumscriptInfo) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
+  }
+  // GetTemplateUsage returns per-template invocation usage populated by the
+  // usagebuilder subsystem. Eventually consistent — may lag the live FSM
+  // by up to one usagebuilder tick interval.
+  rpc GetTemplateUsage(GetTemplateUsageRequest) returns (common.TemplateUsage) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
+  }
+  // ListNumscriptVersions returns the latest pointer and every stored version
+  // of a numscript, ordered greatest semver first.
+  rpc ListNumscriptVersions(ListNumscriptVersionsRequest) returns (ListNumscriptVersionsResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
+  }
+  // InspectIndex scans a metadata index and returns distinct values, facets, or a summary
+  rpc InspectIndex(InspectIndexRequest) returns (InspectIndexResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
+  }
+  // Barrier proposes a no-op through Raft consensus. When it returns, all
+  // previously proposed entries are guaranteed to have been applied to the FSM.
+  // Useful for ensuring read-after-write consistency across API calls.
+  rpc Barrier(BarrierRequest) returns (BarrierResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
+}
+
+// ============================================================================
+// gRPC Request/Response Messages
+// ============================================================================
+
+message GetAccountRequest {
+  string ledger = 1;
+  string address = 2;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  fixed64 checkpoint_id = 3;
+  // When true, colored buckets are summed into a single entry per asset
+  // with color = "" in the returned Account.volumes list. By default each
+  // (asset, color) tuple gets its own entry.
+  bool collapse_colors = 4;
+}
+
+message GetTransactionRequest {
+  string ledger = 1;
+  fixed64 transaction_id = 2;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  fixed64 checkpoint_id = 3;
+}
+
+message GetTransactionResponse {
+  common.Transaction transaction = 1;
+}
+
+message ListTransactionsRequest {
+  string ledger = 1;
+  common.ListOptions options = 2;
+}
+
+message ListAccountsRequest {
+  string ledger = 1;
+  common.ListOptions options = 2;
+}
+
+message CreateLedgerRequest {
+  string name = 1;
+  repeated common.SetMetadataFieldTypeCommand initial_schema = 2;
+  common.LedgerMode mode = 3;
+  common.MirrorSourceConfig mirror_source = 4;
+  map<string, common.AccountType> account_types = 5;  // Initial account types
+  common.ChartEnforcementMode default_enforcement_mode = 6;  // Default enforcement for unmatched accounts
+  map<string, common.MetadataValue> metadata = 7; // Initial ledger metadata, atomic with creation
+}
+
+message DeleteLedgerRequest {
+  string name = 1;
+}
+
+message DeleteLedgerResponse {}
+
+message ListLedgersRequest {
+  common.ListOptions options = 1;
+}
+
+message GetLedgerRequest {
+  string ledger = 1;
+  common.ReadOptions read = 2;
+}
+
+// ApplyRequest is the wire input to Apply(): an atomic batch that is either
+// unsigned (ApplyBatch carried directly) or signed (an opaque
+// SignedApplyBatch whose payload is the serialized ApplyBatch). The
+// discriminated union is schema-enforced — a client cannot send both, and the
+// wrapper/payload divergence class disappears by construction.
+//
+// forwarded_caller_snapshot and skip_response sit OUTSIDE the signed payload:
+// the snapshot is added by a forwarding follower (not client-signed), and
+// skip_response is a response-shaping transport option, not part of the intent.
+message ApplyRequest {
+  oneof variant {
+    ApplyBatch unsigned = 1;
+    signature.SignedApplyBatch signed = 2;
+  }
+
+  // forwarded_caller_snapshot carries the admission-time caller snapshot
+  // principal and effective authorization captured by the forwarding follower. The
+  // leader honors this field ONLY when the incoming connection authenticates
+  // via cluster-secret (trusted peer); direct client requests have it
+  // derived from validated JWT/Ed25519 claims on the leader and any value
+  // sent here is rejected.
+  common.CallerSnapshot forwarded_caller_snapshot = 3;
+
+  // skip_response, when true, strips log payloads from the response.
+  // Only the sequence number is returned for each log. Useful for
+  // historical ingestion where the client does not need the full response.
+  bool skip_response = 4;
+}
+
+// ApplyBatch is the atomic unit: an ordered set of requests applied
+// all-or-nothing, identified for idempotency by a single key. It is the unit
+// of atomicity, idempotency, AND signing — a SignedApplyBatch signs exactly
+// these bytes, so the batch's composition and ordering are authenticated.
+message ApplyBatch {
+  repeated Request requests = 1;
+  string idempotency_key = 2;
+}
+
+message ApplyResponse {
+  repeated common.Log logs = 1;
+}
+
+message Request {
+  // Idempotency is keyed per atomic batch (ApplyBatch.idempotency_key),
+  // matching the atomic/signed unit — never per individual request.
+  oneof type {
+    LedgerApplyRequest apply = 1;
+    CreateLedgerRequest create_ledger = 2;
+    DeleteLedgerRequest delete_ledger = 3;
+    RegisterSigningKeyRequest register_signing_key = 4;
+    RevokeSigningKeyRequest revoke_signing_key = 5;
+    SetSigningConfigRequest set_signing_config = 6;
+    AddEventsSinkRequest add_events_sink = 7;
+    RemoveEventsSinkRequest remove_events_sink = 8;
+    SetMaintenanceModeRequest set_maintenance_mode = 9;
+    SetMetadataFieldTypeRequest set_metadata_field_type = 10;
+    RemoveMetadataFieldTypeRequest remove_metadata_field_type = 11;
+    PromoteLedgerRequest promote_ledger = 12;
+    CreatePreparedQueryRequest create_prepared_query = 13;
+    UpdatePreparedQueryRequest update_prepared_query = 14;
+    DeletePreparedQueryRequest delete_prepared_query = 15;
+    CreateIndexRequest create_index = 16;
+    DropIndexRequest drop_index = 17;
+    SaveNumscriptRequest save_numscript = 18;
+    AddAccountTypeLedgerRequest add_account_type = 19;
+    RemoveAccountTypeLedgerRequest remove_account_type = 20;
+    SetDefaultEnforcementModeLedgerRequest set_default_enforcement_mode = 21;
+    CreateQueryCheckpointRequest create_query_checkpoint = 22;
+    DeleteQueryCheckpointRequest delete_query_checkpoint = 23;
+    SetQueryCheckpointScheduleRequest set_query_checkpoint_schedule = 24;
+    DeleteQueryCheckpointScheduleRequest delete_query_checkpoint_schedule = 25;
+    SaveLedgerMetadataRequest save_ledger_metadata = 26;
+    DeleteLedgerMetadataRequest delete_ledger_metadata = 27;
+  }
+  // Signing happens at the batch level, never per request: a signed
+  // ApplyRequest carries an opaque SignedApplyBatch whose payload is the
+  // serialized ApplyBatch (these requests + the key).
+}
+
+// CreateQueryCheckpointRequest creates a query checkpoint via Raft.
+// The checkpoint ID is assigned sequentially by the FSM.
+message CreateQueryCheckpointRequest {}
+
+// DeleteQueryCheckpointRequest removes a query checkpoint via Raft.
+message DeleteQueryCheckpointRequest {
+  fixed64 checkpoint_id = 1;
+}
+
+message PromoteLedgerRequest {
+  string ledger = 1;
+}
+
+// SaveLedgerMetadataRequest sets metadata key-value pairs on a ledger.
+message SaveLedgerMetadataRequest {
+  string ledger = 1;
+  map<string, common.MetadataValue> metadata = 2;
+}
+
+// DeleteLedgerMetadataRequest removes a single metadata key from a ledger.
+message DeleteLedgerMetadataRequest {
+  string ledger = 1;
+  string key = 2;
+}
+
+// AddEventsSinkRequest adds a named sink configuration; existing names are rejected.
+message AddEventsSinkRequest {
+  common.SinkConfig config = 1;
+}
+
+// RemoveEventsSinkRequest removes a named sink configuration.
+message RemoveEventsSinkRequest {
+  string name = 1;
+  string controller_id = 2;  // When set, remove only the sink owned by this controller
+}
+
+// ============================================================================
+// Signing Key Management Messages
+// ============================================================================
+
+// RegisterSigningKeyRequest registers an Ed25519 public key for signature verification.
+// Bootstrap: when no keys are registered yet, this request can be unsigned.
+// Once at least one key is registered, this request must be signed by an existing key.
+message RegisterSigningKeyRequest {
+  string key_id = 1;       // Unique identifier for this key
+  bytes public_key = 2;    // Ed25519 public key (32 bytes)
+}
+
+// RevokeSigningKeyRequest removes a registered signing key.
+// Must be signed by an existing key (cannot revoke all keys if require_signatures is enabled).
+message RevokeSigningKeyRequest {
+  string key_id = 1;       // Key ID to revoke
+  bool cascade = 2;        // When true, also revoke all descendant keys
+}
+
+// SetSigningConfigRequest updates the signing configuration.
+// Must be signed by an existing key when keys are registered.
+message SetSigningConfigRequest {
+  bool require_signatures = 1;   // Whether to reject unsigned requests
+}
+
+message ListSigningKeysRequest {
+  common.ListOptions options = 1;
+}
+
+// SetMaintenanceModeRequest enables or disables maintenance mode.
+// When enabled, all write operations are blocked except maintenance mode toggle.
+message SetMaintenanceModeRequest {
+  bool enabled = 1;   // Whether maintenance mode is active
+}
+
+// SetMetadataFieldTypeRequest declares or changes the type of a single metadata key.
+// Existing primary metadata values remain unchanged; attached indexes are rewritten.
+message SetMetadataFieldTypeRequest {
+  string ledger = 1;
+  common.TargetType target_type = 2;
+  string key = 3;
+  common.MetadataType type = 4;
+}
+
+// RemoveMetadataFieldTypeRequest removes the type declaration for a single metadata key.
+// Existing primary metadata values remain unchanged and an attached index is dropped.
+message RemoveMetadataFieldTypeRequest {
+  string ledger = 1;
+  common.TargetType target_type = 2;
+  string key = 3;
+}
+
+
+// CreateIndexRequest requests the creation of an index on a ledger.
+message CreateIndexRequest {
+  string ledger = 1;
+  common.IndexID id = 2;
+}
+
+// DropIndexRequest requests the removal of an index from a ledger.
+message DropIndexRequest {
+  string ledger = 1;
+  common.IndexID id = 2;
+}
+
+// ============================================================================
+// Numscript Library Messages
+// ============================================================================
+
+// SaveNumscriptRequest appends an immutable version to the library. version
+// must be an explicit full semver (e.g. "1.0.0").
+message SaveNumscriptRequest {
+  string name = 1;
+  string content = 2;
+  string version = 3;
+  string ledger = 4;
+}
+
+// GetNumscriptRequest retrieves a numscript by name and version selector.
+// version accepts an exact semver, a partial selector (e.g. "1", "1.2"), or
+// "" / "latest" for the greatest stored semver.
+message GetNumscriptRequest {
+  string name = 1;
+  string version = 2; // "" = latest (greatest stored semver)
+  string ledger = 3;
+  common.ReadOptions read = 4;
+}
+
+// ListNumscriptsRequest lists all numscripts for a ledger (greatest version of each).
+message ListNumscriptsRequest {
+  string ledger = 1;
+  common.ListOptions options = 2;
+}
+
+// ListNumscriptVersionsRequest lists every stored version of a single numscript.
+message ListNumscriptVersionsRequest {
+  string ledger = 1;
+  string name = 2;
+  common.ReadOptions read = 3;
+}
+
+// ListNumscriptVersionsResponse carries the numscript's history: the current
+// latest (greatest stored semver) and every stored version.
+message ListNumscriptVersionsResponse {
+  string latest_version = 1;
+  repeated common.NumscriptVersionEntry versions = 2;
+}
+
+// GetTemplateUsageRequest retrieves the invocation counter + last-used
+// timestamp for a Numscript template. The counter is materialised
+// asynchronously by the usagebuilder from the audit chain — expect up to
+// one tick interval of lag behind the live FSM.
+message GetTemplateUsageRequest {
+  string ledger = 1;
+  string name = 2;
+}
+
+// ScriptReference references a numscript from the library by name and version.
+message ScriptReference {
+  string name = 1;
+  string version = 2; // required: "latest" or an exact full semver
+  map<string, string> vars = 3;
+}
+
+// SetQueryCheckpointScheduleRequest sets the automatic query checkpoint creation schedule.
+message SetQueryCheckpointScheduleRequest {
+  string cron = 1;   // Cron expression (standard 5-field or extended 6-field)
+}
+
+// DeleteQueryCheckpointScheduleRequest disables the automatic query checkpoint schedule.
+message DeleteQueryCheckpointScheduleRequest {}
+
+// ============================================================================
+// Discovery Messages
+// ============================================================================
+
+message DiscoveryRequest {}
+
+// ServerInfo carries the server build metadata (unauthenticated).
+message ServerInfo {
+  string version = 1;     // semver / git tag (e.g. v3.1.0), "dev" if unset
+  string commit = 2;      // git SHA, "unknown" if unset
+  string build_date = 3;  // RFC3339, "unknown" if unset
+  string go_version = 4;  // runtime Go version
+  string protocol_version = 5; // Required ledger-protocol-version RPC metadata
+}
+
+message DiscoveryResponse {
+  ResponseSigningInfo response_signing = 1;  // Response signing config (nil if disabled)
+  ServerInfo server_info = 2;                // Server build metadata
+  common.ClusterPolicy cluster_policy = 3;  // Committed policy (nil before initialization)
+}
+
+// ResponseSigningInfo describes the server's response signing configuration.
+message ResponseSigningInfo {
+  bytes public_key = 1;    // Ed25519 public key (32 bytes)
+  string key_id = 2;       // Key identifier (SHA256 fingerprint)
+}
+
+// ============================================================================
+// Ledger Actions (used by Apply RPC)
+// ============================================================================
+
+// CreateTransactionPayload contains the data for creating a transaction
+message CreateTransactionPayload {
+  repeated common.Posting postings = 1;
+  common.Script script = 2;
+  common.Timestamp timestamp = 3;
+  string reference = 4;
+  map<string, common.MetadataValue> metadata = 5;
+  map<string, common.MetadataMap> account_metadata = 6;
+  bool force = 7;
+  ScriptReference script_reference = 8;
+}
+
+// RevertTransactionPayload contains the data for reverting a transaction.
+message RevertTransactionPayload {
+  fixed64 transaction_id = 1;
+  bool force = 2;
+  bool at_effective_date = 3;
+  map<string, common.MetadataValue> metadata = 4;
+}
+
+// LedgerAction represents a single ledger action.
+//
+// Each oneof case MAY carry an `(allowed_skippable_reasons)` annotation
+// (see the extension declaration at the top of this file). Admission
+// consumes the generated whitelist to validate LedgerApplyRequest
+// .skippable_reasons; cases without the annotation reject any non-empty
+// list from the caller.
+message LedgerAction {
+  oneof data {
+    CreateTransactionPayload create_transaction = 1 [
+      (allowed_skippable_reasons) = ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
+    ];
+    common.SaveMetadataCommand add_metadata = 2;
+    RevertTransactionPayload revert_transaction = 3 [
+      (allowed_skippable_reasons) = ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+    ];
+    common.DeleteMetadataCommand delete_metadata = 4 [
+      (allowed_skippable_reasons) = ERROR_REASON_METADATA_NOT_FOUND
+    ];
+    AddAccountTypeRequest add_account_type = 5 [
+      (allowed_skippable_reasons) = ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+    ];
+    RemoveAccountTypeRequest remove_account_type = 6 [
+      (allowed_skippable_reasons) = ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+    ];
+    SetDefaultEnforcementModeRequest set_default_enforcement_mode = 7;
+  }
+}
+
+message LedgerApplyRequest {
+  string ledger = 1;
+  LedgerAction action = 2;
+  // Business error reasons the caller accepts to skip silently rather than
+  // fail the proposal. The FSM records a common.OrderSkippedLog for each
+  // matching skip; the proposal continues with Outcome=Success.
+  //
+  // Validated at admission against the per-action whitelist declared inline on
+  // each LedgerAction.data oneof case via `(allowed_skippable_reasons)` (the
+  // single source of truth; the generated SkippableReasonsForLedgerAction is
+  // what admission consults). Today: CreateTransaction accepts
+  // TRANSACTION_REFERENCE_CONFLICT, RevertTransaction TRANSACTION_ALREADY_REVERTED,
+  // DeleteMetadata METADATA_NOT_FOUND, AddAccountType ACCOUNT_TYPE_ALREADY_EXISTS,
+  // RemoveAccountType ACCOUNT_TYPE_NOT_FOUND. An opt-in on an action that
+  // declares no annotation is rejected up front. Empty (default) preserves the
+  // historical fail-fast behaviour.
+  repeated common.ErrorReason skippable_reasons = 3;
+}
+
+// AddAccountTypeRequest adds an account type within a LedgerApplyRequest.
+message AddAccountTypeRequest {
+  common.AccountType account_type = 1;
+}
+
+// RemoveAccountTypeRequest removes an account type within a LedgerApplyRequest.
+message RemoveAccountTypeRequest {
+  string name = 1;
+}
+
+// SetDefaultEnforcementModeRequest sets the default enforcement mode within a LedgerApplyRequest.
+message SetDefaultEnforcementModeRequest {
+  common.ChartEnforcementMode enforcement_mode = 1;
+}
+
+// SetDefaultEnforcementModeLedgerRequest sets the default enforcement mode (top-level request).
+message SetDefaultEnforcementModeLedgerRequest {
+  string ledger = 1;
+  common.ChartEnforcementMode enforcement_mode = 2;
+}
+
+// AddAccountTypeLedgerRequest adds an account type (top-level request).
+message AddAccountTypeLedgerRequest {
+  string ledger = 1;
+  common.AccountType account_type = 2;
+}
+
+// RemoveAccountTypeLedgerRequest removes an account type (top-level request).
+message RemoveAccountTypeLedgerRequest {
+  string ledger = 1;
+  string name = 2;
+}
+
+// ============================================================================
+// Store Metrics Messages
+// ============================================================================
+
+message GetPrimaryMetricsRequest {
+  // node_id indicates which node to query (0 = local node)
+  uint64 node_id = 1;
+}
+
+message GetPrimaryMetricsResponse {
+  // available indicates if metrics are available (false for non-Pebble stores)
+  bool available = 1;
+  // metrics contains the Pebble metrics (only set if available is true)
+  PebbleMetrics metrics = 2;
+}
+
+message GetSecondaryMetricsRequest {
+  // node_id indicates which node to query (0 = local node)
+  uint64 node_id = 1;
+}
+
+message GetSecondaryMetricsResponse {
+  // available indicates if the secondary store is active
+  bool available = 1;
+  // metrics contains the secondary Pebble metrics (only set if available is true)
+  PebbleMetrics metrics = 2;
+}
+
+// PebbleMetrics contains metrics from the Pebble storage engine
+message PebbleMetrics {
+  BlockCacheMetrics block_cache = 1;
+  CompactMetrics compact = 2;
+  FlushMetrics flush = 3;
+  MemTableMetrics mem_table = 4;
+  SnapshotsMetrics snapshots = 5;
+  TableMetrics table = 6;
+  TableCacheMetrics table_cache = 7;
+  WALMetrics wal = 8;
+  KeysMetrics keys = 9;
+  repeated LevelMetrics levels = 10;
+  fixed64 disk_space_usage = 11;
+}
+
+message BlockCacheMetrics {
+  int64 size = 1;
+  int64 count = 2;
+  int64 hits = 3;
+  int64 misses = 4;
+}
+
+message CompactMetrics {
+  int64 count = 1;
+  int64 default_count = 2;
+  int64 delete_only_count = 3;
+  int64 elision_only_count = 4;
+  int64 move_count = 5;
+  int64 read_count = 6;
+  int64 rewrite_count = 7;
+  int64 multi_level_count = 8;
+  fixed64 estimated_debt = 9;
+  int64 in_progress_bytes = 10;
+  int64 num_in_progress = 11;
+  int32 marked_files = 12;
+}
+
+message FlushMetrics {
+  int64 count = 1;
+  int64 num_in_progress = 2;
+  fixed64 as_ingest_count = 3;
+  fixed64 as_ingest_table_count = 4;
+  fixed64 as_ingest_bytes = 5;
+}
+
+message MemTableMetrics {
+  fixed64 size = 1;
+  int64 count = 2;
+  fixed64 zombie_size = 3;
+  int64 zombie_count = 4;
+}
+
+message SnapshotsMetrics {
+  int32 count = 1;
+  fixed64 earliest_seq_num = 2;
+  fixed64 pinned_keys = 3;
+  fixed64 pinned_size = 4;
+}
+
+message TableMetrics {
+  fixed64 zombie_size = 1;
+  int64 zombie_count = 2;
+  fixed64 backing_table_count = 3;
+  fixed64 backing_table_size = 4;
+}
+
+message TableCacheMetrics {
+  int64 size = 1;
+  int64 count = 2;
+  int64 hits = 3;
+  int64 misses = 4;
+}
+
+message WALMetrics {
+  int64 files = 1;
+  int64 obsolete_files = 2;
+  fixed64 size = 3;
+  fixed64 bytes_in = 4;
+  fixed64 bytes_written = 5;
+}
+
+message KeysMetrics {
+  fixed64 range_key_sets_count = 1;
+  fixed64 tombstone_count = 2;
+}
+
+message LevelMetrics {
+  int32 level = 1;
+  int64 num_files = 2;
+  int64 size = 3;
+  double score = 4;
+  fixed64 bytes_in = 5;
+  fixed64 bytes_ingested = 6;
+  fixed64 bytes_moved = 7;
+  fixed64 bytes_read = 8;
+  fixed64 bytes_compacted = 9;
+  fixed64 bytes_flushed = 10;
+  fixed64 tables_compacted = 11;
+  fixed64 tables_flushed = 12;
+  fixed64 tables_ingested = 13;
+  fixed64 tables_moved = 14;
+}
+
+// ============================================================================
+// Store Check Messages
+// ============================================================================
+
+message CheckStoreRequest {}
+
+message CheckStoreEvent {
+  oneof type {
+    CheckStoreError error = 1;
+    CheckStoreProgress progress = 2;
+  }
+}
+
+enum CheckStoreErrorType {
+  CHECK_STORE_ERROR_TYPE_UNSPECIFIED = 0;
+  CHECK_STORE_ERROR_TYPE_HASH_MISMATCH = 1;
+  // Emitted when log sequences the store should hold are absent. Two
+  // emitters, both reporting a contiguous RUN as ONE event carrying the run's
+  // first sequence in log_sequence: the interior scan over the Log rows, for a
+  // hole between two surviving rows inside the audited range; and the stored
+  // log bound pass, for a deleted TAIL, which the interior scan cannot see
+  // because it has no surviving row above it. Never one event per missing
+  // position: the hole is chosen by whoever wrote the row above it, and a
+  // truncated tail can be millions of rows. A run one sequence long names that
+  // single sequence rather than a range. See EN-1526.
+  CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP = 2;
+  CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH = 3;
+  CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH = 4;
+  CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER = 5;
+  CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH = 6;
+  CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH = 7;
+  // Emitted when the (ledger, account, asset) tuples persisted in
+  // AppliedProposal.TransientVolumes or LedgerLog.PurgedVolumes do not
+  // match the set the replay-time SimulateEphemeralPurge derived for the
+  // same proposal. Surfaces corruption on the unhashed projection caches
+  // the index builder consumes — the audit hash chain itself is
+  // verified separately by HASH_MISMATCH.
+  CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH = 8;
+  // Emitted when a frozen idempotency outcome persisted under SubIdempKeys (the
+  // proposal hash, the failure reason/message/metadata, or the success log
+  // range) does not match the value re-derived from the hash-chained
+  // AuditEntry that froze it. The idempotency store is a replay cache; a
+  // tampered frozen outcome would otherwise replay an arbitrary error or wrong
+  // log range to a duplicate caller. The audit chain is the source of truth.
+  CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH = 9;
+  // Emitted when the SubAttrIndex registry entries (bucket-scoped Index zone)
+  // diverge from the set the checker re-derived by replaying CreateIndex /
+  // DropIndex / RemovedMetadataFieldType / DeleteLedger log payloads. The
+  // registry is a projection of those audit-bound orders; an entry that has
+  // no matching CreateIndex (or that survives an audit-bound DropIndex /
+  // ledger deletion) is tampering. The verifier covers presence + identity
+  // (Ledger, Id); per-replica build progress lives in IndexVersionState,
+  // which legitimately differs across nodes and is not compared.
+  CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH = 10;
+  // Emitted when a LedgerLogPayload.OrderSkipped projection records a reason
+  // that the audit-bound Order.skippable_reasons whitelist does not allow, or
+  // a reason classified as KindInternal (structural failure). The OrderSkippedLog
+  // sits in the per-log projection which is NOT hash-chain bound, so a tampered
+  // skip log would otherwise let a duplicate caller observe a fabricated outcome
+  // for an order that should have been rejected hard. The skippable_reasons
+  // whitelist on the audit-bound Order is the source of truth.
+  CHECK_STORE_ERROR_TYPE_INVALID_SKIP = 11;
+  // Emitted when a mirror ledger's stored LedgerBoundaries.last_mirror_v2_log_id
+  // does NOT equal the maximum audited MirrorIngest.v2_log_id for that ledger.
+  // last_mirror_v2_log_id is the idempotent-replay high-water mark (EN-1550): the
+  // FSM enforces a contiguous applied prefix, so at rest the stored value must
+  // equal exactly the max audited v2_log_id. A value ABOVE the audit claims to
+  // have consumed a source v2 log no audit entry recorded (future ingests wrongly
+  // skipped); a value BELOW means the persisted projection lost applied ground —
+  // both are corruption. This is a full invariant-#8 equality check, not a bound.
+  CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH = 12;
+  // Emitted when a ledger's stored metadata schema (LedgerInfo.MetadataSchema)
+  // diverges from the field-type declarations the checker re-derived by
+  // replaying CreateLedger.initial_schema + SetMetadataFieldType /
+  // RemovedMetadataFieldType log payloads. The schema is a projection of those
+  // audit-bound orders.
+  CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH = 13;
+  // Emitted when a ledger's stored account types (LedgerInfo.AccountTypes)
+  // diverge from the set the checker re-derived by replaying AddAccountType /
+  // RemoveAccountType log payloads. The account-type chart is a projection of
+  // those audit-bound orders.
+  CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH = 14;
+  // Emitted when the audit says a ledger is live (a CreateLedger event with no
+  // later DeleteLedger) but the store has no live LedgerInfo for it — the entry is either
+  // absent or tampered to a soft-deleted tombstone. The stored-ledger loops in
+  // compareSchema / compareAccountTypes only visit live ledgers Pebble returns,
+  // so both shapes would otherwise escape every projection check. This is the
+  // reverse of UNKNOWN_LEDGER.
+  CHECK_STORE_ERROR_TYPE_MISSING_LEDGER = 15;
+  // Emitted when the store holds a live LedgerInfo for a ledger the audit never
+  // created (no CreateLedger event). Such a row exposes an unaudited ledger through ListLedgers while
+  // carrying no schema/account types the projection passes could otherwise flag.
+  // The audit-derived ledger set is never seeded from the live store, so this
+  // comparison stays honest.
+  CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER = 16;
+  // Emitted when the reference→txID uniqueness index (SubAttrReference)
+  // diverges from the references the checker re-derived by replaying
+  // CreatedTransaction / RevertedTransaction log payloads: a stored reference the audit never assigned, a missing
+  // reference the audit did assign, or a reference pointing at a different
+  // transaction. The index enforces reference idempotency, so a tampered row
+  // silently changes which duplicates get rejected.
+  CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH = 17;
+  // Emitted when a ledger's stored LedgerBoundaries diverge from the checker's
+  // re-derivation: NextTransactionId / NextLogId / PostingCount / RevertCount
+  // from the replayed logs (mirror fill-gap advances and NumscriptExecutionCount
+  // decoded from the chain-bound AuditItem orders), and VolumeCount / MetadataCount / ReferenceCount against a
+  // recount of the stored attribute rows those counters summarize — the rows
+  // themselves are verified entry-by-entry by their own passes.
+  // EphemeralEvictedCount / TransientUsedCount are informational and excluded.
+  CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH = 18;
+  // Emitted when the numscript library projections (SubAttrNumscriptContent
+  // immutable version entries and SubAttrNumscriptVersion latest pointers)
+  // diverge from the state the checker re-derived by replaying SavedNumscript /
+  // DeleteLedger log payloads. Those projections are the source for reads,
+  // listing, version history and admission-side reference resolution; a stored
+  // content row that has no matching SavedNumscript, an altered content entry,
+  // or a latest pointer that is not the greatest saved semver is tampering. The
+  // audit chain is the source of truth.
+  CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH = 19;
+  // A reverse-map (0x03) row in the peer read-index store references a
+  // metadata field that has no entry in the stored SubAttrIndex registry, or
+  // belongs to a ledger the audit chain does not list as live, or is not a
+  // well-formed reverse-map key at all. Reverse-map keys use the
+  // field/version/entity layout, so removing a field across every version is a
+  // field-bounded DeleteRange. The checker remains as defense against
+  // read-store corruption or a broken index lifecycle even though correct
+  // field purges are atomic. Reported per (ledger, namespace, metadata key)
+  // with a row count and a sample entity rather than per row. Encoding version
+  // zero is malformed: it denotes an absent version and is never written into
+  // a reverse-map row. Nonzero versions are not compared to the live pair —
+  // current and pending versions legitimately coexist during a per-replica
+  // rewrite, and stale versions are reclaimed at boot by purgeOrphanVersions.
+  CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN = 20;
+  // Emitted when the persisted signing-key projection (SubGlobSigningKey)
+  // diverges from the key set the checker re-derived from chain-bound
+  // RegisterSigningKey / RevokeSigningKey orders: a stored key the audit never
+  // registered, a registered key the store lost, altered public-key bytes, a
+  // changed parent_key_id, or a row too short to decode. Recovery loads this
+  // projection straight into the runtime key store, which admission consults to
+  // accept or reject every signed write, so a tampered row changes who may
+  // write. Row absence is the only representation of revocation, so a missing
+  // key and a resurrected key are both integrity failures.
+  CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH = 21;
+  // Emitted when the persisted require-signatures flag (SubGlobSigningConfig)
+  // differs from the value re-derived from chain-bound SetSigningConfig orders.
+  // The flag is a single byte that gates signature enforcement cluster-wide, so
+  // flipping it silently disables request authenticity. An absent row decodes as
+  // false, which is also the checker's initial expected value.
+  CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH = 22;
+  // Emitted when signing verification could not cover the whole history: the
+  // live audit range was cut short by a hash chain break, so every signing
+  // order recorded after the break is unread. The pass reports this rather
+  // than presenting a partial replay as a clean comparison. Signing
+  // expectations are never seeded from the live projection -- that would
+  // verify old, never-touched keys against a copy of themselves.
+  CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE = 23;
+  // Emitted when the persisted cluster policy (SubGlobClusterPolicy) differs
+  // from the policy re-derived from chain-bound SetClusterPolicy orders. The
+  // policy gates idempotency expiration and query-checkpoint admission
+  // cluster-wide, so a tampered row silently changes replay/expiry and
+  // checkpoint behavior. The audit chain is the source of truth.
+  CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH = 24;
+  // Emitted when the cluster policy could not be verified over the whole audit
+  // history: the live audit range was cut short by a hash chain break, so any
+  // policy update recorded after the break is unread. The pass reports this
+  // rather than presenting a partial replay as clean.
+  CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE = 25;
+  // Emitted when the persisted query-checkpoint rows (SubGlobQueryCheckpoint)
+  // diverge from the set the checker re-derived from chain-bound
+  // CreatedQueryCheckpoint / DeletedQueryCheckpoint logs: a stored row the audit
+  // never created (or later deleted), a live checkpoint missing its row, or a
+  // row whose max_sequence / created_at differs from the audited value. The rows
+  // back point-in-time query reads and the FSM's live-count cap, so a tampered
+  // row changes which checkpoints exist. See EN-1501.
+  CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH = 26;
+  // Emitted when LedgerInfo.default_enforcement_mode differs from the policy
+  // re-derived from CreateLedger and UpdateDefaultEnforcementMode logs. This
+  // persisted field controls whether unmatched accounts are accepted, so a
+  // divergence can change write admission semantics.
+  CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH = 27;
+  // Emitted when a Log row's `sequence` field disagrees with the sequence
+  // encoded in its Pebble key. Log rows are not hash-bound, so the two copies
+  // of the sequence are held together by convention alone, and
+  // query.ReadLastSequence reads the value's field off the last row -- a
+  // single edited field could previously make a populated store look empty to
+  // the checker, which then returned clean without replaying anything. The
+  // checker keys every projection on the key sequence, and the divergent row is
+  // reported and still replayed under that key sequence: the value's field is
+  // not an input to replay, and skipping the row would suppress the elision
+  // check and emit a cascade of volume, boundary and transaction findings that
+  // misdescribe a store whose log is present and readable. See EN-1526.
+  CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH = 28;
+  // Emitted when the expected log range could not be derived over the whole
+  // history, so the stored log bound cannot be compared. Three causes: the live
+  // audit walk was cut short by a hash chain break, leaving every success range
+  // after it unread; the chain-verified AuditSuccess ranges were not contiguous
+  // from sequence 1, which contradicts the premise the bound rests on; or a
+  // success range is not accounted for by its own entry's chain-verified
+  // AuditItems, so the declared range is not evidence of which logs the FSM
+  // allocated and cannot serve as the oracle. The pass reports this instead of presenting a partial bound as a clean
+  // comparison -- against a truncated store a partial bound would report the
+  // surviving logs above it as unaudited and every log below the break as
+  // missing, both false. See EN-1526.
+  CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE = 29;
+  // Emitted when the store holds a Log row at a position no chain-verified
+  // AuditSuccess range accounts for. Log rows are not hash-bound, so nothing
+  // but the audit ranges says which positions the FSM ever allocated: a row
+  // outside the audited interval was produced by no audited proposal, hence
+  // injected or forged, and every projection keyed on its sequence would fold
+  // unaudited data. Two shapes, one per end of the interval. Above the audited
+  // bound: reported once for the whole unaudited range, naming the range
+  // searched and counting the rows actually found in it -- not the width of
+  // that range, which over-counts a sparse injection and would describe its
+  // empty positions as holding unaudited rows. Never one event per row, since a
+  // forged tail can be millions of rows. This event and a tail SEQUENCE_GAP are
+  // independent and can both be emitted for one store: a planted row must not
+  // be able to erase a genuine missing tail. At sequence 0: one
+  // event, carrying log_sequence 0 rather than a range, because keys are unique
+  // and the reserved position holds at most one row -- FSMState.NextSequenceID
+  // is seeded at 1 and recovery only raises it, so the audited interval starts
+  // at 1 and nothing the FSM allocated can land there. The sequence-0 row is otherwise invisible, sitting below both
+  // the interior gap scan (seeded at 1) and the bound comparison (which bounds
+  // the interval from above only). See EN-1526.
+  CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED = 30;
+  // Emitted when a persisted Log payload differs from the log deterministically
+  // re-derived by replaying the chain-verified AuditItem orders. Logs are a
+  // projection of the audit chain and never an input to expected-state replay.
+  CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH = 31;
+}
+
+message CheckStoreError {
+  CheckStoreErrorType error_type = 1;
+  string message = 2;
+  fixed64 log_sequence = 3;
+  string ledger = 4;
+  string account = 5;
+  string asset = 6;
+  fixed64 transaction_id = 7;
+}
+
+message CheckStoreProgress {
+  fixed64 logs_checked = 1;
+  fixed64 total_logs = 2;
+}
+
+// ============================================================================
+// Audit Log Messages
+// ============================================================================
+
+message ListAuditEntriesRequest {
+  // options carries the whole read contract. Audit has NO dedicated top-level
+  // filters: ledger scope and outcome selection are expressed through
+  // options.filter with bare audit fields (e.g. `ledger == <name>`,
+  // `outcome == failure`), exactly like every other filtered list endpoint.
+  common.ListOptions options = 1;
+}
+
+message GetAuditEntryRequest {
+  fixed64 sequence = 1;
+}
+
+// ============================================================================
+// System Log Messages
+// ============================================================================
+
+message ListLogsRequest {
+  // ledger is the required ledger name to scope the log listing.
+  string ledger = 1;
+  common.ListOptions options = 2;
+}
+
+message GetLogRequest {
+  fixed64 sequence = 1;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  fixed64 checkpoint_id = 2;
+}
+
+// ============================================================================
+// Events Sinks Messages
+// ============================================================================
+
+message GetEventsSinksRequest {}
+
+message GetEventsSinksResponse {
+  repeated common.SinkConfig sinks = 1;
+  repeated common.SinkStatus sink_statuses = 2;
+}
+
+// ============================================================================
+// Metadata Schema Messages
+// ============================================================================
+
+message GetMetadataSchemaStatusRequest {
+  string ledger = 1;
+}
+
+message GetMetadataSchemaStatusResponse {
+  map<string, MetadataFieldStatus> account_fields = 1;
+  map<string, MetadataFieldStatus> transaction_fields = 2;
+  map<string, MetadataFieldStatus> ledger_fields = 3;
+}
+
+message MetadataFieldStatus {
+  common.MetadataType declared_type = 1;
+}
+
+// ============================================================================
+// Account Analysis Messages
+// ============================================================================
+
+message AnalyzeAccountsRequest {
+  string ledger = 1;
+  // variable_threshold is the max distinct children before a trie node is classified
+  // as variable. 0 uses the default (10).
+  uint32 variable_threshold = 2;
+}
+
+message AnalyzeAccountsResponse {
+  repeated AccountPattern patterns = 1;
+  fixed64 total_accounts = 2;
+}
+
+// AnalyzeProgress reports scan progress for long-running analysis operations.
+message AnalyzeProgress {
+  fixed64 processed = 1;
+  fixed64 total = 2;
+  string phase = 3;  // "scanning", "pass1", "pass2"
+}
+
+// AnalyzeAccountsEvent wraps progress or result events for the streaming AnalyzeAccounts RPC.
+message AnalyzeAccountsEvent {
+  oneof type {
+    AnalyzeProgress progress = 1;
+    AnalyzeAccountsResponse result = 2;
+  }
+}
+
+// AnalyzeTransactionsEvent wraps progress or result events for the streaming AnalyzeTransactions RPC.
+message AnalyzeTransactionsEvent {
+  oneof type {
+    AnalyzeProgress progress = 1;
+    AnalyzeTransactionsResponse result = 2;
+  }
+}
+
+// AccountPattern describes a discovered address pattern and its statistics.
+message AccountPattern {
+  string pattern = 1;             // Human-readable pattern (e.g. "users:{userId}")
+  fixed64 account_count = 2;       // Number of accounts matching this pattern
+  repeated string assets = 3;     // Distinct assets observed for matching accounts
+  repeated string metadata_keys = 4; // Distinct metadata keys observed
+  repeated PatternSegment segments = 5;
+}
+
+// PatternSegment describes one level of a discovered pattern.
+message PatternSegment {
+  uint32 position = 1;
+  PatternSegmentType type = 2;
+  string fixed_value = 3;        // Set when type=FIXED
+  string variable_name = 4;      // Set when type=VARIABLE
+  string inferred_pattern = 5;   // Regex for variable segments
+  fixed64 unique_values = 6;      // Count of distinct values for this segment
+  repeated string examples = 7;  // Up to 5 example values
+}
+
+enum PatternSegmentType {
+  PATTERN_SEGMENT_TYPE_FIXED = 0;
+  PATTERN_SEGMENT_TYPE_VARIABLE = 1;
+}
+
+// ============================================================================
+// Transaction Analysis Messages
+// ============================================================================
+
+message AnalyzeTransactionsRequest {
+  string ledger = 1;
+  // variable_threshold is the max distinct children before a trie node is classified
+  // as variable. 0 uses the default (10).
+  uint32 variable_threshold = 2;
+}
+
+message AnalyzeTransactionsResponse {
+  repeated FlowPattern flow_patterns = 1;
+  fixed64 total_transactions = 2;
+  fixed64 total_reverted = 3;
+}
+
+message FlowPattern {
+  // Human-readable canonical signature, e.g. "users:{id}:main->bank:fees[USD]"
+  // (legacy form, no spaces; multi-posting flows join fragments with ";").
+  // Colored postings append the color inside the brackets: "...[USD/RED]".
+  // The uncolored bucket keeps the bare "[USD]" form, byte-identical to pre-color.
+  string signature = 1;
+  PostingStructure structure = 2;
+  fixed64 transaction_count = 3;
+  repeated NormalizedPosting postings = 4;
+  TemporalStats temporal = 5;
+  repeated AssetVolumeStats volume_stats = 6;
+  repeated string metadata_keys = 7;      // Distinct metadata keys observed
+}
+
+message NormalizedPosting {
+  string source_pattern = 1;       // e.g. "users:{id}:main"
+  string destination_pattern = 2;  // e.g. "bank:fees"
+  string asset = 3;
+  // color discriminates postings on the same (source,destination,asset) but
+  // different color buckets in the FSM. Two flows that share addresses and
+  // asset but differ in color must produce distinct flow signatures so the
+  // analysis endpoint does not silently merge segregated buckets.
+  string color = 4;
+}
+
+enum PostingStructure {
+  POSTING_STRUCTURE_SIMPLE = 0;            // 1 posting
+  POSTING_STRUCTURE_MULTI_SOURCE = 1;      // N sources, 1 destination
+  POSTING_STRUCTURE_MULTI_DESTINATION = 2; // 1 source, N destinations (split)
+  POSTING_STRUCTURE_COMPLEX = 3;           // N sources, N destinations
+}
+
+message TemporalStats {
+  common.Timestamp first_seen = 1;
+  common.Timestamp last_seen = 2;
+  double transactions_per_day = 3;
+  repeated HourBucket peak_hours = 4;   // 24 entries max
+}
+
+message HourBucket {
+  uint32 hour = 1;    // 0-23
+  fixed64 count = 2;
+}
+
+message AssetVolumeStats {
+  string asset = 1;
+  string total_volume = 2;      // big.Int decimal string
+  string average_volume = 3;
+  string min_volume = 4;
+  string max_volume = 5;
+  fixed64 transaction_count = 6;
+}
+
+// ============================================================================
+// Prepared Query Messages
+// ============================================================================
+
+message CreatePreparedQueryRequest {
+  string ledger = 1;
+  common.PreparedQuery query = 2;
+}
+
+message UpdatePreparedQueryRequest {
+  string ledger = 1;
+  string name = 2;
+  // Nil explicitly removes the stored filter and makes the query match all
+  // entities in its immutable target.
+  common.QueryFilter filter = 3;
+}
+
+message DeletePreparedQueryRequest {
+  string ledger = 1;
+  string name = 2;
+}
+
+message ListPreparedQueriesRequest {
+  string ledger = 1;
+}
+
+message ListPreparedQueriesResponse {
+  repeated common.PreparedQuery queries = 1;
+}
+
+message ExecutePreparedQueryRequest {
+  string ledger = 1;
+  string query_name = 2;
+  map<string, common.ParameterValue> parameters = 3;
+  // LIST defaults zero to 100 and clamps values above 1000 to 1000 before
+  // collecting or enriching results. The cursor reports the effective size.
+  // AGGREGATE_VOLUMES ignores page_size and aggregates all matching accounts.
+  uint32 page_size = 4;
+  string cursor = 5;
+  common.QueryMode mode = 6;
+  // reverse pages LIST results in descending entity order. A page token is
+  // relative to the requested order, so every page of a descending walk must
+  // repeat reverse=true. AGGREGATE_VOLUMES rejects it with InvalidArgument.
+  bool reverse = 7;
+}
+
+message ExecutePreparedQueryResponse {
+  oneof result {
+    common.PreparedQueryCursor cursor = 1;
+    common.AggregateResult aggregate = 2;
+  }
+}
+
+// ============================================================================
+// Index Status Messages
+// ============================================================================
+
+message GetIndexStatusRequest {
+  // Optional: when set, only IndexEntry rows for this ledger are returned.
+  // Leave empty to fetch the union across all ledgers (caller-side filtering
+  // becomes unnecessary). The aggregate counters (last_indexed_sequence,
+  // last_log_sequence, lag, index_file_size) are global and ignore the
+  // filter.
+  string ledger = 1;
+}
+
+message GetIndexStatusResponse {
+  fixed64 last_indexed_sequence = 1;
+  fixed64 last_log_sequence = 2;
+  fixed64 lag = 3;
+  // Bytes the answering node's read index occupies on disk, live and obsolete
+  // files included, from Pebble's disk-usage metrics.
+  fixed64 index_file_size = 4;
+  repeated IndexEntry indexes = 5;
+}
+
+// GetIndexRequest identifies a single Index registry entry to fetch.
+// Pass an empty ledger to address a bucket-scoped entry (e.g. audit
+// indexes); a non-empty ledger addresses the ledger-scoped slot.
+message GetIndexRequest {
+  string ledger = 1;
+  common.IndexID id = 2;
+}
+
+// GetIndexEntryStatusRequest identifies a single index whose per-replica
+// status view (registry entry + backfill cursor + IndexVersionState) is
+// returned.
+message GetIndexEntryStatusRequest {
+  string ledger = 1;
+  common.IndexID id = 2;
+}
+
+// IndexEntry joins a ledger's index definition (identifier + audit metadata)
+// with its backfill cursor position. Replaces the former IndexBackfillProgress.
+//
+// current_version + pending_version surface the per-replica forward-
+// encoding version state (EN-1323). current_version == 0 means the
+// local replica has never finished building this index; > 0 means the
+// last completed backfill / rewrite atomic-switched into this version
+// and queries served from this replica are reading it. pending_version
+// is the in-flight rewrite target on this replica (0 when no rewrite
+// is running). Per-replica version numbers are allocated from the
+// replica's local high-water mark (a drop+recreate resumes past the
+// dropped incarnation's numbers), so they are not comparable to the
+// registry row's forward_encoding_version. Clients waiting for an
+// initial build poll current_version > 0 && pending_version == 0;
+// clients waiting for a RETYPE capture current_version before issuing
+// it and poll until it has advanced past that value with
+// pending_version == 0 — the pre-retype keyspace stays live during
+// the rewrite.
+message IndexEntry {
+  string ledger = 1;
+  common.Index index = 2;     // identifier + created_at + forward_encoding_version
+  fixed64 cursor = 3;         // backfill cursor (0 when not in backfill or done)
+  uint32 current_version = 4; // per-replica live keyspace; 0 until first switch
+  uint32 pending_version = 5; // per-replica in-flight rewrite target; 0 when idle
+}
+
+// ListIndexesRequest streams the bucket-scoped index registry.
+//
+// scope controls which entries are returned:
+//   - LEDGER_SCOPE_ALL (0):    return every entry in the registry
+//   - LEDGER_SCOPE_BUCKET (1): return only bucket-scoped entries (ledger == "")
+//   - LEDGER_SCOPE_LEDGER (2): return entries for the named ledger
+//
+// Pagination is not needed today — the registry is small enough that one
+// stream covers it. If it grows, add a cursor/page_size pair following the
+// shared ListOptions contract.
+message ListIndexesRequest {
+  enum Scope {
+    SCOPE_ALL    = 0;
+    SCOPE_BUCKET = 1;
+    SCOPE_LEDGER = 2;
+  }
+  Scope scope = 1;
+  // ledger is required when scope == SCOPE_LEDGER, ignored otherwise.
+  string ledger = 2;
+}
+
+message GetLedgerStatsRequest {
+  string ledger = 1;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  fixed64 checkpoint_id = 2;
+}
+
+message AggregateVolumesRequest {
+  string ledger = 1;
+  common.QueryFilter filter = 2;
+  // When true, assets sharing the same base (e.g. USD/2, USD/4) are merged
+  // under the highest precision observed, with lower-precision amounts rescaled.
+  bool use_max_precision = 3;
+  // When set, results are grouped by account prefix. Each account is assigned
+  // to the first matching prefix. Accounts not matching any prefix are excluded.
+  repeated string group_by_prefixes = 4;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  fixed64 checkpoint_id = 5;
+  // When true, amounts in colored buckets are summed into the uncolored bucket
+  // ("" color). Result entries are produced with color = "". By default each
+  // (asset, color) bucket yields its own AggregatedVolume entry.
+  bool collapse_colors = 6;
+}
+
+// ============================================================================
+// Query Profile Messages
+// ============================================================================
+
+// QueryProfile contains execution statistics for a read query.
+// Returned to clients via gRPC trailing metadata when requested.
+message QueryProfile {
+  int64 index_duration_us = 1;
+  int64 enrichment_duration_us = 2;
+  int32 items_collected = 3;
+  int32 enriched_count = 4;
+  int32 materialized_ranges = 5;
+  int32 materialized_items = 6;
+  IteratorProfile root_iterator = 7;
+
+  // ---- Server-side request timing ----
+  //
+  // The fields above only cover query EXECUTION. The ones below account for
+  // the whole server-side handling of the request, so a caller can tell a slow
+  // network from a slow server.
+
+  // Consumer-independent server cost: server entry to the response being ready
+  // for delivery, MINUS barrier_duration_us and MINUS deliver_duration_us. It
+  // cannot be moved by a slow client.
+  //
+  // "Server entry" is the earliest instrumentable point on each transport, and
+  // that is not quite the same point: on gRPC it is the handler's first
+  // statement, because grpc-go receives and unmarshals the request message
+  // before dispatching, putting protobuf decode out of reach; on HTTP it is the
+  // router chain just before authentication, so query/body decode inside the
+  // handler is included. Both start before authentication, and both end at the
+  // same place, which is what keeps the field comparable — with the caveat that
+  // gRPC message decode is never counted on either side of the comparison.
+  //
+  // It does NOT include row serialisation. On a gRPC server stream, marshalling
+  // and the transport write happen inside one inseparable stream.Send() call, so
+  // serialisation is accounted in deliver_duration_us together with consumer
+  // back-pressure. Choose accordingly:
+  //
+  //   - consumer-independent, excludes serialisation:  server_duration_us
+  //   - complete server-side cost, includes serialisation but also absorbs
+  //     back-pressure on a stream:  server_duration_us + deliver_duration_us
+  //
+  // Neither is a clean latency-SLO basis on a streaming read: the first omits a
+  // real cost that grows with page size, the second admits client behaviour into
+  // the signal. Pick the one whose bias is acceptable for the specific SLO and
+  // say which. The server's own slow-query threshold uses the sum, so that
+  // serialisation and forwarded-read cost cannot hide from it.
+  //
+  // prepare_duration_us + execute_duration_us <= server_duration_us; the
+  // difference is server work outside both phases (response assembly,
+  // pagination trailer, profile emission).
+  int64 server_duration_us = 8;
+
+  // Portion of server_duration_us spent before the query executor was invoked:
+  // authentication, request validation, filter parsing/compilation and
+  // checkpoint-store opening — plus, on HTTP, query-parameter and body decoding.
+  // gRPC protobuf decode is NOT here: grpc-go unmarshals the request before the
+  // handler runs (see server_duration_us).
+  int64 prepare_duration_us = 9;
+
+  // Portion of server_duration_us spent inside the query executor. Contains
+  // index_duration_us and enrichment_duration_us as sub-phases, plus snapshot
+  // setup, ledger/schema resolution and — when rows are produced lazily
+  // (a follower routing to the leader) — the time spent pulling rows out of
+  // the cursor.
+  int64 execute_duration_us = 10;
+
+  // Time blocked on the read-consistency barrier the caller asked for: the Raft
+  // ReadIndex quorum round-trip. Deliberately EXCLUDED from server_duration_us — it is a wait
+  // the request opted into, not server cost.
+  //
+  // Only LOCAL waits are measured, whether or not the attempt succeeds and
+  // whether or not the read is then forwarded.
+  // Always read this field together with `forwarded`:
+  //
+  //   - forwarded=false: the whole barrier this read paid.
+  //   - forwarded=true, 0: no local wait happened. The remote node's barrier is
+  //     folded into its execution and arrives inside execute_duration_us — 0
+  //     does NOT mean "no barrier was needed".
+  //   - forwarded=true, non-zero: a local barrier attempt failed before the
+  //     read left this node, either at the syncing precheck or because a
+  //     pending ReadIndex was invalidated by a leadership change. The remote
+  //     node's barrier is on top of the local attempt inside
+  //     execute_duration_us. The value does not identify the fallback trigger;
+  //     do not read cluster health off this timing.
+  //
+  // A failed or superseded wait is still excluded from server_duration_us: the
+  // caller waited for it, and an abandoned quorum round-trip is no more server
+  // work than a completed one.
+  int64 barrier_duration_us = 11;
+
+  // Time spent serialising result rows and handing them to the transport.
+  // EXCLUDED from server_duration_us because on a server stream it also
+  // contains consumer back-pressure, which is client cost, not server cost.
+  //
+  // On a gRPC server stream this is the sum of the stream.Send() calls
+  // (marshal + transport write + flow-control wait). Always 0 on HTTP, where
+  // the profile travels in a response header that must be flushed before the
+  // body, putting response serialisation out of reach. Since row serialisation
+  // is excluded from server_duration_us on both surfaces, that asymmetry does
+  // not affect the comparability of the headline number.
+  int64 deliver_duration_us = 12;
+
+  // Handler entry to the first row accepted by the transport. Compare against
+  // server_duration_us and deliver_duration_us to separate "the server was slow
+  // to produce anything" from "the consumer was slow to drain the stream".
+  //
+  // 0 means no row was ever handed to the transport, which covers three distinct
+  // cases: a streaming read that matched nothing, a unary response (HTTP, and
+  // the AggregateVolumes / ExecutePreparedQuery RPCs — these never hand rows to
+  // a stream), and a streaming read that failed before its first send. Use
+  // items_collected and the RPC's own status to tell them apart.
+  int64 first_row_duration_us = 13;
+
+  // True when this node did not serve the read itself but forwarded it to
+  // another node — the fallback taken when the local replica is still catching
+  // up or its in-flight ReadIndex is invalidated by a leadership change. The
+  // remote node's prepare, barrier and execution all arrive inside
+  // execute_duration_us, so the phase breakdown describes the local hop only.
+  // Its purpose is to stop a zero barrier_duration_us from being misread as "no
+  // barrier was needed"; see that field for the three cases the pair
+  // distinguishes — a forwarded read can report a non-zero local wait.
+  bool forwarded = 14;
+}
+
+// IteratorProfile describes a single iterator node in the query execution tree.
+message IteratorProfile {
+  string label = 1;
+  string kind = 2;
+  string bucket = 3;
+  int64 next_calls = 4;
+  int64 seek_calls = 5;
+  repeated IteratorProfile children = 6;
+  // Inclusive wall-clock time spent in this node's Next + SeekGE (covers child calls).
+  int64 duration_us = 7;
+  // Successful Next() calls (rows emitted upward by this node).
+  int64 items_emitted = 8;
+  // Range materializations performed at this node (typically leaf SliceIterator nodes).
+  int32 materialized_ranges = 9;
+  // Items drained from Pebble cursors into the materialized SliceIterator.
+  int64 materialized_items = 10;
+  // For combinator nodes (And/Not/Or): candidates discarded by the merge/converge loop.
+  int64 items_skipped = 11;
+}
+
+// ============================================================================
+// Index Inspection Messages
+// ============================================================================
+
+enum InspectIndexMode {
+  INSPECT_INDEX_MODE_DISTINCT_VALUES = 0;
+  INSPECT_INDEX_MODE_FACETS = 1;
+  INSPECT_INDEX_MODE_SUMMARY = 2;
+}
+
+message InspectIndexRequest {
+  string ledger = 1;
+  common.TargetType target_type = 2;
+  string metadata_key = 3;
+  InspectIndexMode mode = 4;
+  // Values or facets per page. 0 selects 100; values above 10000 are capped
+  // at 10000 and the response carries a next cursor.
+  uint32 page_size = 5;
+  string cursor = 6;
+  fixed64 checkpoint_id = 7;
+}
+
+message InspectIndexResponse {
+  oneof result {
+    InspectDistinctValues distinct_values = 1;
+    InspectFacets facets = 2;
+    InspectSummary summary = 3;
+  }
+}
+
+// next_cursor and previous_cursor are page tokens (see
+// common.ListOptions.cursor) whose key is the base64url value encoding.
+message InspectDistinctValues {
+  repeated common.MetadataValue values = 1;
+  bool has_more = 2;
+  string next_cursor = 3;
+  string previous_cursor = 4;
+}
+
+message InspectFacet {
+  common.MetadataValue value = 1;
+  fixed64 count = 2;
+}
+
+message InspectFacets {
+  repeated InspectFacet facets = 1;
+  bool has_more = 2;
+  string next_cursor = 3;
+  string previous_cursor = 4;
+}
+
+message InspectSummary {
+  fixed64 cardinality = 1;
+  common.MetadataValue min = 2;
+  common.MetadataValue max = 3;
+  fixed64 entities_with_key = 4;
+  fixed64 entities_with_null = 5;
+}
+
+// ============================================================================
+// Barrier Messages
+// ============================================================================
+
+message BarrierRequest {}
+
+message BarrierResponse {
+  // The Raft commit index at which the barrier was applied.
+  // Callers can compare successive barrier responses to detect quiescence:
+  // if two barriers return the same commit_index, no proposals were committed
+  // between them.
+  fixed64 commit_index = 1;
+}
