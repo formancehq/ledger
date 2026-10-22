@@ -5,8 +5,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"hegel.dev/go/hegel"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // roundTripFilters covers every parameterizable arm: address prefix and exact,
@@ -58,24 +61,27 @@ func TestParameterizeSubstituteRoundTrip(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			for range 32 {
-				concrete := build.CloneVT()
+			hegel.Test(t, func(ht *hegel.T) {
+				src := generation.NewSource(ht)
+				for range 32 {
+					concrete := build.CloneVT()
 
-				params := preparedParams{}
-				stored := parameterizeFilter(concrete, params)
+					params := preparedParams{}
+					stored := parameterizeFilter(src, concrete, params)
 
-				// Every reference the stored filter carries must be one the
-				// parameterization bound — no dangling names.
-				for _, need := range collectParams(stored) {
-					require.Contains(t, params, need.name)
+					// Every reference the stored filter carries must be one the
+					// parameterization bound — no dangling names.
+					for _, need := range collectParams(stored) {
+						require.Contains(t, params, need.name)
+					}
+
+					back, ok := substituteParams(stored, params)
+					require.True(t, ok)
+					require.Truef(t, concrete.EqualVT(back),
+						"round trip diverged\n stored: %s\n  back:  %s\n  want:  %s",
+						describeFilter(stored), describeFilter(back), describeFilter(concrete))
 				}
-
-				back, ok := substituteParams(stored, params)
-				require.True(t, ok)
-				require.Truef(t, concrete.EqualVT(back),
-					"round trip diverged\n stored: %s\n  back:  %s\n  want:  %s",
-					describeFilter(stored), describeFilter(back), describeFilter(concrete))
-			}
+			}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))
 		})
 	}
 }
@@ -84,20 +90,23 @@ func TestParameterizeSubstituteRoundTrip(t *testing.T) {
 // parameterizable leaf is returned unchanged and binds nothing.
 func TestParameterizeIsIdentityWithoutParams(t *testing.T) {
 	t.Parallel()
+	hegel.Test(t, func(ht *hegel.T) {
+		src := generation.NewSource(ht)
 
-	for _, f := range []*commonpb.QueryFilter{
-		filterReverted(true),
-		filterHasAsset("USD", 2),
-		filterFieldExists("k1", true),
-		nil,
-	} {
-		params := preparedParams{}
-		out := parameterizeFilter(f, params)
+		for _, f := range []*commonpb.QueryFilter{
+			filterReverted(true),
+			filterHasAsset("USD", 2),
+			filterFieldExists("k1", true),
+			nil,
+		} {
+			params := preparedParams{}
+			out := parameterizeFilter(src, f, params)
 
-		require.Empty(t, params)
-		require.Empty(t, collectParams(out))
-		require.True(t, f.EqualVT(out))
-	}
+			require.Empty(t, params)
+			require.Empty(t, collectParams(out))
+			require.True(t, f.EqualVT(out))
+		}
+	}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))
 }
 
 // TestSubstituteParamsRejectsUnresolvable pins the compiler's resolution rules:

@@ -13,17 +13,18 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_insufficient_funds", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
-		r := internal.Rand()
+	internal.RunGeneratedDriver("parallel_driver_insufficient_funds", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
 		ledger := internal.PrefixInsufficientFunds.New()
-		account := fmt.Sprintf("insuf-users:%d", r.Uint64()%internal.UserAccountCount)
-		fundAmount := r.Uint64()%10000 + 100
+		account := fmt.Sprintf("insuf-users:%d", src.Intn(int(internal.UserAccountCount)))
+		fundAmount := src.Uint64Range(0, 9999) + 100
 		runInsufficientFunds(ctx, client, ledger, account, fundAmount)
 	})
 }
+
 
 func runInsufficientFunds(ctx context.Context, client servicepb.BucketServiceClient, ledger, account string, fundAmount uint64) {
 	// The driver owns this ledger and account, so no other workload writes can

@@ -27,17 +27,17 @@ import (
 	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_list_completeness", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunGeneratedDriver("parallel_driver_list_completeness", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -47,7 +47,7 @@ func main() {
 		}
 
 		// Menu axis: size of the confirmed write set.
-		txCount := antirandom.RandomChoice([]int{3, 8, 20})
+		txCount := generation.Choice(src, []int{3, 8, 20})
 
 		var (
 			acked  = map[uint64]uint64{} // acked tx ID → log sequence from the Apply ack
@@ -102,7 +102,7 @@ func main() {
 
 		// Menu axis: page size — small on purpose so a pagination spans many
 		// request/stream boundaries, maximizing mid-list fault windows.
-		pageSize := antirandom.RandomChoice([]uint32{1, 2, 5})
+		pageSize := generation.Choice(src, []uint32{1, 2, 5})
 
 		var (
 			afterTxID uint64

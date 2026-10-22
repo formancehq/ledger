@@ -20,7 +20,6 @@ package main
 import (
 	"context"
 	"log"
-	"math/rand"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -32,6 +31,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 var ccSentinelLedger = internal.PrefixSentinel.WithSuffix("config-change")
@@ -104,7 +104,14 @@ func main() {
 }
 
 func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client servicepb.BucketServiceClient) {
-	change := pickChange(internal.Rand())
+	var change configChange
+	if err := internal.RunOperationalGeneration("config-change", func(src *generation.Source) {
+		change = pickChange(src)
+	}); err != nil {
+		log.Printf("config-change: generation failed: %s", err)
+
+		return
+	}
 
 	sentinel, err := internal.PreCommitSentinel(ctx, client, ccSentinelLedger)
 	if err != nil {
@@ -172,10 +179,10 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 	sentinel.Verify(ctx, client, "after_"+change.kind)
 }
 
-func pickChange(r *rand.Rand) configChange {
-	switch r.Intn(3) {
+func pickChange(src *generation.Source) configChange {
+	switch src.Intn(3) {
 	case 0:
-		v := rotationOptions[r.Intn(len(rotationOptions))]
+		v := generation.Choice(src, rotationOptions)
 
 		return configChange{
 			kind:     "rotationThreshold",
@@ -189,8 +196,8 @@ func pickChange(r *rand.Rand) configChange {
 			},
 		}
 	case 1:
-		cat := bloomCategories[r.Intn(len(bloomCategories))]
-		v := keysOptions[r.Intn(len(keysOptions))]
+		cat := generation.Choice(src, bloomCategories)
+		v := generation.Choice(src, keysOptions)
 
 		return configChange{
 			kind:     "bloomExpectedKeys",
@@ -202,8 +209,8 @@ func pickChange(r *rand.Rand) configChange {
 			predicate: bloomKeysPredicate(cat, uint64(v)),
 		}
 	default:
-		cat := bloomCategories[r.Intn(len(bloomCategories))]
-		v := fpRateOptions[r.Intn(len(fpRateOptions))]
+		cat := generation.Choice(src, bloomCategories)
+		v := generation.Choice(src, fpRateOptions)
 
 		return configChange{
 			kind:     "bloomFPRate",

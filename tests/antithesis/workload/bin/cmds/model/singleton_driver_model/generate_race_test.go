@@ -11,6 +11,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // Generation runs lock-free on a published GlobalState while the processor
@@ -34,7 +36,9 @@ func TestGenerateBulkConcurrentWithApply(t *testing.T) {
 	for range 4 {
 		wg.Go(func() {
 			for range 200 {
-				generateBulk(state, c.ledgerNames, c.nextLedgerName(), c.liveTarget)
+				runGeneration(func(src *generation.Source) {
+					generateBulk(src, state, c.ledgerNames, c.nextLedgerName(), c.liveTarget)
+				})
 			}
 		})
 	}

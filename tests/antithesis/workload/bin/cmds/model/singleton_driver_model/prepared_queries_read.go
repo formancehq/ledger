@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // The two prepared-query reads: ListPreparedQueries over the registry, and
@@ -38,8 +39,8 @@ import (
 // runListPreparedQueries reads a ledger's whole registry and checks it against
 // the model. The RPC has no pagination and no ordering contract, so the check
 // is a set comparison on (name, target, filter).
-func runListPreparedQueries(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
+func runListPreparedQueries(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	ledger, _ := pickLedgerReadTarget(src, c.liveLedgerNamesSnapshot(), 0)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -196,22 +197,22 @@ func asIndexedErrKind(kind pqErrKind) indexedErrKind {
 // against the model. The stored definition is snapshotted only to SHAPE the
 // call (which parameters to bind, which mode is applicable); validation reads
 // the definition from each candidate base.
-func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
-	name := preparedQueryName()
+func runExecutePreparedQuery(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	ledger, _ := pickLedgerReadTarget(src, c.liveLedgerNamesSnapshot(), 0)
+	name := preparedQueryName(src)
 
 	snapshot, ls := c.preparedQuerySnapshot(ledger, name)
 
-	params, complete := genPreparedParams(ls, snapshot.GetFilter())
+	params, complete := genPreparedParams(src, ls, snapshot.GetFilter())
 
 	// AGGREGATE_VOLUMES is only valid on an ACCOUNTS-target query. Rolled on a
 	// non-ACCOUNTS one it becomes the misuse probe: the server must reject it.
 	mode := commonpb.QueryMode_QUERY_MODE_LIST
-	if snapshot != nil && oneIn(3) {
+	if snapshot != nil && oneIn(src, 3) {
 		mode = commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES
 	}
 
-	if mode == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES && oneIn(4) {
+	if mode == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES && oneIn(src, 4) {
 		runAggregateReverseMisuse(ctx, client, ledger, name, params)
 
 		return
@@ -226,8 +227,8 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 
 	// The executor echoes the page size it was asked for, so this path asks for
 	// one the server serves unchanged.
-	_, pageSize := queryPageSize()
-	reverse := mode == commonpb.QueryMode_QUERY_MODE_LIST && oneIn(2)
+	_, pageSize := queryPageSize(src)
+	reverse := mode == commonpb.QueryMode_QUERY_MODE_LIST && oneIn(src, 2)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -291,7 +292,7 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 		return
 	}
 
-	c.runExecuteNextPage(ctx, client, call, cursor)
+	c.runExecuteNextPage(src, ctx, client, call, cursor)
 }
 
 // preparedCall carries one ExecutePreparedQuery invocation's inputs and outcome
@@ -312,7 +313,7 @@ type preparedCall struct {
 // the after-key derived from prev's last row. The cursor carries a position and
 // no direction, so one page in four resumes in the opposite direction: the
 // window then runs from that row back the way the first page came.
-func (c *Checker) runExecuteNextPage(
+func (c *Checker) runExecuteNextPage(src *generation.Source,
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	call preparedCall,
@@ -323,7 +324,7 @@ func (c *Checker) runExecuteNextPage(
 		return
 	}
 
-	flipped := oneIn(4)
+	flipped := oneIn(src, 4)
 	if flipped {
 		call.reverse = !call.reverse
 	}

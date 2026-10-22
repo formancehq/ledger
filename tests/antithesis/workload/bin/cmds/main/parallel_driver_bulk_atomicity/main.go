@@ -35,7 +35,6 @@ import (
 	"io"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -44,6 +43,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // isDefinitiveBulkRejection reports whether the error conclusively means the
@@ -81,7 +81,8 @@ func listIsEmpty(
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_bulk_atomicity", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunGeneratedDriver("parallel_driver_bulk_atomicity", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
+		// This identity isolates the oracle ledger and its retry/reference keys.
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -92,7 +93,7 @@ func main() {
 
 		// Menu axis: total order count in the proposal; the last order is the
 		// engineered failure, all earlier ones are valid.
-		bulkSize := antirandom.RandomChoice([]int{2, 5, 10})
+		bulkSize := generation.Choice(src, []int{2, 5, 10})
 
 		var (
 			requests []*servicepb.Request

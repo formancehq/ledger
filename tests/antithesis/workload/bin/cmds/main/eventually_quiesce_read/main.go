@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // Probes the #327 lost-wakeup class end to end: a linearizable read issued on
@@ -54,8 +55,16 @@ func main() {
 
 	// One acked write, to a destination we can read back. Bounded retries:
 	// the system may still be settling even after reads succeed.
-	dest := fmt.Sprintf("users:%d", internal.Rand().Uint64()%internal.UserAccountCount)
-	if !writeProbeTransaction(ctx, client, ledger, dest) {
+	var dest string
+	var amount *big.Int
+	if err := internal.RunOperationalGeneration("quiesce-read", func(src *generation.Source) {
+		dest, amount = generatedProbe(src)
+	}); err != nil {
+		log.Printf("quiesce-read: generation failed: %s", err)
+
+		return
+	}
+	if !writeProbeTransaction(ctx, client, ledger, dest, amount) {
 		return
 	}
 
@@ -113,7 +122,7 @@ func waitForLedger(ctx context.Context, client servicepb.BucketServiceClient) st
 // was acknowledged. Failures are logged, not asserted: write availability is
 // covered by other drivers, and a skipped probe is preferable to a false
 // finding while the cluster is still recovering.
-func writeProbeTransaction(ctx context.Context, client servicepb.BucketServiceClient, ledger, dest string) bool {
+func writeProbeTransaction(ctx context.Context, client servicepb.BucketServiceClient, ledger, dest string, amount *big.Int) bool {
 	for attempt := range writeAttempts {
 		writeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
 		_, err := client.Apply(writeCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
@@ -123,7 +132,7 @@ func writeProbeTransaction(ctx context.Context, client servicepb.BucketServiceCl
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewPosting("world", dest, "COIN", big.NewInt(1)),
+								commonpb.NewPosting("world", dest, "COIN", amount),
 							},
 							Force: true,
 						},
@@ -144,4 +153,12 @@ func writeProbeTransaction(ctx context.Context, client servicepb.BucketServiceCl
 	log.Println("probe write never succeeded, skipping probe")
 
 	return false
+}
+
+// Generate before the acknowledged write. No generation or writes may run
+// between the idle window and the linearizable read. A positive amount ensures
+// the probe destination is materialized even when Hegel favors zero.
+func generatedProbe(src *generation.Source) (string, *big.Int) {
+	return fmt.Sprintf("users:%d", src.Intn(int(internal.UserAccountCount))),
+		new(big.Int).SetUint64(src.Uint64Range(1, ^uint64(0)))
 }

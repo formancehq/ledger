@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"hegel.dev/go/hegel"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -17,6 +18,8 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 type immediateApplyClient struct {
@@ -128,7 +131,7 @@ func TestBulkRetriesThroughMaintenanceAfterLostResponse(t *testing.T) {
 	bulk := bulkOf(&servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{Ledger: "L"}}})
 	done := make(chan struct{})
 	go func() {
-		dispatchBulk(t.Context(), client, nil, c, bulk)
+		runGeneration(func(src *generation.Source) { dispatchBulk(src, t.Context(), client, nil, c, bulk) })
 		close(done)
 	}()
 
@@ -169,7 +172,7 @@ func TestLostEnableResponseStillSchedulesItsRecovery(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		dispatchBulk(ctx, client, nil, c, enable)
+		runGeneration(func(src *generation.Source) { dispatchBulk(src, ctx, client, nil, c, enable) })
 		close(done)
 	}()
 
@@ -247,13 +250,16 @@ func TestValidateLifecycleLogCanonicalizesAccountTypeNames(t *testing.T) {
 
 func TestGenerateLifecycleHonorsConfiguredLiveTarget(t *testing.T) {
 	t.Parallel()
+	hegel.Test(t, func(ht *hegel.T) {
+		src := generation.NewSource(ht)
 
-	c := NewChecker([]string{"model-0", "model-1", "model-2", "model-3", "model-4"}, nil)
-	req := generateLifecycle(c.modelState, c.ledgerNamesSnapshot(), "model-5", 6)
+		c := NewChecker([]string{"model-0", "model-1", "model-2", "model-3", "model-4"}, nil)
+		req := generateLifecycle(src, c.modelState, c.ledgerNamesSnapshot(), "model-5", 6)
 
-	require.NotNil(t, req.GetCreateLedger())
-	require.Equal(t, "model-5", req.GetCreateLedger().GetName())
-	require.NotEmpty(t, req.GetCreateLedger().GetMetadata())
+		require.NotNil(t, req.GetCreateLedger())
+		require.Equal(t, "model-5", req.GetCreateLedger().GetName())
+		require.NotEmpty(t, req.GetCreateLedger().GetMetadata())
+	}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))
 }
 
 func TestReserveLedgerCreateCountsOutstandingCreates(t *testing.T) {

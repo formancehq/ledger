@@ -1,11 +1,11 @@
 package main
 
 import (
-	"github.com/antithesishq/antithesis-sdk-go/random"
-
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func requestedEnforcementMode(req *servicepb.Request) *commonpb.ChartEnforcementMode {
@@ -25,8 +25,8 @@ func requestedEnforcementMode(req *servicepb.Request) *commonpb.ChartEnforcement
 
 // maybeAddSkippableReason composes skip opt-ins with ordinary generated slots,
 // preserving their position, ledger selection, and surrounding bulk shape.
-func maybeAddSkippableReason(ls oracle.LedgerState, req *servicepb.Request) *servicepb.Request {
-	if random.RandomChoice([]uint8{0, 1, 2, 3}) != 0 {
+func maybeAddSkippableReason(src *generation.Source, ls oracle.LedgerState, req *servicepb.Request) *servicepb.Request {
+	if generation.Choice(src, []uint8{0, 1, 2, 3}) != 0 {
 		return req
 	}
 
@@ -58,7 +58,7 @@ func maybeAddSkippableReason(ls oracle.LedgerState, req *servicepb.Request) *ser
 		// REFERENCE_CONFLICT without rebinding the reference asks for a skip the
 		// FSM can never perform. Half keep their unique reference, so the opt-in
 		// that never fires stays covered too.
-		if ref, _, ok := pickTxRef(ls); ok && random.RandomChoice([]uint8{0, 1}) == 0 {
+		if ref, _, ok := pickTxRef(ls); ok && generation.Choice(src, []uint8{0, 1}) == 0 {
 			create.Reference = ref
 		}
 

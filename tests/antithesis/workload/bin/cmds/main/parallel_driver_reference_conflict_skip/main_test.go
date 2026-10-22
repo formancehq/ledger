@@ -34,6 +34,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 
 	workloadinternal "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // This runs the actual driver through the workload's automatic retries. A
@@ -50,7 +51,9 @@ func TestReferenceConflictSkipLostResponse(t *testing.T) {
 			require.NoError(t, err)
 			proxy := &lostResponseServer{backend: backend, lostStep: lostStep, attempts: make(map[string][]applyAttempt)}
 			client := retryingClient(t, proxy)
-			run(ctx, client, ledger)
+			require.NoError(t, generation.RunOnce(func(src *generation.Source) {
+				run(ctx, client, ledger, src)
+			}))
 			attempts := proxy.snapshot()
 			for step, calls := range attempts {
 				for _, call := range calls {
@@ -138,7 +141,9 @@ func TestReferenceConflictSkipUnkeyedControl(t *testing.T) {
 	_, err := backend.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
 	require.NoError(t, err)
 	proxy := &lostResponseServer{backend: backend, lostStep: "fresh", unkeyedFresh: true, attempts: make(map[string][]applyAttempt)}
-	run(ctx, retryingClient(t, proxy), ledger)
+	require.NoError(t, generation.RunOnce(func(src *generation.Source) {
+		run(ctx, retryingClient(t, proxy), ledger, src)
+	}))
 	attempts := proxy.snapshot()
 	require.Len(t, attempts, 3)
 	calls := attempts["fresh"]
@@ -190,7 +195,9 @@ func TestReferenceConflictSkipUnexpectedFreshResponse(t *testing.T) {
 	_, err := backend.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
 	require.NoError(t, err)
 	proxy := &lostResponseServer{backend: backend, freshResponseMode: mode, attempts: make(map[string][]applyAttempt)}
-	run(ctx, retryingClient(t, proxy), ledger)
+	require.NoError(t, generation.RunOnce(func(src *generation.Source) {
+		run(ctx, retryingClient(t, proxy), ledger, src)
+	}))
 	require.Len(t, proxy.snapshot(), 3)
 }
 

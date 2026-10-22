@@ -11,11 +11,18 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_idempotency_conflict", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunGeneratedDriver("parallel_driver_idempotency_conflict", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
 		idemKey := fmt.Sprintf("idem-conflict-%d", internal.Rand().Uint64())
+		firstAmount, conflictingAmount := uint64(100), uint64(999)
+		if src.Intn(2) != 0 {
+			firstAmount, conflictingAmount = src.Uint64(), src.Uint64()
+		}
+		// Different destination and asset guarantee different payloads even
+		// when Hegel chooses the same amount for both requests.
 		details := internal.Details{"ledger": ledger, "idempotencyKey": idemKey}
 
 		// 1. Create a transaction with an idempotency key.
@@ -28,7 +35,7 @@ func main() {
 							Postings: []*commonpb.Posting{{
 								Source:      "world",
 								Destination: "users:0",
-								Amount:      commonpb.NewUint256FromUint64(100),
+								Amount:      commonpb.NewUint256FromUint64(firstAmount),
 								Asset:       "USD/2",
 							}},
 							Force: true,
@@ -63,7 +70,7 @@ func main() {
 							Postings: []*commonpb.Posting{{
 								Source:      "world",
 								Destination: "users:1",
-								Amount:      commonpb.NewUint256FromUint64(999),
+								Amount:      commonpb.NewUint256FromUint64(conflictingAmount),
 								Asset:       "EUR/2",
 							}},
 							Force: true,

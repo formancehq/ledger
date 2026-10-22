@@ -9,7 +9,6 @@ import (
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/block"
-	// Register all scenario blocks via init().
 	_ "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/block/gaming"
 	_ "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/block/lending"
 	_ "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/block/marketplace"
@@ -18,6 +17,7 @@ import (
 	_ "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/block/subscription"
 )
 
+// The blank imports above register all scenario blocks via init().
 func main() {
 	log.Println("composer: scenario_blocks")
 
