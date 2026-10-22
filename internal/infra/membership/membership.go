@@ -75,7 +75,7 @@ type Membership struct {
 	// admission observes one lock-consistent view of active requirements and
 	// member identity evidence.
 	requiredCapabilities     []uint32
-	capabilityPolicyProvider func() *commonpb.ClusterPolicy
+	capabilityPolicyProvider func() (*commonpb.ClusterPolicy, error)
 	// started gates transport / service-pool wiring. Until Start fires
 	// (OnStart hook, after the local Raft gRPC server is listening),
 	// Set / Remove / Register / Rehydrate mutate only the cache — the
@@ -101,7 +101,7 @@ type Membership struct {
 // Failure to read the peer rows is fatal: without them the node would
 // boot with an empty cache while the WAL ConfState still claims the
 // cluster has voters.
-func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger, policyProviders ...func() *commonpb.ClusterPolicy) (*Membership, error) {
+func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger, policyProviders ...func() (*commonpb.ClusterPolicy, error)) (*Membership, error) {
 	if err := ValidateInstanceID(selfInstanceID); err != nil {
 		return nil, fmt.Errorf("invalid self identity: %w", err)
 	}
@@ -115,7 +115,7 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 		"peerCount": len(addresses),
 	}).Infof("Loaded cluster membership from Pebble")
 
-	var policyProvider func() *commonpb.ClusterPolicy
+	var policyProvider func() (*commonpb.ClusterPolicy, error)
 	if len(policyProviders) > 0 {
 		policyProvider = policyProviders[0]
 	}
@@ -647,14 +647,17 @@ func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSess
 		provider := m.capabilityPolicyProvider
 		m.mu.RUnlock()
 		if provider != nil {
-			policy := provider()
-			if policy == nil {
-				return fmt.Errorf("invalid capability evidence for peer %d: missing committed cluster policy", nodeID)
+			policy, err := provider()
+			if err != nil {
+				return fmt.Errorf("reading committed cluster policy for peer %d: %w", nodeID, err)
 			}
-			required := make([]uint32, 0, len(policy.GetCapabilityActivations()))
-			for _, activation := range policy.GetCapabilityActivations() {
-				if activation != nil && activation.GetActive() {
-					required = append(required, activation.GetId())
+			required := make([]uint32, 0)
+			if policy != nil {
+				required = make([]uint32, 0, len(policy.GetCapabilityActivations()))
+				for _, activation := range policy.GetCapabilityActivations() {
+					if activation != nil && activation.GetActive() {
+						required = append(required, activation.GetId())
+					}
 				}
 			}
 			slices.Sort(required)
