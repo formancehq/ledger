@@ -25,10 +25,9 @@ from the old one. Reachability and support are separate: an unreachable member
 blocks activation just as an incapable member does. Once a capability is
 active, every new membership announcement must include that capability.
 
-While armed, a proposal that declares a capability is admitted only when that
-capability is active and every member advertises it. Proposals with no declared
-capability remain unaffected. FSM apply never consults node-local capability
-flags.
+A proposal that declares a capability is admitted only when that capability is
+active and every member advertises it. Proposals with no declared capability
+remain unaffected. FSM apply never consults node-local capability flags.
 
 ## Rollout and recovery
 
@@ -66,5 +65,5 @@ uses `JoinAsLearner` and `ConfChangeAddLearnerNode`.
 The leader's existing cluster-policy reconciler does not activate a capability
 automatically. A future rollout can add an explicit `CapabilityActivation`
 entry once every current voter and learner has refreshed its membership proof.
-Until then the mechanism remains disarmed and this binary declares no protocol
-feature.
+Until then the policy contains no active capability and this binary declares no
+protocol feature.

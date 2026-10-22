@@ -315,7 +315,7 @@ func Module() fx.Option {
 					}
 					slices.Sort(required)
 					required = slices.Compact(required)
-					if err := membership.SetCapabilityGate(policy.GetCapabilityActivationArmed(), required); err != nil {
+					if err := membership.SetCapabilityGate(required); err != nil {
 						logger.WithFields(map[string]any{"error": err}).Errorf("Invalid capability gate in committed cluster policy")
 					}
 				}

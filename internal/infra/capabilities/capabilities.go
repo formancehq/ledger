@@ -39,7 +39,6 @@ type Member struct {
 }
 
 type State struct {
-	Armed       bool
 	Activations map[ID]bool
 }
 
@@ -109,10 +108,6 @@ func StampProposal(proposal *raftcmdpb.Proposal) error {
 }
 
 func (s State) Validate() error {
-	if !s.Armed {
-		return nil
-	}
-
 	return nil
 }
 
@@ -121,7 +116,6 @@ func FromPolicy(policy *commonpb.ClusterPolicy) State {
 	if policy == nil {
 		return s
 	}
-	s.Armed = policy.GetCapabilityActivationArmed()
 	for _, activation := range policy.GetCapabilityActivations() {
 		if activation != nil {
 			s.Activations[ID(activation.GetId())] = activation.GetActive()
@@ -149,9 +143,6 @@ func Normalize(ids []ID) ([]ID, error) {
 func Evaluate(state State, required []ID, _ bool, members []Member) Decision {
 	if err := state.Validate(); err != nil {
 		return Decision{Reason: err.Error()}
-	}
-	if !state.Armed {
-		return Decision{Allowed: true}
 	}
 	required, err := Normalize(required)
 	if err != nil {

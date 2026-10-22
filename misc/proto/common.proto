@@ -517,10 +517,7 @@ message ClusterPolicy {
   fixed64 metadata_max_value_bytes = 6;
   fixed64 metadata_max_entity_bytes = 7;
   fixed64 metadata_max_command_bytes = 8;
-// Capability activation is replicated policy, never a node-local flag. The
-// fields are optional so nodes that predate the capability foundation decode
-// the policy with their existing defaults.
-  bool capability_activation_armed = 9;
+  // Capability activation is replicated policy, never a node-local flag.
   repeated CapabilityActivation capability_activations = 13;
 }
 

@@ -42,18 +42,14 @@ func ValidateCapabilities(ids []uint32) error {
 }
 
 // ValidateCapabilityEvidence validates the proof attached to a membership
-// transition. Unarmed clusters retain backwards-compatible empty evidence;
-// once the capability barrier is armed, every Add/Update/Promote transition
-// must announce all currently active capabilities.
-func ValidateCapabilityEvidence(ctx *ConfChangeContext, armed bool, required []uint32) error {
+// transition against all capabilities currently active in the committed
+// policy. An empty policy keeps membership admission backwards-compatible.
+func ValidateCapabilityEvidence(ctx *ConfChangeContext, required []uint32) error {
 	if ctx == nil {
 		return errors.New("missing capability membership evidence")
 	}
 	if err := ValidateCapabilities(ctx.Capabilities); err != nil {
 		return fmt.Errorf("invalid capability evidence: %w", err)
-	}
-	if !armed {
-		return nil
 	}
 	for _, id := range required {
 		if !slices.Contains(ctx.Capabilities, id) {

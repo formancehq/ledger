@@ -43,9 +43,6 @@ func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Contex
 	current := ctx.Scope.GetClusterPolicy()
 	appliedRev := current.GetRevision()
 	newRev := newPolicy.GetRevision()
-	if current.GetCapabilityActivationArmed() && !newPolicy.GetCapabilityActivationArmed() {
-		return nil, &domain.ErrClusterPolicyInvalid{Detail: "capability activation cannot be disarmed"}
-	}
 	active := make(map[uint32]struct{})
 	for _, activation := range current.GetCapabilityActivations() {
 		if activation != nil && activation.GetActive() {

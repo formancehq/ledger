@@ -74,7 +74,6 @@ type Membership struct {
 	// It is intentionally kept beside the membership cache so Add/Promote
 	// admission observes one lock-consistent view of active requirements and
 	// member identity evidence.
-	capabilityArmed          bool
 	requiredCapabilities     []uint32
 	capabilityPolicyProvider func() *commonpb.ClusterPolicy
 	// started gates transport / service-pool wiring. Until Start fires
@@ -249,14 +248,13 @@ func (m *Membership) SnapshotDonorCandidates() []uint64 {
 
 // SetCapabilityGate publishes the committed activation gate used by
 // membership transitions. The required IDs are copied and must be canonical.
-func (m *Membership) SetCapabilityGate(armed bool, required []uint32) error {
+func (m *Membership) SetCapabilityGate(required []uint32) error {
 	if err := ValidateCapabilities(required); err != nil {
 		return err
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.capabilityArmed = armed
 	m.requiredCapabilities = append([]uint32(nil), required...)
 
 	return nil
@@ -272,11 +270,11 @@ func (m *Membership) SetCapabilityPolicyProvider(provider func() *commonpb.Clust
 }
 
 // CapabilityGate returns the current committed activation gate.
-func (m *Membership) CapabilityGate() (armed bool, required []uint32) {
+func (m *Membership) CapabilityGate() (required []uint32) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	return m.capabilityArmed, append([]uint32(nil), m.requiredCapabilities...)
+	return append([]uint32(nil), m.requiredCapabilities...)
 }
 
 // ValidateTransitionEvidence checks a registration context against the latest
@@ -284,10 +282,10 @@ func (m *Membership) CapabilityGate() (armed bool, required []uint32) {
 // against the committed policy, which closes races with policy application.
 func (m *Membership) ValidateTransitionEvidence(ctx *ConfChangeContext) error {
 	m.mu.RLock()
-	armed, required := m.capabilityArmed, append([]uint32(nil), m.requiredCapabilities...)
+	required := append([]uint32(nil), m.requiredCapabilities...)
 	m.mu.RUnlock()
 
-	return ValidateCapabilityEvidence(ctx, armed, required)
+	return ValidateCapabilityEvidence(ctx, required)
 }
 
 // GetInstanceID returns the peer's 16-byte identity UUID from the in-memory
@@ -680,7 +678,7 @@ func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSess
 				}
 			}
 			slices.Sort(required)
-			if err := ValidateCapabilityEvidence(ctx, policy.GetCapabilityActivationArmed(), required); err != nil {
+			if err := ValidateCapabilityEvidence(ctx, required); err != nil {
 				return fmt.Errorf("invalid capability evidence for peer %d: %w", nodeID, err)
 			}
 		}

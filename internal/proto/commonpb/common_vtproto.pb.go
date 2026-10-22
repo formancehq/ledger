@@ -1273,7 +1273,6 @@ func (m *ClusterPolicy) CloneVT() *ClusterPolicy {
 	r.MetadataMaxValueBytes = m.MetadataMaxValueBytes
 	r.MetadataMaxEntityBytes = m.MetadataMaxEntityBytes
 	r.MetadataMaxCommandBytes = m.MetadataMaxCommandBytes
-	r.CapabilityActivationArmed = m.CapabilityActivationArmed
 	if rhs := m.CapabilityActivations; rhs != nil {
 		tmpContainer := make([]*CapabilityActivation, len(rhs))
 		for k, v := range rhs {
@@ -11049,9 +11048,6 @@ func (this *ClusterPolicy) EqualVT(that *ClusterPolicy) bool {
 		return false
 	}
 	if this.MetadataMaxCommandBytes != that.MetadataMaxCommandBytes {
-		return false
-	}
-	if this.CapabilityActivationArmed != that.CapabilityActivationArmed {
 		return false
 	}
 	if len(this.CapabilityActivations) != len(that.CapabilityActivations) {
@@ -26307,16 +26303,6 @@ func (m *ClusterPolicy) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i--
 			dAtA[i] = 0x6a
 		}
-	}
-	if m.CapabilityActivationArmed {
-		i--
-		if m.CapabilityActivationArmed {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x48
 	}
 	if m.MetadataMaxCommandBytes != 0 {
 		i -= 8
@@ -44800,9 +44786,6 @@ func (m *ClusterPolicy) SizeVT() (n int) {
 	if m.MetadataMaxCommandBytes != 0 {
 		n += 9
 	}
-	if m.CapabilityActivationArmed {
-		n += 2
-	}
 	if len(m.CapabilityActivations) > 0 {
 		for _, e := range m.CapabilityActivations {
 			l = e.SizeVT()
@@ -59424,26 +59407,6 @@ func (m *ClusterPolicy) UnmarshalVT(dAtA []byte) error {
 			}
 			m.MetadataMaxCommandBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
-		case 9:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CapabilityActivationArmed", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.CapabilityActivationArmed = bool(v != 0)
 		case 13:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CapabilityActivations", wireType)
