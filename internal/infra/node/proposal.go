@@ -16,22 +16,22 @@ type Proposal struct {
 func newProposal(commandID uint64, data []byte, required []capabilities.CapabilityID) *Proposal {
 	return &Proposal{
 		commandID:            commandID,
-		data:                 data,
+		data:                 append([]byte(nil), data...),
 		requiredCapabilities: append([]capabilities.CapabilityID(nil), required...),
 		Future:               futures.New[any](),
 	}
 }
 
 // NewPreparedProposal is the only public proposal factory. Callers must pass
-// the capability list returned by capabilities.PrepareProposal for the same
+// the opaque result returned by capabilities.PrepareProposal for the same
 // command before serialization; the raw constructor remains package-private.
-func NewPreparedProposal(commandID uint64, data []byte, required []capabilities.CapabilityID) *Proposal {
-	return newProposal(commandID, data, required)
+func NewPreparedProposal(commandID uint64, data []byte, prepared capabilities.PreparedProposal) *Proposal {
+	return newProposal(commandID, data, prepared.RequiredCapabilities())
 }
 
 // Data returns the serialized proposal data.
 func (p *Proposal) Data() []byte {
-	return p.data
+	return append([]byte(nil), p.data...)
 }
 
 // RequiredCapabilities returns the capabilities derived by the producer from
