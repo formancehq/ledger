@@ -48,3 +48,20 @@ func TestFromPolicyRoundTrip(t *testing.T) {
 	require.True(t, state.Activations[99])
 	require.NoError(t, state.Validate())
 }
+
+func TestReadyReturnsIntersectionAcrossMembers(t *testing.T) {
+	members := []Member{
+		{NodeID: 1, Role: Voter, Capabilities: []ID{1, 2}},
+		{NodeID: 2, Role: Learner, Capabilities: []ID{1}},
+	}
+
+	ready, err := Ready([]ID{2, 1}, members)
+	require.NoError(t, err)
+	require.Equal(t, []ID{1}, ready)
+}
+
+func TestReadyDoesNotActivateAnEmptyCluster(t *testing.T) {
+	ready, err := Ready([]ID{1}, nil)
+	require.NoError(t, err)
+	require.Empty(t, ready)
+}

@@ -95,7 +95,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 
 		admission := &fakeAdmission{}
 		reconcileClusterPolicy(context.Background(), admission, newReconcilerTestStore(t), validBaseConfig(),
-			func() bool { return false }, logging.Testing())
+			func() bool { return false }, nil, logging.Testing())
 
 		require.Zero(t, admission.callCount(), "a non-leader must not propose")
 	})
@@ -105,7 +105,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 
 		admission := &fakeAdmission{}
 		reconcileClusterPolicy(context.Background(), admission, newReconcilerTestStore(t), validBaseConfig(),
-			func() bool { return true }, logging.Testing())
+			func() bool { return true }, nil, logging.Testing())
 
 		require.Equal(t, 1, admission.callCount(), "a leader with no committed policy must propose")
 	})
@@ -125,7 +125,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		admission := &fakeAdmission{}
-		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, nil, logging.Testing())
 
 		require.Zero(t, admission.callCount(), "an already-applied revision must not be re-proposed")
 	})
@@ -144,7 +144,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		admission := &fakeAdmission{}
-		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, nil, logging.Testing())
 
 		require.Zero(t, admission.callCount(), "a same-revision/different-payload conflict must not be re-proposed")
 	})
@@ -163,7 +163,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		admission := &fakeAdmission{}
-		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, nil, logging.Testing())
 
 		require.Zero(t, admission.callCount(), "a newer applied revision must not be overwritten")
 	})

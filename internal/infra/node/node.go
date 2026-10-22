@@ -1678,6 +1678,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	// callers waiting on ConfChange commit (AddLearner, PromoteLearner, etc.)
 	// don't resume before the WAL is consistent.
 	var pendingFutures []committedConfChangeFuture
+	capabilityMembershipChanged := false
 
 	for _, committed := range result.confChanges {
 		cc := committed.change
@@ -1729,6 +1730,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		if err != nil {
 			return err
 		}
+		capabilityMembershipChanged = true
 
 		pending, err := node.takePendingConfChange(cc, committed.index)
 		if err != nil {
@@ -1745,6 +1747,11 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 				"targetNode": change.GetNodeId(),
 				"changeType": change.GetType().String(),
 			})
+		}
+	}
+	if capabilityMembershipChanged {
+		if node.observer != nil {
+			node.observer.Emit(CapabilityMembershipChangedEvent{})
 		}
 	}
 
