@@ -1,11 +1,17 @@
 package audit
 
 import (
+	"bytes"
+	"os"
 	"testing"
 
+	"github.com/pterm/pterm"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
 func TestCallerLabel_PrincipalKinds(t *testing.T) {
@@ -56,4 +62,78 @@ func authenticatedCaller(subject, issuer, keyID string) *commonpb.CallerSnapshot
 	return &commonpb.CallerSnapshot{Principal: &commonpb.CallerSnapshot_Authenticated{
 		Authenticated: &commonpb.AuthenticatedCaller{Identity: identity},
 	}}
+}
+
+func TestPrintAuditEntry_BatchSignature(t *testing.T) {
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger:  "l1",
+		Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
+	}}}
+	serialized, err := order.MarshalVT()
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		entry *auditpb.AuditEntry
+		want  []string
+	}{
+		"signed": {
+			entry: &auditpb.AuditEntry{Signature: &signaturepb.SignedApplyBatch{KeyId: "admin"}},
+			want:  []string{"signature=admin"},
+		},
+		"unsigned": {
+			entry: &auditpb.AuditEntry{},
+			want:  []string{"unsigned"},
+		},
+		"idempotency key": {
+			entry: &auditpb.AuditEntry{Idempotency: &commonpb.Idempotency{Key: "ik-1"}},
+			want:  []string{"unsigned", "idempotency=ik-1"},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			test.entry.Items = []*auditpb.AuditItem{{SerializedOrder: serialized}}
+
+			var out bytes.Buffer
+			pterm.SetDefaultOutput(&out)
+			pterm.DisableStyling()
+			t.Cleanup(func() {
+				pterm.SetDefaultOutput(os.Stdout)
+				pterm.EnableStyling()
+			})
+
+			printAuditEntry(test.entry, true)
+
+			for _, want := range test.want {
+				require.Contains(t, out.String(), want)
+			}
+			require.NotContains(t, out.String(), "key=unsigned")
+		})
+	}
+}
+
+func TestPrintAuditEntry_CompactSignature(t *testing.T) {
+	tests := map[string]struct {
+		entry *auditpb.AuditEntry
+		want  string
+	}{
+		"signed":   {entry: &auditpb.AuditEntry{Signature: &signaturepb.SignedApplyBatch{KeyId: "admin"}}, want: "signature=admin"},
+		"unsigned": {entry: &auditpb.AuditEntry{}, want: "unsigned"},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			var out bytes.Buffer
+			pterm.SetDefaultOutput(&out)
+			pterm.DisableStyling()
+			t.Cleanup(func() {
+				pterm.SetDefaultOutput(os.Stdout)
+				pterm.EnableStyling()
+			})
+
+			printAuditEntry(test.entry, false)
+
+			require.Contains(t, out.String(), test.want+"\n")
+		})
+	}
 }

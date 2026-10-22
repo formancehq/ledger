@@ -171,13 +171,19 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 		callerText = "  caller=" + pterm.Yellow(label)
 	}
 
-	pterm.Printf("  #%-6d %s  proposal=%-4d %s  %s%s\n",
+	signatureText := ""
+	if !verbose {
+		signatureText = "  " + signatureLabel(entry)
+	}
+
+	pterm.Printf("  #%-6d %s  proposal=%-4d %s  %s%s%s\n",
 		entry.GetSequence(),
 		pterm.Gray(ts),
 		entry.GetProposalId(),
 		statusIcon,
 		pterm.Gray(statusText),
 		callerText,
+		signatureText,
 	)
 
 	// Verbose caller details
@@ -224,6 +230,10 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 		}
 	}
 
+	if verbose {
+		printBatchIdentity(entry)
+	}
+
 	// Display items if populated (GetAuditEntry), otherwise show order count summary.
 	if items := entry.GetItems(); len(items) > 0 {
 		// AuditItem stores the deterministic order bytes (what the hash
@@ -251,6 +261,26 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 	} else if entry.GetOrderCount() > 0 {
 		pterm.Printf("    └─ %s orders\n", pterm.Cyan(strconv.FormatUint(uint64(entry.GetOrderCount()), 10)))
 	}
+}
+
+// signatureLabel renders the batch signing key, or "unsigned".
+func signatureLabel(entry *auditpb.AuditEntry) string {
+	if sig := entry.GetSignature(); sig != nil {
+		return "signature=" + pterm.Green(sig.GetKeyId())
+	}
+
+	return pterm.Gray("unsigned")
+}
+
+// printBatchIdentity prints the batch-level signature and idempotency key.
+func printBatchIdentity(entry *auditpb.AuditEntry) {
+	line := signatureLabel(entry)
+
+	if key := entry.GetIdempotency().GetKey(); key != "" {
+		line += "  idempotency=" + pterm.Yellow(key)
+	}
+
+	pterm.Printf("    %s\n", line)
 }
 
 // callerSourceString renders an authenticated identity source for display.
@@ -314,8 +344,7 @@ func formatLogRange(minSeq, maxSeq uint64) string {
 type orderGroup struct {
 	cmdutil.OneofDescription
 
-	keyStr string
-	count  int
+	count int
 }
 
 // printGroupedOrders groups consecutive identical orders and prints them compactly.
@@ -329,21 +358,17 @@ func printGroupedOrders(orders []*raftcmdpb.Order, verbose bool) {
 	for _, order := range orders {
 		desc := describeOrder(order, verbose)
 
-		// Signatures are batch-level now (carried on the Log / audit entry), not
-		// per order, so the per-order grouping no longer surfaces a signing key.
-		keyStr := pterm.Gray("unsigned")
-
-		// Merge with previous group if same type+detail+key and no map lines
+		// Merge with previous group if same type+detail and no map lines
 		if len(groups) > 0 && len(desc.MapLines) == 0 {
 			last := &groups[len(groups)-1]
-			if last.Type == desc.Type && last.Detail == desc.Detail && last.keyStr == keyStr && len(last.MapLines) == 0 {
+			if last.Type == desc.Type && last.Detail == desc.Detail && len(last.MapLines) == 0 {
 				last.count++
 
 				continue
 			}
 		}
 
-		groups = append(groups, orderGroup{desc, keyStr, 1})
+		groups = append(groups, orderGroup{desc, 1})
 	}
 
 	for i, g := range groups {
@@ -358,9 +383,9 @@ func printGroupedOrders(orders []*raftcmdpb.Order, verbose bool) {
 		}
 
 		if g.Detail != "" {
-			pterm.Printf("    %s %s%s %s  key=%s\n", prefix, pterm.Cyan(g.Type), countStr, pterm.Gray(g.Detail), g.keyStr)
+			pterm.Printf("    %s %s%s %s\n", prefix, pterm.Cyan(g.Type), countStr, pterm.Gray(g.Detail))
 		} else {
-			pterm.Printf("    %s %s%s  key=%s\n", prefix, pterm.Cyan(g.Type), countStr, g.keyStr)
+			pterm.Printf("    %s %s%s\n", prefix, pterm.Cyan(g.Type), countStr)
 		}
 
 		if len(g.MapLines) > 0 {

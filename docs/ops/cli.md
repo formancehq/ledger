@@ -2434,6 +2434,10 @@ ledgerctl audit list [flags]
 |------|---------|-------------|
 | `--expand` | `false` | Expand orders within each audit entry |
 
+Each entry's header line ends with its batch signing key (`signature=<keyId>`)
+or `unsigned`. With `--expand`, that marker moves to a line above the orders,
+together with the batch `idempotency=<key>` when one is set.
+
 Audit has **no dedicated filter flags** — there is no `--failures-only` and no
 `--ledger`. Selecting failures or scoping to a ledger is done through the generic
 `--filter` (e.g. `--filter 'outcome == failure'`,
@@ -2562,7 +2566,7 @@ ledgerctl audit get <sequence> [flags]
 
 **Behavior:**
 - Retrieves a single audit entry by sequence number
-- Displays the same tree format as `audit list` for the single entry
+- Displays the same tree format as `audit list --expand` for the single entry, including the batch `signature=<keyId>` / `unsigned` line and the `idempotency=<key>` when set
 - Returns an error if the entry does not exist
 
 **Example:**
