@@ -23,13 +23,6 @@ func SupportedIDs() []ID {
 	return nil
 }
 
-// CurrentReplayProtocol is the replay encoding understood by this binary.
-// It is intentionally independent from the client-facing gRPC protocol and
-// from the capability IDs above. Once a policy raises its replay floor, a
-// binary whose supported floor is lower must refuse to open the store rather
-// than decode state it cannot execute deterministically.
-const CurrentReplayProtocol uint32 = 1
-
 type MemberRole uint8
 
 const (
@@ -46,9 +39,8 @@ type Member struct {
 }
 
 type State struct {
-	Armed         bool
-	MinimumReplay uint32
-	Activations   map[ID]bool
+	Armed       bool
+	Activations map[ID]bool
 }
 
 type Blocker struct {
@@ -79,20 +71,11 @@ func ValidateMembers(members []Member) error {
 	return nil
 }
 
-func AdvanceReplayFloor(current, next uint32) (uint32, error) {
-	if next < current {
-		return current, fmt.Errorf("%w: replay protocol floor cannot decrease from %d to %d", ErrInvalidState, current, next)
-	}
-
-	return next, nil
-}
-
 var (
-	ErrInvalidState              = errors.New("invalid capability state")
-	ErrInvalidDeclaration        = errors.New("invalid capability declaration")
-	ErrMissingCapability         = errors.New("proposal is missing a required capability declaration")
-	ErrCapabilityUnsupported     = errors.New("capability is unsupported by a cluster member")
-	ErrReplayProtocolUnsupported = errors.New("replay protocol floor is unsupported")
+	ErrInvalidState          = errors.New("invalid capability state")
+	ErrInvalidDeclaration    = errors.New("invalid capability declaration")
+	ErrMissingCapability     = errors.New("proposal is missing a required capability declaration")
+	ErrCapabilityUnsupported = errors.New("capability is unsupported by a cluster member")
 )
 
 // RequiredCapabilities derives semantic protocol dependencies from the final
@@ -125,18 +108,6 @@ func StampProposal(proposal *raftcmdpb.Proposal) error {
 	return nil
 }
 
-// ValidateReplayFloor checks the persisted replay floor before any other
-// replicated state is decoded. A zero floor is the legacy policy and is
-// accepted by every binary; newer floors are safe only when this binary knows
-// how to decode and execute the corresponding entries.
-func ValidateReplayFloor(required, supported uint32) error {
-	if required > supported {
-		return fmt.Errorf("%w: persisted floor %d exceeds supported protocol %d", ErrReplayProtocolUnsupported, required, supported)
-	}
-
-	return nil
-}
-
 func (s State) Validate() error {
 	if !s.Armed {
 		return nil
@@ -151,7 +122,6 @@ func FromPolicy(policy *commonpb.ClusterPolicy) State {
 		return s
 	}
 	s.Armed = policy.GetCapabilityActivationArmed()
-	s.MinimumReplay = policy.GetMinimumReplayProtocol()
 	for _, activation := range policy.GetCapabilityActivations() {
 		if activation != nil {
 			s.Activations[ID(activation.GetId())] = activation.GetActive()
