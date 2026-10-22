@@ -9,7 +9,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -134,7 +134,7 @@ func (p OwnedLedgerPrefix) WithSuffix(suffix string) string {
 }
 
 // CreateLedger creates a ledger via the Apply RPC and verifies it can be read back.
-func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, name string, initialSchema ...*commonpb.SetMetadataFieldTypeCommand) error {
+func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, name string, initialSchema ...*ledgerpb.SetMetadataFieldTypeCommand) error {
 	details := Details{"ledger": name}
 
 	// A fresh idempotency key, reused across the client's internal retries: a

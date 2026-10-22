@@ -50,7 +50,10 @@ for name in "${public[@]}"; do
 		"pkg/client/v3/grpc/${name}_vtproto.pb.go" "pkg/client/v3/grpc/${name}_dethash.pb.go" \
 		"pkg/client/v3/grpc/${name}_skippable.pb.go" "pkg/client/v3/grpc/${name}_reader.pb.go" \
 		"pkg/client/v3/grpc/${name}"*_gen.go
-	rm -f "pkg/proto/v3/ledgerpb/${name}.pb.go" "pkg/proto/v3/ledgerpb/${name}_grpc.pb.go"
+	rm -f "pkg/proto/v3/ledgerpb/${name}.pb.go" "pkg/proto/v3/ledgerpb/${name}_grpc.pb.go" \
+		"pkg/proto/v3/ledgerpb/${name}_vtproto.pb.go" "pkg/proto/v3/ledgerpb/${name}_dethash.pb.go" \
+		"pkg/proto/v3/ledgerpb/${name}_skippable.pb.go" "pkg/proto/v3/ledgerpb/${name}_reader.pb.go" \
+		"pkg/proto/v3/ledgerpb/${name}"*_gen.go
 done
 
 protoc \
@@ -58,9 +61,28 @@ protoc \
 	-I pkg/client/v3/proto \
 	"${proto_files[@]}"
 
+for plugin in dethash reader skippable queryfilter-validity ledger-log-category rpcauth; do
+	go -C "tools/protoc-gen-${plugin}" build -o "../../build/protoc-gen-${plugin}"
+done
+
 protoc \
 	--go_out=pkg/proto/v3 --go_opt=module="${proto_module}" \
 	--go-grpc_out=pkg/proto/v3 --go-grpc_opt=module="${proto_module}" \
+	--go-vtproto_out=pkg/proto/v3 \
+	--go-vtproto_opt=module="${proto_module}" \
+	--go-vtproto_opt=features=marshal+unmarshal+size+clone+equal+pool \
+	--plugin=protoc-gen-dethash=build/protoc-gen-dethash \
+	--dethash_out=pkg/proto/v3 --dethash_opt=module="${proto_module}" \
+	--plugin=protoc-gen-reader=build/protoc-gen-reader \
+	--reader_out=pkg/proto/v3 --reader_opt=module="${proto_module}" \
+	--plugin=protoc-gen-skippable=build/protoc-gen-skippable \
+	--skippable_out=pkg/proto/v3 --skippable_opt=module="${proto_module}" \
+	--plugin=protoc-gen-queryfilter-validity=build/protoc-gen-queryfilter-validity \
+	--queryfilter-validity_out=pkg/proto/v3 --queryfilter-validity_opt=module="${proto_module}" \
+	--plugin=protoc-gen-ledger-log-category=build/protoc-gen-ledger-log-category \
+	--ledger-log-category_out=pkg/proto/v3 --ledger-log-category_opt=module="${proto_module}" \
+	--plugin=protoc-gen-rpcauth=build/protoc-gen-rpcauth \
+	--rpcauth_out=pkg/proto/v3 --rpcauth_opt=module="${proto_module}" \
 	-I pkg/proto/v3/proto \
 	"${shared_proto_files[@]}"
 

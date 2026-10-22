@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 func TestBusinessError(t *testing.T) {
@@ -249,8 +249,8 @@ func TestErrInsufficientFundsColorMetadata(t *testing.T) {
 }
 
 func TestNumscriptExecutionPublicDetailsExcludeDiagnostic(t *testing.T) {
-	first := &ErrNumscriptExecution{Detail: "wording one", Details: commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})}
-	second := &ErrNumscriptExecution{Detail: "wording two", Details: commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})}
+	first := &ErrNumscriptExecution{Detail: "wording one", Details: ledgerpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})}
+	second := &ErrNumscriptExecution{Detail: "wording two", Details: ledgerpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})}
 	firstMessage, firstFacts, _ := PublicErrorDetails(first)
 	secondMessage, secondFacts, _ := PublicErrorDetails(second)
 	require.Equal(t, firstMessage, secondMessage)
@@ -519,7 +519,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 
 		d := inst.(Describable)
 
-		require.NotEqualf(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, ReasonCode(d.Reason()),
+		require.NotEqualf(t, ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED, ReasonCode(d.Reason()),
 			"reason %q of %s has no ErrorReason enum value — add ERROR_REASON_%s to common.proto", d.Reason(), name, d.Reason())
 
 		require.Equalf(t, KindForReason(ReasonCode(d.Reason())), d.Kind(),
@@ -529,7 +529,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		_, uncommitted := inst.(UncommittedFailure)
 		if serializable, ok := inst.(SerializableError); ok && !uncommitted && name != "validationSentinel" && name != "errValidation" && name != "ErrNumscriptCompile" && name != "ErrNumscriptExecution" {
 			details := TypedFailureOf(serializable)
-			require.Equal(t, ReasonCode(serializable.Reason()), commonpb.FailureDetailsReason(details), name)
+			require.Equal(t, ReasonCode(serializable.Reason()), ledgerpb.FailureDetailsReason(details), name)
 			decoded, err := FailureFactsFromDetails(details)
 			require.NoError(t, err, name)
 			require.Equal(t, FailureFactsOf(serializable), decoded, name)

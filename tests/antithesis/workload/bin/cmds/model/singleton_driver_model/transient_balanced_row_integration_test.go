@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -37,7 +37,7 @@ func TestTransientBalancedPersistedRowAgainstServer(t *testing.T) {
 			for _, req := range []*servicepb.Request{
 				oracletest.TxReq("world", "g:1", "USD", 5),
 				oracletest.TxReq("g:1", "world", "USD", 5),
-				oracletest.AddTypeReqP("g", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+				oracletest.AddTypeReqP("g", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
 			} {
 				res := state.Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
 				require.True(t, res.OK)

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
@@ -113,7 +113,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 		var reqs []*servicepb.Request
 		for i := 1; i <= 10; i++ {
 			reqs = append(reqs,
-				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledger, []*ledgerpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("player:%d:coins", i), big.NewInt(promoCoins), "COINS"),
 				}, map[string]string{
 					"type":   "promotion",
@@ -341,7 +341,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 	t.Run("AccountTypeEnforcement", func(t *testing.T) {
 		// STRICT mode: transaction to non-matching address should fail
 		err := scenariotest.ApplyActionsExpectError(ctx, client,
-			actions.CreateTransactionAction(ledger, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledger, []*ledgerpb.Posting{
 				actions.NewPosting("world", "invalid-address", big.NewInt(1), "COINS"),
 			}, nil, nil),
 		)
@@ -349,7 +349,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 
 		// Valid platform address should still work
 		scenariotest.ApplyActions(t, ctx, client,
-			actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+			actions.CreateForceTransactionAction(ledger, []*ledgerpb.Posting{
 				actions.NewPosting("world", "platform:test", big.NewInt(1), "COINS"),
 			}, nil),
 		)
@@ -369,8 +369,8 @@ func TestGamingWalletLifecycle(t *testing.T) {
 		// 1. Parameterized address prefix — filter by account type at runtime
 		// Query for all player coin accounts
 		resp, err := actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("player:")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("player:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(player:) failed")
 		// 20 players × 2 accounts each (usd + coins) = 40
@@ -379,8 +379,8 @@ func TestGamingWalletLifecycle(t *testing.T) {
 
 		// Query for shop accounts only
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("shop:")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("shop:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(shop:) failed")
 		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 1,
@@ -388,8 +388,8 @@ func TestGamingWalletLifecycle(t *testing.T) {
 
 		// Query for escrow accounts
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("escrow:")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("escrow:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(escrow:) failed")
 		// escrow:p2p exists even if not used, depending on the flow
@@ -397,8 +397,8 @@ func TestGamingWalletLifecycle(t *testing.T) {
 
 		// 2. Parameterized exact address — find a specific account
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"addr": actions.StringParam("platform:revenue")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"addr": actions.StringParam("platform:revenue")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(platform:revenue) failed")
 		require.Equal(t, 1, len(resp.GetCursor().GetAccountData()),
@@ -406,8 +406,8 @@ func TestGamingWalletLifecycle(t *testing.T) {
 
 		// Non-existent exact address — should return 0
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"addr": actions.StringParam("nonexistent:account")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"addr": actions.StringParam("nonexistent:account")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(nonexistent) failed")
 		require.Empty(t, resp.GetCursor().GetAccountData(),
@@ -416,8 +416,8 @@ func TestGamingWalletLifecycle(t *testing.T) {
 		// 3. Parameterized string metadata — filter by tier
 		// Query for "platinum" tier — player:1:coins was updated to platinum
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-tier",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"tier_value": actions.StringParam("platinum")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"tier_value": actions.StringParam("platinum")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(tier=platinum) failed")
 		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 1,
@@ -425,8 +425,8 @@ func TestGamingWalletLifecycle(t *testing.T) {
 
 		// Query for "gold" tier — was overwritten to platinum, so should be 0
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-tier",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"tier_value": actions.StringParam("gold")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"tier_value": actions.StringParam("gold")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(tier=gold) failed")
 		require.Empty(t, resp.GetCursor().GetAccountData(),

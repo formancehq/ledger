@@ -8,18 +8,18 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-var listTargets = []commonpb.QueryTarget{
-	commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-	commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-	commonpb.QueryTarget_QUERY_TARGET_LOGS,
+var listTargets = []ledgerpb.QueryTarget{
+	ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+	ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+	ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 }
 
 // Every rolled shape must survive the wire unchanged in what the write-time
@@ -31,7 +31,7 @@ func TestAnyFilterShapeIsTotal(t *testing.T) {
 
 	ls := buildLedger(t,
 		oracletest.TxReq("world", "acc:1", "USD/2", 1),
-		oracletest.AddAccountMetaReq("acc:1", "k0", commonpb.NewStringValue("x")),
+		oracletest.AddAccountMetaReq("acc:1", "k0", ledgerpb.NewStringValue("x")),
 	)
 	kinds := map[string]bool{}
 
@@ -43,7 +43,7 @@ func TestAnyFilterShapeIsTotal(t *testing.T) {
 
 		raw, err := f.MarshalVT()
 		require.NoError(t, err)
-		wire := &commonpb.QueryFilter{}
+		wire := &ledgerpb.QueryFilter{}
 		require.NoError(t, wire.UnmarshalVT(raw))
 
 		for _, target := range listTargets {
@@ -58,9 +58,9 @@ func TestAnyFilterShapeIsTotal(t *testing.T) {
 			}
 
 			switch target {
-			case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+			case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 				accountWindow(ls, f, "", 10, oneIn(2))
-			case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+			case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 				transactionWindowRows(ls, f, 0, oneIn(2))
 			default:
 				logWindowRows(ls, "L", f, 0, oneIn(2))
@@ -80,11 +80,11 @@ func TestAnyFilterShapeIsTotal(t *testing.T) {
 func TestClassifyRejectedFilter(t *testing.T) {
 	t.Parallel()
 
-	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
-	k0 := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0"))
-	broken := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{}}}
-	param := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
-		Match: &commonpb.AddressMatch_ParamPrefix{ParamPrefix: "p0"},
+	accounts := ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	k0 := indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k0"))
+	broken := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{Address: &ledgerpb.AddressMatch{}}}
+	param := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{Address: &ledgerpb.AddressMatch{
+		Match: &ledgerpb.AddressMatch_ParamPrefix{ParamPrefix: "p0"},
 	}}}
 
 	require.False(t, classifyRejectedFilter(filterAnd(filterMetaExists("k0"), filterAddrPrefix("a:")), accounts).rejected)
@@ -98,7 +98,7 @@ func TestClassifyRejectedFilter(t *testing.T) {
 	require.Empty(t, rf.prior, "nothing is compiled before the refused leaf")
 
 	require.True(t, classifyRejectedFilter(param, accounts).rejected, "a list query never binds a parameter")
-	require.True(t, classifyRejectedFilter(&commonpb.QueryFilter{}, accounts).rejected)
+	require.True(t, classifyRejectedFilter(&ledgerpb.QueryFilter{}, accounts).rejected)
 	require.True(t, classifyRejectedFilter(filterHasAsset("USD", 256), accounts).rejected)
 	require.True(t, classifyRejectedFilter(filterNot(filterReverted(true)), accounts).rejected)
 }
@@ -125,13 +125,13 @@ func TestHasAssetComposesOverCurrentAccounts(t *testing.T) {
 func TestRefusedFilterAcceptsAWindowedEarlierLeaf(t *testing.T) {
 	t.Parallel()
 
-	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0")
+	accounts := ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k0")
 	canon := indexes.Canonical(id)
 
 	gs := oracle.NewGlobalState()
 	for _, req := range []*servicepb.Request{
-		oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0", commonpb.MetadataType_METADATA_TYPE_STRING),
+		oracletest.SetFieldTypeReq(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k0", ledgerpb.MetadataType_METADATA_TYPE_STRING),
 		oracletest.CreateIndexReq(id),
 	} {
 		res := gs.Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
@@ -139,7 +139,7 @@ func TestRefusedFilterAcceptsAWindowedEarlierLeaf(t *testing.T) {
 		gs = res.State
 	}
 
-	broken := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{}}}
+	broken := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{Address: &ledgerpb.AddressMatch{}}}
 	rf := classifyRejectedFilter(filterAnd(filterMetaExists("k0"), broken), accounts)
 	require.Equal(t, priorIndex{label: `metadata["k0"] on accounts`, metadata: true}, rf.prior[canon])
 
@@ -162,7 +162,7 @@ func TestRefusedFilterAcceptsAWindowedEarlierLeaf(t *testing.T) {
 	require.False(t, refusedFilterNotReadyLegal(gs.Ledger("L"), rf, accounts, own), "active and no window: the refusal is illegal")
 
 	res := gs.Apply(oracle.Bulk{Requests: []*servicepb.Request{
-		oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0", commonpb.MetadataType_METADATA_TYPE_INT64),
+		oracletest.SetFieldTypeReq(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k0", ledgerpb.MetadataType_METADATA_TYPE_INT64),
 	}})
 	require.True(t, res.OK, res.Reason)
 	windowed := res.State.Ledger("L")

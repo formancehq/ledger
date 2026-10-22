@@ -9,7 +9,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -50,10 +50,10 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank:main", big.NewInt(1000), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bank:main", big.NewInt(2000), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -80,10 +80,10 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank:main", big.NewInt(10000), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("bank:main", "bank:fees", big.NewInt(10), "USD"),
 					actions.NewPosting("bank:main", "users:alice", big.NewInt(990), "USD"),
 				}, nil, nil)))
@@ -118,13 +118,13 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 			// Fund world first, then create 12 user transactions
 			requests := make([]*servicepb.Request, 0, 13)
-			requests = append(requests, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			requests = append(requests, actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank:main", big.NewInt(1000000), "USD"),
 			}, nil, nil))
 
 			for i := range 12 {
 				userID := fmt.Sprintf("%08d-%04d-%04d-%04d-%012d", i+1, 0, 0, 0, i+1)
-				requests = append(requests, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				requests = append(requests, actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("bank:main", fmt.Sprintf("users:%s:main", userID), big.NewInt(100), "USD"),
 				}, nil, nil))
 			}
@@ -163,10 +163,10 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank:main", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bank:main", big.NewInt(300), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -212,10 +212,10 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 			// Funding flow: world -> bank:main
 			requests = append(requests,
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bank:main", big.NewInt(1000000), "USD"),
 				}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bank:main", big.NewInt(500000), "EUR"),
 				}, nil, nil),
 			)
@@ -223,7 +223,7 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 			// Distribution flow: bank:main -> users + bank:fees (multi-destination)
 			for i := range 3 {
 				requests = append(requests,
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 						actions.NewPosting("bank:main", fmt.Sprintf("users:user%d", i), big.NewInt(1000), "USD"),
 						actions.NewPosting("bank:main", "bank:fees", big.NewInt(10), "USD"),
 					}, nil, nil),

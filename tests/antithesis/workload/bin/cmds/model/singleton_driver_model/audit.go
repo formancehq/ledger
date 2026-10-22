@@ -15,8 +15,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -55,7 +55,7 @@ func runAuditQuery(ctx context.Context, client servicepb.BucketServiceClient, c 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
 	stream, err := client.ListAuditEntries(readCtx, &servicepb.ListAuditEntriesRequest{
-		Options: &commonpb.ListOptions{
+		Options: &ledgerpb.ListOptions{
 			PageSize: uint32(requestedPageSize),
 			Cursor:   cursor,
 			Reverse:  reverse,
@@ -271,7 +271,7 @@ type auditVerdict struct {
 // flight at the read's high-water have committed logs the model cannot name
 // yet; an entry past the committed frontier is admissible exactly then.
 // learnedBefore is c.auditLearnSeq when the read registered. Acquires c.mu.
-func (c *Checker) validateAuditPage(maxTicket, learnedBefore uint64, entries []auditEntry, reverse bool, filter *commonpb.QueryFilter, pageSize int, afterSeq uint64, next string) auditVerdict {
+func (c *Checker) validateAuditPage(maxTicket, learnedBefore uint64, entries []auditEntry, reverse bool, filter *ledgerpb.QueryFilter, pageSize int, afterSeq uint64, next string) auditVerdict {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -393,7 +393,7 @@ func (c *Checker) validateAuditPage(maxTicket, learnedBefore uint64, entries []a
 // The trail cannot lose an entry between reads: audit history is permanent, and
 // a linearizable read takes its barrier at read time, so its snapshot is at or
 // past every entry already committed. Caller holds c.mu.
-func (c *Checker) auditKnownMatchViolation(learnedBefore uint64, entries []auditEntry, reverse bool, filter *commonpb.QueryFilter, pageSize int, afterSeq uint64, next string, logs map[uint64]committedLog) auditVerdict {
+func (c *Checker) auditKnownMatchViolation(learnedBefore uint64, entries []auditEntry, reverse bool, filter *ledgerpb.QueryFilter, pageSize int, afterSeq uint64, next string, logs map[uint64]committedLog) auditVerdict {
 	served := make(map[uint64]bool, len(entries))
 	for _, e := range entries {
 		served[e.seq] = true
@@ -449,15 +449,15 @@ func (c *Checker) auditKnownMatchViolation(learnedBefore uint64, entries []audit
 // system-scoped proposal — certifies nothing. A Not certifies nothing either:
 // the audit grammar refuses it, so no served page carries one, and inverting a
 // conservative verdict would not stay conservative.
-func auditEntryCertainlyMatches(filter *commonpb.QueryFilter, e auditEntry, logs map[uint64]committedLog) bool {
+func auditEntryCertainlyMatches(filter *ledgerpb.QueryFilter, e auditEntry, logs map[uint64]committedLog) bool {
 	types := committedOrderTypes(e, logs)
 
 	return foldFilter(filter, filterFold[bool]{
 		and: allOf,
 		or:  anyOf,
 		not: func(bool) bool { return false },
-		leaf: func(leaf *commonpb.QueryFilter) bool {
-			if a := leaf.GetAudit(); a.GetField() == commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE {
+		leaf: func(leaf *ledgerpb.QueryFilter) bool {
+			if a := leaf.GetAudit(); a.GetField() == ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE {
 				return types[a.GetStringCond().GetHardcoded()]
 			}
 
@@ -641,7 +641,7 @@ func auditSuccessMismatch(e auditEntry, logs map[uint64]committedLog, bulks map[
 // auditPageViolation reports the first way the page breaks its own contract —
 // length, order, or filter scope — or "" when it holds. These are extras over
 // the model check, never the verdict on their own.
-func auditPageViolation(entries []auditEntry, pageSize int, reverse bool, filter *commonpb.QueryFilter, afterSeq uint64, next string) string {
+func auditPageViolation(entries []auditEntry, pageSize int, reverse bool, filter *ledgerpb.QueryFilter, afterSeq uint64, next string) string {
 	if len(entries) > pageSize {
 		return "page longer than requested"
 	}
@@ -700,19 +700,19 @@ func auditPageViolation(entries []auditEntry, pageSize int, reverse bool, filter
 // auditEntrySatisfies reports whether a served entry meets the filter it was
 // selected by, on the entry's own fields. An order-type leaf holds here: the
 // list entry does not carry its orders.
-func auditEntrySatisfies(filter *commonpb.QueryFilter, e auditEntry) bool {
+func auditEntrySatisfies(filter *ledgerpb.QueryFilter, e auditEntry) bool {
 	return auditEntryMatches(filter, e, nil)
 }
 
 // auditEntryMatches evaluates filter on e in one pass, with an order-type leaf
 // read from orderTypes — the kinds the model committed under e's logs. A nil
 // orderTypes leaves that leaf holding, for when the orders are not known.
-func auditEntryMatches(filter *commonpb.QueryFilter, e auditEntry, orderTypes map[string]bool) bool {
+func auditEntryMatches(filter *ledgerpb.QueryFilter, e auditEntry, orderTypes map[string]bool) bool {
 	return foldFilter(filter, filterFold[bool]{
 		and: allOf,
 		or:  anyOf,
 		not: negate,
-		leaf: func(leaf *commonpb.QueryFilter) bool {
+		leaf: func(leaf *ledgerpb.QueryFilter) bool {
 			a := leaf.GetAudit()
 			if a == nil {
 				return leaf.GetFilter() == nil
@@ -720,36 +720,36 @@ func auditEntryMatches(filter *commonpb.QueryFilter, e auditEntry, orderTypes ma
 
 			value := a.GetStringCond().GetHardcoded()
 			switch a.GetField() {
-			case commonpb.AuditField_AUDIT_FIELD_SEQUENCE:
+			case ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE:
 				return matchUintBounds(a.GetUintCond(), e.seq)
-			case commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID:
+			case ledgerpb.AuditField_AUDIT_FIELD_PROPOSAL_ID:
 				return matchUintBounds(a.GetUintCond(), e.proposalID)
-			case commonpb.AuditField_AUDIT_FIELD_TIMESTAMP:
+			case ledgerpb.AuditField_AUDIT_FIELD_TIMESTAMP:
 				return matchUintBounds(a.GetUintCond(), e.timestamp)
-			case commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE:
+			case ledgerpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE:
 				// Match-any over the entry's items, whose sequences are the
 				// contiguous range a success entry names; a rejection has none.
 				return !e.failed && boundsMeetRange(a.GetUintCond(), e.minLog, e.maxLog)
-			case commonpb.AuditField_AUDIT_FIELD_OUTCOME:
+			case ledgerpb.AuditField_AUDIT_FIELD_OUTCOME:
 				return (value == "failure") == e.failed
-			case commonpb.AuditField_AUDIT_FIELD_LEDGER:
+			case ledgerpb.AuditField_AUDIT_FIELD_LEDGER:
 				return slices.Contains(e.ledgers, value)
-			case commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT:
+			case ledgerpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT:
 				// An empty subject is never indexed.
 				return e.subject != "" && e.subject == value
-			case commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY:
+			case ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY:
 				// The only audit field with a prefix form. An entry carrying no
 				// key is absent from the index, so neither form selects it.
 				if e.idemKey == "" {
 					return false
 				}
 
-				if p, isPrefix := a.GetCondition().(*commonpb.AuditCondition_StringPrefix); isPrefix {
+				if p, isPrefix := a.GetCondition().(*ledgerpb.AuditCondition_StringPrefix); isPrefix {
 					return strings.HasPrefix(e.idemKey, p.StringPrefix)
 				}
 
 				return e.idemKey == value
-			case commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE:
+			case ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE:
 				return orderTypes == nil || orderTypes[value]
 			default:
 				return true
@@ -805,21 +805,21 @@ var auditOrderTypes = []string{
 }
 
 // auditFiltersOrderType reports whether filter carries an order-type leaf.
-func auditFiltersOrderType(filter *commonpb.QueryFilter) bool {
-	return anyLeaf(filter, func(leaf *commonpb.QueryFilter) bool {
-		return leaf.GetAudit().GetField() == commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE
+func auditFiltersOrderType(filter *ledgerpb.QueryFilter) bool {
+	return anyLeaf(filter, func(leaf *ledgerpb.QueryFilter) bool {
+		return leaf.GetAudit().GetField() == ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE
 	})
 }
 
 // auditFilterIndexFree mirrors the compiler's dispatch: nil, a sequence bound,
 // or an And of those scans the zone; anything else goes through the index.
-func auditFilterIndexFree(filter *commonpb.QueryFilter) bool {
+func auditFilterIndexFree(filter *ledgerpb.QueryFilter) bool {
 	return foldFilter(filter, filterFold[bool]{
 		and: allOf,
 		or:  func([]bool) bool { return false },
 		not: func(bool) bool { return false },
-		leaf: func(leaf *commonpb.QueryFilter) bool {
-			return leaf.GetFilter() == nil || leaf.GetAudit().GetField() == commonpb.AuditField_AUDIT_FIELD_SEQUENCE
+		leaf: func(leaf *ledgerpb.QueryFilter) bool {
+			return leaf.GetFilter() == nil || leaf.GetAudit().GetField() == ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE
 		},
 	})
 }
@@ -861,14 +861,14 @@ func (c *Checker) rollAuditCursor() (string, uint64) {
 
 // auditZoneStart is the first sequence a forward zone scan serves: the zone
 // starts at 1 and every sequence bound of the filter raises it.
-func auditZoneStart(filter *commonpb.QueryFilter) uint64 {
+func auditZoneStart(filter *ledgerpb.QueryFilter) uint64 {
 	start := uint64(1)
 	foldFilter(filter, filterFold[struct{}]{
 		and: func([]struct{}) struct{} { return struct{}{} },
 		or:  func([]struct{}) struct{} { return struct{}{} },
 		not: identity[struct{}],
-		leaf: func(leaf *commonpb.QueryFilter) struct{} {
-			if a := leaf.GetAudit(); a.GetField() == commonpb.AuditField_AUDIT_FIELD_SEQUENCE && a.GetUintCond().Min != nil {
+		leaf: func(leaf *ledgerpb.QueryFilter) struct{} {
+			if a := leaf.GetAudit(); a.GetField() == ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE && a.GetUintCond().Min != nil {
 				lo := a.GetUintCond().GetMin()
 				if a.GetUintCond().GetMinExclusive() {
 					lo++
@@ -886,8 +886,8 @@ func auditZoneStart(filter *commonpb.QueryFilter) uint64 {
 
 // bareAuditLogSeqRange returns the condition when filter is exactly one
 // log-sequence leaf.
-func bareAuditLogSeqRange(filter *commonpb.QueryFilter) *commonpb.UintCondition {
-	if a := filter.GetAudit(); a != nil && a.GetField() == commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE {
+func bareAuditLogSeqRange(filter *ledgerpb.QueryFilter) *ledgerpb.UintCondition {
+	if a := filter.GetAudit(); a != nil && a.GetField() == ledgerpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE {
 		return a.GetUintCond()
 	}
 
@@ -895,7 +895,7 @@ func bareAuditLogSeqRange(filter *commonpb.QueryFilter) *commonpb.UintCondition 
 }
 
 // boundsMeetRange reports whether some value of [lo, hi] satisfies cond.
-func boundsMeetRange(cond *commonpb.UintCondition, lo, hi uint64) bool {
+func boundsMeetRange(cond *ledgerpb.UintCondition, lo, hi uint64) bool {
 	if cond.Min != nil {
 		m := cond.GetMin()
 		if cond.GetMinExclusive() {
@@ -1024,7 +1024,7 @@ func (c *Checker) noteAuditSamples(entries []auditEntry) {
 // genAuditFilter rolls a ListAuditEntries filter: nothing, one leaf on any of
 // the eight audit fields, an And or Or of leaves, or one of the two shapes the
 // audit grammar refuses. Acquires c.mu.
-func (c *Checker) genAuditFilter() (*commonpb.QueryFilter, auditProbe) {
+func (c *Checker) genAuditFilter() (*ledgerpb.QueryFilter, auditProbe) {
 	c.mu.Lock()
 	var sample auditSample
 	if len(c.auditSamples) > 0 {
@@ -1036,10 +1036,10 @@ func (c *Checker) genAuditFilter() (*commonpb.QueryFilter, auditProbe) {
 	logSeq, _, _ := pickLogSequence(state)
 
 	ledgers := c.ledgerNamesSnapshot()
-	leaf := func() *commonpb.QueryFilter { return genAuditLeaf(ledgers, sample, logSeq.sequence) }
-	indexed := func() *commonpb.QueryFilter {
+	leaf := func() *ledgerpb.QueryFilter { return genAuditLeaf(ledgers, sample, logSeq.sequence) }
+	indexed := func() *ledgerpb.QueryFilter {
 		for {
-			if f := leaf(); f.GetAudit().GetField() != commonpb.AuditField_AUDIT_FIELD_SEQUENCE {
+			if f := leaf(); f.GetAudit().GetField() != ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE {
 				return f
 			}
 		}
@@ -1056,7 +1056,7 @@ func (c *Checker) genAuditFilter() (*commonpb.QueryFilter, auditProbe) {
 			return filterNot(leaf()), auditProbeNot
 		}
 
-		return filterOr(filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, satisfiableSeqRange(sample.seq)), indexed()), auditProbeSeqInOr
+		return filterOr(filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE, satisfiableSeqRange(sample.seq)), indexed()), auditProbeSeqInOr
 	case oneIn(4):
 		// One slot of the read mix reaches this read at all, so a refusal rolled
 		// much rarer than this is never drawn in a whole local run — the four
@@ -1064,7 +1064,7 @@ func (c *Checker) genAuditFilter() (*commonpb.QueryFilter, auditProbe) {
 		// grammar refusals so it does not take theirs.
 		return genRefusedAuditLeaf(sample)
 	case oneIn(4): //nolint:gocritic // dupCase: a fresh roll, not the arm above
-		return filterAnd(genChildren(maxQueryGenDepth, func(int) *commonpb.QueryFilter { return leaf() })...), auditProbeNone
+		return filterAnd(genChildren(maxQueryGenDepth, func(int) *ledgerpb.QueryFilter { return leaf() })...), auditProbeNone
 	case oneIn(6): //nolint:gocritic // dupCase: a fresh roll, not the first arm
 		return filterOr(indexed(), indexed()), auditProbeNone
 	default:
@@ -1075,7 +1075,7 @@ func (c *Checker) genAuditFilter() (*commonpb.QueryFilter, auditProbe) {
 // genAuditLeaf rolls one audit leaf, aimed at a served entry's values so ranges
 // straddle live entries: the model's committed log sequences for
 // log_sequence, the fleet for ledger, the indexer's tokens for order_type.
-func genAuditLeaf(ledgers []string, sample auditSample, logSeq uint64) *commonpb.QueryFilter {
+func genAuditLeaf(ledgers []string, sample auditSample, logSeq uint64) *ledgerpb.QueryFilter {
 	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8}) {
 	case 0:
 		ledger := random.RandomChoice(ledgers)
@@ -1083,25 +1083,25 @@ func genAuditLeaf(ledgers []string, sample auditSample, logSeq uint64) *commonpb
 			ledger = "no-such-ledger"
 		}
 
-		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_LEDGER, ledger)
+		return filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, ledger)
 	case 1:
-		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_OUTCOME, random.RandomChoice([]string{"success", "failure"}))
+		return filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, random.RandomChoice([]string{"success", "failure"}))
 	case 2:
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, uintRangeAround(sample.seq, 16))
+		return filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE, uintRangeAround(sample.seq, 16))
 	case 3:
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, uintRangeAround(sample.proposalID, 16))
+		return filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, uintRangeAround(sample.proposalID, 16))
 	case 4:
 		// A second either side of a served timestamp, in microseconds.
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, uintRangeAround(sample.timestamp, 1_000_000))
+		return filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_TIMESTAMP, uintRangeAround(sample.timestamp, 1_000_000))
 	case 5:
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintRangeAround(logSeq, 8))
+		return filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintRangeAround(logSeq, 8))
 	case 6:
 		subject := sample.subject
 		if subject == "" || oneIn(8) {
 			subject = random.RandomChoice([]string{"nobody", ""})
 		}
 
-		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, subject)
+		return filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, subject)
 	case 7:
 		return genIdempotencyKeyLeaf(sample)
 	default:
@@ -1110,7 +1110,7 @@ func genAuditLeaf(ledgers []string, sample auditSample, logSeq uint64) *commonpb
 			token = "no_such_order"
 		}
 
-		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, token)
+		return filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE, token)
 	}
 }
 
@@ -1118,14 +1118,14 @@ func genAuditLeaf(ledgers []string, sample auditSample, logSeq uint64) *commonpb
 // prefix form. The prefix arm alternates between the driver's own key namespace
 // — which every entry this run produced shares, so the page is unfiltered in
 // practice — and a proper prefix of a key the trail served, which selects one.
-func genIdempotencyKeyLeaf(sample auditSample) *commonpb.QueryFilter {
+func genIdempotencyKeyLeaf(sample auditSample) *ledgerpb.QueryFilter {
 	key := sample.idemKey
 	if key == "" || oneIn(8) {
 		key = "model-no-such-key"
 	}
 
 	if !oneIn(2) {
-		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, key)
+		return filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, key)
 	}
 
 	prefix := idempotencyKeyNamespace
@@ -1133,36 +1133,36 @@ func genIdempotencyKeyLeaf(sample auditSample) *commonpb.QueryFilter {
 		prefix = key[:len(idempotencyKeyNamespace)+internal.Rand().Intn(len(key)-len(idempotencyKeyNamespace))]
 	}
 
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
-		Field:     commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
-		Condition: &commonpb.AuditCondition_StringPrefix{StringPrefix: prefix},
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Audit{Audit: &ledgerpb.AuditCondition{
+		Field:     ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
+		Condition: &ledgerpb.AuditCondition_StringPrefix{StringPrefix: prefix},
 	}}}
 }
 
 // genRefusedAuditLeaf rolls a leaf the audit compiler must refuse, with the
 // refusal it is built to draw. Each is a distinct guard in compileAuditLeaf.
-func genRefusedAuditLeaf(sample auditSample) (*commonpb.QueryFilter, auditProbe) {
+func genRefusedAuditLeaf(sample auditSample) (*ledgerpb.QueryFilter, auditProbe) {
 	switch random.RandomChoice([]uint8{0, 1, 2, 3}) {
 	case 0:
-		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_UNSPECIFIED, "anything"), auditProbeUnspecifiedField
+		return filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_UNSPECIFIED, "anything"), auditProbeUnspecifiedField
 	case 1:
 		// A string operand on a uint field, or a numeric one on a string field.
 		if oneIn(2) {
-			return filterAuditString(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, "not-a-number"), auditProbeTypeMismatch
+			return filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE, "not-a-number"), auditProbeTypeMismatch
 		}
 
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_LEDGER, uintRangeAround(sample.seq, 16)), auditProbeTypeMismatch
+		return filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, uintRangeAround(sample.seq, 16)), auditProbeTypeMismatch
 	case 2:
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
-			Field: commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
-			Condition: &commonpb.AuditCondition_StringCond{StringCond: &commonpb.StringCondition{
-				Value: &commonpb.StringCondition_Param{Param: "p0"},
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Audit{Audit: &ledgerpb.AuditCondition{
+			Field: ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
+			Condition: &ledgerpb.AuditCondition_StringCond{StringCond: &ledgerpb.StringCondition{
+				Value: &ledgerpb.StringCondition_Param{Param: "p0"},
 			}},
 		}}}, auditProbeIdempotencyParam
 	default:
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
-			Field:     commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
-			Condition: &commonpb.AuditCondition_StringPrefix{StringPrefix: "model-\x00bad"},
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Audit{Audit: &ledgerpb.AuditCondition{
+			Field:     ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
+			Condition: &ledgerpb.AuditCondition_StringPrefix{StringPrefix: "model-\x00bad"},
 		}}}, auditProbeNulPrefix
 	}
 }
@@ -1173,28 +1173,28 @@ func genRefusedAuditLeaf(sample auditSample) (*commonpb.QueryFilter, auditProbe)
 // an IMPOSSIBLE range instead compiles to an empty narrowed set, which the union
 // represents happily (compileAuditSeqBound), so the Or would then serve a page.
 // A probe built on an arbitrary range is therefore not a probe.
-func satisfiableSeqRange(center uint64) *commonpb.UintCondition {
+func satisfiableSeqRange(center uint64) *ledgerpb.UintCondition {
 	lo := center - min(center, internal.Rand().Uint64()%16)
 	hi := lo + internal.Rand().Uint64()%16
 
-	return &commonpb.UintCondition{Min: &lo, Max: &hi}
+	return &ledgerpb.UintCondition{Min: &lo, Max: &hi}
 }
 
 // uintRangeAround rolls a two-sided range within spread of center, then opens
 // or makes exclusive either side the way the other range leaves do.
-func uintRangeAround(center, spread uint64) *commonpb.UintCondition {
+func uintRangeAround(center, spread uint64) *ledgerpb.UintCondition {
 	lo := center - min(center, internal.Rand().Uint64()%spread)
 	hi := center + internal.Rand().Uint64()%spread
-	cond := &commonpb.UintCondition{Min: &lo, Max: &hi}
+	cond := &ledgerpb.UintCondition{Min: &lo, Max: &hi}
 	rollOpenOrExclusive(cond)
 
 	return cond
 }
 
-func filterAuditUint(field commonpb.AuditField, cond *commonpb.UintCondition) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
+func filterAuditUint(field ledgerpb.AuditField, cond *ledgerpb.UintCondition) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Audit{Audit: &ledgerpb.AuditCondition{
 		Field:     field,
-		Condition: &commonpb.AuditCondition_UintCond{UintCond: cond},
+		Condition: &ledgerpb.AuditCondition_UintCond{UintCond: cond},
 	}}}
 }
 
@@ -1217,11 +1217,11 @@ func describeAuditSeqs(entries []auditEntry) string {
 }
 
 // filterAuditString builds an audit leaf on a string-typed audit field.
-func filterAuditString(field commonpb.AuditField, value string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
+func filterAuditString(field ledgerpb.AuditField, value string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Audit{Audit: &ledgerpb.AuditCondition{
 		Field: field,
-		Condition: &commonpb.AuditCondition_StringCond{StringCond: &commonpb.StringCondition{
-			Value: &commonpb.StringCondition_Hardcoded{Hardcoded: value},
+		Condition: &ledgerpb.AuditCondition_StringCond{StringCond: &ledgerpb.StringCondition{
+			Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: value},
 		}},
 	}}}
 }
@@ -1238,9 +1238,9 @@ func (c *Checker) describeServedLogAt(ctx context.Context, client servicepb.Buck
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	apply, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
+	apply, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply)
 	if !ok {
-		served := "top-level " + strings.TrimPrefix(fmt.Sprintf("%T", log.GetPayload().GetType()), "*commonpb.LogPayload_")
+		served := "top-level " + strings.TrimPrefix(fmt.Sprintf("%T", log.GetPayload().GetType()), "*ledgerpb.LogPayload_")
 		if rec, ok := c.ledgerLogSeqs[seq]; ok {
 			return served + "; model: ledger-level log of " + rec.ledger
 		}

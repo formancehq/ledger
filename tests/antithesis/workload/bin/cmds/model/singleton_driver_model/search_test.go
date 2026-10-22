@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
@@ -94,7 +94,7 @@ func TestCandidateBases_PinsPendingOrder(t *testing.T) {
 	t.Parallel()
 
 	c := NewChecker([]string{"L"}, nil)
-	p1 := bulkOf(oracletest.AddTypeReqP("a", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))
+	p1 := bulkOf(oracletest.AddTypeReqP("a", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))
 	p2 := bulkOf(oracletest.TxReq("world", "a:1", "USD", 5), oracletest.TxReq("a:1", "world", "USD", 5))
 	c.pending = []*pendingObservation{
 		{minSeq: 1, obs: observation{bulk: p1}},

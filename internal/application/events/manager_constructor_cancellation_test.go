@@ -11,9 +11,9 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -61,7 +61,7 @@ func TestManager_ClosesStaleConstructorBeforeEmitterStartup(t *testing.T) {
 			var releaseOnce sync.Once
 			stale, successor := &constructorLifecycleSink{}, &constructorLifecycleSink{}
 			var attempts, cursorReads atomic.Int64
-			replaceConstructorFactory(t, func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
+			replaceConstructorFactory(t, func(context.Context, *ledgerpb.SinkConfig, Format) (Sink, error) {
 				if attempts.Add(1) == 1 {
 					close(entered)
 					<-release
@@ -73,7 +73,7 @@ func TestManager_ClosesStaleConstructorBeforeEmitterStartup(t *testing.T) {
 			})
 			builder, store := newTestBuilder(t)
 			attrs := attributes.New()
-			config := &commonpb.SinkConfig{Name: "blocked-constructor", Type: &commonpb.SinkConfig_Nats{Nats: &commonpb.NatsSinkConfig{}}}
+			config := &ledgerpb.SinkConfig{Name: "blocked-constructor", Type: &ledgerpb.SinkConfig_Nats{Nats: &ledgerpb.NatsSinkConfig{}}}
 			saveManagedSinkConfig(t, attrs, store, config)
 			proposer := &startupStatusProposer{store: store}
 			m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
@@ -140,7 +140,7 @@ func TestManager_CancelsInProgressSinkConstruction(t *testing.T) {
 			var releaseOnce sync.Once
 			var attempts atomic.Int64
 			successor := &constructorLifecycleSink{}
-			replaceConstructorFactory(t, func(ctx context.Context, _ *commonpb.SinkConfig, _ Format) (Sink, error) {
+			replaceConstructorFactory(t, func(ctx context.Context, _ *ledgerpb.SinkConfig, _ Format) (Sink, error) {
 				if attempts.Add(1) > 1 {
 					return successor, nil
 				}
@@ -156,7 +156,7 @@ func TestManager_CancelsInProgressSinkConstruction(t *testing.T) {
 			})
 			builder, store := newTestBuilder(t)
 			attrs := attributes.New()
-			config := &commonpb.SinkConfig{Name: "cancel-constructor", Type: &commonpb.SinkConfig_Nats{Nats: &commonpb.NatsSinkConfig{}}}
+			config := &ledgerpb.SinkConfig{Name: "cancel-constructor", Type: &ledgerpb.SinkConfig_Nats{Nats: &ledgerpb.NatsSinkConfig{}}}
 			saveManagedSinkConfig(t, attrs, store, config)
 			proposer := &startupStatusProposer{store: store}
 			m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())

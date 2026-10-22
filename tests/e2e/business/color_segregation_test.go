@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
@@ -31,7 +31,7 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 		//   GRANTS         :  50
 		//   OPS            :  25
 		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", ""),
 				actions.NewColoredPosting("world", "alice", big.NewInt(50), "USD/2", "GRANTS"),
 				actions.NewColoredPosting("world", "alice", big.NewInt(25), "USD/2", "OPS"),
@@ -88,7 +88,7 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 	It("Should reject a draw from a color that has insufficient funds", func() {
 		// alice's OPS bucket has 25; ask for 100 OPS → MissingFunds.
 		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewColoredPosting("alice", "bob", big.NewInt(100), "USD/2", "OPS"),
 			}, nil, nil),
 		))
@@ -99,7 +99,7 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 		// alice's uncolored bucket has 100; drawing 100 from "" should succeed.
 		// But drawing 100 from "GRANTS" must NOT dip into the 100 uncolored.
 		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewColoredPosting("alice", "bob", big.NewInt(100), "USD/2", "GRANTS"),
 			}, nil, nil),
 		))
@@ -109,7 +109,7 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 	It("Should drain a color independently of the others", func() {
 		// Spend exactly the GRANTS bucket (50) → success.
 		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewColoredPosting("alice", "bob", big.NewInt(50), "USD/2", "GRANTS"),
 			}, nil, nil),
 		))
@@ -153,7 +153,7 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 		// posting still carries color = "GRANTS" on the wire.
 		resp, err := sharedClient.ListTransactions(sharedCtx, &servicepb.ListTransactionsRequest{
 			Ledger:  ledgerName,
-			Options: &commonpb.ListOptions{PageSize: 32},
+			Options: &ledgerpb.ListOptions{PageSize: 32},
 		})
 		Expect(err).To(Succeed())
 

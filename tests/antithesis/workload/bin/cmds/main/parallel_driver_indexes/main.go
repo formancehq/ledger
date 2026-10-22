@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -25,9 +25,9 @@ func main() {
 			Type: &servicepb.Request_SetMetadataFieldType{
 				SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 					Ledger:     ledger,
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        metadataKey,
-					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 				},
 			},
 		})); err != nil {
@@ -45,8 +45,8 @@ func main() {
 			}
 		}
 
-		indexID := &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
-			Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		indexID := &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_Metadata{Metadata: &ledgerpb.MetadataIndexID{
+			Target: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 			Key:    metadataKey,
 		}}}
 

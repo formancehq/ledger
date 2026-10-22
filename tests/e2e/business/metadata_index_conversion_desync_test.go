@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
@@ -52,15 +52,15 @@ var _ = Describe("MetadataIndexConversionDesync", Ordered, func() {
 
 	It("does not leave stale index entries after a mid-BUILDING overwrite", func() {
 		// Ledger with a STRING field + an index on it.
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-			{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: key, Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
+			{TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, Key: key, Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 		})))
 		Expect(err).To(Succeed())
 
 		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateAccountMetadataIndexAction(ledgerName, key)))
 		Expect(err).To(Succeed())
 		Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName,
-			commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)).To(Succeed())
+			ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key)).To(Succeed())
 
 		// Seed n accounts with score = str(i) (indexed in the string encoding).
 		applyChunked(Default, func(i int) *servicepb.Request {
@@ -69,8 +69,8 @@ var _ = Describe("MetadataIndexConversionDesync", Ordered, func() {
 
 		// Declare INT64: starts the index schema-rewrite (BUILDING) and the value
 		// converter (CONVERTING).
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key,
-			commonpb.MetadataType_METADATA_TYPE_INT64)))
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key,
+			ledgerpb.MetadataType_METADATA_TYPE_INT64)))
 		Expect(err).To(Succeed())
 
 		// Immediately overwrite every account to a value >= 1_000_000, racing the
@@ -81,7 +81,7 @@ var _ = Describe("MetadataIndexConversionDesync", Ordered, func() {
 
 		// Let the conversion + index rewrite settle (index back to READY).
 		Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName,
-			commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)).To(Succeed())
+			ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key)).To(Succeed())
 
 		// Sanity: the new values are indexed.
 		hiLo, hiHi := int64(1_000_000), int64(1_000_000+n-1)

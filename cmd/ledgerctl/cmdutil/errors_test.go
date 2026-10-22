@@ -9,8 +9,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // buildGRPCError creates a gRPC status error with an ErrorInfo detail, simulating what the server sends.
@@ -114,7 +114,7 @@ func TestFormatGRPCError_BusinessError_ReturnsDisplayed(t *testing.T) {
 func TestFormatGRPCError_BusinessError_UnknownReasonStillFormatted(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
+	require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
 		domain.ReasonCode("SOME_REASON_FROM_A_NEWER_SERVER"),
 		"precondition: the reason must be unknown to this build")
 

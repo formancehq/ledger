@@ -12,8 +12,8 @@ import (
 
 	"github.com/formancehq/invariants"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -72,7 +72,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	showProfile, _ := cmd.Flags().GetBool("analyze")
 	rescale := cmdutil.RescaleTarget(cmd)
 
-	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	if err != nil {
 		return err
 	}
@@ -84,7 +84,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	return fetchAccountsWithPager(cmd, client, ledgerName, pgn, filter, cns, showProfile, rescale)
 }
 
-func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, initialCursor string, reverse bool, cns cmdutil.ConsistencyFlags, showProfile bool, rescale *uint8) error {
+func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *ledgerpb.QueryFilter, initialCursor string, reverse bool, cns cmdutil.ConsistencyFlags, showProfile bool, rescale *uint8) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -96,7 +96,7 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 
 	var lastTrailer metadata.MD
 
-	accounts, err := cmdutil.DrainAllPages(initialCursor, func(cur string) ([]*commonpb.Account, metadata.MD, error) {
+	accounts, err := cmdutil.DrainAllPages(initialCursor, func(cur string) ([]*ledgerpb.Account, metadata.MD, error) {
 		stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
 			Ledger:  ledgerName,
 			Options: cmdutil.BuildListOptions(cmdutil.PaginationFlags{Cursor: cur, Reverse: reverse}, cns, filter),
@@ -145,7 +145,7 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 	return nil
 }
 
-func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pgn cmdutil.PaginationFlags, filter *commonpb.QueryFilter, cns cmdutil.ConsistencyFlags, showProfile bool, rescale *uint8) error {
+func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pgn cmdutil.PaginationFlags, filter *ledgerpb.QueryFilter, cns cmdutil.ConsistencyFlags, showProfile bool, rescale *uint8) error {
 	page := pgn
 	pageNum := 1
 
@@ -169,7 +169,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 			return cmdutil.FormatGRPCError("failed to list accounts", err)
 		}
 
-		var accounts []*commonpb.Account
+		var accounts []*ledgerpb.Account
 
 		for {
 			account, err := stream.Recv()
@@ -268,7 +268,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 	}
 }
 
-func renderAccountsTable(accounts []*commonpb.Account, rescale *uint8) error {
+func renderAccountsTable(accounts []*ledgerpb.Account, rescale *uint8) error {
 	termWidth := pterm.GetTerminalWidth()
 
 	const (
@@ -331,7 +331,7 @@ func renderAccountsTable(accounts []*commonpb.Account, rescale *uint8) error {
 // bucket is labelled by its asset alone. Returns a single muted placeholder when
 // there are no volumes, and an error when --rescale meets a volume that is not a
 // canonical integer (see cmdutil.AggregateVolumes).
-func formatAccountBalances(volumes []*commonpb.AccountVolume, rescale *uint8) ([]string, error) {
+func formatAccountBalances(volumes []*ledgerpb.AccountVolume, rescale *uint8) ([]string, error) {
 	if len(volumes) == 0 {
 		return []string{pterm.Gray("—")}, nil
 	}

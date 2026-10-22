@@ -8,7 +8,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -118,9 +118,9 @@ func captureSource(ctx context.Context, client servicepb.BucketServiceClient) (m
 
 func collectSource(ctx context.Context, client servicepb.BucketServiceClient) (map[string]expectedLedger, error) {
 	ledgers := make(map[string]expectedLedger)
-	err := readPages(ctx, func(ctx context.Context, cursor string) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error) {
-		return client.ListLedgers(ctx, &servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{PageSize: 100, Cursor: cursor}})
-	}, func(info *commonpb.LedgerInfo) error {
+	err := readPages(ctx, func(ctx context.Context, cursor string) (grpc.ServerStreamingClient[ledgerpb.LedgerInfo], error) {
+		return client.ListLedgers(ctx, &servicepb.ListLedgersRequest{Options: &ledgerpb.ListOptions{PageSize: 100, Cursor: cursor}})
+	}, func(info *ledgerpb.LedgerInfo) error {
 		if info.GetName() == "" || info.GetId() == 0 {
 			return errors.New("invalid ledger identity")
 		}
@@ -157,9 +157,9 @@ func collectSource(ctx context.Context, client servicepb.BucketServiceClient) (m
 func foldLogs(ctx context.Context, client servicepb.BucketServiceClient, ledger string) (counts, error) {
 	var result counts
 	var lastID uint64
-	err := readPages(ctx, func(ctx context.Context, cursor string) (grpc.ServerStreamingClient[commonpb.Log], error) {
-		return client.ListLogs(ctx, &servicepb.ListLogsRequest{Ledger: ledger, Options: &commonpb.ListOptions{PageSize: 100, Cursor: cursor}})
-	}, func(entry *commonpb.Log) error {
+	err := readPages(ctx, func(ctx context.Context, cursor string) (grpc.ServerStreamingClient[ledgerpb.Log], error) {
+		return client.ListLogs(ctx, &servicepb.ListLogsRequest{Ledger: ledger, Options: &ledgerpb.ListOptions{PageSize: 100, Cursor: cursor}})
+	}, func(entry *ledgerpb.Log) error {
 		apply := entry.GetPayload().GetApply()
 		if apply == nil || apply.GetLedgerName() != ledger || apply.GetLog().GetId() != lastID+1 {
 			return fmt.Errorf("non-contiguous or foreign log after %d", lastID)
@@ -171,12 +171,12 @@ func foldLogs(ctx context.Context, client servicepb.BucketServiceClient, ledger 
 			return errors.New("log has no payload")
 		}
 		switch payload := data.GetPayload().(type) {
-		case *commonpb.LedgerLogPayload_CreatedTransaction:
+		case *ledgerpb.LedgerLogPayload_CreatedTransaction:
 			if payload.CreatedTransaction.GetTransaction() == nil {
 				return errors.New("created log has no transaction")
 			}
 			result.Postings += uint64(len(payload.CreatedTransaction.GetTransaction().GetPostings()))
-		case *commonpb.LedgerLogPayload_RevertedTransaction:
+		case *ledgerpb.LedgerLogPayload_RevertedTransaction:
 			if payload.RevertedTransaction.GetRevertTransaction() == nil {
 				return errors.New("revert log has no transaction")
 			}
@@ -190,7 +190,7 @@ func foldLogs(ctx context.Context, client servicepb.BucketServiceClient, ledger 
 	return result, err
 }
 
-func createWitness(ctx context.Context, client servicepb.BucketServiceClient, name string) (*commonpb.LedgerInfo, error) {
+func createWitness(ctx context.Context, client servicepb.BucketServiceClient, name string) (*ledgerpb.LedgerInfo, error) {
 	if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(name+"-create", &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: name}}})); err != nil {
 		return nil, err
 	}
@@ -211,7 +211,7 @@ func createWitness(ctx context.Context, client servicepb.BucketServiceClient, na
 func writeWitness(ctx context.Context, client servicepb.BucketServiceClient, ledger string, horizon uint64) (uint64, error) {
 	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(ledger,
 		&servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: ledger, Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
-			Reference: ledger, Force: true, Postings: []*commonpb.Posting{{Source: "world", Destination: "witness", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}},
+			Reference: ledger, Force: true, Postings: []*ledgerpb.Posting{{Source: "world", Destination: "witness", Asset: "USD", Amount: ledgerpb.NewUint256FromUint64(1)}},
 		}}}}}},
 	))
 	if err != nil {

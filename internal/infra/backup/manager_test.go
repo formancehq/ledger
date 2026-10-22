@@ -17,8 +17,8 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -643,7 +643,7 @@ func writeFailureAuditEntry(t *testing.T, store *dal.Store, seq uint64) {
 	entry := &auditpb.AuditEntry{
 		Sequence: seq,
 		Outcome: &auditpb.AuditEntry_Failure{
-			Failure: &auditpb.AuditFailure{Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "1", "balance": "0", "color": ""})},
+			Failure: &auditpb.AuditFailure{Details: ledgerpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "1", "balance": "0", "color": ""})},
 		},
 	}
 

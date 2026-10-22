@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 func TestHandleListPreparedQueries_Success(t *testing.T) {
@@ -18,8 +18,8 @@ func TestHandleListPreparedQueries_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListPreparedQueries(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
-			return []*commonpb.PreparedQuery{
+		func(_ context.Context, _ string) ([]*ledgerpb.PreparedQuery, error) {
+			return []*ledgerpb.PreparedQuery{
 				{Name: "query1"},
 				{Name: "query2"},
 			}, nil
@@ -41,7 +41,7 @@ func TestHandleListPreparedQueries_Empty(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListPreparedQueries(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
+		func(_ context.Context, _ string) ([]*ledgerpb.PreparedQuery, error) {
 			return nil, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -61,9 +61,9 @@ func TestHandleListPreparedQueries_FilterlessOmitsFilter(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListPreparedQueries(gomock.Any(), gomock.Any()).Return(
-		[]*commonpb.PreparedQuery{{
+		[]*ledgerpb.PreparedQuery{{
 			Name:   "all-accounts",
-			Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		}}, nil)
 	srv := newTestServer(t, backend)
 
@@ -87,15 +87,15 @@ func TestHandleListPreparedQueries_CamelCaseBodyShape(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListPreparedQueries(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
-			return []*commonpb.PreparedQuery{{
+		func(_ context.Context, _ string) ([]*ledgerpb.PreparedQuery, error) {
+			return []*ledgerpb.PreparedQuery{{
 				Name:   "q1",
-				Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-				Filter: &commonpb.QueryFilter{
-					Filter: &commonpb.QueryFilter_Reference{
-						Reference: &commonpb.ReferenceCondition{
-							Cond: &commonpb.StringCondition{
-								Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "order-123"},
+				Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+				Filter: &ledgerpb.QueryFilter{
+					Filter: &ledgerpb.QueryFilter_Reference{
+						Reference: &ledgerpb.ReferenceCondition{
+							Cond: &ledgerpb.StringCondition{
+								Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: "order-123"},
 							},
 						},
 					},
@@ -147,7 +147,7 @@ func TestHandleListPreparedQueries_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListPreparedQueries(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
+		func(_ context.Context, _ string) ([]*ledgerpb.PreparedQuery, error) {
 			return nil, errors.New("unexpected error")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

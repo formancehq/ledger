@@ -8,8 +8,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -21,12 +21,12 @@ import (
 func TestAdoptForwardedSnapshotIfTrusted_TrustsClusterInternal(t *testing.T) {
 	t.Parallel()
 
-	snapshot := &commonpb.CallerSnapshot{
-		Principal: &commonpb.CallerSnapshot_Authenticated{
-			Authenticated: &commonpb.AuthenticatedCaller{
-				Identity: &commonpb.CallerIdentity{
+	snapshot := &ledgerpb.CallerSnapshot{
+		Principal: &ledgerpb.CallerSnapshot_Authenticated{
+			Authenticated: &ledgerpb.AuthenticatedCaller{
+				Identity: &ledgerpb.CallerIdentity{
 					Subject: "alice",
-					Source:  &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
+					Source:  &ledgerpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
 				},
 				Scopes: []string{"ledger:TransactionWrite"},
 			},
@@ -47,9 +47,9 @@ func TestAdoptForwardedSnapshotIfTrusted_TrustsClusterInternal(t *testing.T) {
 func TestAdoptForwardedSnapshotIfTrusted_RejectsMalformedTrustedSnapshot(t *testing.T) {
 	t.Parallel()
 
-	req := &servicepb.ApplyRequest{ForwardedCallerSnapshot: &commonpb.CallerSnapshot{
-		Principal: &commonpb.CallerSnapshot_Authenticated{
-			Authenticated: &commonpb.AuthenticatedCaller{Identity: &commonpb.CallerIdentity{Subject: "alice"}},
+	req := &servicepb.ApplyRequest{ForwardedCallerSnapshot: &ledgerpb.CallerSnapshot{
+		Principal: &ledgerpb.CallerSnapshot_Authenticated{
+			Authenticated: &ledgerpb.AuthenticatedCaller{Identity: &ledgerpb.CallerIdentity{Subject: "alice"}},
 		},
 	}}
 	impl := &BucketServiceServerImpl{logger: testLogger()}
@@ -69,10 +69,10 @@ func TestAdoptForwardedSnapshotIfTrusted_RejectsFromRegularClient(t *testing.T) 
 	t.Parallel()
 
 	req := &servicepb.ApplyRequest{
-		ForwardedCallerSnapshot: &commonpb.CallerSnapshot{
-			Principal: &commonpb.CallerSnapshot_Authenticated{
-				Authenticated: &commonpb.AuthenticatedCaller{
-					Identity: &commonpb.CallerIdentity{Subject: "attacker"},
+		ForwardedCallerSnapshot: &ledgerpb.CallerSnapshot{
+			Principal: &ledgerpb.CallerSnapshot_Authenticated{
+				Authenticated: &ledgerpb.AuthenticatedCaller{
+					Identity: &ledgerpb.CallerIdentity{Subject: "attacker"},
 				},
 			},
 		},

@@ -2,16 +2,17 @@ package admission
 
 import (
 	"context"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript/numscriptmock"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -46,7 +47,7 @@ func writeNumscriptRef(t *testing.T, admission *Admission, ledger, name, version
 	_, err := admission.attrs.NumscriptContent.Set(
 		batch,
 		domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: version}.Bytes(),
-		&commonpb.NumscriptInfo{Name: name, Content: content, Version: version},
+		&ledgerpb.NumscriptInfo{Name: name, Content: content, Version: version},
 	)
 	require.NoError(t, err)
 	_, err = admission.attrs.NumscriptVersion.Set(

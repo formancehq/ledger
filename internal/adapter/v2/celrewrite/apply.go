@@ -5,7 +5,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -68,7 +68,7 @@ func validateAddresses(entry *raftcmdpb.MirrorLogEntry) error {
 	return nil
 }
 
-func validatePostingAddresses(postings []*commonpb.Posting) error {
+func validatePostingAddresses(postings []*ledgerpb.Posting) error {
 	for i, p := range postings {
 		if err := validateAccountAddress(p.GetSource()); err != nil {
 			return fmt.Errorf("posting %d source %q invalid: %w", i, p.GetSource(), err)
@@ -86,7 +86,7 @@ func validatePostingAddresses(postings []*commonpb.Posting) error {
 // op if it addresses an account. TransactionId targets carry no address; a
 // nil target is only produced by invalid upstream code and is left to the
 // caller (typically the FSM) to reject.
-func validateOptionalTargetAddress(t *commonpb.Target) error {
+func validateOptionalTargetAddress(t *ledgerpb.Target) error {
 	if t == nil {
 		return nil
 	}

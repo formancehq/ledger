@@ -9,23 +9,23 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func metadataCreationOrder(name string, mode commonpb.LedgerMode, metadata map[string]*commonpb.MetadataValue) *raftcmdpb.Order {
+func metadataCreationOrder(name string, mode ledgerpb.LedgerMode, metadata map[string]*ledgerpb.MetadataValue) *raftcmdpb.Order {
 	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 		Ledger: name, Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{
 			Mode: mode, Metadata: metadata,
-			InitialSchema: []*commonpb.SetMetadataFieldTypeCommand{{TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER, Key: "owner", Type: commonpb.MetadataType_METADATA_TYPE_INT64}},
+			InitialSchema: []*ledgerpb.SetMetadataFieldTypeCommand{{TargetType: ledgerpb.TargetType_TARGET_TYPE_LEDGER, Key: "owner", Type: ledgerpb.MetadataType_METADATA_TYPE_INT64}},
 		}},
 	}}}
 }
@@ -41,7 +41,7 @@ func applyMetadataCreation(t *testing.T, machine *state.Machine, store *dal.Stor
 		bits[i/8] |= 1 << (i % 8)
 		order.Technical = &raftcmdpb.OrderTechnical{CoverageBits: bits}
 	}
-	proposal := &raftcmdpb.Proposal{Id: index, Orders: orders, Date: &commonpb.Timestamp{Data: 1700000000 + index},
+	proposal := &raftcmdpb.Proposal{Id: index, Orders: orders, Date: &ledgerpb.Timestamp{Data: 1700000000 + index},
 		ExecutionPlan: plan, CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterConfig)}
 	data, err := proposal.MarshalVT()
 	require.NoError(t, err)
@@ -51,7 +51,7 @@ func applyMetadataCreation(t *testing.T, machine *state.Machine, store *dal.Stor
 	return result.Results
 }
 
-func readCreationLedger(t *testing.T, store *dal.Store, attrs *attributes.Attributes, ledger string) *commonpb.LedgerInfo {
+func readCreationLedger(t *testing.T, store *dal.Store, attrs *attributes.Attributes, ledger string) *ledgerpb.LedgerInfo {
 	t.Helper()
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -78,11 +78,11 @@ func creationIntegrityFindings(t *testing.T, store *dal.Store, attrs *attributes
 
 func TestBackup_CreateLedgerMetadataRestoreParity(t *testing.T) {
 	t.Parallel()
-	for _, mode := range []commonpb.LedgerMode{commonpb.LedgerMode_LEDGER_MODE_NORMAL, commonpb.LedgerMode_LEDGER_MODE_MIRROR} {
+	for _, mode := range []ledgerpb.LedgerMode{ledgerpb.LedgerMode_LEDGER_MODE_NORMAL, ledgerpb.LedgerMode_LEDGER_MODE_MIRROR} {
 		t.Run(mode.String(), func(t *testing.T) {
 			t.Parallel()
 			src, store, attrs := newSigningParityMachine(t)
-			prefix := metadataCreationOrder("prefix", commonpb.LedgerMode_LEDGER_MODE_NORMAL, map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("before")})
+			prefix := metadataCreationOrder("prefix", ledgerpb.LedgerMode_LEDGER_MODE_NORMAL, map[string]*ledgerpb.MetadataValue{"owner": ledgerpb.NewStringValue("before")})
 			require.NoError(t, applyMetadataCreation(t, src, store, 1, prefix)[0].Error)
 			storage := newInMemoryBackupStorage()
 			full, err := RunBackup(t.Context(), testLogger(), store, storage, "bucket", "full")
@@ -91,7 +91,7 @@ func TestBackup_CreateLedgerMetadataRestoreParity(t *testing.T) {
 			dstDir := t.TempDir()
 			require.NoError(t, store.Checkpoint(filepath.Join(dstDir, "live")))
 
-			metadata := map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("after"), "count": commonpb.NewUintValue(9007199254740993), "enabled": commonpb.NewBoolValue(true), "missing": commonpb.NewNullValue("unconverted")}
+			metadata := map[string]*ledgerpb.MetadataValue{"owner": ledgerpb.NewStringValue("after"), "count": ledgerpb.NewUintValue(9007199254740993), "enabled": ledgerpb.NewBoolValue(true), "missing": ledgerpb.NewNullValue("unconverted")}
 			order := metadataCreationOrder("delta", mode, metadata)
 			before := order.CloneVT()
 			results := applyMetadataCreation(t, src, store, 2, order)
@@ -116,7 +116,7 @@ func TestBackup_CreateLedgerMetadataRestoreParity(t *testing.T) {
 			require.Empty(t, creationIntegrityFindings(t, dst, dstAttrs))
 
 			batch := dst.OpenWriteSession()
-			_, err = dstAttrs.LedgerMetadata.Set(batch, domain.LedgerMetadataKey{LedgerName: "delta", Key: "owner"}.Bytes(), commonpb.NewStringValue("tampered"))
+			_, err = dstAttrs.LedgerMetadata.Set(batch, domain.LedgerMetadataKey{LedgerName: "delta", Key: "owner"}.Bytes(), ledgerpb.NewStringValue("tampered"))
 			require.NoError(t, err)
 			require.NoError(t, batch.Commit())
 			findings := creationIntegrityFindings(t, dst, dstAttrs)
@@ -132,8 +132,8 @@ func TestCreateLedger_InitialMetadataLimitRollback(t *testing.T) {
 	policy := machine.State.ClusterPolicy.CloneVT()
 	policy.MetadataMaxValueBytes = 4
 	machine.State.UpdateClusterPolicy(policy)
-	first := metadataCreationOrder("first", commonpb.LedgerMode_LEDGER_MODE_NORMAL, map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("ok")})
-	second := metadataCreationOrder("second", commonpb.LedgerMode_LEDGER_MODE_NORMAL, map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("too large")})
+	first := metadataCreationOrder("first", ledgerpb.LedgerMode_LEDGER_MODE_NORMAL, map[string]*ledgerpb.MetadataValue{"owner": ledgerpb.NewStringValue("ok")})
+	second := metadataCreationOrder("second", ledgerpb.LedgerMode_LEDGER_MODE_NORMAL, map[string]*ledgerpb.MetadataValue{"owner": ledgerpb.NewStringValue("too large")})
 	results := applyMetadataCreation(t, machine, store, 1, first, second)
 	require.Error(t, results[0].Error)
 	handle, err := store.NewReadHandle()

@@ -1,0 +1,33 @@
+package servicepb
+
+import ledgerpb "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+type BucketServiceClient = ledgerpb.BucketServiceClient
+type BucketServiceServer = ledgerpb.BucketServiceServer
+type UnimplementedBucketServiceServer = ledgerpb.UnimplementedBucketServiceServer
+type UnsafeBucketServiceServer = ledgerpb.UnsafeBucketServiceServer
+type BucketService_ListLedgersServer = ledgerpb.BucketService_ListLedgersServer
+type BucketService_ListTransactionsServer = ledgerpb.BucketService_ListTransactionsServer
+type BucketService_ListAccountsServer = ledgerpb.BucketService_ListAccountsServer
+type BucketService_CheckStoreServer = ledgerpb.BucketService_CheckStoreServer
+type BucketService_ListAuditEntriesServer = ledgerpb.BucketService_ListAuditEntriesServer
+type BucketService_ListLogsServer = ledgerpb.BucketService_ListLogsServer
+type BucketService_ListSigningKeysServer = ledgerpb.BucketService_ListSigningKeysServer
+type BucketService_AnalyzeAccountsServer = ledgerpb.BucketService_AnalyzeAccountsServer
+type BucketService_AnalyzeTransactionsServer = ledgerpb.BucketService_AnalyzeTransactionsServer
+type BucketService_ListIndexesServer = ledgerpb.BucketService_ListIndexesServer
+type BucketService_ListNumscriptsServer = ledgerpb.BucketService_ListNumscriptsServer
+type BucketService_ListAuditEntriesClient = ledgerpb.BucketService_ListAuditEntriesClient
+
+var NewBucketServiceClient = ledgerpb.NewBucketServiceClient
+var RegisterBucketServiceServer = ledgerpb.RegisterBucketServiceServer
+var BucketService_ServiceDesc = ledgerpb.BucketService_ServiceDesc
+var SkippableReasonsForLedgerAction = ledgerpb.SkippableReasonsForLedgerAction
+var GetLedgerActionType = ledgerpb.GetLedgerActionType
+
+const (
+	BucketService_Apply_FullMethodName          = ledgerpb.BucketService_Apply_FullMethodName
+	BucketService_GetIndexStatus_FullMethodName = ledgerpb.BucketService_GetIndexStatus_FullMethodName
+	BucketService_Discovery_FullMethodName      = ledgerpb.BucketService_Discovery_FullMethodName
+	BucketService_GetLedger_FullMethodName      = ledgerpb.BucketService_GetLedger_FullMethodName
+)

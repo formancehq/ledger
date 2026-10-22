@@ -12,9 +12,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // TestIdempotencyFailureFactsMatchAudit pins the equality the checker's
@@ -65,7 +65,7 @@ func TestIdempotencyFailureFactsMatchAudit(t *testing.T) {
 		},
 		{
 			name: "numscript execution error",
-			err:  &domain.ErrNumscriptExecution{Detail: "cannot send negative amount: -4", Details: commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})},
+			err:  &domain.ErrNumscriptExecution{Detail: "cannot send negative amount: -4", Details: ledgerpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -80,7 +80,7 @@ func TestIdempotencyFailureFactsMatchAudit(t *testing.T) {
 			// wire because that is how the checker reads it: a proto3 map with
 			// no entries comes back nil, so the empty fact map does not survive.
 			entry := &auditpb.AuditEntry{
-				Timestamp: &commonpb.Timestamp{Data: proposalCreatedAt},
+				Timestamp: &ledgerpb.Timestamp{Data: proposalCreatedAt},
 				Outcome:   &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(tc.err)},
 			}
 
@@ -341,7 +341,7 @@ func auditFailureCases() []auditFailureCase {
 			// The Provided enum is rendered through domain.ReasonString, so the
 			// projected value is the client-facing identifier, not the enum name.
 			name:        "InvalidSkippableReason",
-			err:         &domain.ErrInvalidSkippableReason{Provided: commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND},
+			err:         &domain.ErrInvalidSkippableReason{Provided: ledgerpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND},
 			wantReason:  domain.ErrReasonValidation,
 			wantContext: map[string]string{"providedReason": domain.ErrReasonLedgerNotFound},
 		},
@@ -446,13 +446,13 @@ func auditFailureCases() []auditFailureCase {
 		},
 		{
 			name:        "NumscriptCompile",
-			err:         &domain.ErrNumscriptCompile{Detail: "cannot take all balance of an unbounded source", Details: commonpb.MustFailureDetails("NUMSCRIPT_COMPILE_INVALID_UNCAPPED_SOURCE", nil)},
+			err:         &domain.ErrNumscriptCompile{Detail: "cannot take all balance of an unbounded source", Details: ledgerpb.MustFailureDetails("NUMSCRIPT_COMPILE_INVALID_UNCAPPED_SOURCE", nil)},
 			wantReason:  domain.ErrReasonNumscriptCompileError,
 			wantContext: map[string]string{},
 		},
 		{
 			name:        "NumscriptExecution",
-			err:         &domain.ErrNumscriptExecution{Detail: "cannot send negative amount: -4", Details: commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})},
+			err:         &domain.ErrNumscriptExecution{Detail: "cannot send negative amount: -4", Details: ledgerpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})},
 			wantReason:  domain.ErrReasonNumscriptExecutionError,
 			wantContext: map[string]string{"amount": "-4"},
 		},
@@ -570,7 +570,7 @@ func auditFailureCases() []auditFailureCase {
 			err: &domain.ReplayedFailure{
 				ErrReason: domain.ErrReasonTransactionAlreadyReverted,
 				Msg:       "transaction 91 is already reverted",
-				Details:   commonpb.MustFailureDetails(domain.ErrReasonTransactionAlreadyReverted, map[string]string{"transactionId": "91"}),
+				Details:   ledgerpb.MustFailureDetails(domain.ErrReasonTransactionAlreadyReverted, map[string]string{"transactionId": "91"}),
 			},
 			wantReason:  domain.ErrReasonTransactionAlreadyReverted,
 			wantContext: map[string]string{"transactionId": "91"},

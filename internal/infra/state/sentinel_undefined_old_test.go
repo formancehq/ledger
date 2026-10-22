@@ -6,10 +6,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/kv"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -34,8 +34,8 @@ func TestVerifyVolumeUpdateMonotonicity_UndefinedOldIsAllowed(t *testing.T) {
 			CanonicalKey: key.Bytes(),
 			Old:          kv.None[*raftcmdpb.VolumePair](), // first-write: no prior entry
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(500),
-				Output: commonpb.NewUint256FromUint64(0),
+				Input:  ledgerpb.NewUint256FromUint64(500),
+				Output: ledgerpb.NewUint256FromUint64(0),
 			},
 		},
 	}
@@ -68,8 +68,8 @@ func TestVerifyVolumeDeltasMatchPostings_UndefinedOldZeroBaseline(t *testing.T) 
 			CanonicalKey: srcKey.Bytes(),
 			Old:          kv.None[*raftcmdpb.VolumePair](),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(0),
-				Output: commonpb.NewUint256FromUint64(amount),
+				Input:  ledgerpb.NewUint256FromUint64(0),
+				Output: ledgerpb.NewUint256FromUint64(amount),
 			},
 		},
 		{
@@ -77,23 +77,23 @@ func TestVerifyVolumeDeltasMatchPostings_UndefinedOldZeroBaseline(t *testing.T) 
 			CanonicalKey: dstKey.Bytes(),
 			Old:          kv.None[*raftcmdpb.VolumePair](),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(amount),
-				Output: commonpb.NewUint256FromUint64(0),
+				Input:  ledgerpb.NewUint256FromUint64(amount),
+				Output: ledgerpb.NewUint256FromUint64(0),
 			},
 		},
 	}
 
-	logs := []*commonpb.Log{
+	logs := []*ledgerpb.Log{
 		{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-							CreatedTransaction: &commonpb.CreatedTransaction{
-								Transaction: commonpb.NewTransaction().
-									WithPostings(commonpb.NewPosting("world", "users:bob", "USD", new(big.Int).SetUint64(amount))).
+					Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+							CreatedTransaction: &ledgerpb.CreatedTransaction{
+								Transaction: ledgerpb.NewTransaction().
+									WithPostings(ledgerpb.NewPosting("world", "users:bob", "USD", new(big.Int).SetUint64(amount))).
 									WithID(1),
 							},
 						},

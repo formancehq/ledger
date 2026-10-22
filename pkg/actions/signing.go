@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -33,15 +33,15 @@ func SignBatch(batch *servicepb.ApplyBatch, keyID string, privKey ed25519.Privat
 // ListAllSigningKeys collects every signing key from the ListSigningKeys
 // stream, following the x-next-cursor trailer chain so clusters with more
 // keys than the server's default page still surface them all.
-func ListAllSigningKeys(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.SigningKey, error) {
+func ListAllSigningKeys(ctx context.Context, client servicepb.BucketServiceClient) ([]*ledgerpb.SigningKey, error) {
 	var (
-		keys   []*commonpb.SigningKey
+		keys   []*ledgerpb.SigningKey
 		cursor string
 	)
 
 	for {
 		stream, err := client.ListSigningKeys(ctx, &servicepb.ListSigningKeysRequest{
-			Options: &commonpb.ListOptions{PageSize: listAllPageSize, Cursor: cursor},
+			Options: &ledgerpb.ListOptions{PageSize: listAllPageSize, Cursor: cursor},
 		})
 		if err != nil {
 			return nil, err

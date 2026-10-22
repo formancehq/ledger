@@ -356,7 +356,7 @@ generate:
 # Generate gRPC code from protobuf files
 generate-proto:
     @echo "Generating gRPC code from proto files..."
-    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/clusterbootstrappb/*.pb.go internal/proto/auditpb/*.pb.go internal/proto/signaturepb/*.pb.go internal/proto/eventspb/*.pb.go internal/proto/restorepb/*.pb.go internal/proto/proposalpb/*.pb.go || true
+    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterbootstrappb/*.pb.go internal/proto/eventspb/*.pb.go internal/proto/proposalpb/*.pb.go || true
     mkdir -p internal/proto/clusterpb internal/proto/clusterbootstrappb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/signaturepb internal/proto/eventspb internal/proto/restorepb internal/proto/proposalpb
     @cd tools/protoc-gen-dethash && go build -o ../../build/protoc-gen-dethash .
     @cd tools/protoc-gen-reader && go build -o ../../build/protoc-gen-reader .
@@ -412,6 +412,13 @@ generate-proto:
         misc/proto/events.proto \
         misc/proto/restore.proto \
         misc/proto/proposal.proto
+    # Public contract descriptors are generated in pkg/proto/v3. The backend
+    # only retains private state generated here; remove duplicate public
+    # descriptors emitted as protoc dependencies above.
+    @for dir in commonpb servicepb clusterpb auditpb signaturepb restorepb; do \
+        find "internal/proto/$dir" -maxdepth 1 -type f \( -name '*.pb.go' -o -name '*_gen.go' \) ! -name 'internal_state*' -delete; \
+    done
+    @sed -i '' '/file_common_proto_init()/d' internal/proto/commonpb/internal_state.pb.go
 
 # Generate the public protobuf projection from the canonical server schemas.
 generate-public-proto:

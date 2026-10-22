@@ -16,44 +16,44 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestLedgerInfoReadResponsesRedactCredentials(t *testing.T) {
 	doc, err := openapi3.NewLoader().LoadFromFile("../../../openapi.yml")
 	require.NoError(t, err)
-	for index, source := range []*commonpb.MirrorSourceConfig{
-		{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
-			BaseUrl: "https://reader:base-canary@source.example/prefix", Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{
+	for index, source := range []*ledgerpb.MirrorSourceConfig{
+		{LedgerName: "source", Type: &ledgerpb.MirrorSourceConfig_Http{Http: &ledgerpb.HttpMirrorSourceConfig{
+			BaseUrl: "https://reader:base-canary@source.example/prefix", Oauth2ClientCredentials: &ledgerpb.OAuth2ClientCredentials{
 				ClientId: "client", ClientSecret: "oauth-canary-2780", TokenEndpoint: "https://client:token-canary@auth.example/token", Scopes: []string{"ledger:read"},
 			},
 		}}},
-		{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
+		{LedgerName: "source", Type: &ledgerpb.MirrorSourceConfig_Http{Http: &ledgerpb.HttpMirrorSourceConfig{
 			BaseUrl:                 "http://base-token-canary@source.example:8080/prefix?region=eu&access_token=query-canary",
-			Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{ClientId: "client", TokenEndpoint: "http://oauth-token-canary@auth.example/token"},
+			Oauth2ClientCredentials: &ledgerpb.OAuth2ClientCredentials{ClientId: "client", TokenEndpoint: "http://oauth-token-canary@auth.example/token"},
 		}}},
-		{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
+		{LedgerName: "source", Type: &ledgerpb.MirrorSourceConfig_Http{Http: &ledgerpb.HttpMirrorSourceConfig{
 			BaseUrl:                 "https://base-token-canary@source.example:8080/prefix?region=eu&access_token=query-canary",
-			Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{ClientId: "client", TokenEndpoint: "https://oauth-token-canary@auth.example/token"},
+			Oauth2ClientCredentials: &ledgerpb.OAuth2ClientCredentials{ClientId: "client", TokenEndpoint: "https://oauth-token-canary@auth.example/token"},
 		}}},
-		{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Postgres{Postgres: &commonpb.PostgresMirrorSourceConfig{
+		{LedgerName: "source", Type: &ledgerpb.MirrorSourceConfig_Postgres{Postgres: &ledgerpb.PostgresMirrorSourceConfig{
 			Dsn: "postgres://reader:pg-canary-2780@db.example/ledger?sslmode=require",
 		}}},
 	} {
 		for _, path := range []string{"/v3/", "/v3/mirror"} {
 			t.Run(fmt.Sprintf("source-%d%s", index, path), func(t *testing.T) {
-				ledger := &commonpb.LedgerInfo{Name: "mirror", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: source}
-				ledger.MirrorSyncProgress = &commonpb.MirrorSyncProgress{SourceLogCount: 9007199254740993}
-				ledger.Metadata = map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("customer")}
-				ledger.MetadataSchema = &commonpb.MetadataSchema{LedgerFields: map[string]*commonpb.MetadataFieldSchema{"owner": {}}}
+				ledger := &ledgerpb.LedgerInfo{Name: "mirror", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: source}
+				ledger.MirrorSyncProgress = &ledgerpb.MirrorSyncProgress{SourceLogCount: 9007199254740993}
+				ledger.Metadata = map[string]*ledgerpb.MetadataValue{"owner": ledgerpb.NewStringValue("customer")}
+				ledger.MetadataSchema = &ledgerpb.MetadataSchema{LedgerFields: map[string]*ledgerpb.MetadataFieldSchema{"owner": {}}}
 				original := proto.Clone(ledger)
 				backend := NewMockBackend(gomock.NewController(t))
 				if path == "/v3/" {
-					backend.EXPECT().ListLedgers(gomock.Any()).Return(cursor.NewSliceCursor([]*commonpb.LedgerInfo{ledger}), nil)
+					backend.EXPECT().ListLedgers(gomock.Any()).Return(cursor.NewSliceCursor([]*ledgerpb.LedgerInfo{ledger}), nil)
 				} else {
 					backend.EXPECT().GetLedgerByName(gomock.Any(), "mirror").Return(ledger, nil)
 				}
@@ -83,9 +83,9 @@ func TestLedgerInfoReadMarshalFailureReturnsInternalError(t *testing.T) {
 	for _, path := range []string{"/v3/", "/v3/mirror"} {
 		t.Run(path, func(t *testing.T) {
 			backend := NewMockBackend(gomock.NewController(t))
-			ledger := &commonpb.LedgerInfo{Name: "mirror", Mode: commonpb.LedgerMode(999)}
+			ledger := &ledgerpb.LedgerInfo{Name: "mirror", Mode: ledgerpb.LedgerMode(999)}
 			if path == "/v3/" {
-				backend.EXPECT().ListLedgers(gomock.Any()).Return(cursor.NewSliceCursor([]*commonpb.LedgerInfo{ledger}), nil)
+				backend.EXPECT().ListLedgers(gomock.Any()).Return(cursor.NewSliceCursor([]*ledgerpb.LedgerInfo{ledger}), nil)
 			} else {
 				backend.EXPECT().GetLedgerByName(gomock.Any(), "mirror").Return(ledger, nil)
 			}
@@ -126,14 +126,14 @@ func TestLedgerInfoReadRewriteRules(t *testing.T) {
 				MirrorSource json.RawMessage `json:"mirrorSource"`
 			}
 			require.NoError(t, json.Unmarshal(envelope.Data, &input))
-			source := &commonpb.MirrorSourceConfig{}
+			source := &ledgerpb.MirrorSourceConfig{}
 			require.NoError(t, protojson.Unmarshal(input.MirrorSource, source))
 			_, rewriteErr := celrewrite.NewRewriter(source.GetRewriteRules())
 			require.NoError(t, rewriteErr, "read fixture must contain admission-valid rules")
-			ledger := &commonpb.LedgerInfo{Name: "mirror", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: source}
+			ledger := &ledgerpb.LedgerInfo{Name: "mirror", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: source}
 			backend := NewMockBackend(gomock.NewController(t))
 			if tc.path == "/v3/" {
-				backend.EXPECT().ListLedgers(gomock.Any()).Return(cursor.NewSliceCursor([]*commonpb.LedgerInfo{ledger}), nil)
+				backend.EXPECT().ListLedgers(gomock.Any()).Return(cursor.NewSliceCursor([]*ledgerpb.LedgerInfo{ledger}), nil)
 			} else {
 				backend.EXPECT().GetLedgerByName(gomock.Any(), "mirror").Return(ledger, nil)
 			}

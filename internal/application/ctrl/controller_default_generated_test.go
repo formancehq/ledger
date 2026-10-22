@@ -11,8 +11,8 @@ import (
 	context "context"
 	reflect "reflect"
 
+	ledgerpb "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	domain "github.com/formancehq/ledger/v3/internal/domain"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	servicepb "github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -57,7 +57,7 @@ func (mr *MockAdmissionMockRecorder) Admit(ctx, req any) *gomock.Call {
 }
 
 // AdmitClusterPolicy mocks base method.
-func (m *MockAdmission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.ClusterPolicy) (*domain.ApplyResult, error) {
+func (m *MockAdmission) AdmitClusterPolicy(ctx context.Context, policy *ledgerpb.ClusterPolicy) (*domain.ApplyResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AdmitClusterPolicy", ctx, policy)
 	ret0, _ := ret[0].(*domain.ApplyResult)

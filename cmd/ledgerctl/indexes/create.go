@@ -7,8 +7,8 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -146,7 +146,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 }
 
 // resolveMetadataIndexFlags resolves the target and key for a metadata index.
-func resolveMetadataIndexFlags(cmd *cobra.Command) (commonpb.TargetType, string, error) {
+func resolveMetadataIndexFlags(cmd *cobra.Command) (ledgerpb.TargetType, string, error) {
 	targetStr, _ := cmd.Flags().GetString("target")
 	if targetStr == "" {
 		result, err := pterm.DefaultInteractiveSelect.

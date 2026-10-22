@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // AddBackupStorageFlags registers the shared backup storage flags (driver +
@@ -99,7 +99,7 @@ func readBackupStorageFlags(cmd *cobra.Command) (backupStorageFlags, error) {
 // registered by AddBackupStorageFlags. The driver flag selects which provider
 // oneof case is populated; an unknown driver or missing driver-specific
 // required field is rejected with a clear error before any RPC is issued.
-func BackupStorageFromFlags(cmd *cobra.Command) (*commonpb.BackupStorage, error) {
+func BackupStorageFromFlags(cmd *cobra.Command) (*ledgerpb.BackupStorage, error) {
 	f, err := readBackupStorageFlags(cmd)
 	if err != nil {
 		return nil, err
@@ -107,9 +107,9 @@ func BackupStorageFromFlags(cmd *cobra.Command) (*commonpb.BackupStorage, error)
 
 	switch f.driver {
 	case "s3":
-		return &commonpb.BackupStorage{
-			Provider: &commonpb.BackupStorage_S3{
-				S3: &commonpb.S3StorageConfig{
+		return &ledgerpb.BackupStorage{
+			Provider: &ledgerpb.BackupStorage_S3{
+				S3: &ledgerpb.S3StorageConfig{
 					Bucket:          f.s3Bucket,
 					Region:          f.s3Region,
 					Endpoint:        f.s3Endpoint,
@@ -119,9 +119,9 @@ func BackupStorageFromFlags(cmd *cobra.Command) (*commonpb.BackupStorage, error)
 			},
 		}, nil
 	case "azure":
-		return &commonpb.BackupStorage{
-			Provider: &commonpb.BackupStorage_Azure{
-				Azure: &commonpb.AzureStorageConfig{
+		return &ledgerpb.BackupStorage{
+			Provider: &ledgerpb.BackupStorage_Azure{
+				Azure: &ledgerpb.AzureStorageConfig{
 					AccountName: f.azureAccountName,
 					AccountKey:  f.azureAccountKey,
 					Container:   f.azureContainer,

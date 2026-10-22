@@ -8,7 +8,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -35,9 +35,9 @@ func logHistoryStore(t *testing.T, n uint64) *readstore.Store {
 	return store
 }
 
-func logIDBelow(id uint64) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
-		LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{Max: &id, MaxExclusive: true}},
+func logIDBelow(id uint64) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{
+		LogId: &ledgerpb.LogIdCondition{Cond: &ledgerpb.UintCondition{Max: &id, MaxExclusive: true}},
 	}}
 }
 
@@ -56,7 +56,7 @@ func TestReverseLogPageIsBoundedByThePage(t *testing.T) {
 
 		for _, tc := range []struct {
 			name   string
-			filter *commonpb.QueryFilter
+			filter *ledgerpb.QueryFilter
 			before []byte
 		}{
 			{name: "seek", before: binary.BigEndian.AppendUint64(nil, position)},
@@ -66,7 +66,7 @@ func TestReverseLogPageIsBoundedByThePage(t *testing.T) {
 
 			iter, err := query.CompileReverse(
 				store.DB(), dal.NewKeyBuilder(), tc.filter,
-				commonpb.QueryTarget_QUERY_TARGET_LOGS, parityLedger,
+				ledgerpb.QueryTarget_QUERY_TARGET_LOGS, parityLedger,
 				nil, nil, parityInfo(), parityRegistry(), parityResolver(), profile, store.DB(), parityPin)
 			require.NoError(t, err, tc.name)
 

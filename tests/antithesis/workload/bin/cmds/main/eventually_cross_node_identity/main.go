@@ -54,8 +54,8 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -303,7 +303,7 @@ func compareAccounts(ctx context.Context, nodes []readyNode, ledger string, inde
 
 	for _, addr := range addrs {
 		var (
-			ref     *commonpb.Account
+			ref     *ledgerpb.Account
 			refNode string
 			refOK   bool
 		)
@@ -351,7 +351,7 @@ func compareAccounts(ctx context.Context, nodes []readyNode, ledger string, inde
 // volumesString renders an account's per-asset balances in a stable form for
 // assertion details (proto map iteration order is irrelevant to this triage
 // string; it is not used for the equality decision).
-func volumesString(acc *commonpb.Account) string {
+func volumesString(acc *ledgerpb.Account) string {
 	if acc == nil {
 		return "<nil>"
 	}
@@ -429,7 +429,7 @@ func compareAuditHashes(ctx context.Context, nodes []readyNode, driver servicepb
 // and most likely present on every caught-up node.
 func pickRecentAuditSequence(ctx context.Context, driver servicepb.BucketServiceClient) (uint64, bool) {
 	stream, err := driver.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-		Options: &commonpb.ListOptions{PageSize: auditSampleWindow},
+		Options: &ledgerpb.ListOptions{PageSize: auditSampleWindow},
 	})
 	if err != nil {
 		return 0, false

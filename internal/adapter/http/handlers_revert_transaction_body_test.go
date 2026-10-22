@@ -14,10 +14,10 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -26,7 +26,7 @@ import (
 func TestHandleRevertTransaction_BodyFraming(t *testing.T) {
 	t.Parallel()
 
-	metadata, err := commonpb.MetadataFromAnyMap(map[string]any{
+	metadata, err := ledgerpb.MetadataFromAnyMap(map[string]any{
 		"reason": "duplicate", "count": uint64(42), "negative": int64(-7), "active": true,
 	})
 	require.NoError(t, err)
@@ -34,7 +34,7 @@ func TestHandleRevertTransaction_BodyFraming(t *testing.T) {
 		TransactionId: 1, Force: true, AtEffectiveDate: true, Metadata: metadata,
 	}
 	defaults := &servicepb.RevertTransactionPayload{TransactionId: 1}
-	controlMetadata, err := commonpb.MetadataFromAnyMap(map[string]any{"reason": "a\x00b"})
+	controlMetadata, err := ledgerpb.MetadataFromAnyMap(map[string]any{"reason": "a\x00b"})
 	require.NoError(t, err)
 	escapedControl := &servicepb.RevertTransactionPayload{TransactionId: 1, Metadata: controlMetadata}
 
@@ -77,10 +77,10 @@ func TestHandleRevertTransaction_BodyFraming(t *testing.T) {
 					func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 						calls <- req
 
-						return &domain.ApplyResult{Logs: []*commonpb.Log{{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-							Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
-								Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-									RevertedTransaction: &commonpb.RevertedTransaction{RevertTransaction: &commonpb.Transaction{Id: 2}},
+						return &domain.ApplyResult{Logs: []*ledgerpb.Log{{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+							Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{
+								Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+									RevertedTransaction: &ledgerpb.RevertedTransaction{RevertTransaction: &ledgerpb.Transaction{Id: 2}},
 								},
 							}}},
 						}}}}}, nil

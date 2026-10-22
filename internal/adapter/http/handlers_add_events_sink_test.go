@@ -13,8 +13,8 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -31,7 +31,7 @@ func TestHandleAddEventsSink_Types(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			body := `{"name":"sink","format":"json","batchSize":8,"batchDelayMs":"20","controllerId":"owner","eventTypes":["COMMITTED_TRANSACTION"],` + tc.sink + `}`
-			expected := &commonpb.SinkConfig{}
+			expected := &ledgerpb.SinkConfig{}
 			require.NoError(t, protojson.Unmarshal([]byte(body), expected))
 			backend := NewMockBackend(gomock.NewController(t))
 			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
@@ -40,7 +40,7 @@ func TestHandleAddEventsSink_Types(t *testing.T) {
 				config := req.GetUnsigned().GetRequests()[0].GetAddEventsSink().GetConfig()
 				require.True(t, proto.Equal(expected, config), "all sink fields must reach Apply unchanged")
 
-				return &domain.ApplyResult{Logs: []*commonpb.Log{{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_AddedEventsSink{AddedEventsSink: &commonpb.AddedEventsSinkLog{Config: config}}}}}}, nil
+				return &domain.ApplyResult{Logs: []*ledgerpb.Log{{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_AddedEventsSink{AddedEventsSink: &ledgerpb.AddedEventsSinkLog{Config: config}}}}}}, nil
 			})
 			r := newRequest(t, http.MethodPost, "/_/events-sinks", strings.NewReader(body), nil)
 			r.Header.Set("Idempotency-Key", "key")

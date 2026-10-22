@@ -10,10 +10,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -23,8 +23,8 @@ import (
 
 // EntityEnricher provides functions to hydrate raw entity IDs into full objects.
 type EntityEnricher struct {
-	EnrichAccount     func(reader dal.PebbleReader, ledgerName string, address string) (*commonpb.Account, error)
-	EnrichTransaction func(ctx context.Context, reader dal.PebbleReader, ledgerName string, txID uint64) (*commonpb.Transaction, error)
+	EnrichAccount     func(reader dal.PebbleReader, ledgerName string, address string) (*ledgerpb.Account, error)
+	EnrichTransaction func(ctx context.Context, reader dal.PebbleReader, ledgerName string, txID uint64) (*ledgerpb.Transaction, error)
 }
 
 // Execute runs a prepared query against the read index and, for
@@ -34,8 +34,8 @@ func Execute(
 	rs *readstore.Store,
 	pebbleStore queryHandleStore,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
-	preparedQueryAttr *attributes.Attribute[*commonpb.PreparedQuery],
-	indexAttr *attributes.Attribute[*commonpb.Index],
+	preparedQueryAttr *attributes.Attribute[*ledgerpb.PreparedQuery],
+	indexAttr *attributes.Attribute[*ledgerpb.Index],
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 	enricher *EntityEnricher,
@@ -49,7 +49,7 @@ func Execute(
 
 	// Only LIST pages; reject before any read so the verdict does not depend on
 	// the ledger or the stored definition.
-	if req.GetReverse() && req.GetMode() != commonpb.QueryMode_QUERY_MODE_LIST {
+	if req.GetReverse() && req.GetMode() != ledgerpb.QueryMode_QUERY_MODE_LIST {
 		return nil, &ErrQueryModeReverseUnsupported{Mode: req.GetMode()}
 	}
 
@@ -101,10 +101,10 @@ func Execute(
 	// invalid parameters. Compile can only be reached for LIST and
 	// AGGREGATE_VOLUMES.
 	switch req.GetMode() {
-	case commonpb.QueryMode_QUERY_MODE_LIST:
+	case ledgerpb.QueryMode_QUERY_MODE_LIST:
 		// no additional constraint
-	case commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
-		if pq.GetTarget() != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+	case ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
+		if pq.GetTarget() != ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
 			return nil, &ErrPreparedQueryAggregateTarget{Target: pq.GetTarget()}
 		}
 	default:
@@ -115,7 +115,7 @@ func Execute(
 	// An exactly nil filter needs neither account enumeration nor a read-index
 	// snapshot. Release the event-history reservation before the single volume
 	// scan; non-nil filters keep the normal compilation and alignment path.
-	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES && pq.GetFilter() == nil {
+	if req.GetMode() == ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES && pq.GetFilter() == nil {
 		releaseHold()
 		aggResult, aggErr := AggregateAllVolumes(handle, volumeAttr, ledgerInfo.GetName(), AggregateOptions{})
 		if aggErr != nil {
@@ -183,7 +183,7 @@ func Execute(
 		keep = MainHorizonKeep(pq.GetTarget(), handle, indexSnap, ledgerInfo.GetName(), mainSeq)
 	}
 
-	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_LIST && page.ReadReverse(req.GetReverse()) {
+	if req.GetMode() == ledgerpb.QueryMode_QUERY_MODE_LIST && page.ReadReverse(req.GetReverse()) {
 		compiled, compileErr := CompileReverse(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, indexVersionFor, profile, handle, mainSeq)
 		if compileErr != nil {
 			return nil, domain.WrapCompileError(compileErr)
@@ -211,7 +211,7 @@ func Execute(
 	}
 	defer iter.Close()
 
-	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_LIST {
+	if req.GetMode() == ledgerpb.QueryMode_QUERY_MODE_LIST {
 		return executeList(ctx, func(pageSize uint32, cursor []byte) ([][]byte, bool, error) {
 			return readstore.PaginateForward(iter, pageSize, cursor)
 		}, page, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
@@ -237,7 +237,7 @@ func executeList(
 	ctx context.Context,
 	paginate func(pageSize uint32, cursor []byte) ([][]byte, bool, error),
 	page pagecursor.Cursor,
-	target commonpb.QueryTarget,
+	target ledgerpb.QueryTarget,
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 	reader dal.PebbleReader,
@@ -265,7 +265,7 @@ func executeList(
 		profile.ItemsCollected = len(entities)
 	}
 
-	cursor := &commonpb.PreparedQueryCursor{
+	cursor := &ledgerpb.PreparedQueryCursor{
 		PageSize: pageSize,
 		HasMore:  next != "",
 		Next:     next,
@@ -279,21 +279,21 @@ func executeList(
 	}
 
 	switch target {
-	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 		accounts, err := EnrichAccounts(entities, enricher, reader, ledgerName)
 		if err != nil {
 			return nil, err
 		}
 
 		cursor.AccountData = accounts
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		txns, err := EnrichTransactions(ctx, entities, enricher, reader, ledgerName)
 		if err != nil {
 			return nil, err
 		}
 
 		cursor.TransactionData = txns
-	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		logs, err := EnrichLogs(ctx, reader, indexReader, ledgerName, entities)
 		if err != nil {
 			return nil, err
@@ -316,8 +316,8 @@ func executeList(
 }
 
 // EnrichAccounts hydrates a slice of raw entity bytes into full Account objects.
-func EnrichAccounts(entityIDs [][]byte, enricher *EntityEnricher, reader dal.PebbleReader, ledgerName string) ([]*commonpb.Account, error) {
-	accounts := make([]*commonpb.Account, len(entityIDs))
+func EnrichAccounts(entityIDs [][]byte, enricher *EntityEnricher, reader dal.PebbleReader, ledgerName string) ([]*ledgerpb.Account, error) {
+	accounts := make([]*ledgerpb.Account, len(entityIDs))
 	for i, e := range entityIDs {
 		acc, err := enricher.EnrichAccount(reader, ledgerName, string(e))
 		if err != nil {
@@ -331,8 +331,8 @@ func EnrichAccounts(entityIDs [][]byte, enricher *EntityEnricher, reader dal.Peb
 }
 
 // EnrichTransactions hydrates a slice of raw entity bytes into full Transaction objects.
-func EnrichTransactions(ctx context.Context, entityIDs [][]byte, enricher *EntityEnricher, reader dal.PebbleReader, ledgerName string) ([]*commonpb.Transaction, error) {
-	txns := make([]*commonpb.Transaction, len(entityIDs))
+func EnrichTransactions(ctx context.Context, entityIDs [][]byte, enricher *EntityEnricher, reader dal.PebbleReader, ledgerName string) ([]*ledgerpb.Transaction, error) {
+	txns := make([]*ledgerpb.Transaction, len(entityIDs))
 	for i, e := range entityIDs {
 		txID := binary.BigEndian.Uint64(e)
 
@@ -354,7 +354,7 @@ func EnrichTransactions(ctx context.Context, entityIDs [][]byte, enricher *Entit
 // payloads from Pebble. pebbleReader reads the log payloads (History zone);
 // indexReader resolves logID → sequence through the same snapshot used for
 // iteration.
-func EnrichLogs(ctx context.Context, pebbleReader dal.PebbleReader, indexReader dal.PebbleReader, ledgerName string, logIDs [][]byte) ([]*commonpb.Log, error) {
+func EnrichLogs(ctx context.Context, pebbleReader dal.PebbleReader, indexReader dal.PebbleReader, ledgerName string, logIDs [][]byte) ([]*ledgerpb.Log, error) {
 	c, err := ReadLedgerLogsCompiled(ctx, pebbleReader, indexReader, ledgerName, logIDs)
 	if err != nil {
 		return nil, fmt.Errorf("reading ledger logs: %w", err)

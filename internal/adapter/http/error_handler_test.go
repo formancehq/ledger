@@ -19,9 +19,9 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestKindResourceExhaustedMapsTo429(t *testing.T) {
@@ -41,7 +41,7 @@ func TestHandleError(t *testing.T) {
 	}{
 		{
 			name:           "no leader",
-			err:            commonpb.ErrNoLeader,
+			err:            ledgerpb.ErrNoLeader,
 			expectedStatus: http.StatusServiceUnavailable,
 			expectedCode:   "NO_LEADER",
 			checkRetry:     true,
@@ -62,7 +62,7 @@ func TestHandleError(t *testing.T) {
 		},
 		{
 			name:           "not found error",
-			err:            commonpb.NewNotFoundError("item %d", 1),
+			err:            ledgerpb.NewNotFoundError("item %d", 1),
 			expectedStatus: http.StatusNotFound,
 			expectedCode:   "NOT_FOUND",
 		},

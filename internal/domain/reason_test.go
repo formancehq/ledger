@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // TestLookupReasonCodeSeparatesTheSentinelFromAnUnknownName pins the
@@ -19,16 +19,16 @@ func TestLookupReasonCodeSeparatesTheSentinelFromAnUnknownName(t *testing.T) {
 
 	const fromANewerServer = "SOME_REASON_FROM_A_NEWER_SERVER"
 
-	sentinel := ReasonString(commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
+	sentinel := ReasonString(ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
 	require.Equal(t, "UNSPECIFIED", sentinel)
 
 	code, known := LookupReasonCode(sentinel)
 	require.True(t, known, "the sentinel is a name the enum declares")
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, code)
+	require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED, code)
 
 	code, known = LookupReasonCode(fromANewerServer)
 	require.False(t, known, "a name the enum does not declare")
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, code,
+	require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED, code,
 		"the zero value is still returned, which is why the second result is the discriminator")
 
 	require.Equal(t, ReasonCode(sentinel), ReasonCode(fromANewerServer),
@@ -42,10 +42,10 @@ func TestLookupReasonCodeSeparatesTheSentinelFromAnUnknownName(t *testing.T) {
 func TestLookupReasonCodeResolvesEveryEnumName(t *testing.T) {
 	t.Parallel()
 
-	require.NotEmpty(t, commonpb.ErrorReason_name, "the enum scan found nothing — the scan is broken")
+	require.NotEmpty(t, ledgerpb.ErrorReason_name, "the enum scan found nothing — the scan is broken")
 
-	for value := range commonpb.ErrorReason_name {
-		expected := commonpb.ErrorReason(value)
+	for value := range ledgerpb.ErrorReason_name {
+		expected := ledgerpb.ErrorReason(value)
 
 		code, known := LookupReasonCode(ReasonString(expected))
 		require.Truef(t, known, "reason %s does not round-trip through ReasonString", expected)
@@ -58,5 +58,5 @@ func TestCallerAttributionReasonIsInternalOnly(t *testing.T) {
 
 	code, known := LookupReasonCode("INVALID_CALLER_ATTRIBUTION")
 	require.False(t, known, "the internal-only sentinel must not be a public reason")
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, code)
+	require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED, code)
 }

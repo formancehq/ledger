@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"fmt"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"testing"
 	"time"
 
@@ -11,13 +12,13 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -45,8 +46,8 @@ func TestCacheSnapshotter_StopWaitsForAdmittedBloomTask(t *testing.T) {
 	t.Parallel()
 
 	meter := noop.NewMeterProvider().Meter("test")
-	bloomFilters := bloom.NewFilterSet(&commonpb.ClusterConfig{
-		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	bloomFilters := bloom.NewFilterSet(&ledgerpb.ClusterConfig{
+		BloomVolumes: &ledgerpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
 	}, meter)
 	snapshotter, dataStore, _ := newTestCacheSnapshotter(t, bloomFilters)
 	taskStarted := make(chan struct{})
@@ -82,8 +83,8 @@ func TestCacheSnapshotter_PausedRestoreDefersBloomPopulationUntilResume(t *testi
 	t.Parallel()
 
 	meter := noop.NewMeterProvider().Meter("test")
-	bloomFilters := bloom.NewFilterSet(&commonpb.ClusterConfig{
-		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	bloomFilters := bloom.NewFilterSet(&ledgerpb.ClusterConfig{
+		BloomVolumes: &ledgerpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
 	}, meter)
 	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, bloomFilters)
 	t.Cleanup(snapshotter.Stop)
@@ -91,8 +92,8 @@ func TestCacheSnapshotter_PausedRestoreDefersBloomPopulationUntilResume(t *testi
 	volumeKey := newVolumeKey(domain.AccountKey{LedgerName: "leader", Account: "destination"}, "USD/2")
 	volumeID := attributes.HashU128(volumeKey.Bytes())
 	pair := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(100),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(100),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	batch := dataStore.OpenWriteSession()
@@ -249,8 +250,8 @@ func TestCacheSnapshotter_PersistAndRestoreVolumes(t *testing.T) {
 	volumeKey := newVolumeKey(domain.AccountKey{LedgerName: "test", Account: "bank"}, "USD")
 	u128 := attributes.HashU128(volumeKey.Bytes())
 	pair := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(100),
-		Output: commonpb.NewUint256FromUint64(50),
+		Input:  ledgerpb.NewUint256FromUint64(100),
+		Output: ledgerpb.NewUint256FromUint64(50),
 	}
 	registry.Cache.Volumes.Gen0().Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag: 1, Data: pair,
@@ -285,8 +286,8 @@ func TestCacheSnapshotter_PersistAndRestoreMetadata(t *testing.T) {
 	// Populate cache with metadata in gen0
 	metaKey := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "bank"}, Key: "label"}
 	u128 := attributes.HashU128(metaKey.Bytes())
-	metaValue := commonpb.NewStringValue("test-value")
-	registry.Cache.AccountMetadata.Gen0().Put(u128, attributes.Entry[*commonpb.MetadataValue]{
+	metaValue := ledgerpb.NewStringValue("test-value")
+	registry.Cache.AccountMetadata.Gen0().Put(u128, attributes.Entry[*ledgerpb.MetadataValue]{
 		Tag: 2, Data: metaValue,
 	})
 
@@ -310,8 +311,8 @@ func TestCacheSnapshotter_PersistAndRestoreLedgers(t *testing.T) {
 	// Populate cache with ledger info in gen0
 	ledgerKey := domain.LedgerKey{Name: "my-ledger"}
 	u128 := attributes.HashU128(ledgerKey.Bytes())
-	ledgerInfo := &commonpb.LedgerInfo{Name: "my-ledger"}
-	registry.Cache.Ledgers.Gen0().Put(u128, attributes.Entry[*commonpb.LedgerInfo]{
+	ledgerInfo := &ledgerpb.LedgerInfo{Name: "my-ledger"}
+	registry.Cache.Ledgers.Gen0().Put(u128, attributes.Entry[*ledgerpb.LedgerInfo]{
 		Tag: 3, Data: ledgerInfo,
 	})
 
@@ -352,8 +353,8 @@ func TestCacheSnapshotter_PersistAndRestoreBothGenerations(t *testing.T) {
 	u128_0 := attributes.HashU128(volKey0.Bytes())
 	registry.Cache.Volumes.Gen0().Put(u128_0, attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag: 1, Data: &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(200),
-			Output: commonpb.NewUint256FromUint64(0),
+			Input:  ledgerpb.NewUint256FromUint64(200),
+			Output: ledgerpb.NewUint256FromUint64(0),
 		},
 	})
 
@@ -362,8 +363,8 @@ func TestCacheSnapshotter_PersistAndRestoreBothGenerations(t *testing.T) {
 	u128_1 := attributes.HashU128(volKey1.Bytes())
 	registry.Cache.Volumes.Gen1().Put(u128_1, attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag: 2, Data: &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(0),
-			Output: commonpb.NewUint256FromUint64(300),
+			Input:  ledgerpb.NewUint256FromUint64(0),
+			Output: ledgerpb.NewUint256FromUint64(300),
 		},
 	})
 
@@ -430,9 +431,9 @@ func TestCacheSnapshotter_PersistAndRestoreWithBloomFilters(t *testing.T) {
 	t.Parallel()
 
 	meter := noop.NewMeterProvider().Meter("test")
-	bloomCfg := &commonpb.ClusterConfig{
-		BloomVolumes:  &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
-		BloomMetadata: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	bloomCfg := &ledgerpb.ClusterConfig{
+		BloomVolumes:  &ledgerpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+		BloomMetadata: &ledgerpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
 	}
 	bloomFilters := bloom.NewFilterSet(bloomCfg, meter)
 	require.NotNil(t, bloomFilters)
@@ -460,9 +461,9 @@ func TestCacheSnapshotter_PersistNotReadyBloom(t *testing.T) {
 	t.Parallel()
 
 	meter := noop.NewMeterProvider().Meter("test")
-	bloomCfg := &commonpb.ClusterConfig{
-		BloomVolumes:  &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
-		BloomMetadata: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	bloomCfg := &ledgerpb.ClusterConfig{
+		BloomVolumes:  &ledgerpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+		BloomMetadata: &ledgerpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
 	}
 	bloomFilters := bloom.NewFilterSet(bloomCfg, meter)
 	require.NotNil(t, bloomFilters)
@@ -539,8 +540,8 @@ func TestCacheSnapshotter_PersistOverwritesPrevious(t *testing.T) {
 	u128 := attributes.HashU128(volKey.Bytes())
 	registry.Cache.Volumes.Gen0().Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag: 1, Data: &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(100),
-			Output: commonpb.NewUint256FromUint64(0),
+			Input:  ledgerpb.NewUint256FromUint64(100),
+			Output: ledgerpb.NewUint256FromUint64(0),
 		},
 	})
 
@@ -549,8 +550,8 @@ func TestCacheSnapshotter_PersistOverwritesPrevious(t *testing.T) {
 	// Update volume and persist again
 	registry.Cache.Volumes.Gen0().Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag: 1, Data: &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(500),
-			Output: commonpb.NewUint256FromUint64(200),
+			Input:  ledgerpb.NewUint256FromUint64(500),
+			Output: ledgerpb.NewUint256FromUint64(200),
 		},
 	})
 
@@ -605,8 +606,8 @@ func TestCacheSnapshotter_RestorePreRotation(t *testing.T) {
 	volKey := newVolumeKey(domain.AccountKey{LedgerName: "test", Account: "world"}, "USD")
 	volU128 := attributes.HashU128(volKey.Bytes())
 	volValue := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 	volBytes, err := volValue.MarshalVT()
 	require.NoError(t, err)
@@ -651,8 +652,8 @@ func TestCacheSnapshotter_MachineIntegration(t *testing.T) {
 	u128 := attributes.HashU128(volKey.Bytes())
 	machine.Registry.Cache.Volumes.Gen0().Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag: 1, Data: &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(100),
-			Output: commonpb.NewUint256FromUint64(0),
+			Input:  ledgerpb.NewUint256FromUint64(100),
+			Output: ledgerpb.NewUint256FromUint64(0),
 		},
 	})
 
@@ -693,11 +694,11 @@ func TestCacheSnapshotter_EN1242_DeleteAfterRotationCrashRestart(t *testing.T) {
 
 	lmk := domain.LedgerMetadataKey{LedgerName: "test-ledger", Key: "k0"}
 	canonical := lmk.Bytes()
-	liveValue := commonpb.NewStringValue("v0")
+	liveValue := ledgerpb.NewStringValue("v0")
 	liveBytes, err := liveValue.MarshalVT()
 	require.NoError(t, err)
 
-	ks := attributes.NewKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue](registry.Cache.LedgerMetadata)
+	ks := attributes.NewKeyStore[domain.LedgerMetadataKey, *ledgerpb.MetadataValue](registry.Cache.LedgerMetadata)
 
 	// Step 1: Put — memory + disk land the live entry in Gen0.
 	_, idWithTag, err := ks.Put(canonical, liveValue)
@@ -862,11 +863,11 @@ func TestCacheSnapshotter_EN1377_PersistRotationDoesNotResurrectDeletedEntry(t *
 
 	lmk := domain.LedgerMetadataKey{LedgerName: "ledger", Key: "to-delete"}
 	u128 := attributes.HashU128(lmk.Bytes())
-	value := commonpb.NewStringValue("pre-delete-payload")
+	value := ledgerpb.NewStringValue("pre-delete-payload")
 	const tag uint64 = 7
 
 	// Model a legacy tombstone retaining its pre-delete payload.
-	registry.Cache.LedgerMetadata.Gen0().Put(u128, attributes.Entry[*commonpb.MetadataValue]{
+	registry.Cache.LedgerMetadata.Gen0().Put(u128, attributes.Entry[*ledgerpb.MetadataValue]{
 		Tag:     tag,
 		Data:    value,
 		Deleted: true,

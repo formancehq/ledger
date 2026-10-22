@@ -9,12 +9,12 @@ import (
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
@@ -77,7 +77,7 @@ func (g *BucketGrpcClient) Apply(ctx context.Context, req *servicepb.ApplyReques
 	return &domain.ApplyResult{Logs: resp.GetLogs(), Replayed: values[0] == "true"}, nil
 }
 
-func (g *BucketGrpcClient) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+func (g *BucketGrpcClient) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*ledgerpb.Transaction, error) {
 	resp, err := g.client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
 		Ledger:        ledgerName,
 		TransactionId: transactionID,
@@ -89,10 +89,10 @@ func (g *BucketGrpcClient) GetTransaction(ctx context.Context, ledgerName string
 	return resp.GetTransaction(), nil
 }
 
-func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *ledgerpb.QueryFilter, reverse bool) (cursor.Cursor[*ledgerpb.Transaction], error) {
 	stream, err := g.client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger: ledgerName,
-		Options: &commonpb.ListOptions{
+		Options: &ledgerpb.ListOptions{
 			PageSize: pageSize,
 			Cursor:   uint64ResumeToken(afterTxID),
 			Reverse:  reverse,
@@ -106,7 +106,7 @@ func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName stri
 	return NewUpstreamPeekCursor(ctx, stream), nil
 }
 
-func (g *BucketGrpcClient) GetAccount(ctx context.Context, ledgerName string, address string, opts ctrl.GetAccountOptions) (*commonpb.Account, error) {
+func (g *BucketGrpcClient) GetAccount(ctx context.Context, ledgerName string, address string, opts ctrl.GetAccountOptions) (*ledgerpb.Account, error) {
 	return g.client.GetAccount(ctx, &servicepb.GetAccountRequest{
 		Ledger:         ledgerName,
 		Address:        address,
@@ -114,10 +114,10 @@ func (g *BucketGrpcClient) GetAccount(ctx context.Context, ledgerName string, ad
 	})
 }
 
-func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error) {
+func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *ledgerpb.QueryFilter, reverse bool) (cursor.Cursor[*ledgerpb.Account], error) {
 	stream, err := g.client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
 		Ledger: ledgerName,
-		Options: &commonpb.ListOptions{
+		Options: &ledgerpb.ListOptions{
 			PageSize: pageSize,
 			Cursor:   resumeToken(afterAddress),
 			Reverse:  reverse,
@@ -131,10 +131,10 @@ func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, 
 	return NewUpstreamPeekCursor(ctx, stream), nil
 }
 
-func (g *BucketGrpcClient) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Log], error) {
+func (g *BucketGrpcClient) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *ledgerpb.QueryFilter, reverse bool) (cursor.Cursor[*ledgerpb.Log], error) {
 	stream, err := g.client.ListLogs(ctx, &servicepb.ListLogsRequest{
 		Ledger: ledgerName,
-		Options: &commonpb.ListOptions{
+		Options: &ledgerpb.ListOptions{
 			PageSize: pageSize,
 			Cursor:   uint64ResumeToken(afterSequence),
 			Reverse:  reverse,
@@ -148,20 +148,20 @@ func (g *BucketGrpcClient) ListLogs(ctx context.Context, ledgerName string, afte
 	return NewUpstreamPeekCursor(ctx, stream), nil
 }
 
-func (g *BucketGrpcClient) ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
+func (g *BucketGrpcClient) ListLedgers(ctx context.Context) (cursor.Cursor[*ledgerpb.LedgerInfo], error) {
 	// Drain every leader page via x-next-cursor. The Controller.ListLedgers
 	// interface does not propagate the caller's cursor to the leader, so a
 	// trailer-peek shim would only ever see the first leader page and the
 	// follower-side skip predicate would never reach later ledgers. See
 	// ListSigningKeys / ListNumscripts for the same pattern.
 	var (
-		ledgers []*commonpb.LedgerInfo
+		ledgers []*ledgerpb.LedgerInfo
 		nextCur string
 	)
 
 	for {
 		stream, err := g.client.ListLedgers(ctx, &servicepb.ListLedgersRequest{
-			Options: &commonpb.ListOptions{Cursor: nextCur},
+			Options: &ledgerpb.ListOptions{Cursor: nextCur},
 		})
 		if err != nil {
 			return nil, err
@@ -190,15 +190,15 @@ func (g *BucketGrpcClient) ListLedgers(ctx context.Context) (cursor.Cursor[*comm
 	}
 }
 
-func (g *BucketGrpcClient) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
+func (g *BucketGrpcClient) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
 	return g.client.GetLedger(ctx, &servicepb.GetLedgerRequest{
 		Ledger: name,
 	})
 }
 
-func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *ledgerpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	stream, err := g.client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-		Options: &commonpb.ListOptions{
+		Options: &ledgerpb.ListOptions{
 			PageSize: pageSize,
 			Cursor:   uint64ResumeToken(afterSequence),
 			Reverse:  reverse,
@@ -212,7 +212,7 @@ func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, pageSize uint32
 	return NewUpstreamPeekCursor(ctx, stream), nil
 }
 
-func (g *BucketGrpcClient) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
+func (g *BucketGrpcClient) GetLog(ctx context.Context, sequence uint64) (*ledgerpb.Log, error) {
 	return g.client.GetLog(ctx, &servicepb.GetLogRequest{
 		Sequence: sequence,
 	})
@@ -224,18 +224,18 @@ func (g *BucketGrpcClient) GetAuditEntry(ctx context.Context, sequence uint64) (
 	})
 }
 
-func (g *BucketGrpcClient) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
+func (g *BucketGrpcClient) ListSigningKeys(ctx context.Context) (cursor.Cursor[*ledgerpb.SigningKey], error) {
 	// Follow x-next-cursor across pages — when this client wraps a routed
 	// (leader) controller the upstream caps each call at the server's
 	// default page, so a single stream would only ever return one page.
 	var (
-		keys    []*commonpb.SigningKey
+		keys    []*ledgerpb.SigningKey
 		nextCur string
 	)
 
 	for {
 		stream, err := g.client.ListSigningKeys(ctx, &servicepb.ListSigningKeysRequest{
-			Options: &commonpb.ListOptions{Cursor: nextCur},
+			Options: &ledgerpb.ListOptions{Cursor: nextCur},
 		})
 		if err != nil {
 			return nil, err
@@ -361,7 +361,7 @@ func (g *BucketGrpcClient) AnalyzeTransactions(ctx context.Context, ledgerName s
 	}
 }
 
-func (g *BucketGrpcClient) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
+func (g *BucketGrpcClient) AggregateVolumes(ctx context.Context, ledgerName string, filter *ledgerpb.QueryFilter, opts query.AggregateOptions) (*ledgerpb.AggregateResult, error) {
 	return g.client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
 		Ledger:          ledgerName,
 		Filter:          filter,
@@ -371,7 +371,7 @@ func (g *BucketGrpcClient) AggregateVolumes(ctx context.Context, ledgerName stri
 	})
 }
 
-func (g *BucketGrpcClient) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
+func (g *BucketGrpcClient) ListPreparedQueries(ctx context.Context, ledger string) ([]*ledgerpb.PreparedQuery, error) {
 	resp, err := g.client.ListPreparedQueries(ctx, &servicepb.ListPreparedQueriesRequest{
 		Ledger: ledger,
 	})
@@ -386,13 +386,13 @@ func (g *BucketGrpcClient) ExecutePreparedQuery(ctx context.Context, req *servic
 	return g.client.ExecutePreparedQuery(ctx, req)
 }
 
-func (g *BucketGrpcClient) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
+func (g *BucketGrpcClient) GetLedgerStats(ctx context.Context, ledgerName string) (*ledgerpb.LedgerStats, error) {
 	return g.client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{
 		Ledger: ledgerName,
 	})
 }
 
-func (g *BucketGrpcClient) GetNumscript(ctx context.Context, ledger, name string, version string) (*commonpb.NumscriptInfo, error) {
+func (g *BucketGrpcClient) GetNumscript(ctx context.Context, ledger, name string, version string) (*ledgerpb.NumscriptInfo, error) {
 	return g.client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
 		Ledger:  ledger,
 		Name:    name,
@@ -400,26 +400,26 @@ func (g *BucketGrpcClient) GetNumscript(ctx context.Context, ledger, name string
 	})
 }
 
-func (g *BucketGrpcClient) GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
+func (g *BucketGrpcClient) GetTemplateUsage(ctx context.Context, ledger, name string) (*ledgerpb.TemplateUsage, error) {
 	return g.client.GetTemplateUsage(ctx, &servicepb.GetTemplateUsageRequest{
 		Ledger: ledger,
 		Name:   name,
 	})
 }
 
-func (g *BucketGrpcClient) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
+func (g *BucketGrpcClient) ListNumscripts(ctx context.Context, ledger string) ([]*ledgerpb.NumscriptInfo, error) {
 	// Follow x-next-cursor across pages — see ListSigningKeys for the
 	// rationale (this client may wrap a routed leader controller whose
 	// per-call response is capped at the server default page).
 	var (
-		scripts []*commonpb.NumscriptInfo
+		scripts []*ledgerpb.NumscriptInfo
 		nextCur string
 	)
 
 	for {
 		stream, err := g.client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{
 			Ledger:  ledger,
-			Options: &commonpb.ListOptions{Cursor: nextCur},
+			Options: &ledgerpb.ListOptions{Cursor: nextCur},
 		})
 		if err != nil {
 			return nil, err
@@ -448,7 +448,7 @@ func (g *BucketGrpcClient) ListNumscripts(ctx context.Context, ledger string) ([
 	}
 }
 
-func (g *BucketGrpcClient) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*commonpb.NumscriptVersionEntry, error) {
+func (g *BucketGrpcClient) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*ledgerpb.NumscriptVersionEntry, error) {
 	resp, err := g.client.ListNumscriptVersions(ctx, &servicepb.ListNumscriptVersionsRequest{
 		Ledger: ledger,
 		Name:   name,
@@ -460,7 +460,7 @@ func (g *BucketGrpcClient) ListNumscriptVersions(ctx context.Context, ledger, na
 	return resp.GetLatestVersion(), resp.GetVersions(), nil
 }
 
-func (g *BucketGrpcClient) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
+func (g *BucketGrpcClient) GetEventsSinks(ctx context.Context) ([]*ledgerpb.SinkConfig, []*ledgerpb.SinkStatus, error) {
 	resp, err := g.client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
 	if err != nil {
 		return nil, nil, err
@@ -477,7 +477,7 @@ func (g *BucketGrpcClient) GetIndexStatus(ctx context.Context, req *servicepb.Ge
 	return g.client.GetIndexStatus(ctx, req)
 }
 
-func (g *BucketGrpcClient) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+func (g *BucketGrpcClient) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*ledgerpb.Index, error) {
 	return g.client.GetIndex(ctx, req)
 }
 
@@ -485,7 +485,7 @@ func (g *BucketGrpcClient) GetIndexEntryStatus(ctx context.Context, req *service
 	return g.client.GetIndexEntryStatus(ctx, req)
 }
 
-func (g *BucketGrpcClient) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+func (g *BucketGrpcClient) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*ledgerpb.Index], error) {
 	stream, err := g.client.ListIndexes(ctx, req)
 	if err != nil {
 		return nil, err

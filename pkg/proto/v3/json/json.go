@@ -6,6 +6,7 @@
 package json
 
 import (
+	"bytes"
 	stdjson "encoding/json"
 	"encoding/json/jsontext"
 	jsonv2 "encoding/json/v2"
@@ -64,6 +65,15 @@ func current() Codec { return active.Load().(Codec) }
 func Marshal(v any) ([]byte, error) { return current().Marshal(v) }
 
 func Unmarshal(data []byte, v any) error { return current().Unmarshal(data, v) }
+
+// UnmarshalUseNumber decodes JSON while preserving numbers as json.Number.
+// It is intentionally independent from the installed codec because callers
+// use it when deciding whether a number is an integer or a fractional value.
+func UnmarshalUseNumber(data []byte, v any) error {
+	decoder := stdjson.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	return decoder.Decode(v)
+}
 
 func UnmarshalRead(r io.Reader, v any) error { return current().UnmarshalRead(r, v) }
 

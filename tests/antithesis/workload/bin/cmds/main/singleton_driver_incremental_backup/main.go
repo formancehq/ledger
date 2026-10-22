@@ -6,16 +6,16 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
-func s3Storage() *commonpb.BackupStorage {
-	return &commonpb.BackupStorage{
-		Provider: &commonpb.BackupStorage_S3{
-			S3: &commonpb.S3StorageConfig{
+func s3Storage() *ledgerpb.BackupStorage {
+	return &ledgerpb.BackupStorage{
+		Provider: &ledgerpb.BackupStorage_S3{
+			S3: &ledgerpb.S3StorageConfig{
 				Bucket:   "backups",
 				Region:   "us-east-1",
 				Endpoint: "http://minio:9000",

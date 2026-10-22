@@ -1,6 +1,7 @@
 package processing
 
 import (
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"sync"
 	"testing"
 
@@ -9,8 +10,8 @@ import (
 
 	numscriptlib "github.com/formancehq/numscript"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -21,7 +22,7 @@ import (
 // internal/infra/state/write_set_absorb_test.go.
 type noopSink struct{}
 
-func (noopSink) Absorb(_ *raftcmdpb.Order, _ *commonpb.Log) {}
+func (noopSink) Absorb(_ *raftcmdpb.Order, _ *ledgerpb.Log) {}
 
 // kindStub is the generic test-side Accessor implementation: a per-key
 // Get table plus optional Get / Put / Delete hooks. Tests register the
@@ -170,8 +171,8 @@ func setupVolumesStub(mockStore *MockScope) *kindStub[domain.VolumeKey, *raftcmd
 	return s
 }
 
-func setupLedgersStub(mockStore *MockScope) *kindStub[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {
-	s := &kindStub[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]{}
+func setupLedgersStub(mockStore *MockScope) *kindStub[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader] {
+	s := &kindStub[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader]{}
 	mockStore.EXPECT().Ledgers().Return(s).AnyTimes()
 
 	return s
@@ -184,15 +185,15 @@ func setupBoundariesStub(mockStore *MockScope) *kindStub[domain.LedgerKey, *raft
 	return s
 }
 
-func setupIndexesStub(mockStore *MockScope) *kindStub[domain.IndexKey, *commonpb.Index, commonpb.IndexReader] {
-	s := &kindStub[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]{}
+func setupIndexesStub(mockStore *MockScope) *kindStub[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader] {
+	s := &kindStub[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader]{}
 	mockStore.EXPECT().Indexes().Return(s).AnyTimes()
 
 	return s
 }
 
-func setupPreparedQueriesStub(mockStore *MockScope) *kindStub[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader] {
-	s := &kindStub[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]{}
+func setupPreparedQueriesStub(mockStore *MockScope) *kindStub[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader] {
+	s := &kindStub[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader]{}
 	mockStore.EXPECT().PreparedQueries().Return(s).AnyTimes()
 
 	return s
@@ -213,7 +214,7 @@ func setupPreparedQueriesStub(mockStore *MockScope) *kindStub[domain.PreparedQue
 // continue to express the `expectPutX(...).Do(func(...) {...})` shape
 // as `expectPutX(..., func(...) {...})`. The hook receives the
 // raw accessor Put args (so e.g. Ledger Put hook signature is
-// `func(string, *commonpb.LedgerInfo)` to match the pre-refactor shape:
+// `func(string, *ledgerpb.LedgerInfo)` to match the pre-refactor shape:
 // the helper translates domain.LedgerKey → name). Hooks accumulate via
 // chaining — only the most recent hook fires per kind per mockStore;
 // tests that need per-key Put assertion should migrate to the
@@ -224,17 +225,17 @@ type mockStubs struct {
 
 	volumes                   *kindStub[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
 	volumesCall               *gomock.Call
-	ledgers                   *kindStub[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]
+	ledgers                   *kindStub[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader]
 	ledgersCall               *gomock.Call
 	boundaries                *kindStub[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]
 	boundariesCall            *gomock.Call
-	accountMetadata           *kindStub[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
+	accountMetadata           *kindStub[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]
 	accountMetadataCall       *gomock.Call
 	transactionStates         *kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
 	transactionStatesCall     *gomock.Call
 	transactionReferences     *kindStub[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]
 	transactionReferencesCall *gomock.Call
-	indexes                   *kindStub[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
+	indexes                   *kindStub[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader]
 	indexesCall               *gomock.Call
 }
 
@@ -272,11 +273,11 @@ func (m *mockStubs) volumesStubFor(mockStore *MockScope) (*kindStub[domain.Volum
 	return m.volumes, m.volumesCall
 }
 
-func (m *mockStubs) ledgersStubFor(mockStore *MockScope) (*kindStub[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader], *gomock.Call) {
+func (m *mockStubs) ledgersStubFor(mockStore *MockScope) (*kindStub[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader], *gomock.Call) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.ledgers == nil {
-		m.ledgers = &kindStub[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]{}
+		m.ledgers = &kindStub[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader]{}
 		m.ledgersCall = mockStore.EXPECT().Ledgers().Return(m.ledgers).AnyTimes()
 	}
 
@@ -294,11 +295,11 @@ func (m *mockStubs) boundariesStubFor(mockStore *MockScope) (*kindStub[domain.Le
 	return m.boundaries, m.boundariesCall
 }
 
-func (m *mockStubs) accountMetadataStubFor(mockStore *MockScope) (*kindStub[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader], *gomock.Call) {
+func (m *mockStubs) accountMetadataStubFor(mockStore *MockScope) (*kindStub[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader], *gomock.Call) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.accountMetadata == nil {
-		m.accountMetadata = &kindStub[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{}
+		m.accountMetadata = &kindStub[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]{}
 		m.accountMetadataCall = mockStore.EXPECT().AccountMetadata().Return(m.accountMetadata).AnyTimes()
 	}
 
@@ -327,11 +328,11 @@ func (m *mockStubs) transactionReferencesStubFor(mockStore *MockScope) (*kindStu
 	return m.transactionReferences, m.transactionReferencesCall
 }
 
-func (m *mockStubs) indexesStubFor(mockStore *MockScope) (*kindStub[domain.IndexKey, *commonpb.Index, commonpb.IndexReader], *gomock.Call) {
+func (m *mockStubs) indexesStubFor(mockStore *MockScope) (*kindStub[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader], *gomock.Call) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.indexes == nil {
-		m.indexes = &kindStub[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]{}
+		m.indexes = &kindStub[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader]{}
 		m.indexesCall = mockStore.EXPECT().Indexes().Return(m.indexes).AnyTimes()
 	}
 
@@ -357,19 +358,19 @@ func expectPutVolume(t *testing.T, mockStore *MockScope, key domain.VolumeKey, _
 	return call
 }
 
-func expectGetLedger(mockStore *MockScope, key domain.LedgerKey, value commonpb.LedgerInfoReader, err error) *gomock.Call {
+func expectGetLedger(mockStore *MockScope, key domain.LedgerKey, value ledgerpb.LedgerInfoReader, err error) *gomock.Call {
 	stub, call := stubsFor(mockStore).ledgersStubFor(mockStore)
 	stub.expectGet(key, value, err)
 
 	return call
 }
 
-func expectPutLedger(t *testing.T, mockStore *MockScope, key domain.LedgerKey, _ *commonpb.LedgerInfo, hooks ...func(string, *commonpb.LedgerInfo)) *gomock.Call {
+func expectPutLedger(t *testing.T, mockStore *MockScope, key domain.LedgerKey, _ *ledgerpb.LedgerInfo, hooks ...func(string, *ledgerpb.LedgerInfo)) *gomock.Call {
 	t.Helper()
 	stub, call := stubsFor(mockStore).ledgersStubFor(mockStore)
-	var hook func(domain.LedgerKey, *commonpb.LedgerInfo)
+	var hook func(domain.LedgerKey, *ledgerpb.LedgerInfo)
 	if len(hooks) > 0 {
-		hook = func(k domain.LedgerKey, v *commonpb.LedgerInfo) { hooks[0](k.Name, v) }
+		hook = func(k domain.LedgerKey, v *ledgerpb.LedgerInfo) { hooks[0](k.Name, v) }
 	}
 	stub.expectPut(t, key, hook)
 
@@ -403,17 +404,17 @@ func expectDeleteBoundaries(t *testing.T, mockStore *MockScope, key domain.Ledge
 	return call
 }
 
-func expectGetAccountMetadata(mockStore *MockScope, key domain.MetadataKey, value commonpb.MetadataValueReader, err error) *gomock.Call {
+func expectGetAccountMetadata(mockStore *MockScope, key domain.MetadataKey, value ledgerpb.MetadataValueReader, err error) *gomock.Call {
 	stub, call := stubsFor(mockStore).accountMetadataStubFor(mockStore)
 	stub.expectGet(key, value, err)
 
 	return call
 }
 
-func expectPutAccountMetadata(t *testing.T, mockStore *MockScope, key domain.MetadataKey, _ *commonpb.MetadataValue, hooks ...func(domain.MetadataKey, *commonpb.MetadataValue)) *gomock.Call {
+func expectPutAccountMetadata(t *testing.T, mockStore *MockScope, key domain.MetadataKey, _ *ledgerpb.MetadataValue, hooks ...func(domain.MetadataKey, *ledgerpb.MetadataValue)) *gomock.Call {
 	t.Helper()
 	stub, call := stubsFor(mockStore).accountMetadataStubFor(mockStore)
-	var hook func(domain.MetadataKey, *commonpb.MetadataValue)
+	var hook func(domain.MetadataKey, *ledgerpb.MetadataValue)
 	if len(hooks) > 0 {
 		hook = hooks[0]
 	}
@@ -461,17 +462,17 @@ func expectPutTransactionReference(t *testing.T, mockStore *MockScope, key domai
 	return call
 }
 
-func expectGetIndex(mockStore *MockScope, key domain.IndexKey, value commonpb.IndexReader, err error) *gomock.Call {
+func expectGetIndex(mockStore *MockScope, key domain.IndexKey, value ledgerpb.IndexReader, err error) *gomock.Call {
 	stub, call := stubsFor(mockStore).indexesStubFor(mockStore)
 	stub.expectGet(key, value, err)
 
 	return call
 }
 
-func expectPutIndex(t *testing.T, mockStore *MockScope, key domain.IndexKey, _ *commonpb.Index, hooks ...func(domain.IndexKey, *commonpb.Index)) *gomock.Call {
+func expectPutIndex(t *testing.T, mockStore *MockScope, key domain.IndexKey, _ *ledgerpb.Index, hooks ...func(domain.IndexKey, *ledgerpb.Index)) *gomock.Call {
 	t.Helper()
 	stub, call := stubsFor(mockStore).indexesStubFor(mockStore)
-	var hook func(domain.IndexKey, *commonpb.Index)
+	var hook func(domain.IndexKey, *ledgerpb.Index)
 	if len(hooks) > 0 {
 		hook = hooks[0]
 	}
@@ -605,15 +606,15 @@ func expectDefaultMetadataLimits(mockStore *MockScope) {
 
 // defaultTestClusterPolicy is a committed policy carrying the production default
 // ceilings — the shape the reconciler proposes and the FSM accepts.
-func defaultTestClusterPolicy() *commonpb.ClusterPolicy {
-	return withMetadataLimits(&commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 1})
+func defaultTestClusterPolicy() *ledgerpb.ClusterPolicy {
+	return withMetadataLimits(&ledgerpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 1})
 }
 
 // withMetadataLimits fills in the default metadata ceilings and returns the
 // policy. Any policy a test PROPOSES needs them: processSetClusterPolicy refuses
 // a policy whose ceilings are missing, before it reaches the revision behaviour
 // most of those tests are about.
-func withMetadataLimits(policy *commonpb.ClusterPolicy) *commonpb.ClusterPolicy {
+func withMetadataLimits(policy *ledgerpb.ClusterPolicy) *ledgerpb.ClusterPolicy {
 	policy.MetadataMaxEntriesPerEntity = domain.DefaultMetadataMaxEntriesPerEntity
 	policy.MetadataMaxKeyBytes = domain.DefaultMetadataMaxKeyBytes
 	policy.MetadataMaxValueBytes = domain.DefaultMetadataMaxValueBytes

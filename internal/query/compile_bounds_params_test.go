@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // TestResolveBounds_ImpossibleSideStillValidatesParams pins that a bound
@@ -22,13 +22,13 @@ func TestResolveBounds_ImpossibleSideStillValidatesParams(t *testing.T) {
 
 	paramCases := []struct {
 		name    string
-		params  map[string]*commonpb.ParameterValue
+		params  map[string]*ledgerpb.ParameterValue
 		wantErr string
 	}{
-		{"missing parameter", map[string]*commonpb.ParameterValue{}, `parameter "p0" not provided`},
+		{"missing parameter", map[string]*ledgerpb.ParameterValue{}, `parameter "p0" not provided`},
 		{
 			"wrongly typed parameter",
-			map[string]*commonpb.ParameterValue{param: {Value: &commonpb.ParameterValue_StringValue{StringValue: "not-a-number"}}},
+			map[string]*ledgerpb.ParameterValue{param: {Value: &ledgerpb.ParameterValue_StringValue{StringValue: "not-a-number"}}},
 			`cannot parse "not-a-number"`,
 		},
 	}
@@ -37,7 +37,7 @@ func TestResolveBounds_ImpossibleSideStillValidatesParams(t *testing.T) {
 		t.Parallel()
 
 		lo := uint64(math.MaxUint64)
-		cond := &commonpb.UintCondition{Min: &lo, MinExclusive: true, ParamMax: param}
+		cond := &ledgerpb.UintCondition{Min: &lo, MinExclusive: true, ParamMax: param}
 
 		for _, tc := range paramCases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -53,8 +53,8 @@ func TestResolveBounds_ImpossibleSideStillValidatesParams(t *testing.T) {
 		t.Run("valid parameter is the empty match", func(t *testing.T) {
 			t.Parallel()
 
-			b, err := resolveUintBounds(cond, map[string]*commonpb.ParameterValue{
-				param: {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 10}},
+			b, err := resolveUintBounds(cond, map[string]*ledgerpb.ParameterValue{
+				param: {Value: &ledgerpb.ParameterValue_Uint64Value{Uint64Value: 10}},
 			})
 			require.NoError(t, err)
 			require.True(t, b.empty)
@@ -65,7 +65,7 @@ func TestResolveBounds_ImpossibleSideStillValidatesParams(t *testing.T) {
 		t.Parallel()
 
 		lo := int64(math.MaxInt64)
-		cond := &commonpb.IntCondition{Min: &lo, MinExclusive: true, ParamMax: param}
+		cond := &ledgerpb.IntCondition{Min: &lo, MinExclusive: true, ParamMax: param}
 
 		for _, tc := range paramCases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -81,8 +81,8 @@ func TestResolveBounds_ImpossibleSideStillValidatesParams(t *testing.T) {
 		t.Run("valid parameter is the empty match", func(t *testing.T) {
 			t.Parallel()
 
-			b, err := resolveIntBounds(cond, map[string]*commonpb.ParameterValue{
-				param: {Value: &commonpb.ParameterValue_Int64Value{Int64Value: 10}},
+			b, err := resolveIntBounds(cond, map[string]*ledgerpb.ParameterValue{
+				param: {Value: &ledgerpb.ParameterValue_Int64Value{Int64Value: 10}},
 			})
 			require.NoError(t, err)
 			require.True(t, b.empty)
@@ -93,15 +93,15 @@ func TestResolveBounds_ImpossibleSideStillValidatesParams(t *testing.T) {
 	t.Run("uint parameterised impossible min", func(t *testing.T) {
 		t.Parallel()
 
-		cond := &commonpb.UintCondition{ParamMin: "lo", MinExclusive: true, ParamMax: param}
-		params := map[string]*commonpb.ParameterValue{
-			"lo": {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: math.MaxUint64}},
+		cond := &ledgerpb.UintCondition{ParamMin: "lo", MinExclusive: true, ParamMax: param}
+		params := map[string]*ledgerpb.ParameterValue{
+			"lo": {Value: &ledgerpb.ParameterValue_Uint64Value{Uint64Value: math.MaxUint64}},
 		}
 
 		_, err := resolveUintBounds(cond, params)
 		require.ErrorContains(t, err, `parameter "p0" not provided`)
 
-		params[param] = &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 10}}
+		params[param] = &ledgerpb.ParameterValue{Value: &ledgerpb.ParameterValue_Uint64Value{Uint64Value: 10}}
 		b, err := resolveUintBounds(cond, params)
 		require.NoError(t, err)
 		require.True(t, b.empty)
@@ -116,12 +116,12 @@ func TestResolveBounds_ParameterPrecedenceAndExclusivity(t *testing.T) {
 	t.Run("int64", func(t *testing.T) {
 		t.Parallel()
 		literalMin, literalMax := int64(100), int64(200)
-		b, err := resolveIntBounds(&commonpb.IntCondition{
+		b, err := resolveIntBounds(&ledgerpb.IntCondition{
 			Min: &literalMin, Max: &literalMax, ParamMin: "lo", ParamMax: "hi",
 			MinExclusive: true, MaxExclusive: false,
-		}, map[string]*commonpb.ParameterValue{
-			"lo": {Value: &commonpb.ParameterValue_Int64Value{Int64Value: 24}},
-			"hi": {Value: &commonpb.ParameterValue_Int64Value{Int64Value: 25}},
+		}, map[string]*ledgerpb.ParameterValue{
+			"lo": {Value: &ledgerpb.ParameterValue_Int64Value{Int64Value: 24}},
+			"hi": {Value: &ledgerpb.ParameterValue_Int64Value{Int64Value: 25}},
 		})
 		require.NoError(t, err)
 		require.Equal(t, resolvedIntBounds{min: 25, max: 26, hasMin: true, hasMax: true}, b)
@@ -131,12 +131,12 @@ func TestResolveBounds_ParameterPrecedenceAndExclusivity(t *testing.T) {
 	t.Run("uint64", func(t *testing.T) {
 		t.Parallel()
 		literalMin, literalMax := uint64(100), uint64(200)
-		b, err := resolveUintBounds(&commonpb.UintCondition{
+		b, err := resolveUintBounds(&ledgerpb.UintCondition{
 			Min: &literalMin, Max: &literalMax, ParamMin: "lo", ParamMax: "hi",
 			MinExclusive: true, MaxExclusive: true,
-		}, map[string]*commonpb.ParameterValue{
-			"lo": {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 24}},
-			"hi": {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 26}},
+		}, map[string]*ledgerpb.ParameterValue{
+			"lo": {Value: &ledgerpb.ParameterValue_Uint64Value{Uint64Value: 24}},
+			"hi": {Value: &ledgerpb.ParameterValue_Uint64Value{Uint64Value: 26}},
 		})
 		require.NoError(t, err)
 		require.Equal(t, resolvedUintBounds{min: 25, max: 26, hasMin: true, hasMax: true}, b)

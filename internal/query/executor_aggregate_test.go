@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -30,8 +30,8 @@ func seedVolumes(t *testing.T, store *dal.Store, attrs *attributes.Attributes, l
 	batch := store.OpenWriteSession()
 	for _, e := range entries {
 		_, err := attrs.Volume.Set(batch, domain.NewVolumeKey(ledger, e.account, e.asset, e.color).Bytes(), &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(e.input),
-			Output: commonpb.NewUint256FromUint64(e.output),
+			Input:  ledgerpb.NewUint256FromUint64(e.input),
+			Output: ledgerpb.NewUint256FromUint64(e.output),
 		})
 		require.NoError(t, err)
 	}
@@ -87,17 +87,17 @@ func TestExecute_NilFilterAggregateMatchesDirectLedgerWideScan(t *testing.T) {
 				batch := store.OpenWriteSession()
 				for _, account := range []string{"a", "b"} {
 					key := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "l", Account: account}, Key: "label"}
-					_, err := attrs.Metadata.Set(batch, key.Bytes(), commonpb.NewStringValue("metadata only"))
+					_, err := attrs.Metadata.Set(batch, key.Bytes(), ledgerpb.NewStringValue("metadata only"))
 					require.NoError(t, err)
 				}
 				require.NoError(t, batch.Commit())
 			}
-			seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
+			seedPreparedQuery(t, store, attrs, "l", "q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
 
 			req := &servicepb.ExecutePreparedQueryRequest{
 				Ledger:    "l",
 				QueryName: "q",
-				Mode:      commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
 			}
 
 			profile := &query.QueryProfile{}
@@ -113,7 +113,7 @@ func TestExecute_NilFilterAggregateMatchesDirectLedgerWideScan(t *testing.T) {
 
 			// The direct unfiltered aggregation path reads the same ledger-wide
 			// volume stream through the same handle shape.
-			handle, releaseHold, err := query.OpenQueryHandle(rs, store, nil, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+			handle, releaseHold, err := query.OpenQueryHandle(rs, store, nil, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			require.NoError(t, err)
 			defer releaseHold()
 			defer func() { _ = handle.Close() }()
@@ -148,19 +148,19 @@ func TestExecute_ParameterizedFilterAggregateStillUsesAccountIterator(t *testing
 		seededVolume{account: "merchants:shop", asset: "USD/2", input: 999, output: 0},
 	)
 
-	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{
-		Address: &commonpb.AddressMatch{
-			Match: &commonpb.AddressMatch_ParamExact{ParamExact: "account"},
+	filter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{
+		Address: &ledgerpb.AddressMatch{
+			Match: &ledgerpb.AddressMatch_ParamExact{ParamExact: "account"},
 		},
 	}}
-	seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter)
+	seedPreparedQuery(t, store, attrs, "l", "q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter)
 
 	req := &servicepb.ExecutePreparedQueryRequest{
 		Ledger:    "l",
 		QueryName: "q",
-		Mode:      commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
-		Parameters: map[string]*commonpb.ParameterValue{
-			"account": {Value: &commonpb.ParameterValue_StringValue{StringValue: "users:alice"}},
+		Mode:      ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
+		Parameters: map[string]*ledgerpb.ParameterValue{
+			"account": {Value: &ledgerpb.ParameterValue_StringValue{StringValue: "users:alice"}},
 		},
 	}
 
@@ -197,19 +197,19 @@ func TestExecute_NilFilterAggregateOverflow(t *testing.T) {
 			for i, amount := range []*uint256.Int{new(uint256.Int).SetAllOne(), uint256.NewInt(1)} {
 				pair := &raftcmdpb.VolumePair{}
 				if side == "input" {
-					pair.Input = commonpb.NewUint256(amount)
+					pair.Input = ledgerpb.NewUint256(amount)
 				} else {
-					pair.Output = commonpb.NewUint256(amount)
+					pair.Output = ledgerpb.NewUint256(amount)
 				}
 				_, err := attrs.Volume.Set(batch, domain.NewVolumeKey("l", []string{"a", "b"}[i], "USD/2", "").Bytes(), pair)
 				require.NoError(t, err)
 			}
 			require.NoError(t, batch.Commit())
-			seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
+			seedPreparedQuery(t, store, attrs, "l", "q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
 
 			profile := &query.QueryProfile{}
 			resp, err := query.Execute(context.Background(), rs, store, attrs.Volume, attrs.PreparedQuery, attrs.Index,
-				&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES}, profile, nil)
+				&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES}, profile, nil)
 			require.Nil(t, resp)
 			var overflow *query.ErrAggregateOverflow
 			require.ErrorAs(t, err, &overflow)
@@ -234,11 +234,11 @@ func TestAggregateRoutes_UseMaxPrecisionFactorOverflow(t *testing.T) {
 
 	for _, tc := range []struct {
 		name      string
-		aggregate func(*dal.Store, *attributes.Attributes) (*commonpb.AggregateResult, error)
+		aggregate func(*dal.Store, *attributes.Attributes) (*ledgerpb.AggregateResult, error)
 	}{
 		{
 			name: "unfiltered",
-			aggregate: func(store *dal.Store, attrs *attributes.Attributes) (*commonpb.AggregateResult, error) {
+			aggregate: func(store *dal.Store, attrs *attributes.Attributes) (*ledgerpb.AggregateResult, error) {
 				handle, err := store.NewReadHandle()
 				if err != nil {
 					return nil, err
@@ -250,7 +250,7 @@ func TestAggregateRoutes_UseMaxPrecisionFactorOverflow(t *testing.T) {
 		},
 		{
 			name: "filtered",
-			aggregate: func(store *dal.Store, attrs *attributes.Attributes) (*commonpb.AggregateResult, error) {
+			aggregate: func(store *dal.Store, attrs *attributes.Attributes) (*ledgerpb.AggregateResult, error) {
 				handle, err := store.NewReadHandle()
 				if err != nil {
 					return nil, err
@@ -295,7 +295,7 @@ func TestExecute_NilFilterAggregateUsesPinnedSnapshot(t *testing.T) {
 			registerLedger(t, store, "l")
 			rs := newTestReadStore(t)
 			attrs := attributes.New()
-			seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
+			seedPreparedQuery(t, store, attrs, "l", "q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
 			seedVolumes(t, store, attrs, "l", seededVolume{account: "a", asset: "USD/2", input: 10})
 
 			opener := &mutatingQueryHandleStore{Store: store, afterOpen: func() {
@@ -307,22 +307,22 @@ func TestExecute_NilFilterAggregateUsesPinnedSnapshot(t *testing.T) {
 					require.NoError(t, attrs.PreparedQuery.Delete(batch, domain.PreparedQueryKey{LedgerName: "l", Name: "q"}.Bytes()))
 					require.NoError(t, batch.Commit())
 				case "target changed":
-					seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil)
+					seedPreparedQuery(t, store, attrs, "l", "q", ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil)
 				case "ledger deleted":
 					batch := store.OpenWriteSession()
-					require.NoError(t, state.SaveLedger(batch, "l", &commonpb.LedgerInfo{Name: "l", DeletedAt: &commonpb.Timestamp{}}))
+					require.NoError(t, state.SaveLedger(batch, "l", &ledgerpb.LedgerInfo{Name: "l", DeletedAt: &ledgerpb.Timestamp{}}))
 					require.NoError(t, batch.Commit())
 				}
 				seedVolumes(t, store, attrs, "l", seededVolume{account: "a", asset: "USD/2", input: 999})
 			}}
 			profile := &query.QueryProfile{}
 			resp, err := query.Execute(t.Context(), rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
-				&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES}, profile, nil)
+				&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES}, profile, nil)
 			require.NoError(t, err)
 			require.Len(t, resp.GetAggregate().GetVolumes(), 1)
 			volume := resp.GetAggregate().GetVolumes()[0]
 			require.Equal(t, "USD/2", volume.GetAsset())
-			require.True(t, proto.Equal(commonpb.NewUint256FromUint64(10), volume.GetInput()))
+			require.True(t, proto.Equal(ledgerpb.NewUint256FromUint64(10), volume.GetInput()))
 			require.Nil(t, profile.Root)
 			require.Equal(t, uint64(100), rs.Leases().BeginGC(100), "the reservation must be released after the fast path")
 		})
@@ -335,17 +335,17 @@ func TestExecute_NilFilterAggregateValidatesPinnedTarget(t *testing.T) {
 	registerLedger(t, store, "l")
 	rs := newTestReadStore(t)
 	attrs := attributes.New()
-	seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil)
+	seedPreparedQuery(t, store, attrs, "l", "q", ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil)
 	opener := &mutatingQueryHandleStore{Store: store, afterOpen: func() {
-		seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
+		seedPreparedQuery(t, store, attrs, "l", "q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
 	}}
 	resp, err := query.Execute(t.Context(), rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
-		&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES}, nil, nil)
+		&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES}, nil, nil)
 	require.Nil(t, resp)
 
 	var targetErr *query.ErrPreparedQueryAggregateTarget
 	require.ErrorAs(t, err, &targetErr)
-	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, targetErr.Target)
+	require.Equal(t, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, targetErr.Target)
 	require.Equal(t, domain.KindValidation, targetErr.Kind())
 	require.Equal(t, uint64(100), rs.Leases().BeginGC(100), "validation failure must release the reservation")
 }
@@ -365,20 +365,20 @@ func TestExecute_UnsupportedModeWinsOverFilterCompilation(t *testing.T) {
 
 	// Build a filter with an address param reference that has no binding supplied
 	// at execution time — Compile would return FILTER_COMPILATION_ERROR if reached.
-	filter := &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Address{
-			Address: &commonpb.AddressMatch{
-				Match: &commonpb.AddressMatch_ParamExact{ParamExact: "unbound_param"},
+	filter := &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Address{
+			Address: &ledgerpb.AddressMatch{
+				Match: &ledgerpb.AddressMatch_ParamExact{ParamExact: "unbound_param"},
 			},
 		},
 	}
-	seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter)
+	seedPreparedQuery(t, store, attrs, "l", "q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter)
 
 	resp, err := query.Execute(t.Context(), rs, store, attrs.Volume, attrs.PreparedQuery, attrs.Index,
 		&servicepb.ExecutePreparedQueryRequest{
 			Ledger:    "l",
 			QueryName: "q",
-			Mode:      commonpb.QueryMode(999), // unsupported
+			Mode:      ledgerpb.QueryMode(999), // unsupported
 			// no Parameters — Compile would fail on the unbound param if reached
 		}, nil, nil)
 
@@ -387,5 +387,5 @@ func TestExecute_UnsupportedModeWinsOverFilterCompilation(t *testing.T) {
 	var modeErr *query.ErrQueryModeUnsupported
 	require.ErrorAs(t, err, &modeErr,
 		"unsupported mode must surface before filter compilation; got: %v", err)
-	require.Equal(t, commonpb.QueryMode(999), modeErr.Mode)
+	require.Equal(t, ledgerpb.QueryMode(999), modeErr.Mode)
 }

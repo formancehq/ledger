@@ -1,0 +1,14 @@
+package restorepb
+
+import ledgerpb "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+type RestoreServiceClient = ledgerpb.RestoreServiceClient
+type RestoreServiceServer = ledgerpb.RestoreServiceServer
+type UnimplementedRestoreServiceServer = ledgerpb.UnimplementedRestoreServiceServer
+type UnsafeRestoreServiceServer = ledgerpb.UnsafeRestoreServiceServer
+type RestoreService_ValidateRestoreServer = ledgerpb.RestoreService_ValidateRestoreServer
+type RestoreService_ValidateRestoreClient = ledgerpb.RestoreService_ValidateRestoreClient
+
+var NewRestoreServiceClient = ledgerpb.NewRestoreServiceClient
+var RegisterRestoreServiceServer = ledgerpb.RegisterRestoreServiceServer
+var RestoreService_ServiceDesc = ledgerpb.RestoreService_ServiceDesc

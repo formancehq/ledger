@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,6 +13,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -25,7 +27,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -125,7 +126,7 @@ func (n *scriptedNode) apply(reqs ...*servicepb.Request) {
 	require.NoError(n.t, err)
 }
 
-func (n *scriptedNode) applyClusterPolicy(policy *commonpb.ClusterPolicy) {
+func (n *scriptedNode) applyClusterPolicy(policy *ledgerpb.ClusterPolicy) {
 	n.t.Helper()
 
 	ctx := internalauth.WithSystemActor(logging.TestingContext(), commands.ComponentClusterPolicy)
@@ -177,9 +178,9 @@ var numscriptRestoreAccounts = []string{"world", "alice", "bob", "carol", "dave"
 // test compares between the live source and the restored store.
 type numscriptRestoreView struct {
 	volumes      map[string]*raftcmdpb.VolumePair
-	metadata     map[string]*commonpb.MetadataValue
+	metadata     map[string]*ledgerpb.MetadataValue
 	transactions map[uint64]*commonpb.TransactionState
-	library      map[string]*commonpb.NumscriptInfo
+	library      map[string]*ledgerpb.NumscriptInfo
 }
 
 func readNumscriptRestoreView(t *testing.T, store *dal.Store) numscriptRestoreView {
@@ -194,9 +195,9 @@ func readNumscriptRestoreView(t *testing.T, store *dal.Store) numscriptRestoreVi
 
 	view := numscriptRestoreView{
 		volumes:      map[string]*raftcmdpb.VolumePair{},
-		metadata:     map[string]*commonpb.MetadataValue{},
+		metadata:     map[string]*ledgerpb.MetadataValue{},
 		transactions: map[uint64]*commonpb.TransactionState{},
-		library:      map[string]*commonpb.NumscriptInfo{},
+		library:      map[string]*ledgerpb.NumscriptInfo{},
 	}
 
 	for _, account := range numscriptRestoreAccounts {
@@ -301,7 +302,7 @@ func TestBackup_NumscriptRestoreParity(t *testing.T) {
 
 	// The policy goes through an audited order, as on a real cluster, so the
 	// checker can account for the stored row.
-	src.applyClusterPolicy(&commonpb.ClusterPolicy{
+	src.applyClusterPolicy(&ledgerpb.ClusterPolicy{
 		Revision:                    1,
 		QueryCheckpointLimit:        10,
 		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,

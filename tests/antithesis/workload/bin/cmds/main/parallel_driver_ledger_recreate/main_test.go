@@ -22,9 +22,9 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
@@ -182,7 +182,7 @@ func runScenarioProcess(t *testing.T, mode string) map[string][]bool {
 // Intercept only the selected response or add real ledger state at a precise
 // stage. All setup, deletion, reads and reference conflicts use the real service.
 func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.UnaryClientInterceptor {
-	var predecessor *commonpb.Transaction
+	var predecessor *ledgerpb.Transaction
 
 	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoke grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		if mode == "deleted-read" && strings.HasSuffix(method, "/GetLedger") {
@@ -204,7 +204,7 @@ func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.
 			read := req.(*servicepb.GetAccountRequest)
 			require.Equal(t, "lrecreate-174236", read.GetLedger())
 			require.Equal(t, "lrec-old:174236:0", read.GetAddress())
-			reply.(*commonpb.Account).Address = read.GetAddress()
+			reply.(*ledgerpb.Account).Address = read.GetAddress()
 			injected.Store(true)
 
 			return nil
@@ -323,9 +323,9 @@ func (s *scenarioStream) RecvMsg(message any) error {
 			return io.EOF
 		}
 		switch row := message.(type) {
-		case *commonpb.Transaction:
+		case *ledgerpb.Transaction:
 			row.Reference = "lrec-174236-0"
-		case *commonpb.Account:
+		case *ledgerpb.Account:
 			row.Address = "lrec-old:174236:0"
 		}
 

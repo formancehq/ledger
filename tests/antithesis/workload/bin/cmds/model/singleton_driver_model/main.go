@@ -77,7 +77,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -153,7 +153,7 @@ func main() {
 	// Each ledger is created with a small, random initial metadata schema; the
 	// checker seeds the same declarations so the model's schema state matches
 	// the server's from the first bulk.
-	schemas := make(map[string][]*commonpb.SetMetadataFieldTypeCommand, len(names))
+	schemas := make(map[string][]*ledgerpb.SetMetadataFieldTypeCommand, len(names))
 	for _, name := range names {
 		schemas[name] = initialSchema()
 	}
@@ -595,11 +595,11 @@ func runSecondaryRead(ctx context.Context, client servicepb.BucketServiceClient,
 // seeds the same declarations so the model's schema state matches the server's
 // from the start. Declaring a type creates no index (populateInitialSchema only
 // records the schema), so a later remove drops nothing.
-func initialSchema() []*commonpb.SetMetadataFieldTypeCommand {
+func initialSchema() []*ledgerpb.SetMetadataFieldTypeCommand {
 	n := int(random.RandomChoice([]uint8{0, 1, 2, 3}))
-	cmds := make([]*commonpb.SetMetadataFieldTypeCommand, 0, n)
+	cmds := make([]*ledgerpb.SetMetadataFieldTypeCommand, 0, n)
 	for range n {
-		cmds = append(cmds, &commonpb.SetMetadataFieldTypeCommand{
+		cmds = append(cmds, &ledgerpb.SetMetadataFieldTypeCommand{
 			TargetType: random.RandomChoice(metaTargetPool),
 			Key:        metaKey(),
 			Type:       random.RandomChoice(metaTypePool),
@@ -660,7 +660,7 @@ func envInt(key string, def int) int {
 // missing ledger, so it asserts Unreachable. Shutdown (ctx cancelled) is teardown,
 // not a finding. Returns false to stop the run; the chart is left empty for
 // workers to fill.
-func setupLedgers(ctx context.Context, client servicepb.BucketServiceClient, names []string, schemas map[string][]*commonpb.SetMetadataFieldTypeCommand) bool {
+func setupLedgers(ctx context.Context, client servicepb.BucketServiceClient, names []string, schemas map[string][]*ledgerpb.SetMetadataFieldTypeCommand) bool {
 	for _, name := range names {
 		err := internal.CreateLedger(ctx, client, name, schemas[name]...)
 		if err == nil {

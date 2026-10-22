@@ -3,13 +3,14 @@ package state
 import (
 	"context"
 	"errors"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -19,8 +20,8 @@ import (
 // idempotencyTestPolicy builds a committed cluster policy for the apply tests:
 // the given revision and idempotency TTL, plus the default metadata ceilings the
 // apply path requires (an unconfigured policy is rejected before orders run).
-func idempotencyTestPolicy(revision, ttlMicros uint64) *commonpb.ClusterPolicy {
-	return &commonpb.ClusterPolicy{
+func idempotencyTestPolicy(revision, ttlMicros uint64) *ledgerpb.ClusterPolicy {
+	return &ledgerpb.ClusterPolicy{
 		Revision:                    revision,
 		IdempotencyTtlMicros:        ttlMicros,
 		QueryCheckpointLimit:        10,
@@ -42,7 +43,7 @@ func TestApplyProposal_PreloadUnavailableIsNotAuditedOrFrozen(t *testing.T) {
 			order.Technical = &raftcmdpb.OrderTechnical{PreloadUnavailable: true}
 		}
 		proposal := makeProposal(id, order)
-		proposal.Idempotency = &commonpb.Idempotency{Key: "preload-key"}
+		proposal.Idempotency = &ledgerpb.Idempotency{Key: "preload-key"}
 
 		return proposal
 	}
@@ -95,7 +96,7 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 
 	withKey := func(id uint64, key string, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 		p := makeProposal(id, orders...)
-		p.Idempotency = &commonpb.Idempotency{Key: key}
+		p.Idempotency = &ledgerpb.Idempotency{Key: key}
 
 		return p
 	}
@@ -201,7 +202,7 @@ func TestApplyProposal_AuditEntryCarriesIdentity(t *testing.T) {
 	require.NoError(t, r.Results[0].Error)
 
 	p := makeProposal(2, createTransactionOrder(ledgerName, true, newPosting("world", "alice", "EUR", 100)))
-	p.Idempotency = &commonpb.Idempotency{Key: "batch-key"}
+	p.Idempotency = &ledgerpb.Idempotency{Key: "batch-key"}
 
 	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, p))
 	require.NoError(t, err)
@@ -264,7 +265,7 @@ func TestApplyProposal_FreezesExpiryFromClusterPolicy(t *testing.T) {
 
 	withKey := func(id uint64, key string, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 		p := makeProposal(id, orders...)
-		p.Idempotency = &commonpb.Idempotency{Key: key}
+		p.Idempotency = &ledgerpb.Idempotency{Key: key}
 
 		return p
 	}
@@ -343,7 +344,7 @@ func TestApplyProposal_ZeroTTLNeverExpires(t *testing.T) {
 	require.NoError(t, r.Results[0].Error)
 
 	p := makeProposal(2, createTransactionOrder(ledgerName, true, newPosting("world", "alice", "EUR", 100)))
-	p.Idempotency = &commonpb.Idempotency{Key: "k1"}
+	p.Idempotency = &ledgerpb.Idempotency{Key: "k1"}
 
 	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, p))
 	require.NoError(t, err)
@@ -500,7 +501,7 @@ func TestApplyProposal_ReplayDoesNotExtendAuditChain(t *testing.T) {
 
 	withKey := func(id uint64, key string, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 		p := makeProposal(id, orders...)
-		p.Idempotency = &commonpb.Idempotency{Key: key}
+		p.Idempotency = &ledgerpb.Idempotency{Key: key}
 
 		return p
 	}
@@ -703,8 +704,8 @@ func TestApplyProposal_StalePreloadCannotResurrectSupersededOutcome(t *testing.T
 
 	keyed := func(date uint64, stale *commonpb.IdempotencyKeyValue, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 		p := makeProposal(1, orders...)
-		p.Date = &commonpb.Timestamp{Data: date}
-		p.Idempotency = &commonpb.Idempotency{Key: key}
+		p.Date = &ledgerpb.Timestamp{Data: date}
+		p.Idempotency = &ledgerpb.Idempotency{Key: key}
 		if stale != nil {
 			p.GetExecutionPlan().IdempotencyKeys = []*raftcmdpb.ReloadIdempotencyKey{{Key: key, Value: stale}}
 		}

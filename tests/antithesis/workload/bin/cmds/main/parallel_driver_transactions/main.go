@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -34,7 +34,7 @@ func randomPostingsRequest(ledger string) *servicepb.Request {
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings: internal.RandomPostings(),
-						Metadata: commonpb.MetadataFromGoMap(internal.RandomMetadata()),
+						Metadata: ledgerpb.MetadataFromGoMap(internal.RandomMetadata()),
 						Force:    true,
 					},
 				}},
@@ -56,7 +56,7 @@ func randomNumscriptRequest(ledger string) *servicepb.Request {
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: `
 								vars {
 									account $from
@@ -143,7 +143,7 @@ func createRandomBulkTransactions(ctx context.Context, client servicepb.BucketSe
 	internal.CheckPostCommitVolumes(createdTx.GetTransaction().GetPostCommitVolumes(), internal.Details{"ledger": ledger})
 }
 
-func checkReadAfterWrite(ctx context.Context, client servicepb.BucketServiceClient, ledger string, createdTx *commonpb.CreatedTransaction) {
+func checkReadAfterWrite(ctx context.Context, client servicepb.BucketServiceClient, ledger string, createdTx *ledgerpb.CreatedTransaction) {
 	_, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
 		Ledger:        ledger,
 		TransactionId: createdTx.GetTransaction().GetId(),

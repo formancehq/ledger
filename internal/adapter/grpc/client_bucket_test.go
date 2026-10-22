@@ -13,11 +13,11 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
 	appctrl "github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
@@ -57,7 +57,7 @@ func newRecvStream[T any](ctrl *gomock.Controller, items []*T, recvErr error) *M
 func TestGetTransaction_Success(t *testing.T) {
 	t.Parallel()
 
-	expected := &commonpb.Transaction{Id: 42}
+	expected := &ledgerpb.Transaction{Id: 42}
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 	mock.EXPECT().GetTransaction(gomock.Any(), gomock.Any()).Return(
@@ -88,7 +88,7 @@ func TestListTransactions_Success(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	stream := newRecvStream[commonpb.Transaction](ctrl, []*commonpb.Transaction{
+	stream := newRecvStream[ledgerpb.Transaction](ctrl, []*ledgerpb.Transaction{
 		{Id: 1},
 		{Id: 2},
 	}, nil)
@@ -135,12 +135,12 @@ func TestListIndexes_StreamsIncrementally(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 
-	items := []*commonpb.Index{{Id: &commonpb.IndexID{}}, {Id: &commonpb.IndexID{}}}
+	items := []*ledgerpb.Index{{Id: &ledgerpb.IndexID{}}, {Id: &ledgerpb.IndexID{}}}
 
 	recvCount := 0
-	stream := NewMockServerStreamingClient[commonpb.Index](ctrl)
+	stream := NewMockServerStreamingClient[ledgerpb.Index](ctrl)
 	stream.EXPECT().Trailer().Return(metadata.MD{}).AnyTimes()
-	stream.EXPECT().Recv().DoAndReturn(func() (*commonpb.Index, error) {
+	stream.EXPECT().Recv().DoAndReturn(func() (*ledgerpb.Index, error) {
 		if recvCount >= len(items) {
 			recvCount++
 
@@ -192,7 +192,7 @@ func TestListIndexes_StreamError(t *testing.T) {
 func TestGetAccount_Success(t *testing.T) {
 	t.Parallel()
 
-	expected := &commonpb.Account{Address: "user:001"}
+	expected := &ledgerpb.Account{Address: "user:001"}
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 	mock.EXPECT().GetAccount(gomock.Any(), gomock.Any()).Return(expected, nil)
@@ -220,7 +220,7 @@ func TestListAccounts_Success(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	stream := newRecvStream[commonpb.Account](ctrl, []*commonpb.Account{
+	stream := newRecvStream[ledgerpb.Account](ctrl, []*ledgerpb.Account{
 		{Address: "user:001"},
 		{Address: "user:002"},
 	}, nil)
@@ -256,13 +256,13 @@ func TestListLogs_Success(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	stream := newRecvStream[commonpb.Log](ctrl, []*commonpb.Log{
+	stream := newRecvStream[ledgerpb.Log](ctrl, []*ledgerpb.Log{
 		{Sequence: 1},
 		{Sequence: 2},
 	}, nil)
 	var capturedListLogsReq *servicepb.ListLogsRequest
 	mock.EXPECT().ListLogs(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ListLogsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error) {
+		func(_ context.Context, req *servicepb.ListLogsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Log], error) {
 			capturedListLogsReq = req
 
 			return stream, nil
@@ -287,10 +287,10 @@ func TestListLogs_WithAfterSequence(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	stream := newRecvStream[commonpb.Log](ctrl, []*commonpb.Log{{Sequence: 5}}, nil)
+	stream := newRecvStream[ledgerpb.Log](ctrl, []*ledgerpb.Log{{Sequence: 5}}, nil)
 	var capturedListLogsReq *servicepb.ListLogsRequest
 	mock.EXPECT().ListLogs(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ListLogsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error) {
+		func(_ context.Context, req *servicepb.ListLogsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Log], error) {
 			capturedListLogsReq = req
 
 			return stream, nil
@@ -322,7 +322,7 @@ func TestListLedgers_Success(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	stream := newRecvStream[commonpb.LedgerInfo](ctrl, []*commonpb.LedgerInfo{
+	stream := newRecvStream[ledgerpb.LedgerInfo](ctrl, []*ledgerpb.LedgerInfo{
 		{Name: "ledger1"},
 		{Name: "ledger2"},
 	}, nil)
@@ -352,7 +352,7 @@ func TestListLedgers_StreamError(t *testing.T) {
 func TestGetLedgerByName_Success(t *testing.T) {
 	t.Parallel()
 
-	expected := &commonpb.LedgerInfo{Name: "my-ledger"}
+	expected := &ledgerpb.LedgerInfo{Name: "my-ledger"}
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 	mock.EXPECT().GetLedger(gomock.Any(), gomock.Any()).Return(expected, nil)
@@ -415,7 +415,7 @@ func TestListAuditEntries_StreamError(t *testing.T) {
 func TestGetLog_Success(t *testing.T) {
 	t.Parallel()
 
-	expected := &commonpb.Log{Sequence: 42}
+	expected := &ledgerpb.Log{Sequence: 42}
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 	mock.EXPECT().GetLog(gomock.Any(), gomock.Any()).Return(expected, nil)
@@ -469,7 +469,7 @@ func TestListSigningKeys_Success(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	stream := newRecvStream[commonpb.SigningKey](ctrl, []*commonpb.SigningKey{
+	stream := newRecvStream[ledgerpb.SigningKey](ctrl, []*ledgerpb.SigningKey{
 		{KeyId: "key-1"},
 	}, nil)
 	mock.EXPECT().ListSigningKeys(gomock.Any(), gomock.Any()).Return(stream, nil)
@@ -727,7 +727,7 @@ func TestAnalyzeTransactions_EOFWithoutResult(t *testing.T) {
 func TestAggregateVolumes_Success(t *testing.T) {
 	t.Parallel()
 
-	expected := &commonpb.AggregateResult{}
+	expected := &ledgerpb.AggregateResult{}
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 	mock.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any()).Return(expected, nil)
@@ -756,7 +756,7 @@ func TestAggregateVolumes_Error(t *testing.T) {
 func TestListPreparedQueries_Success(t *testing.T) {
 	t.Parallel()
 
-	queries := []*commonpb.PreparedQuery{
+	queries := []*ledgerpb.PreparedQuery{
 		{Name: "q1"},
 		{Name: "q2"},
 	}
@@ -817,7 +817,7 @@ func TestExecutePreparedQuery_Error(t *testing.T) {
 func TestGetLedgerStats_Success(t *testing.T) {
 	t.Parallel()
 
-	expected := &commonpb.LedgerStats{}
+	expected := &ledgerpb.LedgerStats{}
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 	mock.EXPECT().GetLedgerStats(gomock.Any(), gomock.Any()).Return(expected, nil)
@@ -843,7 +843,7 @@ func TestGetLedgerStats_Error(t *testing.T) {
 func TestGetNumscript_Success(t *testing.T) {
 	t.Parallel()
 
-	expected := &commonpb.NumscriptInfo{Name: "my-script"}
+	expected := &ledgerpb.NumscriptInfo{Name: "my-script"}
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 	mock.EXPECT().GetNumscript(gomock.Any(), gomock.Any()).Return(expected, nil)
@@ -871,7 +871,7 @@ func TestListNumscripts_Success(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	stream := newRecvStream[commonpb.NumscriptInfo](ctrl, []*commonpb.NumscriptInfo{
+	stream := newRecvStream[ledgerpb.NumscriptInfo](ctrl, []*ledgerpb.NumscriptInfo{
 		{Name: "script1"},
 		{Name: "script2"},
 	}, nil)
@@ -907,7 +907,7 @@ func TestListNumscripts_StreamRecvError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 	wantErr := errors.New("recv failed")
-	stream := newRecvStream[commonpb.NumscriptInfo](ctrl, nil, wantErr)
+	stream := newRecvStream[ledgerpb.NumscriptInfo](ctrl, nil, wantErr)
 	mock.EXPECT().ListNumscripts(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
@@ -923,7 +923,7 @@ func TestListNumscripts_EmptyStream(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	stream := newRecvStream[commonpb.NumscriptInfo](ctrl, nil, nil)
+	stream := newRecvStream[ledgerpb.NumscriptInfo](ctrl, nil, nil)
 	mock.EXPECT().ListNumscripts(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
@@ -935,7 +935,7 @@ func TestListNumscripts_EmptyStream(t *testing.T) {
 func TestApply_Success(t *testing.T) {
 	t.Parallel()
 
-	logs := []*commonpb.Log{{Sequence: 1}}
+	logs := []*ledgerpb.Log{{Sequence: 1}}
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 	mock.EXPECT().Apply(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
@@ -1026,9 +1026,9 @@ func TestApply_DoesNotForwardAuthDisabledSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	grpcClient := NewLedgerGrpcClient(mock)
 	_, err = grpcClient.Apply(ctx, &servicepb.ApplyRequest{
-		ForwardedCallerSnapshot: &commonpb.CallerSnapshot{
-			Principal: &commonpb.CallerSnapshot_Anonymous{
-				Anonymous: &commonpb.AnonymousCaller{},
+		ForwardedCallerSnapshot: &ledgerpb.CallerSnapshot{
+			Principal: &ledgerpb.CallerSnapshot_Anonymous{
+				Anonymous: &ledgerpb.AnonymousCaller{},
 			},
 		},
 	})
@@ -1082,12 +1082,12 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 		})
 
 	// Simulate a node that received the request via cluster-internal forward.
-	original := &commonpb.CallerSnapshot{
-		Principal: &commonpb.CallerSnapshot_Authenticated{
-			Authenticated: &commonpb.AuthenticatedCaller{
-				Identity: &commonpb.CallerIdentity{
+	original := &ledgerpb.CallerSnapshot{
+		Principal: &ledgerpb.CallerSnapshot_Authenticated{
+			Authenticated: &ledgerpb.AuthenticatedCaller{
+				Identity: &ledgerpb.CallerIdentity{
 					Subject: "original-user",
-					Source:  &commonpb.CallerIdentity_KeyId{KeyId: "ed25519-7"},
+					Source:  &ledgerpb.CallerIdentity_KeyId{KeyId: "ed25519-7"},
 				},
 				Scopes: []string{"ledger:TransactionWrite"},
 			},
@@ -1129,7 +1129,7 @@ func TestApply_RequiresLeaderExecutionProvenance(t *testing.T) {
 				func(_ context.Context, _ *servicepb.ApplyRequest, opts ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
 					*opts[0].(grpc.TrailerCallOption).TrailerAddr = metadata.MD{metadataKeyApplyReplayed: test.values}
 
-					return &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 42}}}, nil
+					return &servicepb.ApplyResponse{Logs: []*ledgerpb.Log{{Sequence: 42}}}, nil
 				})
 			// Even a forged incoming value cannot substitute for the leader response.
 			ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(metadataKeyApplyReplayed, "true"))

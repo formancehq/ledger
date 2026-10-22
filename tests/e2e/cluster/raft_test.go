@@ -11,8 +11,8 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	raftwal "github.com/formancehq/ledger/v3/internal/storage/wal"
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -61,7 +61,7 @@ var _ = Describe("Simple cluster", func() {
 			Expect(err).To(Succeed())
 
 			for i := range countInstances {
-				_, err := servers[i].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				_, err := servers[i].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("node-%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed(), "Failed to create transaction through node %d", i+1)
@@ -140,7 +140,7 @@ var _ = Describe("Simple cluster", func() {
 			Expect(err).To(Succeed())
 
 			for i := 0; i < 5; i++ {
-				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("ledger1", []*commonpb.Posting{
+				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("ledger1", []*ledgerpb.Posting{
 					actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())
@@ -241,7 +241,7 @@ var _ = Describe("Simple cluster", func() {
 
 			By("Creating state that cannot be replayed after compaction")
 			for i := 0; i < countTransactions; i++ {
-				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", offlineAccountAddress, big.NewInt(100), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())
@@ -388,7 +388,7 @@ var _ = Describe("Simple cluster", func() {
 					BeforeEach(func() {
 						lid := *leaderID
 						for i := 0; i < countTransactions; i++ {
-							_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 								actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 							}, nil, nil)))
 							Expect(err).To(Succeed())
@@ -400,7 +400,7 @@ var _ = Describe("Simple cluster", func() {
 						gateway.RemoveInterceptor()
 						By("Creating a transaction to trigger the delay detection by the leader", func() {
 							for i := 0; i < countTransactions; i++ {
-								_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+								_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 									actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 								}, nil, nil)))
 								Expect(err).To(Succeed())

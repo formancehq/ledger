@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
@@ -23,10 +23,10 @@ func TestRejectedWriteOracleDetectsCommittedTransaction(t *testing.T) {
 	const injection = "acknowledged transaction deliberately presented as a rejected write"
 	drivertest.CheckEmissions(t, func() {
 		ctx, client := drivertest.StartServer(t)
-		require.NoError(t, internal.CreateQueryOracleLedger(ctx, client, ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
-		request := actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{{
+		require.NoError(t, internal.CreateQueryOracleLedger(ctx, client, ledger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
+		request := actions.CreateForceTransactionAction(ledger, []*ledgerpb.Posting{{
 			Source: "world", Destination: "deferr-sensitivity-destination",
-			Amount: commonpb.NewUint256FromUint64(1), Asset: "USD/2",
+			Amount: ledgerpb.NewUint256FromUint64(1), Asset: "USD/2",
 		}}, nil)
 		request.GetApply().GetAction().GetCreateTransaction().Reference = reference
 		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("sensitivity-seed", request))

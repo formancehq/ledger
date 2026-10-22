@@ -5,11 +5,11 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
-func mustFailureDetails(code string, facts map[string]string) *commonpb.FailureDetails {
-	details, err := commonpb.NewFailureDetails(code, facts)
+func mustFailureDetails(code string, facts map[string]string) *ledgerpb.FailureDetails {
+	details, err := ledgerpb.NewFailureDetails(code, facts)
 	if err != nil {
 		panic(fmt.Errorf("invalid failure details for %s: %w", code, err))
 	}
@@ -17,106 +17,106 @@ func mustFailureDetails(code string, facts map[string]string) *commonpb.FailureD
 	return details
 }
 
-func (e *validationSentinel) FailureDetails() *commonpb.FailureDetails {
+func (e *validationSentinel) FailureDetails() *ledgerpb.FailureDetails {
 	return mustFailureDetails(e.code, nil)
 }
 
-func (errMetadataLimitsUnconfigured) FailureDetails() *commonpb.FailureDetails {
+func (errMetadataLimitsUnconfigured) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
-func (e *ErrTransactionReferenceConflict) FailureDetails() *commonpb.FailureDetails {
-	details := &commonpb.TransactionReferenceConflictDetails{
+func (e *ErrTransactionReferenceConflict) FailureDetails() *ledgerpb.FailureDetails {
+	details := &ledgerpb.TransactionReferenceConflictDetails{
 		Ledger: new(e.Ledger), Reference: new(e.Reference), ExistingTransactionId: new(e.ExistingTransactionID),
 	}
 
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_TransactionReferenceConflict{
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_TransactionReferenceConflict{
 		TransactionReferenceConflict: details,
 	}}
 }
 
-func (e *ErrInsufficientFunds) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrInsufficientFunds) FailureDetails() *ledgerpb.FailureDetails {
 	if !e.ColorKnown {
-		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInsufficientFunds{
-			NumscriptInsufficientFunds: &commonpb.NumscriptInsufficientFundsDetails{
+		return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_NumscriptInsufficientFunds{
+			NumscriptInsufficientFunds: &ledgerpb.NumscriptInsufficientFundsDetails{
 				Asset: new(e.Asset), Amount: new(e.Amount), Balance: new(e.Balance),
 			},
 		}}
 	}
-	details := &commonpb.InsufficientFundsDetails{
+	details := &ledgerpb.InsufficientFundsDetails{
 		Account: new(e.Account), Asset: new(e.Asset),
 		Amount: new(e.Amount), Balance: new(e.Balance), Color: new(e.Color),
 	}
 
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_InsufficientFunds{InsufficientFunds: details}}
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_InsufficientFunds{InsufficientFunds: details}}
 }
 
-func (e *ErrNumscriptNotFound) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrNumscriptNotFound) FailureDetails() *ledgerpb.FailureDetails {
 	if e.Version != "" {
-		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptVersionNotFound{
-			NumscriptVersionNotFound: &commonpb.NumscriptVersionNotFoundDetails{Name: new(e.Name), Version: new(e.Version)},
+		return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_NumscriptVersionNotFound{
+			NumscriptVersionNotFound: &ledgerpb.NumscriptVersionNotFoundDetails{Name: new(e.Name), Version: new(e.Version)},
 		}}
 	}
 
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptNotFound{
-		NumscriptNotFound: &commonpb.NumscriptNotFoundDetails{Name: new(e.Name)},
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_NumscriptNotFound{
+		NumscriptNotFound: &ledgerpb.NumscriptNotFoundDetails{Name: new(e.Name)},
 	}}
 }
 
-func (e *ErrMetadataKeyValidation) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrMetadataKeyValidation) FailureDetails() *ledgerpb.FailureDetails {
 	switch cause := e.Cause.FailureDetails().GetKind().(type) {
-	case *commonpb.FailureDetails_MetadataLimitExceeded:
+	case *ledgerpb.FailureDetails_MetadataLimitExceeded:
 		d := cause.MetadataLimitExceeded
 
-		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataKeyLimitExceeded{
-			MetadataKeyLimitExceeded: &commonpb.MetadataKeyLimitExceededDetails{
+		return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_MetadataKeyLimitExceeded{
+			MetadataKeyLimitExceeded: &ledgerpb.MetadataKeyLimitExceededDetails{
 				Dimension: d.Dimension, Limit: d.Limit, Actual: d.Actual, Key: new(e.Key),
 			},
 		}}
-	case *commonpb.FailureDetails_MetadataKeyInvalidChar:
-		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataKeyInvalidChar{
-			MetadataKeyInvalidChar: &commonpb.MetadataKeyInvalidCharDetails{Key: new(e.Key)},
+	case *ledgerpb.FailureDetails_MetadataKeyInvalidChar:
+		return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_MetadataKeyInvalidChar{
+			MetadataKeyInvalidChar: &ledgerpb.MetadataKeyInvalidCharDetails{Key: new(e.Key)},
 		}}
-	case *commonpb.FailureDetails_MetadataValueContainsNullByte:
-		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataValueContainsNullByte{
-			MetadataValueContainsNullByte: &commonpb.MetadataValueContainsNullByteDetails{Key: new(e.Key)},
+	case *ledgerpb.FailureDetails_MetadataValueContainsNullByte:
+		return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_MetadataValueContainsNullByte{
+			MetadataValueContainsNullByte: &ledgerpb.MetadataValueContainsNullByteDetails{Key: new(e.Key)},
 		}}
 	default:
 		panic(fmt.Errorf("metadata key context cannot wrap %T", cause))
 	}
 }
 
-func (e *ErrAccountValidation) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrAccountValidation) FailureDetails() *ledgerpb.FailureDetails {
 	switch cause := e.Cause.FailureDetails().GetKind().(type) {
-	case *commonpb.FailureDetails_MetadataKeyEmpty:
-		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountMetadataKeyEmpty{
-			AccountMetadataKeyEmpty: &commonpb.AccountMetadataKeyEmptyDetails{Account: new(e.Account)},
+	case *ledgerpb.FailureDetails_MetadataKeyEmpty:
+		return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_AccountMetadataKeyEmpty{
+			AccountMetadataKeyEmpty: &ledgerpb.AccountMetadataKeyEmptyDetails{Account: new(e.Account)},
 		}}
-	case *commonpb.FailureDetails_MetadataKeyInvalidChar:
-		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountMetadataKeyInvalidChar{
-			AccountMetadataKeyInvalidChar: &commonpb.AccountMetadataKeyInvalidCharDetails{
+	case *ledgerpb.FailureDetails_MetadataKeyInvalidChar:
+		return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_AccountMetadataKeyInvalidChar{
+			AccountMetadataKeyInvalidChar: &ledgerpb.AccountMetadataKeyInvalidCharDetails{
 				Key: cause.MetadataKeyInvalidChar.Key, Account: new(e.Account),
 			},
 		}}
-	case *commonpb.FailureDetails_MetadataValueContainsNullByte:
-		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountMetadataValueContainsNullByte{
-			AccountMetadataValueContainsNullByte: &commonpb.AccountMetadataValueContainsNullByteDetails{
+	case *ledgerpb.FailureDetails_MetadataValueContainsNullByte:
+		return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_AccountMetadataValueContainsNullByte{
+			AccountMetadataValueContainsNullByte: &ledgerpb.AccountMetadataValueContainsNullByteDetails{
 				Key: cause.MetadataValueContainsNullByte.Key, Account: new(e.Account),
 			},
 		}}
-	case *commonpb.FailureDetails_MetadataLimitExceeded:
+	case *ledgerpb.FailureDetails_MetadataLimitExceeded:
 		d := cause.MetadataLimitExceeded
 
-		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountMetadataLimitExceeded{
-			AccountMetadataLimitExceeded: &commonpb.AccountMetadataLimitExceededDetails{
+		return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_AccountMetadataLimitExceeded{
+			AccountMetadataLimitExceeded: &ledgerpb.AccountMetadataLimitExceededDetails{
 				Dimension: d.Dimension, Limit: d.Limit, Actual: d.Actual, Account: new(e.Account),
 			},
 		}}
-	case *commonpb.FailureDetails_MetadataKeyLimitExceeded:
+	case *ledgerpb.FailureDetails_MetadataKeyLimitExceeded:
 		d := cause.MetadataKeyLimitExceeded
 
-		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountMetadataKeyLimitExceeded{
-			AccountMetadataKeyLimitExceeded: &commonpb.AccountMetadataKeyLimitExceededDetails{
+		return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_AccountMetadataKeyLimitExceeded{
+			AccountMetadataKeyLimitExceeded: &ledgerpb.AccountMetadataKeyLimitExceededDetails{
 				Dimension: d.Dimension, Limit: d.Limit, Actual: d.Actual, Key: d.Key, Account: new(e.Account),
 			},
 		}}
@@ -125,110 +125,110 @@ func (e *ErrAccountValidation) FailureDetails() *commonpb.FailureDetails {
 	}
 }
 
-func (e *ReplayedFailure) FailureDetails() *commonpb.FailureDetails {
+func (e *ReplayedFailure) FailureDetails() *ledgerpb.FailureDetails {
 	if e.Details == nil {
 		return nil
 	}
 
-	return proto.Clone(e.Details).(*commonpb.FailureDetails)
+	return proto.Clone(e.Details).(*ledgerpb.FailureDetails)
 }
 
-func (e *ErrNumscriptCompile) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrNumscriptCompile) FailureDetails() *ledgerpb.FailureDetails {
 	if e.Details != nil {
-		return proto.Clone(e.Details).(*commonpb.FailureDetails)
+		return proto.Clone(e.Details).(*ledgerpb.FailureDetails)
 	}
 
 	return nil // The unclassified fallback has no auditable business code.
 }
 
-func (*unclassifiedNumscriptCompile) FailureDetails() *commonpb.FailureDetails {
+func (*unclassifiedNumscriptCompile) FailureDetails() *ledgerpb.FailureDetails {
 	return nil
 }
 
-func (e *ErrNumscriptExecution) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrNumscriptExecution) FailureDetails() *ledgerpb.FailureDetails {
 	if e.Details != nil {
-		return proto.Clone(e.Details).(*commonpb.FailureDetails)
+		return proto.Clone(e.Details).(*ledgerpb.FailureDetails)
 	}
 
 	return nil // The unclassified fallback has no auditable business code.
 }
 
-func (e *ErrNumscriptRuntime) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrNumscriptRuntime) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
-func (*ErrStorageOperation) FailureDetails() *commonpb.FailureDetails {
+func (*ErrStorageOperation) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
-func (e *ErrSequenceExhausted) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrSequenceExhausted) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
-func (errStaleProposal) FailureDetails() *commonpb.FailureDetails {
+func (errStaleProposal) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
-func (errStaleInputsResolution) FailureDetails() *commonpb.FailureDetails {
+func (errStaleInputsResolution) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
-func (e *ErrLedgerAlreadyExists) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_LedgerAlreadyExists{LedgerAlreadyExists: &commonpb.LedgerAlreadyExistsDetails{
+func (e *ErrLedgerAlreadyExists) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_LedgerAlreadyExists{LedgerAlreadyExists: &ledgerpb.LedgerAlreadyExistsDetails{
 		Name: new(e.Name),
 	}}}
 }
 
-func (e *ErrLedgerNotFound) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_LedgerNotFound{LedgerNotFound: &commonpb.LedgerNotFoundDetails{
+func (e *ErrLedgerNotFound) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_LedgerNotFound{LedgerNotFound: &ledgerpb.LedgerNotFoundDetails{
 		Name: new(e.Name),
 	}}}
 }
 
-func (e *ErrLedgerDeleted) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_LedgerDeleted{LedgerDeleted: &commonpb.LedgerDeletedDetails{
+func (e *ErrLedgerDeleted) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_LedgerDeleted{LedgerDeleted: &ledgerpb.LedgerDeletedDetails{
 		Name: new(e.Name),
 	}}}
 }
 
-func (e *ErrIdempotencyKeyConflict) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_IdempotencyKeyConflict{IdempotencyKeyConflict: &commonpb.IdempotencyKeyConflictDetails{
+func (e *ErrIdempotencyKeyConflict) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_IdempotencyKeyConflict{IdempotencyKeyConflict: &ledgerpb.IdempotencyKeyConflictDetails{
 		Key: new(e.Key),
 	}}}
 }
 
-func (e *ErrInvalidSkippableReason) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_InvalidSkippableReason{InvalidSkippableReason: &commonpb.InvalidSkippableReasonDetails{
+func (e *ErrInvalidSkippableReason) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_InvalidSkippableReason{InvalidSkippableReason: &ledgerpb.InvalidSkippableReasonDetails{
 		ProvidedReason: new(ReasonString(e.Provided)),
 	}}}
 }
 
-func (e *ErrTransactionNotFound) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_TransactionNotFound{TransactionNotFound: &commonpb.TransactionNotFoundDetails{
+func (e *ErrTransactionNotFound) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_TransactionNotFound{TransactionNotFound: &ledgerpb.TransactionNotFoundDetails{
 		TransactionId: new(e.TransactionID),
 	}}}
 }
 
-func (e *ErrTransactionReferenceNotFound) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_TransactionReferenceNotFound{TransactionReferenceNotFound: &commonpb.TransactionReferenceNotFoundDetails{
+func (e *ErrTransactionReferenceNotFound) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_TransactionReferenceNotFound{TransactionReferenceNotFound: &ledgerpb.TransactionReferenceNotFoundDetails{
 		Reference: new(e.Reference),
 	}}}
 }
 
-func (e *ErrTransactionAlreadyReverted) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_TransactionAlreadyReverted{TransactionAlreadyReverted: &commonpb.TransactionAlreadyRevertedDetails{
+func (e *ErrTransactionAlreadyReverted) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_TransactionAlreadyReverted{TransactionAlreadyReverted: &ledgerpb.TransactionAlreadyRevertedDetails{
 		TransactionId: new(e.TransactionID),
 	}}}
 }
 
-func (e *ErrRevertTargetCreatedInBatch) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_RevertTargetCreatedInBatch{RevertTargetCreatedInBatch: &commonpb.RevertTargetCreatedInBatchDetails{
+func (e *ErrRevertTargetCreatedInBatch) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_RevertTargetCreatedInBatch{RevertTargetCreatedInBatch: &ledgerpb.RevertTargetCreatedInBatchDetails{
 		TransactionId: new(e.TransactionID),
 	}}}
 }
 
-func (e *ErrVolumeOverflow) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_VolumeOverflow{VolumeOverflow: &commonpb.VolumeOverflowDetails{
+func (e *ErrVolumeOverflow) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_VolumeOverflow{VolumeOverflow: &ledgerpb.VolumeOverflowDetails{
 		Account: new(e.Account),
 		Asset:   new(e.Asset),
 		Color:   new(e.Color),
@@ -238,227 +238,227 @@ func (e *ErrVolumeOverflow) FailureDetails() *commonpb.FailureDetails {
 	}}}
 }
 
-func (e *ErrBalanceNotFound) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_BalanceNotFound{BalanceNotFound: &commonpb.BalanceNotFoundDetails{
+func (e *ErrBalanceNotFound) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_BalanceNotFound{BalanceNotFound: &ledgerpb.BalanceNotFoundDetails{
 		Account: new(e.Account),
 		Asset:   new(e.Asset),
 	}}}
 }
 
-func (e *ErrSinkAlreadyExists) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_SinkAlreadyExists{SinkAlreadyExists: &commonpb.SinkAlreadyExistsDetails{
+func (e *ErrSinkAlreadyExists) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_SinkAlreadyExists{SinkAlreadyExists: &ledgerpb.SinkAlreadyExistsDetails{
 		Name: new(e.Name),
 	}}}
 }
 
-func (e *ErrSinkBatchSizeTooLarge) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_SinkBatchSizeTooLarge{SinkBatchSizeTooLarge: &commonpb.SinkBatchSizeTooLargeDetails{
+func (e *ErrSinkBatchSizeTooLarge) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_SinkBatchSizeTooLarge{SinkBatchSizeTooLarge: &ledgerpb.SinkBatchSizeTooLargeDetails{
 		Name:      new(e.Name),
 		BatchSize: new(uint64(e.BatchSize)),
 		Max:       new(uint64(e.Max)),
 	}}}
 }
 
-func (e *ErrMetadataNotFound) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataNotFound{MetadataNotFound: &commonpb.MetadataNotFoundDetails{
+func (e *ErrMetadataNotFound) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_MetadataNotFound{MetadataNotFound: &ledgerpb.MetadataNotFoundDetails{
 		Target: new(e.Target),
 		Key:    new(e.Key),
 	}}}
 }
 
-func (e *ErrSinkNotFound) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_SinkNotFound{SinkNotFound: &commonpb.SinkNotFoundDetails{
+func (e *ErrSinkNotFound) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_SinkNotFound{SinkNotFound: &ledgerpb.SinkNotFoundDetails{
 		Name: new(e.Name),
 	}}}
 }
 
-func (e *ErrSinkControllerMismatch) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_SinkControllerMismatch{SinkControllerMismatch: &commonpb.SinkControllerMismatchDetails{
+func (e *ErrSinkControllerMismatch) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_SinkControllerMismatch{SinkControllerMismatch: &ledgerpb.SinkControllerMismatchDetails{
 		Name:         new(e.Name),
 		ControllerId: new(e.ControllerID),
 	}}}
 }
 
-func (e *ErrInvalidCronExpression) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_InvalidCronExpression{InvalidCronExpression: &commonpb.InvalidCronExpressionDetails{
+func (e *ErrInvalidCronExpression) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_InvalidCronExpression{InvalidCronExpression: &ledgerpb.InvalidCronExpressionDetails{
 		Expression: new(e.Expression),
 	}}}
 }
 
-func (e *ErrLedgerInMirrorMode) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_LedgerInMirrorMode{LedgerInMirrorMode: &commonpb.LedgerInMirrorModeDetails{
+func (e *ErrLedgerInMirrorMode) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_LedgerInMirrorMode{LedgerInMirrorMode: &ledgerpb.LedgerInMirrorModeDetails{
 		Name: new(e.Name),
 	}}}
 }
 
-func (e *ErrLedgerNotInMirrorMode) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_LedgerNotInMirrorMode{LedgerNotInMirrorMode: &commonpb.LedgerNotInMirrorModeDetails{
+func (e *ErrLedgerNotInMirrorMode) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_LedgerNotInMirrorMode{LedgerNotInMirrorMode: &ledgerpb.LedgerNotInMirrorModeDetails{
 		Name: new(e.Name),
 	}}}
 }
 
-func (e *ErrMirrorV2LogIDGap) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrMirrorV2LogIDGap) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
-func (e *ErrMirrorV2LogIDInvalid) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrMirrorV2LogIDInvalid) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
-func (e *ErrPreparedQueryAlreadyExists) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_PreparedQueryAlreadyExists{PreparedQueryAlreadyExists: &commonpb.PreparedQueryAlreadyExistsDetails{
+func (e *ErrPreparedQueryAlreadyExists) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_PreparedQueryAlreadyExists{PreparedQueryAlreadyExists: &ledgerpb.PreparedQueryAlreadyExistsDetails{
 		Ledger: new(e.Ledger),
 		Name:   new(e.Name),
 	}}}
 }
 
-func (e *ErrPreparedQueryNotFound) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_PreparedQueryNotFound{PreparedQueryNotFound: &commonpb.PreparedQueryNotFoundDetails{
+func (e *ErrPreparedQueryNotFound) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_PreparedQueryNotFound{PreparedQueryNotFound: &ledgerpb.PreparedQueryNotFoundDetails{
 		Ledger: new(e.Ledger),
 		Name:   new(e.Name),
 	}}}
 }
 
-func (e *ErrIndexAlreadyExists) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_IndexAlreadyExists{IndexAlreadyExists: &commonpb.IndexAlreadyExistsDetails{
+func (e *ErrIndexAlreadyExists) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_IndexAlreadyExists{IndexAlreadyExists: &ledgerpb.IndexAlreadyExistsDetails{
 		Index: new(e.Index),
 	}}}
 }
 
-func (e *ErrIndexNotFound) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_IndexNotFound{IndexNotFound: &commonpb.IndexNotFoundDetails{
+func (e *ErrIndexNotFound) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_IndexNotFound{IndexNotFound: &ledgerpb.IndexNotFoundDetails{
 		Index: new(e.Index),
 	}}}
 }
 
-func (e *ErrMetadataFieldNotInSchema) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataFieldNotInSchema{MetadataFieldNotInSchema: &commonpb.MetadataFieldNotInSchemaDetails{
+func (e *ErrMetadataFieldNotInSchema) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_MetadataFieldNotInSchema{MetadataFieldNotInSchema: &ledgerpb.MetadataFieldNotInSchemaDetails{
 		Target: new(e.Target),
 		Key:    new(e.Key),
 	}}}
 }
 
-func (e *ErrNumscriptVersionAlreadyExists) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptVersionAlreadyExists{NumscriptVersionAlreadyExists: &commonpb.NumscriptVersionAlreadyExistsDetails{
+func (e *ErrNumscriptVersionAlreadyExists) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_NumscriptVersionAlreadyExists{NumscriptVersionAlreadyExists: &ledgerpb.NumscriptVersionAlreadyExistsDetails{
 		Name:    new(e.Name),
 		Version: new(e.Version),
 	}}}
 }
 
-func (e *ErrNumscriptInvalidVersion) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidVersion{NumscriptInvalidVersion: &commonpb.NumscriptInvalidVersionDetails{
+func (e *ErrNumscriptInvalidVersion) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_NumscriptInvalidVersion{NumscriptInvalidVersion: &ledgerpb.NumscriptInvalidVersionDetails{
 		Version: new(e.Version),
 	}}}
 }
 
-func (e *ErrAccountNotMatchingType) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountNotMatchingType{AccountNotMatchingType: &commonpb.AccountNotMatchingTypeDetails{
+func (e *ErrAccountNotMatchingType) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_AccountNotMatchingType{AccountNotMatchingType: &ledgerpb.AccountNotMatchingTypeDetails{
 		Address: new(e.Address),
 	}}}
 }
 
-func (e *ErrAccountTypeNotFound) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountTypeNotFound{AccountTypeNotFound: &commonpb.AccountTypeNotFoundDetails{
+func (e *ErrAccountTypeNotFound) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_AccountTypeNotFound{AccountTypeNotFound: &ledgerpb.AccountTypeNotFoundDetails{
 		Name: new(e.Name),
 	}}}
 }
 
-func (e *ErrAccountTypeAlreadyExists) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountTypeAlreadyExists{AccountTypeAlreadyExists: &commonpb.AccountTypeAlreadyExistsDetails{
+func (e *ErrAccountTypeAlreadyExists) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_AccountTypeAlreadyExists{AccountTypeAlreadyExists: &ledgerpb.AccountTypeAlreadyExistsDetails{
 		Name: new(e.Name),
 	}}}
 }
 
-func (e *ErrAccountTypeConflict) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountTypeConflict{AccountTypeConflict: &commonpb.AccountTypeConflictDetails{
+func (e *ErrAccountTypeConflict) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_AccountTypeConflict{AccountTypeConflict: &ledgerpb.AccountTypeConflictDetails{
 		Pattern:         new(e.NewPattern),
 		ExistingName:    new(e.ExistingName),
 		ExistingPattern: new(e.ExistingPattern),
 	}}}
 }
 
-func (e *ErrInvalidPattern) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_InvalidPattern{InvalidPattern: &commonpb.InvalidPatternDetails{
+func (e *ErrInvalidPattern) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_InvalidPattern{InvalidPattern: &ledgerpb.InvalidPatternDetails{
 		Pattern: new(e.Pattern),
 	}}}
 }
 
-func (e *ErrAccountTypeHasAccounts) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AccountTypeHasAccounts{AccountTypeHasAccounts: &commonpb.AccountTypeHasAccountsDetails{
+func (e *ErrAccountTypeHasAccounts) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_AccountTypeHasAccounts{AccountTypeHasAccounts: &ledgerpb.AccountTypeHasAccountsDetails{
 		Name: new(e.Name),
 	}}}
 }
 
-func (e *ErrNumscriptParse) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptParseError{NumscriptParseError: &commonpb.NumscriptParseErrorDetails{}}}
+func (e *ErrNumscriptParse) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_NumscriptParseError{NumscriptParseError: &ledgerpb.NumscriptParseErrorDetails{}}}
 }
 
-func (*ErrFilterCompilation) FailureDetails() *commonpb.FailureDetails {
+func (*ErrFilterCompilation) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Filter validation is outside the audited order outcome.
 }
 
-func (e *ErrBalanceNotPreloaded) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrBalanceNotPreloaded) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
-func (e *ErrTransientAccountNonZero) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_TransientAccountNonZero{TransientAccountNonZero: &commonpb.TransientAccountNonZeroDetails{
+func (e *ErrTransientAccountNonZero) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_TransientAccountNonZero{TransientAccountNonZero: &ledgerpb.TransientAccountNonZeroDetails{
 		Accounts: new(e.joinedAccounts()),
 	}}}
 }
 
-func (e *ErrInvalidOrderType) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrInvalidOrderType) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
-func (e *ErrStaleClusterPolicy) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrStaleClusterPolicy) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
-func (e *ErrClusterPolicyRevisionConflict) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrClusterPolicyRevisionConflict) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // This internal proposal rejection is never an audited outcome.
 }
 
-func (e *ErrClusterPolicyInvalid) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrClusterPolicyInvalid) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // This internal proposal rejection is never an audited outcome.
 }
 
-func (e *ErrInvalidApplyType) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrInvalidApplyType) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
-func (e *ErrTransactionStateInconsistent) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrTransactionStateInconsistent) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
-func (errCheckpointIDRequired) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_CheckpointIdRequired{CheckpointIdRequired: &commonpb.CheckpointIdRequiredDetails{}}}
+func (errCheckpointIDRequired) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_CheckpointIdRequired{CheckpointIdRequired: &ledgerpb.CheckpointIdRequiredDetails{}}}
 }
 
-func (e *ErrCheckpointLimitReached) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_CheckpointLimitReached{CheckpointLimitReached: &commonpb.CheckpointLimitReachedDetails{
+func (e *ErrCheckpointLimitReached) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_CheckpointLimitReached{CheckpointLimitReached: &ledgerpb.CheckpointLimitReachedDetails{
 		Limit: new(e.Limit),
 	}}}
 }
 
-func (e *ErrMetadataLimitExceeded) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataLimitExceeded{MetadataLimitExceeded: &commonpb.MetadataLimitExceededDetails{
+func (e *ErrMetadataLimitExceeded) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_MetadataLimitExceeded{MetadataLimitExceeded: &ledgerpb.MetadataLimitExceededDetails{
 		Dimension: new(e.Dimension),
 		Limit:     new(e.Limit),
 		Actual:    new(e.Actual),
 	}}}
 }
 
-func (e *ErrCheckpointNotFound) FailureDetails() *commonpb.FailureDetails {
-	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_CheckpointNotFound{CheckpointNotFound: &commonpb.CheckpointNotFoundDetails{
+func (e *ErrCheckpointNotFound) FailureDetails() *ledgerpb.FailureDetails {
+	return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_CheckpointNotFound{CheckpointNotFound: &ledgerpb.CheckpointNotFoundDetails{
 		CheckpointId: new(e.CheckpointID),
 	}}}
 }
 
-func (e *ErrVolumeNotMaterialized) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrVolumeNotMaterialized) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
-func (e *ErrInvalidExecutionPlan) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrInvalidExecutionPlan) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }

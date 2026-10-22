@@ -5,15 +5,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/kv"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-func newTestLedgerKeyStore() *attributes.KeyStore[domain.LedgerKey, *commonpb.LedgerInfo] {
-	return attributes.NewKeyStore[domain.LedgerKey, *commonpb.LedgerInfo](
-		kv.NewShardedMap[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]](func(k attributes.U128) uint64 { return k.Hi() }),
+func newTestLedgerKeyStore() *attributes.KeyStore[domain.LedgerKey, *ledgerpb.LedgerInfo] {
+	return attributes.NewKeyStore[domain.LedgerKey, *ledgerpb.LedgerInfo](
+		kv.NewShardedMap[attributes.U128, attributes.Entry[*ledgerpb.LedgerInfo]](func(k attributes.U128) uint64 { return k.Hi() }),
 	)
 }
 
@@ -36,9 +36,9 @@ func TestRawAccessor_NormalizesTypedNilToErrNotFound(t *testing.T) {
 	// typed-nil pointer for the key. DerivedKeyStore returns (nil V,
 	// nil err) on the next Get for this key.
 	key := domain.LedgerKey{Name: "absent"}
-	store.Put(key, (*commonpb.LedgerInfo)(nil))
+	store.Put(key, (*ledgerpb.LedgerInfo)(nil))
 
-	accessor := newRawAccessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader](store)
+	accessor := newRawAccessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader](store)
 
 	reader, err := accessor.Get(key)
 	require.ErrorIs(t, err, domain.ErrNotFound,
@@ -54,9 +54,9 @@ func TestRawAccessor_HitReturnsReader(t *testing.T) {
 	store := attributes.NewDerivedKeyStore(newTestLedgerKeyStore())
 
 	key := domain.LedgerKey{Name: "live"}
-	store.Put(key, &commonpb.LedgerInfo{Name: "live", Id: 42})
+	store.Put(key, &ledgerpb.LedgerInfo{Name: "live", Id: 42})
 
-	accessor := newRawAccessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader](store)
+	accessor := newRawAccessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader](store)
 
 	reader, err := accessor.Get(key)
 	require.NoError(t, err)
@@ -73,7 +73,7 @@ func TestRawAccessor_AbsentReturnsErrNotFound(t *testing.T) {
 	t.Parallel()
 
 	store := attributes.NewDerivedKeyStore(newTestLedgerKeyStore())
-	accessor := newRawAccessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader](store)
+	accessor := newRawAccessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader](store)
 
 	reader, err := accessor.Get(domain.LedgerKey{Name: "missing"})
 	require.ErrorIs(t, err, domain.ErrNotFound)

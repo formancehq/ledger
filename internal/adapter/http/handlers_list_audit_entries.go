@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -31,7 +31,7 @@ import (
 // filterexpr grammar — the same one ledgerctl feeds to --filter — rather than
 // the REST-JSON QueryFilter codec, which deliberately rejects audit conditions
 // (their field names collide with transaction/log conditions in the JSON DSL;
-// see commonpb/query_filter.go).
+// see ledgerpb/query_filter.go).
 //
 // It is NOT a full parity of the gRPC ListOptions contract: the gRPC surface
 // additionally honors `checkpointId` for a pinned checkpoint read. This HTTP
@@ -91,7 +91,7 @@ func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) 
 // transaction/log conditions the codec already claims — EN-1241), so the codec
 // rejects them. The decoder still accepts the structured form as input; it just
 // cannot carry an audit condition, so the textual form is the canonical one for
-// this endpoint. See the handler doc above and commonpb/query_filter.go.
-func parseAuditFilter(w http.ResponseWriter, r *http.Request) (*commonpb.QueryFilter, bool) {
-	return parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+// this endpoint. See the handler doc above and ledgerpb/query_filter.go.
+func parseAuditFilter(w http.ResponseWriter, r *http.Request) (*ledgerpb.QueryFilter, bool) {
+	return parseListFilter(w, r, ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
 }

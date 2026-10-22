@@ -16,10 +16,10 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -245,7 +245,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("ed25519-auth-test-ledger", []*commonpb.Posting{
+			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("ed25519-auth-test-ledger", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())

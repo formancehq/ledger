@@ -5,7 +5,7 @@ package cluster
 import (
 	"context"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -90,9 +90,9 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 			Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 				Ledger: ledgerName,
 
-				Query: &commonpb.PreparedQuery{
+				Query: &ledgerpb.PreparedQuery{
 					Name:   "after-rotation",
-					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+					Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: actions.AddressPrefixFilter("users:"),
 				},
 			}},

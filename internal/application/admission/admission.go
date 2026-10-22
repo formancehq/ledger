@@ -18,6 +18,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
@@ -32,7 +33,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
@@ -402,7 +402,7 @@ func NewAdmission(
 
 // observeCallerSnapshot retains post-commit diagnostics as a defense-in-depth
 // check. Admission and the FSM reject malformed snapshots before this point.
-func (a *Admission) observeCallerSnapshot(ctx context.Context, snap *commonpb.CallerSnapshot) {
+func (a *Admission) observeCallerSnapshot(ctx context.Context, snap *ledgerpb.CallerSnapshot) {
 	if snap == nil || snap.GetPrincipal() == nil {
 		a.logger.Errorf("committed write has a missing caller snapshot or unset principal: audit entry will be unattributed")
 		a.missingCallerCounter.Add(ctx, 1)
@@ -412,7 +412,7 @@ func (a *Admission) observeCallerSnapshot(ctx context.Context, snap *commonpb.Ca
 
 	id := snap.GetAuthenticated().GetIdentity()
 	switch id.GetSource().(type) {
-	case *commonpb.CallerIdentity_KeyId, *commonpb.CallerIdentity_Issuer:
+	case *ledgerpb.CallerIdentity_KeyId, *ledgerpb.CallerIdentity_Issuer:
 		if id.GetSubject() == "" {
 			a.logger.Infof("committed write caller has a source but an empty subject: audit entry identifies the caller only by source")
 			a.callerSubjectEmptyCounter.Add(ctx, 1)
@@ -493,7 +493,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (*do
 
 // AdmitClusterPolicy admits the leader's internal cluster-policy reconciliation
 // without routing an internal command through the public Apply envelope.
-func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.ClusterPolicy) (*domain.ApplyResult, error) {
+func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *ledgerpb.ClusterPolicy) (*domain.ApplyResult, error) {
 	if policy == nil {
 		return nil, errors.New("cluster policy must not be nil")
 	}
@@ -537,7 +537,7 @@ func (a *Admission) buildApplyAdmissionPlan(ctx context.Context, req *servicepb.
 	}, nil
 }
 
-func (a *Admission) buildClusterPolicyAdmissionPlan(policy *commonpb.ClusterPolicy) *admissionPlan {
+func (a *Admission) buildClusterPolicyAdmissionPlan(policy *ledgerpb.ClusterPolicy) *admissionPlan {
 	return &admissionPlan{
 		buildOrders: func(context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error) {
 			order := &raftcmdpb.Order{}
@@ -721,12 +721,12 @@ func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) (
 	return orders, needs, perOrder, nil
 }
 
-func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.CallerSnapshot, admPlan *admissionPlan, orders []*raftcmdpb.Order, needs *plan.Coverage, perOrder []*plan.Coverage) (*raftcmdpb.Proposal, *plan.BuildResult, error) {
+func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *ledgerpb.CallerSnapshot, admPlan *admissionPlan, orders []*raftcmdpb.Order, needs *plan.Coverage, perOrder []*plan.Coverage) (*raftcmdpb.Proposal, *plan.BuildResult, error) {
 	// Step 3-5: Build preloads via shared Builder (no lock)
 	cmd := commands.NewCommand(orders...)
 	cmd.CallerSnapshot = caller
 	if admPlan.key != "" {
-		cmd.Idempotency = &commonpb.Idempotency{Key: admPlan.key}
+		cmd.Idempotency = &ledgerpb.Idempotency{Key: admPlan.key}
 	}
 	cmd.Signature = admPlan.sig
 
@@ -931,7 +931,7 @@ func (a *Admission) resolveAdmissionResult(ctx context.Context, cmd *raftcmdpb.P
 		a.responseResolutionDurationHistogram.Record(ctx, time.Since(responseResolutionStart).Seconds())
 	}()
 
-	logs := make([]*commonpb.Log, len(result.Logs))
+	logs := make([]*ledgerpb.Log, len(result.Logs))
 
 	// A referenced log is resolved from the permanent log history. The read
 	// needs a read handle, which the raw store is not; open one lazily, only
@@ -1395,7 +1395,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 
 		mi := payload.MirrorIngest
 
-		var postings []*commonpb.Posting
+		var postings []*ledgerpb.Posting
 		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
 			postings = ct.GetPostings()
 		} else if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
@@ -1422,21 +1422,21 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 
 		if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
 			switch target := sm.GetTarget().GetTarget().(type) {
-			case *commonpb.Target_Account:
+			case *ledgerpb.Target_Account:
 				for key := range sm.GetMetadata() {
 					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 						Key:        key,
 					}.Bytes())
 				}
-			case *commonpb.Target_TransactionId:
+			case *ledgerpb.Target_TransactionId:
 				addTransactionTargetNeeds(p, ledgerName, target.TransactionId)
 			}
 		}
 
 		if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
 			switch target := dm.GetTarget().GetTarget().(type) {
-			case *commonpb.Target_Account:
+			case *ledgerpb.Target_Account:
 				// Mirror-ingested v2 DELETE_METADATA log applies via
 				// processMirrorDeletedMetadata → AccountMetadata.Delete
 				// → KeyStore.Tombstone. Declare coverage; Tombstone
@@ -1446,7 +1446,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 					Key:        dm.GetKey(),
 				}.Bytes())
-			case *commonpb.Target_TransactionId:
+			case *ledgerpb.Target_TransactionId:
 				// Transaction metadata lives inside the TransactionState
 				// map — no strict-tombstone path, no extra coverage needed.
 				addTransactionTargetNeeds(p, ledgerName, target.TransactionId)
@@ -1554,7 +1554,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			}
 
 		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
-			if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+			if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*ledgerpb.Target_Account); ok {
 				for key := range applyData.AddMetadata.GetMetadata() {
 					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
@@ -1563,12 +1563,12 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 				}
 			}
 
-			if tx, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
+			if tx, ok := applyData.AddMetadata.GetTarget().GetTarget().(*ledgerpb.Target_TransactionId); ok {
 				addTransactionTargetNeeds(p, ledgerName, tx.TransactionId)
 			}
 
 		case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
-			if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+			if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*ledgerpb.Target_Account); ok {
 				// Account-metadata Delete's apply routes through
 				// KeyStore.Tombstone. Declare
 				// coverage (invariant #6 / #9); Tombstone lazy-
@@ -1580,7 +1580,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 				}.Bytes())
 			}
 
-			if tx, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
+			if tx, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*ledgerpb.Target_TransactionId); ok {
 				// Transaction metadata lives inside the transaction state
 				// (a TransactionState.Metadata map, not a separate cache
 				// attribute), so strict-tombstone does not apply.
@@ -1989,12 +1989,12 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 
 			// Only account-targeted metadata is observable by a later meta();
 			// transaction-targeted metadata is not.
-			if acct, isAcct := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct {
+			if acct, isAcct := applyData.AddMetadata.GetTarget().GetTarget().(*ledgerpb.Target_Account); isAcct {
 				for k, v := range applyData.AddMetadata.GetMetadata() {
 					effects.setMetadata(domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: acct.Account.GetAddr()},
 						Key:        k,
-					}, commonpb.MetadataValueToString(v))
+					}, ledgerpb.MetadataValueToString(v))
 				}
 			}
 
@@ -2006,7 +2006,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 
 			// A preceding account-metadata delete tombstones the key so a
 			// later meta() resolves absent, matching the FSM's post-delete state.
-			if acct, isAcct := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct {
+			if acct, isAcct := applyData.DeleteMetadata.GetTarget().GetTarget().(*ledgerpb.Target_Account); isAcct {
 				effects.deleteMetadata(domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: acct.Account.GetAddr()},
 					Key:        applyData.DeleteMetadata.GetKey(),
@@ -2593,7 +2593,7 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 			}
 
 			// Pass vars through; content will be resolved in resolveScriptsAndEnrichNeeds
-			script = &commonpb.Script{
+			script = &ledgerpb.Script{
 				Vars: ct.GetScriptReference().GetVars(),
 			}
 

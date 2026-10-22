@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -51,13 +51,13 @@ func TestExecute_ListPageSizeBounds(t *testing.T) {
 
 				enriched := 0
 				enricher := &query.EntityEnricher{
-					EnrichAccount: func(_ dal.PebbleReader, _ string, address string) (*commonpb.Account, error) {
+					EnrichAccount: func(_ dal.PebbleReader, _ string, address string) (*ledgerpb.Account, error) {
 						enriched++
 
-						return &commonpb.Account{Address: address}, nil
+						return &ledgerpb.Account{Address: address}, nil
 					},
 				}
-				execute := func(token string) *commonpb.PreparedQueryCursor {
+				execute := func(token string) *ledgerpb.PreparedQueryCursor {
 					t.Helper()
 					enriched = 0
 					profile := &query.QueryProfile{}
@@ -66,7 +66,7 @@ func TestExecute_ListPageSizeBounds(t *testing.T) {
 						&servicepb.ExecutePreparedQueryRequest{
 							Ledger: "l", QueryName: "q", PageSize: tc.size,
 							Cursor: token, Reverse: reverse,
-							Mode: commonpb.QueryMode_QUERY_MODE_LIST,
+							Mode: ledgerpb.QueryMode_QUERY_MODE_LIST,
 						}, profile, enricher)
 					require.NoError(t, err)
 					cursor := resp.GetCursor()
@@ -108,7 +108,7 @@ func TestExecute_ListPageSizeBounds(t *testing.T) {
 func TestExecute_AggregateIgnoresListPageSize(t *testing.T) {
 	t.Parallel()
 
-	for _, filter := range []*commonpb.QueryFilter{nil, usersPrefixFilter()} {
+	for _, filter := range []*ledgerpb.QueryFilter{nil, usersPrefixFilter()} {
 		t.Run(fmt.Sprintf("filtered=%v", filter != nil), func(t *testing.T) {
 			t.Parallel()
 
@@ -117,9 +117,9 @@ func TestExecute_AggregateIgnoresListPageSize(t *testing.T) {
 			for _, size := range []uint32{1, 1001, math.MaxUint32} {
 				resp, err := f.execute(&servicepb.ExecutePreparedQueryRequest{
 					PageSize: size,
-					Mode:     commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
-					Parameters: map[string]*commonpb.ParameterValue{
-						"prefix": {Value: &commonpb.ParameterValue_StringValue{StringValue: "account:"}},
+					Mode:     ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
+					Parameters: map[string]*ledgerpb.ParameterValue{
+						"prefix": {Value: &ledgerpb.ParameterValue_StringValue{StringValue: "account:"}},
 					},
 				})
 				require.NoError(t, err)
@@ -127,7 +127,7 @@ func TestExecute_AggregateIgnoresListPageSize(t *testing.T) {
 				volumes := resp.GetAggregate().GetVolumes()
 				require.Len(t, volumes, 1)
 				require.Equal(t, "USD/2", volumes[0].GetAsset())
-				require.Equal(t, commonpb.NewUint256FromUint64(1002), volumes[0].GetInput(), "aggregate every matching account, pageSize=%d", size)
+				require.Equal(t, ledgerpb.NewUint256FromUint64(1002), volumes[0].GetInput(), "aggregate every matching account, pageSize=%d", size)
 			}
 		})
 	}

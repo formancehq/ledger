@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -26,7 +26,7 @@ func TestHandleCreateIndex_Success(t *testing.T) {
 		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedRequest = req.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -47,7 +47,7 @@ func TestHandleCreateIndex_Success(t *testing.T) {
 	meta := ci.CreateIndex.GetId().GetMetadata()
 	require.NotNil(t, meta)
 	require.Equal(t, "color", meta.GetKey())
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, meta.GetTarget())
+	require.Equal(t, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, meta.GetTarget())
 
 	// The 201 body must carry the canonical id under the standard data envelope
 	// so REST clients can drive the follow-up GET/DELETE routes.
@@ -61,7 +61,7 @@ func TestHandleCreateIndex_ResponseIDIsCanonicalized(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -155,7 +155,7 @@ func TestHandleCreateIndex_IdempotencyKeyPropagated(t *testing.T) {
 		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedBatch = req.GetUnsigned()
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

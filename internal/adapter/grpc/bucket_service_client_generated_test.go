@@ -11,8 +11,8 @@ import (
 	context "context"
 	reflect "reflect"
 
+	ledgerpb "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	auditpb "github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	servicepb "github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	gomock "go.uber.org/mock/gomock"
 	grpc "google.golang.org/grpc"
@@ -43,14 +43,14 @@ func (m *MockBucketServiceClient) EXPECT() *MockBucketServiceClientMockRecorder 
 }
 
 // AggregateVolumes mocks base method.
-func (m *MockBucketServiceClient) AggregateVolumes(ctx context.Context, in *servicepb.AggregateVolumesRequest, opts ...grpc.CallOption) (*commonpb.AggregateResult, error) {
+func (m *MockBucketServiceClient) AggregateVolumes(ctx context.Context, in *servicepb.AggregateVolumesRequest, opts ...grpc.CallOption) (*ledgerpb.AggregateResult, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "AggregateVolumes", varargs...)
-	ret0, _ := ret[0].(*commonpb.AggregateResult)
+	ret0, _ := ret[0].(*ledgerpb.AggregateResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -69,19 +69,19 @@ type MockBucketServiceClientAggregateVolumesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientAggregateVolumesCall) Return(arg0 *commonpb.AggregateResult, arg1 error) *MockBucketServiceClientAggregateVolumesCall {
+func (c *MockBucketServiceClientAggregateVolumesCall) Return(arg0 *ledgerpb.AggregateResult, arg1 error) *MockBucketServiceClientAggregateVolumesCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientAggregateVolumesCall) Do(f func(context.Context, *servicepb.AggregateVolumesRequest, ...grpc.CallOption) (*commonpb.AggregateResult, error)) *MockBucketServiceClientAggregateVolumesCall {
+func (c *MockBucketServiceClientAggregateVolumesCall) Do(f func(context.Context, *servicepb.AggregateVolumesRequest, ...grpc.CallOption) (*ledgerpb.AggregateResult, error)) *MockBucketServiceClientAggregateVolumesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientAggregateVolumesCall) DoAndReturn(f func(context.Context, *servicepb.AggregateVolumesRequest, ...grpc.CallOption) (*commonpb.AggregateResult, error)) *MockBucketServiceClientAggregateVolumesCall {
+func (c *MockBucketServiceClientAggregateVolumesCall) DoAndReturn(f func(context.Context, *servicepb.AggregateVolumesRequest, ...grpc.CallOption) (*ledgerpb.AggregateResult, error)) *MockBucketServiceClientAggregateVolumesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -395,14 +395,14 @@ func (c *MockBucketServiceClientExecutePreparedQueryCall) DoAndReturn(f func(con
 }
 
 // GetAccount mocks base method.
-func (m *MockBucketServiceClient) GetAccount(ctx context.Context, in *servicepb.GetAccountRequest, opts ...grpc.CallOption) (*commonpb.Account, error) {
+func (m *MockBucketServiceClient) GetAccount(ctx context.Context, in *servicepb.GetAccountRequest, opts ...grpc.CallOption) (*ledgerpb.Account, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "GetAccount", varargs...)
-	ret0, _ := ret[0].(*commonpb.Account)
+	ret0, _ := ret[0].(*ledgerpb.Account)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -421,19 +421,19 @@ type MockBucketServiceClientGetAccountCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientGetAccountCall) Return(arg0 *commonpb.Account, arg1 error) *MockBucketServiceClientGetAccountCall {
+func (c *MockBucketServiceClientGetAccountCall) Return(arg0 *ledgerpb.Account, arg1 error) *MockBucketServiceClientGetAccountCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientGetAccountCall) Do(f func(context.Context, *servicepb.GetAccountRequest, ...grpc.CallOption) (*commonpb.Account, error)) *MockBucketServiceClientGetAccountCall {
+func (c *MockBucketServiceClientGetAccountCall) Do(f func(context.Context, *servicepb.GetAccountRequest, ...grpc.CallOption) (*ledgerpb.Account, error)) *MockBucketServiceClientGetAccountCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientGetAccountCall) DoAndReturn(f func(context.Context, *servicepb.GetAccountRequest, ...grpc.CallOption) (*commonpb.Account, error)) *MockBucketServiceClientGetAccountCall {
+func (c *MockBucketServiceClientGetAccountCall) DoAndReturn(f func(context.Context, *servicepb.GetAccountRequest, ...grpc.CallOption) (*ledgerpb.Account, error)) *MockBucketServiceClientGetAccountCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -527,14 +527,14 @@ func (c *MockBucketServiceClientGetEventsSinksCall) DoAndReturn(f func(context.C
 }
 
 // GetIndex mocks base method.
-func (m *MockBucketServiceClient) GetIndex(ctx context.Context, in *servicepb.GetIndexRequest, opts ...grpc.CallOption) (*commonpb.Index, error) {
+func (m *MockBucketServiceClient) GetIndex(ctx context.Context, in *servicepb.GetIndexRequest, opts ...grpc.CallOption) (*ledgerpb.Index, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "GetIndex", varargs...)
-	ret0, _ := ret[0].(*commonpb.Index)
+	ret0, _ := ret[0].(*ledgerpb.Index)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -553,19 +553,19 @@ type MockBucketServiceClientGetIndexCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientGetIndexCall) Return(arg0 *commonpb.Index, arg1 error) *MockBucketServiceClientGetIndexCall {
+func (c *MockBucketServiceClientGetIndexCall) Return(arg0 *ledgerpb.Index, arg1 error) *MockBucketServiceClientGetIndexCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientGetIndexCall) Do(f func(context.Context, *servicepb.GetIndexRequest, ...grpc.CallOption) (*commonpb.Index, error)) *MockBucketServiceClientGetIndexCall {
+func (c *MockBucketServiceClientGetIndexCall) Do(f func(context.Context, *servicepb.GetIndexRequest, ...grpc.CallOption) (*ledgerpb.Index, error)) *MockBucketServiceClientGetIndexCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientGetIndexCall) DoAndReturn(f func(context.Context, *servicepb.GetIndexRequest, ...grpc.CallOption) (*commonpb.Index, error)) *MockBucketServiceClientGetIndexCall {
+func (c *MockBucketServiceClientGetIndexCall) DoAndReturn(f func(context.Context, *servicepb.GetIndexRequest, ...grpc.CallOption) (*ledgerpb.Index, error)) *MockBucketServiceClientGetIndexCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -659,14 +659,14 @@ func (c *MockBucketServiceClientGetIndexStatusCall) DoAndReturn(f func(context.C
 }
 
 // GetLedger mocks base method.
-func (m *MockBucketServiceClient) GetLedger(ctx context.Context, in *servicepb.GetLedgerRequest, opts ...grpc.CallOption) (*commonpb.LedgerInfo, error) {
+func (m *MockBucketServiceClient) GetLedger(ctx context.Context, in *servicepb.GetLedgerRequest, opts ...grpc.CallOption) (*ledgerpb.LedgerInfo, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "GetLedger", varargs...)
-	ret0, _ := ret[0].(*commonpb.LedgerInfo)
+	ret0, _ := ret[0].(*ledgerpb.LedgerInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -685,32 +685,32 @@ type MockBucketServiceClientGetLedgerCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientGetLedgerCall) Return(arg0 *commonpb.LedgerInfo, arg1 error) *MockBucketServiceClientGetLedgerCall {
+func (c *MockBucketServiceClientGetLedgerCall) Return(arg0 *ledgerpb.LedgerInfo, arg1 error) *MockBucketServiceClientGetLedgerCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientGetLedgerCall) Do(f func(context.Context, *servicepb.GetLedgerRequest, ...grpc.CallOption) (*commonpb.LedgerInfo, error)) *MockBucketServiceClientGetLedgerCall {
+func (c *MockBucketServiceClientGetLedgerCall) Do(f func(context.Context, *servicepb.GetLedgerRequest, ...grpc.CallOption) (*ledgerpb.LedgerInfo, error)) *MockBucketServiceClientGetLedgerCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientGetLedgerCall) DoAndReturn(f func(context.Context, *servicepb.GetLedgerRequest, ...grpc.CallOption) (*commonpb.LedgerInfo, error)) *MockBucketServiceClientGetLedgerCall {
+func (c *MockBucketServiceClientGetLedgerCall) DoAndReturn(f func(context.Context, *servicepb.GetLedgerRequest, ...grpc.CallOption) (*ledgerpb.LedgerInfo, error)) *MockBucketServiceClientGetLedgerCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetLedgerStats mocks base method.
-func (m *MockBucketServiceClient) GetLedgerStats(ctx context.Context, in *servicepb.GetLedgerStatsRequest, opts ...grpc.CallOption) (*commonpb.LedgerStats, error) {
+func (m *MockBucketServiceClient) GetLedgerStats(ctx context.Context, in *servicepb.GetLedgerStatsRequest, opts ...grpc.CallOption) (*ledgerpb.LedgerStats, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "GetLedgerStats", varargs...)
-	ret0, _ := ret[0].(*commonpb.LedgerStats)
+	ret0, _ := ret[0].(*ledgerpb.LedgerStats)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -729,32 +729,32 @@ type MockBucketServiceClientGetLedgerStatsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientGetLedgerStatsCall) Return(arg0 *commonpb.LedgerStats, arg1 error) *MockBucketServiceClientGetLedgerStatsCall {
+func (c *MockBucketServiceClientGetLedgerStatsCall) Return(arg0 *ledgerpb.LedgerStats, arg1 error) *MockBucketServiceClientGetLedgerStatsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientGetLedgerStatsCall) Do(f func(context.Context, *servicepb.GetLedgerStatsRequest, ...grpc.CallOption) (*commonpb.LedgerStats, error)) *MockBucketServiceClientGetLedgerStatsCall {
+func (c *MockBucketServiceClientGetLedgerStatsCall) Do(f func(context.Context, *servicepb.GetLedgerStatsRequest, ...grpc.CallOption) (*ledgerpb.LedgerStats, error)) *MockBucketServiceClientGetLedgerStatsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientGetLedgerStatsCall) DoAndReturn(f func(context.Context, *servicepb.GetLedgerStatsRequest, ...grpc.CallOption) (*commonpb.LedgerStats, error)) *MockBucketServiceClientGetLedgerStatsCall {
+func (c *MockBucketServiceClientGetLedgerStatsCall) DoAndReturn(f func(context.Context, *servicepb.GetLedgerStatsRequest, ...grpc.CallOption) (*ledgerpb.LedgerStats, error)) *MockBucketServiceClientGetLedgerStatsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetLog mocks base method.
-func (m *MockBucketServiceClient) GetLog(ctx context.Context, in *servicepb.GetLogRequest, opts ...grpc.CallOption) (*commonpb.Log, error) {
+func (m *MockBucketServiceClient) GetLog(ctx context.Context, in *servicepb.GetLogRequest, opts ...grpc.CallOption) (*ledgerpb.Log, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "GetLog", varargs...)
-	ret0, _ := ret[0].(*commonpb.Log)
+	ret0, _ := ret[0].(*ledgerpb.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -773,19 +773,19 @@ type MockBucketServiceClientGetLogCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientGetLogCall) Return(arg0 *commonpb.Log, arg1 error) *MockBucketServiceClientGetLogCall {
+func (c *MockBucketServiceClientGetLogCall) Return(arg0 *ledgerpb.Log, arg1 error) *MockBucketServiceClientGetLogCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientGetLogCall) Do(f func(context.Context, *servicepb.GetLogRequest, ...grpc.CallOption) (*commonpb.Log, error)) *MockBucketServiceClientGetLogCall {
+func (c *MockBucketServiceClientGetLogCall) Do(f func(context.Context, *servicepb.GetLogRequest, ...grpc.CallOption) (*ledgerpb.Log, error)) *MockBucketServiceClientGetLogCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientGetLogCall) DoAndReturn(f func(context.Context, *servicepb.GetLogRequest, ...grpc.CallOption) (*commonpb.Log, error)) *MockBucketServiceClientGetLogCall {
+func (c *MockBucketServiceClientGetLogCall) DoAndReturn(f func(context.Context, *servicepb.GetLogRequest, ...grpc.CallOption) (*ledgerpb.Log, error)) *MockBucketServiceClientGetLogCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -835,14 +835,14 @@ func (c *MockBucketServiceClientGetMetadataSchemaStatusCall) DoAndReturn(f func(
 }
 
 // GetNumscript mocks base method.
-func (m *MockBucketServiceClient) GetNumscript(ctx context.Context, in *servicepb.GetNumscriptRequest, opts ...grpc.CallOption) (*commonpb.NumscriptInfo, error) {
+func (m *MockBucketServiceClient) GetNumscript(ctx context.Context, in *servicepb.GetNumscriptRequest, opts ...grpc.CallOption) (*ledgerpb.NumscriptInfo, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "GetNumscript", varargs...)
-	ret0, _ := ret[0].(*commonpb.NumscriptInfo)
+	ret0, _ := ret[0].(*ledgerpb.NumscriptInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -861,19 +861,19 @@ type MockBucketServiceClientGetNumscriptCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientGetNumscriptCall) Return(arg0 *commonpb.NumscriptInfo, arg1 error) *MockBucketServiceClientGetNumscriptCall {
+func (c *MockBucketServiceClientGetNumscriptCall) Return(arg0 *ledgerpb.NumscriptInfo, arg1 error) *MockBucketServiceClientGetNumscriptCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientGetNumscriptCall) Do(f func(context.Context, *servicepb.GetNumscriptRequest, ...grpc.CallOption) (*commonpb.NumscriptInfo, error)) *MockBucketServiceClientGetNumscriptCall {
+func (c *MockBucketServiceClientGetNumscriptCall) Do(f func(context.Context, *servicepb.GetNumscriptRequest, ...grpc.CallOption) (*ledgerpb.NumscriptInfo, error)) *MockBucketServiceClientGetNumscriptCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientGetNumscriptCall) DoAndReturn(f func(context.Context, *servicepb.GetNumscriptRequest, ...grpc.CallOption) (*commonpb.NumscriptInfo, error)) *MockBucketServiceClientGetNumscriptCall {
+func (c *MockBucketServiceClientGetNumscriptCall) DoAndReturn(f func(context.Context, *servicepb.GetNumscriptRequest, ...grpc.CallOption) (*ledgerpb.NumscriptInfo, error)) *MockBucketServiceClientGetNumscriptCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -967,14 +967,14 @@ func (c *MockBucketServiceClientGetSecondaryMetricsCall) DoAndReturn(f func(cont
 }
 
 // GetTemplateUsage mocks base method.
-func (m *MockBucketServiceClient) GetTemplateUsage(ctx context.Context, in *servicepb.GetTemplateUsageRequest, opts ...grpc.CallOption) (*commonpb.TemplateUsage, error) {
+func (m *MockBucketServiceClient) GetTemplateUsage(ctx context.Context, in *servicepb.GetTemplateUsageRequest, opts ...grpc.CallOption) (*ledgerpb.TemplateUsage, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "GetTemplateUsage", varargs...)
-	ret0, _ := ret[0].(*commonpb.TemplateUsage)
+	ret0, _ := ret[0].(*ledgerpb.TemplateUsage)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -993,19 +993,19 @@ type MockBucketServiceClientGetTemplateUsageCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientGetTemplateUsageCall) Return(arg0 *commonpb.TemplateUsage, arg1 error) *MockBucketServiceClientGetTemplateUsageCall {
+func (c *MockBucketServiceClientGetTemplateUsageCall) Return(arg0 *ledgerpb.TemplateUsage, arg1 error) *MockBucketServiceClientGetTemplateUsageCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientGetTemplateUsageCall) Do(f func(context.Context, *servicepb.GetTemplateUsageRequest, ...grpc.CallOption) (*commonpb.TemplateUsage, error)) *MockBucketServiceClientGetTemplateUsageCall {
+func (c *MockBucketServiceClientGetTemplateUsageCall) Do(f func(context.Context, *servicepb.GetTemplateUsageRequest, ...grpc.CallOption) (*ledgerpb.TemplateUsage, error)) *MockBucketServiceClientGetTemplateUsageCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientGetTemplateUsageCall) DoAndReturn(f func(context.Context, *servicepb.GetTemplateUsageRequest, ...grpc.CallOption) (*commonpb.TemplateUsage, error)) *MockBucketServiceClientGetTemplateUsageCall {
+func (c *MockBucketServiceClientGetTemplateUsageCall) DoAndReturn(f func(context.Context, *servicepb.GetTemplateUsageRequest, ...grpc.CallOption) (*ledgerpb.TemplateUsage, error)) *MockBucketServiceClientGetTemplateUsageCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1099,14 +1099,14 @@ func (c *MockBucketServiceClientInspectIndexCall) DoAndReturn(f func(context.Con
 }
 
 // ListAccounts mocks base method.
-func (m *MockBucketServiceClient) ListAccounts(ctx context.Context, in *servicepb.ListAccountsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Account], error) {
+func (m *MockBucketServiceClient) ListAccounts(ctx context.Context, in *servicepb.ListAccountsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Account], error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "ListAccounts", varargs...)
-	ret0, _ := ret[0].(grpc.ServerStreamingClient[commonpb.Account])
+	ret0, _ := ret[0].(grpc.ServerStreamingClient[ledgerpb.Account])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1125,19 +1125,19 @@ type MockBucketServiceClientListAccountsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientListAccountsCall) Return(arg0 grpc.ServerStreamingClient[commonpb.Account], arg1 error) *MockBucketServiceClientListAccountsCall {
+func (c *MockBucketServiceClientListAccountsCall) Return(arg0 grpc.ServerStreamingClient[ledgerpb.Account], arg1 error) *MockBucketServiceClientListAccountsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientListAccountsCall) Do(f func(context.Context, *servicepb.ListAccountsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Account], error)) *MockBucketServiceClientListAccountsCall {
+func (c *MockBucketServiceClientListAccountsCall) Do(f func(context.Context, *servicepb.ListAccountsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Account], error)) *MockBucketServiceClientListAccountsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientListAccountsCall) DoAndReturn(f func(context.Context, *servicepb.ListAccountsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Account], error)) *MockBucketServiceClientListAccountsCall {
+func (c *MockBucketServiceClientListAccountsCall) DoAndReturn(f func(context.Context, *servicepb.ListAccountsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Account], error)) *MockBucketServiceClientListAccountsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1187,14 +1187,14 @@ func (c *MockBucketServiceClientListAuditEntriesCall) DoAndReturn(f func(context
 }
 
 // ListIndexes mocks base method.
-func (m *MockBucketServiceClient) ListIndexes(ctx context.Context, in *servicepb.ListIndexesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Index], error) {
+func (m *MockBucketServiceClient) ListIndexes(ctx context.Context, in *servicepb.ListIndexesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Index], error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "ListIndexes", varargs...)
-	ret0, _ := ret[0].(grpc.ServerStreamingClient[commonpb.Index])
+	ret0, _ := ret[0].(grpc.ServerStreamingClient[ledgerpb.Index])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1213,32 +1213,32 @@ type MockBucketServiceClientListIndexesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientListIndexesCall) Return(arg0 grpc.ServerStreamingClient[commonpb.Index], arg1 error) *MockBucketServiceClientListIndexesCall {
+func (c *MockBucketServiceClientListIndexesCall) Return(arg0 grpc.ServerStreamingClient[ledgerpb.Index], arg1 error) *MockBucketServiceClientListIndexesCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientListIndexesCall) Do(f func(context.Context, *servicepb.ListIndexesRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Index], error)) *MockBucketServiceClientListIndexesCall {
+func (c *MockBucketServiceClientListIndexesCall) Do(f func(context.Context, *servicepb.ListIndexesRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Index], error)) *MockBucketServiceClientListIndexesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientListIndexesCall) DoAndReturn(f func(context.Context, *servicepb.ListIndexesRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Index], error)) *MockBucketServiceClientListIndexesCall {
+func (c *MockBucketServiceClientListIndexesCall) DoAndReturn(f func(context.Context, *servicepb.ListIndexesRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Index], error)) *MockBucketServiceClientListIndexesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListLedgers mocks base method.
-func (m *MockBucketServiceClient) ListLedgers(ctx context.Context, in *servicepb.ListLedgersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error) {
+func (m *MockBucketServiceClient) ListLedgers(ctx context.Context, in *servicepb.ListLedgersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.LedgerInfo], error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "ListLedgers", varargs...)
-	ret0, _ := ret[0].(grpc.ServerStreamingClient[commonpb.LedgerInfo])
+	ret0, _ := ret[0].(grpc.ServerStreamingClient[ledgerpb.LedgerInfo])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1257,32 +1257,32 @@ type MockBucketServiceClientListLedgersCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientListLedgersCall) Return(arg0 grpc.ServerStreamingClient[commonpb.LedgerInfo], arg1 error) *MockBucketServiceClientListLedgersCall {
+func (c *MockBucketServiceClientListLedgersCall) Return(arg0 grpc.ServerStreamingClient[ledgerpb.LedgerInfo], arg1 error) *MockBucketServiceClientListLedgersCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientListLedgersCall) Do(f func(context.Context, *servicepb.ListLedgersRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error)) *MockBucketServiceClientListLedgersCall {
+func (c *MockBucketServiceClientListLedgersCall) Do(f func(context.Context, *servicepb.ListLedgersRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.LedgerInfo], error)) *MockBucketServiceClientListLedgersCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientListLedgersCall) DoAndReturn(f func(context.Context, *servicepb.ListLedgersRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error)) *MockBucketServiceClientListLedgersCall {
+func (c *MockBucketServiceClientListLedgersCall) DoAndReturn(f func(context.Context, *servicepb.ListLedgersRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.LedgerInfo], error)) *MockBucketServiceClientListLedgersCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListLogs mocks base method.
-func (m *MockBucketServiceClient) ListLogs(ctx context.Context, in *servicepb.ListLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error) {
+func (m *MockBucketServiceClient) ListLogs(ctx context.Context, in *servicepb.ListLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Log], error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "ListLogs", varargs...)
-	ret0, _ := ret[0].(grpc.ServerStreamingClient[commonpb.Log])
+	ret0, _ := ret[0].(grpc.ServerStreamingClient[ledgerpb.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1301,19 +1301,19 @@ type MockBucketServiceClientListLogsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientListLogsCall) Return(arg0 grpc.ServerStreamingClient[commonpb.Log], arg1 error) *MockBucketServiceClientListLogsCall {
+func (c *MockBucketServiceClientListLogsCall) Return(arg0 grpc.ServerStreamingClient[ledgerpb.Log], arg1 error) *MockBucketServiceClientListLogsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientListLogsCall) Do(f func(context.Context, *servicepb.ListLogsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error)) *MockBucketServiceClientListLogsCall {
+func (c *MockBucketServiceClientListLogsCall) Do(f func(context.Context, *servicepb.ListLogsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Log], error)) *MockBucketServiceClientListLogsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientListLogsCall) DoAndReturn(f func(context.Context, *servicepb.ListLogsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error)) *MockBucketServiceClientListLogsCall {
+func (c *MockBucketServiceClientListLogsCall) DoAndReturn(f func(context.Context, *servicepb.ListLogsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Log], error)) *MockBucketServiceClientListLogsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1363,14 +1363,14 @@ func (c *MockBucketServiceClientListNumscriptVersionsCall) DoAndReturn(f func(co
 }
 
 // ListNumscripts mocks base method.
-func (m *MockBucketServiceClient) ListNumscripts(ctx context.Context, in *servicepb.ListNumscriptsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.NumscriptInfo], error) {
+func (m *MockBucketServiceClient) ListNumscripts(ctx context.Context, in *servicepb.ListNumscriptsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.NumscriptInfo], error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "ListNumscripts", varargs...)
-	ret0, _ := ret[0].(grpc.ServerStreamingClient[commonpb.NumscriptInfo])
+	ret0, _ := ret[0].(grpc.ServerStreamingClient[ledgerpb.NumscriptInfo])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1389,19 +1389,19 @@ type MockBucketServiceClientListNumscriptsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientListNumscriptsCall) Return(arg0 grpc.ServerStreamingClient[commonpb.NumscriptInfo], arg1 error) *MockBucketServiceClientListNumscriptsCall {
+func (c *MockBucketServiceClientListNumscriptsCall) Return(arg0 grpc.ServerStreamingClient[ledgerpb.NumscriptInfo], arg1 error) *MockBucketServiceClientListNumscriptsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientListNumscriptsCall) Do(f func(context.Context, *servicepb.ListNumscriptsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.NumscriptInfo], error)) *MockBucketServiceClientListNumscriptsCall {
+func (c *MockBucketServiceClientListNumscriptsCall) Do(f func(context.Context, *servicepb.ListNumscriptsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.NumscriptInfo], error)) *MockBucketServiceClientListNumscriptsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientListNumscriptsCall) DoAndReturn(f func(context.Context, *servicepb.ListNumscriptsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.NumscriptInfo], error)) *MockBucketServiceClientListNumscriptsCall {
+func (c *MockBucketServiceClientListNumscriptsCall) DoAndReturn(f func(context.Context, *servicepb.ListNumscriptsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.NumscriptInfo], error)) *MockBucketServiceClientListNumscriptsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1451,14 +1451,14 @@ func (c *MockBucketServiceClientListPreparedQueriesCall) DoAndReturn(f func(cont
 }
 
 // ListSigningKeys mocks base method.
-func (m *MockBucketServiceClient) ListSigningKeys(ctx context.Context, in *servicepb.ListSigningKeysRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.SigningKey], error) {
+func (m *MockBucketServiceClient) ListSigningKeys(ctx context.Context, in *servicepb.ListSigningKeysRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.SigningKey], error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "ListSigningKeys", varargs...)
-	ret0, _ := ret[0].(grpc.ServerStreamingClient[commonpb.SigningKey])
+	ret0, _ := ret[0].(grpc.ServerStreamingClient[ledgerpb.SigningKey])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1477,32 +1477,32 @@ type MockBucketServiceClientListSigningKeysCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientListSigningKeysCall) Return(arg0 grpc.ServerStreamingClient[commonpb.SigningKey], arg1 error) *MockBucketServiceClientListSigningKeysCall {
+func (c *MockBucketServiceClientListSigningKeysCall) Return(arg0 grpc.ServerStreamingClient[ledgerpb.SigningKey], arg1 error) *MockBucketServiceClientListSigningKeysCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientListSigningKeysCall) Do(f func(context.Context, *servicepb.ListSigningKeysRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.SigningKey], error)) *MockBucketServiceClientListSigningKeysCall {
+func (c *MockBucketServiceClientListSigningKeysCall) Do(f func(context.Context, *servicepb.ListSigningKeysRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.SigningKey], error)) *MockBucketServiceClientListSigningKeysCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientListSigningKeysCall) DoAndReturn(f func(context.Context, *servicepb.ListSigningKeysRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.SigningKey], error)) *MockBucketServiceClientListSigningKeysCall {
+func (c *MockBucketServiceClientListSigningKeysCall) DoAndReturn(f func(context.Context, *servicepb.ListSigningKeysRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.SigningKey], error)) *MockBucketServiceClientListSigningKeysCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListTransactions mocks base method.
-func (m *MockBucketServiceClient) ListTransactions(ctx context.Context, in *servicepb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error) {
+func (m *MockBucketServiceClient) ListTransactions(ctx context.Context, in *servicepb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Transaction], error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "ListTransactions", varargs...)
-	ret0, _ := ret[0].(grpc.ServerStreamingClient[commonpb.Transaction])
+	ret0, _ := ret[0].(grpc.ServerStreamingClient[ledgerpb.Transaction])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1521,19 +1521,19 @@ type MockBucketServiceClientListTransactionsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientListTransactionsCall) Return(arg0 grpc.ServerStreamingClient[commonpb.Transaction], arg1 error) *MockBucketServiceClientListTransactionsCall {
+func (c *MockBucketServiceClientListTransactionsCall) Return(arg0 grpc.ServerStreamingClient[ledgerpb.Transaction], arg1 error) *MockBucketServiceClientListTransactionsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientListTransactionsCall) Do(f func(context.Context, *servicepb.ListTransactionsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error)) *MockBucketServiceClientListTransactionsCall {
+func (c *MockBucketServiceClientListTransactionsCall) Do(f func(context.Context, *servicepb.ListTransactionsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Transaction], error)) *MockBucketServiceClientListTransactionsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientListTransactionsCall) DoAndReturn(f func(context.Context, *servicepb.ListTransactionsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error)) *MockBucketServiceClientListTransactionsCall {
+func (c *MockBucketServiceClientListTransactionsCall) DoAndReturn(f func(context.Context, *servicepb.ListTransactionsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Transaction], error)) *MockBucketServiceClientListTransactionsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

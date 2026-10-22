@@ -9,20 +9,20 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-func u256(v uint64) *commonpb.Uint256 { return commonpb.NewUint256(uint256.NewInt(v)) }
+func u256(v uint64) *ledgerpb.Uint256 { return ledgerpb.NewUint256(uint256.NewInt(v)) }
 
-func aggVolume(asset string, in, out uint64) *commonpb.AggregatedVolume {
-	return &commonpb.AggregatedVolume{Asset: asset, Input: u256(in), Output: u256(out)}
+func aggVolume(asset string, in, out uint64) *ledgerpb.AggregatedVolume {
+	return &ledgerpb.AggregatedVolume{Asset: asset, Input: u256(in), Output: u256(out)}
 }
 
-func aggResult(vols ...*commonpb.AggregatedVolume) *commonpb.AggregateResult {
-	return &commonpb.AggregateResult{Volumes: vols}
+func aggResult(vols ...*ledgerpb.AggregatedVolume) *ledgerpb.AggregateResult {
+	return &ledgerpb.AggregateResult{Volumes: vols}
 }
 
 // TestModelAggregateFoldsMatchedAccountsOnly pins the aggregate prediction: the
@@ -78,19 +78,19 @@ func TestAggregateMatchesRejectsDivergence(t *testing.T) {
 
 	for _, tc := range []struct {
 		name string
-		agg  *commonpb.AggregateResult
+		agg  *ledgerpb.AggregateResult
 	}{
 		{"missing bucket", aggResult(aggVolume("USD/2", 5, 0))},
 		{"extra zero bucket", aggResult(aggVolume("USD/2", 5, 0), aggVolume("EUR/2", 3, 0), aggVolume("GBP/2", 0, 0))},
 		{"wrong input", aggResult(aggVolume("USD/2", 6, 0), aggVolume("EUR/2", 3, 0))},
 		{"wrong output", aggResult(aggVolume("USD/2", 5, 1), aggVolume("EUR/2", 3, 0))},
-		{"unexpected group", &commonpb.AggregateResult{
+		{"unexpected group", &ledgerpb.AggregateResult{
 			Volumes: exact.GetVolumes(),
-			Groups:  []*commonpb.GroupedAggregateResult{{}},
+			Groups:  []*ledgerpb.GroupedAggregateResult{{}},
 		}},
 		{"colored bucket the workload never produces", aggResult(
 			aggVolume("USD/2", 5, 0),
-			&commonpb.AggregatedVolume{Asset: "EUR/2", Color: "red", Input: u256(3), Output: u256(0)},
+			&ledgerpb.AggregatedVolume{Asset: "EUR/2", Color: "red", Input: u256(3), Output: u256(0)},
 		)},
 		{"empty result", aggResult()},
 	} {
@@ -116,8 +116,8 @@ func TestAggregateMatchesRejectsDuplicateBucket(t *testing.T) {
 func TestAggregateTargetRejectionUsesCandidateDefinition(t *testing.T) {
 	t.Parallel()
 
-	gs := buildGlobal(t, createPreparedQueryReq("L", &commonpb.PreparedQuery{
-		Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+	gs := buildGlobal(t, createPreparedQueryReq("L", &ledgerpb.PreparedQuery{
+		Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 	}))
 	call := preparedCall{ledger: "L", name: "q", errKind: pqErrAggregateTarget}
 
@@ -142,8 +142,8 @@ func TestPreparedLedgerOutcomeFollowsLifecycle(t *testing.T) {
 
 	live := buildGlobal(t, &servicepb.Request{Type: &servicepb.Request_CreateLedger{
 		CreateLedger: &servicepb.CreateLedgerRequest{Name: "L"},
-	}}, createPreparedQueryReq("L", &commonpb.PreparedQuery{
-		Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+	}}, createPreparedQueryReq("L", &ledgerpb.PreparedQuery{
+		Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 	}))
 	call := preparedCall{ledger: "L", errKind: pqErrLedgerNotFound}
 	handled, legal := preparedLedgerOutcomeLegal(live, call)
@@ -186,7 +186,7 @@ func TestAggregateRecreationValidatesAccountsCandidateResult(t *testing.T) {
 
 	gs := buildGlobal(t,
 		oracletest.TxReq("world", "keep:1", "USD/2", 5),
-		createPreparedQueryReq("L", &commonpb.PreparedQuery{Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS}),
+		createPreparedQueryReq("L", &ledgerpb.PreparedQuery{Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS}),
 	)
 	call := preparedCall{ledger: "L", name: "q"}
 
@@ -203,8 +203,8 @@ func TestAggregateRecreationValidatesAccountsCandidateResult(t *testing.T) {
 func TestListRejectsAggregateTargetErrorForEmptyWindow(t *testing.T) {
 	t.Parallel()
 
-	gs := buildGlobal(t, createPreparedQueryReq("L", &commonpb.PreparedQuery{
-		Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+	gs := buildGlobal(t, createPreparedQueryReq("L", &ledgerpb.PreparedQuery{
+		Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		Filter: filterAddrPrefix("missing:"),
 	}))
 	call := preparedCall{ledger: "L", name: "q", pageSize: 10, errKind: pqErrAggregateTarget}
@@ -216,12 +216,12 @@ func TestPreparedOutcomesRejectWrongResponseArm(t *testing.T) {
 	t.Parallel()
 
 	gs := buildGlobal(t,
-		createPreparedQueryReq("L", &commonpb.PreparedQuery{
-			Name: "list", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		createPreparedQueryReq("L", &ledgerpb.PreparedQuery{
+			Name: "list", Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			Filter: filterAddrPrefix("missing:"),
 		}),
-		createPreparedQueryReq("L", &commonpb.PreparedQuery{
-			Name: "aggregate", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		createPreparedQueryReq("L", &ledgerpb.PreparedQuery{
+			Name: "aggregate", Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			Filter: filterAddrPrefix("missing:"),
 		}),
 	)
@@ -242,8 +242,8 @@ func TestPreparedPaginationPreservesRawCursorOrderingAcrossTargets(t *testing.T)
 	call := preparedCall{ledger: "L", pageSize: 10}
 
 	require.True(t, preparedWindowMatches(ls, call,
-		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, []byte("acc:1"),
-		&commonpb.PreparedQueryCursor{}),
+		ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, []byte("acc:1"),
+		&ledgerpb.PreparedQueryCursor{}),
 		"transaction keys sort before an account-address cursor")
 
 	require.Equal(t, []string{"acc:1", "acc:2", "world"},
@@ -259,15 +259,15 @@ func TestPreparedTransactionContinuationMustMatchRemainingRows(t *testing.T) {
 		oracletest.TxReq("world", "acc:2", "USD/2", 1),
 	)
 	call := preparedCall{ledger: "L", pageSize: 1}
-	first := []*commonpb.Transaction{serverTxFromRec(ls.Txs().Get(0))}
+	first := []*ledgerpb.Transaction{serverTxFromRec(ls.Txs().Get(0))}
 
 	require.False(t, preparedWindowMatches(ls, call,
-		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, nil,
-		&commonpb.PreparedQueryCursor{TransactionData: first}),
+		ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, nil,
+		&ledgerpb.PreparedQueryCursor{TransactionData: first}),
 		"clearing has_more must not hide known remaining transactions")
 	require.False(t, preparedWindowMatches(ls, call,
-		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, nil,
-		&commonpb.PreparedQueryCursor{TransactionData: first, HasMore: true}),
+		ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, nil,
+		&ledgerpb.PreparedQueryCursor{TransactionData: first, HasMore: true}),
 		"has_more requires a continuation cursor")
 }
 
@@ -277,46 +277,46 @@ func TestRegistryMatches(t *testing.T) {
 	t.Parallel()
 
 	res := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*servicepb.Request{
-		createPreparedQueryReq("L", &commonpb.PreparedQuery{
-			Name: "a", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, Filter: filterAddrPrefix("x:"),
+		createPreparedQueryReq("L", &ledgerpb.PreparedQuery{
+			Name: "a", Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, Filter: filterAddrPrefix("x:"),
 		}),
 	}})
 	require.True(t, res.OK, res.Reason)
 
 	second := res.State.Apply(oracle.Bulk{Requests: []*servicepb.Request{
-		createPreparedQueryReq("L", &commonpb.PreparedQuery{
-			Name: "b", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: filterReference("r"),
+		createPreparedQueryReq("L", &ledgerpb.PreparedQuery{
+			Name: "b", Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: filterReference("r"),
 		}),
 	}})
 	require.True(t, second.OK, second.Reason)
 
 	ls := second.State.Ledger("L")
 
-	served := []*commonpb.PreparedQuery{
-		{Name: "b", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: filterReference("r")},
-		{Name: "a", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, Filter: filterAddrPrefix("x:")},
+	served := []*ledgerpb.PreparedQuery{
+		{Name: "b", Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: filterReference("r")},
+		{Name: "a", Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, Filter: filterAddrPrefix("x:")},
 	}
 	require.True(t, registryMatches(ls, served))
 
 	for _, tc := range []struct {
 		name   string
-		served []*commonpb.PreparedQuery
+		served []*ledgerpb.PreparedQuery
 	}{
 		{"missing entry", served[:1]},
-		{"duplicate hides missing entry", []*commonpb.PreparedQuery{served[1], served[1].CloneVT()}},
-		{"extra entry", append(append([]*commonpb.PreparedQuery{}, served...),
-			&commonpb.PreparedQuery{Name: "c", Filter: filterAddrPrefix("y:")})},
-		{"stale filter", []*commonpb.PreparedQuery{
+		{"duplicate hides missing entry", []*ledgerpb.PreparedQuery{served[1], served[1].CloneVT()}},
+		{"extra entry", append(append([]*ledgerpb.PreparedQuery{}, served...),
+			&ledgerpb.PreparedQuery{Name: "c", Filter: filterAddrPrefix("y:")})},
+		{"stale filter", []*ledgerpb.PreparedQuery{
 			served[0],
-			{Name: "a", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, Filter: filterAddrPrefix("stale:")},
+			{Name: "a", Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, Filter: filterAddrPrefix("stale:")},
 		}},
-		{"wrong target", []*commonpb.PreparedQuery{
+		{"wrong target", []*ledgerpb.PreparedQuery{
 			served[0],
-			{Name: "a", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filterAddrPrefix("x:")},
+			{Name: "a", Target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filterAddrPrefix("x:")},
 		}},
-		{"renamed entry", []*commonpb.PreparedQuery{
+		{"renamed entry", []*ledgerpb.PreparedQuery{
 			served[0],
-			{Name: "z", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, Filter: filterAddrPrefix("x:")},
+			{Name: "z", Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, Filter: filterAddrPrefix("x:")},
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -331,15 +331,15 @@ func TestPreparedLogsUseActiveDateIndex(t *testing.T) {
 	t.Parallel()
 
 	filter := filterLogDateLeaf()
-	gs := buildGlobal(t, oracletest.CreateIndexReq(logDateIndexID()), createPreparedQueryReq("L", &commonpb.PreparedQuery{
-		Name: "dates", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
+	gs := buildGlobal(t, oracletest.CreateIndexReq(logDateIndexID()), createPreparedQueryReq("L", &ledgerpb.PreparedQuery{
+		Name: "dates", Target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
 	}))
 	gs.SetIndexActive("L", logDateIndexCanonical)
 
 	call := preparedCall{ledger: "L", name: "dates", pageSize: 10}
 
-	require.True(t, preparedListOutcomeLegal(gs.Ledger("L"), call, nil, &commonpb.PreparedQueryCursor{}))
-	require.Equal(t, neededLogIndexes(filter), preparedNeededIndexes(filter, commonpb.QueryTarget_QUERY_TARGET_LOGS))
+	require.True(t, preparedListOutcomeLegal(gs.Ledger("L"), call, nil, &ledgerpb.PreparedQueryCursor{}))
+	require.Equal(t, neededLogIndexes(filter), preparedNeededIndexes(filter, ledgerpb.QueryTarget_QUERY_TARGET_LOGS))
 
 	call.errKind = pqErrIndex
 
@@ -371,7 +371,7 @@ func TestPreparedLogPageUnknownDatesAndHasMore(t *testing.T) {
 	require.False(t, preparedLogWindowMatches(ls, call, filter, nil, nil, true), "hasMore requires a full page")
 	require.False(t, preparedLogWindowMatches(ls, call, filter, nil, servedRows(ls, "L", 999), false))
 
-	gs.LearnLogDate("L", second, &commonpb.Timestamp{Data: 5})
+	gs.LearnLogDate("L", second, &ledgerpb.Timestamp{Data: 5})
 	ls = gs.Ledger("L")
 
 	require.False(t, preparedLogWindowMatches(ls, call, filter, nil, page, false), "a required suffix cannot be omitted")
@@ -389,14 +389,14 @@ func TestPreparedLogPageRejectsMissingAndInventedRows(t *testing.T) {
 
 	call := preparedCall{ledger: "L", pageSize: 10}
 
-	require.False(t, preparedLogPageMatches(ls, call, nil, nil, &commonpb.PreparedQueryCursor{}))
+	require.False(t, preparedLogPageMatches(ls, call, nil, nil, &ledgerpb.PreparedQueryCursor{}))
 
-	invented := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
-		LedgerName: "L", Log: &commonpb.LedgerLog{Id: 999},
+	invented := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
+		LedgerName: "L", Log: &ledgerpb.LedgerLog{Id: 999},
 	}}}}
 
-	require.False(t, preparedLogPageMatches(ls, call, nil, nil, &commonpb.PreparedQueryCursor{LogData: []*commonpb.Log{invented}}))
-	require.True(t, preparedLogPageMatches(ls, call, nil, uint64EntityKey(ls.LogRows()[0].ID), &commonpb.PreparedQueryCursor{}))
+	require.False(t, preparedLogPageMatches(ls, call, nil, nil, &ledgerpb.PreparedQueryCursor{LogData: []*ledgerpb.Log{invented}}))
+	require.True(t, preparedLogPageMatches(ls, call, nil, uint64EntityKey(ls.LogRows()[0].ID), &ledgerpb.PreparedQueryCursor{}))
 }
 
 func TestPreparedReverseWindowsDescend(t *testing.T) {
@@ -429,13 +429,13 @@ func TestPreparedReverseWindowsDescend(t *testing.T) {
 	first := serverTxFromRec(ls.Txs().Get(0))
 	second := serverTxFromRec(ls.Txs().Get(1))
 	call := preparedCall{ledger: "L", pageSize: 1, reverse: true}
-	txPage := func(after []byte, tx *commonpb.Transaction, hasMore bool) bool {
-		cur := &commonpb.PreparedQueryCursor{TransactionData: []*commonpb.Transaction{tx}, HasMore: hasMore}
+	txPage := func(after []byte, tx *ledgerpb.Transaction, hasMore bool) bool {
+		cur := &ledgerpb.PreparedQueryCursor{TransactionData: []*ledgerpb.Transaction{tx}, HasMore: hasMore}
 		if hasMore {
 			cur.Next = "next"
 		}
 
-		return preparedWindowMatches(ls, call, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, after, cur)
+		return preparedWindowMatches(ls, call, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, after, cur)
 	}
 
 	require.True(t, txPage(nil, second, true), "a reverse first page starts at the newest transaction")
@@ -452,12 +452,12 @@ func TestPreparedCursorResumesInEitherDirection(t *testing.T) {
 		oracletest.TxReq("world", "acc:2", "USD/2", 1),
 		oracletest.TxReq("world", "acc:3", "USD/2", 1),
 	)
-	tx := func(i int) *commonpb.Transaction { return serverTxFromRec(ls.Txs().Get(i)) }
-	page := func(reverse bool, after *commonpb.Transaction, txs ...*commonpb.Transaction) bool {
+	tx := func(i int) *ledgerpb.Transaction { return serverTxFromRec(ls.Txs().Get(i)) }
+	page := func(reverse bool, after *ledgerpb.Transaction, txs ...*ledgerpb.Transaction) bool {
 		call := preparedCall{ledger: "L", pageSize: 10, reverse: reverse}
-		cur := &commonpb.PreparedQueryCursor{TransactionData: txs}
+		cur := &ledgerpb.PreparedQueryCursor{TransactionData: txs}
 
-		return preparedWindowMatches(ls, call, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, uint64EntityKey(after.GetId()), cur)
+		return preparedWindowMatches(ls, call, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, uint64EntityKey(after.GetId()), cur)
 	}
 
 	require.True(t, page(true, tx(1), tx(0)), "a forward cursor resumed in reverse runs back below its row")

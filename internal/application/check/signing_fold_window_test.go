@@ -8,11 +8,11 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -47,9 +47,9 @@ func writeSigningAuditEntry(
 
 	entry := &auditpb.AuditEntry{
 		Sequence:       seq,
-		Timestamp:      &commonpb.Timestamp{Data: 1700000000 + seq},
+		Timestamp:      &ledgerpb.Timestamp{Data: 1700000000 + seq},
 		OrderCount:     uint32(len(items)),
-		HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		HashVersion:    uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		CallerSnapshot: testCallerSnapshot(),
 		Outcome: &auditpb.AuditEntry_Success{
 			Success: &auditpb.AuditSuccess{MinLogSequence: minLog, MaxLogSequence: maxLog},
@@ -66,7 +66,7 @@ func writeSigningAuditEntry(
 		hashSlices = append(hashSlices, state.BuildPerItemPayload(item))
 	}
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
+	gen := processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 	_, entry.Hash = gen.Compute(nil, prevHash, hashSlices)
 
 	rewriteAuditEntry(t, store, entry, items)

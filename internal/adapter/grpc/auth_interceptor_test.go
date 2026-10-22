@@ -26,6 +26,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	admissionapp "github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -37,7 +38,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -77,10 +77,10 @@ func (s *authInterceptorBucketServer) ListIndexes(*servicepb.ListIndexesRequest,
 	return nil
 }
 
-func (s *authInterceptorBucketServer) GetLog(context.Context, *servicepb.GetLogRequest) (*commonpb.Log, error) {
+func (s *authInterceptorBucketServer) GetLog(context.Context, *servicepb.GetLogRequest) (*ledgerpb.Log, error) {
 	s.getLogCalls.Add(1)
 
-	return &commonpb.Log{}, nil
+	return &ledgerpb.Log{}, nil
 }
 
 func (s *authInterceptorBucketServer) ListLogs(*servicepb.ListLogsRequest, servicepb.BucketService_ListLogsServer) error {
@@ -473,7 +473,7 @@ func TestApplyDynamicAuthorizationPreservesSignedPayloadPrecedence(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			authorizedCtx, err := authorizeDynamicUnaryRPC(ctx, test.request, commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_APPLY)
+			authorizedCtx, err := authorizeDynamicUnaryRPC(ctx, test.request, ledgerpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_APPLY)
 			require.Equal(t, test.wantCode, status.Code(err))
 			if test.name == "authorized request" {
 				require.Equal(t, 1, authorizedCtx.Value(applyBatchSizeKey{}))
@@ -562,9 +562,9 @@ func TestAuthScopeMapsEveryDeclaredScope(t *testing.T) {
 	t.Parallel()
 
 	mapped := map[internalauth.Scope]struct{}{}
-	for number, name := range commonpb.AuthScope_name {
-		scope := commonpb.AuthScope(number)
-		if scope == commonpb.AuthScope_AUTH_SCOPE_UNSPECIFIED {
+	for number, name := range ledgerpb.AuthScope_name {
+		scope := ledgerpb.AuthScope(number)
+		if scope == ledgerpb.AuthScope_AUTH_SCOPE_UNSPECIFIED {
 			continue
 		}
 
@@ -574,7 +574,7 @@ func TestAuthScopeMapsEveryDeclaredScope(t *testing.T) {
 	}
 
 	require.Equal(t, internalauth.AllGranularScopes, mapped)
-	_, err := authScope(commonpb.AuthScope(999))
+	_, err := authScope(ledgerpb.AuthScope(999))
 	require.Equal(t, codes.Internal, status.Code(err))
 }
 

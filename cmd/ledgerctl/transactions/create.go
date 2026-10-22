@@ -16,8 +16,8 @@ import (
 
 	"github.com/formancehq/numscript"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -129,8 +129,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	}
 
 	var (
-		postings []*commonpb.Posting
-		script   *commonpb.Script
+		postings []*ledgerpb.Posting
+		script   *ledgerpb.Script
 	)
 
 	switch {
@@ -212,7 +212,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			}
 		}
 
-		script = &commonpb.Script{
+		script = &ledgerpb.Script{
 			Plain: string(scriptContent),
 			Vars:  vars,
 		}
@@ -300,7 +300,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 				}
 			}
 
-			script = &commonpb.Script{
+			script = &ledgerpb.Script{
 				Plain: string(scriptContent),
 				Vars:  vars,
 			}
@@ -368,7 +368,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 								Postings:  postings,
 								Script:    script,
 								Reference: reference,
-								Metadata:  commonpb.MetadataFromGoMap(metadata),
+								Metadata:  ledgerpb.MetadataFromGoMap(metadata),
 								Force:     force,
 							},
 						},
@@ -500,7 +500,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		for key, value := range tx.GetMetadata() {
 			metadataTable = append(metadataTable, []string{
 				key,
-				commonpb.MetadataValueToString(value),
+				ledgerpb.MetadataValueToString(value),
 			})
 		}
 
@@ -526,7 +526,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 //   - "source,destination,amount,asset,color"      (colored,   5 fields)
 //
 // The color field is optional. An empty fifth field is treated as no color.
-func parsePosting(s string) (*commonpb.Posting, error) {
+func parsePosting(s string) (*ledgerpb.Posting, error) {
 	parts := strings.Split(s, ",")
 	if len(parts) != 4 && len(parts) != 5 {
 		return nil, errors.New("expected format: source,destination,amount,asset[,color]")
@@ -550,7 +550,7 @@ func parsePosting(s string) (*commonpb.Posting, error) {
 		return nil, fmt.Errorf("invalid amount: %s", amountStr)
 	}
 
-	return commonpb.NewColoredPosting(source, destination, asset, color, amount), nil
+	return ledgerpb.NewColoredPosting(source, destination, asset, color, amount), nil
 }
 
 // promptVariable prompts the user for a Numscript variable value based on its type.
@@ -604,7 +604,7 @@ func promptVariable(name, varType string) (string, error) {
 }
 
 // promptPosting prompts the user to enter a posting interactively using pterm.
-func promptPosting(index int) (*commonpb.Posting, error) {
+func promptPosting(index int) (*ledgerpb.Posting, error) {
 	pterm.FgLightCyan.Printfln("Posting #%d", index)
 
 	// Source
@@ -672,5 +672,5 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 		pterm.Yellow(asset),
 	)
 
-	return commonpb.NewPosting(source, destination, asset, amount), nil
+	return ledgerpb.NewPosting(source, destination, asset, amount), nil
 }

@@ -8,7 +8,7 @@ import (
 
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 func TestAppendSinkStatusRows(t *testing.T) {
@@ -18,13 +18,13 @@ func TestAppendSinkStatusRows(t *testing.T) {
 		cursor       uint64
 		errorMessage string
 		hasStatus    bool
-		occurredAt   *commonpb.Timestamp
+		occurredAt   *ledgerpb.Timestamp
 		wantLabel    string
 		wantValue    string
 	}{
 		{name: "no status", wantLabel: "Status", wantValue: "pending"},
 		{name: "no delivery", hasStatus: true, wantLabel: "Status", wantValue: "pending"},
-		{name: "startup failure", hasStatus: true, errorMessage: "sink startup: connection refused", occurredAt: commonpb.NewTimestamp(libtime.New(time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC))), wantLabel: "Error", wantValue: "sink startup: connection refused"},
+		{name: "startup failure", hasStatus: true, errorMessage: "sink startup: connection refused", occurredAt: ledgerpb.NewTimestamp(libtime.New(time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC))), wantLabel: "Error", wantValue: "sink startup: connection refused"},
 		{name: "delivered", hasStatus: true, cursor: 12, wantLabel: "Status", wantValue: "healthy"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

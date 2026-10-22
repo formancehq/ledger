@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"strings"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -11,8 +12,8 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -222,10 +223,10 @@ func decodeValue(key, val []byte) string {
 			return tryProtoJSON(val, &proposalpb.AppliedProposal{})
 		}
 
-		return tryProtoJSON(val, &commonpb.Log{})
+		return tryProtoJSON(val, &ledgerpb.Log{})
 	case dal.ZonePerLedger:
 		if len(key) >= 2 && key[1] == dal.SubPLPreparedQuery {
-			return tryProtoJSON(val, &commonpb.PreparedQuery{})
+			return tryProtoJSON(val, &ledgerpb.PreparedQuery{})
 		}
 
 		return hexVal(val)
@@ -246,11 +247,11 @@ func decodeGlobalValue(key, val []byte) string {
 
 	switch key[1] {
 	case dal.SubGlobLedgerInfo:
-		return tryProtoJSON(val, &commonpb.LedgerInfo{})
+		return tryProtoJSON(val, &ledgerpb.LedgerInfo{})
 	case dal.SubGlobEventsConfig:
-		return tryProtoJSON(val, &commonpb.SinkConfig{})
+		return tryProtoJSON(val, &ledgerpb.SinkConfig{})
 	case dal.SubGlobSinkStatus:
-		return tryProtoJSON(val, &commonpb.SinkStatus{})
+		return tryProtoJSON(val, &ledgerpb.SinkStatus{})
 	case dal.SubGlobQueryCheckpoint:
 		return tryProtoJSON(val, &raftcmdpb.QueryCheckpointState{})
 	case dal.SubGlobLastAppliedIndex, dal.SubGlobLastAppliedTimestamp,
@@ -295,11 +296,11 @@ func decodeAttributeValue(key, val []byte) string {
 	case dal.SubAttrVolume:
 		return tryProtoJSON(val, &raftcmdpb.VolumePair{})
 	case dal.SubAttrMetadata:
-		return tryProtoJSON(val, &commonpb.MetadataValue{})
+		return tryProtoJSON(val, &ledgerpb.MetadataValue{})
 	case dal.SubAttrReference:
 		return tryProtoJSON(val, &commonpb.TransactionReferenceValue{})
 	case dal.SubAttrLedger:
-		return tryProtoJSON(val, &commonpb.LedgerInfo{})
+		return tryProtoJSON(val, &ledgerpb.LedgerInfo{})
 	case dal.SubAttrBoundary:
 		return tryProtoJSON(val, &raftcmdpb.LedgerBoundaries{})
 	case dal.SubAttrTransaction:

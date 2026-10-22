@@ -10,13 +10,13 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
 func init() {
-	registerSinkFactory("nats", func(_ context.Context, sc *commonpb.SinkConfig, format Format) (Sink, error) {
-		s := sc.GetType().(*commonpb.SinkConfig_Nats)
+	registerSinkFactory("nats", func(_ context.Context, sc *ledgerpb.SinkConfig, format Format) (Sink, error) {
+		s := sc.GetType().(*ledgerpb.SinkConfig_Nats)
 
 		return NewNATSSink(NATSSinkConfig{
 			URL:    s.Nats.GetUrl(),

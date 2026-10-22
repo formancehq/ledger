@@ -10,10 +10,10 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounttypes"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -71,10 +71,10 @@ type EditableNumscript struct {
 // indexes carries the entries returned by BucketService.ListIndexes scoped to
 // this ledger; it replaces the former LedgerInfo.indexes embed.
 func ConfigFromProto(
-	ledger *commonpb.LedgerInfo,
-	indexes []*commonpb.Index,
-	queries []*commonpb.PreparedQuery,
-	numscripts []*commonpb.NumscriptInfo,
+	ledger *ledgerpb.LedgerInfo,
+	indexes []*ledgerpb.Index,
+	queries []*ledgerpb.PreparedQuery,
+	numscripts []*ledgerpb.NumscriptInfo,
 ) *EditableConfig {
 	cfg := &EditableConfig{
 		DefaultEnforcementMode: strings.ToLower(ledger.GetDefaultEnforcementMode().String()),
@@ -95,14 +95,14 @@ func ConfigFromProto(
 	// indexedKeys collects the (target, key) pairs that have an active index
 	// declared on the ledger. Sourced from the indexes slice (BucketService.
 	// ListIndexes) since indexes no longer live inside LedgerInfo.
-	indexedKeys := map[commonpb.TargetType]map[string]bool{
-		commonpb.TargetType_TARGET_TYPE_ACCOUNT:     {},
-		commonpb.TargetType_TARGET_TYPE_TRANSACTION: {},
-		commonpb.TargetType_TARGET_TYPE_LEDGER:      {},
+	indexedKeys := map[ledgerpb.TargetType]map[string]bool{
+		ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:     {},
+		ledgerpb.TargetType_TARGET_TYPE_TRANSACTION: {},
+		ledgerpb.TargetType_TARGET_TYPE_LEDGER:      {},
 	}
 
 	for _, idx := range indexes {
-		m, ok := idx.GetId().GetKind().(*commonpb.IndexID_Metadata)
+		m, ok := idx.GetId().GetKind().(*ledgerpb.IndexID_Metadata)
 		if !ok {
 			continue
 		}
@@ -116,8 +116,8 @@ func ConfigFromProto(
 			m := make(map[string]EditableMetaField, len(acct))
 			for key, field := range acct {
 				m[key] = EditableMetaField{
-					Type:    commonpb.MetadataTypeToString(field.GetType()),
-					Indexed: indexedKeys[commonpb.TargetType_TARGET_TYPE_ACCOUNT][key],
+					Type:    ledgerpb.MetadataTypeToString(field.GetType()),
+					Indexed: indexedKeys[ledgerpb.TargetType_TARGET_TYPE_ACCOUNT][key],
 				}
 			}
 			cfg.MetadataSchema["account"] = m
@@ -126,8 +126,8 @@ func ConfigFromProto(
 			m := make(map[string]EditableMetaField, len(tx))
 			for key, field := range tx {
 				m[key] = EditableMetaField{
-					Type:    commonpb.MetadataTypeToString(field.GetType()),
-					Indexed: indexedKeys[commonpb.TargetType_TARGET_TYPE_TRANSACTION][key],
+					Type:    ledgerpb.MetadataTypeToString(field.GetType()),
+					Indexed: indexedKeys[ledgerpb.TargetType_TARGET_TYPE_TRANSACTION][key],
 				}
 			}
 			cfg.MetadataSchema["transaction"] = m
@@ -136,8 +136,8 @@ func ConfigFromProto(
 			m := make(map[string]EditableMetaField, len(lf))
 			for key, field := range lf {
 				m[key] = EditableMetaField{
-					Type:    commonpb.MetadataTypeToString(field.GetType()),
-					Indexed: indexedKeys[commonpb.TargetType_TARGET_TYPE_LEDGER][key],
+					Type:    ledgerpb.MetadataTypeToString(field.GetType()),
+					Indexed: indexedKeys[ledgerpb.TargetType_TARGET_TYPE_LEDGER][key],
 				}
 			}
 			cfg.MetadataSchema["ledger"] = m
@@ -146,25 +146,25 @@ func ConfigFromProto(
 
 	// Builtin indexes — sourced from the bucket index registry.
 	for _, idx := range indexes {
-		b, ok := idx.GetId().GetKind().(*commonpb.IndexID_TxBuiltin)
+		b, ok := idx.GetId().GetKind().(*ledgerpb.IndexID_TxBuiltin)
 		if !ok {
 			continue
 		}
 
 		switch b.TxBuiltin {
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
 			cfg.Indexes.Reference = true
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 			cfg.Indexes.Timestamp = true
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
 			cfg.Indexes.Address = true
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
 			cfg.Indexes.SourceAddress = true
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS:
 			cfg.Indexes.DestinationAddress = true
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 			cfg.Indexes.InsertedAt = true
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
 			cfg.Indexes.RevertedAt = true
 		}
 	}
@@ -331,7 +331,7 @@ func diffAccountTypes(ledgerName string, current, desired *EditableConfig) ([]Di
 				Type: &servicepb.Request_AddAccountType{
 					AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 						Ledger: ledgerName,
-						AccountType: &commonpb.AccountType{
+						AccountType: &ledgerpb.AccountType{
 							Name:        name,
 							Pattern:     at.Pattern,
 							Persistence: persistence,
@@ -432,11 +432,11 @@ func diffAccountTypes(ledgerName string, current, desired *EditableConfig) ([]Di
 // persistenceToString returns the lowercase string form of an account-type
 // persistence mode, or "" for the proto default (NORMAL) so that
 // `omitempty` keeps it out of exported manifests.
-func persistenceToString(p commonpb.AccountTypePersistence) string {
+func persistenceToString(p ledgerpb.AccountTypePersistence) string {
 	switch p {
-	case commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL:
+	case ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL:
 		return "ephemeral"
-	case commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
+	case ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
 		return "transient"
 	default:
 		return ""
@@ -447,7 +447,7 @@ func diffMetadataSchema(ledgerName string, current, desired *EditableConfig) ([]
 	var actions []DiffAction
 
 	for _, target := range []string{"account", "transaction", "ledger"} {
-		targetType, err := commonpb.ParseTargetType(target)
+		targetType, err := ledgerpb.ParseTargetType(target)
 		if err != nil {
 			return nil, err
 		}
@@ -460,7 +460,7 @@ func diffMetadataSchema(ledgerName string, current, desired *EditableConfig) ([]
 			currentField, exists := currentFields[key]
 
 			if !exists || currentField.Type != desiredField.Type {
-				mdType, err := commonpb.ParseMetadataType(desiredField.Type)
+				mdType, err := ledgerpb.ParseMetadataType(desiredField.Type)
 				if err != nil {
 					return nil, fmt.Errorf("metadata field %s.%s: %w", target, key, err)
 				}
@@ -524,8 +524,8 @@ func diffMetadataSchema(ledgerName string, current, desired *EditableConfig) ([]
 	return actions, nil
 }
 
-func metadataIndexAction(ledgerName, target string, targetType commonpb.TargetType, key, op string) DiffAction {
-	id := &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
+func metadataIndexAction(ledgerName, target string, targetType ledgerpb.TargetType, key, op string) DiffAction {
+	id := &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_Metadata{Metadata: &ledgerpb.MetadataIndexID{
 		Target: targetType,
 		Key:    key,
 	}}}
@@ -564,21 +564,21 @@ func diffIndexes(ledgerName string, current, desired *EditableConfig) []DiffActi
 		name    string
 		cur     bool
 		des     bool
-		builtin commonpb.TransactionBuiltinIndex
+		builtin ledgerpb.TransactionBuiltinIndex
 	}
 
 	builtins := []builtinDef{
-		{"reference", current.Indexes.Reference, desired.Indexes.Reference, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE},
-		{"timestamp", current.Indexes.Timestamp, desired.Indexes.Timestamp, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP},
-		{"address", current.Indexes.Address, desired.Indexes.Address, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS},
-		{"source-address", current.Indexes.SourceAddress, desired.Indexes.SourceAddress, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS},
-		{"destination-address", current.Indexes.DestinationAddress, desired.Indexes.DestinationAddress, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS},
-		{"inserted-at", current.Indexes.InsertedAt, desired.Indexes.InsertedAt, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT},
-		{"reverted-at", current.Indexes.RevertedAt, desired.Indexes.RevertedAt, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT},
+		{"reference", current.Indexes.Reference, desired.Indexes.Reference, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE},
+		{"timestamp", current.Indexes.Timestamp, desired.Indexes.Timestamp, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP},
+		{"address", current.Indexes.Address, desired.Indexes.Address, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS},
+		{"source-address", current.Indexes.SourceAddress, desired.Indexes.SourceAddress, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS},
+		{"destination-address", current.Indexes.DestinationAddress, desired.Indexes.DestinationAddress, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS},
+		{"inserted-at", current.Indexes.InsertedAt, desired.Indexes.InsertedAt, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT},
+		{"reverted-at", current.Indexes.RevertedAt, desired.Indexes.RevertedAt, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT},
 	}
 
 	for _, b := range builtins {
-		id := &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: b.builtin}}
+		id := &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_TxBuiltin{TxBuiltin: b.builtin}}
 
 		if b.des && !b.cur {
 			actions = append(actions, DiffAction{
@@ -618,7 +618,7 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 		currentPQ, exists := current.PreparedQueries[name]
 		if !exists {
 			target := parseQueryTarget(desiredPQ.Target)
-			var filter *commonpb.QueryFilter
+			var filter *ledgerpb.QueryFilter
 			if desiredPQ.Filter != "" {
 				var err error
 				filter, err = filterexpr.Parse(desiredPQ.Filter, target)
@@ -634,7 +634,7 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 					Type: &servicepb.Request_CreatePreparedQuery{
 						CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 							Ledger: ledgerName,
-							Query: &commonpb.PreparedQuery{
+							Query: &ledgerpb.PreparedQuery{
 								Name:   name,
 								Target: target,
 								Filter: filter,
@@ -654,7 +654,7 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 		if currentPQ.Target != desiredPQ.Target {
 			target := parseQueryTarget(desiredPQ.Target)
 
-			var filter *commonpb.QueryFilter
+			var filter *ledgerpb.QueryFilter
 			if desiredPQ.Filter != "" {
 				var err error
 				filter, err = filterexpr.Parse(desiredPQ.Filter, target)
@@ -685,7 +685,7 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 					Type: &servicepb.Request_CreatePreparedQuery{
 						CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 							Ledger: ledgerName,
-							Query: &commonpb.PreparedQuery{
+							Query: &ledgerpb.PreparedQuery{
 								Name:   name,
 								Target: target,
 								Filter: filter,
@@ -702,7 +702,7 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 		if currentPQ.Filter != desiredPQ.Filter {
 			target := parseQueryTarget(desiredPQ.Target)
 
-			var filter *commonpb.QueryFilter
+			var filter *ledgerpb.QueryFilter
 			if desiredPQ.Filter != "" {
 				var err error
 				filter, err = filterexpr.Parse(desiredPQ.Filter, target)
@@ -825,35 +825,35 @@ func diffNumscripts(ledgerName string, current, desired *EditableConfig) ([]Diff
 	return actions, nil
 }
 
-func parseEnforcementModeProto(s string) commonpb.ChartEnforcementMode {
+func parseEnforcementModeProto(s string) ledgerpb.ChartEnforcementMode {
 	switch strings.ToLower(s) {
 	case "audit", "chart_enforcement_audit":
-		return commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT
+		return ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT
 	default:
-		return commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
+		return ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
 	}
 }
 
 // parseEnforcementModeProtoStrict parses an enforcement mode string with validation.
-func parseEnforcementModeProtoStrict(s string) (commonpb.ChartEnforcementMode, error) {
+func parseEnforcementModeProtoStrict(s string) (ledgerpb.ChartEnforcementMode, error) {
 	switch strings.ToUpper(s) {
 	case "STRICT":
-		return commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, nil
+		return ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, nil
 	case "AUDIT":
-		return commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, nil
+		return ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, nil
 	default:
 		return 0, fmt.Errorf("invalid enforcement mode %q: must be STRICT or AUDIT", s)
 	}
 }
 
-func parseQueryTarget(s string) commonpb.QueryTarget {
+func parseQueryTarget(s string) ledgerpb.QueryTarget {
 	switch strings.ToLower(s) {
 	case "transactions":
-		return commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+		return ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
 	case "logs":
-		return commonpb.QueryTarget_QUERY_TARGET_LOGS
+		return ledgerpb.QueryTarget_QUERY_TARGET_LOGS
 	default:
-		return commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+		return ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS
 	}
 }
 

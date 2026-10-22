@@ -7,11 +7,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -27,23 +27,23 @@ func TestListLogsPagesInBothOrders(t *testing.T) {
 
 	const ledger = "ordered-logs"
 
-	logs := []*commonpb.Log{{
+	logs := []*ledgerpb.Log{{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+			CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 		}},
 	}}
 	for id := uint64(1); id <= 4; id++ {
-		logs = append(logs, &commonpb.Log{
+		logs = append(logs, &ledgerpb.Log{
 			Sequence: id + 1,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: &commonpb.LedgerLog{
+					Log: &ledgerpb.LedgerLog{
 						Id:   id,
-						Date: &commonpb.Timestamp{Data: id},
-						Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AddedAccountType{
-							AddedAccountType: &commonpb.AddedAccountTypeLog{},
+						Date: &ledgerpb.Timestamp{Data: id},
+						Data: &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_AddedAccountType{
+							AddedAccountType: &ledgerpb.AddedAccountTypeLog{},
 						}},
 					},
 				},
@@ -52,7 +52,7 @@ func TestListLogsPagesInBothOrders(t *testing.T) {
 	}
 
 	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
+	require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{Name: ledger}))
 	require.NoError(t, state.AppendLogs(batch, logs))
 	require.NoError(t, state.SetAppliedIndex(batch, 5))
 	require.NoError(t, batch.Commit())

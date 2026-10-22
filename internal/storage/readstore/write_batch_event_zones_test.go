@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -35,7 +35,7 @@ func TestWriteBatchEventZonesTrackActualEventPuts(t *testing.T) {
 		t.Parallel()
 
 		wb, _ := newBatch(t)
-		encoded := EncodeMetadataValue(nil, commonpb.NewStringValue("open"))
+		encoded := EncodeMetadataValue(nil, ledgerpb.NewStringValue("open"))
 		reverseKey := AccountReverseMapKeyV(dal.NewKeyBuilder(), ledger, entity, key, 1)
 
 		require.NoError(t, wb.ReplaceMetadataIndexV(
@@ -50,8 +50,8 @@ func TestWriteBatchEventZonesTrackActualEventPuts(t *testing.T) {
 		t.Parallel()
 
 		wb, _ := newBatch(t)
-		oldEncoded := EncodeMetadataValue(nil, commonpb.NewStringValue("open"))
-		newEncoded := EncodeMetadataValue(nil, commonpb.NewStringValue("closed"))
+		oldEncoded := EncodeMetadataValue(nil, ledgerpb.NewStringValue("open"))
+		newEncoded := EncodeMetadataValue(nil, ledgerpb.NewStringValue("closed"))
 		reverseKey := AccountReverseMapKeyV(dal.NewKeyBuilder(), ledger, entity, key, 1)
 
 		require.NoError(t, wb.ReplaceMetadataIndexV(
@@ -66,7 +66,7 @@ func TestWriteBatchEventZonesTrackActualEventPuts(t *testing.T) {
 		t.Parallel()
 
 		wb, _ := newBatch(t)
-		encoded := EncodeMetadataValue(nil, commonpb.NewStringValue("open"))
+		encoded := EncodeMetadataValue(nil, ledgerpb.NewStringValue("open"))
 		reverseKey := AccountReverseMapKeyV(dal.NewKeyBuilder(), ledger, entity, key, 1)
 
 		require.NoError(t, wb.ReplaceMetadataIndexV(
@@ -81,7 +81,7 @@ func TestWriteBatchEventZonesTrackActualEventPuts(t *testing.T) {
 		t.Parallel()
 
 		wb, _ := newBatch(t)
-		encoded := EncodeMetadataValue(nil, commonpb.NewStringValue("open"))
+		encoded := EncodeMetadataValue(nil, ledgerpb.NewStringValue("open"))
 		reverseKey := AccountReverseMapKeyV(dal.NewKeyBuilder(), ledger, entity, key, 1)
 		require.NoError(t, wb.ReplaceMetadataIndexV(
 			dal.NewKeyBuilder(), reverseKey, ledger, NamespaceAccount, key, 1,

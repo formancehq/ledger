@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	ledgerpb "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -28,9 +28,9 @@ func addKey(t *testing.T, fs *FilterSet, key []byte) {
 	f.Add(attributes.HashU128(key))
 }
 
-func bloomCfg() *commonpb.ClusterConfig {
-	return &commonpb.ClusterConfig{
-		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+func bloomCfg() *ledgerpb.ClusterConfig {
+	return &ledgerpb.ClusterConfig{
+		BloomVolumes: &ledgerpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
 	}
 }
 

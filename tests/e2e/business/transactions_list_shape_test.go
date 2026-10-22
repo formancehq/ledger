@@ -9,7 +9,7 @@ import (
 	"math/big"
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
@@ -44,7 +44,7 @@ var _ = Describe("TestTransactionsListShape: list/detail item parity (EN-1622)",
 		Expect(err).To(Succeed())
 
 		logs, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithReference(
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "list-shape-dest", big.NewInt(12345), "USD"),
 			}, map[string]string{"category": "list-shape-test"}, nil),
 			"list-shape-ref-001",

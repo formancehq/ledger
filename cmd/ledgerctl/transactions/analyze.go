@@ -10,8 +10,8 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -208,7 +208,7 @@ func postingStructureName(s servicepb.PostingStructure) string {
 	}
 }
 
-func formatTimestamp(ts *commonpb.Timestamp) string {
+func formatTimestamp(ts *ledgerpb.Timestamp) string {
 	if ts == nil {
 		return "N/A"
 	}

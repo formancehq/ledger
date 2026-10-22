@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
@@ -26,7 +26,7 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 
 			// Create transactions
 			for i := 0; i < 3; i++ {
-				_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100*int64(i+1)), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())
@@ -67,7 +67,7 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 
 		It("Should reject operations on the deleted ledger", func() {
 			// Creating a transaction on a deleted ledger should fail
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "new-user", big.NewInt(50), "USD"),
 			}, nil, nil)))
 			Expect(err).To(HaveOccurred())
@@ -88,7 +88,7 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Create a transaction
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(500), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -128,7 +128,7 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 			}).Within(15 * time.Second).WithPolling(500 * time.Millisecond).Should(BeTrue())
 
 			// Operations should be rejected
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bob", big.NewInt(300), "EUR"),
 			}, nil, nil)))
 			Expect(err).To(HaveOccurred())

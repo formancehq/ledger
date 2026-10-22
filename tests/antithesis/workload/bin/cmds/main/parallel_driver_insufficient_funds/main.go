@@ -6,8 +6,8 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -37,10 +37,10 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: account,
-								Amount:      commonpb.NewUint256FromUint64(fundAmount),
+								Amount:      ledgerpb.NewUint256FromUint64(fundAmount),
 								Asset:       asset,
 							}},
 							Force: true,
@@ -68,10 +68,10 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+							Postings: []*ledgerpb.Posting{{
 								Source:      account,
 								Destination: "world",
-								Amount:      commonpb.NewUint256FromUint64(fundAmount),
+								Amount:      ledgerpb.NewUint256FromUint64(fundAmount),
 								Asset:       asset,
 							}},
 						},
@@ -94,10 +94,10 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+							Postings: []*ledgerpb.Posting{{
 								Source:      account,
 								Destination: "world",
-								Amount:      commonpb.NewUint256FromUint64(1),
+								Amount:      ledgerpb.NewUint256FromUint64(1),
 								Asset:       asset,
 							}},
 						},

@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // parseEnforcementMode converts a string to a ChartEnforcementMode proto enum.
-func parseEnforcementMode(s string) (commonpb.ChartEnforcementMode, error) {
+func parseEnforcementMode(s string) (ledgerpb.ChartEnforcementMode, error) {
 	switch strings.ToUpper(s) {
 	case "STRICT":
-		return commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, nil
+		return ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, nil
 	case "AUDIT":
-		return commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, nil
+		return ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, nil
 	default:
 		return 0, fmt.Errorf("invalid enforcement mode %q: must be STRICT or AUDIT", s)
 	}

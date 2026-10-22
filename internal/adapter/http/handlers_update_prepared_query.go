@@ -6,9 +6,9 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -66,7 +66,7 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 	// the target gate to the FSM. Bare-field resolution uses a non-audit target
 	// (EN-1549): prepared queries are only ever ACCOUNTS/TRANSACTIONS/LOGS, all of
 	// which resolve the bare intrinsic fields identically.
-	filter, err := filterexpr.DecodeDualFormatStructuralOnly(body.Filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	filter, err := filterexpr.DecodeDualFormatStructuralOnly(body.Filter, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 

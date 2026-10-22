@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // Every shape the wire allows on a numeric field leaf must come out of the
@@ -15,8 +15,8 @@ func TestGenFieldLeafCoversEveryNumericShape(t *testing.T) {
 	t.Parallel()
 
 	seeds := []fieldSeed{
-		{key: "u", declaredType: commonpb.MetadataType_METADATA_TYPE_UINT64, sample: commonpb.NewUintValue(7)},
-		{key: "i", declaredType: commonpb.MetadataType_METADATA_TYPE_INT64, sample: commonpb.NewIntValue(-7)},
+		{key: "u", declaredType: ledgerpb.MetadataType_METADATA_TYPE_UINT64, sample: ledgerpb.NewUintValue(7)},
+		{key: "i", declaredType: ledgerpb.MetadataType_METADATA_TYPE_INT64, sample: ledgerpb.NewIntValue(-7)},
 	}
 
 	var (
@@ -46,7 +46,7 @@ func TestGenFieldLeafCoversEveryNumericShape(t *testing.T) {
 		}
 
 		switch c := f.GetField().GetCondition().(type) {
-		case *commonpb.FieldCondition_UintCond:
+		case *ledgerpb.FieldCondition_UintCond:
 			uc := c.UintCond
 			uintOpenMin = uintOpenMin || uc.Min == nil
 			uintOpenMax = uintOpenMax || uc.Max == nil
@@ -56,7 +56,7 @@ func TestGenFieldLeafCoversEveryNumericShape(t *testing.T) {
 			uintMax = uintMax || (uc.Min != nil && uc.GetMin() == math.MaxUint64)
 			require.False(t, uc.Min == nil && uc.GetMinExclusive(), "an open side is never exclusive")
 			require.False(t, uc.Max == nil && uc.GetMaxExclusive(), "an open side is never exclusive")
-		case *commonpb.FieldCondition_IntCond:
+		case *ledgerpb.FieldCondition_IntCond:
 			ic := c.IntCond
 			intOpenMin = intOpenMin || ic.Min == nil
 			intOpenMax = intOpenMax || ic.Max == nil
@@ -104,7 +104,7 @@ func TestGenTransactionFilterFreeIDRangeShapes(t *testing.T) {
 func TestGenBooleanArity(t *testing.T) {
 	t.Parallel()
 
-	leaf := func(int) *commonpb.QueryFilter { return filterReverted(true) }
+	leaf := func(int) *ledgerpb.QueryFilter { return filterReverted(true) }
 	seen := map[int]bool{}
 	for range 2_000 {
 		f := genBoolean(0, leaf)

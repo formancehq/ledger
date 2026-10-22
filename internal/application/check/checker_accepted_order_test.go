@@ -2,16 +2,17 @@ package check
 
 import (
 	"context"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -53,11 +54,11 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-							Metadata: map[string]*commonpb.MetadataValue{
-								"type":        commonpb.NewStringValue("caller-wins"),
-								"caller-only": commonpb.NewStringValue("kept"),
+							Metadata: map[string]*ledgerpb.MetadataValue{
+								"type":        ledgerpb.NewStringValue("caller-wins"),
+								"caller-only": ledgerpb.NewStringValue("kept"),
 							},
-							Script: &commonpb.Script{Plain: `
+							Script: &ledgerpb.Script{Plain: `
 								set_tx_meta("type", "payment")
 								set_tx_meta("category", "purchase")
 								send [USD/2 100] (
@@ -82,7 +83,7 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 
 	createdTx := logs[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	txMeta := commonpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
+	txMeta := ledgerpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
 	require.Equal(t, "caller-wins", txMeta["type"], "caller metadata must win collisions")
 	require.Equal(t, "purchase", txMeta["category"], "script metadata must be merged into the transaction")
 	require.Equal(t, "kept", txMeta["caller-only"], "caller-only metadata must be preserved")
@@ -106,11 +107,11 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 
 	entry := &auditpb.AuditEntry{
 		Sequence:    1,
-		Timestamp:   &commonpb.Timestamp{Data: createdAt},
+		Timestamp:   &ledgerpb.Timestamp{Data: createdAt},
 		ProposalId:  2,
 		OrderCount:  1,
-		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
-		Idempotency: &commonpb.Idempotency{Key: idemKey},
+		HashVersion: uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Idempotency: &ledgerpb.Idempotency{Key: idemKey},
 		Outcome: &auditpb.AuditEntry_Success{
 			Success: &auditpb.AuditSuccess{MinLogSequence: logSeq, MaxLogSequence: logSeq},
 		},

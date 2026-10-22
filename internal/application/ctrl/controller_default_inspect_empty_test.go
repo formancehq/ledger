@@ -8,10 +8,10 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -69,7 +69,7 @@ func TestInspectIndexEmptyIndexAnswersRequestedArm(t *testing.T) {
 
 			resp, err := ctrl.InspectIndex(query.WithReadBarrierHorizon(t.Context(), horizon), &servicepb.InspectIndexRequest{
 				Ledger:      ledger,
-				TargetType:  commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+				TargetType:  ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 				MetadataKey: metadataKey,
 				Mode:        tc.mode,
 				PageSize:    100,
@@ -97,22 +97,22 @@ func newEmptyIndexController(t *testing.T) (*DefaultController, string, string, 
 	meter := noop.NewMeterProvider().Meter("test")
 	store := newCtrlTestStore(t)
 	attrs := attributes.New()
-	indexID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, metadataKey)
+	indexID := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, metadataKey)
 
 	mainBatch := store.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(mainBatch, ledger, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(mainBatch, ledger, &ledgerpb.LedgerInfo{
 		Name: ledger,
-		MetadataSchema: &commonpb.MetadataSchema{TransactionFields: map[string]*commonpb.MetadataFieldSchema{
-			metadataKey: {Type: commonpb.MetadataType_METADATA_TYPE_UINT32},
+		MetadataSchema: &ledgerpb.MetadataSchema{TransactionFields: map[string]*ledgerpb.MetadataFieldSchema{
+			metadataKey: {Type: ledgerpb.MetadataType_METADATA_TYPE_UINT32},
 		}},
 	}))
-	_, err := attrs.Index.Set(mainBatch, indexes.KeyFor(ledger, indexID).Bytes(), &commonpb.Index{
+	_, err := attrs.Index.Set(mainBatch, indexes.KeyFor(ledger, indexID).Bytes(), &ledgerpb.Index{
 		Id:                     indexID,
 		Ledger:                 ledger,
 		ForwardEncodingVersion: 1,
 	})
 	require.NoError(t, err)
-	require.NoError(t, state.AppendLogs(mainBatch, []*commonpb.Log{{Sequence: mainSequence}}))
+	require.NoError(t, state.AppendLogs(mainBatch, []*ledgerpb.Log{{Sequence: mainSequence}}))
 	require.NoError(t, state.SetAppliedIndex(mainBatch, raftHorizon))
 	require.NoError(t, mainBatch.Commit())
 

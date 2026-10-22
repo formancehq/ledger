@@ -377,7 +377,7 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 		// non-executable value a gRPC caller could set directly) before it is
 		// persisted, and validate each filter condition against that specific
 		// target — not the union of REST targets — so an ACCOUNTS query cannot
-		// store transaction-only conditions. Both gates share the commonpb
+		// store transaction-only conditions. Both gates share the ledgerpb
 		// validity table with the compile layer (EN-1504).
 		if !domain.IsPreparedQueryExecutableTarget(q.GetTarget()) {
 			return domain.ErrPreparedQueryTargetUnsupported

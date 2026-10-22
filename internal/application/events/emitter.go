@@ -11,13 +11,13 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -36,7 +36,7 @@ type EmitterConfig struct {
 	BatchSize  int
 	BatchDelay time.Duration
 	Format     Format
-	EventTypes map[commonpb.EventType]struct{} // nil or empty = all events
+	EventTypes map[ledgerpb.EventType]struct{} // nil or empty = all events
 }
 
 const deliveredCursorUpdateTimeout = 2 * time.Second
@@ -240,7 +240,7 @@ func (e *Emitter) run(ctx context.Context) {
 // AddedEventsSink) are always dropped. When the sink declares an
 // EventTypes allow-list, only types in that set are emitted.
 func (e *Emitter) shouldEmit(event *eventspb.Event) bool {
-	if event.GetType() == commonpb.EventType_EVENT_TYPE_UNSPECIFIED {
+	if event.GetType() == ledgerpb.EventType_EVENT_TYPE_UNSPECIFIED {
 		return false
 	}
 
@@ -435,9 +435,9 @@ func (e *Emitter) reportError(ctx context.Context, publishErr error) {
 
 	update := &raftcmdpb.EventsSinkUpdate{
 		SinkName: e.sinkName,
-		Error: &commonpb.SinkError{
+		Error: &ledgerpb.SinkError{
 			Message:    publishErr.Error(),
-			OccurredAt: commonpb.NewTimestamp(libtime.New(now)),
+			OccurredAt: ledgerpb.NewTimestamp(libtime.New(now)),
 		},
 	}
 

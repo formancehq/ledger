@@ -8,14 +8,14 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func writeClusterPolicyRow(t *testing.T, store *dal.Store, policy *commonpb.ClusterPolicy) {
+func writeClusterPolicyRow(t *testing.T, store *dal.Store, policy *ledgerpb.ClusterPolicy) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
@@ -23,7 +23,7 @@ func writeClusterPolicyRow(t *testing.T, store *dal.Store, policy *commonpb.Clus
 	require.NoError(t, batch.Commit())
 }
 
-func setClusterPolicyOrder(policy *commonpb.ClusterPolicy) *raftcmdpb.Order {
+func setClusterPolicyOrder(policy *ledgerpb.ClusterPolicy) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_SystemScoped{
 			SystemScoped: &raftcmdpb.SystemScopedOrder{
@@ -59,7 +59,7 @@ func TestClusterPolicyVerifier_Consistent(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
-	policy := &commonpb.ClusterPolicy{Revision: 3, IdempotencyTtlMicros: 1000, QueryCheckpointLimit: 5}
+	policy := &ledgerpb.ClusterPolicy{Revision: 3, IdempotencyTtlMicros: 1000, QueryCheckpointLimit: 5}
 	writeClusterPolicyRow(t, store, policy)
 
 	v := newClusterPolicyVerifier()
@@ -84,7 +84,7 @@ func TestClusterPolicyVerifier_InjectedFlagged(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
-	writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 3})
+	writeClusterPolicyRow(t, store, &ledgerpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 3})
 
 	v := newClusterPolicyVerifier()
 
@@ -100,7 +100,7 @@ func TestClusterPolicyVerifier_MissingFlagged(t *testing.T) {
 	store := createTestStore(t)
 
 	v := newClusterPolicyVerifier()
-	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 4, QueryCheckpointLimit: 1}))
+	v.applyOrder(setClusterPolicyOrder(&ledgerpb.ClusterPolicy{Revision: 4, QueryCheckpointLimit: 1}))
 
 	events := collectClusterPolicyEvents(t, store, v)
 	require.Len(t, events, 1)
@@ -112,10 +112,10 @@ func TestClusterPolicyVerifier_ContentMismatch(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
-	writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 9})
+	writeClusterPolicyRow(t, store, &ledgerpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 9})
 
 	v := newClusterPolicyVerifier()
-	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 5}))
+	v.applyOrder(setClusterPolicyOrder(&ledgerpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 5}))
 
 	events := collectClusterPolicyEvents(t, store, v)
 	require.Len(t, events, 1)
@@ -127,13 +127,13 @@ func TestClusterPolicyVerifier_MaxRevisionWins(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
-	latest := &commonpb.ClusterPolicy{Revision: 5, QueryCheckpointLimit: 8}
+	latest := &ledgerpb.ClusterPolicy{Revision: 5, QueryCheckpointLimit: 8}
 	writeClusterPolicyRow(t, store, latest)
 
 	v := newClusterPolicyVerifier()
-	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 1}))
+	v.applyOrder(setClusterPolicyOrder(&ledgerpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 1}))
 	v.applyOrder(setClusterPolicyOrder(latest))
-	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1}))
+	v.applyOrder(setClusterPolicyOrder(&ledgerpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1}))
 
 	require.Empty(t, collectClusterPolicyEvents(t, store, v))
 }
@@ -144,7 +144,7 @@ func TestClusterPolicyVerifier_IncompleteReported(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
-	writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 5})
+	writeClusterPolicyRow(t, store, &ledgerpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 5})
 
 	v := newClusterPolicyVerifier()
 	v.markLiveTruncated()
@@ -191,7 +191,7 @@ func TestCheck_ClusterPolicyProjection_EmptyAuditWiring(t *testing.T) {
 		t.Parallel()
 
 		got := runCheck(t, func(store *dal.Store) {
-			writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{
+			writeClusterPolicyRow(t, store, &ledgerpb.ClusterPolicy{
 				Revision:             3,
 				IdempotencyTtlMicros: 1000,
 				QueryCheckpointLimit: 5,

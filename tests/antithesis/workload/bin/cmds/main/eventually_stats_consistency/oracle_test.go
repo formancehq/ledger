@@ -15,8 +15,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -137,9 +137,9 @@ func (f *oracleLifecycleFixture) apply(_ context.Context, req *servicepb.ApplyRe
 
 func (f *oracleLifecycleFixture) listLedgers(_ *servicepb.ListLedgersRequest, stream servicepb.BucketService_ListLedgersServer) error {
 	f.mu.Lock()
-	ledgers := []*commonpb.LedgerInfo{{Name: "target", Id: 1}}
+	ledgers := []*ledgerpb.LedgerInfo{{Name: "target", Id: 1}}
 	for name, witness := range f.witnesses {
-		ledgers = append(ledgers, &commonpb.LedgerInfo{Name: name, Id: witness.id})
+		ledgers = append(ledgers, &ledgerpb.LedgerInfo{Name: name, Id: witness.id})
 	}
 	f.mu.Unlock()
 	sort.Slice(ledgers, func(i, j int) bool { return ledgers[i].GetName() < ledgers[j].GetName() })
@@ -154,7 +154,7 @@ func (f *oracleLifecycleFixture) listLedgers(_ *servicepb.ListLedgersRequest, st
 
 func (f *oracleLifecycleFixture) listLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
 	f.mu.Lock()
-	var logs []*commonpb.Log
+	var logs []*ledgerpb.Log
 	if req.GetLedger() == "target" {
 		for id := 1; id <= f.targetLogs; id++ {
 			logs = append(logs, sourceTestCreatedLog("target", uint64(id), uint64(id), id))
@@ -176,21 +176,21 @@ func (f *oracleLifecycleFixture) listLogs(req *servicepb.ListLogsRequest, stream
 	return nil
 }
 
-func (f *oracleLifecycleFixture) getLedger(_ context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+func (f *oracleLifecycleFixture) getLedger(_ context.Context, req *servicepb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if req.GetLedger() == "target" {
-		return &commonpb.LedgerInfo{Name: "target", Id: 1}, nil
+		return &ledgerpb.LedgerInfo{Name: "target", Id: 1}, nil
 	}
 	witness, exists := f.witnesses[req.GetLedger()]
 	if !exists {
 		return nil, status.Error(codes.NotFound, "unknown ledger")
 	}
 
-	return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: witness.id}, nil
+	return &ledgerpb.LedgerInfo{Name: req.GetLedger(), Id: witness.id}, nil
 }
 
-func (f *oracleLifecycleFixture) stats(ctx context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+func (f *oracleLifecycleFixture) stats(ctx context.Context, req *servicepb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if req.GetLedger() == "target" {
@@ -203,17 +203,17 @@ func (f *oracleLifecycleFixture) stats(ctx context.Context, req *servicepb.GetLe
 			postings--
 		}
 
-		return &commonpb.LedgerStats{LogCount: uint64(f.targetLogs), TransactionCount: uint64(f.targetLogs), PostingCount: postings}, nil
+		return &ledgerpb.LedgerStats{LogCount: uint64(f.targetLogs), TransactionCount: uint64(f.targetLogs), PostingCount: postings}, nil
 	}
 	witness, exists := f.witnesses[req.GetLedger()]
 	if !exists {
 		return nil, status.Error(codes.NotFound, "unknown stats ledger")
 	}
 	if !witness.written {
-		return &commonpb.LedgerStats{}, nil
+		return &ledgerpb.LedgerStats{}, nil
 	}
 
-	return &commonpb.LedgerStats{LogCount: 1, TransactionCount: 1, PostingCount: 1, ReferenceCount: 1}, nil
+	return &ledgerpb.LedgerStats{LogCount: 1, TransactionCount: 1, PostingCount: 1, ReferenceCount: 1}, nil
 }
 
 func (f *oracleLifecycleFixture) clusterState(_ context.Context, req *clusterpb.GetClusterStateRequest, addr string) (*clusterpb.ClusterState, error) {
@@ -541,11 +541,11 @@ func TestRunOracleWitnessIsExcludedFromGenericLedgerSelection(t *testing.T) {
 			t.Parallel()
 			client := newSourceTestClient(t, &oracleTestServer{
 				listLedgersFn: func(_ *servicepb.ListLedgersRequest, stream servicepb.BucketService_ListLedgersServer) error {
-					if err := stream.Send(&commonpb.LedgerInfo{Name: witness}); err != nil {
+					if err := stream.Send(&ledgerpb.LedgerInfo{Name: witness}); err != nil {
 						return err
 					}
 					if shared != "" {
-						return stream.Send(&commonpb.LedgerInfo{Name: shared})
+						return stream.Send(&ledgerpb.LedgerInfo{Name: shared})
 					}
 
 					return nil

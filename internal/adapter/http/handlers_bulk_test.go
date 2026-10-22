@@ -13,10 +13,10 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -97,18 +97,18 @@ func TestHandleBulk_OrderSkippedSurfacesInResponse(t *testing.T) {
 		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			received = req
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
 				{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_Apply{
-							Apply: &commonpb.ApplyLedgerLog{
-								Log: &commonpb.LedgerLog{
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_Apply{
+							Apply: &ledgerpb.ApplyLedgerLog{
+								Log: &ledgerpb.LedgerLog{
 									Id: 17,
-									Data: &commonpb.LedgerLogPayload{
-										Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-											OrderSkipped: &commonpb.OrderSkippedLog{
+									Data: &ledgerpb.LedgerLogPayload{
+										Payload: &ledgerpb.LedgerLogPayload_OrderSkipped{
+											OrderSkipped: &ledgerpb.OrderSkippedLog{
 
-												Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
+												Details: ledgerpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
 													"reference":             "dup",
 													"existingTransactionId": "42",
 												}),
@@ -141,7 +141,7 @@ func TestHandleBulk_OrderSkippedSurfacesInResponse(t *testing.T) {
 	require.NotNil(t, received, "backend must have been called")
 	require.Len(t, received.GetUnsigned().GetRequests(), 1)
 	require.Equal(t,
-		[]commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		[]ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 		received.GetUnsigned().GetRequests()[0].GetApply().GetSkippableReasons(),
 	)
 
@@ -209,9 +209,9 @@ func TestRunBulkAtomic_Success(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
-				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Id: 1}}}}},
-				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Id: 2}}}}},
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
+				{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Id: 1}}}}},
+				{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Id: 2}}}}},
 			}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -239,8 +239,8 @@ func TestRunBulkSequential_StopOnError(t *testing.T) {
 				return nil, errors.New("first fails")
 			}
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
-				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{}}}}},
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
+				{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{}}}}},
 			}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -267,8 +267,8 @@ func TestRunBulkSequential_ContinueOnFailure(t *testing.T) {
 				return nil, errors.New("first fails")
 			}
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
-				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{}}}}},
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
+				{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{}}}}},
 			}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -314,8 +314,8 @@ func TestHandleBulk_AuthDisabled_NoToken_Allowed(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
-				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{}}}}},
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
+				{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{}}}}},
 			}}, nil
 		}).Times(1)
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})

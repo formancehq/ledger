@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -85,7 +85,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 
 			// Create some transactions
 			for i := 0; i < 5; i++ {
-				_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("account-%d", i), big.NewInt(100*int64(i+1)), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())

@@ -9,7 +9,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -75,7 +75,7 @@ func drainPage(b *testing.B, store *readstore.Store, after []byte) (rowsVisited,
 
 	iter, err := query.Compile(
 		reader, dal.NewKeyBuilder(), stringFieldFilter("colour", "red"),
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
+		ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
 		nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
 	require.NoError(b, err)
 
@@ -127,7 +127,7 @@ func streamPage(b *testing.B, store *readstore.Store, before []byte) (rowsVisite
 
 	iter, err := query.CompileReverse(
 		reader, dal.NewKeyBuilder(), stringFieldFilter("colour", "red"),
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
+		ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
 		nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), profile, reader, parityPin)
 	require.NoError(b, err)
 

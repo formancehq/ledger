@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -120,7 +120,7 @@ func runLedgerStats(ctx context.Context, client servicepb.BucketServiceClient, c
 // read from separate stores at separate fold points — requiring one base to
 // explain both would reject a legal response the moment the usage projection
 // lags the boundary handle, which it does by design.
-func (c *Checker) validateLedgerStats(maxTicket uint64, ledger string, stats *commonpb.LedgerStats) {
+func (c *Checker) validateLedgerStats(maxTicket uint64, ledger string, stats *ledgerpb.LedgerStats) {
 	// The workload sends neither a Script nor a NumscriptReference, so no create
 	// can count as a numscript execution.
 	if stats.GetNumscriptExecutionCount() != 0 {

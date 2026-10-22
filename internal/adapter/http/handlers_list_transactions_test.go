@@ -13,8 +13,8 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
@@ -23,8 +23,8 @@ func TestHandleListTransactions_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
-			return cursor.NewSliceCursor([]*commonpb.Transaction{
+		func(_ context.Context, _ string, _ uint32, _ uint64, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Transaction], error) {
+			return cursor.NewSliceCursor([]*ledgerpb.Transaction{
 				{Id: 1, RevertedByTransaction: 7},
 				{Id: 2},
 			}), nil
@@ -65,12 +65,12 @@ func TestHandleListTransactions_WithPaginationAndReverse(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, pageSize uint32, afterTxID uint64, _ *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+		func(_ context.Context, _ string, pageSize uint32, afterTxID uint64, _ *ledgerpb.QueryFilter, reverse bool) (cursor.Cursor[*ledgerpb.Transaction], error) {
 			capturedPageSize = pageSize
 			capturedAfter = afterTxID
 			capturedReverse = reverse
 
-			return cursor.NewSliceCursor[*commonpb.Transaction](nil), nil
+			return cursor.NewSliceCursor[*ledgerpb.Transaction](nil), nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -95,17 +95,17 @@ func TestHandleListTransactions_WithPaginationAndReverse(t *testing.T) {
 func TestHandleListTransactions_ReferenceFilterAndDateRange(t *testing.T) {
 	t.Parallel()
 
-	capture := func(t *testing.T, target string) *commonpb.QueryFilter {
+	capture := func(t *testing.T, target string) *ledgerpb.QueryFilter {
 		t.Helper()
 
-		var capturedFilter *commonpb.QueryFilter
+		var capturedFilter *ledgerpb.QueryFilter
 
 		backend := NewMockBackend(gomock.NewController(t))
 		backend.EXPECT().ListTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ string, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
+			func(_ context.Context, _ string, _ uint32, _ uint64, filter *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Transaction], error) {
 				capturedFilter = filter
 
-				return cursor.NewSliceCursor[*commonpb.Transaction](nil), nil
+				return cursor.NewSliceCursor[*ledgerpb.Transaction](nil), nil
 			}).AnyTimes()
 		srv := newTestServer(t, backend)
 
@@ -131,7 +131,7 @@ func TestHandleListTransactions_ReferenceFilterAndDateRange(t *testing.T) {
 	// The reference selection reaches the backend as a ReferenceCondition, i.e.
 	// the same QueryFilter the removed `reference=` alias produced. Locate the
 	// non-date sub-filter and assert its shape.
-	var refCond *commonpb.QueryFilter
+	var refCond *ledgerpb.QueryFilter
 	for _, f := range and.GetFilters() {
 		if f.GetBuiltinUint() == nil {
 			refCond = f
@@ -154,17 +154,17 @@ func TestHandleListTransactions_ReferenceFilterAndDateRange(t *testing.T) {
 func TestHandleListTransactions_DualFormatFilter(t *testing.T) {
 	t.Parallel()
 
-	capture := func(t *testing.T, target string) *commonpb.QueryFilter {
+	capture := func(t *testing.T, target string) *ledgerpb.QueryFilter {
 		t.Helper()
 
-		var captured *commonpb.QueryFilter
+		var captured *ledgerpb.QueryFilter
 
 		backend := NewMockBackend(gomock.NewController(t))
 		backend.EXPECT().ListTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ string, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
+			func(_ context.Context, _ string, _ uint32, _ uint64, filter *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Transaction], error) {
 				captured = filter
 
-				return cursor.NewSliceCursor[*commonpb.Transaction](nil), nil
+				return cursor.NewSliceCursor[*ledgerpb.Transaction](nil), nil
 			}).AnyTimes()
 		srv := newTestServer(t, backend)
 
@@ -282,7 +282,7 @@ func TestHandleListTransactions_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
+		func(_ context.Context, _ string, _ uint32, _ uint64, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Transaction], error) {
 			return nil, errors.New("backend broke")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

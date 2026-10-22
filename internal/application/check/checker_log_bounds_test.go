@@ -12,11 +12,11 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -100,7 +100,7 @@ func writeRawLogRows(t *testing.T, store *dal.Store, from, to uint64) {
 	// math.MaxUint64 — the top-of-key-space case the bound must now cover —
 	// would wrap that condition to 0 and never terminate.
 	for sequence := from; ; sequence++ {
-		require.NoError(t, batch.SetProto(logRowKey(sequence), &commonpb.Log{Sequence: sequence}))
+		require.NoError(t, batch.SetProto(logRowKey(sequence), &ledgerpb.Log{Sequence: sequence}))
 
 		if sequence == to {
 			break
@@ -125,7 +125,7 @@ func writeRawLogRows(t *testing.T, store *dal.Store, from, to uint64) {
 func persistSuccessAuditEntries(t *testing.T, store *dal.Store, ranges [][2]uint64) {
 	t.Helper()
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
+	gen := processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	var (
 		lastHash    []byte
@@ -138,9 +138,9 @@ func persistSuccessAuditEntries(t *testing.T, store *dal.Store, ranges [][2]uint
 
 		entry := &auditpb.AuditEntry{
 			Sequence:       sequence,
-			Timestamp:      &commonpb.Timestamp{Data: 1700000000 + sequence},
+			Timestamp:      &ledgerpb.Timestamp{Data: 1700000000 + sequence},
 			ProposalId:     sequence,
-			HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+			HashVersion:    uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 			OrderCount:     uint32(len(items)),
 			CallerSnapshot: testCallerSnapshot(),
 			Outcome: &auditpb.AuditEntry_Success{
@@ -229,13 +229,13 @@ func appendEngineAuditEntry(t *testing.T, in engineAuditEntry) {
 	engine := in.engine
 
 	in.entry.Sequence = engine.nextAuditSequenceID
-	in.entry.Timestamp = &commonpb.Timestamp{Data: 1700000000 + engine.raftIndex}
+	in.entry.Timestamp = &ledgerpb.Timestamp{Data: 1700000000 + engine.raftIndex}
 	in.entry.ProposalId = engine.raftIndex
-	in.entry.HashVersion = uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3)
+	in.entry.HashVersion = uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3)
 	in.entry.OrderCount = uint32(len(in.items))
 	in.entry.CallerSnapshot = testCallerSnapshot()
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, engine.clusterID)
+	gen := processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, engine.clusterID)
 
 	headerPayload, err := state.BuildHashedHeaderPayload(in.entry)
 	require.NoError(t, err)
@@ -274,10 +274,10 @@ func errorsOfType(errs []*servicepb.CheckStoreError, want servicepb.CheckStoreEr
 // same reference and the skip declared is converted to an OrderSkipped log by
 // the real processor, which is the second of the two log-sequence producing
 // call sites (internal/domain/processing/processor.go).
-func referenceTransactionOrder(ledger, reference string, skippable bool, postings ...*commonpb.Posting) *raftcmdpb.Order {
-	var reasons []commonpb.ErrorReason
+func referenceTransactionOrder(ledger, reference string, skippable bool, postings ...*ledgerpb.Posting) *raftcmdpb.Order {
+	var reasons []ledgerpb.ErrorReason
 	if skippable {
-		reasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
+		reasons = []ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
 	}
 
 	return &raftcmdpb.Order{
@@ -947,13 +947,13 @@ func TestCheck_LogBounds_LargeTruncationStaysBounded(t *testing.T) {
 func persistItemlessSuccessAuditEntry(t *testing.T, store *dal.Store, minSeq, maxSeq uint64) {
 	t.Helper()
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
+	gen := processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	entry := &auditpb.AuditEntry{
 		Sequence:       1,
-		Timestamp:      &commonpb.Timestamp{Data: 1700000001},
+		Timestamp:      &ledgerpb.Timestamp{Data: 1700000001},
 		ProposalId:     1,
-		HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		HashVersion:    uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		CallerSnapshot: testCallerSnapshot(),
 		Outcome: &auditpb.AuditEntry_Success{
 			Success: &auditpb.AuditSuccess{MinLogSequence: minSeq, MaxLogSequence: maxSeq},
@@ -1165,13 +1165,13 @@ func TestCheck_LogBounds_SuccessRangeWithoutItemsIsNotAnOracle(t *testing.T) {
 			store := createTestStore(t)
 			writeRawLogRows(t, store, 1, 4)
 
-			gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
+			gen := processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 			entry := &auditpb.AuditEntry{
 				Sequence:       1,
-				Timestamp:      &commonpb.Timestamp{Data: 1700000001},
+				Timestamp:      &ledgerpb.Timestamp{Data: 1700000001},
 				ProposalId:     1,
-				HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+				HashVersion:    uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 				OrderCount:     uint32(len(tc.items)),
 				CallerSnapshot: testCallerSnapshot(),
 				Outcome: &auditpb.AuditEntry_Success{

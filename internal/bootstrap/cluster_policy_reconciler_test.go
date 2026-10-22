@@ -12,9 +12,9 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -54,7 +54,7 @@ func (f *fakeAdmission) Admit(_ context.Context, _ *servicepb.ApplyRequest) (*do
 	return nil, f.err
 }
 
-func (f *fakeAdmission) AdmitClusterPolicy(_ context.Context, _ *commonpb.ClusterPolicy) (*domain.ApplyResult, error) {
+func (f *fakeAdmission) AdmitClusterPolicy(_ context.Context, _ *ledgerpb.ClusterPolicy) (*domain.ApplyResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
@@ -115,7 +115,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		cfg := validBaseConfig()
 
 		batch := store.OpenWriteSession()
-		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+		require.NoError(t, state.SaveClusterPolicy(batch, &ledgerpb.ClusterPolicy{
 			Revision:             cfg.ClusterPolicyRevision,
 			IdempotencyTtlMicros: uint64(cfg.IdempotencyTTL.Microseconds()),
 			QueryCheckpointLimit: cfg.QueryCheckpointLimit,
@@ -135,7 +135,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		cfg := validBaseConfig()
 
 		batch := store.OpenWriteSession()
-		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+		require.NoError(t, state.SaveClusterPolicy(batch, &ledgerpb.ClusterPolicy{
 			Revision:             cfg.ClusterPolicyRevision,
 			QueryCheckpointLimit: cfg.QueryCheckpointLimit + 1,
 		}))
@@ -154,7 +154,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		cfg := validBaseConfig()
 
 		batch := store.OpenWriteSession()
-		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+		require.NoError(t, state.SaveClusterPolicy(batch, &ledgerpb.ClusterPolicy{
 			Revision:             cfg.ClusterPolicyRevision + 1,
 			QueryCheckpointLimit: cfg.QueryCheckpointLimit,
 		}))

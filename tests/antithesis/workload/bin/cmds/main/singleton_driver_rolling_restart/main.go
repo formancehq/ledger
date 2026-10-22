@@ -23,8 +23,8 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -198,7 +198,7 @@ func writeBurst(ctx context.Context, client servicepb.BucketServiceClient, commi
 					Ledger: rrSentinelLedger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{commonpb.NewPosting("world", "burst:rr", "COIN", internal.RandomBigInt())},
+							Postings: []*ledgerpb.Posting{ledgerpb.NewPosting("world", "burst:rr", "COIN", internal.RandomBigInt())},
 							Force:    true,
 						},
 					}},

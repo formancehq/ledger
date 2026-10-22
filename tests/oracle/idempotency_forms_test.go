@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -18,7 +18,7 @@ func TestIdempotencyEquivalentRequestForms(t *testing.T) {
 		top    *servicepb.Request
 		action *servicepb.LedgerAction
 	}{
-		{"mode", enforcementRequest(commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, false), &servicepb.LedgerAction{Data: &servicepb.LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeRequest{EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT}}}},
+		{"mode", enforcementRequest(ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, false), &servicepb.LedgerAction{Data: &servicepb.LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeRequest{EnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT}}}},
 		{"add type", oracletest.AddTypeReq("known"), &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddAccountType{AddAccountType: &servicepb.AddAccountTypeRequest{AccountType: oracletest.AddTypeReq("known").GetAddAccountType().GetAccountType()}}}},
 		{"remove type", oracletest.RemoveTypeReq("known"), &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{RemoveAccountType: &servicepb.RemoveAccountTypeRequest{Name: "known"}}}},
 	}
@@ -50,7 +50,7 @@ func TestIdempotencyEquivalentRequestForms(t *testing.T) {
 			changed.GetApply().Ledger = "other"
 			require.False(t, RequestsEqual([]*servicepb.Request{tc.top}, []*servicepb.Request{changed}))
 			changed = nested.CloneVT()
-			changed.GetApply().SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS}
+			changed.GetApply().SkippableReasons = []ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS}
 			require.False(t, RequestsEqual([]*servicepb.Request{tc.top}, []*servicepb.Request{changed}))
 		})
 	}
@@ -58,7 +58,7 @@ func TestIdempotencyEquivalentRequestForms(t *testing.T) {
 
 func TestIdempotencyChangedModeConflicts(t *testing.T) {
 	t.Parallel()
-	first := NewGlobalState().Apply(keyedBulk("mode", enforcementRequest(commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, false)))
-	got := first.State.Apply(keyedBulk("mode", enforcementRequest(commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, true)))
+	first := NewGlobalState().Apply(keyedBulk("mode", enforcementRequest(ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, false)))
+	got := first.State.Apply(keyedBulk("mode", enforcementRequest(ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, true)))
 	require.Equal(t, domain.ErrReasonIdempotencyKeyConflict, got.Reason)
 }

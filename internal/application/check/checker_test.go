@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"math"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
@@ -20,7 +22,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -33,7 +34,7 @@ func TestCheckerBoundaryRebuildRejectsExhaustedCounters(t *testing.T) {
 		t.Parallel()
 
 		expected := make(map[string]*raftcmdpb.LedgerBoundaries)
-		err := advanceExpectedBoundaries(expected, "ledger", &commonpb.LedgerLog{Id: math.MaxUint64})
+		err := advanceExpectedBoundaries(expected, "ledger", &ledgerpb.LedgerLog{Id: math.MaxUint64})
 		var exhausted *domain.ErrSequenceExhausted
 		require.ErrorAs(t, err, &exhausted)
 		require.Equal(t, domain.SequenceCounterLedgerLogID, exhausted.Counter)
@@ -44,9 +45,9 @@ func TestCheckerBoundaryRebuildRejectsExhaustedCounters(t *testing.T) {
 		t.Parallel()
 
 		expected := make(map[string]*raftcmdpb.LedgerBoundaries)
-		log := &commonpb.LedgerLog{Id: 1, Data: &commonpb.LedgerLogPayload{
-			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
-				Transaction: &commonpb.Transaction{Id: math.MaxUint64},
+		log := &ledgerpb.LedgerLog{Id: 1, Data: &ledgerpb.LedgerLogPayload{
+			Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &ledgerpb.CreatedTransaction{
+				Transaction: &ledgerpb.Transaction{Id: math.MaxUint64},
 			}},
 		}}
 		err := advanceExpectedBoundaries(expected, "ledger", log)
@@ -101,15 +102,15 @@ type testEngine struct {
 	// In-memory state tracking (mirroring the state machine)
 	nextSequenceID         uint64
 	lastLogHash            []byte
-	ledgers                map[string]*commonpb.LedgerInfo
+	ledgers                map[string]*ledgerpb.LedgerInfo
 	boundaries             map[string]*raftcmdpb.LedgerBoundaries
 	volumes                map[string]*raftcmdpb.VolumePair
-	metadata               map[string]*commonpb.MetadataValue
+	metadata               map[string]*ledgerpb.MetadataValue
 	idempotency            map[string]*commonpb.IdempotencyKeyValue
 	references             map[string]*commonpb.TransactionReferenceValue
 	transactionStates      map[string]*commonpb.TransactionState
 	reversions             map[string]*bitset.Bitset
-	numscriptContent       map[string]*commonpb.NumscriptInfo // key = NumscriptEntryKey bytes
+	numscriptContent       map[string]*ledgerpb.NumscriptInfo // key = NumscriptEntryKey bytes
 	numscriptLatest        map[string]string                  // key = NumscriptVersionKey bytes
 	nextLedgerID           uint32
 	nextAuditSequenceID    uint64
@@ -140,15 +141,15 @@ func newTestEngine(t *testing.T) *testEngine {
 		clusterID:           checkerTestAuditKey,
 		nextSequenceID:      1,
 		nextLedgerID:        1,
-		ledgers:             make(map[string]*commonpb.LedgerInfo),
+		ledgers:             make(map[string]*ledgerpb.LedgerInfo),
 		boundaries:          make(map[string]*raftcmdpb.LedgerBoundaries),
 		volumes:             make(map[string]*raftcmdpb.VolumePair),
-		metadata:            make(map[string]*commonpb.MetadataValue),
+		metadata:            make(map[string]*ledgerpb.MetadataValue),
 		idempotency:         make(map[string]*commonpb.IdempotencyKeyValue),
 		references:          make(map[string]*commonpb.TransactionReferenceValue),
 		transactionStates:   make(map[string]*commonpb.TransactionState),
 		reversions:          make(map[string]*bitset.Bitset),
-		numscriptContent:    make(map[string]*commonpb.NumscriptInfo),
+		numscriptContent:    make(map[string]*ledgerpb.NumscriptInfo),
 		numscriptLatest:     make(map[string]string),
 		nextAuditSequenceID: 1,
 		raftIndex:           1,
@@ -157,13 +158,13 @@ func newTestEngine(t *testing.T) *testEngine {
 
 // processAndCommit processes orders through the RequestProcessor, then writes the resulting
 // logs and attributes to the store, matching the real state machine's behavior.
-func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Log {
+func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*ledgerpb.Log {
 	e.t.Helper()
 
 	proposal := &raftcmdpb.Proposal{
 		Id:     e.raftIndex,
 		Orders: orders,
-		Date:   &commonpb.Timestamp{Data: 1700000000 + e.raftIndex},
+		Date:   &ledgerpb.Timestamp{Data: 1700000000 + e.raftIndex},
 	}
 
 	// Track which keys were modified in this batch
@@ -363,7 +364,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 func (e *testEngine) appendAuditEntry(batch *dal.WriteSession, proposal *raftcmdpb.Proposal, results []*raftcmdpb.CreatedLogOrReference) {
 	e.t.Helper()
 
-	hashAlgorithm := commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
+	hashAlgorithm := ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
 	hashGenerator := processing.NewHashGenerator(hashAlgorithm, e.clusterID)
 	serializedOrders := marshalOrdersForTest(proposal.GetOrders())
 	minLogSeq, maxLogSeq := testLogSequenceRange(results)
@@ -479,7 +480,7 @@ func testAuditItems(serializedOrders [][]byte, results []*raftcmdpb.CreatedLogOr
 // scopeImpl implements processing.Scope using the testEngine's in-memory state.
 type scopeImpl struct {
 	engine           *testEngine
-	date             *commonpb.Timestamp
+	date             *ledgerpb.Timestamp
 	modifiedVolumes  map[string]struct{}
 	modifiedMetadata map[string]struct{}
 	modifiedTxStates map[string]struct{}
@@ -544,9 +545,9 @@ func (a *scopeFuncAccessor[K, V, R]) Delete(key K) error {
 	return nil
 }
 
-func (s *scopeImpl) Ledgers() processing.Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {
-	return &scopeFuncAccessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]{
-		get: func(key domain.LedgerKey) (commonpb.LedgerInfoReader, error) {
+func (s *scopeImpl) Ledgers() processing.Accessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader] {
+	return &scopeFuncAccessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader]{
+		get: func(key domain.LedgerKey) (ledgerpb.LedgerInfoReader, error) {
 			info, ok := s.engine.ledgers[key.Name]
 			if !ok {
 				return nil, domain.ErrNotFound
@@ -554,7 +555,7 @@ func (s *scopeImpl) Ledgers() processing.Accessor[domain.LedgerKey, *commonpb.Le
 
 			return info.AsReader(), nil
 		},
-		put: func(key domain.LedgerKey, info *commonpb.LedgerInfo) {
+		put: func(key domain.LedgerKey, info *ledgerpb.LedgerInfo) {
 			s.engine.ledgers[key.Name] = info
 		},
 	}
@@ -583,8 +584,8 @@ func (s *scopeImpl) Volumes() processing.Accessor[domain.VolumeKey, *raftcmdpb.V
 			if !ok {
 				// Simulate preloaded zero volumes (in production, admission always preloads)
 				vp = &raftcmdpb.VolumePair{
-					Input:  commonpb.NewUint256FromUint64(0),
-					Output: commonpb.NewUint256FromUint64(0),
+					Input:  ledgerpb.NewUint256FromUint64(0),
+					Output: ledgerpb.NewUint256FromUint64(0),
 				}
 			}
 
@@ -598,9 +599,9 @@ func (s *scopeImpl) Volumes() processing.Accessor[domain.VolumeKey, *raftcmdpb.V
 	}
 }
 
-func (s *scopeImpl) AccountMetadata() processing.Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
-	return &scopeFuncAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{
-		get: func(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
+func (s *scopeImpl) AccountMetadata() processing.Accessor[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader] {
+	return &scopeFuncAccessor[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]{
+		get: func(key domain.MetadataKey) (ledgerpb.MetadataValueReader, error) {
 			v, ok := s.engine.metadata[string(key.Bytes())]
 			if !ok {
 				return nil, domain.ErrNotFound
@@ -608,7 +609,7 @@ func (s *scopeImpl) AccountMetadata() processing.Accessor[domain.MetadataKey, *c
 
 			return v.AsReader(), nil
 		},
-		put: func(key domain.MetadataKey, value *commonpb.MetadataValue) {
+		put: func(key domain.MetadataKey, value *ledgerpb.MetadataValue) {
 			k := string(key.Bytes())
 			s.engine.metadata[k] = value
 			s.modifiedMetadata[k] = struct{}{}
@@ -621,9 +622,9 @@ func (s *scopeImpl) AccountMetadata() processing.Accessor[domain.MetadataKey, *c
 	}
 }
 
-func (s *scopeImpl) LedgerMetadata() processing.Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
-	return &scopeFuncAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{
-		get: func(_ domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
+func (s *scopeImpl) LedgerMetadata() processing.Accessor[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader] {
+	return &scopeFuncAccessor[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]{
+		get: func(_ domain.LedgerMetadataKey) (ledgerpb.MetadataValueReader, error) {
 			return nil, domain.ErrNotFound
 		},
 	}
@@ -663,17 +664,17 @@ func (s *scopeImpl) TransactionStates() processing.Accessor[domain.TransactionKe
 	}
 }
 
-func (s *scopeImpl) PreparedQueries() processing.Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader] {
-	return &scopeFuncAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]{
-		get: func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
+func (s *scopeImpl) PreparedQueries() processing.Accessor[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader] {
+	return &scopeFuncAccessor[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader]{
+		get: func(_ domain.PreparedQueryKey) (ledgerpb.PreparedQueryReader, error) {
 			return nil, nil
 		},
 	}
 }
 
-func (s *scopeImpl) Indexes() processing.Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader] {
-	return &scopeFuncAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]{
-		get: func(_ domain.IndexKey) (commonpb.IndexReader, error) {
+func (s *scopeImpl) Indexes() processing.Accessor[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader] {
+	return &scopeFuncAccessor[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader]{
+		get: func(_ domain.IndexKey) (ledgerpb.IndexReader, error) {
 			return nil, domain.ErrNotFound
 		},
 	}
@@ -703,8 +704,8 @@ func (s *scopeImpl) SetMaintenanceMode(_ bool)                  {}
 
 // Replay applies the same orders the FSM applied, so it needs the same
 // committed policy: apply reads the metadata ceilings from it.
-func (s *scopeImpl) GetClusterPolicy() *commonpb.ClusterPolicy {
-	return &commonpb.ClusterPolicy{
+func (s *scopeImpl) GetClusterPolicy() *ledgerpb.ClusterPolicy {
+	return &ledgerpb.ClusterPolicy{
 		Revision:                    1,
 		QueryCheckpointLimit:        10,
 		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
@@ -714,8 +715,8 @@ func (s *scopeImpl) GetClusterPolicy() *commonpb.ClusterPolicy {
 		MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
 	}
 }
-func (s *scopeImpl) SetClusterPolicy(_ *commonpb.ClusterPolicy)                {}
-func (s *scopeImpl) GetSinkConfig(_ string) (commonpb.SinkConfigReader, error) { return nil, nil }
+func (s *scopeImpl) SetClusterPolicy(_ *ledgerpb.ClusterPolicy)                {}
+func (s *scopeImpl) GetSinkConfig(_ string) (ledgerpb.SinkConfigReader, error) { return nil, nil }
 
 func (s *scopeImpl) GetLastLogHash() []byte {
 	return s.engine.lastLogHash
@@ -752,7 +753,7 @@ func (s *scopeImpl) IncrementNextLedgerID() uint32 {
 	return id
 }
 
-func (s *scopeImpl) GetDate() commonpb.TimestampReader {
+func (s *scopeImpl) GetDate() ledgerpb.TimestampReader {
 	if s.date == nil {
 		return nil
 	}
@@ -760,10 +761,10 @@ func (s *scopeImpl) GetDate() commonpb.TimestampReader {
 	return s.date.AsReader()
 }
 
-func (s *scopeImpl) GetPreparedQuery(_ string, _ string) (commonpb.PreparedQueryReader, error) {
+func (s *scopeImpl) GetPreparedQuery(_ string, _ string) (ledgerpb.PreparedQueryReader, error) {
 	return nil, nil
 }
-func (s *scopeImpl) PutPreparedQuery(_ string, _ *commonpb.PreparedQuery) {}
+func (s *scopeImpl) PutPreparedQuery(_ string, _ *ledgerpb.PreparedQuery) {}
 func (s *scopeImpl) DeletePreparedQuery(_ string, _ string)               {}
 func (s *scopeImpl) GetNumscriptLatestVersion(ledger, name string) (string, error) {
 	return s.engine.numscriptLatest[string(domain.NumscriptVersionKey{LedgerName: ledger, Name: name}.Bytes())], nil
@@ -773,7 +774,7 @@ func (s *scopeImpl) NumscriptVersionExists(ledger, name, version string) (bool, 
 
 	return ok, nil
 }
-func (s *scopeImpl) PutNumscript(ledger string, info *commonpb.NumscriptInfo) {
+func (s *scopeImpl) PutNumscript(ledger string, info *ledgerpb.NumscriptInfo) {
 	s.engine.numscriptContent[string(domain.NumscriptEntryKey{LedgerName: ledger, Name: info.GetName(), Version: info.GetVersion()}.Bytes())] = info
 	s.engine.numscriptLatest[string(domain.NumscriptVersionKey{LedgerName: ledger, Name: info.GetName()}.Bytes())] = info.GetVersion()
 }
@@ -786,7 +787,7 @@ func (s *scopeImpl) SaveQueryCheckpoint(_ *raftcmdpb.QueryCheckpointState) {}
 func (s *scopeImpl) DeleteQueryCheckpoint(_ uint64)                        {}
 func (s *scopeImpl) LiveQueryCheckpointCount() uint64                      { return 0 }
 func (s *scopeImpl) QueryCheckpointExists(_ uint64) bool                   { return false }
-func (s *scopeImpl) ResolveNumscriptContent(ledger, name, version string) (commonpb.NumscriptInfoReader, error) {
+func (s *scopeImpl) ResolveNumscriptContent(ledger, name, version string) (ledgerpb.NumscriptInfoReader, error) {
 	info, ok := s.engine.numscriptContent[string(domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: version}.Bytes())]
 	if !ok {
 		return nil, nil
@@ -798,10 +799,10 @@ func (s *scopeImpl) ResolveNumscriptContent(ledger, name, version string) (commo
 // Index registry stubs — the check engine doesn't exercise CreateIndex /
 // DropIndex orders, so the test scope can no-op these. Tests that need
 // real index behavior use the MockScope generated by mockgen.
-func (s *scopeImpl) GetIndex(_ domain.IndexKey) (commonpb.IndexReader, error) {
+func (s *scopeImpl) GetIndex(_ domain.IndexKey) (ledgerpb.IndexReader, error) {
 	return nil, domain.ErrNotFound
 }
-func (s *scopeImpl) PutIndex(_ domain.IndexKey, _ *commonpb.Index) {}
+func (s *scopeImpl) PutIndex(_ domain.IndexKey, _ *ledgerpb.Index) {}
 func (s *scopeImpl) DeleteIndex(_ domain.IndexKey)                 {}
 
 // emitterImpl satisfies processing.SignalSink for replay tests. Only
@@ -811,28 +812,28 @@ func (s *scopeImpl) DeleteIndex(_ domain.IndexKey)                 {}
 // not from in-memory signal accumulation.
 type emitterImpl struct{ engine *testEngine }
 
-func (e *emitterImpl) Absorb(_ *raftcmdpb.Order, log *commonpb.Log) {
-	if p, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
+func (e *emitterImpl) Absorb(_ *raftcmdpb.Order, log *ledgerpb.Log) {
+	if p, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_DeleteLedger); ok {
 		e.engine.pendingLedgerDeletions = append(e.engine.pendingLedgerDeletions, p.DeleteLedger.GetName())
 	}
 }
 
 // Helper functions for building orders
 
-func newPosting(source, destination, asset string, amount int64) *commonpb.Posting {
-	return &commonpb.Posting{
+func newPosting(source, destination, asset string, amount int64) *ledgerpb.Posting {
+	return &ledgerpb.Posting{
 		Source:      source,
 		Destination: destination,
-		Amount:      commonpb.NewUint256FromUint64(uint64(amount)),
+		Amount:      ledgerpb.NewUint256FromUint64(uint64(amount)),
 		Asset:       asset,
 	}
 }
 
 func createLedgerOrder(name string) *raftcmdpb.Order {
-	return createLedgerOrderWithEnforcementMode(name, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
+	return createLedgerOrderWithEnforcementMode(name, ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
 }
 
-func createLedgerOrderWithEnforcementMode(name string, mode commonpb.ChartEnforcementMode) *raftcmdpb.Order {
+func createLedgerOrderWithEnforcementMode(name string, mode ledgerpb.ChartEnforcementMode) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -845,7 +846,7 @@ func createLedgerOrderWithEnforcementMode(name string, mode commonpb.ChartEnforc
 	}
 }
 
-func updateDefaultEnforcementModeOrder(ledger string, mode commonpb.ChartEnforcementMode) *raftcmdpb.Order {
+func updateDefaultEnforcementModeOrder(ledger string, mode ledgerpb.ChartEnforcementMode) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -860,7 +861,7 @@ func updateDefaultEnforcementModeOrder(ledger string, mode commonpb.ChartEnforce
 	}
 }
 
-func addAccountTypeOrder(ledger, name, pattern string, persistence commonpb.AccountTypePersistence) *raftcmdpb.Order {
+func addAccountTypeOrder(ledger, name, pattern string, persistence ledgerpb.AccountTypePersistence) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -868,7 +869,7 @@ func addAccountTypeOrder(ledger, name, pattern string, persistence commonpb.Acco
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
 						AddAccountType: &raftcmdpb.AddAccountTypeOrder{
-							AccountType: &commonpb.AccountType{
+							AccountType: &ledgerpb.AccountType{
 								Name:        name,
 								Pattern:     pattern,
 								Persistence: persistence,
@@ -895,7 +896,7 @@ func deleteLedgerOrder(name string) *raftcmdpb.Order {
 	}
 }
 
-func createTransactionOrder(ledger string, force bool, postings ...*commonpb.Posting) *raftcmdpb.Order {
+func createTransactionOrder(ledger string, force bool, postings ...*ledgerpb.Posting) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -914,7 +915,7 @@ func createTransactionOrder(ledger string, force bool, postings ...*commonpb.Pos
 	}
 }
 
-func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[string]string, accountMeta map[string]*commonpb.MetadataMap, postings ...*commonpb.Posting) *raftcmdpb.Order {
+func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[string]string, accountMeta map[string]*ledgerpb.MetadataMap, postings ...*ledgerpb.Posting) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -924,7 +925,7 @@ func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[
 						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 							Postings:        postings,
 							Force:           force,
-							Metadata:        commonpb.MetadataFromGoMap(metadata),
+							Metadata:        ledgerpb.MetadataFromGoMap(metadata),
 							AccountMetadata: accountMeta,
 						},
 					},
@@ -979,14 +980,14 @@ func saveAccountMetadataOrder(ledger, account string, metadata map[string]string
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 						AddMetadata: &raftcmdpb.SaveMetadataOrder{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{
+							Target: &ledgerpb.Target{
+								Target: &ledgerpb.Target_Account{
+									Account: &ledgerpb.TargetAccount{
 										Addr: account,
 									},
 								},
 							},
-							Metadata: commonpb.MetadataFromGoMap(metadata),
+							Metadata: ledgerpb.MetadataFromGoMap(metadata),
 						},
 					},
 					},
@@ -1004,9 +1005,9 @@ func deleteAccountMetadataOrder(ledger, account, key string) *raftcmdpb.Order {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 						DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{
+							Target: &ledgerpb.Target{
+								Target: &ledgerpb.Target_Account{
+									Account: &ledgerpb.TargetAccount{
 										Addr: account,
 									},
 								},
@@ -1178,8 +1179,8 @@ func TestCheckerComprehensive(t *testing.T) {
 	// --- Step 7: Transactions with account metadata attached ---
 	engine.processAndCommit(createTransactionWithMetadataOrder("payments", true,
 		map[string]string{"type": "deposit"},
-		map[string]*commonpb.MetadataMap{
-			"customer:dave": commonpb.MetadataMapFromGoMap(map[string]string{
+		map[string]*ledgerpb.MetadataMap{
+			"customer:dave": ledgerpb.MetadataMapFromGoMap(map[string]string{
 				"joined": "2026-01-01",
 			}),
 		},
@@ -1245,7 +1246,7 @@ func TestCheckerReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 		"ledger",
 		"orders",
 		"orders:{id}",
-		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+		ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 	))
 
 	fund := createTransactionOrder("ledger", true,
@@ -1272,13 +1273,13 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 	attrs := attributes.New()
 
 	// Write log at sequence 1
-	log1 := &commonpb.Log{
+	log1 := &ledgerpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreatedLedgerLog{
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_CreateLedger{
+				CreateLedger: &ledgerpb.CreatedLedgerLog{
 					Name:      "test",
-					CreatedAt: &commonpb.Timestamp{Data: 1700000000},
+					CreatedAt: &ledgerpb.Timestamp{Data: 1700000000},
 				},
 			},
 		},
@@ -1286,13 +1287,13 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 	// Hash chain is now verified via audit entries, not per-log.
 
 	// Skip sequence 2 and write log at sequence 3
-	log3 := &commonpb.Log{
+	log3 := &ledgerpb.Log{
 		Sequence: 3,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreatedLedgerLog{
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_CreateLedger{
+				CreateLedger: &ledgerpb.CreatedLedgerLog{
 					Name:      "test2",
-					CreatedAt: &commonpb.Timestamp{Data: 1700000002},
+					CreatedAt: &ledgerpb.Timestamp{Data: 1700000002},
 				},
 			},
 		},
@@ -1300,7 +1301,7 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 	// Even with correct chaining from log1, the gap will be detected
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log3}))
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{log1, log3}))
 	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, state.SaveLedger(batch, log3.GetPayload().GetCreateLedger().GetName(), log3.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, batch.Commit())
@@ -1468,10 +1469,10 @@ func saveTransactionMetadataOrder(ledger string, txID uint64, metadata map[strin
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 						AddMetadata: &raftcmdpb.SaveMetadataOrder{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_TransactionId{TransactionId: txID},
+							Target: &ledgerpb.Target{
+								Target: &ledgerpb.Target_TransactionId{TransactionId: txID},
 							},
-							Metadata: commonpb.MetadataFromGoMap(metadata),
+							Metadata: ledgerpb.MetadataFromGoMap(metadata),
 						},
 					},
 					},
@@ -1489,8 +1490,8 @@ func deleteTransactionMetadataOrder(ledger string, txID uint64, key string) *raf
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 						DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_TransactionId{TransactionId: txID},
+							Target: &ledgerpb.Target{
+								Target: &ledgerpb.Target_TransactionId{TransactionId: txID},
 							},
 							Key: key,
 						},
@@ -1615,8 +1616,8 @@ func TestCheckerDetectsSymmetricVolumeMutation(t *testing.T) {
 		Asset:      "USD",
 	}
 	_, err := engine.attrs.Volume.Set(batch, tamperedKey.Bytes(), &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(999),
-		Output: commonpb.NewUint256FromUint64(999),
+		Input:  ledgerpb.NewUint256FromUint64(999),
+		Output: ledgerpb.NewUint256FromUint64(999),
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
@@ -1730,25 +1731,25 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	seqID := uint64(1)
 
 	// Log 1: Create ledger
-	log1 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{
-				Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000},
+	log1 := buildLog(&lastHash, &seqID, &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_CreateLedger{
+			CreateLedger: &ledgerpb.CreatedLedgerLog{
+				Name: "test", CreatedAt: &ledgerpb.Timestamp{Data: 1700000000},
 			},
 		},
 	})
 
 	// Log 2: Create transaction (tx 1)
 	posting := newPosting("world", "user:alice", "USD", 1000)
-	log2 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
+	log2 := buildLog(&lastHash, &seqID, &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_Apply{
+			Apply: &ledgerpb.ApplyLedgerLog{
 				LedgerName: "test",
-				Log: &commonpb.LedgerLog{
-					Data: &commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-							CreatedTransaction: &commonpb.CreatedTransaction{
-								Transaction: &commonpb.Transaction{Id: 1, Postings: []*commonpb.Posting{posting}},
+				Log: &ledgerpb.LedgerLog{
+					Data: &ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+							CreatedTransaction: &ledgerpb.CreatedTransaction{
+								Transaction: &ledgerpb.Transaction{Id: 1, Postings: []*ledgerpb.Posting{posting}},
 							},
 						},
 					},
@@ -1758,16 +1759,16 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	})
 
 	// Log 3: Revert tx 1 (valid)
-	log3 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
+	log3 := buildLog(&lastHash, &seqID, &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_Apply{
+			Apply: &ledgerpb.ApplyLedgerLog{
 				LedgerName: "test",
-				Log: &commonpb.LedgerLog{
-					Data: &commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-							RevertedTransaction: &commonpb.RevertedTransaction{
+				Log: &ledgerpb.LedgerLog{
+					Data: &ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+							RevertedTransaction: &ledgerpb.RevertedTransaction{
 								RevertedTransactionId: 1,
-								RevertTransaction:     &commonpb.Transaction{Id: 2, Postings: []*commonpb.Posting{reversePosting(posting)}},
+								RevertTransaction:     &ledgerpb.Transaction{Id: 2, Postings: []*ledgerpb.Posting{reversePosting(posting)}},
 							},
 						},
 					},
@@ -1777,16 +1778,16 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	})
 
 	// Log 4: Revert tx 1 AGAIN (double revert)
-	log4 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
+	log4 := buildLog(&lastHash, &seqID, &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_Apply{
+			Apply: &ledgerpb.ApplyLedgerLog{
 				LedgerName: "test",
-				Log: &commonpb.LedgerLog{
-					Data: &commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-							RevertedTransaction: &commonpb.RevertedTransaction{
+				Log: &ledgerpb.LedgerLog{
+					Data: &ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+							RevertedTransaction: &ledgerpb.RevertedTransaction{
 								RevertedTransactionId: 1,
-								RevertTransaction:     &commonpb.Transaction{Id: 3, Postings: []*commonpb.Posting{reversePosting(posting)}},
+								RevertTransaction:     &ledgerpb.Transaction{Id: 3, Postings: []*ledgerpb.Posting{reversePosting(posting)}},
 							},
 						},
 					},
@@ -1796,7 +1797,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	})
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log2, log3, log4}))
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{log1, log2, log3, log4}))
 	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, writeVolumes(batch, attrs, posting, "test"))
 	require.NoError(t, batch.Commit())
@@ -1828,26 +1829,26 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 	seqID := uint64(1)
 
 	// Log 1: Create ledger
-	log1 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{
-				Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000},
+	log1 := buildLog(&lastHash, &seqID, &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_CreateLedger{
+			CreateLedger: &ledgerpb.CreatedLedgerLog{
+				Name: "test", CreatedAt: &ledgerpb.Timestamp{Data: 1700000000},
 			},
 		},
 	})
 
 	// Log 2: Revert tx 999 (which was never created)
 	posting := newPosting("user:alice", "world", "USD", 1000)
-	log2 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
+	log2 := buildLog(&lastHash, &seqID, &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_Apply{
+			Apply: &ledgerpb.ApplyLedgerLog{
 				LedgerName: "test",
-				Log: &commonpb.LedgerLog{
-					Data: &commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-							RevertedTransaction: &commonpb.RevertedTransaction{
+				Log: &ledgerpb.LedgerLog{
+					Data: &ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+							RevertedTransaction: &ledgerpb.RevertedTransaction{
 								RevertedTransactionId: 999,
-								RevertTransaction:     &commonpb.Transaction{Id: 1, Postings: []*commonpb.Posting{posting}},
+								RevertTransaction:     &ledgerpb.Transaction{Id: 1, Postings: []*ledgerpb.Posting{posting}},
 							},
 						},
 					},
@@ -1857,7 +1858,7 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 	})
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log2}))
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{log1, log2}))
 	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, batch.Commit())
 
@@ -1876,8 +1877,8 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 }
 
 // buildLog creates a log entry for testing.
-func buildLog(_ *[]byte, seqID *uint64, payload *commonpb.LogPayload) *commonpb.Log {
-	log := &commonpb.Log{
+func buildLog(_ *[]byte, seqID *uint64, payload *ledgerpb.LogPayload) *ledgerpb.Log {
+	log := &ledgerpb.Log{
 		Sequence: *seqID,
 		Payload:  payload,
 	}
@@ -1887,8 +1888,8 @@ func buildLog(_ *[]byte, seqID *uint64, payload *commonpb.LogPayload) *commonpb.
 }
 
 // reversePosting returns a posting with source and destination swapped.
-func reversePosting(p *commonpb.Posting) *commonpb.Posting {
-	return &commonpb.Posting{
+func reversePosting(p *ledgerpb.Posting) *ledgerpb.Posting {
+	return &ledgerpb.Posting{
 		Source:      p.GetDestination(),
 		Destination: p.GetSource(),
 		Amount:      p.GetAmount(),
@@ -1897,7 +1898,7 @@ func reversePosting(p *commonpb.Posting) *commonpb.Posting {
 }
 
 // writeVolumes writes volume attributes for a posting to make the store consistent.
-func writeVolumes(batch *dal.WriteSession, attrs *attributes.Attributes, posting *commonpb.Posting, ledger string) error {
+func writeVolumes(batch *dal.WriteSession, attrs *attributes.Attributes, posting *ledgerpb.Posting, ledger string) error {
 	sourceKey := domain.VolumeKey{
 		AccountKey: domain.AccountKey{LedgerName: "test", Account: posting.GetSource()},
 		Asset:      posting.GetAsset(),
@@ -1908,7 +1909,7 @@ func writeVolumes(batch *dal.WriteSession, attrs *attributes.Attributes, posting
 	}
 
 	_, err := attrs.Volume.Set(batch, sourceKey.Bytes(), &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
 		Output: posting.GetAmount(),
 	})
 	if err != nil {
@@ -1917,7 +1918,7 @@ func writeVolumes(batch *dal.WriteSession, attrs *attributes.Attributes, posting
 
 	_, err = attrs.Volume.Set(batch, destKey.Bytes(), &raftcmdpb.VolumePair{
 		Input:  posting.GetAmount(),
-		Output: commonpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	})
 
 	return err
@@ -2030,7 +2031,7 @@ func TestCompareExclusionProjections_MissingFromStored(t *testing.T) {
 // indexCheckerFor wires a Checker against a fresh store and writes the given
 // Index entries directly so the projection-compare path can be exercised
 // without driving CreateIndex orders through the full pipeline.
-func indexCheckerFor(t *testing.T, stored map[domain.IndexKey]*commonpb.Index) (*Checker, *dal.Store) {
+func indexCheckerFor(t *testing.T, stored map[domain.IndexKey]*ledgerpb.Index) (*Checker, *dal.Store) {
 	t.Helper()
 
 	store := createTestStore(t)
@@ -2055,10 +2056,10 @@ func indexCheckerFor(t *testing.T, stored map[domain.IndexKey]*commonpb.Index) (
 func TestCompareIndexes_Identical(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*ledgerpb.Index{
 		key: {Id: id, Ledger: "L1"},
 	})
 
@@ -2067,7 +2068,7 @@ func TestCompareIndexes_Identical(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*ledgerpb.Index{
 		key: {Id: id, Ledger: "L1"},
 	}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
@@ -2080,10 +2081,10 @@ func TestCompareIndexes_Identical(t *testing.T) {
 func TestCompareIndexes_ExtraInStored(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	storedKey := domain.IndexKey{LedgerName: "phantom", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*ledgerpb.Index{
 		storedKey: {Id: id, Ledger: "phantom"},
 	})
 
@@ -2092,7 +2093,7 @@ func TestCompareIndexes_ExtraInStored(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*ledgerpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1)
 	require.Equal(t,
@@ -2108,7 +2109,7 @@ func TestCompareIndexes_ExtraInStored(t *testing.T) {
 func TestCompareIndexes_MissingFromStored(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tier")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "tier")
 	key := domain.IndexKey{LedgerName: "L2", Canonical: indexes.Canonical(id)}
 
 	checker, store := indexCheckerFor(t, nil)
@@ -2118,7 +2119,7 @@ func TestCompareIndexes_MissingFromStored(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*ledgerpb.Index{
 		key: {Id: id, Ledger: "L2"},
 	}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
@@ -2136,10 +2137,10 @@ func TestCompareIndexes_MissingFromStored(t *testing.T) {
 func TestCompareIndexes_LedgerDrift(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
+	id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
 	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*ledgerpb.Index{
 		key: {Id: id, Ledger: "tampered"},
 	})
 
@@ -2148,7 +2149,7 @@ func TestCompareIndexes_LedgerDrift(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*ledgerpb.Index{
 		key: {Id: id, Ledger: "L1"},
 	}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
@@ -2168,10 +2169,10 @@ func TestCompareIndexes_LedgerDrift(t *testing.T) {
 func TestCompareIndexes_BucketScopeIgnored(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	bucketKey := domain.IndexKey{LedgerName: "", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*ledgerpb.Index{
 		bucketKey: {Id: id, Ledger: ""},
 	})
 
@@ -2180,7 +2181,7 @@ func TestCompareIndexes_BucketScopeIgnored(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*ledgerpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Empty(t, events, "bucket-scoped entries must be silently skipped until a producer lands")
 }
@@ -2198,10 +2199,10 @@ func TestCompareIndexes_BucketScopeIgnored(t *testing.T) {
 func TestCompareIndexes_UnexpectedEntryFlagged(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
 	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*ledgerpb.Index{
 		key: {Id: id, Ledger: "L1"},
 	})
 
@@ -2210,7 +2211,7 @@ func TestCompareIndexes_UnexpectedEntryFlagged(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*ledgerpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1, "a stored entry the replay did not account for must be flagged")
 	require.Equal(t,
@@ -2227,10 +2228,10 @@ func TestCompareIndexes_UnexpectedEntryFlagged(t *testing.T) {
 func TestCompareIndexes_AccountBuiltinAsset_Identical(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	id := indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
 	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*ledgerpb.Index{
 		key: {Id: id, Ledger: "L1"},
 	})
 
@@ -2239,7 +2240,7 @@ func TestCompareIndexes_AccountBuiltinAsset_Identical(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*ledgerpb.Index{
 		key: {Id: id, Ledger: "L1"},
 	}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
@@ -2253,10 +2254,10 @@ func TestCompareIndexes_AccountBuiltinAsset_Identical(t *testing.T) {
 func TestCompareIndexes_AccountBuiltinAsset_ExtraInStored(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	id := indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
 	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*ledgerpb.Index{
 		key: {Id: id, Ledger: "L1"},
 	})
 
@@ -2266,7 +2267,7 @@ func TestCompareIndexes_AccountBuiltinAsset_ExtraInStored(t *testing.T) {
 
 	// Pass an empty expected map (no CreateIndex in audit chain).
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*ledgerpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1)
 	require.Equal(t,
@@ -2282,10 +2283,10 @@ func TestCompareIndexes_AccountBuiltinAsset_ExtraInStored(t *testing.T) {
 func TestCompareIndexes_DeletedInReplayFlagged(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*ledgerpb.Index{
 		key: {Id: id, Ledger: "L1"},
 	})
 
@@ -2297,7 +2298,7 @@ func TestCompareIndexes_DeletedInReplayFlagged(t *testing.T) {
 	deleted := map[string]struct{}{"L1": {}}
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}, deletedInReplay: deleted}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*ledgerpb.Index{}, deletedInReplay: deleted}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1)
 	require.Equal(t,
@@ -2307,7 +2308,7 @@ func TestCompareIndexes_DeletedInReplayFlagged(t *testing.T) {
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
 }
 
-func schemaCheckerFor(t *testing.T, ledgers []*commonpb.LedgerInfo) (*Checker, *dal.Store) {
+func schemaCheckerFor(t *testing.T, ledgers []*ledgerpb.LedgerInfo) (*Checker, *dal.Store) {
 	t.Helper()
 
 	store := createTestStore(t)
@@ -2326,9 +2327,9 @@ func schemaCheckerFor(t *testing.T, ledgers []*commonpb.LedgerInfo) (*Checker, *
 	return NewChecker(store, attrs, nil, logging.FromContext(ctx)), store
 }
 
-func accountFieldSchema(key string, typ commonpb.MetadataType) *commonpb.MetadataSchema {
-	return &commonpb.MetadataSchema{
-		AccountFields: map[string]*commonpb.MetadataFieldSchema{key: {Type: typ}},
+func accountFieldSchema(key string, typ ledgerpb.MetadataType) *ledgerpb.MetadataSchema {
+	return &ledgerpb.MetadataSchema{
+		AccountFields: map[string]*ledgerpb.MetadataFieldSchema{key: {Type: typ}},
 	}
 }
 
@@ -2337,8 +2338,8 @@ func accountFieldSchema(key string, typ commonpb.MetadataType) *commonpb.Metadat
 func TestCompareSchema_Identical(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
-		{Name: "L1", Id: 1, MetadataSchema: accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING)},
+	checker, store := schemaCheckerFor(t, []*ledgerpb.LedgerInfo{
+		{Name: "L1", Id: 1, MetadataSchema: accountFieldSchema("tier", ledgerpb.MetadataType_METADATA_TYPE_STRING)},
 	})
 
 	reader, err := store.NewReadHandle()
@@ -2346,8 +2347,8 @@ func TestCompareSchema_Identical(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*commonpb.MetadataSchema{
-		"L1": accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING),
+	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*ledgerpb.MetadataSchema{
+		"L1": accountFieldSchema("tier", ledgerpb.MetadataType_METADATA_TYPE_STRING),
 	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Empty(t, events, "compareSchema must stay silent on a matching schema")
@@ -2358,7 +2359,7 @@ func TestCompareSchema_Identical(t *testing.T) {
 func TestCompareSchema_MissingFromStored(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+	checker, store := schemaCheckerFor(t, []*ledgerpb.LedgerInfo{
 		{Name: "L1", Id: 1},
 	})
 
@@ -2367,8 +2368,8 @@ func TestCompareSchema_MissingFromStored(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*commonpb.MetadataSchema{
-		"L1": accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING),
+	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*ledgerpb.MetadataSchema{
+		"L1": accountFieldSchema("tier", ledgerpb.MetadataType_METADATA_TYPE_STRING),
 	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Len(t, events, 1)
@@ -2383,8 +2384,8 @@ func TestCompareSchema_MissingFromStored(t *testing.T) {
 func TestCompareSchema_ExtraInStored(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
-		{Name: "L1", Id: 1, MetadataSchema: accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING)},
+	checker, store := schemaCheckerFor(t, []*ledgerpb.LedgerInfo{
+		{Name: "L1", Id: 1, MetadataSchema: accountFieldSchema("tier", ledgerpb.MetadataType_METADATA_TYPE_STRING)},
 	})
 
 	reader, err := store.NewReadHandle()
@@ -2392,7 +2393,7 @@ func TestCompareSchema_ExtraInStored(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*commonpb.MetadataSchema{}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*ledgerpb.MetadataSchema{}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Len(t, events, 1)
 	require.Equal(t,
@@ -2405,7 +2406,7 @@ func TestCompareSchema_ExtraInStored(t *testing.T) {
 func TestCompareLedgerPresence_Present(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+	checker, store := schemaCheckerFor(t, []*ledgerpb.LedgerInfo{
 		{Name: "L1", Id: 1},
 	})
 
@@ -2427,7 +2428,7 @@ func TestCompareLedgerPresence_Present(t *testing.T) {
 func TestCompareLedgerPresence_MissingFromStored(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+	checker, store := schemaCheckerFor(t, []*ledgerpb.LedgerInfo{
 		{Name: "L1", Id: 1},
 	})
 
@@ -2454,8 +2455,8 @@ func TestCompareLedgerPresence_MissingFromStored(t *testing.T) {
 func TestCompareLedgerPresence_SoftDeletedTreatedAsMissing(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
-		{Name: "L1", Id: 1, DeletedAt: &commonpb.Timestamp{Data: 1_700_000_000_000_000}},
+	checker, store := schemaCheckerFor(t, []*ledgerpb.LedgerInfo{
+		{Name: "L1", Id: 1, DeletedAt: &ledgerpb.Timestamp{Data: 1_700_000_000_000_000}},
 	})
 
 	reader, err := store.NewReadHandle()
@@ -2480,7 +2481,7 @@ func TestCompareLedgerPresence_SoftDeletedTreatedAsMissing(t *testing.T) {
 func TestCompareLedgerPresence_UnauditedStored(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+	checker, store := schemaCheckerFor(t, []*ledgerpb.LedgerInfo{
 		{Name: "L1", Id: 1},
 		{Name: "ghost", Id: 2},
 	})
@@ -2506,8 +2507,8 @@ func TestCompareLedgerPresence_UnauditedStored(t *testing.T) {
 func TestCompareAccountTypes_Identical(t *testing.T) {
 	t.Parallel()
 
-	at := map[string]*commonpb.AccountType{"asset": {Name: "asset", Pattern: "assets:*"}}
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+	at := map[string]*ledgerpb.AccountType{"asset": {Name: "asset", Pattern: "assets:*"}}
+	checker, store := schemaCheckerFor(t, []*ledgerpb.LedgerInfo{
 		{Name: "L1", Id: 1, AccountTypes: at},
 	})
 
@@ -2516,7 +2517,7 @@ func TestCompareAccountTypes_Identical(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*commonpb.AccountType{
+	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*ledgerpb.AccountType{
 		"L1": {"asset": {Name: "asset", Pattern: "assets:*"}},
 	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
 
@@ -2528,7 +2529,7 @@ func TestCompareAccountTypes_Identical(t *testing.T) {
 func TestCompareAccountTypes_MissingFromStored(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+	checker, store := schemaCheckerFor(t, []*ledgerpb.LedgerInfo{
 		{Name: "L1", Id: 1},
 	})
 
@@ -2537,7 +2538,7 @@ func TestCompareAccountTypes_MissingFromStored(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*commonpb.AccountType{
+	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*ledgerpb.AccountType{
 		"L1": {"asset": {Name: "asset", Pattern: "assets:*"}},
 	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
 
@@ -2553,8 +2554,8 @@ func TestCompareAccountTypes_MissingFromStored(t *testing.T) {
 func TestCompareAccountTypes_PatternTampered(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
-		{Name: "L1", Id: 1, AccountTypes: map[string]*commonpb.AccountType{"asset": {Name: "asset", Pattern: "tampered:*"}}},
+	checker, store := schemaCheckerFor(t, []*ledgerpb.LedgerInfo{
+		{Name: "L1", Id: 1, AccountTypes: map[string]*ledgerpb.AccountType{"asset": {Name: "asset", Pattern: "tampered:*"}}},
 	})
 
 	reader, err := store.NewReadHandle()
@@ -2562,7 +2563,7 @@ func TestCompareAccountTypes_PatternTampered(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*commonpb.AccountType{
+	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*ledgerpb.AccountType{
 		"L1": {"asset": {Name: "asset", Pattern: "assets:*"}},
 	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
 
@@ -2584,14 +2585,14 @@ func TestCheckerDetectsTamperedDefaultEnforcementMode(t *testing.T) {
 		{
 			name: "creation mode",
 			setup: func(engine *testEngine) {
-				engine.processAndCommit(createLedgerOrderWithEnforcementMode("ledger", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT))
+				engine.processAndCommit(createLedgerOrderWithEnforcementMode("ledger", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT))
 			},
 		},
 		{
 			name: "updated mode",
 			setup: func(engine *testEngine) {
-				engine.processAndCommit(createLedgerOrderWithEnforcementMode("ledger", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT))
-				engine.processAndCommit(updateDefaultEnforcementModeOrder("ledger", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT))
+				engine.processAndCommit(createLedgerOrderWithEnforcementMode("ledger", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT))
+				engine.processAndCommit(updateDefaultEnforcementModeOrder("ledger", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT))
 			},
 		},
 	}
@@ -2605,7 +2606,7 @@ func TestCheckerDetectsTamperedDefaultEnforcementMode(t *testing.T) {
 			require.Empty(t, collectCheckErrors(t, engine.store, engine.attrs), "healthy projection must pass")
 
 			info := engine.ledgers["ledger"].CloneVT()
-			info.DefaultEnforcementMode = commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT
+			info.DefaultEnforcementMode = ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT
 
 			batch := engine.store.OpenWriteSession()
 			require.NoError(t, state.SaveLedger(batch, "ledger", info))

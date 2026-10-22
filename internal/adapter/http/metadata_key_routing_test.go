@@ -12,10 +12,10 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -59,7 +59,7 @@ func TestMetadataKeyRouting(t *testing.T) {
 					require.Len(t, req.GetUnsigned().GetRequests(), 1)
 					captured = req.GetUnsigned().GetRequests()[0]
 
-					return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+					return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 				})
 				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 				req := httptest.NewRequest(route.method, "/v3/ledger1"+route.path+key.encoded, strings.NewReader(`{"type":"string"}`))
@@ -86,10 +86,10 @@ func TestCanonicalIDRoutingSingleDecode(t *testing.T) {
 				t.Parallel()
 				var captured *servicepb.GetIndexRequest
 				backend := NewMockBackend(gomock.NewController(t))
-				backend.EXPECT().GetIndex(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+				backend.EXPECT().GetIndex(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *servicepb.GetIndexRequest) (*ledgerpb.Index, error) {
 					captured = req
 
-					return &commonpb.Index{Ledger: req.GetLedger()}, nil
+					return &ledgerpb.Index{Ledger: req.GetLedger()}, nil
 				})
 				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 				req := httptest.NewRequest(http.MethodGet, "/v3/"+scope+"/indexes/metadata:TARGET_TYPE_ACCOUNT:"+key.encoded, nil)

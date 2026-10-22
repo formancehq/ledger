@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -148,15 +148,15 @@ func sortStrings(s []string) {
 // GetAllLedgersInfo collects every ledger from the streaming RPC, following
 // the x-next-cursor trailer chain so clusters with more ledgers than the
 // server's default page still surface them all.
-func GetAllLedgersInfo(ctx context.Context, client servicepb.BucketServiceClient, checkpointID ...uint64) (map[string]*commonpb.LedgerInfo, error) {
-	var read *commonpb.ReadOptions
+func GetAllLedgersInfo(ctx context.Context, client servicepb.BucketServiceClient, checkpointID ...uint64) (map[string]*ledgerpb.LedgerInfo, error) {
+	var read *ledgerpb.ReadOptions
 	if len(checkpointID) > 0 && checkpointID[0] > 0 {
-		read = &commonpb.ReadOptions{CheckpointId: checkpointID[0]}
+		read = &ledgerpb.ReadOptions{CheckpointId: checkpointID[0]}
 	}
 
-	all, err := DrainAllPages("", func(cur string) ([]*commonpb.LedgerInfo, metadata.MD, error) {
+	all, err := DrainAllPages("", func(cur string) ([]*ledgerpb.LedgerInfo, metadata.MD, error) {
 		stream, streamErr := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{
-			Options: &commonpb.ListOptions{Read: read, Cursor: cur},
+			Options: &ledgerpb.ListOptions{Read: read, Cursor: cur},
 		})
 		if streamErr != nil {
 			return nil, nil, streamErr
@@ -173,7 +173,7 @@ func GetAllLedgersInfo(ctx context.Context, client servicepb.BucketServiceClient
 		return nil, err
 	}
 
-	ledgers := make(map[string]*commonpb.LedgerInfo, len(all))
+	ledgers := make(map[string]*ledgerpb.LedgerInfo, len(all))
 	for _, l := range all {
 		ledgers[l.GetName()] = l
 	}

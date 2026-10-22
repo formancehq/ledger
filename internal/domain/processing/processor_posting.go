@@ -6,8 +6,8 @@ import (
 
 	"github.com/holiman/uint256"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -16,8 +16,8 @@ import (
 // Mutate() returns a deep CloneVT — callers writing into the balance get an
 // independent clone, the shared instance stays immutable.
 var zeroVolumePair = &raftcmdpb.VolumePair{
-	Input:  commonpb.NewUint256FromUint64(0),
-	Output: commonpb.NewUint256FromUint64(0),
+	Input:  ledgerpb.NewUint256FromUint64(0),
+	Output: ledgerpb.NewUint256FromUint64(0),
 }
 
 // readVolumeOrZero is the canonical helper for the FSM apply path's volume
@@ -83,7 +83,7 @@ func cachedVolumeKey(ledgerName, account, asset, color string, assetCache map[st
 // Color is carried into both source and destination volume keys, so balances are
 // strictly segregated per (account, asset, color). The empty color is the
 // uncolored bucket and is itself one of these segregated buckets.
-func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBalanceCheck bool, assetCache map[string]cachedAssetPrecision) domain.SerializableError {
+func applyPosting(s Scope, ledgerName string, posting *ledgerpb.Posting, skipBalanceCheck bool, assetCache map[string]cachedAssetPrecision) domain.SerializableError {
 	color := posting.GetColor()
 	sourceKey := cachedVolumeKey(ledgerName, posting.GetSource(), posting.GetAsset(), color, assetCache)
 

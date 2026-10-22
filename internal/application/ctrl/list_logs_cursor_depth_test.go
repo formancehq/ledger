@@ -8,11 +8,11 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -33,19 +33,19 @@ func TestListLogs_CursorDoesNotConsumeFilterDepth(t *testing.T) {
 	store := newCtrlTestStore(t)
 	attrs := attributes.New()
 
-	logs := make([]*commonpb.Log, 0, logsLen)
+	logs := make([]*ledgerpb.Log, 0, logsLen)
 	for seq := uint64(1); seq <= logsLen; seq++ {
-		logs = append(logs, &commonpb.Log{
+		logs = append(logs, &ledgerpb.Log{
 			Sequence: seq,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
 				LedgerName: ledger,
-				Log:        &commonpb.LedgerLog{Id: seq},
+				Log:        &ledgerpb.LedgerLog{Id: seq},
 			}}},
 		})
 	}
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
+	require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{Name: ledger}))
 	require.NoError(t, state.AppendLogs(batch, logs))
 	require.NoError(t, state.SetAppliedIndex(batch, logsLen))
 	require.NoError(t, batch.Commit())
@@ -68,15 +68,15 @@ func TestListLogs_CursorDoesNotConsumeFilterDepth(t *testing.T) {
 
 	// MaxFilterDepth-1 single-element $and wrappers around a leaf is the
 	// deepest tree validation accepts.
-	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
-		LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{Min: new(uint64)}},
+	filter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{
+		LogId: &ledgerpb.LogIdCondition{Cond: &ledgerpb.UintCondition{Min: new(uint64)}},
 	}}
 	for range domain.MaxFilterDepth - 1 {
-		filter = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{
-			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{filter}},
+		filter = &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_And{
+			And: &ledgerpb.AndFilter{Filters: []*ledgerpb.QueryFilter{filter}},
 		}}
 	}
-	require.Nil(t, domain.ValidateFilterForTarget(filter, commonpb.QueryTarget_QUERY_TARGET_LOGS))
+	require.Nil(t, domain.ValidateFilterForTarget(filter, ledgerpb.QueryTarget_QUERY_TARGET_LOGS))
 
 	ctrl := NewDefaultController(nil, store, logger, attrs, rs, nil, meter)
 

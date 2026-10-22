@@ -7,14 +7,14 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // createLedgerBody holds optional fields for ledger creation.
 type createLedgerBody struct {
-	Metadata               *commonpb.MetadataMap `json:"metadata,omitempty"`
+	Metadata               *ledgerpb.MetadataMap `json:"metadata,omitempty"`
 	Mode                   string                `json:"mode,omitempty"`
 	MirrorSource           *mirrorSourceBody     `json:"mirrorSource,omitempty"`
 	DefaultEnforcementMode string                `json:"defaultEnforcementMode,omitempty"`
@@ -33,19 +33,19 @@ type metadataFieldTypeBody struct {
 }
 
 // toProto converts the metadata field type body to its proto command, reusing
-// the shared commonpb enum parsers.
-func (b metadataFieldTypeBody) toProto() (*commonpb.SetMetadataFieldTypeCommand, error) {
-	targetType, err := commonpb.ParseTargetType(b.TargetType)
+// the shared ledgerpb enum parsers.
+func (b metadataFieldTypeBody) toProto() (*ledgerpb.SetMetadataFieldTypeCommand, error) {
+	targetType, err := ledgerpb.ParseTargetType(b.TargetType)
 	if err != nil {
 		return nil, err
 	}
 
-	metadataType, err := commonpb.ParseMetadataType(b.Type)
+	metadataType, err := ledgerpb.ParseMetadataType(b.Type)
 	if err != nil {
 		return nil, err
 	}
 
-	return &commonpb.SetMetadataFieldTypeCommand{
+	return &ledgerpb.SetMetadataFieldTypeCommand{
 		TargetType: targetType,
 		Key:        b.Key,
 		Type:       metadataType,
@@ -105,7 +105,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 		createReq.Mode = ledgerMode
 
-		if ledgerMode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+		if ledgerMode == ledgerpb.LedgerMode_LEDGER_MODE_MIRROR {
 			if body.MirrorSource != nil {
 				cfg, err := mirrorSourceToProto(body.MirrorSource)
 				if err != nil {
@@ -141,7 +141,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if len(body.AccountTypes) > 0 {
-			createReq.AccountTypes = make(map[string]*commonpb.AccountType, len(body.AccountTypes))
+			createReq.AccountTypes = make(map[string]*ledgerpb.AccountType, len(body.AccountTypes))
 			for name, at := range body.AccountTypes {
 				converted, err := at.toProto()
 				if err != nil {
@@ -181,8 +181,8 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 }
 
 // mirrorSourceToProto converts the HTTP body to the proto MirrorSourceConfig.
-func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, error) {
-	cfg := &commonpb.MirrorSourceConfig{
+func mirrorSourceToProto(body *mirrorSourceBody) (*ledgerpb.MirrorSourceConfig, error) {
+	cfg := &ledgerpb.MirrorSourceConfig{
 		LedgerName: body.LedgerName,
 		BatchSize:  body.BatchSize,
 	}
@@ -192,7 +192,7 @@ func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, 
 			return nil, fmt.Errorf("rewriteRules[%d]: rule must not be empty", i)
 		}
 
-		rule := &commonpb.MirrorRewriteRule{}
+		rule := &ledgerpb.MirrorRewriteRule{}
 		if err := protojson.Unmarshal(raw, rule); err != nil {
 			return nil, fmt.Errorf("rewriteRules[%d]: %w", i, err)
 		}
@@ -202,11 +202,11 @@ func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, 
 
 	switch body.Type {
 	case "http", "":
-		httpCfg := &commonpb.HttpMirrorSourceConfig{
+		httpCfg := &ledgerpb.HttpMirrorSourceConfig{
 			BaseUrl: body.BaseURL,
 		}
 		if body.OAuth2ClientID != "" || body.OAuth2TokenEndpoint != "" {
-			httpCfg.Oauth2ClientCredentials = &commonpb.OAuth2ClientCredentials{
+			httpCfg.Oauth2ClientCredentials = &ledgerpb.OAuth2ClientCredentials{
 				ClientId:      body.OAuth2ClientID,
 				ClientSecret:  body.OAuth2ClientSecret,
 				TokenEndpoint: body.OAuth2TokenEndpoint,
@@ -214,12 +214,12 @@ func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, 
 			}
 		}
 
-		cfg.Type = &commonpb.MirrorSourceConfig_Http{
+		cfg.Type = &ledgerpb.MirrorSourceConfig_Http{
 			Http: httpCfg,
 		}
 	case "postgres":
-		cfg.Type = &commonpb.MirrorSourceConfig_Postgres{
-			Postgres: &commonpb.PostgresMirrorSourceConfig{
+		cfg.Type = &ledgerpb.MirrorSourceConfig_Postgres{
+			Postgres: &ledgerpb.PostgresMirrorSourceConfig{
 				Dsn: body.DSN,
 			},
 		}

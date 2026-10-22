@@ -5,14 +5,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestRequiredScopeForRequest_CreateLedger(t *testing.T) {
 	t.Parallel()
 
-	req := &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Metadata: map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("team")}}}}
+	req := &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Metadata: map[string]*ledgerpb.MetadataValue{"owner": ledgerpb.NewStringValue("team")}}}}
 	assert.Equal(t, ScopeLedgersWrite, RequiredScopeForRequest(req))
 }
 

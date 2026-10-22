@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/queries"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/querycheckpoint"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -51,10 +51,10 @@ func TestQueryMutationResponseSignatures(t *testing.T) {
 			} {
 				t.Run(signature.name, func(t *testing.T) {
 					signer := signing.NewResponseSigner(make([]byte, ed25519.SeedSize))
-					log := &commonpb.Log{
+					log := &ledgerpb.Log{
 						Sequence: 7,
-						Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-							CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: 42, MaxSequence: 7},
+						Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{
+							CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{CheckpointId: 42, MaxSequence: 7},
 						}},
 					}
 					if signature.signed {
@@ -68,7 +68,7 @@ func TestQueryMutationResponseSignatures(t *testing.T) {
 					listener, err := net.Listen("tcp4", "127.0.0.1:0")
 					require.NoError(t, err)
 					server := grpc.NewServer()
-					fixture := &queryMutationSignatureServer{response: &servicepb.ApplyResponse{Logs: []*commonpb.Log{log}}}
+					fixture := &queryMutationSignatureServer{response: &servicepb.ApplyResponse{Logs: []*ledgerpb.Log{log}}}
 					servicepb.RegisterBucketServiceServer(server, fixture)
 					go func() { _ = server.Serve(listener) }() // Stop closes the owned listener.
 					t.Cleanup(server.Stop)

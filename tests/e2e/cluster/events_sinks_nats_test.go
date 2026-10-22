@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -90,13 +90,13 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Add NATS sink via Apply
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&ledgerpb.SinkConfig{
 			Name:         "nats-e2e",
 			Format:       "json",
 			BatchSize:    10,
 			BatchDelayMs: 50,
-			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{
+			Type: &ledgerpb.SinkConfig_Nats{
+				Nats: &ledgerpb.NatsSinkConfig{
 					Url:   ns.ClientURL(),
 					Topic: topic,
 				},
@@ -110,7 +110,7 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 
 		// Create a transaction (force=true to bypass balance checks)
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("nats-test",
-			[]*commonpb.Posting{
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			},
 			nil,

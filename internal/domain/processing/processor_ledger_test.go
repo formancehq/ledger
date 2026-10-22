@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -19,11 +19,11 @@ func TestProcessCreateLedger_AccountTypeFactBounds(t *testing.T) {
 
 	for _, tc := range []struct {
 		name         string
-		accountTypes map[string]*commonpb.AccountType
+		accountTypes map[string]*ledgerpb.AccountType
 		wantErr      error
 	}{
-		{"name", map[string]*commonpb.AccountType{strings.Repeat("a", 257): {Pattern: "wallet:{id}"}}, domain.ErrAccountTypeNameTooLong},
-		{"pattern", map[string]*commonpb.AccountType{"wallet": {Pattern: strings.Repeat("a", 4097)}}, domain.ErrAccountTypePatternTooLong},
+		{"name", map[string]*ledgerpb.AccountType{strings.Repeat("a", 257): {Pattern: "wallet:{id}"}}, domain.ErrAccountTypeNameTooLong},
+		{"pattern", map[string]*ledgerpb.AccountType{"wallet": {Pattern: strings.Repeat("a", 4097)}}, domain.ErrAccountTypePatternTooLong},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -45,14 +45,14 @@ func TestProcessCreateLedger(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 
 	// Setup expectations
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, domain.ErrNotFound)
 	mockStore.EXPECT().GetNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(name string, info *commonpb.LedgerInfo) {
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(name string, info *ledgerpb.LedgerInfo) {
 		require.Equal(t, "test-ledger", info.GetName())
 		require.Equal(t, now, info.GetCreatedAt())
 		require.Equal(t, uint32(1), info.GetId(), "LedgerInfo should have Id == 1")
@@ -110,7 +110,7 @@ func TestProcessCreateLedger_InvalidPatternSelectionDeterministic(t *testing.T) 
 		expectGetLedger(mockStore, domain.LedgerKey{Name: "l"}, nil, domain.ErrNotFound)
 
 		order := &raftcmdpb.CreateLedgerOrder{
-			AccountTypes: map[string]*commonpb.AccountType{
+			AccountTypes: map[string]*ledgerpb.AccountType{
 				"zzz": {Pattern: "z b"},  // invalid: space in a fixed segment
 				"aaa": {Pattern: "a::x"}, // invalid: empty segment
 			},
@@ -141,13 +141,13 @@ func TestProcessCreateLedger_DoesNotMutateOrderAccountTypes(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 
 	// One entry with a blank embedded Name, one with an embedded Name that
 	// mismatches its map key. Both should be preserved verbatim in the order,
 	// while derived state uses the map key.
 	order := &raftcmdpb.CreateLedgerOrder{
-		AccountTypes: map[string]*commonpb.AccountType{
+		AccountTypes: map[string]*ledgerpb.AccountType{
 			"canonical-a": {Name: "", Pattern: "a:{id}"},
 			"canonical-b": {Name: "wrong-embedded-name", Pattern: "b:{id}"},
 		},
@@ -171,8 +171,8 @@ func TestProcessCreateLedger_DoesNotMutateOrderAccountTypes(t *testing.T) {
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 
-	var storedInfo *commonpb.LedgerInfo
-	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "l"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+	var storedInfo *ledgerpb.LedgerInfo
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "l"}, nil, func(_ string, info *ledgerpb.LedgerInfo) {
 		storedInfo = info
 	})
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "l"}, nil)
@@ -220,7 +220,7 @@ func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
+	existingLedger := &ledgerpb.LedgerInfo{Name: "test-ledger"}
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, existingLedger.AsReader(), nil)
 
 	request := &servicepb.Request{
@@ -247,8 +247,8 @@ func TestProcessDeleteLedger(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
-	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
+	existingLedger := &ledgerpb.LedgerInfo{Name: "test-ledger"}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, existingLedger.AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(now.AsReader())

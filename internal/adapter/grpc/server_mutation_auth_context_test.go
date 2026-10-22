@@ -17,9 +17,9 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -76,7 +76,7 @@ func TestMutationRequestsPropagateAuthenticatedContext(t *testing.T) {
 				Type: &servicepb.Request_CreatePreparedQuery{
 					CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 						Ledger: "main",
-						Query:  &commonpb.PreparedQuery{Name: "accounts-by-owner"},
+						Query:  &ledgerpb.PreparedQuery{Name: "accounts-by-owner"},
 					},
 				},
 			},
@@ -127,7 +127,7 @@ func TestMutationRequestsPropagateAuthenticatedContext(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			var captured *commonpb.CallerSnapshot
+			var captured *ledgerpb.CallerSnapshot
 			controller := NewMockController(gomock.NewController(t))
 			controller.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {

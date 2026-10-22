@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 )
@@ -55,7 +55,7 @@ func generateCheckpointBulk(state oracle.GlobalState) oracle.Bulk {
 
 // checkpointOrdersMatch checks the independent lifecycle prediction against
 // the actual global log payloads. No snapshots are published on disagreement.
-func checkpointOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs []*commonpb.Log) bool {
+func checkpointOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs []*ledgerpb.Log) bool {
 	for i, req := range bulk.Requests {
 		if req.GetCreateQueryCheckpoint() == nil && req.GetDeleteQueryCheckpoint() == nil && req.GetSetQueryCheckpointSchedule() == nil && req.GetDeleteQueryCheckpointSchedule() == nil {
 			continue
@@ -95,7 +95,7 @@ func checkpointOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs [
 // contents at max_sequence. Readers hold a value copy even after deletion. A
 // bounded history also retains known snapshots for later reads on replicas
 // that have not removed the files.
-func (c *Checker) recordCheckpoints(logs []*commonpb.Log) {
+func (c *Checker) recordCheckpoints(logs []*ledgerpb.Log) {
 	for _, log := range logs {
 		payload := log.GetPayload()
 		switch {

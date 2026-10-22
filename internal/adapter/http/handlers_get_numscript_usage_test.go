@@ -14,10 +14,10 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // TestToTemplateUsageJSON_EpochLastUsed is the regression guard for the
@@ -26,9 +26,9 @@ import (
 func TestToTemplateUsageJSON_EpochLastUsed(t *testing.T) {
 	t.Parallel()
 
-	out := toTemplateUsageJSON(&commonpb.TemplateUsage{
+	out := toTemplateUsageJSON(&ledgerpb.TemplateUsage{
 		Count:    3,
-		LastUsed: &commonpb.Timestamp{Data: 0},
+		LastUsed: &ledgerpb.Timestamp{Data: 0},
 	})
 
 	require.NotNil(t, out.LastUsed, "a non-nil epoch timestamp must be present, not omitted")
@@ -41,7 +41,7 @@ func TestToTemplateUsageJSON_EpochLastUsed(t *testing.T) {
 func TestToTemplateUsageJSON_NilLastUsedOmitted(t *testing.T) {
 	t.Parallel()
 
-	out := toTemplateUsageJSON(&commonpb.TemplateUsage{Count: 0})
+	out := toTemplateUsageJSON(&ledgerpb.TemplateUsage{Count: 0})
 	require.Nil(t, out.LastUsed)
 
 	raw, err := json.Marshal(out)
@@ -59,9 +59,9 @@ func TestToTemplateUsageJSON_MicrosecondUnitAndCamelCase(t *testing.T) {
 
 	// 1_700_000_000_000_000 µs = 2023-11-14T22:13:20Z. If Data were treated
 	// as nanoseconds the year would collapse to 1970.
-	out := toTemplateUsageJSON(&commonpb.TemplateUsage{
+	out := toTemplateUsageJSON(&ledgerpb.TemplateUsage{
 		Count:    42,
-		LastUsed: &commonpb.Timestamp{Data: 1_700_000_000_000_000},
+		LastUsed: &ledgerpb.Timestamp{Data: 1_700_000_000_000_000},
 	})
 
 	require.NotNil(t, out.LastUsed)
@@ -82,13 +82,13 @@ func TestHandleGetNumscriptUsage_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetTemplateUsage(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
+		func(_ context.Context, ledger, name string) (*ledgerpb.TemplateUsage, error) {
 			require.Equal(t, "my-ledger", ledger)
 			require.Equal(t, "payout", name)
 
-			return &commonpb.TemplateUsage{
+			return &ledgerpb.TemplateUsage{
 				Count:    7,
-				LastUsed: &commonpb.Timestamp{Data: 1_700_000_000_000_000},
+				LastUsed: &ledgerpb.Timestamp{Data: 1_700_000_000_000_000},
 			}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -117,8 +117,8 @@ func TestHandleGetNumscriptUsage_NeverInvoked(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetTemplateUsage(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _, _ string) (*commonpb.TemplateUsage, error) {
-			return &commonpb.TemplateUsage{}, nil
+		func(_ context.Context, _, _ string) (*ledgerpb.TemplateUsage, error) {
+			return &ledgerpb.TemplateUsage{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -188,7 +188,7 @@ func TestHandleGetNumscriptUsage_LedgerNotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetTemplateUsage(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _, _ string) (*commonpb.TemplateUsage, error) {
+		func(_ context.Context, _, _ string) (*ledgerpb.TemplateUsage, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -212,7 +212,7 @@ func TestHandleGetNumscriptUsage_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetTemplateUsage(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _, _ string) (*commonpb.TemplateUsage, error) {
+		func(_ context.Context, _, _ string) (*ledgerpb.TemplateUsage, error) {
 			return nil, errors.New("usage store unavailable")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -235,8 +235,8 @@ func TestHandleGetNumscriptUsage_NoLeaderError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetTemplateUsage(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _, _ string) (*commonpb.TemplateUsage, error) {
-			return nil, commonpb.ErrNoLeader
+		func(_ context.Context, _, _ string) (*ledgerpb.TemplateUsage, error) {
+			return nil, ledgerpb.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -260,11 +260,11 @@ func TestHandleGetNumscriptUsage_FullRouteIntegration(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetTemplateUsage(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
+		func(_ context.Context, ledger, name string) (*ledgerpb.TemplateUsage, error) {
 			require.Equal(t, "my-ledger", ledger)
 			require.Equal(t, "payout", name)
 
-			return &commonpb.TemplateUsage{Count: 3}, nil
+			return &ledgerpb.TemplateUsage{Count: 3}, nil
 		}).AnyTimes()
 
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})

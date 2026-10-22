@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
@@ -28,7 +28,7 @@ func TestReferenceOracleDetectsInjectedDuplicate(t *testing.T) {
 	const injection = "second transaction ID injected after a successful real reference query"
 	drivertest.CheckEmissions(t, func() {
 		ctx, client := drivertest.StartServer(t)
-		require.NoError(t, internal.CreateQueryOracleLedger(ctx, client, ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
+		require.NoError(t, internal.CreateQueryOracleLedger(ctx, client, ledger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
 		resp, err := createWithReference(ctx, client, ledger, reference, "refrace-sensitivity-destination")
 		require.NoError(t, err)
 		txID, ok := actions.GetCreatedTransactionID(resp)
@@ -77,7 +77,7 @@ type duplicateReferenceClient struct {
 	stream     *duplicateReferenceStream
 }
 
-func (c *duplicateReferenceClient) ListTransactions(ctx context.Context, req *servicepb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error) {
+func (c *duplicateReferenceClient) ListTransactions(ctx context.Context, req *servicepb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Transaction], error) {
 	stream, err := c.BucketServiceClient.ListTransactions(ctx, req, opts...)
 	if err != nil {
 		return nil, err
@@ -88,15 +88,15 @@ func (c *duplicateReferenceClient) ListTransactions(ctx context.Context, req *se
 }
 
 type duplicateReferenceStream struct {
-	grpc.ServerStreamingClient[commonpb.Transaction]
+	grpc.ServerStreamingClient[ledgerpb.Transaction]
 
-	first      *commonpb.Transaction
+	first      *ledgerpb.Transaction
 	injectedID uint64
 	injected   bool
 	finished   bool
 }
 
-func (s *duplicateReferenceStream) Recv() (*commonpb.Transaction, error) {
+func (s *duplicateReferenceStream) Recv() (*ledgerpb.Transaction, error) {
 	if s.finished {
 		return nil, io.EOF
 	}
@@ -111,7 +111,7 @@ func (s *duplicateReferenceStream) Recv() (*commonpb.Transaction, error) {
 	if errors.Is(err, io.EOF) {
 		s.finished = true
 		if s.first != nil {
-			duplicate := proto.Clone(s.first).(*commonpb.Transaction)
+			duplicate := proto.Clone(s.first).(*ledgerpb.Transaction)
 			duplicate.Id = s.injectedID
 			s.injected = true
 

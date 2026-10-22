@@ -9,10 +9,10 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -82,7 +82,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	flt := cmdutil.GetFilterFlags(cmd)
 	cns := cmdutil.GetConsistencyFlags(cmd)
 
-	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
 	if err != nil {
 		return err
 	}
@@ -190,7 +190,7 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 	if verbose {
 		if snap := entry.GetCallerSnapshot(); snap != nil {
 			switch principal := snap.GetPrincipal().(type) {
-			case *commonpb.CallerSnapshot_Authenticated:
+			case *ledgerpb.CallerSnapshot_Authenticated:
 				caller := principal.Authenticated
 				id := caller.GetIdentity()
 				subject := id.GetSubject()
@@ -212,19 +212,19 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 						pterm.Gray(strings.Join(caller.GetScopes(), ",")),
 					)
 				}
-			case *commonpb.CallerSnapshot_Anonymous:
+			case *ledgerpb.CallerSnapshot_Anonymous:
 				pterm.Printf("    %s anonymous scopes=[%s]\n",
 					pterm.Gray("caller:"),
 					pterm.Gray(strings.Join(principal.Anonymous.GetScopes(), ",")),
 				)
-			case *commonpb.CallerSnapshot_System:
+			case *ledgerpb.CallerSnapshot_System:
 				pterm.Printf("    %s subject=%s %s %s\n",
 					pterm.Gray("caller:"),
 					pterm.Yellow("(none)"),
 					pterm.Gray("system="+principal.System.GetComponent()),
 					pterm.Gray("scopes=[]"),
 				)
-			case *commonpb.CallerSnapshot_AuthDisabled:
+			case *ledgerpb.CallerSnapshot_AuthDisabled:
 				pterm.Printf("    %s authentication-disabled\n", pterm.Gray("caller:"))
 			}
 		}
@@ -296,11 +296,11 @@ func sanitizeDisplayText(s string) string {
 }
 
 // callerSourceString renders an authenticated identity source for display.
-func callerSourceString(id *commonpb.CallerIdentity) string {
+func callerSourceString(id *ledgerpb.CallerIdentity) string {
 	switch s := id.GetSource().(type) {
-	case *commonpb.CallerIdentity_Issuer:
+	case *ledgerpb.CallerIdentity_Issuer:
 		return "issuer=" + s.Issuer
-	case *commonpb.CallerIdentity_KeyId:
+	case *ledgerpb.CallerIdentity_KeyId:
 		return "key_id=" + s.KeyId
 	default:
 		return ""
@@ -309,30 +309,30 @@ func callerSourceString(id *commonpb.CallerIdentity) string {
 
 // callerLabel renders a compact one-token caller label, falling back to the
 // credential source when an authenticated subject is empty.
-func callerLabel(snap *commonpb.CallerSnapshot) string {
+func callerLabel(snap *ledgerpb.CallerSnapshot) string {
 	if snap == nil {
 		return ""
 	}
 
 	switch principal := snap.GetPrincipal().(type) {
-	case *commonpb.CallerSnapshot_Authenticated:
+	case *ledgerpb.CallerSnapshot_Authenticated:
 		id := principal.Authenticated.GetIdentity()
 		if id.GetSubject() != "" {
 			return id.GetSubject()
 		}
 		switch source := id.GetSource().(type) {
-		case *commonpb.CallerIdentity_KeyId:
+		case *ledgerpb.CallerIdentity_KeyId:
 			return "key:" + source.KeyId
-		case *commonpb.CallerIdentity_Issuer:
+		case *ledgerpb.CallerIdentity_Issuer:
 			return "issuer:" + source.Issuer
 		default:
 			return "authenticated"
 		}
-	case *commonpb.CallerSnapshot_Anonymous:
+	case *ledgerpb.CallerSnapshot_Anonymous:
 		return "anonymous"
-	case *commonpb.CallerSnapshot_System:
+	case *ledgerpb.CallerSnapshot_System:
 		return "system:" + principal.System.GetComponent()
-	case *commonpb.CallerSnapshot_AuthDisabled:
+	case *ledgerpb.CallerSnapshot_AuthDisabled:
 		return "auth-disabled"
 	default:
 		return ""

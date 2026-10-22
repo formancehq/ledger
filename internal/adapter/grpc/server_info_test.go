@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
@@ -49,7 +49,7 @@ func TestDiscoveryReturnsCommittedClusterPolicy(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, resp.GetClusterPolicy(), "no committed policy must not look like default policy")
 
-	policy := &commonpb.ClusterPolicy{Revision: 7, MetadataMaxValueBytes: 32768, MetadataMaxCommandBytes: 1048576}
+	policy := &ledgerpb.ClusterPolicy{Revision: 7, MetadataMaxValueBytes: 32768, MetadataMaxCommandBytes: 1048576}
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.SaveClusterPolicy(batch, policy))
 	require.NoError(t, batch.Commit())

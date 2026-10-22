@@ -9,7 +9,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -51,10 +51,10 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Create transactions that produce fixed accounts: world, bank:main, bank:fees
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank:main", big.NewInt(1000), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("bank:main", "bank:fees", big.NewInt(10), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -104,7 +104,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 			requests := make([]*servicepb.Request, 0, 15)
 			for i := range 15 {
 				userAddr := fmt.Sprintf("users:%08d-%04d-%04d-%04d-%012d", i, i, i, i, i)
-				requests = append(requests, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				requests = append(requests, actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", userAddr, big.NewInt(int64(100+i)), "USD"),
 				}, nil, nil))
 			}
@@ -172,7 +172,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 			// Create 5 distinct child accounts under "dept:"
 			for i := range 5 {
-				_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("dept:%d", 1000+i), big.NewInt(100), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())
@@ -237,10 +237,10 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Create accounts and add metadata
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "users:bob", big.NewInt(200), "EUR"),
 				}, nil, nil),
 				actions.SaveAccountMetadataAction(ledgerName, "users:alice", map[string]string{
@@ -303,7 +303,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 			requests := make([]*servicepb.Request, 0)
 
 			// Fund bank:main from world
-			requests = append(requests, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			requests = append(requests, actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank:main", big.NewInt(1000000), "USD"),
 			}, nil, nil))
 
@@ -311,17 +311,17 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 			for i := range 12 {
 				userID := fmt.Sprintf("%08d-%04d-%04d-%04d-%012d", i+1, 0, 0, 0, i+1)
 				requests = append(requests,
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 						actions.NewPosting("bank:main", fmt.Sprintf("users:%s:main", userID), big.NewInt(1000), "USD"),
 					}, nil, nil),
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 						actions.NewPosting("bank:main", fmt.Sprintf("users:%s:savings", userID), big.NewInt(500), "USD"),
 					}, nil, nil),
 				)
 			}
 
 			// Collect fees
-			requests = append(requests, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			requests = append(requests, actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("bank:main", "bank:fees", big.NewInt(50), "USD"),
 			}, nil, nil))
 

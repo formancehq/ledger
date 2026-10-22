@@ -5,9 +5,9 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -16,18 +16,18 @@ import (
 // ledgerMetadataVerifier folds successful chain-bound orders, never the mutable
 // log or primary projection, into the expected ledger metadata keyspace.
 type ledgerMetadataVerifier struct {
-	values        map[string]map[string]*commonpb.MetadataValue
+	values        map[string]map[string]*ledgerpb.MetadataValue
 	liveTruncated bool
 }
 
 func newLedgerMetadataVerifier() *ledgerMetadataVerifier {
-	return &ledgerMetadataVerifier{values: make(map[string]map[string]*commonpb.MetadataValue)}
+	return &ledgerMetadataVerifier{values: make(map[string]map[string]*ledgerpb.MetadataValue)}
 }
 
 func (v *ledgerMetadataVerifier) applyOrder(order *raftcmdpb.Order) {
 	ls := order.GetLedgerScoped()
 	ledger := ls.GetLedger()
-	var metadata map[string]*commonpb.MetadataValue
+	var metadata map[string]*ledgerpb.MetadataValue
 	switch p := ls.GetPayload().(type) {
 	case *raftcmdpb.LedgerScopedOrder_CreateLedger:
 		metadata = p.CreateLedger.GetMetadata()
@@ -40,7 +40,7 @@ func (v *ledgerMetadataVerifier) applyOrder(order *raftcmdpb.Order) {
 	}
 	for key, value := range metadata {
 		if v.values[ledger] == nil {
-			v.values[ledger] = make(map[string]*commonpb.MetadataValue)
+			v.values[ledger] = make(map[string]*ledgerpb.MetadataValue)
 		}
 		v.values[ledger][key] = value.CloneVT()
 	}
@@ -56,7 +56,7 @@ func (v *ledgerMetadataVerifier) compare(reader dal.PebbleReader, attrs *attribu
 	if err != nil {
 		return err
 	}
-	remaining := make(map[domain.LedgerMetadataKey]*commonpb.MetadataValue)
+	remaining := make(map[domain.LedgerMetadataKey]*ledgerpb.MetadataValue)
 	for ledger, metadata := range v.values {
 		for key, value := range metadata {
 			remaining[domain.LedgerMetadataKey{LedgerName: ledger, Key: key}] = value

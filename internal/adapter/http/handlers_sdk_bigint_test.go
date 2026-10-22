@@ -17,10 +17,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -42,12 +42,12 @@ func TestBigintOperations(t *testing.T) {
 			action := requests[0].GetApply().GetAction()
 			if action.GetRevertTransaction() != nil {
 				log := sdkLog(exact)
-				log.GetPayload().GetApply().GetLog().Data = &commonpb.LedgerLogPayload{
-					Payload: &commonpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &commonpb.RevertedTransaction{
+				log.GetPayload().GetApply().GetLog().Data = &ledgerpb.LedgerLogPayload{
+					Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &ledgerpb.RevertedTransaction{
 						RevertedTransactionId: 2, RevertTransaction: sdkTransaction(exact),
 					}},
 				}
-				return &domain.ApplyResult{Logs: []*commonpb.Log{log}}, nil
+				return &domain.ApplyResult{Logs: []*ledgerpb.Log{log}}, nil
 			}
 			request := action.GetCreateTransaction()
 			if request.GetReference() == "fail" {
@@ -61,15 +61,15 @@ func TestBigintOperations(t *testing.T) {
 			if amount != "42" && amount != exact {
 				return nil, fmt.Errorf("SDK submitted unexpected posting amount %q", amount)
 			}
-			return &domain.ApplyResult{Logs: []*commonpb.Log{sdkLog(amount)}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{sdkLog(amount)}}, nil
 		}).Times(6)
-	backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&commonpb.LedgerInfo{Name: "ledger1"}, nil).Times(4)
+	backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&ledgerpb.LedgerInfo{Name: "ledger1"}, nil).Times(4)
 	backend.EXPECT().GetTransaction(gomock.Any(), "ledger1", uint64(2)).DoAndReturn(
-		func(context.Context, string, uint64) (*commonpb.Transaction, error) {
+		func(context.Context, string, uint64) (*ledgerpb.Transaction, error) {
 			return sdkTransaction(exact), nil
 		}).Times(2)
 	backend.EXPECT().GetAccount(gomock.Any(), "ledger1", gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, address string, _ ctrl.GetAccountOptions) (*commonpb.Account, error) {
+		func(_ context.Context, _ string, address string, _ ctrl.GetAccountOptions) (*ledgerpb.Account, error) {
 			amount := exact
 			if address == "numeric" {
 				amount = "42"
@@ -77,30 +77,30 @@ func TestBigintOperations(t *testing.T) {
 			return sdkAccount(address, amount), nil
 		}).Times(2)
 	backend.EXPECT().ListTransactions(gomock.Any(), "ledger1", uint32(2), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, after uint64, _ *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+		func(_ context.Context, _ string, _ uint32, after uint64, _ *ledgerpb.QueryFilter, reverse bool) (cursor.Cursor[*ledgerpb.Transaction], error) {
 			first, second := sdkTransaction(exact), sdkTransaction(exact)
 			first.Id, second.Id = 3, 2
 			if after == 0 && !reverse {
-				return cursor.NewSliceCursor([]*commonpb.Transaction{first, second}), nil
+				return cursor.NewSliceCursor([]*ledgerpb.Transaction{first, second}), nil
 			}
 			if after == 3 && !reverse {
-				return cursor.NewSliceCursor([]*commonpb.Transaction{second}), nil
+				return cursor.NewSliceCursor([]*ledgerpb.Transaction{second}), nil
 			}
 			if after == 2 && reverse {
-				return cursor.NewSliceCursor([]*commonpb.Transaction{first}), nil
+				return cursor.NewSliceCursor([]*ledgerpb.Transaction{first}), nil
 			}
 			return nil, fmt.Errorf("unexpected SDK transaction page after=%d reverse=%v", after, reverse)
 		}).Times(3)
 	backend.EXPECT().ListLogs(gomock.Any(), "ledger1", gomock.Any(), uint32(2), gomock.Any(), false).DoAndReturn(
-		func(_ context.Context, _ string, after uint64, _ uint32, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Log], error) {
+		func(_ context.Context, _ string, after uint64, _ uint32, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Log], error) {
 			first, second := sdkLog(exact), sdkLog(exact)
 			second.Sequence = 8
 			second.GetPayload().GetApply().GetLog().Id = 8
 			if after == 0 {
-				return cursor.NewSliceCursor([]*commonpb.Log{first, second}), nil
+				return cursor.NewSliceCursor([]*ledgerpb.Log{first, second}), nil
 			}
 			if after == 7 {
-				return cursor.NewSliceCursor([]*commonpb.Log{second}), nil
+				return cursor.NewSliceCursor([]*ledgerpb.Log{second}), nil
 			}
 			return nil, fmt.Errorf("unexpected SDK ledger log page after=%d", after)
 		}).Times(2)
@@ -111,14 +111,14 @@ func TestBigintOperations(t *testing.T) {
 			if req.GetQueryName() == "aggregate" {
 				return &servicepb.ExecutePreparedQueryResponse{Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{Aggregate: sdkAggregate(exact)}}, nil
 			}
-			result := &commonpb.PreparedQueryCursor{PageSize: 15}
+			result := &ledgerpb.PreparedQueryCursor{PageSize: 15}
 			switch req.GetQueryName() {
 			case "transactions":
-				result.TransactionData = []*commonpb.Transaction{sdkTransaction(exact)}
+				result.TransactionData = []*ledgerpb.Transaction{sdkTransaction(exact)}
 			case "accounts":
-				result.AccountData = []*commonpb.Account{sdkAccount("alice", exact)}
+				result.AccountData = []*ledgerpb.Account{sdkAccount("alice", exact)}
 			case "logs":
-				result.LogData = []*commonpb.Log{sdkLog(exact)}
+				result.LogData = []*ledgerpb.Log{sdkLog(exact)}
 			default:
 				return nil, fmt.Errorf("unexpected SDK prepared query %q", req.GetQueryName())
 			}
@@ -127,12 +127,12 @@ func TestBigintOperations(t *testing.T) {
 
 	backend.EXPECT().AggregateVolumes(gomock.Any(), "ledger1", gomock.Any(), gomock.Any()).Return(sdkAggregate(exact), nil)
 	backend.EXPECT().ListAccounts(gomock.Any(), "ledger1", uint32(2), gomock.Any(), gomock.Any(), false).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, after string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
+		func(_ context.Context, _ string, _ uint32, after string, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Account], error) {
 			if after == "" {
-				return cursor.NewSliceCursor([]*commonpb.Account{sdkAccount("alice", exact), sdkAccount("bob", exact)}), nil
+				return cursor.NewSliceCursor([]*ledgerpb.Account{sdkAccount("alice", exact), sdkAccount("bob", exact)}), nil
 			}
 			if after == "alice" {
-				return cursor.NewSliceCursor([]*commonpb.Account{sdkAccount("bob", exact)}), nil
+				return cursor.NewSliceCursor([]*ledgerpb.Account{sdkAccount("bob", exact)}), nil
 			}
 			return nil, fmt.Errorf("unexpected SDK account page after=%q", after)
 		}).Times(2)
@@ -156,33 +156,33 @@ func TestBigintOperations(t *testing.T) {
 	require.NoError(t, err, "%s", output)
 }
 
-func sdkTransaction(amount string) *commonpb.Transaction {
-	return &commonpb.Transaction{
-		PostCommitVolumes: &commonpb.PostCommitVolumes{VolumesByAccount: map[string]*commonpb.VolumesByAssets{
-			"alice": {Volumes: []*commonpb.VolumeEntry{{Asset: "USD", Volumes: &commonpb.Volumes{Input: commonpb.MustBigUintFromDecimal(amount), Output: commonpb.MustBigUintFromDecimal("0")}}}},
+func sdkTransaction(amount string) *ledgerpb.Transaction {
+	return &ledgerpb.Transaction{
+		PostCommitVolumes: &ledgerpb.PostCommitVolumes{VolumesByAccount: map[string]*ledgerpb.VolumesByAssets{
+			"alice": {Volumes: []*ledgerpb.VolumeEntry{{Asset: "USD", Volumes: &ledgerpb.Volumes{Input: ledgerpb.MustBigUintFromDecimal(amount), Output: ledgerpb.MustBigUintFromDecimal("0")}}}},
 		}},
-		Id: 2, Metadata: map[string]*commonpb.MetadataValue{},
-		Postings: []*commonpb.Posting{{Source: "world", Destination: "alice", Asset: "USD",
-			Amount: commonpb.NewUint256(uint256.MustFromDecimal(amount)),
+		Id: 2, Metadata: map[string]*ledgerpb.MetadataValue{},
+		Postings: []*ledgerpb.Posting{{Source: "world", Destination: "alice", Asset: "USD",
+			Amount: ledgerpb.NewUint256(uint256.MustFromDecimal(amount)),
 		}},
 	}
 }
 
-func sdkLog(amount string) *commonpb.Log {
-	return &commonpb.Log{Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-		Apply: &commonpb.ApplyLedgerLog{LedgerName: "ledger1", Log: &commonpb.LedgerLog{Id: 7, Data: &commonpb.LedgerLogPayload{
-			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: sdkTransaction(amount)}},
+func sdkLog(amount string) *ledgerpb.Log {
+	return &ledgerpb.Log{Sequence: 7, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+		Apply: &ledgerpb.ApplyLedgerLog{LedgerName: "ledger1", Log: &ledgerpb.LedgerLog{Id: 7, Data: &ledgerpb.LedgerLogPayload{
+			Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: sdkTransaction(amount)}},
 		}}},
 	}}}
 }
-func sdkAccount(address, amount string) *commonpb.Account {
-	return &commonpb.Account{Address: address, Volumes: []*commonpb.AccountVolume{{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{
-		Input: commonpb.MustBigUintFromDecimal("0"), Output: commonpb.MustBigUintFromDecimal(amount), Balance: commonpb.MustSignedBigIntFromDecimal("-" + amount),
+func sdkAccount(address, amount string) *ledgerpb.Account {
+	return &ledgerpb.Account{Address: address, Volumes: []*ledgerpb.AccountVolume{{Asset: "USD", Volumes: &ledgerpb.VolumesWithBalance{
+		Input: ledgerpb.MustBigUintFromDecimal("0"), Output: ledgerpb.MustBigUintFromDecimal(amount), Balance: ledgerpb.MustSignedBigIntFromDecimal("-" + amount),
 	}}}}
 }
 
-func sdkAggregate(amount string) *commonpb.AggregateResult {
-	return &commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{{Asset: "USD",
-		Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256(uint256.MustFromDecimal(amount)),
+func sdkAggregate(amount string) *ledgerpb.AggregateResult {
+	return &ledgerpb.AggregateResult{Volumes: []*ledgerpb.AggregatedVolume{{Asset: "USD",
+		Input: ledgerpb.NewUint256FromUint64(0), Output: ledgerpb.NewUint256(uint256.MustFromDecimal(amount)),
 	}}}
 }
