@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestValidateCapabilityEvidenceRequiresActiveCapabilities(t *testing.T) {
@@ -18,6 +20,34 @@ func TestValidateCapabilityEvidenceRequiresActiveCapabilities(t *testing.T) {
 	require.ErrorContains(t, ValidateCapabilityEvidence(ctx, true, []uint32{1, 3}), "capability 3")
 	require.NoError(t, ValidateCapabilityEvidence(&ConfChangeContext{InstanceID: bytesN(0x42)}, true, nil))
 	require.NoError(t, ValidateCapabilityEvidence(&ConfChangeContext{InstanceID: bytesN(0x42)}, false, nil))
+}
+
+func TestWriteConfChangeRejectsCapabilitiesMissingFromCommittedPolicy(t *testing.T) {
+	m := newTestMembership(t)
+	m.SetCapabilityPolicyProvider(func() *commonpb.ClusterPolicy {
+		return &commonpb.ClusterPolicy{
+			CapabilityActivationArmed: true,
+			CapabilityActivations:     []*commonpb.CapabilityActivation{{Id: 7, Active: true}},
+		}
+	})
+
+	data, err := MarshalConfChangeContext(ConfChangeContext{
+		RaftAddress:    "peer:7777",
+		ServiceAddress: "peer:8888",
+		InstanceID:     fixedInstanceID(1),
+	})
+	require.NoError(t, err)
+	cc := &raftpb.ConfChangeV2{
+		Changes: []*raftpb.ConfChangeSingle{{Type: new(raftpb.ConfChangeAddLearnerNode), NodeId: proto.Uint64(9)}},
+		Context: data,
+	}
+	encoded, err := proto.Marshal(cc)
+	require.NoError(t, err)
+
+	session := m.store.OpenWriteSession()
+	err = m.WriteConfChange(&raftpb.Entry{Type: new(raftpb.EntryConfChangeV2), Data: encoded}, session)
+	require.ErrorContains(t, err, "capability 7 is required")
+	require.NoError(t, session.Commit())
 }
 
 func TestWriteConfChangeRejectsIncompleteRegistration(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -73,8 +74,9 @@ type Membership struct {
 	// It is intentionally kept beside the membership cache so Add/Promote
 	// admission observes one lock-consistent view of active requirements and
 	// member identity evidence.
-	capabilityArmed      bool
-	requiredCapabilities []uint32
+	capabilityArmed          bool
+	requiredCapabilities     []uint32
+	capabilityPolicyProvider func() *commonpb.ClusterPolicy
 	// started gates transport / service-pool wiring. Until Start fires
 	// (OnStart hook, after the local Raft gRPC server is listening),
 	// Set / Remove / Register / Rehydrate mutate only the cache — the
@@ -240,6 +242,15 @@ func (m *Membership) SetCapabilityGate(armed bool, required []uint32) error {
 	return nil
 }
 
+// SetCapabilityPolicyProvider installs the authoritative committed-policy
+// view used while applying a ConfChange. It is called only by the FSM apply
+// path, where the policy and membership entries are processed in Raft order.
+func (m *Membership) SetCapabilityPolicyProvider(provider func() *commonpb.ClusterPolicy) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.capabilityPolicyProvider = provider
+}
+
 // CapabilityGate returns the current committed activation gate.
 func (m *Membership) CapabilityGate() (armed bool, required []uint32) {
 	m.mu.RLock()
@@ -248,10 +259,9 @@ func (m *Membership) CapabilityGate() (armed bool, required []uint32) {
 	return m.capabilityArmed, append([]uint32(nil), m.requiredCapabilities...)
 }
 
-// ValidateTransitionEvidence checks a registration context against the
-// committed gate while holding the same membership lock used to publish the
-// gate. This closes the race where activation changes between an admission
-// read and rawNode.Propose.
+// ValidateTransitionEvidence checks a registration context against the latest
+// locally published gate. The FSM write path revalidates the same evidence
+// against the committed policy, which closes races with policy application.
 func (m *Membership) ValidateTransitionEvidence(ctx *ConfChangeContext) error {
 	m.mu.RLock()
 	armed, required := m.capabilityArmed, append([]uint32(nil), m.requiredCapabilities...)
@@ -634,6 +644,25 @@ func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSess
 	writeRegistration := func(nodeID uint64, ctx *ConfChangeContext) error {
 		if err := ValidateCapabilities(ctx.Capabilities); err != nil {
 			return fmt.Errorf("invalid capability evidence for peer %d: %w", nodeID, err)
+		}
+		m.mu.RLock()
+		provider := m.capabilityPolicyProvider
+		m.mu.RUnlock()
+		if provider != nil {
+			policy := provider()
+			if policy == nil {
+				return fmt.Errorf("invalid capability evidence for peer %d: missing committed cluster policy", nodeID)
+			}
+			required := make([]uint32, 0, len(policy.GetCapabilityActivations()))
+			for _, activation := range policy.GetCapabilityActivations() {
+				if activation != nil && activation.GetActive() {
+					required = append(required, activation.GetId())
+				}
+			}
+			slices.Sort(required)
+			if err := ValidateCapabilityEvidence(ctx, policy.GetCapabilityActivationArmed(), required); err != nil {
+				return fmt.Errorf("invalid capability evidence for peer %d: %w", nodeID, err)
+			}
 		}
 		if err := session.SetProto(peerKey(nodeID), &raftcmdpb.PeerAddress{
 			NodeId:         nodeID,
