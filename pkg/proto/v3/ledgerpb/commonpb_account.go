@@ -1,4 +1,4 @@
-package grpc
+package ledgerpb
 
 // FindVolume returns the VolumesWithBalance for a given (asset, color) tuple
 // on this account, or nil if absent. Color "" is the uncolored bucket.
