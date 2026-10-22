@@ -309,27 +309,6 @@ func Module() fx.Option {
 					return nil, err
 				}
 
-				publishCapabilityGate := func(policy *commonpb.ClusterPolicy) {
-					required := make([]uint32, 0, len(policy.GetCapabilityActivations()))
-					for _, activation := range policy.GetCapabilityActivations() {
-						if activation != nil && activation.GetActive() {
-							required = append(required, activation.GetId())
-						}
-					}
-					slices.Sort(required)
-					required = slices.Compact(required)
-					if err := membership.SetCapabilityGate(required); err != nil {
-						logger.WithFields(map[string]any{"error": err}).Errorf("Invalid capability gate in committed cluster policy")
-					}
-				}
-				membership.SetCapabilityPolicyProvider(func() *commonpb.ClusterPolicy {
-					return m.State.ClusterPolicy
-				})
-				m.SetCapabilityPolicyCommitHandler(publishCapabilityGate)
-				if m.State.ClusterPolicy != nil {
-					publishCapabilityGate(m.State.ClusterPolicy)
-				}
-
 				logger.WithFields(map[string]any{
 					"duration": time.Since(machineStart).String(),
 				}).Infof("FSM Machine created")
@@ -663,12 +642,26 @@ func Module() fx.Option {
 					if !raftNode.IsLeader() {
 						return
 					}
+					if policy, err := query.ReadClusterPolicy(store); err == nil {
+						required := make([]uint32, 0, len(policy.GetCapabilityActivations()))
+						for _, activation := range policy.GetCapabilityActivations() {
+							if activation != nil && activation.GetActive() {
+								required = append(required, activation.GetId())
+							}
+						}
+						slices.Sort(required)
+						if err := raftNode.SetCapabilityGate(required); err != nil {
+							logger.WithFields(map[string]any{"error": err}).Errorf("Invalid capability gate in committed cluster policy")
+
+							return
+						}
+					}
 					if err := proposeAuditKeyIfNeeded(ctx, raftNode, builder, store); err != nil {
 						logger.WithFields(map[string]any{"error": err}).Errorf("Audit key initialization failed; will retry")
 
 						return
 					}
-					reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, raftNode.CapabilityMembers, logger)
+					reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger)
 				})
 			},
 		),
@@ -889,13 +882,12 @@ func Module() fx.Option {
 					RequestShutdown: shutdownRequester(shutdowner),
 				}))
 			},
-			// Wire Observer: handle leadership, readiness and capability
-			// membership convergence events. Membership still owns transport
-			// and service-pool wiring; the capability event only wakes the
-			// policy reconciler.
+			// Wire Observer: handle LeadershipChange and LeaderReady events.
+			// ConfChange events are no longer dispatched here — Membership
+			// owns the transport / service-pool wiring and reacts directly
+			// to peer mutations (EN-1413).
 			func(
 				n *node.Node,
-				reconciler *ClusterPolicyReconciler,
 				store *dal.Store,
 				builder *plan.Builder,
 				cfg Config,
@@ -907,8 +899,6 @@ func Module() fx.Option {
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
-					case node.CapabilityMembershipChangedEvent:
-						reconciler.Trigger()
 					case node.LeadershipChangeEvent:
 						// Disk evidence is leader-term local. Invalidate it inline,
 						// before admission can observe the new leadership term.
@@ -1685,11 +1675,7 @@ func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, build
 // through AdmitClusterPolicy as an internal audited SetClusterPolicy order so
 // the checker can re-derive it; the write-readiness gate exempts this
 // non-business proposal so it is never blocked by its own cluster-policy gate.
-func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, readMembers func() []capabilities.Member, logger logging.Logger) {
-	reconcileClusterPolicyWithRegistry(ctx, admission, store, cfg, isLeader, capabilities.SupportedIDs, readMembers, logger)
-}
-
-func reconcileClusterPolicyWithRegistry(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, readSupported func() []capabilities.CapabilityID, readMembers func() []capabilities.Member, logger logging.Logger) {
+func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, logger logging.Logger) {
 	if !isLeader() {
 		return
 	}
@@ -1711,44 +1697,8 @@ func reconcileClusterPolicyWithRegistry(ctx context.Context, admission ctrl.Admi
 		MetadataMaxEntityBytes:      cfg.MetadataMaxEntityBytes,
 		MetadataMaxCommandBytes:     cfg.MetadataMaxCommandBytes,
 	}
-	activationChanged := false
-	if applied != nil {
-		desired.CapabilityActivations = make([]*commonpb.CapabilityActivation, 0, len(applied.GetCapabilityActivations()))
-		for _, activation := range applied.GetCapabilityActivations() {
-			desired.CapabilityActivations = append(desired.CapabilityActivations, activation.CloneVT())
-		}
-	}
-	if readMembers != nil {
-		ready, err := capabilities.Ready(readSupported(), readMembers())
-		if err != nil {
-			logger.WithFields(map[string]any{"error": err}).Errorf("Computing converged capability set")
-
-			return
-		}
-		for _, id := range ready {
-			found := false
-			for _, activation := range desired.GetCapabilityActivations() {
-				if activation != nil && activation.GetId() == uint32(id) {
-					if !activation.GetActive() {
-						activation.Active = true
-						activationChanged = true
-					}
-					found = true
-
-					break
-				}
-			}
-			if !found {
-				desired.CapabilityActivations = append(desired.CapabilityActivations, &commonpb.CapabilityActivation{Id: uint32(id), Active: true})
-				activationChanged = true
-			}
-		}
-	}
 
 	appliedRev := applied.GetRevision()
-	if activationChanged && desired.GetRevision() <= appliedRev {
-		desired.Revision = appliedRev + 1
-	}
 
 	switch {
 	case appliedRev > desired.GetRevision():

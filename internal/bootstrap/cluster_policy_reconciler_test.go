@@ -13,7 +13,6 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -117,7 +116,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 
 		admission := &fakeAdmission{}
 		reconcileClusterPolicy(context.Background(), admission, newReconcilerTestStore(t), validBaseConfig(),
-			func() bool { return false }, nil, logging.Testing())
+			func() bool { return false }, logging.Testing())
 
 		require.Zero(t, admission.callCount(), "a non-leader must not propose")
 	})
@@ -127,7 +126,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 
 		admission := &fakeAdmission{}
 		reconcileClusterPolicy(context.Background(), admission, newReconcilerTestStore(t), validBaseConfig(),
-			func() bool { return true }, nil, logging.Testing())
+			func() bool { return true }, logging.Testing())
 
 		require.Equal(t, 1, admission.callCount(), "a leader with no committed policy must propose")
 	})
@@ -147,7 +146,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		admission := &fakeAdmission{}
-		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, nil, logging.Testing())
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
 
 		require.Zero(t, admission.callCount(), "an already-applied revision must not be re-proposed")
 	})
@@ -166,7 +165,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		admission := &fakeAdmission{}
-		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, nil, logging.Testing())
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
 
 		require.Zero(t, admission.callCount(), "a same-revision/different-payload conflict must not be re-proposed")
 	})
@@ -185,61 +184,8 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		admission := &fakeAdmission{}
-		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, nil, logging.Testing())
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
 
 		require.Zero(t, admission.callCount(), "a newer applied revision must not be overwritten")
 	})
-}
-
-func TestReconcileClusterPolicyAutoActivatesOnlyAfterConvergence(t *testing.T) {
-	t.Parallel()
-
-	cfg := validBaseConfig()
-	store := newReconcilerTestStore(t)
-	batch := store.OpenWriteSession()
-	require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
-		Revision:             cfg.ClusterPolicyRevision,
-		IdempotencyTtlMicros: uint64(cfg.IdempotencyTTL.Microseconds()),
-		QueryCheckpointLimit: cfg.QueryCheckpointLimit,
-	}))
-	require.NoError(t, batch.Commit())
-
-	readMembers := func() []capabilities.Member {
-		return []capabilities.Member{
-			{NodeID: 1, Role: capabilities.Voter, Capabilities: []capabilities.CapabilityID{7}},
-			{NodeID: 2, Role: capabilities.Learner, Capabilities: []capabilities.CapabilityID{7}},
-		}
-	}
-	admission := &fakeAdmission{}
-	reconcileClusterPolicyWithRegistry(context.Background(), admission, store, cfg,
-		func() bool { return true }, func() []capabilities.CapabilityID { return []capabilities.CapabilityID{7} }, readMembers, logging.Testing())
-
-	require.Equal(t, 1, admission.callCount())
-	require.Equal(t, uint64(cfg.ClusterPolicyRevision+1), admission.lastPolicy.GetRevision())
-	require.Equal(t, []*commonpb.CapabilityActivation{{Id: 7, Active: true}}, admission.lastPolicy.GetCapabilityActivations())
-}
-
-func TestReconcileClusterPolicyDoesNotActivateBeforeConvergence(t *testing.T) {
-	t.Parallel()
-
-	cfg := validBaseConfig()
-	store := newReconcilerTestStore(t)
-	batch := store.OpenWriteSession()
-	require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
-		Revision:             cfg.ClusterPolicyRevision,
-		IdempotencyTtlMicros: uint64(cfg.IdempotencyTTL.Microseconds()),
-		QueryCheckpointLimit: cfg.QueryCheckpointLimit,
-	}))
-	require.NoError(t, batch.Commit())
-
-	admission := &fakeAdmission{}
-	reconcileClusterPolicyWithRegistry(context.Background(), admission, store, cfg,
-		func() bool { return true }, func() []capabilities.CapabilityID { return []capabilities.CapabilityID{7} }, func() []capabilities.Member {
-			return []capabilities.Member{
-				{NodeID: 1, Role: capabilities.Voter, Capabilities: []capabilities.CapabilityID{7}},
-				{NodeID: 2, Role: capabilities.Learner},
-			}
-		}, logging.Testing())
-
-	require.Zero(t, admission.callCount())
 }

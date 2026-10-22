@@ -31,7 +31,7 @@ func capabilityPolicyProposal(t *testing.T) *node.Proposal {
 	}).MarshalVT()
 	require.NoError(t, err)
 
-	return node.NewProposal(1, data, []capabilities.CapabilityID{99})
+	return node.NewPreparedProposal(1, data, []capabilities.CapabilityID{99})
 }
 
 func TestCapabilityPolicyProposerBlocksInactiveCapability(t *testing.T) {
