@@ -8,17 +8,16 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestValidateCapabilityEvidenceBindsActivationToRevisionAndIdentity(t *testing.T) {
+func TestValidateCapabilityEvidenceRequiresActiveCapabilities(t *testing.T) {
 	ctx := &ConfChangeContext{
-		InstanceID:                   bytesN(0x42),
-		Capabilities:                 []uint32{1, 2},
-		CapabilityMembershipRevision: 7,
+		InstanceID:   bytesN(0x42),
+		Capabilities: []uint32{1, 2},
 	}
 
-	require.NoError(t, ValidateCapabilityEvidence(ctx, true, 7))
-	require.ErrorContains(t, ValidateCapabilityEvidence(ctx, true, 8), "does not match active revision")
-	require.ErrorContains(t, ValidateCapabilityEvidence(&ConfChangeContext{InstanceID: bytesN(0x42), CapabilityMembershipRevision: 7}, true, 7), "evidence is empty")
-	require.NoError(t, ValidateCapabilityEvidence(&ConfChangeContext{InstanceID: bytesN(0x42)}, false, 0))
+	require.NoError(t, ValidateCapabilityEvidence(ctx, true, []uint32{1, 2}))
+	require.ErrorContains(t, ValidateCapabilityEvidence(ctx, true, []uint32{1, 3}), "capability 3")
+	require.NoError(t, ValidateCapabilityEvidence(&ConfChangeContext{InstanceID: bytesN(0x42)}, true, nil))
+	require.NoError(t, ValidateCapabilityEvidence(&ConfChangeContext{InstanceID: bytesN(0x42)}, false, nil))
 }
 
 func TestWriteConfChangeRejectsIncompleteRegistration(t *testing.T) {

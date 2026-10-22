@@ -46,10 +46,9 @@ type Member struct {
 }
 
 type State struct {
-	Armed              bool
-	MinimumReplay      uint32
-	MembershipRevision uint64
-	Activations        map[ID]bool
+	Armed         bool
+	MinimumReplay uint32
+	Activations   map[ID]bool
 }
 
 type Blocker struct {
@@ -75,14 +74,6 @@ func ValidateMembers(members []Member) error {
 			return fmt.Errorf("%w: node %d has multiple incarnations", ErrInvalidState, member.NodeID)
 		}
 		seen[member.NodeID] = identity
-	}
-
-	return nil
-}
-
-func ValidateMembershipRevision(observed, examined uint64) error {
-	if examined == 0 || observed != examined {
-		return fmt.Errorf("%w: membership revision changed from %d to %d", ErrInvalidState, examined, observed)
 	}
 
 	return nil
@@ -150,9 +141,6 @@ func (s State) Validate() error {
 	if !s.Armed {
 		return nil
 	}
-	if s.MembershipRevision == 0 {
-		return fmt.Errorf("%w: zero membership revision", ErrInvalidState)
-	}
 
 	return nil
 }
@@ -164,7 +152,6 @@ func FromPolicy(policy *commonpb.ClusterPolicy) State {
 	}
 	s.Armed = policy.GetCapabilityActivationArmed()
 	s.MinimumReplay = policy.GetMinimumReplayProtocol()
-	s.MembershipRevision = policy.GetCapabilityMembershipRevision()
 	for _, activation := range policy.GetCapabilityActivations() {
 		if activation != nil {
 			s.Activations[ID(activation.GetId())] = activation.GetActive()

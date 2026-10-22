@@ -225,7 +225,6 @@ type JoinAsLearnerRequestReader interface {
 	GetServiceAddress() string
 	GetInstanceId() []byte
 	GetCapabilities() []uint32
-	GetCapabilityMembershipRevision() uint64
 	Mutate() *JoinAsLearnerRequest
 }
 
@@ -249,10 +248,6 @@ func (r *joinAsLearnerRequestReadonly) GetInstanceId() []byte {
 
 func (r *joinAsLearnerRequestReadonly) GetCapabilities() []uint32 {
 	return slices.Clone((*JoinAsLearnerRequest)(r).GetCapabilities())
-}
-
-func (r *joinAsLearnerRequestReadonly) GetCapabilityMembershipRevision() uint64 {
-	return (*JoinAsLearnerRequest)(r).GetCapabilityMembershipRevision()
 }
 
 func (r *joinAsLearnerRequestReadonly) Mutate() *JoinAsLearnerRequest {
@@ -379,7 +374,6 @@ type RefreshMembershipRequestReader interface {
 	GetServiceAddress() string
 	GetInstanceId() []byte
 	GetCapabilities() []uint32
-	GetCapabilityMembershipRevision() uint64
 	Mutate() *RefreshMembershipRequest
 }
 
@@ -403,10 +397,6 @@ func (r *refreshMembershipRequestReadonly) GetInstanceId() []byte {
 
 func (r *refreshMembershipRequestReadonly) GetCapabilities() []uint32 {
 	return slices.Clone((*RefreshMembershipRequest)(r).GetCapabilities())
-}
-
-func (r *refreshMembershipRequestReadonly) GetCapabilityMembershipRevision() uint64 {
-	return (*RefreshMembershipRequest)(r).GetCapabilityMembershipRevision()
 }
 
 func (r *refreshMembershipRequestReadonly) Mutate() *RefreshMembershipRequest {

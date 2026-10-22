@@ -172,15 +172,14 @@ func (x *PeerInfo) GetInstanceId() []byte {
 }
 
 type JoinAsLearnerRequest struct {
-	state                        protoimpl.MessageState `protogen:"open.v1"`
-	NodeId                       uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`                                                                      // Numeric ID for the new learner node
-	RaftAddress                  string                 `protobuf:"bytes,2,opt,name=raft_address,json=raftAddress,proto3" json:"raft_address,omitempty"`                                                        // Raft transport address of the learner
-	ServiceAddress               string                 `protobuf:"bytes,3,opt,name=service_address,json=serviceAddress,proto3" json:"service_address,omitempty"`                                               // Service API address of the learner
-	InstanceId                   []byte                 `protobuf:"bytes,4,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`                                                           // 16-byte UUID identifying this peer's WAL/PVC incarnation (EN-1045); required
-	Capabilities                 []uint32               `protobuf:"fixed32,5,rep,packed,name=capabilities,proto3" json:"capabilities,omitempty"`                                                                // capabilities supported by this binary
-	CapabilityMembershipRevision uint64                 `protobuf:"fixed64,6,opt,name=capability_membership_revision,json=capabilityMembershipRevision,proto3" json:"capability_membership_revision,omitempty"` // revision examined by the joiner, 0 lets leader bind current revision
-	unknownFields                protoimpl.UnknownFields
-	sizeCache                    protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	NodeId         uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`                        // Numeric ID for the new learner node
+	RaftAddress    string                 `protobuf:"bytes,2,opt,name=raft_address,json=raftAddress,proto3" json:"raft_address,omitempty"`          // Raft transport address of the learner
+	ServiceAddress string                 `protobuf:"bytes,3,opt,name=service_address,json=serviceAddress,proto3" json:"service_address,omitempty"` // Service API address of the learner
+	InstanceId     []byte                 `protobuf:"bytes,4,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`             // 16-byte UUID identifying this peer's WAL/PVC incarnation (EN-1045); required
+	Capabilities   []uint32               `protobuf:"fixed32,5,rep,packed,name=capabilities,proto3" json:"capabilities,omitempty"`                  // capabilities supported by this binary
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *JoinAsLearnerRequest) Reset() {
@@ -248,13 +247,6 @@ func (x *JoinAsLearnerRequest) GetCapabilities() []uint32 {
 	return nil
 }
 
-func (x *JoinAsLearnerRequest) GetCapabilityMembershipRevision() uint64 {
-	if x != nil {
-		return x.CapabilityMembershipRevision
-	}
-	return 0
-}
-
 type JoinAsLearnerResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -296,15 +288,14 @@ func (*JoinAsLearnerResponse) Descriptor() ([]byte, []int) {
 // It is used after a normal restart, where the node must not re-run the
 // learner-join path.
 type RefreshMembershipRequest struct {
-	state                        protoimpl.MessageState `protogen:"open.v1"`
-	NodeId                       uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
-	RaftAddress                  string                 `protobuf:"bytes,2,opt,name=raft_address,json=raftAddress,proto3" json:"raft_address,omitempty"`
-	ServiceAddress               string                 `protobuf:"bytes,3,opt,name=service_address,json=serviceAddress,proto3" json:"service_address,omitempty"`
-	InstanceId                   []byte                 `protobuf:"bytes,4,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
-	Capabilities                 []uint32               `protobuf:"fixed32,5,rep,packed,name=capabilities,proto3" json:"capabilities,omitempty"`
-	CapabilityMembershipRevision uint64                 `protobuf:"fixed64,6,opt,name=capability_membership_revision,json=capabilityMembershipRevision,proto3" json:"capability_membership_revision,omitempty"`
-	unknownFields                protoimpl.UnknownFields
-	sizeCache                    protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	NodeId         uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	RaftAddress    string                 `protobuf:"bytes,2,opt,name=raft_address,json=raftAddress,proto3" json:"raft_address,omitempty"`
+	ServiceAddress string                 `protobuf:"bytes,3,opt,name=service_address,json=serviceAddress,proto3" json:"service_address,omitempty"`
+	InstanceId     []byte                 `protobuf:"bytes,4,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
+	Capabilities   []uint32               `protobuf:"fixed32,5,rep,packed,name=capabilities,proto3" json:"capabilities,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *RefreshMembershipRequest) Reset() {
@@ -372,13 +363,6 @@ func (x *RefreshMembershipRequest) GetCapabilities() []uint32 {
 	return nil
 }
 
-func (x *RefreshMembershipRequest) GetCapabilityMembershipRevision() uint64 {
-	if x != nil {
-		return x.CapabilityMembershipRevision
-	}
-	return 0
-}
-
 type RefreshMembershipResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -428,24 +412,22 @@ const file_cluster_bootstrap_proto_rawDesc = "" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +
 	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\x12\x1f\n" +
 	"\vinstance_id\x18\x04 \x01(\fR\n" +
-	"instanceId\"\x86\x02\n" +
+	"instanceId\"\xc0\x01\n" +
 	"\x14JoinAsLearnerRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +
 	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\x12\x1f\n" +
 	"\vinstance_id\x18\x04 \x01(\fR\n" +
 	"instanceId\x12\"\n" +
-	"\fcapabilities\x18\x05 \x03(\aR\fcapabilities\x12D\n" +
-	"\x1ecapability_membership_revision\x18\x06 \x01(\x06R\x1ccapabilityMembershipRevision\"\x17\n" +
-	"\x15JoinAsLearnerResponse\"\x8a\x02\n" +
+	"\fcapabilities\x18\x05 \x03(\aR\fcapabilities\"\x17\n" +
+	"\x15JoinAsLearnerResponse\"\xc4\x01\n" +
 	"\x18RefreshMembershipRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +
 	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\x12\x1f\n" +
 	"\vinstance_id\x18\x04 \x01(\fR\n" +
 	"instanceId\x12\"\n" +
-	"\fcapabilities\x18\x05 \x03(\aR\fcapabilities\x12D\n" +
-	"\x1ecapability_membership_revision\x18\x06 \x01(\x06R\x1ccapabilityMembershipRevision\"\x1b\n" +
+	"\fcapabilities\x18\x05 \x03(\aR\fcapabilities\"\x1b\n" +
 	"\x19RefreshMembershipResponse2\xc2\x02\n" +
 	"\x17ClusterBootstrapService\x12S\n" +
 	"\bGetPeers\x12\".cluster_bootstrap.GetPeersRequest\x1a#.cluster_bootstrap.GetPeersResponse\x12b\n" +

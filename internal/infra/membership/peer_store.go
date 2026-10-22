@@ -92,14 +92,14 @@ func peerKeyRange() (lower, upper []byte) {
 // apply uses the caller's WriteSession directly. Every persisted peer must
 // carry the concrete member's 16-byte WAL/PVC identity.
 func (p *PeerStore) Put(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	return p.PutWithEvidence(nodeID, raftAddr, serviceAddr, instanceID, nil, 0)
+	return p.PutWithEvidence(nodeID, raftAddr, serviceAddr, instanceID, nil)
 }
 
 // PutWithEvidence persists a peer directory row together with the capability
 // evidence bound to its concrete instance. The evidence is deliberately part
 // of the same Pebble value as the identity so a crash cannot expose a peer
 // with a fresh instance_id and stale capabilities.
-func (p *PeerStore) PutWithEvidence(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilities []uint32, membershipRevision uint64) error {
+func (p *PeerStore) PutWithEvidence(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilities []uint32) error {
 	if err := ValidateInstanceID(instanceID); err != nil {
 		return fmt.Errorf("writing peer %d: %w", nodeID, err)
 	}
@@ -109,12 +109,11 @@ func (p *PeerStore) PutWithEvidence(nodeID uint64, raftAddr, serviceAddr string,
 
 	session := p.store.OpenWriteSession()
 	if err := session.SetProto(peerKey(nodeID), &raftcmdpb.PeerAddress{
-		NodeId:                       nodeID,
-		RaftAddress:                  raftAddr,
-		ServiceAddress:               serviceAddr,
-		InstanceId:                   instanceID,
-		Capabilities:                 capabilities,
-		CapabilityMembershipRevision: membershipRevision,
+		NodeId:         nodeID,
+		RaftAddress:    raftAddr,
+		ServiceAddress: serviceAddr,
+		InstanceId:     instanceID,
+		Capabilities:   capabilities,
 	}); err != nil {
 		_ = session.Cancel()
 
@@ -192,11 +191,10 @@ func (p *PeerStore) LoadAll() (map[uint64]ConfChangeContext, error) {
 		}
 
 		out[pa.GetNodeId()] = ConfChangeContext{
-			RaftAddress:                  pa.GetRaftAddress(),
-			ServiceAddress:               pa.GetServiceAddress(),
-			InstanceID:                   pa.GetInstanceId(),
-			Capabilities:                 append([]uint32(nil), pa.GetCapabilities()...),
-			CapabilityMembershipRevision: pa.GetCapabilityMembershipRevision(),
+			RaftAddress:    pa.GetRaftAddress(),
+			ServiceAddress: pa.GetServiceAddress(),
+			InstanceID:     pa.GetInstanceId(),
+			Capabilities:   append([]uint32(nil), pa.GetCapabilities()...),
 		}
 	}
 
