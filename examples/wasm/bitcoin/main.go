@@ -115,9 +115,6 @@ func run() uint32 {
 					// collection between blocks so catch-up from height zero does not
 					// retain every decoded block and protobuf batch until the next GC.
 					runtime.GC()
-					// Give the collector a scheduling point while catching up a long
-					// chain; the normal polling interval only applies at the tip.
-					time.Sleep(10 * time.Millisecond)
 					continue
 				} else {
 					logf(2, "bitcoin apply block %d: %v", moduleHeight, applyErr)
