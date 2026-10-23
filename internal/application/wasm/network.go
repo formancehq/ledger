@@ -129,6 +129,9 @@ func (n *network) begin(operation string) func() {
 			break
 		}
 	}
+	if active > 1 && n.log != nil {
+		n.log(1, fmt.Sprintf("wasm network overlap: operation=%s active=%d max_active=%d", operation, active, n.max.Load()))
+	}
 	return func() {
 		current := n.active.Add(-1)
 		count := n.count.Add(1)
