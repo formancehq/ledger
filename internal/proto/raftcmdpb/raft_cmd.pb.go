@@ -3318,8 +3318,11 @@ type Proposal struct {
 	// coverage_bits so the FSM applies per-update isolation, exactly like
 	// Order.coverage_bits.
 	TechnicalUpdates []*TechnicalUpdate `protobuf:"bytes,9,rep,name=technical_updates,json=technicalUpdates,proto3" json:"technical_updates,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Stable capability IDs required by the final serialized proposal. This is
+	// checked after any plan rebuild and before the bytes enter Raft.
+	RequiredCapabilities []uint32 `protobuf:"fixed32,10,rep,packed,name=required_capabilities,json=requiredCapabilities,proto3" json:"required_capabilities,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *Proposal) Reset() {
@@ -3411,6 +3414,13 @@ func (x *Proposal) GetSignature() *signaturepb.SignedApplyBatch {
 func (x *Proposal) GetTechnicalUpdates() []*TechnicalUpdate {
 	if x != nil {
 		return x.TechnicalUpdates
+	}
+	return nil
+}
+
+func (x *Proposal) GetRequiredCapabilities() []uint32 {
+	if x != nil {
+		return x.RequiredCapabilities
 	}
 	return nil
 }
@@ -5192,8 +5202,12 @@ type PeerAddress struct {
 	RaftAddress    string                 `protobuf:"bytes,2,opt,name=raft_address,json=raftAddress,proto3" json:"raft_address,omitempty"`
 	ServiceAddress string                 `protobuf:"bytes,3,opt,name=service_address,json=serviceAddress,proto3" json:"service_address,omitempty"`
 	InstanceId     []byte                 `protobuf:"bytes,4,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Capability evidence is bound to this concrete (node_id, instance_id)
+	// incarnation. It is persisted with the peer row so a restart cannot
+	// accidentally reuse evidence from an older WAL/PVC incarnation.
+	Capabilities  []uint32 `protobuf:"fixed32,5,rep,packed,name=capabilities,proto3" json:"capabilities,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PeerAddress) Reset() {
@@ -5250,6 +5264,13 @@ func (x *PeerAddress) GetServiceAddress() string {
 func (x *PeerAddress) GetInstanceId() []byte {
 	if x != nil {
 		return x.InstanceId
+	}
+	return nil
+}
+
+func (x *PeerAddress) GetCapabilities() []uint32 {
+	if x != nil {
+		return x.Capabilities
 	}
 	return nil
 }
@@ -5605,7 +5626,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"-\n" +
 	"\x19DeleteLedgerMetadataOrder\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\"\xc2\x03\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\"\xf7\x03\n" +
 	"\bProposal\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x06R\x02id\x12#\n" +
 	"\x06orders\x18\x02 \x03(\v2\v.raft.OrderR\x06orders\x12%\n" +
@@ -5615,7 +5636,9 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x0fcaller_snapshot\x18\x06 \x01(\v2\x16.common.CallerSnapshotR\x0ecallerSnapshot\x125\n" +
 	"\vidempotency\x18\a \x01(\v2\x13.common.IdempotencyR\vidempotency\x129\n" +
 	"\tsignature\x18\b \x01(\v2\x1b.signature.SignedApplyBatchR\tsignature\x12B\n" +
-	"\x11technical_updates\x18\t \x03(\v2\x15.raft.TechnicalUpdateR\x10technicalUpdates\"\xf5\x03\n" +
+	"\x11technical_updates\x18\t \x03(\v2\x15.raft.TechnicalUpdateR\x10technicalUpdates\x123\n" +
+	"\x15required_capabilities\x18\n" +
+	" \x03(\aR\x14requiredCapabilities\"\xf5\x03\n" +
 	"\x0fTechnicalUpdate\x12#\n" +
 	"\rcoverage_bits\x18\x01 \x01(\fR\fcoverageBits\x129\n" +
 	"\vmirror_sync\x18\x02 \x01(\v2\x16.raft.MirrorSyncUpdateH\x00R\n" +
@@ -5733,13 +5756,14 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\n" +
 	"base_index\x18\x01 \x01(\x06R\tbaseIndex\"B\n" +
 	"\x11CacheSnapshotMeta\x12-\n" +
-	"\x12current_generation\x18\x01 \x01(\x06R\x11currentGeneration\"\x93\x01\n" +
+	"\x12current_generation\x18\x01 \x01(\x06R\x11currentGeneration\"\xb7\x01\n" +
 	"\vPeerAddress\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +
 	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\x12\x1f\n" +
 	"\vinstance_id\x18\x04 \x01(\fR\n" +
-	"instanceId\"\x85\x01\n" +
+	"instanceId\x12\"\n" +
+	"\fcapabilities\x18\x05 \x03(\aR\fcapabilities\"\x85\x01\n" +
 	"\x12RemovedMemberEntry\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x1f\n" +
 	"\vinstance_id\x18\x02 \x01(\fR\n" +

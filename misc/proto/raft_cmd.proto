@@ -433,6 +433,9 @@ message Proposal {
   // coverage_bits so the FSM applies per-update isolation, exactly like
   // Order.coverage_bits.
   repeated TechnicalUpdate technical_updates = 9;
+  // Stable capability IDs required by the final serialized proposal. This is
+  // checked after any plan rebuild and before the bytes enter Raft.
+  repeated fixed32 required_capabilities = 10;
 }
 
 // TechnicalUpdate is the per-update envelope that carries the coverage
@@ -784,6 +787,10 @@ message PeerAddress {
   string raft_address = 2;
   string service_address = 3;
   bytes instance_id = 4;
+  // Capability evidence is bound to this concrete (node_id, instance_id)
+  // incarnation. It is persisted with the peer row so a restart cannot
+  // accidentally reuse evidence from an older WAL/PVC incarnation.
+  repeated fixed32 capabilities = 5;
 }
 
 // RemovedMemberEntry is the persisted blacklist row keyed by

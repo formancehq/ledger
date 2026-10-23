@@ -12,6 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -69,6 +70,12 @@ type Membership struct {
 
 	mu        sync.RWMutex
 	addresses map[uint64]ConfChangeContext
+	// capabilityGate is updated from the committed ClusterPolicy projection.
+	// It is intentionally kept beside the membership cache so Add/Promote
+	// admission observes one lock-consistent view of active requirements and
+	// member identity evidence.
+	requiredCapabilities     []uint32
+	capabilityPolicyProvider func() (*commonpb.ClusterPolicy, error)
 	// started gates transport / service-pool wiring. Until Start fires
 	// (OnStart hook, after the local Raft gRPC server is listening),
 	// Set / Remove / Register / Rehydrate mutate only the cache — the
@@ -94,7 +101,7 @@ type Membership struct {
 // Failure to read the peer rows is fatal: without them the node would
 // boot with an empty cache while the WAL ConfState still claims the
 // cluster has voters.
-func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
+func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger, policyProviders ...func() (*commonpb.ClusterPolicy, error)) (*Membership, error) {
 	if err := ValidateInstanceID(selfInstanceID); err != nil {
 		return nil, fmt.Errorf("invalid self identity: %w", err)
 	}
@@ -108,16 +115,22 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 		"peerCount": len(addresses),
 	}).Infof("Loaded cluster membership from Pebble")
 
+	var policyProvider func() (*commonpb.ClusterPolicy, error)
+	if len(policyProviders) > 0 {
+		policyProvider = policyProviders[0]
+	}
+
 	return &Membership{
-		store:           store,
-		transport:       transport,
-		pool:            pool,
-		selfNodeID:      selfNodeID,
-		selfRaftAddr:    selfRaftAddr,
-		selfServiceAddr: selfServiceAddr,
-		selfInstanceID:  bytes.Clone(selfInstanceID),
-		logger:          logger,
-		addresses:       addresses,
+		store:                    store,
+		transport:                transport,
+		pool:                     pool,
+		selfNodeID:               selfNodeID,
+		selfRaftAddr:             selfRaftAddr,
+		selfServiceAddr:          selfServiceAddr,
+		selfInstanceID:           bytes.Clone(selfInstanceID),
+		logger:                   logger,
+		capabilityPolicyProvider: policyProvider,
+		addresses:                addresses,
 	}, nil
 }
 
@@ -219,6 +232,39 @@ func (m *Membership) PeerAddresses() map[uint64]ConfChangeContext {
 	return cp
 }
 
+// SetCapabilityGate publishes the committed activation gate used by
+// membership transitions. The required IDs are copied and must be canonical.
+func (m *Membership) SetCapabilityGate(required []uint32) error {
+	if err := ValidateCapabilities(required); err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.requiredCapabilities = append([]uint32(nil), required...)
+
+	return nil
+}
+
+// CapabilityGate returns the current committed activation gate.
+func (m *Membership) CapabilityGate() (required []uint32) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return append([]uint32(nil), m.requiredCapabilities...)
+}
+
+// ValidateTransitionEvidence checks a registration context against the latest
+// locally published gate. The FSM write path revalidates the same evidence
+// against the committed policy, which closes races with policy application.
+func (m *Membership) ValidateTransitionEvidence(ctx *ConfChangeContext) error {
+	m.mu.RLock()
+	required := append([]uint32(nil), m.requiredCapabilities...)
+	m.mu.RUnlock()
+
+	return ValidateCapabilityEvidence(ctx, required)
+}
+
 // GetInstanceID returns the peer's 16-byte identity UUID from the in-memory
 // cache, and ok=true when the peer is currently known. Returns (nil, false)
 // when the peer is not in the cache. Removal and promotion treat a missing
@@ -250,7 +296,18 @@ func (m *Membership) GetInstanceID(nodeID uint64) ([]byte, bool) {
 // they stay in lockstep with a concurrent Rehydrate. See Rehydrate's
 // locking note.
 func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
+	return m.SetWithEvidence(nodeID, raftAddr, serviceAddr, instanceID, nil)
+}
+
+// SetWithEvidence upserts a peer and persists its capability evidence in the
+// in-memory registration. The FSM write path stores the same fields in the
+// durable PeerAddress row, while finishReady uses this method to keep the
+// transport cache and evidence synchronized before resolving the proposal.
+func (m *Membership) SetWithEvidence(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
 	if err := ValidateInstanceID(instanceID); err != nil {
+		return fmt.Errorf("setting peer %d: %w", nodeID, err)
+	}
+	if err := ValidateCapabilities(capabilityIDs); err != nil {
 		return fmt.Errorf("setting peer %d: %w", nodeID, err)
 	}
 
@@ -261,6 +318,7 @@ func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string, instanceID
 		RaftAddress:    raftAddr,
 		ServiceAddress: serviceAddr,
 		InstanceID:     bytes.Clone(instanceID),
+		Capabilities:   append([]uint32(nil), capabilityIDs...),
 	}
 
 	m.wireAdd(nodeID, raftAddr, serviceAddr)
@@ -289,11 +347,26 @@ func (m *Membership) Remove(nodeID uint64) {
 // instanceID is always the peer's 16-byte WAL/PVC identity. Identity-less
 // membership rows are rejected rather than persisted as a partial member.
 func (m *Membership) Register(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	if err := m.store.Put(nodeID, raftAddr, serviceAddr, instanceID); err != nil {
+	return m.RegisterWithEvidence(nodeID, raftAddr, serviceAddr, instanceID, nil)
+}
+
+// RegisterWithEvidence is the durable/cache-atomic lifecycle variant of
+// Register. It is used for self refresh and bootstrap rows that already carry
+// a capability proof.
+func (m *Membership) RegisterWithEvidence(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
+	// A restart refreshes the local addresses. Preserve evidence for the same
+	// concrete instance when the caller has no new proof; a changed instance
+	// must never inherit the previous pod's capabilities.
+	if len(capabilityIDs) == 0 {
+		if existing, ok := m.PeerAddresses()[nodeID]; ok && bytes.Equal(existing.InstanceID, instanceID) {
+			capabilityIDs = existing.Capabilities
+		}
+	}
+	if err := m.store.PutWithEvidence(nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs); err != nil {
 		return fmt.Errorf("persisting peer %d: %w", nodeID, err)
 	}
 
-	if err := m.Set(nodeID, raftAddr, serviceAddr, instanceID); err != nil {
+	if err := m.SetWithEvidence(nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs); err != nil {
 		return err
 	}
 
@@ -521,7 +594,10 @@ func (m *Membership) OnSnapshotInstalled() {
 	// Better to fall through and let Rehydrate reload from Pebble
 	// (with the leader's possibly-stale self); the next OnSnapshot
 	// or restart will re-attempt the self-Put.
-	if err := m.store.Put(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID); err != nil {
+	m.mu.RLock()
+	selfCapabilities := append([]uint32(nil), m.addresses[m.selfNodeID].Capabilities...)
+	m.mu.RUnlock()
+	if err := m.store.PutWithEvidence(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID, selfCapabilities); err != nil {
 		m.logger.WithFields(map[string]any{
 			"error": err,
 		}).Errorf("Refreshing self in Pebble before snapshot reload failed; next checkpoint we serve may carry a stale self address")
@@ -551,6 +627,18 @@ func (m *Membership) OnSnapshotInstalled() {
 // Promotions repeat the existing peer registration, making replay independent
 // of the node-local membership cache.
 func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSession) error {
+	return m.writeConfChange(entry, session, nil, false)
+}
+
+// WriteConfChangeWithPolicy applies a ConfChange using the policy state at the
+// entry's position in the current FSM batch. This avoids validating a
+// membership change against the policy that was durable before an earlier
+// SetClusterPolicy order in the same batch.
+func (m *Membership) WriteConfChangeWithPolicy(entry *raftpb.Entry, session *dal.WriteSession, policy *commonpb.ClusterPolicy) error {
+	return m.writeConfChange(entry, session, policy, true)
+}
+
+func (m *Membership) writeConfChange(entry *raftpb.Entry, session *dal.WriteSession, effectivePolicy *commonpb.ClusterPolicy, hasEffectivePolicy bool) error {
 	cc, ok, err := UnmarshalConfChangeV2(entry)
 	if err != nil {
 		return fmt.Errorf("decoding ConfChange entry: %w", err)
@@ -564,11 +652,43 @@ func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSess
 	}
 
 	writeRegistration := func(nodeID uint64, ctx *ConfChangeContext) error {
+		if err := ValidateCapabilities(ctx.Capabilities); err != nil {
+			return fmt.Errorf("invalid capability evidence for peer %d: %w", nodeID, err)
+		}
+		policy := effectivePolicy
+		if !hasEffectivePolicy {
+			m.mu.RLock()
+			provider := m.capabilityPolicyProvider
+			m.mu.RUnlock()
+			if provider != nil {
+				var err error
+				policy, err = provider()
+				if err != nil {
+					return fmt.Errorf("reading committed cluster policy for peer %d: %w", nodeID, err)
+				}
+			}
+		}
+		if policy != nil || hasEffectivePolicy {
+			required := make([]uint32, 0)
+			if policy != nil {
+				required = make([]uint32, 0, len(policy.GetCapabilityActivations()))
+				for _, activation := range policy.GetCapabilityActivations() {
+					if activation != nil && activation.GetActive() {
+						required = append(required, activation.GetId())
+					}
+				}
+			}
+			slices.Sort(required)
+			if err := ValidateCapabilityEvidence(ctx, required); err != nil {
+				return fmt.Errorf("invalid capability evidence for peer %d: %w", nodeID, err)
+			}
+		}
 		if err := session.SetProto(peerKey(nodeID), &raftcmdpb.PeerAddress{
 			NodeId:         nodeID,
 			RaftAddress:    ctx.RaftAddress,
 			ServiceAddress: ctx.ServiceAddress,
 			InstanceId:     ctx.InstanceID,
+			Capabilities:   ctx.Capabilities,
 		}); err != nil {
 			return fmt.Errorf("session write peer %d: %w", nodeID, err)
 		}

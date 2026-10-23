@@ -68,6 +68,31 @@ func TestShouldRunJoinPreflight(t *testing.T) {
 	})
 }
 
+func TestShouldRunMembershipRefresh(t *testing.T) {
+	t.Parallel()
+	logger := logging.Testing()
+
+	t.Run("fresh WAL skips refresh", func(t *testing.T) {
+		t.Parallel()
+		cfg := Config{RaftConfig: node.NodeConfig{
+			Peers:  []node.Peer{{ID: 1, Address: "leader:7777"}},
+			WalDir: t.TempDir(),
+		}}
+		assert.False(t, shouldRunMembershipRefresh(cfg, logger))
+	})
+
+	t.Run("joined WAL refreshes", func(t *testing.T) {
+		t.Parallel()
+		walDir := t.TempDir()
+		require.NoError(t, wal.MarkClusterJoined(walDir))
+		cfg := Config{RaftConfig: node.NodeConfig{
+			Peers:  []node.Peer{{ID: 1, Address: "leader:7777"}},
+			WalDir: walDir,
+		}}
+		assert.True(t, shouldRunMembershipRefresh(cfg, logger))
+	})
+}
+
 // TestJoinPreflightRunsBeforeRaftTraffic proves the EN-1436 ordering invariant
 // (flemzord review on #1478): the join preflight OnStart hook must run — and,
 // when it fails, abort startup — BEFORE any hook that lets inbound Raft traffic

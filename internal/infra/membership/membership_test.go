@@ -408,6 +408,7 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 
 	// Pre-swap state: cluster A had peer 7.
 	require.NoError(t, ps.Put(7, "old:1", "old:2", fixedInstanceID(7)))
+	require.NoError(t, ps.PutWithEvidence(testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), []uint32{7}))
 
 	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
 	require.NoError(t, err)
@@ -430,6 +431,7 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	require.Equal(t, "new:1", got[1].RaftAddress)
 	require.Equal(t, "new:3", got[3].RaftAddress)
 	require.Equal(t, testSelfRaftAddr, got[testSelfNodeID].RaftAddress, "self must be re-upserted with local truth")
+	require.Equal(t, []uint32{7}, got[testSelfNodeID].Capabilities, "self capabilities must survive snapshot restore")
 	require.NotContains(t, got, uint64(7))
 }
 
@@ -644,6 +646,20 @@ func TestMembership_ClonesInstanceIDs(t *testing.T) {
 	again, ok = m.GetInstanceID(1)
 	require.True(t, ok)
 	require.Equal(t, byte(1), again[0], "PeerAddresses must deep-clone instance IDs")
+}
+
+func TestPeerStore_PersistsCapabilityEvidenceWithIdentity(t *testing.T) {
+	ps := newTestPeerStore(t)
+	caps := []uint32{1, 2}
+	identity := fixedInstanceID(0x7a)
+	require.NoError(t, ps.PutWithEvidence(9, "raft:9", "service:9", identity, caps))
+
+	rows, err := ps.LoadAll()
+	require.NoError(t, err)
+	row, ok := rows[9]
+	require.True(t, ok)
+	require.Equal(t, identity, row.InstanceID)
+	require.Equal(t, caps, row.Capabilities)
 }
 
 // TestMembership_ReconcileAgainstConfState pins the boot-time cleanup

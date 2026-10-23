@@ -123,3 +123,49 @@ func TestAddLearnerZeroProgressRefreshProposesCompleteReplacement(t *testing.T) 
 	cmd.errCh <- nil
 	require.NoError(t, receiveForceRemoveError(t, results))
 }
+
+func TestRefreshMembershipProposesUpdateForExistingIdentity(t *testing.T) {
+	t.Parallel()
+
+	n := newConfiguredPeersTestNode(t)
+	n.logger = logging.Testing()
+	setup := newTestApplierSetupWithConfChangeHandler(t, make(LocalResponses, 1024), n.membership.WriteConfChange)
+	n.fsm = setup.fsm
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	results := make(chan error, 1)
+	go func() {
+		results <- n.RefreshMembership(ctx, 2, "refreshed:7777", "refreshed:8888", []byte("peer-instance-id"), []uint32{1, 2})
+	}()
+
+	cmd := <-n.clusterCommandCh
+	require.NoError(t, cmd.fn())
+	ready := n.rawNode.Ready()
+	var changes []*raftpb.Entry
+	for _, entry := range ready.Entries {
+		if entry.GetType() == raftpb.EntryConfChangeV2 {
+			changes = append(changes, entry)
+		}
+	}
+	require.Len(t, changes, 1)
+	cc, ok, err := membership.UnmarshalConfChangeV2(changes[0])
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, raftpb.ConfChangeUpdateNode, cc.GetChanges()[0].GetType())
+	payload, err := membership.UnmarshalConfChangeContext(cc.GetContext())
+	require.NoError(t, err)
+	require.Equal(t, []uint32{1, 2}, payload.Capabilities)
+	require.Equal(t, []byte("peer-instance-id"), payload.InstanceID)
+	require.Equal(t, "refreshed:7777", payload.RaftAddress)
+
+	pending, err := n.takePendingConfChange(cc, changes[0].GetIndex())
+	require.NoError(t, err)
+	prefix, err := n.wal.Entries(1, changes[0].GetIndex(), ^uint64(0))
+	require.NoError(t, err)
+	_, err = setup.fsm.ApplyEntries(t.Context(), setup.store, append(prefix, changes[0])...)
+	require.NoError(t, err)
+	pending.future.Resolve(pending.index, nil)
+	cmd.errCh <- nil
+	require.NoError(t, receiveForceRemoveError(t, results))
+}

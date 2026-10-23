@@ -158,7 +158,8 @@ type Machine struct {
 	// cluster membership atomic with FSM state and makes the spool/WAL
 	// replay path naturally idempotent — every replay of the entry
 	// re-asserts the membership row. EN-1413.
-	confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error
+	confChangeHandler             func(entry *raftpb.Entry, session *dal.WriteSession) error
+	capabilityPolicyCommitHandler func(*commonpb.ClusterPolicy)
 }
 
 // NewMachine constructs the hot-path FSM. It composes pre-built sub-objects
@@ -291,6 +292,16 @@ func (fsm *Machine) LastPersistedIndex() uint64 {
 // "is this index durable?" checks.
 func (fsm *Machine) LastAppliedIndex() uint64 {
 	return fsm.State.LastAppliedIndex
+}
+
+// ClusterPolicy returns the policy state at the current apply position. It is
+// intended for callbacks invoked while PrepareEntries holds fsm.mu.
+func (fsm *Machine) ClusterPolicy() *commonpb.ClusterPolicy {
+	if fsm.State.ClusterPolicy == nil {
+		return nil
+	}
+
+	return fsm.State.ClusterPolicy.CloneVT()
 }
 
 // RestoreState atomically replaces the FSM-level state. The intended callers
@@ -750,6 +761,9 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		mirrorConfigChanged: mirrorConfigChanged,
 		entryCount:          len(decoded),
 	}
+	if fsm.State.ClusterPolicy != nil {
+		pb.capabilityPolicy = fsm.State.ClusterPolicy.CloneVT()
+	}
 
 	// Capture sentinel data before releasing the lock.
 	if fsm.sentinelMode {
@@ -784,6 +798,9 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 	}
 
 	pb.batch = nil // committed, prevent double-close
+	if fsm.capabilityPolicyCommitHandler != nil && pb.capabilityPolicy != nil {
+		fsm.capabilityPolicyCommitHandler(pb.capabilityPolicy)
+	}
 
 	fsm.batchCommitHistogram.Record(ctx, time.Since(commitStart).Seconds())
 
@@ -1960,8 +1977,16 @@ type PreparedBatch struct {
 	sentinelLedgerNames        []string
 	sentinelDeletedLedgerNames map[string]struct{}
 	sentinelTracer             *SentinelTracer
+	capabilityPolicy           *commonpb.ClusterPolicy
 
 	entryCount int
+}
+
+// SetCapabilityPolicyCommitHandler installs the post-commit hook used to
+// publish the authoritative membership admission gate. The callback runs only
+// after the corresponding FSM batch has committed.
+func (fsm *Machine) SetCapabilityPolicyCommitHandler(handler func(*commonpb.ClusterPolicy)) {
+	fsm.capabilityPolicyCommitHandler = handler
 }
 
 // Close cancels the uncommitted batch. Must be called if CommitPreparedBatch

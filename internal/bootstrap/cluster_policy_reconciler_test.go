@@ -40,10 +40,32 @@ func TestClusterPolicyReconciler_TicksUntilStopped(t *testing.T) {
 		"no reconcile must run after Stop")
 }
 
+func TestClusterPolicyReconciler_TriggerIsCoalescedAndRaceSafe(t *testing.T) {
+	t.Parallel()
+
+	var count atomic.Int32
+	r := NewClusterPolicyReconciler(func(context.Context) { count.Add(1) })
+	r.interval = time.Hour
+	r.Start()
+	require.Eventually(t, func() bool { return count.Load() >= 1 }, time.Second, time.Millisecond)
+
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Go(func() {
+			r.Trigger()
+		})
+	}
+	wg.Wait()
+	require.Eventually(t, func() bool { return count.Load() >= 2 }, time.Second, time.Millisecond,
+		"a membership event must wake reconciliation without waiting for the ticker")
+	r.Stop()
+}
+
 type fakeAdmission struct {
-	mu    sync.Mutex
-	calls int
-	err   error
+	mu         sync.Mutex
+	calls      int
+	err        error
+	lastPolicy *commonpb.ClusterPolicy
 }
 
 func (f *fakeAdmission) Admit(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
@@ -54,10 +76,11 @@ func (f *fakeAdmission) Admit(_ context.Context, _ *servicepb.ApplyRequest) (*do
 	return nil, f.err
 }
 
-func (f *fakeAdmission) AdmitClusterPolicy(_ context.Context, _ *commonpb.ClusterPolicy) (*domain.ApplyResult, error) {
+func (f *fakeAdmission) AdmitClusterPolicy(_ context.Context, policy *commonpb.ClusterPolicy) (*domain.ApplyResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
+	f.lastPolicy = policy.CloneVT()
 
 	return nil, f.err
 }
@@ -164,5 +187,26 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
 
 		require.Zero(t, admission.callCount(), "a newer applied revision must not be overwritten")
+	})
+
+	t.Run("preserves committed capability activations on a revision bump", func(t *testing.T) {
+		t.Parallel()
+
+		store := newReconcilerTestStore(t)
+		cfg := validBaseConfig()
+		batch := store.OpenWriteSession()
+		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+			Revision: cfg.ClusterPolicyRevision - 1,
+			CapabilityActivations: []*commonpb.CapabilityActivation{{
+				Id: 7, Active: true,
+			}},
+		}))
+		require.NoError(t, batch.Commit())
+
+		admission := &fakeAdmission{}
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
+
+		require.Equal(t, 1, admission.callCount())
+		require.Equal(t, []*commonpb.CapabilityActivation{{Id: 7, Active: true}}, admission.lastPolicy.GetCapabilityActivations())
 	})
 }

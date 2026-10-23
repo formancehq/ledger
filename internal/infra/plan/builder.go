@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/preload"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -49,6 +50,7 @@ type Builder struct {
 	// front rather than paying for proportionally-large coverage slices
 	// on every NewScope downstream. 0 disables the cap.
 	maxPlanSize int
+	readMembers func() []capabilities.Member
 }
 
 // BuildResult carries the result of an optimistic Build call.
@@ -130,6 +132,15 @@ func NewBuilder(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.At
 		maxPlanSize:  maxPlanSize,
 	}
 	b.resolvers = buildAttrResolvers(c, attrs, b.loaders, b.bloomFilter)
+
+	return b
+}
+
+// WithCapabilityMembers supplies the committed membership evidence used by
+// the final capability admission barrier. It remains optional for lightweight
+// builders used by tests and non-Raft tooling.
+func (b *Builder) WithCapabilityMembers(read func() []capabilities.Member) *Builder {
+	b.readMembers = read
 
 	return b
 }
