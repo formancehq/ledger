@@ -17,7 +17,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -457,18 +456,13 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	// Run preload + propose via the shared runner. Mirror is a
 	// single-shot caller (no concurrent admissions sharing loaders),
 	// so we release loaders immediately after the runner returns.
-	marshalFn := func(c *raftcmdpb.Proposal) ([]byte, error) {
-		data, err := marshalMirrorCommand(c)
-		if err != nil {
-			return nil, err
-		}
+	finalizeFn := func(c *raftcmdpb.Proposal) error {
+		w.commandSize.Record(ctx, int64(c.SizeVT()), attrs)
 
-		w.commandSize.Record(ctx, int64(len(data)), attrs)
-
-		return data, nil
+		return nil
 	}
 
-	runResult, err := w.builder.Run(ctx, cmd, build, marshalFn, w.proposer)
+	runResult, err := w.builder.Run(ctx, cmd, build, finalizeFn, w.proposer)
 	if err != nil {
 		return false, err
 	}
@@ -679,7 +673,7 @@ func (w *Worker) proposeMirrorSync(ctx context.Context, update *raftcmdpb.Mirror
 		return false
 	}
 
-	runResult, err := w.builder.Run(ctx, cmd, build, marshalMirrorCommand, w.proposer)
+	runResult, err := w.builder.Run(ctx, cmd, build, func(*raftcmdpb.Proposal) error { return nil }, w.proposer)
 	if err != nil {
 		logFailure("could not be proposed", err)
 
@@ -711,12 +705,6 @@ func (w *Worker) proposeMirrorSync(ctx context.Context, update *raftcmdpb.Mirror
 	}
 
 	return true
-}
-
-// marshalMirrorCommand marshals a proposal command into a newly allocated byte
-// slice using a pooled buffer. The returned slice is safe for Raft retention.
-func marshalMirrorCommand(cmd *raftcmdpb.Proposal) ([]byte, error) {
-	return vtmarshal.MarshalCopy(cmd)
 }
 
 // extractMirrorNeeds builds plan.Coverage from a mirror proposal's orders.
