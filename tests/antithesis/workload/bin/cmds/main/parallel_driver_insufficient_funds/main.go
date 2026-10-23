@@ -11,12 +11,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_insufficient_funds", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
-		r := internal.Rand()
-
+	internal.RunGeneratedDriver("parallel_driver_insufficient_funds", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
 		// Use a dedicated ledger to control account balances precisely.
 		ledger := internal.PrefixInsufficientFunds.New()
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
@@ -25,9 +24,9 @@ func main() {
 
 		// Use a dedicated account prefix so other drivers (e.g. audit) that post
 		// to "users:N" on random ledgers cannot interfere with balance assumptions.
-		account := fmt.Sprintf("insuf-users:%d", r.Uint64()%internal.UserAccountCount)
+		account := fmt.Sprintf("insuf-users:%d", src.Intn(int(internal.UserAccountCount)))
 		asset := "USD/2"
-		fundAmount := r.Uint64()%10000 + 100
+		fundAmount := src.Uint64Range(0, 9999) + 100
 		details := internal.Details{"ledger": ledger, "account": account, "asset": asset, "fundAmount": fundAmount}
 
 		// 1. Fund the account from world with a known amount.

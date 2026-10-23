@@ -14,6 +14,15 @@ ledger_image_name := env_var_or_default("LEDGER_IMAGE_NAME", "ledger")
 # deterministic replay through the oracle (see tests/oracle/cmd/replay).
 # e.g.  MODEL_DUMP_BATCHES=1 just k8s-run 1
 
+# Validate Hegel's native loader in the workload runtime without a cloud run.
+hegel-smoke:
+    bash run_hegel_smoke.sh
+
+# Build every instrumented driver without registry credentials or publication.
+workload-build-check image_tag='ledger-antithesis-workload-ci:local':
+    env -u SOURCE_DATE_EPOCH docker build --target workload \
+        --file workload/Dockerfile --tag {{quote(image_tag)}} ../..
+
 # --- Docker Compose mode (legacy) ---
 
 # include: optional comma-separated list of <template>/<driver> paths to ship

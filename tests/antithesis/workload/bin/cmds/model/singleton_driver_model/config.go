@@ -27,7 +27,7 @@ const (
 // Type-name pool size. Smaller pool → more collisions → more chaos.
 const numPrefixes = 25
 
-// Indexes for random.RandomChoice (uint8 slice). Derived to stay in
+// Indexes for generation.Choice (uint8 slice). Derived to stay in
 // lockstep with numPrefixes.
 var typePool = func() []uint8 {
 	out := make([]uint8, numPrefixes)

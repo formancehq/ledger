@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // unassignedSeqSlack is how far past the highest learned sequence an unassigned
@@ -33,7 +34,7 @@ type committedLogTarget struct {
 // global log stream holds, one in eight a sequence far past every one handed
 // out. ok=false before any sequence has been learned. A choice, not an
 // expectation — see the package doc on generator and validator roles.
-func pickLogSequence(state oracle.GlobalState) (target committedLogTarget, learned, ok bool) {
+func pickLogSequence(src *generation.Source, state oracle.GlobalState) (target committedLogTarget, learned, ok bool) {
 	var (
 		known  []committedLogTarget
 		maxSeq uint64
@@ -48,11 +49,11 @@ func pickLogSequence(state oracle.GlobalState) (target committedLogTarget, learn
 		return committedLogTarget{}, false, false
 	}
 
-	if oneIn(8) {
+	if oneIn(src, 8) {
 		return committedLogTarget{sequence: maxSeq + unassignedSeqSlack}, false, true
 	}
 
-	return known[internal.Rand().Intn(len(known))], true, true
+	return known[src.Intn(len(known))], true, true
 }
 
 // runGetLog reads one log by global sequence and checks it against the model's
@@ -62,7 +63,7 @@ func pickLogSequence(state oracle.GlobalState) (target committedLogTarget, learn
 // learned sequence must resolve to the same log on every base; NotFound on one
 // is a lost log rather than staleness. The reverse direction is checked too: a
 // sequence past every one handed out must resolve to nothing.
-func runGetLog(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+func runGetLog(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
 	state := c.modelState
 	readID := c.registerRead()
@@ -73,7 +74,7 @@ func runGetLog(ctx context.Context, client servicepb.BucketServiceClient, c *Che
 	// critical section the snapshot comes from, so no bulk observed from here on
 	// — a DeleteLedger among them, which retires the ledger's whole log stream
 	// from the model — can drain between the pick and the comparison.
-	target, learned, ok := pickLogSequence(state)
+	target, learned, ok := pickLogSequence(src, state)
 	if !ok {
 		return
 	}

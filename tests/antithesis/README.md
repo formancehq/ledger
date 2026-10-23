@@ -30,6 +30,65 @@ two templates:
 Adding a driver is just adding a directory under `bin/cmds/main/` with a
 `main.go`. No manifest to update; no Dockerfile to touch.
 
+## Hegel input generation
+
+Business drivers, scenario blocks and the concurrent model use typed Hegel
+choices through `internal/generation`. The existing `main` and `model` template
+boundaries, SDK assertions and chaos controls remain in place. A guarded cloud
+episode executes its callback at most once, including on native engine errors;
+it cannot shrink or replay RPC effects against the shared cluster. Local
+property tests use the same generators with a fresh logical ledger per attempt
+and an independent accounting oracle.
+
+Read [the integration guide](HEGEL.md) for commands and validation limits, and
+[the complete applicability inventory](HEGEL-INVENTORY.md) before adding a new
+generator or driver. Never share a `generation.Source` between goroutines or
+retain it after its callback. Pre-generate concurrent payloads or create an
+independent episode inside each worker. Technical identities and retry keys
+retain their existing source and lifetime.
+
+The native smoke program under `workload/bin/hegel-smoke` is deliberately
+outside Composer's template tree. It checks the Linux FFI loader, independent
+concurrent contexts and error propagation; it does not exercise Ledger or prove
+an Antithesis campaign outcome.
+
+Run the same smoke and complete workload build gates as CI from the repository
+root (neither command publishes images):
+
+```sh
+nix develop .#ci --command just --justfile tests/antithesis/Justfile hegel-smoke
+nix develop .#ci --command just --justfile tests/antithesis/Justfile workload-build-check
+```
+
+## Focused driver checks and limits
+
+- Idempotency conflicts include a variant where only the amount changes, as
+  well as the original destination/asset variant. Equal generated amounts are
+  made distinct without overflowing `uint64`.
+- Reference races require a visible transaction after an acknowledged create
+  and a successful marker/read, in addition to the existing uniqueness check.
+  An ambiguous RPC may still commit later; goroutines alone do not prove
+  overlapping admission.
+- Concurrent reverts check each successful response against the submitted
+  postings, ledger and target transaction. This checks the acknowledged log,
+  not final shared-account volumes or uniqueness of persisted reversal effects.
+- List completeness checks the requested page-size limit as well as ordering,
+  uniqueness and acknowledged-row coverage after a complete traversal. It does
+  not require a snapshot across pages under concurrent writes.
+
+The manual `Run Antithesis` workflow reports acceptance only when its launch
+step succeeds. A failed, skipped, cancelled or unknown launch outcome does not
+confirm acceptance. Workflow completion is not a campaign result.
+
+The model's `restore cycle completed` marker records orchestration completion.
+It does not independently prove that a nonempty post-checkpoint business delta
+was restored and checked by the model oracle.
+
+Aggregate comparisons retain stored zero-volume cells, including those created
+by zero-amount postings. These cells participate in precision normalization and
+color grouping. Purged cells are removed from the oracle state instead; missing
+or invented zero buckets still fail the comparison.
+
 ## Model checkpoint coverage
 
 The model template exclusively owns the checkpoint timeline, with no other

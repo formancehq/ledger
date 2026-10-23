@@ -431,9 +431,20 @@ func (p *ClusterLogReaderProvider) GetForPeer(id uint64) (store.LogReader, error
 
 **Objective**: Drive the running system with randomized workloads and assert
 high-level correctness properties under fault injection (node kills, network
-faults, restarts). Workloads are written against the [Antithesis SDK](https://antithesis.com),
-whose `random.*` choices the platform steers to explore rare interleavings, and
-whose `assert.*` calls become catalogued properties.
+faults, restarts). Structured business inputs use Hegel with the URandom backend;
+the [Antithesis SDK](https://antithesis.com) retains operational randomness,
+technical identities and `assert.*` calls that become catalogued properties.
+Hegel cloud episodes have an explicit at-most-once callback guard: engine failure
+replay must not repeat external effects. Concurrent workers own separate
+callback-scoped sources. Local shrinking tests reset their logical ledger and
+independent model on every invocation.
+
+See [Hegel integration](../../../tests/antithesis/HEGEL.md) for the generator
+contract, native Linux checks and local commands, and
+[the applicability inventory](../../../tests/antithesis/HEGEL-INVENTORY.md) for
+every driver's generation boundary. The Hegel dependency stays in the workload
+module; scenario blocks expose a dependency-free typed randomness interface.
+Root-module tests do not execute these nested-module property tests.
 
 ### Drivers and templates
 
@@ -459,9 +470,10 @@ wrapped with `scenario.RandFunc`. Custom `Block.Run` callbacks must accept
 module and leaves the choice of random source to the caller.
 
 The Numscript lifecycle and projection-alignment drivers expose reusable
-execution functions with explicit business inputs. Their Composer entry points
-retain the existing fixed version pair (`1.0.0`, `2.0.0`) and asset (`USD/2`),
-SDK entropy for technical identities, RPC sequence and assertion names.
+execution functions with explicit business inputs. Their generated inputs retain
+the original fixed version pair (`1.0.0`, `2.0.0`) and asset (`USD/2`) as explicit
+regression branches. Technical identities still use SDK entropy; the RPC sequence
+and assertion names are preserved.
 
 #### Dedicated-ledger query oracles
 

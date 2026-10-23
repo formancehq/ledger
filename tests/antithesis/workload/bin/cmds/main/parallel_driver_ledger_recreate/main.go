@@ -16,7 +16,6 @@ import (
 	"slices"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -26,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func createTx(ctx context.Context, client servicepb.BucketServiceClient, key, ledger, ref, destination string) (*servicepb.ApplyResponse, error) {
@@ -70,9 +70,9 @@ func confirmTombstone(ctx context.Context, client servicepb.BucketServiceClient,
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_ledger_recreate", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunGeneratedDriver("parallel_driver_ledger_recreate", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
 		// Small acknowledged predecessor sets exercise multiple references/accounts.
-		runScenario(ctx, client, internal.Rand().Uint64(), antirandom.RandomChoice([]int{3, 5}))
+		runScenario(ctx, client, internal.Rand().Uint64(), generation.Choice(src, []int{3, 5}))
 	})
 }
 

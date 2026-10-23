@@ -143,6 +143,7 @@ jobs:
         shell: bash
         env:
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          LAUNCH_OUTCOME: ${{ steps.launch.outcome }}
           REPORT_URL: ${{ steps.launch.outputs.report_url }}
           RUN_ID: ${{ steps.launch.outputs.run_id }}
           SOURCE_SHA: ${{ steps.image.outputs.source_sha }}
@@ -159,14 +160,20 @@ jobs:
             echo "| Commit | \`${SOURCE_SHA:-not resolved}\` |"
             echo "| Image tag | \`${IMAGE_TAG:-not published}\` |"
             echo "| Duration | ${RUN_DURATION_MINUTES} minutes |"
-            if [[ -n "${RUN_ID:-}" ]]; then
-              echo "| Run ID | \`${RUN_ID}\` |"
-            fi
-            if [[ -n "${REPORT_URL:-}" ]]; then
-              echo "| Report | [Open in Antithesis](${REPORT_URL}) |"
+            echo "| Launch outcome | ${LAUNCH_OUTCOME:-unknown} |"
+            if [[ "${LAUNCH_OUTCOME:-}" == success ]]; then
+              if [[ -n "${RUN_ID:-}" ]]; then
+                echo "| Run ID | \`${RUN_ID}\` |"
+              fi
+              if [[ -n "${REPORT_URL:-}" ]]; then
+                echo "| Report | [Open in Antithesis](${REPORT_URL}) |"
+              else
+                echo "| Report | Sent to ${ANTITHESIS_REPORT_RECIPIENT} when ready |"
+              fi
+              echo
+              echo "The GitHub runner stops after the launch request is accepted; the Antithesis run continues independently."
             else
-              echo "| Report | Sent to ${ANTITHESIS_REPORT_RECIPIENT} when ready |"
+              echo
+              echo "Launch acceptance was not confirmed. Check the launch step and preceding steps for details."
             fi
-            echo
-            echo "The GitHub runner stops after the launch request is accepted; the Antithesis run continues independently."
           } >> "$GITHUB_STEP_SUMMARY"

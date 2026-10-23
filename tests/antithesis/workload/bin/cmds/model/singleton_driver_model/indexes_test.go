@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"hegel.dev/go/hegel"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -19,6 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func TestIndexNeeds(t *testing.T) {
@@ -91,17 +93,20 @@ func TestAccountHasAsset(t *testing.T) {
 // lifecycle path relies on.
 func TestGenAccountAssetFilterAssetOnly(t *testing.T) {
 	t.Parallel()
+	hegel.Test(t, func(ht *hegel.T) {
+		src := generation.NewSource(ht)
 
-	for range 500 {
-		f := genAccountAssetFilter()
-		a, o := indexNeeds(f, accounts)
-		require.True(t, a, "must need the asset index: %s", describeFilter(f))
-		require.False(t, o, "must not need any other index: %s", describeFilter(f))
-		require.False(t, filterInvalidForTarget(f, accounts), "must be valid on accounts: %s", describeFilter(f))
+		for range 500 {
+			f := genAccountAssetFilter(src)
+			a, o := indexNeeds(f, accounts)
+			require.True(t, a, "must need the asset index: %s", describeFilter(f))
+			require.False(t, o, "must not need any other index: %s", describeFilter(f))
+			require.False(t, filterInvalidForTarget(f, accounts), "must be valid on accounts: %s", describeFilter(f))
 
-		_, _, ok := hasAssetTarget(f)
-		require.True(t, ok, "must be a bare has-asset leaf: %s", describeFilter(f))
-	}
+			_, _, ok := hasAssetTarget(f)
+			require.True(t, ok, "must be a bare has-asset leaf: %s", describeFilter(f))
+		}
+	}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))
 }
 
 // TestAssetWindow checks the ever-touched account set and the has-asset page
@@ -502,22 +507,25 @@ func TestIndexedQueryOutcomeLegal_RetypeRefusalAttribution(t *testing.T) {
 // 128 for each target; an account-only generator deterministically fails.
 func TestGenerateIndexOp_UndeclaredFieldsOnBothTargets(t *testing.T) {
 	t.Parallel()
+	hegel.Test(t, func(ht *hegel.T) {
+		src := generation.NewSource(ht)
 
-	gs := oracle.NewGlobalState()
-	seen := map[commonpb.TargetType]bool{}
-	for range 4096 {
-		req := generateIndexOp(gs, "L")
-		field := req.GetCreateIndex().GetId().GetMetadata()
-		if field == nil || !strings.HasPrefix(field.GetKey(), "undeclared-") {
-			continue
+		gs := oracle.NewGlobalState()
+		seen := map[commonpb.TargetType]bool{}
+		for range 4096 {
+			req := generateIndexOp(src, gs, "L")
+			field := req.GetCreateIndex().GetId().GetMetadata()
+			if field == nil || !strings.HasPrefix(field.GetKey(), "undeclared-") {
+				continue
+			}
+			seen[field.GetTarget()] = true
+			res := gs.Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
+			require.False(t, res.OK)
+			require.Equal(t, "METADATA_FIELD_NOT_IN_SCHEMA", res.Reason)
 		}
-		seen[field.GetTarget()] = true
-		res := gs.Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
-		require.False(t, res.OK)
-		require.Equal(t, "METADATA_FIELD_NOT_IN_SCHEMA", res.Reason)
-	}
-	require.Equal(t, map[commonpb.TargetType]bool{
-		commonpb.TargetType_TARGET_TYPE_ACCOUNT:     true,
-		commonpb.TargetType_TARGET_TYPE_TRANSACTION: true,
-	}, seen)
+		require.Equal(t, map[commonpb.TargetType]bool{
+			commonpb.TargetType_TARGET_TYPE_ACCOUNT:     true,
+			commonpb.TargetType_TARGET_TYPE_TRANSACTION: true,
+		}, seen)
+	}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))
 }

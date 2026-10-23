@@ -10,14 +10,16 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_metadata", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunGeneratedDriver("parallel_driver_metadata", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
+		// Keep metadata keys unique across concurrent driver invocations.
 		r := internal.Rand()
-		address := internal.GetRandomAddress()
+		address := internal.GeneratedAddress(src)
 		key := fmt.Sprintf("meta-%d", r.Uint64())
-		value := fmt.Sprintf("val-%d", r.Uint64())
+		value := fmt.Sprintf("val-%d", src.Uint64())
 
 		details := internal.Details{
 			"ledger":  ledger,
