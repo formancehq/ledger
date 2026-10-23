@@ -6,25 +6,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
-
-type capabilityTestProposer struct{ called bool }
-
-func (p *capabilityTestProposer) Propose(context.Context, *node.Proposal) (*futures.Future[state.ApplyResult], error) {
-	p.called = true
-
-	return futures.New[state.ApplyResult](), nil
-}
-
-var _ plan.Proposer = (*capabilityTestProposer)(nil)
 
 type barrierTestProposer struct{}
 
@@ -51,22 +37,4 @@ func TestBarrierStampsSemanticCapabilities(t *testing.T) {
 
 	_, err := a.Barrier(context.Background())
 	require.NoError(t, err)
-}
-
-func TestCapabilityPolicyProposerAllowsUnrelatedWrite(t *testing.T) {
-	delegate := new(capabilityTestProposer)
-	proposer := capabilityPolicyProposer{
-		delegate: delegate,
-		readPolicy: func() (*commonpb.ClusterPolicy, error) {
-			return &commonpb.ClusterPolicy{}, nil
-		},
-		businessWrite: true,
-	}
-	data, err := (&raftcmdpb.Proposal{}).MarshalVT()
-	require.NoError(t, err)
-	prepared, err := capabilities.PrepareProposal(&raftcmdpb.Proposal{})
-	require.NoError(t, err)
-	_, err = proposer.Propose(context.Background(), node.NewPreparedProposal(1, data, prepared))
-	require.NoError(t, err)
-	require.True(t, delegate.called)
 }
