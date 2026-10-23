@@ -7,12 +7,14 @@ package proposalpb
 import (
 	binary "encoding/binary"
 	fmt "fmt"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	io "io"
+	sync "sync"
+
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	io "io"
-	sync "sync"
+
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 const (

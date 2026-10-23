@@ -8,15 +8,16 @@ import (
 	"math/big"
 
 	"github.com/google/uuid"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
 // phantomPeer returns loopback addresses for a learner that is deliberately

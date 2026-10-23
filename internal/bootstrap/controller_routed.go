@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"

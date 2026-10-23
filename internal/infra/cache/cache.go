@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"iter"
 	"sync"
 	"sync/atomic"
@@ -14,8 +13,10 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/kv"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 

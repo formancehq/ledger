@@ -1,7 +1,6 @@
 package processing
 
 import (
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"os"
 	"testing"
 	"time"
@@ -10,8 +9,10 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 

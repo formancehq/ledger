@@ -7,7 +7,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
-
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )

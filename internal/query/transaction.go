@@ -3,13 +3,13 @@ package query
 import (
 	"context"
 	"fmt"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 

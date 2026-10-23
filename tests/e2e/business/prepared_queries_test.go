@@ -3,19 +3,21 @@
 package business
 
 import (
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	"math/big"
 	"sort"
 	"time"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // accountAddresses extracts addresses from a slice of Account objects.

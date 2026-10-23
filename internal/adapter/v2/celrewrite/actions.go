@@ -10,6 +10,7 @@ import (
 	"github.com/google/cel-go/cel"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 

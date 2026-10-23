@@ -2,7 +2,6 @@ package bootstrap
 
 import (
 	"context"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -12,14 +11,15 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 

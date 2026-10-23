@@ -13,8 +13,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/application/membership"
 	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"

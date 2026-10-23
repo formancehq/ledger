@@ -7,11 +7,13 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // Nested-NOT filters over three leaf shapes: tx-id range and account address

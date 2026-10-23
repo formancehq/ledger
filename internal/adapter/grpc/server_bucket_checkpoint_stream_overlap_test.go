@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"testing"
 	"time"
 
@@ -13,10 +12,12 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"

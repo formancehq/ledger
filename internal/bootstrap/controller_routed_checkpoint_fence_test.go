@@ -18,8 +18,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"

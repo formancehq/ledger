@@ -6,11 +6,13 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // Color segregation invariant: a posting on (account, asset, color) only ever

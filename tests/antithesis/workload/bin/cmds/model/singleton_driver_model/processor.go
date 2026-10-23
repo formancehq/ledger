@@ -6,9 +6,9 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
 // registerInflight reserves a ticket and records the bulk. Must run BEFORE the

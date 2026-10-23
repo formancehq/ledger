@@ -11,8 +11,9 @@ import (
 	context "context"
 	reflect "reflect"
 
-	eventspb "github.com/formancehq/ledger/v3/internal/proto/eventspb"
 	gomock "go.uber.org/mock/gomock"
+
+	eventspb "github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
 // MockSink is a mock of Sink interface.

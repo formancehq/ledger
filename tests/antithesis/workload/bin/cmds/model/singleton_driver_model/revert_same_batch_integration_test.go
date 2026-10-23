@@ -8,10 +8,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
-
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // TestRevertOfSameBatchTargetAgainstServer pins the server outcome for a bulk

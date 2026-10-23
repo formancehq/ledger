@@ -11,8 +11,9 @@ import (
 	context "context"
 	reflect "reflect"
 
-	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	gomock "go.uber.org/mock/gomock"
+
+	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // MockProposer is a mock of Proposer interface.

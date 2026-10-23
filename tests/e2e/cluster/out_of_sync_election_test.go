@@ -13,9 +13,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
@@ -23,8 +26,6 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
 // Two voters hold the newest log but restart with their store behind their WAL

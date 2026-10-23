@@ -2,13 +2,14 @@ package check
 
 import (
 	"fmt"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
