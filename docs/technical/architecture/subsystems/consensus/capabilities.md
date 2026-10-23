@@ -107,16 +107,18 @@ Deploy barrier-aware binaries to every eligible member before arming an
 incompatible feature. An old leader that does not understand the barrier cannot
 be made safe by upgrading only the other nodes. Restart, snapshot install,
 restore, and downgrade code must preserve the policy. Membership changes racing activation are
-serialized at the Raft proposal boundary and must be revalidated immediately
-before `rawNode.Propose`, because `Node.Propose` queues work. Removing a member
-remains allowed; adding, promoting, or refreshing one without all active
-capabilities is rejected.
+serialized at the proposal boundary. `Node.Propose` evaluates the authoritative
+policy while holding the proposal and index-tracker guards, before reserving a
+predicted index or queueing work; this prevents a rejected proposal from
+leaving a hole for queued successors. Removing a member remains allowed;
+adding, promoting, or refreshing one without all active capabilities is
+rejected.
 
 The admission path and the shared plan runner apply the policy check to
 business and technical producers (including mirror, events, maintenance, and
-backup flows). Direct `Node.Propose` callers remain low-level APIs and must
-stamp their proposal before use; membership `ConfChange` operations carry and
-validate their capability evidence separately.
+backup flows). `Node.Propose` is the final common boundary for every producer;
+callers must still stamp their proposal before use. Membership `ConfChange`
+operations carry and validate their capability evidence separately.
 
 ## Restart refresh
 
