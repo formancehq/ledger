@@ -57,8 +57,9 @@ type config struct {
 }
 
 var (
-	moduleConfig config
-	moduleHeight uint64
+	moduleConfig   config
+	moduleHeight   uint64
+	ledgerResponse = make([]byte, 4<<20)
 )
 
 //go:wasmexport alloc
@@ -254,7 +255,7 @@ func applyBlock(b *block) error {
 	if err != nil {
 		return err
 	}
-	response := make([]byte, 4<<20)
+	response := ledgerResponse
 	result := ledgerCall(uint32(uintptr(unsafe.Pointer(&request[0]))), uint32(len(request)), uint32(uintptr(unsafe.Pointer(&response[0]))), uint32(len(response)))
 	if result == ^uint64(0) || result > uint64(len(response)) {
 		return fmt.Errorf("ledger.call failed")
