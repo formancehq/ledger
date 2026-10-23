@@ -34,7 +34,7 @@ func LendingLifecycleBlocks() *BlockGroup {
 	}
 }
 
-func lendingFundPool(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func lendingFundPool(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	amount := int64(LendingLifecycleLoanAmount) * (1 + RandInt64N(r, 5))
 
 	return ApplyActions(ctx, client,
@@ -44,7 +44,7 @@ func lendingFundPool(ctx context.Context, client servicepb.BucketServiceClient, 
 	)
 }
 
-func lendingDisburse(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func lendingDisburse(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	poolBal, ok := GetAccountBalance(ctx, client, LendingLifecycleLedger, "funding:pool", "USD/2")
 	if !ok || poolBal.Cmp(big.NewInt(LendingLifecycleLoanAmount)) < 0 {
 		return nil, ErrSkip
@@ -61,7 +61,7 @@ func lendingDisburse(ctx context.Context, client servicepb.BucketServiceClient, 
 	)
 }
 
-func lendingRepay(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func lendingRepay(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	borrowerID := 1 + RandIntN(r, LendingLifecycleNumBorrowers)
 	loanAddr := fmt.Sprintf("borrower:%d:loan", borrowerID)
 	walletAddr := fmt.Sprintf("borrower:%d:wallet", borrowerID)
@@ -111,7 +111,7 @@ func lendingRepay(ctx context.Context, client servicepb.BucketServiceClient, r R
 	return ApplyActions(ctx, client, reqs...)
 }
 
-func lendingProvision(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func lendingProvision(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	borrowerID := 1 + RandIntN(r, LendingLifecycleNumBorrowers)
 	loanAddr := fmt.Sprintf("borrower:%d:loan", borrowerID)
 
@@ -127,7 +127,7 @@ func lendingProvision(ctx context.Context, client servicepb.BucketServiceClient,
 	)
 }
 
-func lendingWriteOff(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func lendingWriteOff(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	borrowerID := 1 + RandIntN(r, LendingLifecycleNumBorrowers)
 	loanAddr := fmt.Sprintf("borrower:%d:loan", borrowerID)
 

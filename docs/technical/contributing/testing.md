@@ -449,6 +449,20 @@ driver's template decides who it shares the timeline with:
 
 The split is wired in `tests/antithesis/workload/Dockerfile`.
 
+#### Scenario randomness and reusable driver episodes
+
+Scenario blocks receive `scenario.Random`, which exposes `Intn`, `Int63n`
+and `Uint64`. Existing `scenario.RandFunc` callers retain the same one-draw
+modulo mapping for positive bounds; a raw `func() uint64` must be explicitly
+wrapped with `scenario.RandFunc`. Custom `Block.Run` callbacks must accept
+`scenario.Random`. The interface adds no generator dependency to the root
+module and leaves the choice of random source to the caller.
+
+The Numscript lifecycle and projection-alignment drivers expose reusable
+execution functions with explicit business inputs. Their Composer entry points
+retain the existing fixed version pair (`1.0.0`, `2.0.0`) and asset (`USD/2`),
+SDK entropy for technical identities, RPC sequence and assertion names.
+
 #### Dedicated-ledger query oracles
 
 The reference-race, definitive-errors and bulk-atomicity drivers declare the
