@@ -29,6 +29,16 @@ func (v *ledgerPolicyVerifier) compare(reader dal.PebbleReader, attrs *attribute
 	}
 	defer func() { _ = canonical.Close() }()
 	seen := make(map[string]struct{}, len(v.expected))
+	// The streaming iterator excludes the empty canonical key. Read it from
+	// the same snapshot so a surplus row at the attribute prefix is visible.
+	empty, err := attrs.Ledger.Get(reader, nil)
+	if err != nil {
+		return fmt.Errorf("reading empty canonical ledger policy: %w", err)
+	}
+	if empty != nil {
+		seen[""] = struct{}{}
+		v.compareRow("canonical", "", empty, callback)
+	}
 	for canonical.Next() {
 		row := canonical.Entry()
 		name := string(row.CanonicalKey)

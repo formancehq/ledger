@@ -126,6 +126,25 @@ func TestCheck_LedgerPolicyCorruption(t *testing.T) {
 	}
 }
 
+func TestCheck_LedgerPolicyEmptyCanonicalKey(t *testing.T) {
+	t.Parallel()
+	engine := ledgerPolicyFixture(t, false)
+	events, terminalErr := runMetadataAuditCheck(engine)
+	require.NoError(t, terminalErr)
+	require.Empty(t, events)
+
+	batch := engine.store.OpenWriteSession()
+	writeLedgerPolicyRow(t, engine, batch, "canonical", "", engine.ledgers["ledger"].CloneVT())
+	require.NoError(t, batch.Commit())
+
+	events, terminalErr = runMetadataAuditCheck(engine)
+	require.NoError(t, terminalErr)
+	mismatches := errorsOfType(events, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER)
+	require.Len(t, mismatches, 1)
+	require.Empty(t, mismatches[0].GetLedger())
+	require.Equal(t, `canonical ledger "" unaudited ledger row differs from audit-derived state`, mismatches[0].GetMessage())
+}
+
 func ledgerPolicyFixture(t *testing.T, mirror bool) *testEngine {
 	t.Helper()
 	engine := newTestEngine(t)

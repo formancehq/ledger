@@ -219,6 +219,10 @@ to comparison. Promotion changes mode to normal and clears the mirror source.
 Comparing the two stored copies only with one another would miss coordinated
 corruption, so each is checked against the replay expectation.
 
+The canonical streaming iterator excludes the empty canonical key. A separate
+point read on the same pinned snapshot includes that row in the comparison,
+so a row stored at the bare ledger attribute prefix is reported as unaudited.
+
 Existing field-specific error types remain in use. `LEDGER_INFO_MISMATCH`
 identifies name, deletion-state, mode, mirror-source and global-key-encoding
 mismatches. Events identify the keyspace, ledger and field without printing
