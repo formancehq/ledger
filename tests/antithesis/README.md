@@ -159,6 +159,66 @@ The prefix encodes **how Antithesis schedules the binary**:
 | `eventually_` | Runs at the **end** of the workload, after writers have quiesced. | Cross-checks that only make sense after the system has had time to converge (balance audits, cross-node identity). |
 | `first_` | Runs **before** the parallel pool starts. | One-shot setup (e.g. `first_default_ledger`). |
 
+## Raft and sentinel evidence
+
+The Kubernetes and local Compose configurations enable `SENTINEL_MODE`. The
+server checks local accounting effects during apply and against a snapshot
+pinned after each durable commit. These checks also run through follower apply
+and WAL/spool replay. They do not establish agreement between replicas: two
+different, locally balanced histories need a separate comparison.
+
+Operational drivers retain a deep copy of each acknowledged witness
+transaction. The shared sentinel verifies its complete protobuf content,
+including postings, metadata, timestamps and historical post-commit volumes.
+Witness ledgers are excluded from generic writers, so metadata/revert changes
+are not legitimate for these transactions. A missing transaction or changed
+content is a safety failure; a transient read is inconclusive and cannot emit
+successful-read coverage. Unknown write outcomes do not become acknowledged
+witnesses. Rolling restart, structured scaling, configuration changes and
+quorum recovery share this check. Leadership transfer additionally brackets
+the transition with acknowledged business writes: a returned leader ID alone
+does not satisfy post-transfer write coverage.
+While faults remain active, another election may remove that leader even after
+the witness commits. The subsequent leader observation is availability coverage,
+not a safety assertion; strict recovery qualification belongs to the eventual
+oracle after fault injection stops.
+
+`eventually_cross_node_identity` compares all current members, including
+learners and unavailable members, after writers and faults stop. Configured
+addresses for absent scale-up slots are excluded using current membership.
+Each member's routed status must identify that member and reach the same exact
+**durable** index. Stale reads are attributed through the configured direct
+per-node addresses, matched against advertised membership; these addresses must
+not target a load-balanced service. `GetClusterState{NodeId: id}` can forward to
+the requested node, so its identity check alone cannot establish which endpoint
+received a separate stale read. The oracle reads every ledger and account
+through those direct connections, including driver-owned sentinel accounts and
+all asset colors.
+It compares complete paginated audit headers and the full latest audit entry;
+successful EOF, cursor progress and the independently queried audit tip are
+part of the evidence. A missing account, ledger or audit entry on one replica
+cannot silently disappear from the comparison.
+
+Results are buffered until final per-node durable-index, global barrier and
+membership checks validate the observation. A late proposal or membership
+change discards the attempt and retries the complete capture. Failure to
+obtain an all-member observation within the bounded budget reports an oracle
+qualification/recovery failure, separately from an observed data divergence.
+The command allows three attempts within five minutes. Complete scans cost
+O(replicas × (accounts + audit entries)); the deadline is a qualification
+budget, not permission to compare truncated data. One-member topologies cannot
+satisfy cross-node identity coverage.
+
+Local SDK tests inject wrong witness contents, missing data, unavailable
+members, changing horizons and incomplete streams. Server-side
+`TestSentinelRaft*` tests exercise real apply, durable reopen/replay and
+pipelined commit boundaries, including balanced corruption that only the
+exact post-commit comparison catches. These are local regression and emission
+tests, not evidence that an Antithesis campaign exercised every path. The
+oracle compares business/audit state at qualified horizons; it is not a hash
+of every Raft entry or the entire in-memory cache. A distributed snapshot
+installation campaign still needs direct evidence of that recovery path.
+
 ## Asynchronous stats convergence
 
 `parallel_driver_stats_consistency` checks the main-store structural predicate

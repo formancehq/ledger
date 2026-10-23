@@ -97,6 +97,7 @@
     "Which immediate leadership observers update routing and membership authority synchronously, and can their failure expose stale authority? Deep goroutine ownership, cancellation, shutdown joins, and event/mirror/backup worker generations belong to concurrency-lifecycle-shutdown."
   ],
   "dynamic_checks_to_consider": [
+    "Run the Antithesis cross-node identity oracle against complete current membership at an exact durable horizon, with final per-node/global/membership fences before verdict publication. Inject missing or different account/audit state, an unavailable member, late writes, changed membership and incomplete paginated streams; failed qualification must not become a successful or corrupt-data observation. Operational witnesses must retain and compare exact acknowledged transaction content, and post-transfer write coverage requires a new acknowledged business write rather than a leader ID alone.",
     "just test-model-cluster 300",
     "go test -race ./internal/infra/node/... ./internal/infra/transport/... ./internal/infra/membership/... ./internal/application/membership/...",
     "go test -tags e2e ./tests/e2e/cluster/... -timeout=600s",
