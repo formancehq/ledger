@@ -315,6 +315,7 @@ func Module() fx.Option {
 						if machine != nil {
 							policy = machine.ClusterPolicy()
 						}
+
 						return membership.WriteConfChangeWithPolicy(entry, session, policy)
 					},
 				)
