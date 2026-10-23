@@ -3,17 +3,19 @@
 package business
 
 import (
-	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // addEventsSinkAction creates a request to add a named sink configuration.
-func addEventsSinkAction(config *commonpb.SinkConfig) *servicepb.Request {
+func addEventsSinkAction(config *ledgerpb.SinkConfig) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_AddEventsSink{
 			AddEventsSink: &servicepb.AddEventsSinkRequest{
@@ -34,14 +36,14 @@ func removeEventsSinkAction(name string) *servicepb.Request {
 	}
 }
 
-func newTestSinkConfig(name, topic string) *commonpb.SinkConfig {
-	return &commonpb.SinkConfig{
+func newTestSinkConfig(name, topic string) *ledgerpb.SinkConfig {
+	return &ledgerpb.SinkConfig{
 		Name:         name,
 		Format:       "json",
 		BatchSize:    32,
 		BatchDelayMs: 50,
-		Type: &commonpb.SinkConfig_Nats{
-			Nats: &commonpb.NatsSinkConfig{
+		Type: &ledgerpb.SinkConfig_Nats{
+			Nats: &ledgerpb.NatsSinkConfig{
 				Url:   "nats://localhost:4222",
 				Topic: topic,
 			},

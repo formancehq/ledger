@@ -8,7 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -106,7 +107,7 @@ func TestMainHorizonKeep_Logs(t *testing.T) {
 			}
 
 			keep := MainHorizonKeep(
-				commonpb.QueryTarget_QUERY_TARGET_LOGS,
+				ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 				nil,
 				getter,
 				ledgerName,

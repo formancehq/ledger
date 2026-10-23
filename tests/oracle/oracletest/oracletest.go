@@ -6,16 +6,17 @@ package oracletest
 import (
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-func AddTypeReqP(name string, p commonpb.AccountTypePersistence) *servicepb.Request {
+func AddTypeReqP(name string, p ledgerpb.AccountTypePersistence) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_AddAccountType{
 			AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 				Ledger: "L",
-				AccountType: &commonpb.AccountType{
+				AccountType: &ledgerpb.AccountType{
 					Name:        name,
 					Pattern:     name + ":{id}",
 					Persistence: p,
@@ -26,7 +27,7 @@ func AddTypeReqP(name string, p commonpb.AccountTypePersistence) *servicepb.Requ
 }
 
 func AddTypeReq(name string) *servicepb.Request {
-	return AddTypeReqP(name, commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL)
+	return AddTypeReqP(name, ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL)
 }
 
 func RemoveReqL(ledger, name string) *servicepb.Request {
@@ -54,8 +55,8 @@ func TxReqColoredL(ledger, src, dest, asset, color string, amount int64) *servic
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{
-								commonpb.NewColoredPosting(src, dest, asset, color, big.NewInt(amount)),
+							Postings: []*ledgerpb.Posting{
+								ledgerpb.NewColoredPosting(src, dest, asset, color, big.NewInt(amount)),
 							},
 						},
 					},
@@ -90,7 +91,7 @@ func TxReqRefL(ledger, ref, src, dest, asset string, amount int64) *servicepb.Re
 // TxReqMulti builds a multi-posting CreateTransaction (ledger "L") with an
 // explicit Force flag. The postings compose in order — an earlier one can fund a
 // later one's source within the same transaction.
-func TxReqMulti(force bool, postings ...*commonpb.Posting) *servicepb.Request {
+func TxReqMulti(force bool, postings ...*ledgerpb.Posting) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -123,15 +124,15 @@ func RevertReqL(ledger string, txID uint64, force bool) *servicepb.Request {
 }
 
 // AddTxMetaReq builds an AddMetadata targeting transaction txID (ledger "L").
-func AddTxMetaReq(txID uint64, md map[string]*commonpb.MetadataValue) *servicepb.Request {
+func AddTxMetaReq(txID uint64, md map[string]*ledgerpb.MetadataValue) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "L",
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_AddMetadata{
-						AddMetadata: &commonpb.SaveMetadataCommand{
-							Target:   &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: txID}},
+						AddMetadata: &ledgerpb.SaveMetadataCommand{
+							Target:   &ledgerpb.Target{Target: &ledgerpb.Target_TransactionId{TransactionId: txID}},
 							Metadata: md,
 						},
 					},
@@ -143,7 +144,7 @@ func AddTxMetaReq(txID uint64, md map[string]*commonpb.MetadataValue) *servicepb
 
 // SetFieldTypeReq declares (target, key) with the given metadata type on
 // ledger "L".
-func SetFieldTypeReq(target commonpb.TargetType, key string, t commonpb.MetadataType) *servicepb.Request {
+func SetFieldTypeReq(target ledgerpb.TargetType, key string, t ledgerpb.MetadataType) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_SetMetadataFieldType{
 			SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
@@ -157,7 +158,7 @@ func SetFieldTypeReq(target commonpb.TargetType, key string, t commonpb.Metadata
 }
 
 // RemoveFieldTypeReq drops the (target, key) declaration on ledger "L".
-func RemoveFieldTypeReq(target commonpb.TargetType, key string) *servicepb.Request {
+func RemoveFieldTypeReq(target ledgerpb.TargetType, key string) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_RemoveMetadataFieldType{
 			RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
@@ -170,7 +171,7 @@ func RemoveFieldTypeReq(target commonpb.TargetType, key string) *servicepb.Reque
 }
 
 // CreateIndexReq creates an index on ledger "L".
-func CreateIndexReq(id *commonpb.IndexID) *servicepb.Request {
+func CreateIndexReq(id *ledgerpb.IndexID) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_CreateIndex{
 			CreateIndex: &servicepb.CreateIndexRequest{Ledger: "L", Id: id},
@@ -179,7 +180,7 @@ func CreateIndexReq(id *commonpb.IndexID) *servicepb.Request {
 }
 
 // DropIndexReq drops an index on ledger "L".
-func DropIndexReq(id *commonpb.IndexID) *servicepb.Request {
+func DropIndexReq(id *ledgerpb.IndexID) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_DropIndex{
 			DropIndex: &servicepb.DropIndexRequest{Ledger: "L", Id: id},
@@ -188,16 +189,16 @@ func DropIndexReq(id *commonpb.IndexID) *servicepb.Request {
 }
 
 // AddAccountMetaReq writes one metadata value on an account of ledger "L".
-func AddAccountMetaReq(addr, key string, v *commonpb.MetadataValue) *servicepb.Request {
+func AddAccountMetaReq(addr, key string, v *ledgerpb.MetadataValue) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "L",
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_AddMetadata{
-						AddMetadata: &commonpb.SaveMetadataCommand{
-							Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: addr}}},
-							Metadata: map[string]*commonpb.MetadataValue{key: v},
+						AddMetadata: &ledgerpb.SaveMetadataCommand{
+							Target:   &ledgerpb.Target{Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: addr}}},
+							Metadata: map[string]*ledgerpb.MetadataValue{key: v},
 						},
 					},
 				},

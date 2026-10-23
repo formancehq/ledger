@@ -7,15 +7,17 @@ import (
 	"crypto/ed25519"
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 
 // setMaintenanceModeAction creates a SetMaintenanceMode request.
@@ -55,7 +57,7 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should allow all operations when maintenance mode is off", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -83,7 +85,7 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should reject create transaction requests in maintenance mode", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bob", big.NewInt(50), "USD"),
 			}, nil)))
 			Expect(err).To(HaveOccurred())
@@ -130,7 +132,7 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should allow write operations after maintenance mode is disabled", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "charlie", big.NewInt(200), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -225,7 +227,7 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should reject signed write requests in maintenance mode", func() {
-			req := actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			req := actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "signed-user", big.NewInt(100), "USD"),
 			}, nil)
 			signedEnv1, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyID, privKey)
@@ -249,7 +251,7 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should allow signed write requests after maintenance mode is disabled", func() {
-			req := actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			req := actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "signed-user", big.NewInt(200), "USD"),
 			}, nil)
 			signedEnv3, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyID, privKey)

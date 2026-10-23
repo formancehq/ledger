@@ -13,13 +13,13 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -63,7 +63,7 @@ func applyStartupStatusUpdate(store *dal.Store, update *raftcmdpb.EventsSinkUpda
 	if update.GetClearError() {
 		err = state.ClearSinkStatus(batch, update.GetSinkName())
 	} else if update.GetError() != nil {
-		err = state.SetSinkStatus(batch, &commonpb.SinkStatus{SinkName: update.GetSinkName(), Error: update.GetError()})
+		err = state.SetSinkStatus(batch, &ledgerpb.SinkStatus{SinkName: update.GetSinkName(), Error: update.GetError()})
 	}
 	if err != nil {
 		_ = batch.Cancel()
@@ -180,13 +180,13 @@ func (p *delayedStartupStatusProposer) Propose(_ context.Context, proposal *node
 	return f, nil
 }
 
-func startupStatusView(store *dal.Store, config *commonpb.SinkConfig) (*commonpb.SinkStatus, error) {
+func startupStatusView(store *dal.Store, config *ledgerpb.SinkConfig) (*ledgerpb.SinkStatus, error) {
 	handle, err := store.NewDirectReadHandle()
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = handle.Close() }()
-	statuses, err := query.BuildSinkStatuses(handle, []*commonpb.SinkConfig{config})
+	statuses, err := query.BuildSinkStatuses(handle, []*ledgerpb.SinkConfig{config})
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +223,7 @@ func TestManager_RetriesTransientSinkConstructorFailure(t *testing.T) {
 
 	var attempts atomic.Int64
 	allowSuccess := make(chan struct{})
-	sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
+	sinkFactories["nats"] = func(context.Context, *ledgerpb.SinkConfig, Format) (Sink, error) {
 		attempts.Add(1)
 		select {
 		case <-allowSuccess:
@@ -236,10 +236,10 @@ func TestManager_RetriesTransientSinkConstructorFailure(t *testing.T) {
 
 	builder, store := newTestBuilder(t)
 	attrs := attributes.New()
-	config := &commonpb.SinkConfig{
+	config := &ledgerpb.SinkConfig{
 		Name: "transient-constructor-failure",
-		Type: &commonpb.SinkConfig_Nats{
-			Nats: &commonpb.NatsSinkConfig{
+		Type: &ledgerpb.SinkConfig_Nats{
+			Nats: &ledgerpb.NatsSinkConfig{
 				Url:   "nats://dependency.invalid:4222",
 				Topic: "ledger.events",
 			},
@@ -287,7 +287,7 @@ func TestManager_StopCancelsSinkConstructorRetry(t *testing.T) {
 	})
 
 	var attempts atomic.Int64
-	sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
+	sinkFactories["nats"] = func(context.Context, *ledgerpb.SinkConfig, Format) (Sink, error) {
 		attempts.Add(1)
 
 		return nil, errors.New("dependency unavailable")
@@ -295,10 +295,10 @@ func TestManager_StopCancelsSinkConstructorRetry(t *testing.T) {
 
 	builder, store := newTestBuilder(t)
 	attrs := attributes.New()
-	config := &commonpb.SinkConfig{
+	config := &ledgerpb.SinkConfig{
 		Name: "constructor-failure-during-stop",
-		Type: &commonpb.SinkConfig_Nats{
-			Nats: &commonpb.NatsSinkConfig{
+		Type: &ledgerpb.SinkConfig_Nats{
+			Nats: &ledgerpb.NatsSinkConfig{
 				Url:   "nats://dependency.invalid:4222",
 				Topic: "ledger.events",
 			},
@@ -325,8 +325,8 @@ func TestManager_WaitStartedFailureIsReportedAndCleared(t *testing.T) {
 	t.Parallel()
 	builder, store := newTestBuilder(t)
 	attrs := attributes.New()
-	config := &commonpb.SinkConfig{Name: "cursor-read-failure", Type: &commonpb.SinkConfig_Http{
-		Http: &commonpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
+	config := &ledgerpb.SinkConfig{Name: "cursor-read-failure", Type: &ledgerpb.SinkConfig_Http{
+		Http: &ledgerpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
 	}}
 	saveManagedSinkConfig(t, attrs, store, config)
 	proposer := &startupStatusProposer{store: store}
@@ -379,7 +379,7 @@ func TestManager_UncertainStartupReportClearedAfterRecovery(t *testing.T) {
 	})
 	var attempts atomic.Int64
 	sink := &startupGateTestSink{}
-	sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
+	sinkFactories["nats"] = func(context.Context, *ledgerpb.SinkConfig, Format) (Sink, error) {
 		if attempts.Add(1) == 1 {
 			return nil, errors.New("temporary startup failure")
 		}
@@ -388,15 +388,15 @@ func TestManager_UncertainStartupReportClearedAfterRecovery(t *testing.T) {
 	}
 	builder, store := newTestBuilder(t)
 	attrs := attributes.New()
-	config := &commonpb.SinkConfig{Name: "uncertain-startup-report", Type: &commonpb.SinkConfig_Nats{
-		Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
+	config := &ledgerpb.SinkConfig{Name: "uncertain-startup-report", Type: &ledgerpb.SinkConfig_Nats{
+		Nats: &ledgerpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
 	}}
 	saveManagedSinkConfig(t, attrs, store, config)
 	batch := store.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{Name: "orders", CreatedAt: commonpb.NewTimestamp(libtime.Now())},
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+			CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "orders", CreatedAt: ledgerpb.NewTimestamp(libtime.Now())},
 		}},
 	}}))
 	require.NoError(t, state.SetAppliedIndex(batch, 1))
@@ -460,7 +460,7 @@ func TestManager_PreservesDeliveryErrorAcrossStartupFailure(t *testing.T) {
 		}
 	})
 	allowSuccess := make(chan struct{})
-	sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
+	sinkFactories["nats"] = func(context.Context, *ledgerpb.SinkConfig, Format) (Sink, error) {
 		select {
 		case <-allowSuccess:
 			return startupRetryTestSink{}, nil
@@ -470,12 +470,12 @@ func TestManager_PreservesDeliveryErrorAcrossStartupFailure(t *testing.T) {
 	}
 	builder, store := newTestBuilder(t)
 	attrs := attributes.New()
-	config := &commonpb.SinkConfig{Name: "prior-delivery-error", Type: &commonpb.SinkConfig_Nats{
-		Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
+	config := &ledgerpb.SinkConfig{Name: "prior-delivery-error", Type: &ledgerpb.SinkConfig_Nats{
+		Nats: &ledgerpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
 	}}
 	saveManagedSinkConfig(t, attrs, store, config)
 	batch := store.OpenWriteSession()
-	require.NoError(t, state.SetSinkStatus(batch, &commonpb.SinkStatus{SinkName: config.GetName(), Error: &commonpb.SinkError{Message: "delivery failed"}}))
+	require.NoError(t, state.SetSinkStatus(batch, &ledgerpb.SinkStatus{SinkName: config.GetName(), Error: &ledgerpb.SinkError{Message: "delivery failed"}}))
 	require.NoError(t, batch.Commit())
 	proposer := &startupStatusProposer{store: store}
 	m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
@@ -495,11 +495,11 @@ func TestManager_PreservesDeliveryErrorAcrossStartupFailure(t *testing.T) {
 	require.Zero(t, proposer.updates.Load())
 
 	batch = store.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{
-				Name: "orders", CreatedAt: commonpb.NewTimestamp(libtime.Now()),
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+			CreateLedger: &ledgerpb.CreatedLedgerLog{
+				Name: "orders", CreatedAt: ledgerpb.NewTimestamp(libtime.Now()),
 			},
 		}},
 	}}))
@@ -522,19 +522,19 @@ func TestManager_PreservesPendingDeliveryErrorAcrossStartup(t *testing.T) {
 			delete(sinkFactories, "nats")
 		}
 	})
-	sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
+	sinkFactories["nats"] = func(context.Context, *ledgerpb.SinkConfig, Format) (Sink, error) {
 		return startupRetryTestSink{}, nil
 	}
 	builder, store := newTestBuilder(t)
 	attrs := attributes.New()
-	config := &commonpb.SinkConfig{Name: "pending-delivery-error", Type: &commonpb.SinkConfig_Nats{
-		Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
+	config := &ledgerpb.SinkConfig{Name: "pending-delivery-error", Type: &ledgerpb.SinkConfig_Nats{
+		Nats: &ledgerpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
 	}}
 	saveManagedSinkConfig(t, attrs, store, config)
 	proposer := &delayedStartupStatusProposer{
 		store: store, barrierProposed: make(chan struct{}), clearProposed: make(chan struct{}),
 		release: make(chan struct{}), reportApplied: make(chan struct{}), releaseClear: make(chan struct{}),
-		pending:       &raftcmdpb.EventsSinkUpdate{SinkName: config.GetName(), Error: &commonpb.SinkError{Message: "delivery failed"}},
+		pending:       &raftcmdpb.EventsSinkUpdate{SinkName: config.GetName(), Error: &ledgerpb.SinkError{Message: "delivery failed"}},
 		pendingFuture: futures.New[state.ApplyResult](),
 	}
 	var releaseOnce sync.Once

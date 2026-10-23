@@ -13,8 +13,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 var readIndexTracer = otel.Tracer("node.read_index")
@@ -113,7 +114,7 @@ func (node *Node) ReadIndexAndWait(ctx context.Context) (*ReadBarrierInfo, error
 	}
 
 	if node.GetLeader() == 0 {
-		return nil, commonpb.ErrNoLeader
+		return nil, ledgerpb.ErrNoLeader
 	}
 
 	start := time.Now()

@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -227,7 +227,7 @@ func pickCell(g oracle.GlobalState, ledgers []string) (ledger, addr, asset strin
 // model state explains — a repeated bucket, or an unparseable amount — and the
 // caller's validation fails it outright rather than mistaking it for an empty
 // reading.
-func accountVolumeSet(acct *commonpb.Account) (map[assetColor]oracle.VolumePair, bool) {
+func accountVolumeSet(acct *ledgerpb.Account) (map[assetColor]oracle.VolumePair, bool) {
 	if acct == nil {
 		return nil, true
 	}

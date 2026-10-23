@@ -1,0 +1,135 @@
+// Code generated from misc/proto/restore.proto. DO NOT EDIT.
+
+syntax = "proto3";
+
+package restore;
+
+import "common.proto";
+
+option go_package = "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb";
+// ============================================================================
+// gRPC Service
+// ============================================================================
+
+// RestoreService provides backup restore operations for a fresh cluster.
+// Available only when the server is started with --restore mode.
+service RestoreService {
+  // StartDownloadBackup kicks off an asynchronous download of a backup from S3
+  // into the restore staging area and returns immediately with a job ID. Use
+  // GetDownloadStatus to poll progress and CancelDownload to abort.
+  //
+  // The download runs detached from the calling RPC context so it survives any
+  // intermediary timeout (ingress, load balancer) on multi-hour transfers.
+  rpc StartDownloadBackup(StartDownloadBackupRequest) returns (StartDownloadBackupResponse);
+
+  // GetDownloadStatus returns the current state of a download job started by
+  // StartDownloadBackup. It is the polling endpoint clients use to track
+  // progress and detect terminal states (SUCCEEDED, FAILED, CANCELED).
+  rpc GetDownloadStatus(GetDownloadStatusRequest) returns (GetDownloadStatusResponse);
+
+  // CancelDownload aborts an in-progress download and wipes the staging area.
+  // Idempotent: cancelling a finished or already-cancelled job is a no-op.
+  rpc CancelDownload(CancelDownloadRequest) returns (CancelDownloadResponse);
+
+  // ValidateRestore runs integrity checks on the staged backup data.
+  rpc ValidateRestore(ValidateRestoreRequest) returns (stream ValidateRestoreEvent);
+
+  // PreviewRestore returns a summary of the staged backup data.
+  rpc PreviewRestore(PreviewRestoreRequest) returns (PreviewRestoreResponse);
+
+  // FinalizeRestore prepares the staged backup (applied index preserved as the
+  // restore genesis boundary, cluster-local state reset) and commits it as the
+  // live data.
+  rpc FinalizeRestore(FinalizeRestoreRequest) returns (FinalizeRestoreResponse);
+}
+
+// ============================================================================
+// Download Messages
+// ============================================================================
+
+message StartDownloadBackupRequest {
+  string bucket_id = 1;             // Namespace prefix for backup files (default: cluster-id from server config)
+  common.BackupStorage storage = 2; // Backup storage backend (s3 or azure)
+}
+
+message StartDownloadBackupResponse {
+  string job_id = 1; // Opaque identifier used to poll status and cancel
+}
+
+message GetDownloadStatusRequest {
+  string job_id = 1;
+}
+
+// DownloadState reflects the lifecycle of an async download job.
+enum DownloadState {
+  DOWNLOAD_STATE_UNSPECIFIED = 0;
+  DOWNLOAD_STATE_PENDING     = 1;
+  DOWNLOAD_STATE_RUNNING     = 2;
+  DOWNLOAD_STATE_SUCCEEDED   = 3;
+  DOWNLOAD_STATE_FAILED      = 4;
+  DOWNLOAD_STATE_CANCELED    = 5;
+}
+
+message GetDownloadStatusResponse {
+  DownloadState state            = 1;
+  fixed64       files_downloaded = 2;
+  fixed64       total_files      = 3;
+  fixed64       bytes_downloaded = 4;
+  fixed64       total_bytes      = 5;
+  string        current_file     = 6; // Best-effort: the most recently started file
+  string        error_message    = 7; // Populated when state == FAILED
+  fixed64       started_at_unix  = 8; // Seconds since Unix epoch
+  fixed64       finished_at_unix = 9; // 0 while running
+}
+
+message CancelDownloadRequest {
+  string job_id = 1;
+}
+
+message CancelDownloadResponse {}
+
+// ============================================================================
+// Validate Messages
+// ============================================================================
+
+message ValidateRestoreRequest {}
+
+message ValidateRestoreEvent {
+  oneof type {
+    ValidateRestoreError error = 1;
+    ValidateRestoreProgress progress = 2;
+  }
+}
+
+message ValidateRestoreError {
+  string message = 1;
+}
+
+message ValidateRestoreProgress {
+  fixed64 logs_checked = 1;
+  fixed64 total_logs = 2;
+}
+
+// ============================================================================
+// Preview Messages
+// ============================================================================
+
+message PreviewRestoreRequest {}
+
+message PreviewRestoreResponse {
+  fixed64 last_applied_index = 1;      // Staged checkpoint's applied index, pre-preparation (may be 0 for a genesis checkpoint; finalize preserves it as the restore genesis boundary, 0 falling back to 1)
+  fixed64 last_applied_timestamp = 2;  // Last applied timestamp (HLC microseconds)
+  fixed64 last_sequence = 3;           // Last log sequence number
+  uint32 ledger_count = 4;            // Number of ledgers in the backup
+  repeated string ledger_names = 5;   // Names of all ledgers
+}
+
+// ============================================================================
+// Finalize Messages
+// ============================================================================
+
+message FinalizeRestoreRequest {}
+
+message FinalizeRestoreResponse {
+  string message = 1; // Human-readable result message
+}

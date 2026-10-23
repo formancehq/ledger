@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -38,7 +38,7 @@ func PreCommitSentinel(ctx context.Context, client servicepb.BucketServiceClient
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings:  []*commonpb.Posting{commonpb.NewPosting("world", destination, "COIN", RandomBigInt())},
+						Postings:  []*ledgerpb.Posting{ledgerpb.NewPosting("world", destination, "COIN", RandomBigInt())},
 						Reference: ref,
 						Force:     true,
 					},

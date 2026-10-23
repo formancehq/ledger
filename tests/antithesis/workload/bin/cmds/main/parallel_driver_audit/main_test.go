@@ -21,8 +21,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -242,8 +242,8 @@ type auditStreamServer struct {
 	sentEntries   atomic.Int32
 }
 
-func (s *auditStreamServer) ListLedgers(_ *servicepb.ListLedgersRequest, stream grpc.ServerStreamingServer[commonpb.LedgerInfo]) error {
-	return stream.Send(&commonpb.LedgerInfo{Name: "default"})
+func (s *auditStreamServer) ListLedgers(_ *servicepb.ListLedgersRequest, stream grpc.ServerStreamingServer[ledgerpb.LedgerInfo]) error {
+	return stream.Send(&ledgerpb.LedgerInfo{Name: "default"})
 }
 
 func (s *auditStreamServer) Apply(_ context.Context, request *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
@@ -253,7 +253,7 @@ func (s *auditStreamServer) Apply(_ context.Context, request *servicepb.ApplyReq
 	}
 	s.applyCalls.Add(1)
 
-	return &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 1}}}, nil
+	return &servicepb.ApplyResponse{Logs: []*ledgerpb.Log{{Sequence: 1}}}, nil
 }
 
 func (s *auditStreamServer) ListAuditEntries(request *servicepb.ListAuditEntriesRequest, stream grpc.ServerStreamingServer[auditpb.AuditEntry]) error {

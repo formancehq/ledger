@@ -18,10 +18,10 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	ledgergrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
@@ -34,8 +34,8 @@ func TestNumscriptIsListedBeyondDefaultPage(t *testing.T) {
 	controller := ctrlmock.NewMockController(gomock.NewController(t))
 	scripts := numscriptNames(105)
 	controller.EXPECT().ListNumscripts(gomock.Any(), "default").DoAndReturn(
-		func(context.Context, string) ([]*commonpb.NumscriptInfo, error) {
-			return append([]*commonpb.NumscriptInfo(nil), scripts...), nil
+		func(context.Context, string) ([]*ledgerpb.NumscriptInfo, error) {
+			return append([]*ledgerpb.NumscriptInfo(nil), scripts...), nil
 		},
 	).AnyTimes()
 
@@ -108,7 +108,7 @@ func TestNumscriptIsListedPagination(t *testing.T) {
 			t.Parallel()
 			controller := ctrlmock.NewMockController(gomock.NewController(t))
 			controller.EXPECT().ListNumscripts(gomock.Any(), "default").DoAndReturn(
-				func(context.Context, string) ([]*commonpb.NumscriptInfo, error) {
+				func(context.Context, string) ([]*ledgerpb.NumscriptInfo, error) {
 					return numscriptNames(test.count), nil
 				},
 			).Times(test.pages)
@@ -177,7 +177,7 @@ func (s *failingNumscriptStream) SendMsg(msg any) error {
 	if err := s.ServerStream.SendMsg(msg); err != nil {
 		return err
 	}
-	if msg.(*commonpb.NumscriptInfo).GetName() == "lifecycle-102" {
+	if msg.(*ledgerpb.NumscriptInfo).GetName() == "lifecycle-102" {
 		return status.Error(codes.DataLoss, "injected mid-stream failure")
 	}
 
@@ -195,11 +195,11 @@ func TestNumscriptIsListedCanceled(t *testing.T) {
 	require.False(t, found)
 }
 
-func numscriptNames(count int) []*commonpb.NumscriptInfo {
-	scripts := make([]*commonpb.NumscriptInfo, count)
+func numscriptNames(count int) []*ledgerpb.NumscriptInfo {
+	scripts := make([]*ledgerpb.NumscriptInfo, count)
 	for i := range scripts {
 		// Return unsorted data so the production handler also exercises sorting.
-		scripts[i] = &commonpb.NumscriptInfo{Name: fmt.Sprintf("lifecycle-%03d", count-i), Version: "1.0.0"}
+		scripts[i] = &ledgerpb.NumscriptInfo{Name: fmt.Sprintf("lifecycle-%03d", count-i), Version: "1.0.0"}
 	}
 
 	return scripts

@@ -8,8 +8,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -129,9 +130,9 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 					Ledger: ledgerName,
 					Action: &servicepb.LedgerAction{
 						Data: &servicepb.LedgerAction_DeleteMetadata{
-							DeleteMetadata: &commonpb.DeleteMetadataCommand{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_TransactionId{TransactionId: txID},
+							DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
+								Target: &ledgerpb.Target{
+									Target: &ledgerpb.Target_TransactionId{TransactionId: txID},
 								},
 								Key: key,
 							},

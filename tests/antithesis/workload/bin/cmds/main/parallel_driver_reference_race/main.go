@@ -30,8 +30,8 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
@@ -50,10 +50,10 @@ func createWithReference(
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{{
+						Postings: []*ledgerpb.Posting{{
 							Source:      "world",
 							Destination: destination,
-							Amount:      commonpb.NewUint256FromUint64(1),
+							Amount:      ledgerpb.NewUint256FromUint64(1),
 							Asset:       "USD/2",
 						}},
 						Reference: ref,
@@ -77,10 +77,10 @@ func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledg
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{{
+						Postings: []*ledgerpb.Posting{{
 							Source:      "world",
 							Destination: "refrace-marker",
-							Amount:      commonpb.NewUint256FromUint64(1),
+							Amount:      ledgerpb.NewUint256FromUint64(1),
 							Asset:       "USD/2",
 						}},
 						Force: true,
@@ -139,7 +139,7 @@ func main() {
 
 		run := r.Uint64()
 		ledger := internal.PrefixReferenceRace.WithSeed(run)
-		if err := internal.CreateQueryOracleLedger(ctx, client, ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE); err != nil {
+		if err := internal.CreateQueryOracleLedger(ctx, client, ledger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE); err != nil {
 			return
 		}
 

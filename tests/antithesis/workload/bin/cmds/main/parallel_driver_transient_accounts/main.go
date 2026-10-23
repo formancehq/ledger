@@ -6,8 +6,8 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -32,10 +32,10 @@ func main() {
 			Type: &servicepb.Request_AddAccountType{
 				AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 					Ledger: ledger,
-					AccountType: &commonpb.AccountType{
+					AccountType: &ledgerpb.AccountType{
 						Name:        typeName,
 						Pattern:     pattern,
-						Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+						Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 					},
 				},
 			},
@@ -65,10 +65,10 @@ func main() {
 						Ledger: ledger,
 						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
+								Postings: []*ledgerpb.Posting{{
 									Source:      "world",
 									Destination: clearingAddr,
-									Amount:      commonpb.NewUint256FromUint64(amount),
+									Amount:      ledgerpb.NewUint256FromUint64(amount),
 									Asset:       "USD/2",
 								}},
 								Force: true,
@@ -83,10 +83,10 @@ func main() {
 						Ledger: ledger,
 						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
+								Postings: []*ledgerpb.Posting{{
 									Source:      clearingAddr,
 									Destination: "world",
-									Amount:      commonpb.NewUint256FromUint64(amount),
+									Amount:      ledgerpb.NewUint256FromUint64(amount),
 									Asset:       "USD/2",
 								}},
 								Force: true,
@@ -116,10 +116,10 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: clearingAddr2,
-								Amount:      commonpb.NewUint256FromUint64(amount),
+								Amount:      ledgerpb.NewUint256FromUint64(amount),
 								Asset:       "USD/2",
 							}},
 							Force: true,

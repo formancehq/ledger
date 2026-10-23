@@ -12,21 +12,23 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/pkg/testserver"
-	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/testserver"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 
 // This suite pins the typed-metadata loss the model test surfaced (account read
@@ -69,31 +71,31 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 		minioEndpoint  string
 	)
 
-	typedValues := map[string]*commonpb.MetadataValue{
-		"flag":  commonpb.NewBoolValue(true),
-		"count": commonpb.NewIntValue(42),
+	typedValues := map[string]*ledgerpb.MetadataValue{
+		"flag":  ledgerpb.NewBoolValue(true),
+		"count": ledgerpb.NewIntValue(42),
 	}
 
 	// expectTypedMetadata asserts the read-back values kept their oneof arm.
 	// Used both as the live-side premise guard and as the post-restore check.
-	expectTypedMetadata := func(acct *commonpb.Account, phase string) {
+	expectTypedMetadata := func(acct *ledgerpb.Account, phase string) {
 		meta := acct.GetMetadata()
 
 		flag := meta["flag"]
 		Expect(flag).ToNot(BeNil(), "%s: %s metadata flag missing", phase, acct.GetAddress())
-		Expect(flag.GetType()).To(BeAssignableToTypeOf(&commonpb.MetadataValue_BoolValue{}),
+		Expect(flag.GetType()).To(BeAssignableToTypeOf(&ledgerpb.MetadataValue_BoolValue{}),
 			"%s: %s metadata flag arm (value: %v)", phase, acct.GetAddress(), flag)
 		Expect(flag.GetBoolValue()).To(BeTrue(), "%s: %s metadata flag", phase, acct.GetAddress())
 
 		count := meta["count"]
 		Expect(count).ToNot(BeNil(), "%s: %s metadata count missing", phase, acct.GetAddress())
-		Expect(count.GetType()).To(BeAssignableToTypeOf(&commonpb.MetadataValue_IntValue{}),
+		Expect(count.GetType()).To(BeAssignableToTypeOf(&ledgerpb.MetadataValue_IntValue{}),
 			"%s: %s metadata count arm (value: %v)", phase, acct.GetAddress(), count)
 		Expect(count.GetIntValue()).To(Equal(int64(42)), "%s: %s metadata count", phase, acct.GetAddress())
 	}
 
-	storage := func() *commonpb.BackupStorage {
-		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+	storage := func() *ledgerpb.BackupStorage {
+		return testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 			Bucket:   s3Bucket,
 			Region:   restoreS3Region,
 			Endpoint: minioEndpoint,
@@ -200,16 +202,16 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 		It("writes typed account metadata through both command shapes", func() {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
 				actions.CreateLedgerAction(ledgerName, nil),
-				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "flag", commonpb.MetadataType_METADATA_TYPE_BOOL),
-				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "count", commonpb.MetadataType_METADATA_TYPE_INT64),
+				actions.SetMetadataFieldTypeAction(ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "flag", ledgerpb.MetadataType_METADATA_TYPE_BOOL),
+				actions.SetMetadataFieldTypeAction(ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "count", ledgerpb.MetadataType_METADATA_TYPE_INT64),
 			))
 			Expect(err).To(Succeed())
 
 			// Transaction-embedded account metadata.
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", txAccount, big.NewInt(100), "USD"),
-				}, nil, map[string]*commonpb.MetadataMap{
+				}, nil, map[string]*ledgerpb.MetadataMap{
 					txAccount: {Values: typedValues},
 				}),
 			))
@@ -217,7 +219,7 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 
 			// Standalone SaveMetadata with typed values.
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", saveAccount, big.NewInt(100), "USD"),
 				}, nil, nil),
 				actions.SaveTypedAccountMetadataAction(ledgerName, saveAccount, typedValues),

@@ -19,7 +19,8 @@ import (
 	grpcinsecure "google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
@@ -321,12 +322,12 @@ func createMirrorLedger(
 		Type: &servicepb.Request_CreateLedger{
 			CreateLedger: &servicepb.CreateLedgerRequest{
 				Name: name,
-				Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-				MirrorSource: &commonpb.MirrorSourceConfig{
+				Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+				MirrorSource: &ledgerpb.MirrorSourceConfig{
 					LedgerName: sourceLedgerName,
 					BatchSize:  batchSize,
-					Type: &commonpb.MirrorSourceConfig_Postgres{
-						Postgres: &commonpb.PostgresMirrorSourceConfig{
+					Type: &ledgerpb.MirrorSourceConfig_Postgres{
+						Postgres: &ledgerpb.PostgresMirrorSourceConfig{
 							Dsn: dsn,
 						},
 					},

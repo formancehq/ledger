@@ -16,9 +16,9 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
@@ -72,7 +72,7 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 
 		duplicate := actions.WithSkippableReasons(
 			oracletest.TxReqRefL("L", "identity-check", "world", "typed:1", "USD", 1),
-			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+			ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 		)
 		rejectCorruption(t, func(resp *servicepb.ApplyResponse) {
 			resp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Details = nil
@@ -81,11 +81,11 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 		mode := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
 			Ledger: "L",
 			Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_SetDefaultEnforcementMode{
-				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeRequest{EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT},
+				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeRequest{EnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT},
 			}},
 		}}}
 		rejectCorruption(t, func(resp *servicepb.ApplyResponse) {
-			resp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetUpdatedDefaultEnforcementMode().EnforcementMode = commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
+			resp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetUpdatedDefaultEnforcementMode().EnforcementMode = ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
 		}, mode)
 
 		rejectCorruption(t, func(resp *servicepb.ApplyResponse) {
@@ -97,20 +97,20 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 	txID := first.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction().GetId()
 	commit(t, oracletest.RevertReqL("L", txID, true))
 	addType := func() *servicepb.Request {
-		return &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: "L", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddAccountType{AddAccountType: &servicepb.AddAccountTypeRequest{AccountType: &commonpb.AccountType{Name: "typed", Pattern: "typed:{id}"}}}}}}}
+		return &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: "L", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddAccountType{AddAccountType: &servicepb.AddAccountTypeRequest{AccountType: &ledgerpb.AccountType{Name: "typed", Pattern: "typed:{id}"}}}}}}}
 	}
 	commit(t, addType())
 	cases := []struct {
 		name    string
 		request *servicepb.Request
-		reason  commonpb.ErrorReason
+		reason  ledgerpb.ErrorReason
 	}{
-		{"reference conflict", oracletest.TxReqRefL("L", "original", "world", "typed:1", "USD", 2), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
-		{"already reverted", oracletest.RevertReqL("L", txID, true), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED},
-		{"missing account metadata", actions.DeleteAccountMetadataAction("L", "typed:1", "missing"), commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND},
-		{"missing transaction metadata", actions.DeleteTransactionMetadataAction("L", txID, "missing"), commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND},
-		{"existing account type", addType(), commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS},
-		{"missing account type", &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: "L", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{RemoveAccountType: &servicepb.RemoveAccountTypeRequest{Name: "absent"}}}}}}, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND},
+		{"reference conflict", oracletest.TxReqRefL("L", "original", "world", "typed:1", "USD", 2), ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		{"already reverted", oracletest.RevertReqL("L", txID, true), ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED},
+		{"missing account metadata", actions.DeleteAccountMetadataAction("L", "typed:1", "missing"), ledgerpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND},
+		{"missing transaction metadata", actions.DeleteTransactionMetadataAction("L", txID, "missing"), ledgerpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND},
+		{"existing account type", addType(), ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS},
+		{"missing account type", &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: "L", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{RemoveAccountType: &servicepb.RemoveAccountTypeRequest{Name: "absent"}}}}}}, ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -157,14 +157,14 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 		commit(t, oracletest.TxReq("world", "typed:1", "USD", 1))
 	})
 	t.Run("disallowed opt in is rejected at admission", func(t *testing.T) {
-		req := actions.WithSkippableReasons(actions.SaveAccountMetadataAction("L", "typed:1", map[string]string{"key": "value"}), commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND)
+		req := actions.WithSkippableReasons(actions.SaveAccountMetadataAction("L", "typed:1", map[string]string{"key": "value"}), ledgerpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND)
 		require.False(t, checker.modelState.Apply(oracle.Bulk{Requests: []*servicepb.Request{req}}).OK)
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", req))
 		require.Equal(t, codes.InvalidArgument, status.Code(err))
 	})
 	t.Run("listed skipped logs preserve their correlators", func(t *testing.T) {
 		readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
-		logs, err := actions.ListLogsFiltered(readCtx, client, &servicepb.ListLogsRequest{Ledger: "L", Options: &commonpb.ListOptions{PageSize: 100}})
+		logs, err := actions.ListLogsFiltered(readCtx, client, &servicepb.ListLogsRequest{Ledger: "L", Options: &ledgerpb.ListOptions{PageSize: 100}})
 		require.NoError(t, err)
 		require.Len(t, logs, len(checker.modelState.Ledger("L").LogRows()))
 		require.True(t, logWindowMatches(checker.modelState.Ledger("L"), "L", nil, 0, false, 100, serverLogRows(logs), ""))

@@ -8,12 +8,14 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
 // MetadataIndexPerReplicaConsistency pins the EN-1323 contract:
@@ -58,8 +60,8 @@ var _ = Describe("MetadataIndexPerReplicaConsistency", Ordered, func() {
 		// Create a ledger with a STRING-typed metadata field "score"
 		// and an account index over it.
 		_, err := servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-			actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-				{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: key, Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+			actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
+				{TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, Key: key, Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 			}),
 		))
 		Expect(err).To(Succeed())
@@ -72,14 +74,14 @@ var _ = Describe("MetadataIndexPerReplicaConsistency", Ordered, func() {
 		// Wait for the index to be ready (current_version > 0) on each
 		// replica before issuing pre-retype queries.
 		for i, s := range servers {
-			Expect(actions.WaitForMetadataIndexReady(ctx, s.Client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)).
+			Expect(actions.WaitForMetadataIndexReady(ctx, s.Client, ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key)).
 				To(Succeed(), fmt.Sprintf("node %d must report local index ready before any retype", i))
 		}
 
 		// Write an account with a string-typed score that's also a
 		// valid uint64 after the retype.
 		_, err = servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-			actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil),
 			actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{key: "030"}),
@@ -101,7 +103,7 @@ var _ = Describe("MetadataIndexPerReplicaConsistency", Ordered, func() {
 		// Retype to UINT64. This bumps Index.forward_encoding_version
 		// cluster-wide and kicks a local rewrite on each replica.
 		_, err = servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-			actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, commonpb.MetadataType_METADATA_TYPE_UINT64),
+			actions.SetMetadataFieldTypeAction(ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key, ledgerpb.MetadataType_METADATA_TYPE_UINT64),
 		))
 		Expect(err).To(Succeed())
 

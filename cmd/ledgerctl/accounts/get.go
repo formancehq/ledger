@@ -8,9 +8,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/invariants"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -149,7 +149,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		for key, value := range account.GetMetadata() {
 			metadataTable = append(metadataTable, []string{
 				key,
-				commonpb.MetadataValueToString(value),
+				ledgerpb.MetadataValueToString(value),
 			})
 		}
 

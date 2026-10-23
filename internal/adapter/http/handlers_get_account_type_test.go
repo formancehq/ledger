@@ -9,8 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestHandleGetAccountType_Success(t *testing.T) {
@@ -18,10 +19,10 @@ func TestHandleGetAccountType_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{
 				Name: "ledger1",
-				AccountTypes: map[string]*commonpb.AccountType{
+				AccountTypes: map[string]*ledgerpb.AccountType{
 					"users": {
 						Name:    "users",
 						Pattern: "users:*",
@@ -63,8 +64,8 @@ func TestHandleGetAccountType_MissingTypeName(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -84,10 +85,10 @@ func TestHandleGetAccountType_NotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{
 				Name:         "ledger1",
-				AccountTypes: map[string]*commonpb.AccountType{},
+				AccountTypes: map[string]*ledgerpb.AccountType{},
 			}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -108,7 +109,7 @@ func TestHandleGetAccountType_LedgerNotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

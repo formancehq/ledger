@@ -8,13 +8,14 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 
@@ -43,7 +44,7 @@ var _ = Describe("Query Checkpoints (concurrent reads of one checkpoint)", Order
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("world", "alice", big.NewInt(1000), "USD"),
 		}, nil)))
 		Expect(err).To(Succeed())
@@ -54,7 +55,7 @@ var _ = Describe("Query Checkpoints (concurrent reads of one checkpoint)", Order
 
 		// Both halves materialize asynchronously; polling one read to success
 		// takes materialization out of what the concurrent reads below measure.
-		awaitCheckpointRead(func() (*commonpb.Account, error) {
+		awaitCheckpointRead(func() (*ledgerpb.Account, error) {
 			return client.GetAccount(ctx, &servicepb.GetAccountRequest{
 				Ledger:       ledgerName,
 				Address:      "alice",

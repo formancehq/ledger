@@ -13,13 +13,14 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
 func TestClonePreservesSourceAndDropsOpaqueEvidence(t *testing.T) {
 	t.Parallel()
-	source := &commonpb.Log{Sequence: 17, ResponseSignature: &signaturepb.SignedLog{KeyId: "server", Payload: []byte("secret"), Signature: []byte("signature")}}
+	source := &ledgerpb.Log{Sequence: 17, ResponseSignature: &signaturepb.SignedLog{KeyId: "server", Payload: []byte("secret"), Signature: []byte("signature")}}
 	source.ProtoReflect().SetUnknown(protowire.AppendBytes(protowire.AppendTag(nil, 1000, protowire.BytesType), []byte("unknown secret")))
 	before := proto.Clone(source)
 	view := Redact(source)
@@ -30,7 +31,7 @@ func TestClonePreservesSourceAndDropsOpaqueEvidence(t *testing.T) {
 	require.Empty(t, view.ProtoReflect().GetUnknown())
 	require.True(t, proto.Equal(before, source))
 	require.NotSame(t, source, view)
-	var absent *commonpb.Log
+	var absent *ledgerpb.Log
 	require.Nil(t, Redact(absent))
 	require.Nil(t, Redact[proto.Message](nil))
 }
@@ -38,7 +39,7 @@ func TestClonePreservesSourceAndDropsOpaqueEvidence(t *testing.T) {
 func TestCloneRecursiveDescriptors(t *testing.T) {
 	t.Parallel()
 	marked := &descriptorpb.FieldOptions{}
-	proto.SetExtension(marked, commonpb.E_Sensitive, true)
+	proto.SetExtension(marked, ledgerpb.E_Sensitive, true)
 	field := func(name string, n int32, kind descriptorpb.FieldDescriptorProto_Type) *descriptorpb.FieldDescriptorProto {
 		return &descriptorpb.FieldDescriptorProto{Name: new(name), Number: new(n), Type: kind.Enum(), Label: descriptorpb.FieldDescriptorProto_LABEL_OPTIONAL.Enum()}
 	}
@@ -89,7 +90,7 @@ func TestCloneRecursiveDescriptors(t *testing.T) {
 
 func TestClonePreservesSanitizedSinkDiagnostic(t *testing.T) {
 	t.Parallel()
-	source := &commonpb.SinkError{Message: "sending request to webhook.example: connection refused"}
+	source := &ledgerpb.SinkError{Message: "sending request to webhook.example: connection refused"}
 	view := Redact(source)
 	require.Equal(t, source.GetMessage(), view.GetMessage())
 	require.NotSame(t, source, view)
@@ -97,12 +98,12 @@ func TestClonePreservesSanitizedSinkDiagnostic(t *testing.T) {
 
 func TestCloneNilNestedMessages(t *testing.T) {
 	t.Parallel()
-	source := &commonpb.PostCommitVolumes{VolumesByAccount: map[string]*commonpb.VolumesByAssets{
+	source := &ledgerpb.PostCommitVolumes{VolumesByAccount: map[string]*ledgerpb.VolumesByAssets{
 		"absent":  nil,
-		"present": {Volumes: []*commonpb.VolumeEntry{nil, {Asset: "USD/2"}}},
+		"present": {Volumes: []*ledgerpb.VolumeEntry{nil, {Asset: "USD/2"}}},
 	}}
 	before := proto.Clone(source)
-	var view *commonpb.PostCommitVolumes
+	var view *ledgerpb.PostCommitVolumes
 	require.NotPanics(t, func() { view = Redact(source) })
 	require.True(t, proto.Equal(before, source))
 	// proto.Clone materializes nil map/list messages before redact sees them.
@@ -116,9 +117,9 @@ func TestCloneNilNestedMessages(t *testing.T) {
 
 func TestCloneSensitiveOneofs(t *testing.T) {
 	t.Parallel()
-	for _, source := range []*commonpb.DatabricksSinkConfig{
-		{Auth: &commonpb.DatabricksSinkConfig_Token{Token: "credential"}},
-		{Auth: &commonpb.DatabricksSinkConfig_OauthM2M{OauthM2M: &commonpb.DatabricksOAuthM2M{ClientId: "visible", ClientSecret: "credential"}}},
+	for _, source := range []*ledgerpb.DatabricksSinkConfig{
+		{Auth: &ledgerpb.DatabricksSinkConfig_Token{Token: "credential"}},
+		{Auth: &ledgerpb.DatabricksSinkConfig_OauthM2M{OauthM2M: &ledgerpb.DatabricksOAuthM2M{ClientId: "visible", ClientSecret: "credential"}}},
 	} {
 		before := proto.Clone(source)
 		view := Redact(source)
@@ -134,7 +135,7 @@ func TestCloneSensitiveOneofs(t *testing.T) {
 
 func TestCloneMasksMirrorDiagnostic(t *testing.T) {
 	t.Parallel()
-	source := &commonpb.MirrorSyncError{Message: "connection password=sentinel"}
+	source := &ledgerpb.MirrorSyncError{Message: "connection password=sentinel"}
 	projected := Redact(source)
 	require.Equal(t, Marker, projected.GetMessage())
 	require.Equal(t, "connection password=sentinel", source.GetMessage())
@@ -198,7 +199,7 @@ func TestRedactURL(t *testing.T) {
 
 func TestCloneSensitiveURL(t *testing.T) {
 	t.Parallel()
-	source := &commonpb.ClickHouseSinkConfig{
+	source := &ledgerpb.ClickHouseSinkConfig{
 		Dsn:   "clickhouse://user:secret@host:9000/db",
 		Table: "ledger_events",
 	}
@@ -207,7 +208,7 @@ func TestCloneSensitiveURL(t *testing.T) {
 	require.Equal(t, "ledger_events", view.GetTable())
 	require.Equal(t, "clickhouse://user:secret@host:9000/db", source.GetDsn())
 
-	nats := &commonpb.NatsSinkConfig{
+	nats := &ledgerpb.NatsSinkConfig{
 		Url:   "nats://mytoken@host:4222",
 		Topic: "events",
 	}
@@ -314,7 +315,7 @@ func TestRedactURLClickHouseMultiHost(t *testing.T) {
 func TestRedactHTTPSinkEndpoint(t *testing.T) {
 	t.Parallel()
 	// HttpSinkConfig.Endpoint annotated sensitive_url — credentials must be masked.
-	source := &commonpb.HttpSinkConfig{
+	source := &ledgerpb.HttpSinkConfig{
 		Endpoint: "https://alice:review-password@example.com/events?api_key=review-api-key",
 		Secret:   "hmac-secret",
 	}
@@ -340,9 +341,9 @@ func TestLedgerInfoCloneMasksPasswordsWithoutMutatingWorkerConfig(t *testing.T) 
 		{"malformed", "host=db.example password='dsn-canary", Marker},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			ledger := &commonpb.LedgerInfo{Name: "mirror", MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "source",
-				Type: &commonpb.MirrorSourceConfig_Postgres{Postgres: &commonpb.PostgresMirrorSourceConfig{Dsn: tc.dsn,
-					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1", AssumeRoleArn: "arn:aws:iam::123:role/mirror"}}}}}
+			ledger := &ledgerpb.LedgerInfo{Name: "mirror", MirrorSource: &ledgerpb.MirrorSourceConfig{LedgerName: "source",
+				Type: &ledgerpb.MirrorSourceConfig_Postgres{Postgres: &ledgerpb.PostgresMirrorSourceConfig{Dsn: tc.dsn,
+					AwsIamAuth: &ledgerpb.PostgresAwsIamAuth{Region: "eu-west-1", AssumeRoleArn: "arn:aws:iam::123:role/mirror"}}}}}
 			original := proto.Clone(ledger)
 			view := Redact(ledger)
 			require.Equal(t, tc.want, view.GetMirrorSource().GetPostgres().GetDsn())
@@ -359,9 +360,9 @@ func TestLedgerInfoCloneMasksPasswordsWithoutMutatingWorkerConfig(t *testing.T) 
 }
 
 func TestLedgerInfoClonePreservesOAuthMetadata(t *testing.T) {
-	ledger := &commonpb.LedgerInfo{Name: "mirror", MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "source",
-		Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "https://reader:base-canary@source.example/prefix",
-			Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{ClientId: "client", ClientSecret: "oauth-canary", TokenEndpoint: "https://client:token-canary@auth.example/token", Scopes: []string{"read"}},
+	ledger := &ledgerpb.LedgerInfo{Name: "mirror", MirrorSource: &ledgerpb.MirrorSourceConfig{LedgerName: "source",
+		Type: &ledgerpb.MirrorSourceConfig_Http{Http: &ledgerpb.HttpMirrorSourceConfig{BaseUrl: "https://reader:base-canary@source.example/prefix",
+			Oauth2ClientCredentials: &ledgerpb.OAuth2ClientCredentials{ClientId: "client", ClientSecret: "oauth-canary", TokenEndpoint: "https://client:token-canary@auth.example/token", Scopes: []string{"read"}},
 		}}}}
 	original := proto.Clone(ledger)
 	view := Redact(ledger)
@@ -374,7 +375,7 @@ func TestLedgerInfoClonePreservesOAuthMetadata(t *testing.T) {
 	require.Equal(t, "client", view.GetMirrorSource().GetHttp().GetOauth2ClientCredentials().GetClientId())
 	view.GetMirrorSource().GetHttp().Oauth2ClientCredentials.Scopes[0] = "changed"
 	require.True(t, proto.Equal(original, ledger))
-	var empty *commonpb.LedgerInfo
+	var empty *ledgerpb.LedgerInfo
 	require.Nil(t, Redact(empty))
 }
 
@@ -384,10 +385,10 @@ func TestCloneMasksPasswordlessURLUserinfo(t *testing.T) {
 		t.Run(scheme, func(t *testing.T) {
 			t.Parallel()
 			raw := scheme + "://token-canary@source.example:8080/prefix?region=eu&access_token=query-canary"
-			ledger := &commonpb.LedgerInfo{MirrorSource: &commonpb.MirrorSourceConfig{
-				Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
+			ledger := &ledgerpb.LedgerInfo{MirrorSource: &ledgerpb.MirrorSourceConfig{
+				Type: &ledgerpb.MirrorSourceConfig_Http{Http: &ledgerpb.HttpMirrorSourceConfig{
 					BaseUrl:                 raw,
-					Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{ClientId: "client", TokenEndpoint: raw},
+					Oauth2ClientCredentials: &ledgerpb.OAuth2ClientCredentials{ClientId: "client", TokenEndpoint: raw},
 				}},
 			}}
 			original := proto.Clone(ledger)

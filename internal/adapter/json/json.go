@@ -9,7 +9,18 @@ import (
 	"io"
 
 	"github.com/bytedance/sonic"
+
+	publicjson "github.com/formancehq/ledger/pkg/proto/v3/json"
 )
+
+func init() {
+	publicjson.Configure(publicjson.Codec{
+		Marshal:       sonic.Marshal,
+		Unmarshal:     sonic.Unmarshal,
+		UnmarshalRead: func(r io.Reader, v any) error { return sonic.ConfigStd.NewDecoder(r).Decode(v) },
+		MarshalWrite:  func(w io.Writer, v any) error { return sonic.ConfigStd.NewEncoder(w).Encode(v) },
+	})
+}
 
 // MarshalEncode is the option-aware path for nested public projections. Unlike
 // an opaque MarshalJSON call, it retains the request's type-specific marshalers.

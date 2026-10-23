@@ -22,8 +22,8 @@
 //     reconstructed like any other, so INDEX_BUILDING and COVERAGE_MISS keep
 //     their reason across the hop.
 //   - A bare codes.NotFound — carrying no ErrorInfo at all, which is the
-//     shape of roughly twenty commonpb.NewNotFoundError sites — becomes a
-//     *commonpb.NotFoundError, which the HTTP handler already maps to 404. A
+//     shape of roughly twenty ledgerpb.NewNotFoundError sites — becomes a
+//     *ledgerpb.NotFoundError, which the HTTP handler already maps to 404. A
 //     NotFound carrying another service's ErrorInfo is not bare and is left
 //     untouched: reinterpreting it as a ledger NotFoundError would answer a
 //     foreign contract as this one.
@@ -63,7 +63,7 @@
 // it from the kind keeps every code-reading caller correct.
 //
 // It is deliberately a leaf: it imports only gRPC, errdetails,
-// internal/adapter/apierr, internal/domain and internal/proto/commonpb.
+// internal/adapter/apierr, internal/domain and internal/proto/ledgerpb.
 // internal/adapter/grpc, the intuitive home, transitively pulls in the Pebble
 // DAL, the readstore, the usage store, backup and the Raft node, which
 // cmd/ledgerctl must not link — so the shared table lives here and that
@@ -78,9 +78,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // errorDomain is the ErrorInfo.domain the server stamps on every business
@@ -150,8 +151,8 @@ func CodeForKind(k domain.ErrorKind) codes.Code {
 // pair through decodeReason's one validation branch rather than a second
 // special case — including under codes.Internal, which
 // CodeForKind(KindForReason(UNSPECIFIED)) would otherwise have licensed.
-func allowedWireCodes(rc commonpb.ErrorReason) []codes.Code {
-	if rc == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
+func allowedWireCodes(rc ledgerpb.ErrorReason) []codes.Code {
+	if rc == ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
 		return nil
 	}
 
@@ -204,9 +205,9 @@ func FromStatusError(err error) error {
 	// The bare-NotFound fallback, and only for a status that carries no
 	// ErrorInfo at all. One that carries a foreign domain's ErrorInfo is that
 	// service's contract to answer: Decode already declines it, and wrapping
-	// it as a ledger *commonpb.NotFoundError here would put it back.
+	// it as a ledger *ledgerpb.NotFoundError here would put it back.
 	if st.Code() == codes.NotFound && !hasErrorInfo(st) {
-		return &reconstructedError{st: st, inner: commonpb.NewNotFoundError("%s", st.Message())}
+		return &reconstructedError{st: st, inner: ledgerpb.NewNotFoundError("%s", st.Message())}
 	}
 
 	return err

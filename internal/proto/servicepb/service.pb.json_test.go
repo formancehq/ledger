@@ -6,7 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -25,7 +26,7 @@ func TestBulkElement_UnmarshalsSkippableReasons(t *testing.T) {
 	var e servicepb.BulkElement
 	require.NoError(t, json.Unmarshal(body, &e))
 	require.Equal(t,
-		[]commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		[]ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 		e.SkippableReasons,
 	)
 }

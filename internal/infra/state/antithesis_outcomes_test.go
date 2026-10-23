@@ -9,9 +9,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/antithesistest"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -72,7 +74,7 @@ func TestIdempotencyCoverageExclusions(t *testing.T) {
 			t.Parallel()
 			fsm, store, _ := newTestMachine(t)
 			proposal := makeProposal(1, createLedgerOrder("idempotency-coverage"))
-			proposal.Idempotency = &commonpb.Idempotency{Key: "key"}
+			proposal.Idempotency = &ledgerpb.Idempotency{Key: "key"}
 			stored := &commonpb.IdempotencyKeyValue{
 				Hash: fsm.processor.HashProposal(proposal), CreatedAt: 1,
 				FirstLogSequence: 1, LogCount: 1,
@@ -80,7 +82,7 @@ func TestIdempotencyCoverageExclusions(t *testing.T) {
 			if scenario == "frozen_failure" {
 				stored.Failure = &commonpb.IdempotencyFailure{
 
-					Details: commonpb.MustFailureDetails(domain.ErrReasonTransactionNotFound, map[string]string{"transactionId": "42"}),
+					Details: ledgerpb.MustFailureDetails(domain.ErrReasonTransactionNotFound, map[string]string{"transactionId": "42"}),
 				}
 			} else {
 				// Expiry is frozen on the outcome (EN-1827), so an expired one
@@ -118,7 +120,7 @@ func TestPreparedBatchOutcomeFacts(t *testing.T) {
 	proposal := makeProposal(2,
 		createTransactionOrder("outcomes", true, newPosting("world", "alice", "EUR", 20)),
 		createTransactionOrder("outcomes", true, newPosting("world", "bob", "EUR", 10)))
-	proposal.Idempotency = &commonpb.Idempotency{Key: "bulk"}
+	proposal.Idempotency = &ledgerpb.Idempotency{Key: "bulk"}
 	first, err := fsm.PrepareEntries(ctx, store, makeEntry(t, 2, proposal))
 	require.NoError(t, err)
 	defer first.Close()

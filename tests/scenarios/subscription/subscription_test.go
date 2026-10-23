@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
-	"github.com/stretchr/testify/require"
-
 	"github.com/formancehq/ledger/v3/tests/scenarios/scenariotest"
 )
 
@@ -143,14 +144,14 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 		if cycle == 1 {
 			t.Run(fmt.Sprintf("%s/TypedMetadata", cycleName), func(t *testing.T) {
 				scenariotest.ApplyActions(t, ctx, client,
-					actions.SaveTypedAccountMetadataAction(ledger, "subscriber:6", map[string]*commonpb.MetadataValue{
-						"subscriber_plan": {Type: &commonpb.MetadataValue_StringValue{StringValue: "pro"}},
-						"billing_cycle":   {Type: &commonpb.MetadataValue_IntValue{IntValue: 1}},
-						"retention_score": {Type: &commonpb.MetadataValue_IntValue{IntValue: 85}},
+					actions.SaveTypedAccountMetadataAction(ledger, "subscriber:6", map[string]*ledgerpb.MetadataValue{
+						"subscriber_plan": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "pro"}},
+						"billing_cycle":   {Type: &ledgerpb.MetadataValue_IntValue{IntValue: 1}},
+						"retention_score": {Type: &ledgerpb.MetadataValue_IntValue{IntValue: 85}},
 					}),
-					actions.SaveTypedAccountMetadataAction(ledger, "subscriber:7", map[string]*commonpb.MetadataValue{
-						"subscriber_plan": {Type: &commonpb.MetadataValue_StringValue{StringValue: "enterprise"}},
-						"retention_score": {Type: &commonpb.MetadataValue_IntValue{IntValue: 92}},
+					actions.SaveTypedAccountMetadataAction(ledger, "subscriber:7", map[string]*ledgerpb.MetadataValue{
+						"subscriber_plan": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "enterprise"}},
+						"retention_score": {Type: &ledgerpb.MetadataValue_IntValue{IntValue: 92}},
 					}),
 				)
 
@@ -171,9 +172,9 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/TypedTxMetadata", cycleName), func(t *testing.T) {
 				require.NotZero(t, firstFundTxID, "should have captured first fund tx ID")
 				scenariotest.ApplyActions(t, ctx, client,
-					actions.SaveTypedTransactionMetadataAction(ledger, firstFundTxID, map[string]*commonpb.MetadataValue{
-						"billing_cycle":   {Type: &commonpb.MetadataValue_IntValue{IntValue: 1}},
-						"subscriber_plan": {Type: &commonpb.MetadataValue_StringValue{StringValue: "initial_fund"}},
+					actions.SaveTypedTransactionMetadataAction(ledger, firstFundTxID, map[string]*ledgerpb.MetadataValue{
+						"billing_cycle":   {Type: &ledgerpb.MetadataValue_IntValue{IntValue: 1}},
+						"subscriber_plan": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "initial_fund"}},
 					}),
 				)
 
@@ -244,16 +245,16 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 
 		// 1. Parameterized address prefix — reusable across different prefixes
 		resp, err := actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("subscriber:")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("subscriber:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(subscriber:) failed")
 		require.Equal(t, numSubscribers, len(resp.GetCursor().GetAccountData()),
 			"prefix=subscriber: should return all subscribers")
 
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("revenue:")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("revenue:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(revenue:) failed")
 		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 2,
@@ -262,8 +263,8 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 		// 2. Parameterized string metadata — filter by subscriber plan
 		// Query for "pro" subscribers — subscriber:6 was tagged with plan=pro
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-plan",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"plan_value": actions.StringParam("pro")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"plan_value": actions.StringParam("pro")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(plan=pro) failed")
 		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 1,
@@ -271,8 +272,8 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 
 		// Query for "enterprise" subscribers — subscriber:7 was tagged
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-plan",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"plan_value": actions.StringParam("enterprise")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"plan_value": actions.StringParam("enterprise")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(plan=enterprise) failed")
 		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 1,
@@ -280,8 +281,8 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 
 		// Query for a plan nobody has — should return 0
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-plan",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"plan_value": actions.StringParam("nonexistent")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"plan_value": actions.StringParam("nonexistent")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(plan=nonexistent) failed")
 		require.Empty(t, resp.GetCursor().GetAccountData(),
@@ -291,8 +292,8 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 		// Query score >= 90 (subscriber:7 has 92) — retry until index is ready
 		require.Eventually(t, func() bool {
 			resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "high-retention",
-				commonpb.QueryMode_QUERY_MODE_LIST, 100,
-				map[string]*commonpb.ParameterValue{
+				ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+				map[string]*ledgerpb.ParameterValue{
 					"min_score": actions.Int64Param(90),
 					"max_score": actions.Int64Param(100),
 				},
@@ -304,8 +305,8 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 
 		// Query score 80-90 (subscriber:6 has 85)
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "high-retention",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{
 				"min_score": actions.Int64Param(80),
 				"max_score": actions.Int64Param(90),
 			},
@@ -316,8 +317,8 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 
 		// Query score 0-50 — nobody has scores that low
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "high-retention",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{
 				"min_score": actions.Int64Param(0),
 				"max_score": actions.Int64Param(50),
 			},

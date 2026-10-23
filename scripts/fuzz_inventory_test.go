@@ -130,15 +130,31 @@ func TestUnreachableFuzzTargetFindingsReportsNestedModule(t *testing.T) {
 		{
 			target:            fuzzTarget{packagePath: "./misc/operator/internal/", name: "FuzzNested"},
 			location:          finding{path: "misc/operator/internal/fuzz_test.go", line: 7, column: 6},
-			unreachableReason: "the declaration belongs to nested Go module misc/operator",
+			unreachableReason: "the declaration belongs to unsupported nested Go module misc/operator",
 		},
 	}
 	findings := unreachableFuzzTargetFindings(targets)
 
 	require.Len(t, findings, 1)
-	require.Contains(t, findings[0].message, "nested Go module misc/operator")
+	require.Contains(t, findings[0].message, "unsupported nested Go module misc/operator")
 	require.Contains(t, findings[0].message, "extend the runner to invoke targets from that module")
 	require.Empty(t, compareFuzzTargets(targets, nil))
+}
+
+func TestCompareFuzzTargetsRequiresEverySupportedNestedTarget(t *testing.T) {
+	t.Parallel()
+
+	actual := []locatedFuzzTarget{
+		{target: fuzzTarget{packagePath: "./pkg/proto/v3/ledgerpb/", name: "FuzzOne"}},
+		{target: fuzzTarget{packagePath: "./pkg/proto/v3/ledgerpb/", name: "FuzzTwo"}},
+	}
+	runner := []locatedFuzzTarget{
+		{target: fuzzTarget{packagePath: "./pkg/proto/v3/ledgerpb/", name: "FuzzOne"}},
+	}
+
+	findings := compareFuzzTargets(actual, runner)
+	require.Len(t, findings, 1)
+	require.Contains(t, findings[0].message, "FuzzTwo")
 }
 
 func TestReadFuzzRunnerInventoryAcceptsRootPackage(t *testing.T) {

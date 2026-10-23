@@ -12,11 +12,11 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -52,8 +52,8 @@ func TestMetadataIntegers_Routes(t *testing.T) {
 						require.Len(t, requests, 1)
 						require.Equal(t, "ledger1", requests[0].GetApply().GetLedger())
 						action := requests[0].GetApply().GetAction()
-						var md map[string]*commonpb.MetadataValue
-						logData := &commonpb.LedgerLogPayload{}
+						var md map[string]*ledgerpb.MetadataValue
+						logData := &ledgerpb.LedgerLogPayload{}
 						switch route {
 						case "account":
 							cmd := action.GetAddMetadata()
@@ -65,15 +65,15 @@ func TestMetadataIntegers_Routes(t *testing.T) {
 							if route == "createAccount" {
 								md = cmd.GetAccountMetadata()["users:001"].GetValues()
 							}
-							require.Equal(t, tc.want, commonpb.MetadataValueToAny(cmd.GetAccountMetadata()["users:001"].GetValues()["count"]))
-							logData.Payload = &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1}}}
+							require.Equal(t, tc.want, ledgerpb.MetadataValueToAny(cmd.GetAccountMetadata()["users:001"].GetValues()["count"]))
+							logData.Payload = &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: &ledgerpb.Transaction{Id: 1}}}
 						case "revert", "revertUnknownLength":
 							md = action.GetRevertTransaction().GetMetadata()
-							logData.Payload = &commonpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &commonpb.RevertedTransaction{RevertTransaction: &commonpb.Transaction{Id: 2}}}
+							logData.Payload = &ledgerpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &ledgerpb.RevertedTransaction{RevertTransaction: &ledgerpb.Transaction{Id: 2}}}
 						}
-						require.Equal(t, tc.want, commonpb.MetadataValueToAny(md["count"]))
+						require.Equal(t, tc.want, ledgerpb.MetadataValueToAny(md["count"]))
 
-						return &domain.ApplyResult{Logs: []*commonpb.Log{{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: logData}}}}}}}, nil
+						return &domain.ApplyResult{Logs: []*ledgerpb.Log{{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Data: logData}}}}}}}, nil
 					})
 				}
 				path := "/v3/ledger1/accounts/users:001/metadata"

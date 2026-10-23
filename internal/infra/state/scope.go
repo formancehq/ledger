@@ -11,11 +11,12 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -50,7 +51,7 @@ func (*ErrCoverageMiss) UncommittedFailure()    {}
 // Processing still requires SerializableError for errors propagated through
 // its handlers. This method exists for that interface only: the FSM observes
 // UncommittedFailure before attempting to build an AuditFailure.
-func (e *ErrCoverageMiss) FailureDetails() *commonpb.FailureDetails {
+func (e *ErrCoverageMiss) FailureDetails() *ledgerpb.FailureDetails {
 	return nil // Admission contract violations are never audited outcomes.
 }
 
@@ -115,15 +116,15 @@ type gatedScope struct {
 	// CheckCoverage) and the sub-attribute code; the coverage map they
 	// dispatch against is the gatedScope's own `coverage` field, which
 	// NewScope/NewProposalScope rewrite in place between phases.
-	gatedLedgers               *gatedAccessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]
+	gatedLedgers               *gatedAccessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader]
 	gatedBoundaries            *gatedAccessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]
 	gatedVolumes               *gatedAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
-	gatedAccountMetadata       *gatedAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
-	gatedLedgerMetadata        *gatedAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
+	gatedAccountMetadata       *gatedAccessor[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]
+	gatedLedgerMetadata        *gatedAccessor[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]
 	gatedTransactionReferences *gatedAccessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]
 	gatedTransactionStates     *gatedAccessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
-	gatedPreparedQueries       *gatedAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]
-	gatedIndexes               *gatedAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
+	gatedPreparedQueries       *gatedAccessor[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader]
+	gatedIndexes               *gatedAccessor[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader]
 }
 
 // validatePlan rejects AttributeCoverages whose envelope is malformed:
@@ -295,15 +296,15 @@ func NewScopeFactory(
 		raftIndex: raftIndex,
 	}
 
-	g.gatedLedgers = newGatedAccessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader](inner.ledgers, g, dal.SubAttrLedger)
+	g.gatedLedgers = newGatedAccessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader](inner.ledgers, g, dal.SubAttrLedger)
 	g.gatedBoundaries = newGatedAccessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader](inner.boundaries, g, dal.SubAttrBoundary)
 	g.gatedVolumes = newGatedAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader](inner.volumes, g, dal.SubAttrVolume)
-	g.gatedAccountMetadata = newGatedAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader](inner.accountMetadata, g, dal.SubAttrMetadata)
-	g.gatedLedgerMetadata = newGatedAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader](inner.ledgerMetadata, g, dal.SubAttrLedgerMetadata)
+	g.gatedAccountMetadata = newGatedAccessor[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader](inner.accountMetadata, g, dal.SubAttrMetadata)
+	g.gatedLedgerMetadata = newGatedAccessor[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader](inner.ledgerMetadata, g, dal.SubAttrLedgerMetadata)
 	g.gatedTransactionReferences = newGatedAccessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader](inner.transactionReferences, g, dal.SubAttrReference)
 	g.gatedTransactionStates = newGatedAccessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader](inner.transactionStates, g, dal.SubAttrTransaction)
-	g.gatedPreparedQueries = newGatedAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader](inner.preparedQueries, g, dal.SubAttrPreparedQuery)
-	g.gatedIndexes = newGatedAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader](inner.indexes, g, dal.SubAttrIndex)
+	g.gatedPreparedQueries = newGatedAccessor[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader](inner.preparedQueries, g, dal.SubAttrPreparedQuery)
+	g.gatedIndexes = newGatedAccessor[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader](inner.indexes, g, dal.SubAttrIndex)
 
 	return g
 }
@@ -500,7 +501,7 @@ func lsbIndex(b byte) int {
 // CheckCoverage prelude because their signatures do not fit the Accessor
 // contract.
 
-func (g *gatedScope) Ledgers() processing.Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {
+func (g *gatedScope) Ledgers() processing.Accessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader] {
 	return g.gatedLedgers
 }
 
@@ -512,11 +513,11 @@ func (g *gatedScope) Volumes() processing.Accessor[domain.VolumeKey, *raftcmdpb.
 	return g.gatedVolumes
 }
 
-func (g *gatedScope) AccountMetadata() processing.Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+func (g *gatedScope) AccountMetadata() processing.Accessor[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader] {
 	return g.gatedAccountMetadata
 }
 
-func (g *gatedScope) LedgerMetadata() processing.Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+func (g *gatedScope) LedgerMetadata() processing.Accessor[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader] {
 	return g.gatedLedgerMetadata
 }
 
@@ -528,17 +529,17 @@ func (g *gatedScope) TransactionStates() processing.Accessor[domain.TransactionK
 	return g.gatedTransactionStates
 }
 
-func (g *gatedScope) PreparedQueries() processing.Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader] {
+func (g *gatedScope) PreparedQueries() processing.Accessor[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader] {
 	return g.gatedPreparedQueries
 }
 
-func (g *gatedScope) Indexes() processing.Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader] {
+func (g *gatedScope) Indexes() processing.Accessor[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader] {
 	return g.gatedIndexes
 }
 
 // --- Gated discrete reads (signatures that do not fit the Accessor trio) ---
 
-func (g *gatedScope) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
+func (g *gatedScope) GetSinkConfig(name string) (ledgerpb.SinkConfigReader, error) {
 	if err := g.CheckCoverage(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: name}); err != nil {
 		return nil, err
 	}
@@ -554,7 +555,7 @@ func (g *gatedScope) GetNumscriptLatestVersion(ledgerName string, name string) (
 	return g.WriteSet.GetNumscriptLatestVersion(ledgerName, name)
 }
 
-func (g *gatedScope) ResolveNumscriptContent(ledgerName string, name string, version string) (commonpb.NumscriptInfoReader, error) {
+func (g *gatedScope) ResolveNumscriptContent(ledgerName string, name string, version string) (ledgerpb.NumscriptInfoReader, error) {
 	if err := g.CheckCoverage(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}); err != nil {
 		return nil, err
 	}

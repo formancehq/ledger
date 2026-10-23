@@ -7,8 +7,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -121,13 +122,13 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 					Ledger: ledgerName,
 					Action: &servicepb.LedgerAction{
 						Data: &servicepb.LedgerAction_AddMetadata{
-							AddMetadata: &commonpb.SaveMetadataCommand{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Account{
-										Account: &commonpb.TargetAccount{Addr: address},
+							AddMetadata: &ledgerpb.SaveMetadataCommand{
+								Target: &ledgerpb.Target{
+									Target: &ledgerpb.Target_Account{
+										Account: &ledgerpb.TargetAccount{Addr: address},
 									},
 								},
-								Metadata: commonpb.MetadataFromGoMap(metadata),
+								Metadata: ledgerpb.MetadataFromGoMap(metadata),
 							},
 						},
 					},

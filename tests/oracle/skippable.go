@@ -5,29 +5,30 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // The oracle declares the documented whitelist independently of the generated
 // admission table, so changing that table cannot silently change expectations.
 func validSkippableReasons(req *servicepb.LedgerApplyRequest) bool {
-	var allowed commonpb.ErrorReason
+	var allowed ledgerpb.ErrorReason
 	switch req.GetAction().GetData().(type) {
 	case *servicepb.LedgerAction_CreateTransaction:
-		allowed = commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
+		allowed = ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
 	case *servicepb.LedgerAction_RevertTransaction:
-		allowed = commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+		allowed = ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
 	case *servicepb.LedgerAction_DeleteMetadata:
-		allowed = commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+		allowed = ledgerpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	case *servicepb.LedgerAction_AddAccountType:
-		allowed = commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+		allowed = ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 	case *servicepb.LedgerAction_RemoveAccountType:
-		allowed = commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+		allowed = ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	}
 	for _, reason := range req.GetSkippableReasons() {
-		if allowed == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED || reason != allowed {
+		if allowed == ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED || reason != allowed {
 			return false
 		}
 	}
@@ -48,7 +49,7 @@ func chartRequest(req *servicepb.Request) *servicepb.Request {
 	}
 }
 
-func predictSkippedLog(s LedgerState, req *servicepb.Request, reason string) *commonpb.OrderSkippedLog {
+func predictSkippedLog(s LedgerState, req *servicepb.Request, reason string) *ledgerpb.OrderSkippedLog {
 	context := map[string]string{}
 	action := req.GetApply().GetAction()
 	switch reason {
@@ -79,15 +80,15 @@ func predictSkippedLog(s LedgerState, req *servicepb.Request, reason string) *co
 		panic("model: unmodeled skipped reason " + reason)
 	}
 
-	details, err := commonpb.NewFailureDetails(reason, context)
+	details, err := ledgerpb.NewFailureDetails(reason, context)
 	if err != nil {
 		panic("model: invalid predicted skip details: " + err.Error())
 	}
 
-	return &commonpb.OrderSkippedLog{Details: details}
+	return &ledgerpb.OrderSkippedLog{Details: details}
 }
 
-func canonicalSkippedLog(log *commonpb.OrderSkippedLog) string {
+func canonicalSkippedLog(log *ledgerpb.OrderSkippedLog) string {
 	keys := make([]string, 0, len(log.GetFacts()))
 	for key := range log.GetFacts() {
 		keys = append(keys, key)

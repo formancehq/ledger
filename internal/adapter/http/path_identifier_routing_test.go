@@ -13,12 +13,12 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -46,7 +46,7 @@ func TestAccountAddressRouting(t *testing.T) {
 				require.Len(t, req.GetUnsigned().GetRequests(), 1)
 				*captured = addr(req.GetUnsigned().GetRequests()[0])
 
-				return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+				return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 			})
 		}
 	}
@@ -56,12 +56,12 @@ func TestAccountAddressRouting(t *testing.T) {
 		expect                     func(t *testing.T, backend *MockBackend, captured *string)
 	}{
 		{"get", http.MethodGet, "", "", http.StatusOK, func(_ *testing.T, backend *MockBackend, captured *string) {
-			backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&commonpb.LedgerInfo{Name: "ledger1"}, nil)
+			backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&ledgerpb.LedgerInfo{Name: "ledger1"}, nil)
 			backend.EXPECT().GetAccount(gomock.Any(), "ledger1", gomock.Any(), ctrl.GetAccountOptions{}).DoAndReturn(
-				func(_ context.Context, _ string, addr string, _ ctrl.GetAccountOptions) (*commonpb.Account, error) {
+				func(_ context.Context, _ string, addr string, _ ctrl.GetAccountOptions) (*ledgerpb.Account, error) {
 					*captured = addr
 
-					return &commonpb.Account{Address: addr}, nil
+					return &ledgerpb.Account{Address: addr}, nil
 				})
 		}},
 		{"save_metadata", http.MethodPost, "/metadata", `{"role":"admin"}`, http.StatusNoContent, applied(func(r *servicepb.Request) string {
@@ -109,22 +109,22 @@ var namedResourceEncodings = append([]struct {
 // in a path segment, so they follow the same single-decoding rule.
 func TestNamedResourceRouting(t *testing.T) {
 	t.Parallel()
-	applied := func(name func(*servicepb.Request) string, logs ...*commonpb.Log) func(*testing.T, *MockBackend, *string, string) {
+	applied := func(name func(*servicepb.Request) string, logs ...*ledgerpb.Log) func(*testing.T, *MockBackend, *string, string) {
 		return func(t *testing.T, backend *MockBackend, captured *string, _ string) {
 			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 				require.Len(t, req.GetUnsigned().GetRequests(), 1)
 				*captured = name(req.GetUnsigned().GetRequests()[0])
 				if len(logs) == 0 {
-					return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+					return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 				}
 
 				return &domain.ApplyResult{Logs: logs}, nil
 			})
 		}
 	}
-	savedNumscript := &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_SavedNumscript{SavedNumscript: &commonpb.SavedNumscriptLog{
-			Info: &commonpb.NumscriptInfo{Name: "saved", Version: "1.0.0"},
+	savedNumscript := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_SavedNumscript{SavedNumscript: &ledgerpb.SavedNumscriptLog{
+			Info: &ledgerpb.NumscriptInfo{Name: "saved", Version: "1.0.0"},
 		}},
 	}}
 	routes := []struct {
@@ -136,10 +136,10 @@ func TestNamedResourceRouting(t *testing.T) {
 	}{
 		{"numscript_get", http.MethodGet, "/numscripts/", "", "", http.StatusOK, func(_ *testing.T, backend *MockBackend, captured *string, _ string) {
 			backend.EXPECT().GetNumscript(gomock.Any(), "ledger1", gomock.Any(), "").DoAndReturn(
-				func(_ context.Context, _, name, _ string) (*commonpb.NumscriptInfo, error) {
+				func(_ context.Context, _, name, _ string) (*ledgerpb.NumscriptInfo, error) {
 					*captured = name
 
-					return &commonpb.NumscriptInfo{}, nil
+					return &ledgerpb.NumscriptInfo{}, nil
 				})
 		}},
 		{"numscript_save", http.MethodPut, "/numscripts/", "", `{"content":"send [USD 1] (source = @world destination = @bank)","version":"1.0.0"}`, http.StatusCreated, applied(func(r *servicepb.Request) string {
@@ -160,9 +160,9 @@ func TestNamedResourceRouting(t *testing.T) {
 		// name exists: a still-escaped lookup answers 404. The name is read
 		// back from the response.
 		{"account_type_get", http.MethodGet, "/account-types/", "", "", http.StatusOK, func(_ *testing.T, backend *MockBackend, _ *string, want string) {
-			backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&commonpb.LedgerInfo{
+			backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&ledgerpb.LedgerInfo{
 				Name:         "ledger1",
-				AccountTypes: map[string]*commonpb.AccountType{want: {Name: want, Pattern: "users:{id}"}},
+				AccountTypes: map[string]*ledgerpb.AccountType{want: {Name: want, Pattern: "users:{id}"}},
 			}, nil)
 		}},
 		{"account_type_remove", http.MethodDelete, "/account-types/", "", "", http.StatusNoContent, applied(func(r *servicepb.Request) string {

@@ -3,7 +3,8 @@ package http
 import (
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -21,7 +22,7 @@ type metadataSchemaStatusJSON struct {
 
 func toFieldStatusJSON(fs *servicepb.MetadataFieldStatus) *metadataFieldStatusJSON {
 	return &metadataFieldStatusJSON{
-		DeclaredType: commonpb.MetadataTypeToString(fs.GetDeclaredType()),
+		DeclaredType: ledgerpb.MetadataTypeToString(fs.GetDeclaredType()),
 	}
 }
 

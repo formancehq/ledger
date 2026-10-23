@@ -5,8 +5,9 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
@@ -222,20 +223,20 @@ func buildAuditFailurePayload(f *auditpb.AuditFailure) []byte {
 	return buf
 }
 
-func buildCallerSnapshotPayload(snap *commonpb.CallerSnapshot) []byte {
+func buildCallerSnapshotPayload(snap *ledgerpb.CallerSnapshot) []byte {
 	buf := make([]byte, 0, 64)
 
 	switch principal := snap.GetPrincipal().(type) {
-	case *commonpb.CallerSnapshot_Authenticated:
+	case *ledgerpb.CallerSnapshot_Authenticated:
 		buf = appendU8(buf, callerPrincipalAuthenticated)
 		buf = appendAuthenticatedCallerPayload(buf, principal.Authenticated)
-	case *commonpb.CallerSnapshot_Anonymous:
+	case *ledgerpb.CallerSnapshot_Anonymous:
 		buf = appendU8(buf, callerPrincipalAnonymous)
 		buf = appendScopes(buf, principal.Anonymous.GetScopes())
-	case *commonpb.CallerSnapshot_System:
+	case *ledgerpb.CallerSnapshot_System:
 		buf = appendU8(buf, callerPrincipalSystem)
 		buf = appendLenString(buf, principal.System.GetComponent())
-	case *commonpb.CallerSnapshot_AuthDisabled:
+	case *ledgerpb.CallerSnapshot_AuthDisabled:
 		buf = appendU8(buf, callerPrincipalAuthDisabled)
 	default:
 		buf = appendU8(buf, callerPrincipalNone)
@@ -244,15 +245,15 @@ func buildCallerSnapshotPayload(snap *commonpb.CallerSnapshot) []byte {
 	return buf
 }
 
-func appendAuthenticatedCallerPayload(buf []byte, caller *commonpb.AuthenticatedCaller) []byte {
+func appendAuthenticatedCallerPayload(buf []byte, caller *ledgerpb.AuthenticatedCaller) []byte {
 	id := caller.GetIdentity()
 	buf = appendLenString(buf, id.GetSubject())
 
 	switch src := id.GetSource().(type) {
-	case *commonpb.CallerIdentity_Issuer:
+	case *ledgerpb.CallerIdentity_Issuer:
 		buf = appendU8(buf, callerSourceIssuer)
 		buf = appendLenString(buf, src.Issuer)
-	case *commonpb.CallerIdentity_KeyId:
+	case *ledgerpb.CallerIdentity_KeyId:
 		buf = appendU8(buf, callerSourceKeyID)
 		buf = appendLenString(buf, src.KeyId)
 	default:

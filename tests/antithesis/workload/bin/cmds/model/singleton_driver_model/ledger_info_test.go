@@ -7,8 +7,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -17,40 +17,40 @@ import (
 
 // modelLedgerForInfo builds a ledger exercising every field ledgerInfoMatches
 // compares, and the LedgerInfo the server must answer for it.
-func modelLedgerForInfo(t *testing.T) (oracle.GlobalState, *commonpb.LedgerInfo) {
+func modelLedgerForInfo(t *testing.T) (oracle.GlobalState, *ledgerpb.LedgerInfo) {
 	t.Helper()
 
 	applied := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*servicepb.Request{
 		{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
 			Name:                   "L",
-			Mode:                   commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-			MirrorSource:           &commonpb.MirrorSourceConfig{LedgerName: "src"},
-			DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
-			AccountTypes:           map[string]*commonpb.AccountType{"known": {Name: "known", Pattern: "known:{id}"}},
-			InitialSchema: []*commonpb.SetMetadataFieldTypeCommand{{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			Mode:                   ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+			MirrorSource:           &ledgerpb.MirrorSourceConfig{LedgerName: "src"},
+			DefaultEnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+			AccountTypes:           map[string]*ledgerpb.AccountType{"known": {Name: "known", Pattern: "known:{id}"}},
+			InitialSchema: []*ledgerpb.SetMetadataFieldTypeCommand{{
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "rank",
-				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 			}},
 		}}},
 		actions.SaveLedgerMetadataAction("L", map[string]string{"owner": "treasury"}),
 	}})
 	require.True(t, applied.OK)
 
-	return applied.State, &commonpb.LedgerInfo{
+	return applied.State, &ledgerpb.LedgerInfo{
 		Name:                   "L",
 		Id:                     7,
-		CreatedAt:              &commonpb.Timestamp{Data: 1000},
-		Mode:                   commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-		MirrorSource:           &commonpb.MirrorSourceConfig{LedgerName: "src"},
-		MirrorSyncProgress:     &commonpb.MirrorSyncProgress{},
-		DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
-		AccountTypes:           map[string]*commonpb.AccountType{"known": {Name: "known", Pattern: "known:{id}"}},
-		MetadataSchema: &commonpb.MetadataSchema{AccountFields: map[string]*commonpb.MetadataFieldSchema{
-			"rank": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+		CreatedAt:              &ledgerpb.Timestamp{Data: 1000},
+		Mode:                   ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+		MirrorSource:           &ledgerpb.MirrorSourceConfig{LedgerName: "src"},
+		MirrorSyncProgress:     &ledgerpb.MirrorSyncProgress{},
+		DefaultEnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+		AccountTypes:           map[string]*ledgerpb.AccountType{"known": {Name: "known", Pattern: "known:{id}"}},
+		MetadataSchema: &ledgerpb.MetadataSchema{AccountFields: map[string]*ledgerpb.MetadataFieldSchema{
+			"rank": {Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 		}},
-		Metadata: map[string]*commonpb.MetadataValue{
-			"owner": {Type: &commonpb.MetadataValue_StringValue{StringValue: "treasury"}},
+		Metadata: map[string]*ledgerpb.MetadataValue{
+			"owner": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "treasury"}},
 		},
 	}
 }
@@ -63,34 +63,34 @@ func TestLedgerInfoMatchesComparesEveryDerivedField(t *testing.T) {
 	state, info := modelLedgerForInfo(t)
 	require.True(t, ledgerInfoMatches(state, info))
 
-	for name, corrupt := range map[string]func(*commonpb.LedgerInfo){
-		"name": func(i *commonpb.LedgerInfo) { i.Name = "other" },
-		"mode": func(i *commonpb.LedgerInfo) { i.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL },
-		"mirror source": func(i *commonpb.LedgerInfo) {
-			i.MirrorSource = &commonpb.MirrorSourceConfig{LedgerName: "elsewhere"}
+	for name, corrupt := range map[string]func(*ledgerpb.LedgerInfo){
+		"name": func(i *ledgerpb.LedgerInfo) { i.Name = "other" },
+		"mode": func(i *ledgerpb.LedgerInfo) { i.Mode = ledgerpb.LedgerMode_LEDGER_MODE_NORMAL },
+		"mirror source": func(i *ledgerpb.LedgerInfo) {
+			i.MirrorSource = &ledgerpb.MirrorSourceConfig{LedgerName: "elsewhere"}
 		},
-		"dropped mirror source":   func(i *commonpb.LedgerInfo) { i.MirrorSource = nil },
-		"dropped mirror progress": func(i *commonpb.LedgerInfo) { i.MirrorSyncProgress = nil },
-		"enforcement mode": func(i *commonpb.LedgerInfo) {
-			i.DefaultEnforcementMode = commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
+		"dropped mirror source":   func(i *ledgerpb.LedgerInfo) { i.MirrorSource = nil },
+		"dropped mirror progress": func(i *ledgerpb.LedgerInfo) { i.MirrorSyncProgress = nil },
+		"enforcement mode": func(i *ledgerpb.LedgerInfo) {
+			i.DefaultEnforcementMode = ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
 		},
-		"account type pattern": func(i *commonpb.LedgerInfo) {
-			i.AccountTypes = map[string]*commonpb.AccountType{"known": {Name: "known", Pattern: "other:{id}"}}
+		"account type pattern": func(i *ledgerpb.LedgerInfo) {
+			i.AccountTypes = map[string]*ledgerpb.AccountType{"known": {Name: "known", Pattern: "other:{id}"}}
 		},
-		"extra account type": func(i *commonpb.LedgerInfo) {
-			i.AccountTypes["extra"] = &commonpb.AccountType{Name: "extra", Pattern: "extra:{id}"}
+		"extra account type": func(i *ledgerpb.LedgerInfo) {
+			i.AccountTypes["extra"] = &ledgerpb.AccountType{Name: "extra", Pattern: "extra:{id}"}
 		},
-		"schema type": func(i *commonpb.LedgerInfo) {
-			i.MetadataSchema.AccountFields["rank"] = &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64}
+		"schema type": func(i *ledgerpb.LedgerInfo) {
+			i.MetadataSchema.AccountFields["rank"] = &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64}
 		},
-		"schema target": func(i *commonpb.LedgerInfo) {
-			i.MetadataSchema = &commonpb.MetadataSchema{LedgerFields: i.GetMetadataSchema().GetAccountFields()}
+		"schema target": func(i *ledgerpb.LedgerInfo) {
+			i.MetadataSchema = &ledgerpb.MetadataSchema{LedgerFields: i.GetMetadataSchema().GetAccountFields()}
 		},
-		"dropped schema": func(i *commonpb.LedgerInfo) { i.MetadataSchema = nil },
-		"metadata value": func(i *commonpb.LedgerInfo) {
-			i.Metadata["owner"] = &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "other"}}
+		"dropped schema": func(i *ledgerpb.LedgerInfo) { i.MetadataSchema = nil },
+		"metadata value": func(i *ledgerpb.LedgerInfo) {
+			i.Metadata["owner"] = &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_StringValue{StringValue: "other"}}
 		},
-		"dropped metadata": func(i *commonpb.LedgerInfo) { i.Metadata = nil },
+		"dropped metadata": func(i *ledgerpb.LedgerInfo) { i.Metadata = nil },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -120,11 +120,11 @@ func TestLedgerInfoStructureViolation(t *testing.T) {
 	_, info := modelLedgerForInfo(t)
 	require.Empty(t, ledgerInfoStructureViolation(info))
 
-	for name, corrupt := range map[string]func(*commonpb.LedgerInfo){
-		"listed ledger has no name":               func(i *commonpb.LedgerInfo) { i.Name = "" },
-		"listed ledger has no id":                 func(i *commonpb.LedgerInfo) { i.Id = 0 },
-		"listed ledger has no creation timestamp": func(i *commonpb.LedgerInfo) { i.CreatedAt = nil },
-		"listing served a soft-deleted ledger":    func(i *commonpb.LedgerInfo) { i.DeletedAt = &commonpb.Timestamp{Data: 2} },
+	for name, corrupt := range map[string]func(*ledgerpb.LedgerInfo){
+		"listed ledger has no name":               func(i *ledgerpb.LedgerInfo) { i.Name = "" },
+		"listed ledger has no id":                 func(i *ledgerpb.LedgerInfo) { i.Id = 0 },
+		"listed ledger has no creation timestamp": func(i *ledgerpb.LedgerInfo) { i.CreatedAt = nil },
+		"listing served a soft-deleted ledger":    func(i *ledgerpb.LedgerInfo) { i.DeletedAt = &ledgerpb.Timestamp{Data: 2} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -140,11 +140,11 @@ func TestLedgerIdentityMatchesBothFields(t *testing.T) {
 	t.Parallel()
 
 	_, info := modelLedgerForInfo(t)
-	identity := ledgerIdentity{id: 7, createdAt: &commonpb.Timestamp{Data: 1000}}
+	identity := ledgerIdentity{id: 7, createdAt: &ledgerpb.Timestamp{Data: 1000}}
 	require.True(t, identity.matches(info))
 
 	require.False(t, ledgerIdentity{id: 8, createdAt: identity.createdAt}.matches(info))
-	require.False(t, ledgerIdentity{id: 7, createdAt: &commonpb.Timestamp{Data: 1001}}.matches(info))
+	require.False(t, ledgerIdentity{id: 7, createdAt: &ledgerpb.Timestamp{Data: 1001}}.matches(info))
 	require.False(t, ledgerIdentity{id: 7}.matches(info))
 }
 
@@ -154,26 +154,26 @@ func TestLedgerIdentityIsNotPinnedWhileACreateIsUnsettled(t *testing.T) {
 	t.Parallel()
 
 	c := NewChecker([]string{"model-0"}, nil)
-	stale := &commonpb.LedgerInfo{Name: "model-0", Id: 9, CreatedAt: &commonpb.Timestamp{Data: 1}}
+	stale := &ledgerpb.LedgerInfo{Name: "model-0", Id: 9, CreatedAt: &ledgerpb.Timestamp{Data: 1}}
 
-	require.Empty(t, c.ledgerIdentityViolation([]*commonpb.LedgerInfo{stale}),
+	require.Empty(t, c.ledgerIdentityViolation([]*ledgerpb.LedgerInfo{stale}),
 		"a ledger whose creation was never observed is not pinned")
 
-	c.ledgerIdentities["model-0"] = ledgerIdentity{id: 3, createdAt: &commonpb.Timestamp{Data: 1}}
-	require.Equal(t, "model-0", c.ledgerIdentityViolation([]*commonpb.LedgerInfo{stale}))
+	c.ledgerIdentities["model-0"] = ledgerIdentity{id: 3, createdAt: &ledgerpb.Timestamp{Data: 1}}
+	require.Equal(t, "model-0", c.ledgerIdentityViolation([]*ledgerpb.LedgerInfo{stale}))
 
 	c.inflight[1] = oracle.Bulk{Requests: []*servicepb.Request{actions.CreateLedgerAction("model-0", nil)}}
-	require.Empty(t, c.ledgerIdentityViolation([]*commonpb.LedgerInfo{stale}))
+	require.Empty(t, c.ledgerIdentityViolation([]*ledgerpb.LedgerInfo{stale}))
 
 	delete(c.inflight, 1)
 	c.pending = []*pendingObservation{{obs: observation{
 		bulk: oracle.Bulk{Requests: []*servicepb.Request{actions.CreateLedgerAction("model-0", nil)}},
 	}}}
-	require.Empty(t, c.ledgerIdentityViolation([]*commonpb.LedgerInfo{stale}),
+	require.Empty(t, c.ledgerIdentityViolation([]*ledgerpb.LedgerInfo{stale}),
 		"a create committed but not yet drained leaves either identity legal")
 
 	c.pending = nil
-	require.Equal(t, "model-0", c.ledgerIdentityViolation([]*commonpb.LedgerInfo{stale}),
+	require.Equal(t, "model-0", c.ledgerIdentityViolation([]*ledgerpb.LedgerInfo{stale}),
 		"once no create can land, the identity is the one creation reported")
 }
 
@@ -185,12 +185,12 @@ func TestListLedgersRowMatchesTheWholeModel(t *testing.T) {
 
 	create := &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
 		Name:                   "L",
-		DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
-		AccountTypes:           map[string]*commonpb.AccountType{"known": {Pattern: "known:{id}"}},
-		InitialSchema: []*commonpb.SetMetadataFieldTypeCommand{{
-			TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		DefaultEnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+		AccountTypes:           map[string]*ledgerpb.AccountType{"known": {Pattern: "known:{id}"}},
+		InitialSchema: []*ledgerpb.SetMetadataFieldTypeCommand{{
+			TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 			Key:        "rank",
-			Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+			Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 		}},
 	}}}
 	requests := []*servicepb.Request{
@@ -200,9 +200,9 @@ func TestListLedgersRowMatchesTheWholeModel(t *testing.T) {
 		// serves, so the two sources of declarations are both covered.
 		{Type: &servicepb.Request_SetMetadataFieldType{SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 			Ledger:     "L",
-			TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
+			TargetType: ledgerpb.TargetType_TARGET_TYPE_LEDGER,
 			Key:        "tier",
-			Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+			Type:       ledgerpb.MetadataType_METADATA_TYPE_BOOL,
 		}}},
 	}
 
@@ -213,7 +213,7 @@ func TestListLedgersRowMatchesTheWholeModel(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.GetLogs(), len(requests))
 
-	stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{PageSize: 10}})
+	stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{Options: &ledgerpb.ListOptions{PageSize: 10}})
 	require.NoError(t, err)
 	rows, err := drainStream(stream)
 	require.NoError(t, err)
@@ -238,10 +238,10 @@ func TestListLedgersRejectsAFilter(t *testing.T) {
 	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("L", nil)))
 	require.NoError(t, err)
 
-	stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{
+	stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{Options: &ledgerpb.ListOptions{
 		PageSize: 10,
-		Filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
-			Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "known:"},
+		Filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{Address: &ledgerpb.AddressMatch{
+			Match: &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "known:"},
 		}}},
 	}})
 	if err == nil {
@@ -270,11 +270,11 @@ func TestLedgerListingMatchesNeedsOneBase(t *testing.T) {
 	require.True(t, updated.OK, updated.Reason)
 	after := updated.State
 
-	row := &commonpb.LedgerInfo{Name: "A", Metadata: map[string]*commonpb.MetadataValue{
-		"owner": {Type: &commonpb.MetadataValue_StringValue{StringValue: "treasury"}},
+	row := &ledgerpb.LedgerInfo{Name: "A", Metadata: map[string]*ledgerpb.MetadataValue{
+		"owner": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "treasury"}},
 	}}
 	require.True(t, ledgerInfoMatches(after, row), "the row is the new state's A")
-	served := map[string]*commonpb.LedgerInfo{"A": row}
+	served := map[string]*ledgerpb.LedgerInfo{"A": row}
 	names := []string{"A"}
 
 	require.True(t, ledgerWindowMatches(before, names, "", 1, false, "A"), "the old fleet still holds B past A")
@@ -296,10 +296,10 @@ func TestIndexListingMatchesAVanishedLedger(t *testing.T) {
 	require.True(t, created.OK, created.Reason)
 	before := created.State
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k0")
 	indexB := oracletest.CreateIndexReq(id)
 	indexB.GetCreateIndex().Ledger = "B"
-	declareB := oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0", commonpb.MetadataType_METADATA_TYPE_STRING)
+	declareB := oracletest.SetFieldTypeReq(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k0", ledgerpb.MetadataType_METADATA_TYPE_STRING)
 	declareB.GetSetMetadataFieldType().Ledger = "B"
 	withIndex := before.Apply(oracle.Bulk{Requests: []*servicepb.Request{declareB, indexB}})
 	require.True(t, withIndex.OK, withIndex.Reason)

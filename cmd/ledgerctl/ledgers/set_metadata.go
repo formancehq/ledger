@@ -6,8 +6,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -100,7 +101,7 @@ func runSetMetadata(cmd *cobra.Command, _ []string) error {
 			Type: &servicepb.Request_SaveLedgerMetadata{
 				SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{
 					Ledger:   ledgerName,
-					Metadata: commonpb.MetadataFromGoMap(metadata),
+					Metadata: ledgerpb.MetadataFromGoMap(metadata),
 				},
 			},
 		},

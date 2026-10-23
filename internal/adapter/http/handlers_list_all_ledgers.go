@@ -5,8 +5,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // handleListAllLedgers handles GET / to list ledgers, paged by name.
@@ -28,8 +29,8 @@ func (s *Server) handleListAllLedgers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := func(l *commonpb.LedgerInfo) string { return l.GetName() }
-	slices.SortFunc(ledgers, func(a, b *commonpb.LedgerInfo) int { return strings.Compare(name(a), name(b)) })
+	name := func(l *ledgerpb.LedgerInfo) string { return l.GetName() }
+	slices.SortFunc(ledgers, func(a, b *ledgerpb.LedgerInfo) int { return strings.Compare(name(a), name(b)) })
 
 	ledgers, links := pageSorted(page, ledgers, name)
 	for i, ledger := range ledgers {

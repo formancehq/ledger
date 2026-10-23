@@ -11,7 +11,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -122,8 +122,8 @@ func writeProbeTransaction(ctx context.Context, client servicepb.BucketServiceCl
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{
-								commonpb.NewPosting("world", dest, "COIN", big.NewInt(1)),
+							Postings: []*ledgerpb.Posting{
+								ledgerpb.NewPosting("world", dest, "COIN", big.NewInt(1)),
 							},
 							Force: true,
 						},

@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -61,7 +61,7 @@ func runLedgersList(ctx context.Context, client servicepb.BucketServiceClient, c
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
 	stream, err := client.ListLedgers(readCtx, &servicepb.ListLedgersRequest{
-		Options: &commonpb.ListOptions{
+		Options: &ledgerpb.ListOptions{
 			PageSize: uint32(requestedPageSize),
 			Cursor:   pageToken(cursor),
 			Reverse:  reverse,
@@ -70,7 +70,7 @@ func runLedgersList(ctx context.Context, client servicepb.BucketServiceClient, c
 	})
 
 	var (
-		infos []*commonpb.LedgerInfo
+		infos []*ledgerpb.LedgerInfo
 		next  string
 	)
 
@@ -104,7 +104,7 @@ func runLedgersList(ctx context.Context, client servicepb.BucketServiceClient, c
 		return
 	}
 
-	served := make(map[string]*commonpb.LedgerInfo, len(infos))
+	served := make(map[string]*ledgerpb.LedgerInfo, len(infos))
 	names := make([]string, 0, len(infos))
 	ids := make(map[uint32]string, len(infos))
 
@@ -215,19 +215,19 @@ func runLedgersList(ctx context.Context, client servicepb.BucketServiceClient, c
 // to a client like a fleet that happens to match. The rate is high because the
 // listing is one arm of one slot of the read mix: a rarer roll leaves the
 // rejection unexercised over a whole local run.
-func rollLedgerListFilter() (*commonpb.QueryFilter, bool) {
+func rollLedgerListFilter() (*ledgerpb.QueryFilter, bool) {
 	if !oneIn(4) {
 		return nil, false
 	}
 
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
-		Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: poolAddress()},
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{Address: &ledgerpb.AddressMatch{
+		Match: &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: poolAddress()},
 	}}}, true
 }
 
 // handleLedgerListFilterOutcome validates the answer to a filter the endpoint
 // does not implement: InvalidArgument, and no page.
-func handleLedgerListFilterOutcome(err error, infos []*commonpb.LedgerInfo) {
+func handleLedgerListFilterOutcome(err error, infos []*ledgerpb.LedgerInfo) {
 	if status.Code(err) == codes.InvalidArgument {
 		// Coverage: the listing refused a filter it does not implement.
 		assert.Reachable("singleton_driver_model: ledger listing rejected an unsupported filter", nil)
@@ -312,7 +312,7 @@ func ledgerWindowMatches(base oracle.GlobalState, names []string, cursor string,
 
 // ledgerListingMatches reports whether base alone explains the whole page: its
 // window and every row's LedgerInfo.
-func ledgerListingMatches(base oracle.GlobalState, names []string, served map[string]*commonpb.LedgerInfo, cursor string, pageSize int, reverse bool, next string) bool {
+func ledgerListingMatches(base oracle.GlobalState, names []string, served map[string]*ledgerpb.LedgerInfo, cursor string, pageSize int, reverse bool, next string) bool {
 	if !ledgerWindowMatches(base, names, cursor, pageSize, reverse, next) {
 		return false
 	}

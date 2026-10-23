@@ -18,8 +18,8 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
@@ -81,16 +81,16 @@ func main() {
 			Type: &servicepb.Request_CreatePreparedQuery{
 				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 					Ledger: ledger,
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   queryName,
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-						Filter: &commonpb.QueryFilter{
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: &ledgerpb.QueryFilter{
 							// AccountHasAsset is served by the asynchronous read
 							// projection. The acknowledged transaction below creates
 							// exactly this USD/2 membership, so a successful query can
 							// only include the probe after projection certification.
-							Filter: &commonpb.QueryFilter_AccountHasAsset{
-								AccountHasAsset: &commonpb.AccountHasAssetCondition{
+							Filter: &ledgerpb.QueryFilter_AccountHasAsset{
+								AccountHasAsset: &ledgerpb.AccountHasAssetCondition{
 									AssetBase: "USD",
 									Precision: 2,
 								},
@@ -115,10 +115,10 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: probeAccount,
-								Amount:      commonpb.NewUint256FromUint64(1),
+								Amount:      ledgerpb.NewUint256FromUint64(1),
 								Asset:       "USD/2",
 							}},
 							Reference: fmt.Sprintf("projection-%d", run),

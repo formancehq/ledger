@@ -9,20 +9,21 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func seedPreparedQuery(t *testing.T, s *dal.Store, attrs *attributes.Attributes, ledger, name string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) {
+func seedPreparedQuery(t *testing.T, s *dal.Store, attrs *attributes.Attributes, ledger, name string, target ledgerpb.QueryTarget, filter *ledgerpb.QueryFilter) {
 	t.Helper()
 
 	batch := s.OpenWriteSession()
-	_, err := attrs.PreparedQuery.Set(batch, domain.PreparedQueryKey{LedgerName: ledger, Name: name}.Bytes(), &commonpb.PreparedQuery{
+	_, err := attrs.PreparedQuery.Set(batch, domain.PreparedQueryKey{LedgerName: ledger, Name: name}.Bytes(), &ledgerpb.PreparedQuery{
 		Name:   name,
 		Target: target,
 		Filter: filter,
@@ -105,7 +106,7 @@ func TestExecute_ReadsDefinitionAndLedgerFromMainSnapshot(t *testing.T) {
 
 			rs := newTestReadStore(t)
 			attrs := attributes.New()
-			seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
+			seedPreparedQuery(t, store, attrs, "l", "q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
 
 			opener := &mutatingQueryHandleStore{
 				Store: store,
@@ -115,9 +116,9 @@ func TestExecute_ReadsDefinitionAndLedgerFromMainSnapshot(t *testing.T) {
 					case "prepared query deleted":
 						require.NoError(t, attrs.PreparedQuery.Delete(batch, domain.PreparedQueryKey{LedgerName: "l", Name: "q"}.Bytes()))
 					case "ledger deleted":
-						require.NoError(t, state.SaveLedger(batch, "l", &commonpb.LedgerInfo{
+						require.NoError(t, state.SaveLedger(batch, "l", &ledgerpb.LedgerInfo{
 							Name:      "l",
-							DeletedAt: &commonpb.Timestamp{},
+							DeletedAt: &ledgerpb.Timestamp{},
 						}))
 					default:
 						t.Fatalf("unknown mutation %q", mutation)
@@ -154,20 +155,20 @@ func TestExecute_UnfilteredQueryDoesNotWaitForTheFold(t *testing.T) {
 
 	for _, tc := range []struct {
 		name    string
-		target  commonpb.QueryTarget
-		filter  *commonpb.QueryFilter
+		target  ledgerpb.QueryTarget
+		filter  *ledgerpb.QueryFilter
 		blocked bool
 	}{
-		{name: "unfiltered accounts", target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, blocked: false},
-		{name: "unfiltered transactions", target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, blocked: false},
-		{name: "unfiltered logs", target: commonpb.QueryTarget_QUERY_TARGET_LOGS, blocked: true},
+		{name: "unfiltered accounts", target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, blocked: false},
+		{name: "unfiltered transactions", target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, blocked: false},
+		{name: "unfiltered logs", target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS, blocked: true},
 		{
 			name:   "filtered accounts",
-			target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field:     &commonpb.FieldRef{Metadata: "tier"},
-					Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+			target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field:     &ledgerpb.FieldRef{Metadata: "tier"},
+					Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{}},
 				},
 			}},
 			blocked: true,
@@ -226,19 +227,19 @@ func TestExecute_UnfilteredQueryDoesNotWaitForTheFold(t *testing.T) {
 func TestExecute_DefinitionMutationAfterSnapshotIsNotObserved(t *testing.T) {
 	t.Parallel()
 
-	alignedFilter := func() *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field:     &commonpb.FieldRef{Metadata: "tier"},
-				Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+	alignedFilter := func() *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field:     &ledgerpb.FieldRef{Metadata: "tier"},
+				Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{}},
 			},
 		}}
 	}
 
 	for _, tc := range []struct {
 		name     string
-		seeded   *commonpb.QueryFilter
-		replaced *commonpb.QueryFilter
+		seeded   *ledgerpb.QueryFilter
+		replaced *ledgerpb.QueryFilter
 		deleted  bool
 		wantWait bool
 	}{
@@ -273,7 +274,7 @@ func TestExecute_DefinitionMutationAfterSnapshotIsNotObserved(t *testing.T) {
 
 			attrs := attributes.New()
 			key := domain.PreparedQueryKey{LedgerName: "l", Name: "q"}.Bytes()
-			seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, tc.seeded)
+			seedPreparedQuery(t, store, attrs, "l", "q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, tc.seeded)
 
 			opener := &mutatingQueryHandleStore{
 				Store: store,
@@ -282,9 +283,9 @@ func TestExecute_DefinitionMutationAfterSnapshotIsNotObserved(t *testing.T) {
 					if tc.deleted {
 						require.NoError(t, attrs.PreparedQuery.Delete(batch, key))
 					} else {
-						_, err := attrs.PreparedQuery.Set(batch, key, &commonpb.PreparedQuery{
+						_, err := attrs.PreparedQuery.Set(batch, key, &ledgerpb.PreparedQuery{
 							Name:   "q",
-							Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+							Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 							Filter: tc.replaced,
 						})
 						require.NoError(t, err)
@@ -331,7 +332,7 @@ func assertLivePreparedQuery(
 	store *dal.Store,
 	attrs *attributes.Attributes,
 	deleted bool,
-	replaced *commonpb.QueryFilter,
+	replaced *ledgerpb.QueryFilter,
 ) {
 	t.Helper()
 
@@ -380,11 +381,11 @@ func assertLivePreparedQuery(
 func TestExecute_DefinitionCommittedBeforeSnapshotIsObserved(t *testing.T) {
 	t.Parallel()
 
-	alignedFilter := func() *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field:     &commonpb.FieldRef{Metadata: "tier"},
-				Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+	alignedFilter := func() *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field:     &ledgerpb.FieldRef{Metadata: "tier"},
+				Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{}},
 			},
 		}}
 	}
@@ -397,8 +398,8 @@ func TestExecute_DefinitionCommittedBeforeSnapshotIsObserved(t *testing.T) {
 
 	for _, tc := range []struct {
 		name     string
-		seeded   *commonpb.QueryFilter
-		replaced *commonpb.QueryFilter
+		seeded   *ledgerpb.QueryFilter
+		replaced *ledgerpb.QueryFilter
 		deleted  bool
 		want     string
 	}{
@@ -436,7 +437,7 @@ func TestExecute_DefinitionCommittedBeforeSnapshotIsObserved(t *testing.T) {
 
 			attrs := attributes.New()
 			key := domain.PreparedQueryKey{LedgerName: "l", Name: "q"}.Bytes()
-			seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, tc.seeded)
+			seedPreparedQuery(t, store, attrs, "l", "q", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, tc.seeded)
 
 			opener := &mutatingQueryHandleStore{
 				Store: store,
@@ -445,9 +446,9 @@ func TestExecute_DefinitionCommittedBeforeSnapshotIsObserved(t *testing.T) {
 					if tc.deleted {
 						require.NoError(t, attrs.PreparedQuery.Delete(batch, key))
 					} else {
-						_, err := attrs.PreparedQuery.Set(batch, key, &commonpb.PreparedQuery{
+						_, err := attrs.PreparedQuery.Set(batch, key, &ledgerpb.PreparedQuery{
 							Name:   "q",
-							Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+							Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 							Filter: tc.replaced,
 						})
 						require.NoError(t, err)

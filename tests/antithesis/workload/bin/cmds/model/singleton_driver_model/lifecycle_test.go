@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -233,13 +233,13 @@ func TestValidateLifecycleLogCanonicalizesAccountTypeNames(t *testing.T) {
 
 	req := &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
 		Name:         "L",
-		AccountTypes: map[string]*commonpb.AccountType{"asset": {}},
+		AccountTypes: map[string]*ledgerpb.AccountType{"asset": {}},
 	}}}
-	payload := &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{
+	payload := &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{
 		Id:           1,
 		Name:         "L",
-		CreatedAt:    &commonpb.Timestamp{Data: 1},
-		AccountTypes: map[string]*commonpb.AccountType{"asset": {Name: "asset"}},
+		CreatedAt:    &ledgerpb.Timestamp{Data: 1},
+		AccountTypes: map[string]*ledgerpb.AccountType{"asset": {Name: "asset"}},
 	}}}
 
 	require.NoError(t, validateLifecycleLog(req, nil, payload))

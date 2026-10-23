@@ -1,25 +1,25 @@
 package admission
 
-import "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+import "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 // Small builder helpers for constructing MirrorRewriteRule protos in tests.
 // The proto oneof nesting is verbose; these keep the test tables readable.
 
-func anyRuleWithMatch(match string) *commonpb.MirrorRewriteRule {
-	return &commonpb.MirrorRewriteRule{
-		Scope: &commonpb.MirrorRewriteRule_AnyVariant{
-			AnyVariant: &commonpb.AnyVariantRule{Match: match},
+func anyRuleWithMatch(match string) *ledgerpb.MirrorRewriteRule {
+	return &ledgerpb.MirrorRewriteRule{
+		Scope: &ledgerpb.MirrorRewriteRule_AnyVariant{
+			AnyVariant: &ledgerpb.AnyVariantRule{Match: match},
 		},
 	}
 }
 
-func anyRuleRewriteAddress(pattern, replacement string) *commonpb.MirrorRewriteRule {
-	return &commonpb.MirrorRewriteRule{
-		Scope: &commonpb.MirrorRewriteRule_AnyVariant{
-			AnyVariant: &commonpb.AnyVariantRule{
-				Actions: []*commonpb.AnyVariantAction{{
-					Action: &commonpb.AnyVariantAction_RewriteAddress{
-						RewriteAddress: &commonpb.RewriteAddressAction{Pattern: pattern, Replacement: replacement},
+func anyRuleRewriteAddress(pattern, replacement string) *ledgerpb.MirrorRewriteRule {
+	return &ledgerpb.MirrorRewriteRule{
+		Scope: &ledgerpb.MirrorRewriteRule_AnyVariant{
+			AnyVariant: &ledgerpb.AnyVariantRule{
+				Actions: []*ledgerpb.AnyVariantAction{{
+					Action: &ledgerpb.AnyVariantAction_RewriteAddress{
+						RewriteAddress: &ledgerpb.RewriteAddressAction{Pattern: pattern, Replacement: replacement},
 					},
 				}},
 			},
@@ -27,16 +27,16 @@ func anyRuleRewriteAddress(pattern, replacement string) *commonpb.MirrorRewriteR
 	}
 }
 
-func createdRuleSetMetadata(match, key, value string, stop bool) *commonpb.MirrorRewriteRule {
-	return &commonpb.MirrorRewriteRule{
-		Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransactionRule{
+func createdRuleSetMetadata(match, key, value string, stop bool) *ledgerpb.MirrorRewriteRule {
+	return &ledgerpb.MirrorRewriteRule{
+		Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
+			CreatedTransaction: &ledgerpb.CreatedTransactionRule{
 				Match: match,
-				Actions: []*commonpb.CreatedTransactionAction{{
-					Action: &commonpb.CreatedTransactionAction_SetMetadata{
-						SetMetadata: &commonpb.SetMetadataAction{
+				Actions: []*ledgerpb.CreatedTransactionAction{{
+					Action: &ledgerpb.CreatedTransactionAction_SetMetadata{
+						SetMetadata: &ledgerpb.SetMetadataAction{
 							Key:    key,
-							Source: &commonpb.SetMetadataAction_Value{Value: value},
+							Source: &ledgerpb.SetMetadataAction_Value{Value: value},
 						},
 					},
 				}},

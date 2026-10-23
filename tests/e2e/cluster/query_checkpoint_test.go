@@ -11,19 +11,19 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 
@@ -71,7 +71,7 @@ var _ = Describe("Query Checkpoints", func() {
 		var checkpointID uint64
 
 		It("should create a transaction before the checkpoint", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(1000), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -104,7 +104,7 @@ var _ = Describe("Query Checkpoints", func() {
 		})
 
 		It("should create a post-checkpoint transaction", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bob", big.NewInt(500), "EUR"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -223,7 +223,7 @@ var _ = Describe("Query Checkpoints", func() {
 
 		It("should create tx1, checkpoint1, tx2, checkpoint2, tx3", func() {
 			// tx0: world -> alice 100
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -233,7 +233,7 @@ var _ = Describe("Query Checkpoints", func() {
 			Expect(err).To(Succeed())
 
 			// tx1: world -> bob 200
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -243,7 +243,7 @@ var _ = Describe("Query Checkpoints", func() {
 			Expect(err).To(Succeed())
 
 			// tx2: world -> charlie 300
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -324,7 +324,7 @@ var _ = Describe("Query Checkpoints", func() {
 
 		It("builds three balance steps with a checkpoint after each credit", func() {
 			credit := func(amount int64) {
-				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", acc, big.NewInt(amount), asset),
 				}, nil)))
 				Expect(err).To(Succeed())
@@ -416,7 +416,7 @@ var _ = Describe("Query Checkpoints", func() {
 			// Repeat create-then-read several times to shrink the odds the former
 			// race window is simply missed by chance.
 			for i := 0; i < 10; i++ {
-				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 				}, nil)))
 				Expect(err).To(Succeed())
@@ -463,7 +463,7 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 		_, err := servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
-		_, err = servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err = servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 		}, nil)))
 		Expect(err).To(Succeed())
@@ -585,7 +585,7 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 })
 
 // listAllTransactionsFromCheckpoint collects all transactions from a checkpoint via the streaming RPC.
-func listAllTransactionsFromCheckpoint(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64, checkpointID uint64, filter *commonpb.QueryFilter) ([]*commonpb.Transaction, error) {
+func listAllTransactionsFromCheckpoint(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64, checkpointID uint64, filter *ledgerpb.QueryFilter) ([]*ledgerpb.Transaction, error) {
 	var cursor string
 	if afterTxID > 0 {
 		cursor = pagecursor.Cursor{Key: strconv.FormatUint(afterTxID, 10)}.Encode()
@@ -593,18 +593,18 @@ func listAllTransactionsFromCheckpoint(ctx context.Context, client servicepb.Buc
 
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger: ledgerName,
-		Options: &commonpb.ListOptions{
+		Options: &ledgerpb.ListOptions{
 			PageSize: pageSize,
 			Cursor:   cursor,
 			Filter:   filter,
-			Read:     &commonpb.ReadOptions{CheckpointId: checkpointID},
+			Read:     &ledgerpb.ReadOptions{CheckpointId: checkpointID},
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	var transactions []*commonpb.Transaction
+	var transactions []*ledgerpb.Transaction
 	for {
 		tx, err := stream.Recv()
 		if err == io.EOF {
@@ -622,7 +622,7 @@ func listAllTransactionsFromCheckpoint(ctx context.Context, client servicepb.Buc
 }
 
 // aggregateAssets returns the asset codes present in an AggregateVolumes result.
-func aggregateAssets(result *commonpb.AggregateResult) []string {
+func aggregateAssets(result *ledgerpb.AggregateResult) []string {
 	assets := make([]string, 0, len(result.GetVolumes()))
 	for _, v := range result.GetVolumes() {
 		assets = append(assets, v.GetAsset())

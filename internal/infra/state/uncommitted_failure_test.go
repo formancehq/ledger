@@ -6,12 +6,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func clusterPolicyOrder(policy *commonpb.ClusterPolicy) *raftcmdpb.Order {
+func clusterPolicyOrder(policy *ledgerpb.ClusterPolicy) *raftcmdpb.Order {
 	return &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
 		SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
 			SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: policy},
@@ -26,7 +27,7 @@ func TestApplyProposal_InvalidClusterPolicyIsUncommittedAndRetryable(t *testing.
 	beforeTimestamp := fsm.State.LastAppliedTimestamp
 
 	proposal := makeProposal(1, clusterPolicyOrder(nil))
-	proposal.Idempotency = &commonpb.Idempotency{Key: "policy-retry"}
+	proposal.Idempotency = &ledgerpb.Idempotency{Key: "policy-retry"}
 	result, err := fsm.ApplyEntries(context.Background(), store, makeEntry(t, 1, proposal))
 	require.NoError(t, err)
 	var invalid *domain.ErrClusterPolicyInvalid
@@ -38,7 +39,7 @@ func TestApplyProposal_InvalidClusterPolicyIsUncommittedAndRetryable(t *testing.
 	require.False(t, frozen)
 
 	proposal = makeProposal(2, clusterPolicyOrder(idempotencyTestPolicy(2, 1000)))
-	proposal.Idempotency = &commonpb.Idempotency{Key: "policy-retry"}
+	proposal.Idempotency = &ledgerpb.Idempotency{Key: "policy-retry"}
 	result, err = fsm.ApplyEntries(context.Background(), store, makeEntry(t, 2, proposal))
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)
@@ -59,7 +60,7 @@ func TestApplyProposal_ClusterPolicyRevisionConflictIsUncommitted(t *testing.T) 
 
 	conflicting := idempotencyTestPolicy(2, 2000)
 	proposal := makeProposal(2, clusterPolicyOrder(conflicting))
-	proposal.Idempotency = &commonpb.Idempotency{Key: "policy-conflict"}
+	proposal.Idempotency = &ledgerpb.Idempotency{Key: "policy-conflict"}
 	result, err = fsm.ApplyEntries(ctx, store, makeEntry(t, 2, proposal))
 	require.NoError(t, err)
 	var conflict *domain.ErrClusterPolicyRevisionConflict

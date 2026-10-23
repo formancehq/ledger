@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
@@ -32,7 +33,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -85,19 +85,19 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	writeGate := health.NewMockWriteGate(gomock.NewController(t))
 	writeGate.EXPECT().CheckWritesAllowed().Return(nil)
 	adm := admission.NewAdmission(store, logger, proposer, builder, meters, writeGate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
-	config := &commonpb.MirrorSourceConfig{
+	config := &ledgerpb.MirrorSourceConfig{
 		LedgerName: "source-ledger",
-		Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
+		Type: &ledgerpb.MirrorSourceConfig_Http{Http: &ledgerpb.HttpMirrorSourceConfig{
 			BaseUrl: "https://audit-user:" + password + "@localhost/%zz",
 		}},
 	}
 	_, err = adm.Admit(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: ledgerName, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: config}},
+		Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: ledgerName, Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: config}},
 	}))
 	require.ErrorIs(t, err, admission.ErrMirrorHTTPURLInvalid)
 	require.Equal(t, uint64(1), tracker.Next(), "rejection must not propose to Raft")
 	key := domain.LedgerKey{Name: ledgerName}
-	info := &commonpb.LedgerInfo{Name: ledgerName, Id: 1, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: config}
+	info := &ledgerpb.LedgerInfo{Name: ledgerName, Id: 1, Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: config}
 	session := store.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(session, ledgerName, info))
 	_, _, err = registry.Ledgers.PutWithCache(session, 0, key.Bytes(), info)
@@ -108,7 +108,7 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	controller := ctrl.NewDefaultController(adm, store, logger, attrs, nil, nil, meters.Meter("test"))
 	ledger, err := controller.GetLedgerByName(ctx, ledgerName)
 	require.NoError(t, err)
-	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, ledger.GetMode())
+	require.Equal(t, ledgerpb.LedgerMode_LEDGER_MODE_MIRROR, ledger.GetMode())
 	require.Nil(t, ledger.GetMirrorSyncProgress().GetError())
 	source := v2.NewHTTPSource(ledger.GetMirrorSource().GetHttp().GetBaseUrl(), config.GetLedgerName(), &http.Client{Transport: rejectingHTTPMirrorTransport{t: t}})
 	t.Cleanup(func() { require.NoError(t, source.Close()) })

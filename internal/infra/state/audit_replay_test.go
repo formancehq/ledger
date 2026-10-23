@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -18,7 +18,7 @@ func TestAuditReplayerUsesRecoveredQueryCheckpointCounter(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, replayer.Close()) })
 
-	logs, err := replayer.Replay(&commonpb.Timestamp{Data: 1}, []*raftcmdpb.Order{{
+	logs, err := replayer.Replay(&ledgerpb.Timestamp{Data: 1}, []*raftcmdpb.Order{{
 		Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
 				CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
@@ -53,7 +53,7 @@ func TestAuditReplayerCompilesScriptsItself(t *testing.T) {
 			}}
 		})
 	}
-	requirePosting := func(t *testing.T, logs []*commonpb.Log, amount uint64) {
+	requirePosting := func(t *testing.T, logs []*ledgerpb.Log, amount uint64) {
 		t.Helper()
 
 		require.Len(t, logs, 1)
@@ -68,7 +68,7 @@ func TestAuditReplayerCompilesScriptsItself(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, replayer.Close()) })
 
-	at := &commonpb.Timestamp{Data: 1}
+	at := &ledgerpb.Timestamp{Data: 1}
 
 	_, err = replayer.Replay(at, []*raftcmdpb.Order{ledgerOrder(func(o *raftcmdpb.LedgerScopedOrder) {
 		o.Payload = &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}}
@@ -76,7 +76,7 @@ func TestAuditReplayerCompilesScriptsItself(t *testing.T) {
 	require.NoError(t, err)
 
 	logs, err := replayer.Replay(at, []*raftcmdpb.Order{createTx(&raftcmdpb.CreateTransactionOrder{
-		Script: &commonpb.Script{Plain: `send [USD/2 100] (
+		Script: &ledgerpb.Script{Plain: `send [USD/2 100] (
   source = @world
   destination = @users:alice
 )`},

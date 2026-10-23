@@ -25,9 +25,9 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
@@ -79,7 +79,7 @@ func TestReferenceConflictSkipLostResponse(t *testing.T) {
 				if step == "duplicate" {
 					skipped := applyPayload(t, delivered).GetOrderSkipped()
 					require.NotNil(t, skipped)
-					require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
+					require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
 					firstID := applyPayload(t, attempts["first"][0].response).GetCreatedTransaction().GetTransaction().GetId()
 					require.Equal(t, strconv.FormatUint(firstID, 10), skipped.GetFacts()["existingTransactionId"])
 					require.Equal(t, ledger, skipped.GetFacts()["ledger"])
@@ -88,7 +88,7 @@ func TestReferenceConflictSkipLostResponse(t *testing.T) {
 					require.NotNil(t, applyPayload(t, original).GetCreatedTransaction(), "fault must follow a committed creation")
 					if skipped := applyPayload(t, delivered).GetOrderSkipped(); skipped != nil {
 						created := applyPayload(t, original).GetCreatedTransaction().GetTransaction()
-						require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
+						require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
 						require.Equal(t, created.GetReference(), skipped.GetFacts()["reference"])
 						require.Equal(t, ledger, skipped.GetFacts()["ledger"])
 						require.Equal(t, strconv.FormatUint(created.GetId(), 10), skipped.GetFacts()["existingTransactionId"], "retry skipped its own committed transaction")
@@ -154,7 +154,7 @@ func TestReferenceConflictSkipUnkeyedControl(t *testing.T) {
 	require.NotNil(t, created)
 	skipped := applyPayload(t, calls[1].response).GetOrderSkipped()
 	require.NotNil(t, skipped)
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
+	require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
 	require.Equal(t, created.GetReference(), skipped.GetFacts()["reference"])
 	require.Equal(t, ledger, skipped.GetFacts()["ledger"])
 	require.Equal(t, strconv.FormatUint(created.GetId(), 10), skipped.GetFacts()["existingTransactionId"])
@@ -349,7 +349,7 @@ func referenceTestServer(t *testing.T) (context.Context, servicepb.BucketService
 	return ctx, client
 }
 
-func applyPayload(t *testing.T, resp *servicepb.ApplyResponse) *commonpb.LedgerLogPayload {
+func applyPayload(t *testing.T, resp *servicepb.ApplyResponse) *ledgerpb.LedgerLogPayload {
 	t.Helper()
 	require.Len(t, resp.GetLogs(), 1, "Apply must return exactly one log")
 
@@ -361,7 +361,7 @@ func assertTransactions(t *testing.T, ctx context.Context, client servicepb.Buck
 	ctx = metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{Ledger: ledger})
 	require.NoError(t, err)
-	byReference := make(map[string][]*commonpb.Transaction)
+	byReference := make(map[string][]*ledgerpb.Transaction)
 	for {
 		tx, err := stream.Recv()
 		if errors.Is(err, io.EOF) {

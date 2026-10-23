@@ -7,25 +7,27 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
-// timestampToStdTime converts a commonpb.Timestamp to standard time.Time
-func timestampToStdTime(ts *commonpb.Timestamp) time.Time {
+// timestampToStdTime converts a ledgerpb.Timestamp to standard time.Time
+func timestampToStdTime(ts *ledgerpb.Timestamp) time.Time {
 	return time.UnixMicro(int64(ts.GetData()))
 }
 
 // idsOf extracts transaction IDs in input order. Handy for asserting that two
 // filters return the same set without depending on the wire order.
-func idsOf(txs []*commonpb.Transaction) []uint64 {
+func idsOf(txs []*ledgerpb.Transaction) []uint64 {
 	out := make([]uint64, len(txs))
 	for i, tx := range txs {
 		out[i] = tx.GetId()
@@ -45,7 +47,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should create a simple transaction", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -63,7 +65,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should use the command date as timestamp when no timestamp is provided", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "ts-default", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -79,7 +81,7 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		It("Should use the user-provided timestamp when specified", func() {
 			customTime := time.Date(2020, 6, 15, 12, 0, 0, 0, time.UTC)
-			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "ts-custom", big.NewInt(100), "USD"),
 			}, nil, nil)
 			actions.WithTimestamp(req, customTime)
@@ -103,7 +105,7 @@ var _ = Describe("Transactions", Ordered, func() {
 				"category":    "test",
 			}
 
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "account-metadata", big.NewInt(100), "USD"),
 			}, metadata, nil)))
 			Expect(err).To(Succeed())
@@ -115,20 +117,20 @@ var _ = Describe("Transactions", Ordered, func() {
 			applyLog := log.Payload.GetApply()
 			createdTx := applyLog.Log.Data.GetCreatedTransaction()
 			Expect(createdTx.Transaction.Metadata).NotTo(BeNil())
-			txMeta := commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)
+			txMeta := ledgerpb.MetadataToGoMap(createdTx.Transaction.Metadata)
 			Expect(txMeta["description"]).To(Equal("Test transaction"))
 			Expect(txMeta["category"]).To(Equal("test"))
 		})
 
 		It("Should create a transaction with account metadata", func() {
-			accountMetadata := map[string]*commonpb.MetadataMap{
-				"account-with-meta": commonpb.MetadataMapFromGoMap(map[string]string{
+			accountMetadata := map[string]*ledgerpb.MetadataMap{
+				"account-with-meta": ledgerpb.MetadataMapFromGoMap(map[string]string{
 					"account_type": "asset",
 					"label":        "Account with Metadata",
 				}),
 			}
 
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "account-with-meta", big.NewInt(100), "USD"),
 			}, nil, accountMetadata)))
 			Expect(err).To(Succeed())
@@ -158,7 +160,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			}
 
 			for i, tx := range transactions {
-				resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting(tx.source, tx.destination, tx.amount, tx.asset),
 				}, nil, nil)))
 				Expect(err).To(Succeed(), "Failed to create transaction %d", i+1)
@@ -183,7 +185,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should create a transaction with multiple postings", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "account-a", big.NewInt(100), "USD"),
 				actions.NewPosting("world", "account-b", big.NewInt(200), "USD"),
 				actions.NewPosting("world", "account-c", big.NewInt(300), "USD"),
@@ -222,7 +224,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should create a transaction with multiple assets", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "multi-asset-account", big.NewInt(100), "USD"),
 				actions.NewPosting("world", "multi-asset-account", big.NewInt(50), "EUR"),
 				actions.NewPosting("world", "multi-asset-account", big.NewInt(1000), "JPY"),
@@ -244,13 +246,13 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should create multiple transactions in bulk", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bulk-account-1", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bulk-account-2", big.NewInt(200), "USD"),
 				}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bulk-account-3", big.NewInt(300), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -269,7 +271,7 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		It("Should create accounts implicitly via transaction", func() {
 			// Create a transaction to a new account
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "implicit-account", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -289,7 +291,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			largeAmount := new(big.Int)
 			largeAmount.SetString("99999999999999999999999999999", 10)
 
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "large-amount-account", largeAmount, "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -316,13 +318,13 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		It("Should fail when source has insufficient funds", func() {
 			// First, fund the account
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "limited-account", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
 			// Try to send more than available
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("limited-account", "destination", big.NewInt(150), "USD"),
 			}, nil, nil)))
 			Expect(err).To(HaveOccurred())
@@ -340,7 +342,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should fail when ledger does not exist", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("non-existent-ledger", []*commonpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("non-existent-ledger", []*ledgerpb.Posting{
 				actions.NewPosting("world", "account", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(HaveOccurred())
@@ -357,7 +359,7 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		It("Should allow world account to have negative balance", func() {
 			// World can send unlimited funds
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "recipient", big.NewInt(1000000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -391,7 +393,7 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		It("Should get a transaction by ID", func() {
 			// Create a transaction
-			createResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			createResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "read-account", big.NewInt(100), "USD"),
 			}, map[string]string{"description": "Test transaction"}, nil)))
 			Expect(err).To(Succeed())
@@ -414,7 +416,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(getResp.Transaction.Postings[0].Source).To(Equal("world"))
 			Expect(getResp.Transaction.Postings[0].Destination).To(Equal("read-account"))
 			Expect(getResp.Transaction.Postings[0].Asset).To(Equal("USD"))
-			Expect(commonpb.MetadataToGoMap(getResp.Transaction.Metadata)["description"]).To(Equal("Test transaction"))
+			Expect(ledgerpb.MetadataToGoMap(getResp.Transaction.Metadata)["description"]).To(Equal("Test transaction"))
 		})
 
 		It("Should return error for non-existent transaction", func() {
@@ -436,13 +438,13 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		It("Should correctly track input and output volumes", func() {
 			// Fund an account
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "volume-account", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
 			// Send some out
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("volume-account", "other", big.NewInt(300), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -460,22 +462,22 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		It("Should handle circular transactions correctly", func() {
 			// A -> B -> C -> A cycle
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "cycle-a", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("cycle-a", "cycle-b", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("cycle-b", "cycle-c", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("cycle-c", "cycle-a", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -504,7 +506,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			// Create 5 transactions
 			createdTxIDs = nil
 			for i := 0; i < 5; i++ {
-				resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "list-account", big.NewInt(int64(100*(i+1))), "USD"),
 				}, map[string]string{"index": string(rune('A' + i))}, nil)))
 				Expect(err).To(Succeed())
@@ -605,7 +607,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(tx.Postings[0].Destination).To(Equal("list-account"))
 			Expect(tx.Postings[0].Asset).To(Equal("USD"))
 			Expect(tx.Metadata).NotTo(BeNil())
-			Expect(commonpb.MetadataToGoMap(tx.Metadata)["index"]).To(Equal("E"))
+			Expect(ledgerpb.MetadataToGoMap(tx.Metadata)["index"]).To(Equal("E"))
 		})
 
 		It("Should handle large page sizes correctly", func() {
@@ -630,13 +632,13 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Bulk create 3 transactions
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(bulkLedgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(bulkLedgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bulk-1", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(bulkLedgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(bulkLedgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bulk-2", big.NewInt(200), "USD"),
 				}, nil, nil),
-				actions.CreateTransactionAction(bulkLedgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(bulkLedgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bulk-3", big.NewInt(300), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -659,7 +661,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		// transaction at the given log index. Post-commit volumes are part of
 		// every persisted transaction, so this is never nil for a successful
 		// create.
-		pcvOf := func(resp *servicepb.ApplyResponse, logIdx int) map[string]*commonpb.VolumesByAssets {
+		pcvOf := func(resp *servicepb.ApplyResponse, logIdx int) map[string]*ledgerpb.VolumesByAssets {
 			createdTx := resp.Logs[logIdx].Payload.GetApply().Log.Data.GetCreatedTransaction()
 			Expect(createdTx.GetTransaction().GetPostCommitVolumes()).NotTo(BeNil(),
 				"every created transaction must carry post-commit volumes")
@@ -673,7 +675,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should include postCommitVolumes for a simple transaction", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "ev-simple", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -695,7 +697,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should include correct volumes for multiple postings", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "ev-multi-a", big.NewInt(100), "USD"),
 				actions.NewPosting("world", "ev-multi-b", big.NewInt(200), "USD"),
 			}, nil, nil)))
@@ -713,7 +715,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should include correct volumes for multiple assets", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "ev-multi-asset", big.NewInt(100), "USD"),
 				actions.NewPosting("world", "ev-multi-asset", big.NewInt(50), "EUR"),
 			}, nil, nil)))
@@ -734,7 +736,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should reflect cumulative volumes across sequential transactions", func() {
-			resp1, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp1, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "ev-cumul", big.NewInt(500), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -743,7 +745,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(pcv1["ev-cumul"].FindVolume("USD", "").GetInput().DecimalString()).To(Equal("500"))
 			Expect(pcv1["ev-cumul"].FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("0"))
 
-			resp2, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp2, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("ev-cumul", "ev-cumul-dest", big.NewInt(200), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -756,7 +758,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should include post-commit volumes on a force transaction", func() {
-			req := actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			req := actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("ev-force-src", "ev-force-dst", big.NewInt(100), "USD"),
 			}, nil)
 
@@ -791,10 +793,10 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should include postCommitVolumes for every transaction in a bulk request", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "ev-bulk-a", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "ev-bulk-b", big.NewInt(200), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -805,7 +807,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should carry the same snapshot on the unitary get and list reads", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "ev-read", big.NewInt(300), "GBP"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -837,7 +839,7 @@ var _ = Describe("Transactions", Ordered, func() {
 				txns, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, nil)
 				g.Expect(err).To(Succeed())
 
-				var found *commonpb.Transaction
+				var found *ledgerpb.Transaction
 				for _, tx := range txns {
 					if tx.GetId() == txID {
 						found = tx
@@ -858,34 +860,34 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create ledger with metadata schema then indexes for the fields we'll filter on
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-				{TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "category", Type: commonpb.MetadataType_METADATA_TYPE_STRING},
-				{TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "priority", Type: commonpb.MetadataType_METADATA_TYPE_STRING},
-				{TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "tier", Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
+				{TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "category", Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
+				{TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "priority", Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
+				{TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "tier", Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 			}),
 				actions.CreateTransactionMetadataIndexAction(ledgerName, "category"),
 				actions.CreateTransactionMetadataIndexAction(ledgerName, "priority"),
 				actions.CreateTransactionMetadataIndexAction(ledgerName, "tier")))
 			Expect(err).To(Succeed())
 
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category")).To(Succeed())
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority")).To(Succeed())
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tier")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "category")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "priority")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "tier")).To(Succeed())
 
 			// Create transactions with various metadata
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 			}, map[string]string{"category": "payment", "priority": "high"}, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "users:bob", big.NewInt(200), "EUR"),
 				}, map[string]string{"category": "refund", "priority": "low"}, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "merchants:shop1", big.NewInt(300), "USD"),
 				}, map[string]string{"category": "payment", "priority": "low"}, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "users:charlie", big.NewInt(400), "GBP"),
 				}, map[string]string{"category": "transfer"}, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "merchants:shop2", big.NewInt(500), "USD"),
 				}, nil, nil), // No metadata
 			))
@@ -908,7 +910,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			// Verify all returned transactions have category=payment
 			for _, tx := range txs {
 				Expect(tx.Metadata).NotTo(BeNil())
-				Expect(commonpb.MetadataToGoMap(tx.Metadata)["category"]).To(Equal("payment"))
+				Expect(ledgerpb.MetadataToGoMap(tx.Metadata)["category"]).To(Equal("payment"))
 			}
 		})
 
@@ -917,7 +919,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
 			Expect(err).To(Succeed())
 			Expect(txs).To(HaveLen(1))
-			Expect(commonpb.MetadataToGoMap(txs[0].Metadata)["category"]).To(Equal("refund"))
+			Expect(ledgerpb.MetadataToGoMap(txs[0].Metadata)["category"]).To(Equal("refund"))
 		})
 
 		It("Should return empty list when no transactions match the filter", func() {
@@ -936,10 +938,10 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should combine filters with AND", func() {
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_And{
-					And: &commonpb.AndFilter{
-						Filters: []*commonpb.QueryFilter{
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_And{
+					And: &ledgerpb.AndFilter{
+						Filters: []*ledgerpb.QueryFilter{
 							actions.StringMetadataFilter("category", "payment"),
 							actions.StringMetadataFilter("priority", "high"),
 						},
@@ -949,16 +951,16 @@ var _ = Describe("Transactions", Ordered, func() {
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
 			Expect(err).To(Succeed())
 			Expect(txs).To(HaveLen(1))
-			txMeta := commonpb.MetadataToGoMap(txs[0].Metadata)
+			txMeta := ledgerpb.MetadataToGoMap(txs[0].Metadata)
 			Expect(txMeta["category"]).To(Equal("payment"))
 			Expect(txMeta["priority"]).To(Equal("high"))
 		})
 
 		It("Should combine filters with OR", func() {
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_Or{
-					Or: &commonpb.OrFilter{
-						Filters: []*commonpb.QueryFilter{
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_Or{
+					Or: &ledgerpb.OrFilter{
+						Filters: []*ledgerpb.QueryFilter{
 							actions.StringMetadataFilter("category", "refund"),
 							actions.StringMetadataFilter("category", "transfer"),
 						},
@@ -971,9 +973,9 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should negate a filter with NOT", func() {
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_Not{
-					Not: &commonpb.NotFilter{
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_Not{
+					Not: &ledgerpb.NotFilter{
 						Filter: actions.StringMetadataFilter("category", "payment"),
 					},
 				},
@@ -1040,33 +1042,33 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create ledger with int64 schema for transaction "score" and its index
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 					Key:        "score",
-					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 				},
 			}),
 				actions.CreateTransactionMetadataIndexAction(ledgerName, "score")))
 			Expect(err).To(Succeed())
 
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "score")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "score")).To(Succeed())
 
 			// Create transactions with varying "score" metadata
 			// tx1: score=10, tx2: score=30, tx3: score=50, tx4: score=70, tx5: no score
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "a1", big.NewInt(100), "USD"),
 			}, map[string]string{"score": "10"}, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "a2", big.NewInt(200), "USD"),
 				}, map[string]string{"score": "30"}, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "a3", big.NewInt(300), "USD"),
 				}, map[string]string{"score": "50"}, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "a4", big.NewInt(400), "USD"),
 				}, map[string]string{"score": "70"}, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "a5", big.NewInt(500), "USD"),
 				}, nil, nil), // No score metadata
 			))
@@ -1083,12 +1085,12 @@ var _ = Describe("Transactions", Ordered, func() {
 		It("Should filter transactions with > (greater than)", func() {
 			// score > 30 should match tx3(50), tx4(70)
 			val := int64(30)
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_Field{
-					Field: &commonpb.FieldCondition{
-						Field: &commonpb.FieldRef{Metadata: "score"},
-						Condition: &commonpb.FieldCondition_IntCond{
-							IntCond: &commonpb.IntCondition{
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_Field{
+					Field: &ledgerpb.FieldCondition{
+						Field: &ledgerpb.FieldRef{Metadata: "score"},
+						Condition: &ledgerpb.FieldCondition_IntCond{
+							IntCond: &ledgerpb.IntCondition{
 								Min:          &val,
 								MinExclusive: true,
 							},
@@ -1109,12 +1111,12 @@ var _ = Describe("Transactions", Ordered, func() {
 		It("Should filter transactions with >= (greater than or equal)", func() {
 			// score >= 30 should match tx2(30), tx3(50), tx4(70)
 			val := int64(30)
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_Field{
-					Field: &commonpb.FieldCondition{
-						Field: &commonpb.FieldRef{Metadata: "score"},
-						Condition: &commonpb.FieldCondition_IntCond{
-							IntCond: &commonpb.IntCondition{
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_Field{
+					Field: &ledgerpb.FieldCondition{
+						Field: &ledgerpb.FieldRef{Metadata: "score"},
+						Condition: &ledgerpb.FieldCondition_IntCond{
+							IntCond: &ledgerpb.IntCondition{
 								Min: &val,
 							},
 						},
@@ -1129,12 +1131,12 @@ var _ = Describe("Transactions", Ordered, func() {
 		It("Should filter transactions with < (less than)", func() {
 			// score < 50 should match tx1(10), tx2(30)
 			val := int64(50)
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_Field{
-					Field: &commonpb.FieldCondition{
-						Field: &commonpb.FieldRef{Metadata: "score"},
-						Condition: &commonpb.FieldCondition_IntCond{
-							IntCond: &commonpb.IntCondition{
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_Field{
+					Field: &ledgerpb.FieldCondition{
+						Field: &ledgerpb.FieldRef{Metadata: "score"},
+						Condition: &ledgerpb.FieldCondition_IntCond{
+							IntCond: &ledgerpb.IntCondition{
 								Max:          &val,
 								MaxExclusive: true,
 							},
@@ -1150,12 +1152,12 @@ var _ = Describe("Transactions", Ordered, func() {
 		It("Should filter transactions with <= (less than or equal)", func() {
 			// score <= 50 should match tx1(10), tx2(30), tx3(50)
 			val := int64(50)
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_Field{
-					Field: &commonpb.FieldCondition{
-						Field: &commonpb.FieldRef{Metadata: "score"},
-						Condition: &commonpb.FieldCondition_IntCond{
-							IntCond: &commonpb.IntCondition{
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_Field{
+					Field: &ledgerpb.FieldCondition{
+						Field: &ledgerpb.FieldRef{Metadata: "score"},
+						Condition: &ledgerpb.FieldCondition_IntCond{
+							IntCond: &ledgerpb.IntCondition{
 								Max: &val,
 							},
 						},
@@ -1171,16 +1173,16 @@ var _ = Describe("Transactions", Ordered, func() {
 			// score >= 20 AND score <= 60 should match tx2(30), tx3(50)
 			minVal := int64(20)
 			maxVal := int64(60)
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_And{
-					And: &commonpb.AndFilter{
-						Filters: []*commonpb.QueryFilter{
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_And{
+					And: &ledgerpb.AndFilter{
+						Filters: []*ledgerpb.QueryFilter{
 							{
-								Filter: &commonpb.QueryFilter_Field{
-									Field: &commonpb.FieldCondition{
-										Field: &commonpb.FieldRef{Metadata: "score"},
-										Condition: &commonpb.FieldCondition_IntCond{
-											IntCond: &commonpb.IntCondition{
+								Filter: &ledgerpb.QueryFilter_Field{
+									Field: &ledgerpb.FieldCondition{
+										Field: &ledgerpb.FieldRef{Metadata: "score"},
+										Condition: &ledgerpb.FieldCondition_IntCond{
+											IntCond: &ledgerpb.IntCondition{
 												Min: &minVal,
 											},
 										},
@@ -1188,11 +1190,11 @@ var _ = Describe("Transactions", Ordered, func() {
 								},
 							},
 							{
-								Filter: &commonpb.QueryFilter_Field{
-									Field: &commonpb.FieldCondition{
-										Field: &commonpb.FieldRef{Metadata: "score"},
-										Condition: &commonpb.FieldCondition_IntCond{
-											IntCond: &commonpb.IntCondition{
+								Filter: &ledgerpb.QueryFilter_Field{
+									Field: &ledgerpb.FieldCondition{
+										Field: &ledgerpb.FieldRef{Metadata: "score"},
+										Condition: &ledgerpb.FieldCondition_IntCond{
+											IntCond: &ledgerpb.IntCondition{
 												Max: &maxVal,
 											},
 										},
@@ -1211,12 +1213,12 @@ var _ = Describe("Transactions", Ordered, func() {
 		It("Should return empty list when no transactions match the range", func() {
 			// score > 100 should match nobody
 			val := int64(100)
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_Field{
-					Field: &commonpb.FieldCondition{
-						Field: &commonpb.FieldRef{Metadata: "score"},
-						Condition: &commonpb.FieldCondition_IntCond{
-							IntCond: &commonpb.IntCondition{
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_Field{
+					Field: &ledgerpb.FieldCondition{
+						Field: &ledgerpb.FieldRef{Metadata: "score"},
+						Condition: &ledgerpb.FieldCondition_IntCond{
+							IntCond: &ledgerpb.IntCondition{
 								Min:          &val,
 								MinExclusive: true,
 							},
@@ -1234,12 +1236,12 @@ var _ = Describe("Transactions", Ordered, func() {
 			// incremented v++ and wrapped to MinInt64, turning this into
 			// `score >= MinInt64` which returned every indexed row.
 			val := int64(math.MaxInt64)
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_Field{
-					Field: &commonpb.FieldCondition{
-						Field: &commonpb.FieldRef{Metadata: "score"},
-						Condition: &commonpb.FieldCondition_IntCond{
-							IntCond: &commonpb.IntCondition{
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_Field{
+					Field: &ledgerpb.FieldCondition{
+						Field: &ledgerpb.FieldRef{Metadata: "score"},
+						Condition: &ledgerpb.FieldCondition_IntCond{
+							IntCond: &ledgerpb.IntCondition{
 								Min:          &val,
 								MinExclusive: true,
 							},
@@ -1257,12 +1259,12 @@ var _ = Describe("Transactions", Ordered, func() {
 			// compiler previously incremented v++ and wrapped to MinInt64,
 			// flipping the upper bound and returning zero rows.
 			val := int64(math.MaxInt64)
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_Field{
-					Field: &commonpb.FieldCondition{
-						Field: &commonpb.FieldRef{Metadata: "score"},
-						Condition: &commonpb.FieldCondition_IntCond{
-							IntCond: &commonpb.IntCondition{
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_Field{
+					Field: &ledgerpb.FieldCondition{
+						Field: &ledgerpb.FieldRef{Metadata: "score"},
+						Condition: &ledgerpb.FieldCondition_IntCond{
+							IntCond: &ledgerpb.IntCondition{
 								Max: &val,
 							},
 						},
@@ -1276,7 +1278,7 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		It("Should filter transactions with `between` (inclusive bounds)", func() {
 			// score between 30 and 50 should match tx2(30), tx3(50)
-			filter, err := filterexpr.Parse("metadata[score] between 30 and 50", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+			filter, err := filterexpr.Parse("metadata[score] between 30 and 50", ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 			Expect(err).To(Succeed())
 
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
@@ -1286,7 +1288,7 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		It("Should treat `between X and X` like equality", func() {
 			// score between 50 and 50 should match only tx3
-			filter, err := filterexpr.Parse("metadata[score] between 50 and 50", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+			filter, err := filterexpr.Parse("metadata[score] between 50 and 50", ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 			Expect(err).To(Succeed())
 
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
@@ -1296,7 +1298,7 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		It("Should return empty when between bounds match nothing", func() {
 			// score between 80 and 100: tx4 is 70, no data in [80,100]
-			filter, err := filterexpr.Parse("metadata[score] between 80 and 100", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+			filter, err := filterexpr.Parse("metadata[score] between 80 and 100", ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 			Expect(err).To(Succeed())
 
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
@@ -1309,10 +1311,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			// IntCondition by mergeFieldRanges, then compiled as a single
 			// bounded range scan. Must match exactly the same set as
 			// `between 30 and 69` (tx2=30, tx3=50).
-			fromAnd, err := filterexpr.Parse("metadata[score] >= 30 and metadata[score] < 70", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+			fromAnd, err := filterexpr.Parse("metadata[score] >= 30 and metadata[score] < 70", ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 			Expect(err).To(Succeed())
 
-			fromBetween, err := filterexpr.Parse("metadata[score] between 30 and 69", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+			fromBetween, err := filterexpr.Parse("metadata[score] between 30 and 69", ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 			Expect(err).To(Succeed())
 
 			fromAndTxs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, fromAnd)
@@ -1330,7 +1332,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			// `score between 40 and 79`, matching tx3(50), tx4(70).
 			filter, err := filterexpr.Parse(
 				"metadata[score] >= 20 and metadata[score] < 80 and metadata[score] >= 40",
-				commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+				ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 			)
 			Expect(err).To(Succeed())
 
@@ -1340,7 +1342,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should reject `between` with reversed bounds at parse time", func() {
-			_, err := filterexpr.Parse("metadata[score] between 100 and 10", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+			_, err := filterexpr.Parse("metadata[score] between 100 and 10", ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("out of order"))
 		})
@@ -1352,26 +1354,26 @@ var _ = Describe("Transactions", Ordered, func() {
 		BeforeAll(func() {
 			// Create ledger with all address indexes (any, source, destination)
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil),
-				actions.CreateAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY),
-				actions.CreateAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_SOURCE),
-				actions.CreateAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION)))
+				actions.CreateAddressIndexAction(ledgerName, ledgerpb.AddressRole_ADDRESS_ROLE_ANY),
+				actions.CreateAddressIndexAction(ledgerName, ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE),
+				actions.CreateAddressIndexAction(ledgerName, ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION)))
 			Expect(err).To(Succeed())
 
-			Expect(actions.WaitForAddressIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY)).To(Succeed())
-			Expect(actions.WaitForAddressIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.AddressRole_ADDRESS_ROLE_SOURCE)).To(Succeed())
-			Expect(actions.WaitForAddressIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION)).To(Succeed())
+			Expect(actions.WaitForAddressIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.AddressRole_ADDRESS_ROLE_ANY)).To(Succeed())
+			Expect(actions.WaitForAddressIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE)).To(Succeed())
+			Expect(actions.WaitForAddressIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION)).To(Succeed())
 
 			// Create transactions:
 			// tx1: A → B
 			// tx2: A → C
 			// tx3: B → A
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("A", "B", big.NewInt(100), "USD"),
 			}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("A", "C", big.NewInt(200), "USD"),
 				}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("B", "A", big.NewInt(50), "USD"),
 				}, nil)))
 			Expect(err).To(Succeed())
@@ -1385,11 +1387,11 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should filter by source prefix", func() {
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_Address{
-					Address: &commonpb.AddressMatch{
-						Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "A"},
-						Role:  commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_Address{
+					Address: &ledgerpb.AddressMatch{
+						Match: &ledgerpb.AddressMatch_HardcodedExact{HardcodedExact: "A"},
+						Role:  ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE,
 					},
 				},
 			}
@@ -1410,11 +1412,11 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should filter by destination exact", func() {
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_Address{
-					Address: &commonpb.AddressMatch{
-						Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "A"},
-						Role:  commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_Address{
+					Address: &ledgerpb.AddressMatch{
+						Match: &ledgerpb.AddressMatch_HardcodedExact{HardcodedExact: "A"},
+						Role:  ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION,
 					},
 				},
 			}
@@ -1426,23 +1428,23 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should filter by source AND destination", func() {
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_And{
-					And: &commonpb.AndFilter{
-						Filters: []*commonpb.QueryFilter{
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_And{
+					And: &ledgerpb.AndFilter{
+						Filters: []*ledgerpb.QueryFilter{
 							{
-								Filter: &commonpb.QueryFilter_Address{
-									Address: &commonpb.AddressMatch{
-										Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "A"},
-										Role:  commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
+								Filter: &ledgerpb.QueryFilter_Address{
+									Address: &ledgerpb.AddressMatch{
+										Match: &ledgerpb.AddressMatch_HardcodedExact{HardcodedExact: "A"},
+										Role:  ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE,
 									},
 								},
 							},
 							{
-								Filter: &commonpb.QueryFilter_Address{
-									Address: &commonpb.AddressMatch{
-										Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "B"},
-										Role:  commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
+								Filter: &ledgerpb.QueryFilter_Address{
+									Address: &ledgerpb.AddressMatch{
+										Match: &ledgerpb.AddressMatch_HardcodedExact{HardcodedExact: "B"},
+										Role:  ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION,
 									},
 								},
 							},
@@ -1459,10 +1461,10 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should still support address filter for backward compatibility", func() {
-			filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_Address{
-					Address: &commonpb.AddressMatch{
-						Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "A"},
+			filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_Address{
+					Address: &ledgerpb.AddressMatch{
+						Match: &ledgerpb.AddressMatch_HardcodedExact{HardcodedExact: "A"},
 					},
 				},
 			}

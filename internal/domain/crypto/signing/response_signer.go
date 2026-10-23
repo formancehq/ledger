@@ -9,7 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
@@ -39,7 +40,7 @@ func NewResponseSigner(seed []byte) *ResponseSigner {
 // SignLog signs a Log message and returns a SignedLog envelope.
 // It clones the log, clears response_signature (node-local),
 // serializes it, signs the bytes, and returns the signature envelope.
-func (s *ResponseSigner) SignLog(log *commonpb.Log) *signaturepb.SignedLog {
+func (s *ResponseSigner) SignLog(log *ledgerpb.Log) *signaturepb.SignedLog {
 	// Clone and clear non-deterministic/node-local fields
 	logCopy := log.CloneVT()
 	logCopy.ResponseSignature = nil

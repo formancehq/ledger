@@ -10,8 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // bigIntegerResult exercises a custom public projection with nested collections.
@@ -26,14 +27,14 @@ func TestResponseBigIntegerEncoding(t *testing.T) {
 	// These fields represent arbitrary nonmonetary integer results. Their types,
 	// rather than their names or containing message, determine response encoding.
 	value := struct {
-		Limit *commonpb.Uint256      `json:"limit"`
-		Total *commonpb.BigUint      `json:"total"`
-		Delta *commonpb.SignedBigInt `json:"delta"`
+		Limit *ledgerpb.Uint256      `json:"limit"`
+		Total *ledgerpb.BigUint      `json:"total"`
+		Delta *ledgerpb.SignedBigInt `json:"delta"`
 		Count uint64                 `json:"count"`
 	}{
-		Limit: commonpb.NewUint256FromUint64(9007199254740993),
-		Total: commonpb.MustBigUintFromDecimal("9007199254740994"),
-		Delta: commonpb.MustSignedBigIntFromDecimal("-9007199254740995"),
+		Limit: ledgerpb.NewUint256FromUint64(9007199254740993),
+		Total: ledgerpb.MustBigUintFromDecimal("9007199254740994"),
+		Delta: ledgerpb.MustSignedBigIntFromDecimal("-9007199254740995"),
 		Count: 42,
 	}
 	for name, write := range map[string]func(http.ResponseWriter, *http.Request, any){
@@ -78,9 +79,9 @@ func TestResponseBigIntegerEncoding(t *testing.T) {
 func TestResponseBigIntegerEncodingConcurrentNested(t *testing.T) {
 	t.Parallel()
 	payload := bigIntegerResult{Value: map[string]any{
-		"limit": commonpb.NewUint256FromUint64(9007199254740993),
-		"total": commonpb.MustBigUintFromDecimal("9007199254740994"),
-		"delta": commonpb.MustSignedBigIntFromDecimal("-9007199254740995"),
+		"limit": ledgerpb.NewUint256FromUint64(9007199254740993),
+		"total": ledgerpb.MustBigUintFromDecimal("9007199254740994"),
+		"delta": ledgerpb.MustSignedBigIntFromDecimal("-9007199254740995"),
 		"count": uint64(42),
 	}}
 	var wg sync.WaitGroup

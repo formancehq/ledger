@@ -10,11 +10,11 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -39,9 +39,9 @@ func registerLedger(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 
 	batch := s.OpenWriteSession()
-	err := state.SaveLedger(batch, name, &commonpb.LedgerInfo{
+	err := state.SaveLedger(batch, name, &ledgerpb.LedgerInfo{
 		Name:      name,
-		CreatedAt: commonpb.NewTimestamp(time.Now()),
+		CreatedAt: ledgerpb.NewTimestamp(time.Now()),
 	})
 	require.NoError(t, err)
 	err = batch.Commit()
@@ -49,7 +49,7 @@ func registerLedger(t *testing.T, s *dal.Store, name string) {
 }
 
 // appendLogs is a helper function to append logs using the batch pattern.
-func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*commonpb.Log) {
+func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*ledgerpb.Log) {
 	t.Helper()
 
 	batch := s.OpenWriteSession()
@@ -85,15 +85,15 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *dal.Store) {
 		worldKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "world"}, Asset: "USD"}
 		worldCanonicalKey := worldKey.Bytes()
 		_, err := attrs.Volume.Set(batch, worldCanonicalKey, &raftcmdpb.VolumePair{
-			Output: commonpb.NewUint256FromUint64(100),
+			Output: ledgerpb.NewUint256FromUint64(100),
 		})
 		require.NoError(t, err)
 
 		bankKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "bank"}, Asset: "USD"}
 		bankCanonicalKey := bankKey.Bytes()
 		_, err = attrs.Volume.Set(batch, bankCanonicalKey, &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(100),
-			Output: commonpb.NewUint256FromUint64(50),
+			Input:  ledgerpb.NewUint256FromUint64(100),
+			Output: ledgerpb.NewUint256FromUint64(50),
 		})
 		require.NoError(t, err)
 
@@ -101,7 +101,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *dal.Store) {
 		userCanonicalKey := userKey.Bytes()
 
 		_, err = attrs.Volume.Set(batch, userCanonicalKey, &raftcmdpb.VolumePair{
-			Input: commonpb.NewUint256FromUint64(50),
+			Input: ledgerpb.NewUint256FromUint64(50),
 		})
 		require.NoError(t, err)
 
@@ -135,31 +135,31 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *dal.Store) {
 }
 
 // createTestLogs creates test logs wrapped in Log with ApplyLog payload.
-func createTestLogs(ledgerName string) []*commonpb.Log {
+func createTestLogs(ledgerName string) []*ledgerpb.Log {
 	return createTestLogsForLedger(ledgerName, 1)
 }
 
 // createTestLogsForLedger creates test logs with custom starting sequence.
-func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonpb.Log {
+func createTestLogsForLedger(ledgerName string, startSequence uint64) []*ledgerpb.Log {
 	now := time.Now()
 
-	logs := []*commonpb.Log{
+	logs := []*ledgerpb.Log{
 		{
 			Sequence: startSequence,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledgerName,
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-							CreatedTransaction: &commonpb.CreatedTransaction{
-								Transaction: commonpb.NewTransaction().
+					Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+							CreatedTransaction: &ledgerpb.CreatedTransaction{
+								Transaction: ledgerpb.NewTransaction().
 									WithPostings(
-										commonpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
+										ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
 									).
 									WithID(1).
 									WithTimestamp(now),
-								AccountMetadata: map[string]*commonpb.MetadataMap{
-									"bank": commonpb.MetadataMapFromGoMap(metadata.Metadata{
+								AccountMetadata: map[string]*ledgerpb.MetadataMap{
+									"bank": ledgerpb.MetadataMapFromGoMap(metadata.Metadata{
 										"account_type": "asset",
 									}),
 								},
@@ -173,15 +173,15 @@ func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonp
 		},
 		{
 			Sequence: startSequence + 1,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledgerName,
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-							CreatedTransaction: &commonpb.CreatedTransaction{
-								Transaction: commonpb.NewTransaction().
+					Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+							CreatedTransaction: &ledgerpb.CreatedTransaction{
+								Transaction: ledgerpb.NewTransaction().
 									WithPostings(
-										commonpb.NewPosting("bank", "user", "USD", big.NewInt(50)),
+										ledgerpb.NewPosting("bank", "user", "USD", big.NewInt(50)),
 									).
 									WithID(2).
 									WithTimestamp(now),
@@ -195,18 +195,18 @@ func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonp
 		},
 		{
 			Sequence: startSequence + 2,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledgerName,
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_SavedMetadata{
-							SavedMetadata: &commonpb.SavedMetadata{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
+					Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{
+							SavedMetadata: &ledgerpb.SavedMetadata{
+								Target: &ledgerpb.Target{
+									Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
 										Addr: "bank",
 									}},
 								},
-								Metadata: commonpb.MetadataFromGoMap(metadata.Metadata{
+								Metadata: ledgerpb.MetadataFromGoMap(metadata.Metadata{
 									"label": "Bank Account",
 								}),
 							},
@@ -219,14 +219,14 @@ func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonp
 		},
 		{
 			Sequence: startSequence + 3,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledgerName,
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
-							DeletedMetadata: &commonpb.DeletedMetadata{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
+					Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_DeletedMetadata{
+							DeletedMetadata: &ledgerpb.DeletedMetadata{
+								Target: &ledgerpb.Target{
+									Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
 										Addr: "bank",
 									}},
 								},
@@ -284,8 +284,8 @@ func TestVolume(t *testing.T) {
 	// Set cumulative volume for bank USD.
 	batch := s.OpenWriteSession()
 	_, err = attrs.Volume.Set(batch, bankUSDKey, &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(150),
-		Output: commonpb.NewUint256FromUint64(30),
+		Input:  ledgerpb.NewUint256FromUint64(150),
+		Output: ledgerpb.NewUint256FromUint64(30),
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
@@ -298,8 +298,8 @@ func TestVolume(t *testing.T) {
 	// Overwrite with a new cumulative value
 	batch = s.OpenWriteSession()
 	_, err = attrs.Volume.Set(batch, bankUSDKey, &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(1000),
-		Output: commonpb.NewUint256FromUint64(30),
+		Input:  ledgerpb.NewUint256FromUint64(1000),
+		Output: ledgerpb.NewUint256FromUint64(30),
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
@@ -312,8 +312,8 @@ func TestVolume(t *testing.T) {
 	// Overwrite again
 	batch = s.OpenWriteSession()
 	_, err = attrs.Volume.Set(batch, bankUSDKey, &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(5000),
-		Output: commonpb.NewUint256FromUint64(80),
+		Input:  ledgerpb.NewUint256FromUint64(5000),
+		Output: ledgerpb.NewUint256FromUint64(80),
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())

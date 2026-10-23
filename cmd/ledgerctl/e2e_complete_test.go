@@ -11,8 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -22,8 +23,8 @@ type namedBucketServer struct {
 	ledger string
 }
 
-func (s namedBucketServer) ListLedgers(_ *servicepb.ListLedgersRequest, st grpc.ServerStreamingServer[commonpb.LedgerInfo]) error {
-	return st.Send(&commonpb.LedgerInfo{Name: s.ledger})
+func (s namedBucketServer) ListLedgers(_ *servicepb.ListLedgersRequest, st grpc.ServerStreamingServer[ledgerpb.LedgerInfo]) error {
+	return st.Send(&ledgerpb.LedgerInfo{Name: s.ledger})
 }
 
 func startServer(t *testing.T, ledgerName string) string {

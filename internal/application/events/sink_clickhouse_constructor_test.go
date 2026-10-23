@@ -15,7 +15,8 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
@@ -214,8 +215,8 @@ func TestClickHouseFactory_CancelsInitialization(t *testing.T) {
 	defer cancel()
 	result := make(chan error, 1)
 	go func() {
-		sink, err := sinkFactories["clickhouse"](ctx, &commonpb.SinkConfig{Type: &commonpb.SinkConfig_Clickhouse{
-			Clickhouse: &commonpb.ClickHouseSinkConfig{Dsn: server.URL + "/default?dial_timeout=1s&read_timeout=30s"},
+		sink, err := sinkFactories["clickhouse"](ctx, &ledgerpb.SinkConfig{Type: &ledgerpb.SinkConfig_Clickhouse{
+			Clickhouse: &ledgerpb.ClickHouseSinkConfig{Dsn: server.URL + "/default?dial_timeout=1s&read_timeout=30s"},
 		}}, FormatJSON)
 		if err == nil && sink != nil {
 			_ = sink.Close() // Avoid leaking an unexpected successful construction.

@@ -9,8 +9,8 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -75,7 +75,7 @@ func setupQueryCheckpoints(ctx context.Context, node *internal.PerNodeConn, c *C
 	return true
 }
 
-func applyCheckpointSetup(ctx context.Context, bucket servicepb.BucketServiceClient, request *servicepb.Request) (*commonpb.Log, error) {
+func applyCheckpointSetup(ctx context.Context, bucket servicepb.BucketServiceClient, request *servicepb.Request) (*ledgerpb.Log, error) {
 	response, err := bucket.Apply(ctx, applyRequest(oracle.Bulk{Requests: []*servicepb.Request{request}}))
 	if err != nil {
 		return nil, err

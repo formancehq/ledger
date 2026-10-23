@@ -6,8 +6,9 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // NextCursorTrailerKey and PreviousCursorTrailerKey are the gRPC trailer keys
@@ -142,16 +143,16 @@ func DrainPages[T any](
 }
 
 // BuildListOptions packages the pagination + filter + consistency flag values
-// into the canonical commonpb.ListOptions every streaming list RPC consumes.
+// into the canonical ledgerpb.ListOptions every streaming list RPC consumes.
 // Pass filter == nil for endpoints that don't expose --filter / --prefix.
 // Returns nil when no field is set so handlers see a clean "default
 // everything" signal on the wire.
-func BuildListOptions(pgn PaginationFlags, cns ConsistencyFlags, filter *commonpb.QueryFilter) *commonpb.ListOptions {
+func BuildListOptions(pgn PaginationFlags, cns ConsistencyFlags, filter *ledgerpb.QueryFilter) *ledgerpb.ListOptions {
 	if pgn.PageSize == 0 && pgn.Cursor == "" && !pgn.Reverse && cns.CheckpointID == 0 && filter == nil {
 		return nil
 	}
 
-	return &commonpb.ListOptions{
+	return &ledgerpb.ListOptions{
 		PageSize: pgn.PageSize,
 		Cursor:   pgn.Cursor,
 		Reverse:  pgn.Reverse,
@@ -160,18 +161,18 @@ func BuildListOptions(pgn PaginationFlags, cns ConsistencyFlags, filter *commonp
 	}
 }
 
-// BuildReadOptions packages just the consistency flags into a commonpb.ReadOptions
+// BuildReadOptions packages just the consistency flags into a ledgerpb.ReadOptions
 // for Get* RPCs that do not paginate. Returns nil when checkpointId is zero.
-func BuildReadOptions(cns ConsistencyFlags) *commonpb.ReadOptions {
+func BuildReadOptions(cns ConsistencyFlags) *ledgerpb.ReadOptions {
 	return buildReadOptions(cns)
 }
 
-func buildReadOptions(cns ConsistencyFlags) *commonpb.ReadOptions {
+func buildReadOptions(cns ConsistencyFlags) *ledgerpb.ReadOptions {
 	if cns.CheckpointID == 0 {
 		return nil
 	}
 
-	return &commonpb.ReadOptions{
+	return &ledgerpb.ReadOptions{
 		CheckpointId: cns.CheckpointID,
 	}
 }
@@ -316,8 +317,8 @@ func GetFilterFlags(cmd *cobra.Command) FilterFlags {
 // validity gate itself is left to the server. The prefix is applied as an
 // AddressMatch_HardcodedPrefix; when --filter is also set, the two are
 // AND-combined.
-func BuildQueryFilter(filterExpr, prefix string, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
-	var parsed *commonpb.QueryFilter
+func BuildQueryFilter(filterExpr, prefix string, target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, error) {
+	var parsed *ledgerpb.QueryFilter
 
 	if filterExpr != "" {
 		var err error
@@ -328,12 +329,12 @@ func BuildQueryFilter(filterExpr, prefix string, target commonpb.QueryTarget) (*
 		}
 	}
 
-	var prefixFilter *commonpb.QueryFilter
+	var prefixFilter *ledgerpb.QueryFilter
 	if prefix != "" {
-		prefixFilter = &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{
-					Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: prefix},
+		prefixFilter = &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Address{
+				Address: &ledgerpb.AddressMatch{
+					Match: &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: prefix},
 				},
 			},
 		}
@@ -341,9 +342,9 @@ func BuildQueryFilter(filterExpr, prefix string, target commonpb.QueryTarget) (*
 
 	switch {
 	case parsed != nil && prefixFilter != nil:
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{prefixFilter, parsed}},
+		return &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_And{
+				And: &ledgerpb.AndFilter{Filters: []*ledgerpb.QueryFilter{prefixFilter, parsed}},
 			},
 		}, nil
 	case parsed != nil:

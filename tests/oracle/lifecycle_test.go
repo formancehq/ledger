@@ -5,25 +5,26 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-func createLifecycleLedger(mode commonpb.LedgerMode) *servicepb.Request {
+func createLifecycleLedger(mode ledgerpb.LedgerMode) *servicepb.Request {
 	return &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: "L", Mode: mode}}}
 }
 
 func TestGlobalState_LifecycleCreation(t *testing.T) {
 	t.Parallel()
 	base := NewGlobalState()
-	created := base.Apply(bulkOf(createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_NORMAL)))
+	created := base.Apply(bulkOf(createLifecycleLedger(ledgerpb.LedgerMode_LEDGER_MODE_NORMAL)))
 	require.True(t, created.OK)
 	require.NotEqual(t, base.Fingerprint(), created.State.Fingerprint())
 	require.Empty(t, created.State.Ledger("L").LogIDs())
-	duplicate := created.State.Apply(bulkOf(createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_NORMAL)))
+	duplicate := created.State.Apply(bulkOf(createLifecycleLedger(ledgerpb.LedgerMode_LEDGER_MODE_NORMAL)))
 	require.False(t, duplicate.OK)
 	require.Equal(t, domain.ErrReasonLedgerAlreadyExists, duplicate.Reason)
 	require.Empty(t, base.Ledgers())
@@ -47,16 +48,16 @@ func TestGlobalState_ImplicitLedgerLifecycleDefaultsToNormalMode(t *testing.T) {
 	lifecycle, exists := deleted.State.Lifecycle("L")
 	require.True(t, exists)
 	require.True(t, lifecycle.Deleted)
-	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, lifecycle.Mode)
+	require.Equal(t, ledgerpb.LedgerMode_LEDGER_MODE_NORMAL, lifecycle.Mode)
 }
 
 func TestGlobalState_LifecycleDeletion(t *testing.T) {
 	t.Parallel()
-	created := NewGlobalState().Apply(bulkOf(createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_NORMAL), oracletest.TxReq("world", "a:1", "USD", 5)))
+	created := NewGlobalState().Apply(bulkOf(createLifecycleLedger(ledgerpb.LedgerMode_LEDGER_MODE_NORMAL), oracletest.TxReq("world", "a:1", "USD", 5)))
 	require.True(t, created.OK)
 	before := created.State.Fingerprint()
 	del := &servicepb.Request{Type: &servicepb.Request_DeleteLedger{DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"}}}
-	rolledBack := created.State.Apply(bulkOf(del, createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_NORMAL)))
+	rolledBack := created.State.Apply(bulkOf(del, createLifecycleLedger(ledgerpb.LedgerMode_LEDGER_MODE_NORMAL)))
 	require.False(t, rolledBack.OK)
 	require.Equal(t, domain.ErrReasonLedgerDeleted, rolledBack.Reason)
 	require.Equal(t, before, rolledBack.State.Fingerprint())
@@ -78,8 +79,8 @@ func TestGlobalState_LifecycleDeletion(t *testing.T) {
 
 func TestGlobalState_LifecyclePromotion(t *testing.T) {
 	t.Parallel()
-	req := createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_MIRROR)
-	req.GetCreateLedger().MirrorSource = &commonpb.MirrorSourceConfig{BatchSize: 17}
+	req := createLifecycleLedger(ledgerpb.LedgerMode_LEDGER_MODE_MIRROR)
+	req.GetCreateLedger().MirrorSource = &ledgerpb.MirrorSourceConfig{BatchSize: 17}
 	created := NewGlobalState().Apply(bulkOf(req))
 	require.True(t, created.OK)
 	before := created.State.Fingerprint()
@@ -92,7 +93,7 @@ func TestGlobalState_LifecyclePromotion(t *testing.T) {
 	promoted := created.State.Apply(bulkOf(promote))
 	require.True(t, promoted.OK)
 	lc, _ := promoted.State.Lifecycle("L")
-	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, lc.Mode)
+	require.Equal(t, ledgerpb.LedgerMode_LEDGER_MODE_NORMAL, lc.Mode)
 	require.Nil(t, lc.MirrorSource)
 	require.Empty(t, promoted.State.Ledger("L").LogIDs())
 	require.Equal(t, before, created.State.Fingerprint())
@@ -109,8 +110,8 @@ func TestMirrorSafeRequestAllowsMaintenanceConfiguration(t *testing.T) {
 	t.Parallel()
 
 	for _, req := range []*servicepb.Request{
-		oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "region", commonpb.MetadataType_METADATA_TYPE_STRING),
-		oracletest.RemoveFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "region"),
+		oracletest.SetFieldTypeReq(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "region", ledgerpb.MetadataType_METADATA_TYPE_STRING),
+		oracletest.RemoveFieldTypeReq(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "region"),
 		oracletest.CreateIndexReq(nil),
 		oracletest.DropIndexReq(nil),
 		actions.SaveLedgerMetadataAction("L", map[string]string{"region": "eu"}),
@@ -123,7 +124,7 @@ func TestMirrorSafeRequestAllowsMaintenanceConfiguration(t *testing.T) {
 func TestGlobalState_RejectsPromotionOfDeletedMirrorLedger(t *testing.T) {
 	t.Parallel()
 
-	create := createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_MIRROR)
+	create := createLifecycleLedger(ledgerpb.LedgerMode_LEDGER_MODE_MIRROR)
 	created := NewGlobalState().Apply(bulkOf(create)).State
 	deleted := created.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
 		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
@@ -201,9 +202,9 @@ func TestGlobalState_MaintenanceAllowsEmptyBulk(t *testing.T) {
 
 func TestGlobalState_LifecycleInitialConfiguration(t *testing.T) {
 	t.Parallel()
-	req := createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_NORMAL)
-	req.GetCreateLedger().AccountTypes = map[string]*commonpb.AccountType{"cash": {Name: "ignored", Pattern: "cash:{id}"}}
-	req.GetCreateLedger().InitialSchema = []*commonpb.SetMetadataFieldTypeCommand{{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "region", Type: commonpb.MetadataType_METADATA_TYPE_STRING}}
+	req := createLifecycleLedger(ledgerpb.LedgerMode_LEDGER_MODE_NORMAL)
+	req.GetCreateLedger().AccountTypes = map[string]*ledgerpb.AccountType{"cash": {Name: "ignored", Pattern: "cash:{id}"}}
+	req.GetCreateLedger().InitialSchema = []*ledgerpb.SetMetadataFieldTypeCommand{{TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "region", Type: ledgerpb.MetadataType_METADATA_TYPE_STRING}}
 	created := NewGlobalState().Apply(bulkOf(req))
 	require.True(t, created.OK)
 	typ, exists := created.State.Ledger("L").Types().Get("cash")
@@ -213,13 +214,13 @@ func TestGlobalState_LifecycleInitialConfiguration(t *testing.T) {
 	require.Equal(t, "ignored", req.GetCreateLedger().GetAccountTypes()["cash"].GetName())
 	field, exists := created.State.Ledger("L").AccountFieldTypes().Get("region")
 	require.True(t, exists)
-	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, field)
+	require.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_STRING, field)
 	require.Empty(t, created.State.Ledger("L").LogIDs())
 }
 
 func TestGlobalState_LifecycleDeleteDiscardsSameBulkWrites(t *testing.T) {
 	t.Parallel()
-	base := NewGlobalState().Apply(bulkOf(createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_NORMAL))).State
+	base := NewGlobalState().Apply(bulkOf(createLifecycleLedger(ledgerpb.LedgerMode_LEDGER_MODE_NORMAL))).State
 	result := base.Apply(bulkOf(oracletest.TxReq("world", "a:1", "USD", 5), &servicepb.Request{Type: &servicepb.Request_DeleteLedger{DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"}}}))
 	require.True(t, result.OK)
 	require.NotContains(t, result.State.Ledgers(), "L")
@@ -233,7 +234,7 @@ func TestGlobalState_LifecycleDeleteDiscardsSameBulkWrites(t *testing.T) {
 func TestGlobalState_LifecycleReplayedStream(t *testing.T) {
 	t.Parallel()
 	stream := []Bulk{
-		bulkOf(createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_MIRROR)),
+		bulkOf(createLifecycleLedger(ledgerpb.LedgerMode_LEDGER_MODE_MIRROR)),
 		bulkOf(&servicepb.Request{Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: "L"}}}),
 		bulkOf(oracletest.TxReq("world", "a:1", "USD", 5)),
 		bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"}}}),
@@ -260,11 +261,11 @@ func TestGlobalState_LifecycleReplayedStream(t *testing.T) {
 
 func TestGlobalState_TombstoneMetadataIsRejected(t *testing.T) {
 	t.Parallel()
-	created := NewGlobalState().Apply(bulkOf(createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_NORMAL)))
+	created := NewGlobalState().Apply(bulkOf(createLifecycleLedger(ledgerpb.LedgerMode_LEDGER_MODE_NORMAL)))
 	deleted := created.State.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"}}}))
 	state := deleted.State
 	for _, request := range []*servicepb.Request{
-		{Type: &servicepb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{Ledger: "L", Metadata: map[string]*commonpb.MetadataValue{"hidden": commonpb.NewStringValue("yes")}}}},
+		{Type: &servicepb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{Ledger: "L", Metadata: map[string]*ledgerpb.MetadataValue{"hidden": ledgerpb.NewStringValue("yes")}}}},
 		{Type: &servicepb.Request_DeleteLedgerMetadata{DeleteLedgerMetadata: &servicepb.DeleteLedgerMetadataRequest{Ledger: "L", Key: "hidden"}}},
 	} {
 		result := state.Apply(bulkOf(request))
@@ -276,9 +277,9 @@ func TestGlobalState_TombstoneMetadataIsRejected(t *testing.T) {
 
 func TestGlobalState_DeletionDoesNotBypassTransientValidation(t *testing.T) {
 	t.Parallel()
-	base := NewGlobalState().Apply(bulkOf(createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_NORMAL))).State
+	base := NewGlobalState().Apply(bulkOf(createLifecycleLedger(ledgerpb.LedgerMode_LEDGER_MODE_NORMAL))).State
 	result := base.Apply(bulkOf(
-		oracletest.AddTypeReqP("temp", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+		oracletest.AddTypeReqP("temp", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
 		oracletest.TxReq("world", "temp:1", "USD/2", 1),
 		&servicepb.Request{Type: &servicepb.Request_DeleteLedger{DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"}}},
 	))
@@ -289,13 +290,13 @@ func TestGlobalState_DeletionDoesNotBypassTransientValidation(t *testing.T) {
 
 func TestGlobalState_LifecycleCreationMetadata(t *testing.T) {
 	t.Parallel()
-	for _, mode := range []commonpb.LedgerMode{commonpb.LedgerMode_LEDGER_MODE_NORMAL, commonpb.LedgerMode_LEDGER_MODE_MIRROR} {
+	for _, mode := range []ledgerpb.LedgerMode{ledgerpb.LedgerMode_LEDGER_MODE_NORMAL, ledgerpb.LedgerMode_LEDGER_MODE_MIRROR} {
 		t.Run(mode.String(), func(t *testing.T) {
 			t.Parallel()
 			req := createLifecycleLedger(mode)
-			metadata := map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("team"), "count": commonpb.NewUintValue(9007199254740993), "null": commonpb.NewNullValue("raw")}
+			metadata := map[string]*ledgerpb.MetadataValue{"owner": ledgerpb.NewStringValue("team"), "count": ledgerpb.NewUintValue(9007199254740993), "null": ledgerpb.NewNullValue("raw")}
 			req.GetCreateLedger().Metadata = metadata
-			req.GetCreateLedger().InitialSchema = []*commonpb.SetMetadataFieldTypeCommand{{TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER, Key: "owner", Type: commonpb.MetadataType_METADATA_TYPE_INT64}}
+			req.GetCreateLedger().InitialSchema = []*ledgerpb.SetMetadataFieldTypeCommand{{TargetType: ledgerpb.TargetType_TARGET_TYPE_LEDGER, Key: "owner", Type: ledgerpb.MetadataType_METADATA_TYPE_INT64}}
 			base := NewGlobalState()
 			created := base.Apply(bulkOf(req))
 			require.True(t, created.OK)

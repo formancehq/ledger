@@ -5,8 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -16,25 +17,25 @@ type pcvRow struct {
 	account, asset, color, input, output string
 }
 
-func buildPCV(rows ...pcvRow) *commonpb.PostCommitVolumes {
-	byAccount := map[string]*commonpb.VolumesByAssets{}
+func buildPCV(rows ...pcvRow) *ledgerpb.PostCommitVolumes {
+	byAccount := map[string]*ledgerpb.VolumesByAssets{}
 	for _, r := range rows {
-		byAccount[r.account] = &commonpb.VolumesByAssets{
-			Volumes: append(byAccount[r.account].GetVolumes(), &commonpb.VolumeEntry{
+		byAccount[r.account] = &ledgerpb.VolumesByAssets{
+			Volumes: append(byAccount[r.account].GetVolumes(), &ledgerpb.VolumeEntry{
 				Asset: r.asset,
 				Color: r.color,
-				Volumes: &commonpb.Volumes{
-					Input:  commonpb.MustBigUintFromDecimal(r.input),
-					Output: commonpb.MustBigUintFromDecimal(r.output),
+				Volumes: &ledgerpb.Volumes{
+					Input:  ledgerpb.MustBigUintFromDecimal(r.input),
+					Output: ledgerpb.MustBigUintFromDecimal(r.output),
 				},
 			}),
 		}
 	}
 
-	return &commonpb.PostCommitVolumes{VolumesByAccount: byAccount}
+	return &ledgerpb.PostCommitVolumes{VolumesByAccount: byAccount}
 }
 
-func coloredPosting(source, destination, asset, color string, amount int64) *commonpb.Posting {
+func coloredPosting(source, destination, asset, color string, amount int64) *ledgerpb.Posting {
 	p := newPosting(source, destination, asset, amount)
 	p.Color = color
 
@@ -44,16 +45,16 @@ func coloredPosting(source, destination, asset, color string, amount int64) *com
 // runPCVCheck applies postings to a fresh replay store (mirroring the checker's
 // pre-purge replay state) and runs compareTransactionPostCommitVolumes against a
 // created transaction carrying pcv. It returns the VOLUME_MISMATCH messages.
-func runPCVCheck(t *testing.T, postings []*commonpb.Posting, pcv *commonpb.PostCommitVolumes) []string {
+func runPCVCheck(t *testing.T, postings []*ledgerpb.Posting, pcv *ledgerpb.PostCommitVolumes) []string {
 	t.Helper()
 
 	rs := newTestReplayStore(t)
 	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
 
-	data := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransaction{
-				Transaction: &commonpb.Transaction{Id: 1, Postings: postings, PostCommitVolumes: pcv},
+	data := &ledgerpb.LedgerLogPayload{
+		Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &ledgerpb.CreatedTransaction{
+				Transaction: &ledgerpb.Transaction{Id: 1, Postings: postings, PostCommitVolumes: pcv},
 			},
 		},
 	}
@@ -74,7 +75,7 @@ func runPCVCheck(t *testing.T, postings []*commonpb.Posting, pcv *commonpb.PostC
 func TestCompareTransactionPostCommitVolumes_Valid(t *testing.T) {
 	t.Parallel()
 
-	postings := []*commonpb.Posting{newPosting("world", "alice", "USD", 100)}
+	postings := []*ledgerpb.Posting{newPosting("world", "alice", "USD", 100)}
 	pcv := buildPCV(
 		pcvRow{account: "world", asset: "USD", input: "0", output: "100"},
 		pcvRow{account: "alice", asset: "USD", input: "100", output: "0"},
@@ -86,7 +87,7 @@ func TestCompareTransactionPostCommitVolumes_Valid(t *testing.T) {
 func TestCompareTransactionPostCommitVolumes_DetectsMissingRow(t *testing.T) {
 	t.Parallel()
 
-	postings := []*commonpb.Posting{newPosting("world", "alice", "USD", 100)}
+	postings := []*ledgerpb.Posting{newPosting("world", "alice", "USD", 100)}
 	// Drop the alice row.
 	pcv := buildPCV(pcvRow{account: "world", asset: "USD", input: "0", output: "100"})
 
@@ -99,7 +100,7 @@ func TestCompareTransactionPostCommitVolumes_DetectsMissingRow(t *testing.T) {
 func TestCompareTransactionPostCommitVolumes_DetectsExtraRow(t *testing.T) {
 	t.Parallel()
 
-	postings := []*commonpb.Posting{newPosting("world", "alice", "USD", 100)}
+	postings := []*ledgerpb.Posting{newPosting("world", "alice", "USD", 100)}
 	pcv := buildPCV(
 		pcvRow{account: "world", asset: "USD", input: "0", output: "100"},
 		pcvRow{account: "alice", asset: "USD", input: "100", output: "0"},
@@ -116,7 +117,7 @@ func TestCompareTransactionPostCommitVolumes_DetectsExtraRow(t *testing.T) {
 func TestCompareTransactionPostCommitVolumes_DetectsModifiedRow(t *testing.T) {
 	t.Parallel()
 
-	postings := []*commonpb.Posting{newPosting("world", "alice", "USD", 100)}
+	postings := []*ledgerpb.Posting{newPosting("world", "alice", "USD", 100)}
 	pcv := buildPCV(
 		pcvRow{account: "world", asset: "USD", input: "0", output: "100"},
 		// alice output tampered from 0 to 100.
@@ -132,7 +133,7 @@ func TestCompareTransactionPostCommitVolumes_DetectsModifiedRow(t *testing.T) {
 func TestCompareTransactionPostCommitVolumes_DetectsMissingZeroValuedField(t *testing.T) {
 	t.Parallel()
 
-	postings := []*commonpb.Posting{newPosting("world", "alice", "USD", 100)}
+	postings := []*ledgerpb.Posting{newPosting("world", "alice", "USD", 100)}
 	pcv := buildPCV(
 		pcvRow{account: "world", asset: "USD", input: "0", output: "100"},
 		pcvRow{account: "alice", asset: "USD", input: "100", output: "0"},
@@ -148,7 +149,7 @@ func TestCompareTransactionPostCommitVolumes_DetectsMissingZeroValuedField(t *te
 func TestCompareTransactionPostCommitVolumes_DetectsDuplicateRow(t *testing.T) {
 	t.Parallel()
 
-	postings := []*commonpb.Posting{newPosting("world", "alice", "USD", 100)}
+	postings := []*ledgerpb.Posting{newPosting("world", "alice", "USD", 100)}
 	pcv := buildPCV(
 		pcvRow{account: "world", asset: "USD", input: "0", output: "100"},
 		pcvRow{account: "alice", asset: "USD", input: "100", output: "0"},
@@ -164,7 +165,7 @@ func TestCompareTransactionPostCommitVolumes_DetectsDuplicateRow(t *testing.T) {
 func TestCompareTransactionPostCommitVolumes_ColorsAreDistinctTuples(t *testing.T) {
 	t.Parallel()
 
-	postings := []*commonpb.Posting{
+	postings := []*ledgerpb.Posting{
 		coloredPosting("world", "alice", "USD", "RED", 100),
 		coloredPosting("world", "alice", "USD", "", 50),
 	}
@@ -204,16 +205,16 @@ func TestCompareTransactionPostCommitVolumes_RevertBranch(t *testing.T) {
 
 	// The compensating transaction carries its own post-revert snapshot on the
 	// RevertTransaction; a tampered value must surface.
-	postings := []*commonpb.Posting{newPosting("alice", "world", "USD", 100)}
+	postings := []*ledgerpb.Posting{newPosting("alice", "world", "USD", 100)}
 
 	rs := newTestReplayStore(t)
 	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
 
-	data := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-			RevertedTransaction: &commonpb.RevertedTransaction{
+	data := &ledgerpb.LedgerLogPayload{
+		Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+			RevertedTransaction: &ledgerpb.RevertedTransaction{
 				RevertedTransactionId: 1,
-				RevertTransaction: &commonpb.Transaction{
+				RevertTransaction: &ledgerpb.Transaction{
 					Id:       2,
 					Postings: postings,
 					PostCommitVolumes: buildPCV(

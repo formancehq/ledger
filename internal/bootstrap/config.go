@@ -8,10 +8,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
 )
@@ -190,7 +191,7 @@ type Config struct {
 	AuditIndexConfig            AuditIndexConfig
 	QueryProfileThreshold       time.Duration
 	GRPCSlowThreshold           time.Duration
-	BloomConfig                 *commonpb.ClusterConfig
+	BloomConfig                 *ledgerpb.ClusterConfig
 	IdempotencyTTL              time.Duration
 	IdempotencyEvictionInterval time.Duration
 	// ClusterPolicyRevision is the desired revision of the replicated cluster
@@ -363,7 +364,7 @@ func (c Config) Validate() error {
 func (c Config) validateBloomConfig() error {
 	filters := []struct {
 		name   string
-		config *commonpb.BloomTypeConfig
+		config *ledgerpb.BloomTypeConfig
 	}{
 		{"volumes", c.BloomConfig.GetBloomVolumes()},
 		{"metadata", c.BloomConfig.GetBloomMetadata()},

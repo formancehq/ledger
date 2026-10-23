@@ -19,7 +19,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -112,10 +112,10 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 	filter := rollFilterShape(genAccountFilter(c.sampleAccountFieldSeeds(ledger)))
 	needed := map[string]struct{}{}
-	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
+	neededIndexCanonicals(filter, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
 	_, _, bareAsset := hasAssetTarget(filter)
-	invalidTarget := bareLeaf(filter) && filterInvalidForTarget(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
-	refused := classifyRejectedFilter(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	invalidTarget := bareLeaf(filter) && filterInvalidForTarget(filter, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	refused := classifyRejectedFilter(filter, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	requestedPageSize, pageSize := queryPageSize()
 	noteClampedPageSize(requestedPageSize, pageSize)
 	reverse := random.RandomChoice([]uint8{0, 1}) == 1
@@ -141,7 +141,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	responseFrontier := c.beginResponseFrontier()
 	stream, err := client.ListAccounts(readCtx, &servicepb.ListAccountsRequest{
 		Ledger: ledger,
-		Options: &commonpb.ListOptions{
+		Options: &ledgerpb.ListOptions{
 			PageSize: uint32(requestedPageSize),
 			Cursor:   pageToken(cursor),
 			Reverse:  reverse,
@@ -150,7 +150,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	})
 
 	var (
-		accounts []*commonpb.Account
+		accounts []*ledgerpb.Account
 		next     string
 	)
 
@@ -185,7 +185,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 
 			return
 		}
-		if c.handleRejectedFilterError(maxTicket, refused, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledger, filter, err) {
+		if c.handleRejectedFilterError(maxTicket, refused, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledger, filter, err) {
 			return
 		}
 		if bareAsset {
@@ -222,7 +222,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 		return
 	}
 
-	if assertRefusedFilterServedNothing(refused, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledger, filter, len(accounts)) {
+	if assertRefusedFilterServedNothing(refused, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledger, filter, len(accounts)) {
 		return
 	}
 
@@ -247,7 +247,7 @@ func (c *Checker) sampleAccountFieldSeeds(ledger string) []fieldSeed {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	return sampleFieldSeeds(c.modelState.Ledger(ledger), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	return sampleFieldSeeds(c.modelState.Ledger(ledger), ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 }
 
 // runTransactionQuery issues a linearizable ListTransactions and checks the
@@ -263,9 +263,9 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		filter = rollFilterShape(filter)
 	}
 	needed := map[string]struct{}{}
-	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, needed)
-	invalidTarget := bareLeaf(filter) && filterInvalidForTarget(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
-	refused := classifyRejectedFilter(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	neededIndexCanonicals(filter, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, needed)
+	invalidTarget := bareLeaf(filter) && filterInvalidForTarget(filter, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	refused := classifyRejectedFilter(filter, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	requestedPageSize, pageSize := queryPageSize()
 	noteClampedPageSize(requestedPageSize, pageSize)
 	reverse := random.RandomChoice([]uint8{0, 1}) == 1
@@ -300,7 +300,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 	responseFrontier := c.beginResponseFrontier()
 	stream, err := client.ListTransactions(readCtx, &servicepb.ListTransactionsRequest{
 		Ledger: ledger,
-		Options: &commonpb.ListOptions{
+		Options: &ledgerpb.ListOptions{
 			PageSize: uint32(requestedPageSize),
 			Cursor:   cursor,
 			Reverse:  reverse,
@@ -309,7 +309,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 	})
 
 	var (
-		txs  []*commonpb.Transaction
+		txs  []*ledgerpb.Transaction
 		next string
 	)
 
@@ -341,7 +341,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		if handleInvalidTargetError(invalidTarget, "transaction", ledger, filter, err) {
 			return
 		}
-		if c.handleRejectedFilterError(maxTicket, refused, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledger, filter, err) {
+		if c.handleRejectedFilterError(maxTicket, refused, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledger, filter, err) {
 			return
 		}
 		if len(needed) > 0 {
@@ -388,7 +388,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		return
 	}
 
-	if assertRefusedFilterServedNothing(refused, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledger, filter, len(txs)) {
+	if assertRefusedFilterServedNothing(refused, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledger, filter, len(txs)) {
 		return
 	}
 
@@ -403,9 +403,9 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 
 // bareLeaf reports whether f is a single non-empty leaf, the only shape the
 // target-invalid probes take.
-func bareLeaf(f *commonpb.QueryFilter) bool {
+func bareLeaf(f *ledgerpb.QueryFilter) bool {
 	switch f.GetFilter().(type) {
-	case nil, *commonpb.QueryFilter_And, *commonpb.QueryFilter_Or, *commonpb.QueryFilter_Not:
+	case nil, *ledgerpb.QueryFilter_And, *ledgerpb.QueryFilter_Or, *ledgerpb.QueryFilter_Not:
 		return false
 	default:
 		return true
@@ -417,7 +417,7 @@ func bareLeaf(f *commonpb.QueryFilter) bool {
 // transactions). The server's rejectInvalidCondition runs before index checks,
 // so this must be consulted before handleIndexGatedError; the expected outcome
 // is InvalidArgument. Returns true when it has fully handled err.
-func handleInvalidTargetError(invalidTarget bool, kind, ledger string, filter *commonpb.QueryFilter, err error) bool {
+func handleInvalidTargetError(invalidTarget bool, kind, ledger string, filter *ledgerpb.QueryFilter, err error) bool {
 	if !invalidTarget {
 		return false
 	}
@@ -459,32 +459,32 @@ func pageToken(key string) string {
 // unsupportedBuiltinFields are the TransactionBuiltinIndex values that name a
 // real index but not a uint64 one, so a BuiltinUintCondition cannot be built
 // over them. resolveTxTimestampArm refuses them; nothing may serve a page.
-var unsupportedBuiltinFields = []commonpb.TransactionBuiltinIndex{
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS,
+var unsupportedBuiltinFields = []ledgerpb.TransactionBuiltinIndex{
+	ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
+	ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
+	ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
+	ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS,
 }
 
 // rollUnsupportedBuiltinField returns a range filter over a builtin field that
 // carries no uint64 order, one read in twenty-four.
-func rollUnsupportedBuiltinField() (*commonpb.QueryFilter, bool) {
+func rollUnsupportedBuiltinField() (*ledgerpb.QueryFilter, bool) {
 	if !oneIn(24) {
 		return nil, false
 	}
 
 	lo, hi := uint64(1), uint64(1_000_000)
 
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{BuiltinUint: &ledgerpb.BuiltinUintCondition{
 		Field: random.RandomChoice(unsupportedBuiltinFields),
-		Cond:  &commonpb.UintCondition{Min: &lo, Max: &hi},
+		Cond:  &ledgerpb.UintCondition{Min: &lo, Max: &hi},
 	}}}, true
 }
 
 // handleUnsupportedBuiltinError validates the answer to a range over a builtin
 // field with no uint64 order: a compilation rejection, never a page. Returns
 // true when it has fully handled err.
-func handleUnsupportedBuiltinError(unsupported bool, ledger string, filter *commonpb.QueryFilter, err error) bool {
+func handleUnsupportedBuiltinError(unsupported bool, ledger string, filter *ledgerpb.QueryFilter, err error) bool {
 	if !unsupported {
 		return false
 	}
@@ -528,7 +528,7 @@ func drainStream[T any](stream grpc.ServerStreamingClient[T]) ([]*T, error) {
 // page-capped — equals the streamed accounts position-for-position, each row's
 // address AND its whole volumes/metadata snapshot matching on that same base,
 // and the resume token that base's own window implies rides with it.
-func (c *Checker) validateAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, next string) {
+func (c *Checker) validateAccountQuery(maxTicket uint64, ledger string, filter *ledgerpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*ledgerpb.Account, next string) {
 	if c.matchesModel(maxTicket, "AQUERY", func(base oracle.GlobalState) bool {
 		ls, live := liveLedgerState(base, ledger)
 		if !live {
@@ -562,7 +562,7 @@ func (c *Checker) validateAccountQuery(maxTicket uint64, ledger string, filter *
 // the resume token published with it is the one that window implies. The window
 // is computed one row long so the model sees the same peek the handler did: a
 // row past the page is what makes a token mandatory.
-func accountPageMatches(ls oracle.LedgerState, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, next string) bool {
+func accountPageMatches(ls oracle.LedgerState, filter *ledgerpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*ledgerpb.Account, next string) bool {
 	want := accountWindow(ls, filter, cursor, pageSize+1, reverse)
 
 	more := cursorForbidden
@@ -586,7 +586,7 @@ func accountPageMatches(ls oracle.LedgerState, filter *commonpb.QueryFilter, cur
 
 // lastAccountKey is the cursor an accounts page implies: the address of its last
 // row (accountCursorOf), empty for a page that showed none.
-func lastAccountKey(accounts []*commonpb.Account) string {
+func lastAccountKey(accounts []*ledgerpb.Account) string {
 	if len(accounts) == 0 {
 		return ""
 	}
@@ -596,7 +596,7 @@ func lastAccountKey(accounts []*commonpb.Account) string {
 
 // modelAccountWindow returns the account window on the committed modelState — the
 // base with no in-flight bulks folded — for a finding's diagnostics. Acquires c.mu.
-func (c *Checker) modelAccountWindow(ledger string, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool) []string {
+func (c *Checker) modelAccountWindow(ledger string, filter *ledgerpb.QueryFilter, cursor string, pageSize int, reverse bool) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -607,7 +607,7 @@ func (c *Checker) modelAccountWindow(ledger string, filter *commonpb.QueryFilter
 // legal iff some candidate base's ordered window equals the streamed
 // transactions position-for-position, each row matching the model record at its
 // id (see txRecordMatches) on that same base.
-func (c *Checker) validateTransactionQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction, next string) {
+func (c *Checker) validateTransactionQuery(maxTicket uint64, ledger string, filter *ledgerpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*ledgerpb.Transaction, next string) {
 	if c.matchesModel(maxTicket, "TXQUERY", func(base oracle.GlobalState) bool {
 		ls, live := liveLedgerState(base, ledger)
 		if !live {
@@ -640,7 +640,7 @@ func (c *Checker) validateTransactionQuery(maxTicket uint64, ledger string, filt
 // modelTransactionWindow returns the transaction window on the committed
 // modelState — the base with no in-flight bulks folded — for a finding's
 // diagnostics. Acquires c.mu.
-func (c *Checker) modelTransactionWindow(ledger string, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool) []uint64 {
+func (c *Checker) modelTransactionWindow(ledger string, filter *ledgerpb.QueryFilter, afterID uint64, pageSize int, reverse bool) []uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -655,10 +655,10 @@ func (c *Checker) modelTransactionWindow(ledger string, filter *commonpb.QueryFi
 // The candidates are the current accounts plus, when the filter reads the
 // account-by-asset index, every account that index holds: a has-asset leaf can
 // select an account whose volume rows are gone, which no other leaf sees.
-func accountWindow(ls oracle.LedgerState, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool) []string {
+func accountWindow(ls oracle.LedgerState, filter *ledgerpb.QueryFilter, cursor string, pageSize int, reverse bool) []string {
 	universe := accountUniverse(ls)
 	candidates := universe
-	if anyLeaf(filter, func(leaf *commonpb.QueryFilter) bool { return leaf.GetAccountHasAsset() != nil }) {
+	if anyLeaf(filter, func(leaf *ledgerpb.QueryFilter) bool { return leaf.GetAccountHasAsset() != nil }) {
 		candidates = mergeSorted(universe, ls.EverAssetAddresses())
 	}
 
@@ -697,7 +697,7 @@ func accountWindow(ls oracle.LedgerState, filter *commonpb.QueryFilter, cursor s
 // every filter verdict is known — capped at pageSize. Used for a finding's
 // diagnostics; validation goes through txWindowMatches, which also handles
 // optional rows.
-func transactionWindow(ls oracle.LedgerState, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool) []uint64 {
+func transactionWindow(ls oracle.LedgerState, filter *ledgerpb.QueryFilter, afterID uint64, pageSize int, reverse bool) []uint64 {
 	var window []uint64
 	for _, row := range transactionWindowRows(ls, filter, afterID, reverse) {
 		if row.required {
@@ -731,7 +731,7 @@ type txWindowRow struct {
 // (ascending). This is the opposite of accounts, which follow reverse literally.
 // Descending pages drop ids >= afterID (older-than cursor); ascending pages drop
 // ids <= afterID (newer-than cursor) — mirroring PaginateReverse / PaginateForward.
-func transactionWindowRows(ls oracle.LedgerState, filter *commonpb.QueryFilter, afterID uint64, reverse bool) []txWindowRow {
+func transactionWindowRows(ls oracle.LedgerState, filter *ledgerpb.QueryFilter, afterID uint64, reverse bool) []txWindowRow {
 	descending := !reverse
 
 	var rows []txWindowRow
@@ -770,7 +770,7 @@ func transactionWindowRows(ls oracle.LedgerState, filter *commonpb.QueryFilter, 
 // content-matching its model record), optional rows may, nothing else does, a
 // required row may only be missing past a full (truncated) page, and the resume
 // token published with the page is the one the leftover rows imply.
-func txWindowMatches(ls oracle.LedgerState, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction, next string) bool {
+func txWindowMatches(ls oracle.LedgerState, filter *ledgerpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*ledgerpb.Transaction, next string) bool {
 	rows := transactionWindowRows(ls, filter, afterID, reverse)
 	if !txRowsMatch(ls, rows, pageSize, serverTxs) {
 		return false
@@ -779,7 +779,7 @@ func txWindowMatches(ls oracle.LedgerState, filter *commonpb.QueryFilter, afterI
 	return nextCursorLegal(next, rowsLeftoverMore(leftoverTxRows(rows, serverTxs)), lastTransactionKey(serverTxs), len(serverTxs), pageSize)
 }
 
-func txRowsMatch(ls oracle.LedgerState, rows []txWindowRow, pageSize int, serverTxs []*commonpb.Transaction) bool {
+func txRowsMatch(ls oracle.LedgerState, rows []txWindowRow, pageSize int, serverTxs []*ledgerpb.Transaction) bool {
 	if len(serverTxs) > pageSize {
 		return false
 	}
@@ -814,7 +814,7 @@ func txRowsMatch(ls oracle.LedgerState, rows []txWindowRow, pageSize int, server
 }
 
 // leftoverTxRows is the tail of rows the page did not consume.
-func leftoverTxRows(rows []txWindowRow, serverTxs []*commonpb.Transaction) []txWindowRow {
+func leftoverTxRows(rows []txWindowRow, serverTxs []*ledgerpb.Transaction) []txWindowRow {
 	j, i := 0, 0
 	for ; i < len(rows) && j < len(serverTxs); i++ {
 		if serverTxs[j].GetId() == rows[i].id {
@@ -843,7 +843,7 @@ func rowsLeftoverMore(leftover []txWindowRow) cursorMore {
 
 // lastTransactionKey is the cursor a transactions page implies: the id of its
 // last row in decimal (txCursorOf), empty for a page that showed none.
-func lastTransactionKey(txs []*commonpb.Transaction) string {
+func lastTransactionKey(txs []*ledgerpb.Transaction) string {
 	if len(txs) == 0 {
 		return ""
 	}
@@ -877,14 +877,14 @@ func accountUniverse(ls oracle.LedgerState) []string {
 // holds for addr: the same volume cells (per asset and color, input and output)
 // and the same metadata. metadataMatches is shared with the single GetAccount
 // read.
-func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Account) bool {
+func accountMatches(ls oracle.LedgerState, addr string, serverAcct *ledgerpb.Account) bool {
 	return accountMatchesCollapsed(ls, addr, serverAcct, false)
 }
 
 // accountMatchesCollapsed is accountMatches for a read that asked the server to
 // collapse colours: every colour of an asset is then summed into the uncolored
 // bucket, so the model folds the same way before comparing.
-func accountMatchesCollapsed(ls oracle.LedgerState, addr string, serverAcct *commonpb.Account, collapsed bool) bool {
+func accountMatchesCollapsed(ls oracle.LedgerState, addr string, serverAcct *ledgerpb.Account, collapsed bool) bool {
 	if !metadataMatches(ls, addr, serverAcct.GetMetadata()) {
 		return false
 	}
@@ -938,13 +938,13 @@ func accountMatchesCollapsed(ls oracle.LedgerState, addr string, serverAcct *com
 type txRecordView interface {
 	Id() uint64
 	Reference() string
-	Postings() []*commonpb.Posting
-	Metadata() map[string]*commonpb.MetadataValue
+	Postings() []*ledgerpb.Posting
+	Metadata() map[string]*ledgerpb.MetadataValue
 	Reverted() bool
-	Timestamp() *commonpb.Timestamp
-	InsertedAt() *commonpb.Timestamp
+	Timestamp() *ledgerpb.Timestamp
+	InsertedAt() *ledgerpb.Timestamp
 	RevertedBy() uint64
-	RevertedAt() *commonpb.Timestamp
+	RevertedAt() *ledgerpb.Timestamp
 	RevertsTransaction() uint64
 	IndexedAddrs() map[string]uint8
 	PostCommitVolumes() map[oracle.VolumeKey]oracle.VolumePair
@@ -956,7 +956,7 @@ type txRecordView interface {
 // nil model timestamp is unpredictable, so it is not checked; inserted_at and
 // reverted_at are the same, and only a reverted record may carry the latter at
 // all.
-func txRecordMatches(rec txRecordView, serverTx *commonpb.Transaction) bool {
+func txRecordMatches(rec txRecordView, serverTx *ledgerpb.Transaction) bool {
 	tsOK := rec.Timestamp() == nil || rec.Timestamp().GetData() == serverTx.GetTimestamp().GetData()
 
 	// inserted_at follows the same convention: server-assigned, so it is
@@ -1002,7 +1002,7 @@ func txRecordMatches(rec txRecordView, serverTx *commonpb.Transaction) bool {
 // model's cell for cell, in both directions: an absent cell and a fabricated
 // one are equally wrong, and so is a repeated one — only the first copy of a
 // cell is ever read, so a duplicate would hide whatever the second carries.
-func pcvSnapshotMatches(model map[oracle.VolumeKey]oracle.VolumePair, server *commonpb.PostCommitVolumes) bool {
+func pcvSnapshotMatches(model map[oracle.VolumeKey]oracle.VolumePair, server *ledgerpb.PostCommitVolumes) bool {
 	served := map[oracle.VolumeKey]struct{}{}
 
 	for account, byAssets := range server.GetVolumesByAccount() {
@@ -1068,7 +1068,7 @@ func oneIn(n int) bool {
 // (1/6), a target-invalid condition (1/16), then the no-filter universe (1/4).
 // These odds are conditional on earlier rolls missing. The remaining choices
 // mix declared metadata filters with address leaves or use index-free filters.
-func genAccountFilter(seeds []fieldSeed) *commonpb.QueryFilter {
+func genAccountFilter(seeds []fieldSeed) *ledgerpb.QueryFilter {
 	switch {
 	case oneIn(8):
 		// A Field leaf on an UNDECLARED key: the index-not-found probe.
@@ -1101,7 +1101,7 @@ func genAccountFilter(seeds []fieldSeed) *commonpb.QueryFilter {
 // genAccountFilterIndexed rolls an accounts filter mixing metadata Field
 // leaves (on declared keys) and has-asset leaves with the index-free address
 // leaves.
-func genAccountFilterIndexed(seeds []fieldSeed, depth int) *commonpb.QueryFilter {
+func genAccountFilterIndexed(seeds []fieldSeed, depth int) *ledgerpb.QueryFilter {
 	if depth >= maxQueryGenDepth || random.RandomChoice([]uint8{0, 1}) == 0 {
 		if oneIn(4) {
 			return genAccountAssetFilter()
@@ -1113,21 +1113,21 @@ func genAccountFilterIndexed(seeds []fieldSeed, depth int) *commonpb.QueryFilter
 		return genAccountFilterFree(depth)
 	}
 
-	return genBoolean(depth, func(d int) *commonpb.QueryFilter { return genAccountFilterIndexed(seeds, d) })
+	return genBoolean(depth, func(d int) *ledgerpb.QueryFilter { return genAccountFilterIndexed(seeds, d) })
 }
 
 // genAccountFilterFree rolls a non-nil index-free accounts filter: an address
 // prefix/exact leaf, or a boolean composition of the same. It never returns nil
 // — universe is expressible only as the absent top-level filter (a nil child in
 // a repeated And/Or field marshals as an empty condition the compiler rejects).
-func genAccountFilterFree(depth int) *commonpb.QueryFilter {
+func genAccountFilterFree(depth int) *ledgerpb.QueryFilter {
 	if depth >= maxQueryGenDepth || random.RandomChoice([]uint8{0, 1}) == 0 {
 		// The role only selects an index on the transactions target; accounts
 		// resolve the address the same way under any of the three.
-		role := random.RandomChoice([]commonpb.AddressRole{
-			commonpb.AddressRole_ADDRESS_ROLE_ANY,
-			commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
-			commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
+		role := random.RandomChoice([]ledgerpb.AddressRole{
+			ledgerpb.AddressRole_ADDRESS_ROLE_ANY,
+			ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE,
+			ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION,
 		})
 
 		if random.RandomChoice([]uint8{0, 1}) == 0 {
@@ -1178,14 +1178,14 @@ func txFilterSeedsOf(ls oracle.LedgerState) txFilterSeeds {
 		}
 
 		rec := txs.Get(internal.Rand().Intn(txs.Len()))
-		for _, ts := range []*commonpb.Timestamp{rec.Timestamp(), rec.InsertedAt(), rec.RevertedAt()} {
+		for _, ts := range []*ledgerpb.Timestamp{rec.Timestamp(), rec.InsertedAt(), rec.RevertedAt()} {
 			if ts != nil {
 				seeds.stamps = append(seeds.stamps, ts.GetData())
 			}
 		}
 	}
 
-	seeds.fields = sampleFieldSeeds(ls, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	seeds.fields = sampleFieldSeeds(ls, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 
 	return seeds
 }
@@ -1196,7 +1196,7 @@ func txFilterSeedsOf(ls oracle.LedgerState) txFilterSeeds {
 // odds are conditional on earlier rolls missing. The remainder favours the
 // indexed metadata/tx-builtin filters two to one over the index-free grammar,
 // which needs no index and so proves nothing about the indexed surface.
-func genTransactionFilter(seeds txFilterSeeds) *commonpb.QueryFilter {
+func genTransactionFilter(seeds txFilterSeeds) *ledgerpb.QueryFilter {
 	switch {
 	case oneIn(8):
 		// A Field leaf on an UNDECLARED key: the index-not-found probe.
@@ -1227,7 +1227,7 @@ func genTransactionFilter(seeds txFilterSeeds) *commonpb.QueryFilter {
 // pressure than a single index does. Unlike has-asset on accounts, every tx leaf
 // selects from the same transaction-log universe, so composition needs no
 // special casing: the window evaluator handles any boolean of these.
-func genTransactionFilterIndexed(seeds txFilterSeeds, depth int) *commonpb.QueryFilter {
+func genTransactionFilterIndexed(seeds txFilterSeeds, depth int) *ledgerpb.QueryFilter {
 	if depth >= maxQueryGenDepth || random.RandomChoice([]uint8{0, 1}) == 0 {
 		switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) {
 		case 0:
@@ -1247,18 +1247,18 @@ func genTransactionFilterIndexed(seeds txFilterSeeds, depth int) *commonpb.Query
 		}
 	}
 
-	return genBoolean(depth, func(d int) *commonpb.QueryFilter { return genTransactionFilterIndexed(seeds, d) })
+	return genBoolean(depth, func(d int) *ledgerpb.QueryFilter { return genTransactionFilterIndexed(seeds, d) })
 }
 
 // genTxAddressLeaf rolls an address leaf for the transactions target: a pool
 // address (exact or cut to a prefix), or an unmatchable prefix, under a random
 // role. Pool addresses re-target heavily, so exact and prefix variants both
 // straddle live account→tx rows.
-func genTxAddressLeaf() *commonpb.QueryFilter {
-	roles := []commonpb.AddressRole{
-		commonpb.AddressRole_ADDRESS_ROLE_ANY,
-		commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
-		commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
+func genTxAddressLeaf() *ledgerpb.QueryFilter {
+	roles := []ledgerpb.AddressRole{
+		ledgerpb.AddressRole_ADDRESS_ROLE_ANY,
+		ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE,
+		ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION,
 	}
 	role := roles[int(random.RandomChoice([]uint8{0, 1, 2}))]
 
@@ -1297,11 +1297,11 @@ func seedReference(seeds txFilterSeeds) string {
 // bounded by committed stamps so it actually straddles live records: two seed
 // stamps as [min, max] (single-sided or exclusive variants occasionally), or
 // unconstrained bounds when the ledger has no known stamps yet.
-func genDateLeaf(seeds txFilterSeeds) *commonpb.QueryFilter {
-	fields := []commonpb.TransactionBuiltinIndex{
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
+func genDateLeaf(seeds txFilterSeeds) *ledgerpb.QueryFilter {
+	fields := []ledgerpb.TransactionBuiltinIndex{
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
 	}
 	field := fields[int(random.RandomChoice([]uint8{0, 1, 2}))]
 
@@ -1326,7 +1326,7 @@ func genDateLeaf(seeds txFilterSeeds) *commonpb.QueryFilter {
 
 // rollOpenOrExclusive opens each side of a two-sided range one time in four
 // and otherwise makes it exclusive one time in four.
-func rollOpenOrExclusive(cond *commonpb.UintCondition) {
+func rollOpenOrExclusive(cond *ledgerpb.UintCondition) {
 	if oneIn(4) {
 		cond.Min = nil
 	} else {
@@ -1363,7 +1363,7 @@ func uintExtremum() *uint64 {
 // genTransactionFilterFree rolls a non-nil index-free transactions filter: a
 // reverted or tx-id-range leaf, or a boolean composition of the same. Like the
 // accounts variant it never returns nil.
-func genTransactionFilterFree(depth int) *commonpb.QueryFilter {
+func genTransactionFilterFree(depth int) *ledgerpb.QueryFilter {
 	if depth >= maxQueryGenDepth || random.RandomChoice([]uint8{0, 1}) == 0 {
 		switch random.RandomChoice([]uint8{0, 1, 2}) {
 		case 0:
@@ -1386,7 +1386,7 @@ func genTransactionFilterFree(depth int) *commonpb.QueryFilter {
 // children in a boolean combinator. gen never returns nil, so no combinator
 // carries a nil child (which would marshal as an empty condition the compiler
 // rejects).
-func genBoolean(depth int, gen func(int) *commonpb.QueryFilter) *commonpb.QueryFilter {
+func genBoolean(depth int, gen func(int) *ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
 	switch random.RandomChoice([]uint8{0, 1, 2}) {
 	case 0:
 		return filterAnd(genChildren(depth, gen)...)
@@ -1400,9 +1400,9 @@ func genBoolean(depth int, gen func(int) *commonpb.QueryFilter) *commonpb.QueryF
 // genChildren rolls the operands of an And/Or: usually two, sometimes none,
 // one or three, so the empty combinator (an And is the universe, an Or is
 // empty), the compiler's single-child pass-through and its n-ary merge all run.
-func genChildren(depth int, gen func(int) *commonpb.QueryFilter) []*commonpb.QueryFilter {
+func genChildren(depth int, gen func(int) *ledgerpb.QueryFilter) []*ledgerpb.QueryFilter {
 	n := int(random.RandomChoice([]uint8{0, 1, 2, 2, 3}))
-	children := make([]*commonpb.QueryFilter, 0, n)
+	children := make([]*ledgerpb.QueryFilter, 0, n)
 	for range n {
 		children = append(children, gen(depth+1))
 	}
@@ -1412,78 +1412,78 @@ func genChildren(depth int, gen func(int) *commonpb.QueryFilter) []*commonpb.Que
 
 // --- Filter constructors ------------------------------------------------
 
-func filterAddrPrefix(prefix string) *commonpb.QueryFilter {
-	return filterAddrPrefixRole(prefix, commonpb.AddressRole_ADDRESS_ROLE_ANY)
+func filterAddrPrefix(prefix string) *ledgerpb.QueryFilter {
+	return filterAddrPrefixRole(prefix, ledgerpb.AddressRole_ADDRESS_ROLE_ANY)
 }
 
-func filterAddrPrefixRole(prefix string, role commonpb.AddressRole) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
-		Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: prefix},
+func filterAddrPrefixRole(prefix string, role ledgerpb.AddressRole) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{Address: &ledgerpb.AddressMatch{
+		Match: &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: prefix},
 		Role:  role,
 	}}}
 }
 
-func filterAddrExact(addr string) *commonpb.QueryFilter {
-	return filterAddrExactRole(addr, commonpb.AddressRole_ADDRESS_ROLE_ANY)
+func filterAddrExact(addr string) *ledgerpb.QueryFilter {
+	return filterAddrExactRole(addr, ledgerpb.AddressRole_ADDRESS_ROLE_ANY)
 }
 
-func filterAddrExactRole(addr string, role commonpb.AddressRole) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
-		Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: addr},
+func filterAddrExactRole(addr string, role ledgerpb.AddressRole) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{Address: &ledgerpb.AddressMatch{
+		Match: &ledgerpb.AddressMatch_HardcodedExact{HardcodedExact: addr},
 		Role:  role,
 	}}}
 }
 
-func filterReference(value string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
-		Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: value}},
+func filterReference(value string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reference{Reference: &ledgerpb.ReferenceCondition{
+		Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: value}},
 	}}}
 }
 
-func filterReverted(value bool) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{
-		Reverted: &commonpb.RevertedCondition{Value: value},
+func filterReverted(value bool) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reverted{
+		Reverted: &ledgerpb.RevertedCondition{Value: value},
 	}}
 }
 
 // filterTxIDRange matches transactions with lo <= id <= hi. Both bounds are
 // inclusive (no exclusive flags), mirroring resolveUintBounds' [min, max+1).
-func filterTxIDRange(lo, hi uint64) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
-		Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
-		Cond:  &commonpb.UintCondition{Min: &lo, Max: &hi},
+func filterTxIDRange(lo, hi uint64) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{BuiltinUint: &ledgerpb.BuiltinUintCondition{
+		Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+		Cond:  &ledgerpb.UintCondition{Min: &lo, Max: &hi},
 	}}}
 }
 
 // filterDateRange matches transactions whose `field` date lies in [lo, hi],
 // both bounds inclusive (like filterTxIDRange).
-func filterDateRange(field commonpb.TransactionBuiltinIndex, lo, hi uint64) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
+func filterDateRange(field ledgerpb.TransactionBuiltinIndex, lo, hi uint64) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{BuiltinUint: &ledgerpb.BuiltinUintCondition{
 		Field: field,
-		Cond:  &commonpb.UintCondition{Min: &lo, Max: &hi},
+		Cond:  &ledgerpb.UintCondition{Min: &lo, Max: &hi},
 	}}}
 }
 
-func filterAnd(children ...*commonpb.QueryFilter) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{Filters: children}}}
+func filterAnd(children ...*ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_And{And: &ledgerpb.AndFilter{Filters: children}}}
 }
 
-func filterOr(children ...*commonpb.QueryFilter) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: children}}}
+func filterOr(children ...*ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Or{Or: &ledgerpb.OrFilter{Filters: children}}}
 }
 
-func filterNot(child *commonpb.QueryFilter) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{Filter: child}}}
+func filterNot(child *ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Not{Not: &ledgerpb.NotFilter{Filter: child}}}
 }
 
 // filterMetaExists matches entities that carry metadata key — an existence
 // condition, index-backed on both targets. On a declared, indexed key it is a
 // result-returning filter; on an undeclared key it is the index-not-found
 // probe.
-func filterMetaExists(key string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{Field: &commonpb.FieldCondition{
-		Field:     &commonpb.FieldRef{Metadata: key},
-		Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+func filterMetaExists(key string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{Field: &ledgerpb.FieldCondition{
+		Field:     &ledgerpb.FieldRef{Metadata: key},
+		Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{}},
 	}}}
 }
 
@@ -1491,9 +1491,9 @@ func filterMetaExists(key string) *commonpb.QueryFilter {
 // the ACCOUNTS target, so on transactions it is the target-invalid probe
 // (rejected with InvalidArgument before any index check). The values are
 // immaterial — rejection happens on target validity, before evaluation.
-func filterHasAsset(assetBase string, precision uint32) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_AccountHasAsset{
-		AccountHasAsset: &commonpb.AccountHasAssetCondition{AssetBase: assetBase, Precision: precision},
+func filterHasAsset(assetBase string, precision uint32) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_AccountHasAsset{
+		AccountHasAsset: &ledgerpb.AccountHasAssetCondition{AssetBase: assetBase, Precision: precision},
 	}}
 }
 
@@ -1506,7 +1506,7 @@ func filterHasAsset(assetBase string, precision uint32) *commonpb.QueryFilter {
 // conditions are universe (nil), address on accounts, reverted, and the tx-id
 // builtin. See indexNeeds for the asset/other split the account-query lifecycle
 // path keys on.
-func filterNeedsIndex(f *commonpb.QueryFilter, target commonpb.QueryTarget) bool {
+func filterNeedsIndex(f *ledgerpb.QueryFilter, target ledgerpb.QueryTarget) bool {
 	asset, other := indexNeeds(f, target)
 
 	return asset || other
@@ -1522,28 +1522,28 @@ func filterNeedsIndex(f *commonpb.QueryFilter, target commonpb.QueryTarget) bool
 // validates exactly. Target-invalid leaves classify like their home target —
 // callers consult filterInvalidForTarget first, mirroring the compiler's
 // check order.
-func neededIndexCanonicals(f *commonpb.QueryFilter, target commonpb.QueryTarget, out map[string]struct{}) {
-	visitLeaves(f, func(leaf *commonpb.QueryFilter) {
+func neededIndexCanonicals(f *ledgerpb.QueryFilter, target ledgerpb.QueryTarget, out map[string]struct{}) {
+	visitLeaves(f, func(leaf *ledgerpb.QueryFilter) {
 		switch x := leaf.GetFilter().(type) {
 		case nil:
 			// No condition, no index.
-		case *commonpb.QueryFilter_Field:
+		case *ledgerpb.QueryFilter_Field:
 			out[metadataCanonical(target, x.Field.GetField().GetMetadata())] = struct{}{}
-		case *commonpb.QueryFilter_AccountHasAsset:
+		case *ledgerpb.QueryFilter_AccountHasAsset:
 			out[assetIndexCanonical] = struct{}{}
-		case *commonpb.QueryFilter_Reference:
-			out[txBuiltinCanonical(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)] = struct{}{}
-		case *commonpb.QueryFilter_Address:
+		case *ledgerpb.QueryFilter_Reference:
+			out[txBuiltinCanonical(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)] = struct{}{}
+		case *ledgerpb.QueryFilter_Address:
 			// Index-free on accounts (existence scan); the account→tx mapping
 			// index on transactions.
-			if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+			if target == ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
 				out[txBuiltinCanonical(addressRoleBuiltin(x.Address.GetRole()))] = struct{}{}
 			}
-		case *commonpb.QueryFilter_BuiltinUint:
-			if x.BuiltinUint.GetField() != commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID {
+		case *ledgerpb.QueryFilter_BuiltinUint:
+			if x.BuiltinUint.GetField() != ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID {
 				out[txBuiltinCanonical(x.BuiltinUint.GetField())] = struct{}{}
 			}
-		case *commonpb.QueryFilter_Reverted:
+		case *ledgerpb.QueryFilter_Reverted:
 			// index-free
 		default:
 			// Log conditions and future leaves: index-backed, never built here.
@@ -1567,26 +1567,26 @@ const neverBuiltIndexCanonical = "workload:never-built"
 // a rejected compile regardless. Combinators OR their children's needs; the
 // compiler fails the whole query on the first missing index, so a single
 // index-backed leaf anywhere sets the whole tree's need.
-func indexNeeds(f *commonpb.QueryFilter, target commonpb.QueryTarget) (asset, other bool) {
+func indexNeeds(f *ledgerpb.QueryFilter, target ledgerpb.QueryTarget) (asset, other bool) {
 	n := foldFilter(f, filterFold[indexNeed]{
 		and: unionNeeds,
 		or:  unionNeeds,
 		not: identity[indexNeed],
-		leaf: func(leaf *commonpb.QueryFilter) indexNeed {
+		leaf: func(leaf *ledgerpb.QueryFilter) indexNeed {
 			switch x := leaf.GetFilter().(type) {
 			case nil:
 				return indexNeed{}
-			case *commonpb.QueryFilter_AccountHasAsset:
+			case *ledgerpb.QueryFilter_AccountHasAsset:
 				return indexNeed{asset: true}
-			case *commonpb.QueryFilter_Reverted:
+			case *ledgerpb.QueryFilter_Reverted:
 				return indexNeed{}
-			case *commonpb.QueryFilter_Address:
+			case *ledgerpb.QueryFilter_Address:
 				// Index-free on accounts; on transactions it needs the account→tx index.
-				return indexNeed{other: target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS}
-			case *commonpb.QueryFilter_BuiltinUint:
+				return indexNeed{other: target == ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS}
+			case *ledgerpb.QueryFilter_BuiltinUint:
 				// Only the id builtin scans the always-present Pebble tx keyspace; the
 				// timestamp/inserted_at/reverted_at builtins need an index.
-				return indexNeed{other: x.BuiltinUint.GetField() != commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID}
+				return indexNeed{other: x.BuiltinUint.GetField() != ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID}
 			default:
 				// Field, Reference, log conditions — index-backed, non-asset.
 				return indexNeed{other: true}
@@ -1613,29 +1613,29 @@ func unionNeeds(children []indexNeed) indexNeed {
 // filterInvalidForTarget reports whether f carries any condition the server's
 // per-target validity table rejects (rejectInvalidCondition → InvalidArgument) —
 // e.g. reverted / tx-id on accounts, or account-has-asset on transactions. It
-// reuses the exact commonpb functions the compiler consults, so the model's
+// reuses the exact ledgerpb functions the compiler consults, so the model's
 // verdict cannot drift from the server's; every node is checked, combinators
 // included (mirroring the compiler's per-node check). The server checks
 // validity before index availability, so callers must consult this before
 // filterNeedsIndex.
-func filterInvalidForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget) bool {
-	invalidKind := func(kind commonpb.ConditionKind) bool {
-		return !commonpb.ConditionValidForTarget(target, kind)
+func filterInvalidForTarget(f *ledgerpb.QueryFilter, target ledgerpb.QueryTarget) bool {
+	invalidKind := func(kind ledgerpb.ConditionKind) bool {
+		return !ledgerpb.ConditionValidForTarget(target, kind)
 	}
 
 	return foldFilter(f, filterFold[bool]{
-		and: func(children []bool) bool { return invalidKind(commonpb.ConditionKindAnd) || anyOf(children) },
-		or:  func(children []bool) bool { return invalidKind(commonpb.ConditionKindOr) || anyOf(children) },
-		not: func(child bool) bool { return invalidKind(commonpb.ConditionKindNot) || child },
-		leaf: func(leaf *commonpb.QueryFilter) bool {
-			return leaf.GetFilter() != nil && invalidKind(commonpb.ConditionKindOf(leaf))
+		and: func(children []bool) bool { return invalidKind(ledgerpb.ConditionKindAnd) || anyOf(children) },
+		or:  func(children []bool) bool { return invalidKind(ledgerpb.ConditionKindOr) || anyOf(children) },
+		not: func(child bool) bool { return invalidKind(ledgerpb.ConditionKindNot) || child },
+		leaf: func(leaf *ledgerpb.QueryFilter) bool {
+			return leaf.GetFilter() != nil && invalidKind(ledgerpb.ConditionKindOf(leaf))
 		},
 	})
 }
 
 // matchAccountFilter evaluates an accounts filter against one current account
 // of ls (see matchAccountFilterIn).
-func matchAccountFilter(ls oracle.LedgerState, f *commonpb.QueryFilter, addr string) bool {
+func matchAccountFilter(ls oracle.LedgerState, f *ledgerpb.QueryFilter, addr string) bool {
 	return matchAccountFilterIn(ls, f, addr, true)
 }
 
@@ -1645,28 +1645,28 @@ func matchAccountFilter(ls oracle.LedgerState, f *commonpb.QueryFilter, addr str
 // (a nil node, an empty And), an address leaf, a metadata leaf, and the
 // complement a Not takes. Has-asset reads the account-by-asset index, which
 // holds accounts whose volume rows are gone. An empty Or matches nothing.
-func matchAccountFilterIn(ls oracle.LedgerState, f *commonpb.QueryFilter, addr string, inUniverse bool) bool {
+func matchAccountFilterIn(ls oracle.LedgerState, f *ledgerpb.QueryFilter, addr string, inUniverse bool) bool {
 	return foldFilter(f, filterFold[bool]{
 		and: func(children []bool) bool { return (len(children) > 0 || inUniverse) && allOf(children) },
 		or:  anyOf,
 		not: func(child bool) bool { return inUniverse && !child },
-		leaf: func(leaf *commonpb.QueryFilter) bool {
+		leaf: func(leaf *ledgerpb.QueryFilter) bool {
 			switch x := leaf.GetFilter().(type) {
 			case nil:
 				return inUniverse
-			case *commonpb.QueryFilter_Address:
+			case *ledgerpb.QueryFilter_Address:
 				switch m := x.Address.GetMatch().(type) {
-				case *commonpb.AddressMatch_HardcodedPrefix:
+				case *ledgerpb.AddressMatch_HardcodedPrefix:
 					return inUniverse && strings.HasPrefix(addr, m.HardcodedPrefix)
-				case *commonpb.AddressMatch_HardcodedExact:
+				case *ledgerpb.AddressMatch_HardcodedExact:
 					return inUniverse && addr == m.HardcodedExact
 				}
 
 				return false
-			case *commonpb.QueryFilter_AccountHasAsset:
+			case *ledgerpb.QueryFilter_AccountHasAsset:
 				return accountHasAsset(ls, addr, x.AccountHasAsset.GetAssetBase(), x.AccountHasAsset.GetPrecision())
-			case *commonpb.QueryFilter_Field:
-				return inUniverse && matchFieldCondition(ls.AccountFieldTypes(), func(key string) (*commonpb.MetadataValue, bool) {
+			case *ledgerpb.QueryFilter_Field:
+				return inUniverse && matchFieldCondition(ls.AccountFieldTypes(), func(key string) (*ledgerpb.MetadataValue, bool) {
 					v, ok := ls.Metadata().Get(oracle.MetaKey{Address: addr, Key: key})
 
 					return v, ok
@@ -1707,30 +1707,30 @@ func mergeSorted(a, b []string) []string {
 // of a bulk still in flight — see oracle.LearnTxStamps). Booleans propagate
 // unknowns Kleene-style: a decided AND/OR short-circuits, an undecided one
 // stays unknown. Window construction turns unknown rows into optional ones.
-func matchTxFilter(ls oracle.LedgerState, f *commonpb.QueryFilter, rec txRecordView) (match, known bool) {
+func matchTxFilter(ls oracle.LedgerState, f *ledgerpb.QueryFilter, rec txRecordView) (match, known bool) {
 	v := foldFilter(f, filterFold[kleene]{
 		and: kleeneAnd,
 		or:  kleeneOr,
 		not: kleeneNot,
-		leaf: func(leaf *commonpb.QueryFilter) kleene {
+		leaf: func(leaf *ledgerpb.QueryFilter) kleene {
 			switch x := leaf.GetFilter().(type) {
 			case nil:
 				return kleene{match: true, known: true}
-			case *commonpb.QueryFilter_Reverted:
+			case *ledgerpb.QueryFilter_Reverted:
 				return kleene{match: rec.Reverted() == x.Reverted.GetValue(), known: true}
-			case *commonpb.QueryFilter_Reference:
+			case *ledgerpb.QueryFilter_Reference:
 				// Exact match on the null-terminated txref key; empty references are
 				// never written to the index, so they can never match.
 				return kleene{match: rec.Reference() != "" && rec.Reference() == x.Reference.GetCond().GetHardcoded(), known: true}
-			case *commonpb.QueryFilter_Address:
+			case *ledgerpb.QueryFilter_Address:
 				return kleene{match: matchTxAddress(ls, x.Address, rec), known: true}
-			case *commonpb.QueryFilter_Field:
-				return kleene{match: matchFieldCondition(ls.TransactionFieldTypes(), func(key string) (*commonpb.MetadataValue, bool) {
+			case *ledgerpb.QueryFilter_Field:
+				return kleene{match: matchFieldCondition(ls.TransactionFieldTypes(), func(key string) (*ledgerpb.MetadataValue, bool) {
 					v, ok := rec.Metadata()[key]
 
 					return v, ok
 				}, x.Field), known: true}
-			case *commonpb.QueryFilter_BuiltinUint:
+			case *ledgerpb.QueryFilter_BuiltinUint:
 				m, k := matchTxBuiltinUint(x.BuiltinUint, rec)
 
 				return kleene{match: m, known: k}
@@ -1750,12 +1750,12 @@ func matchTxFilter(ls oracle.LedgerState, f *commonpb.QueryFilter, rec txRecordV
 // through the attributes zone (pebbleAccountExists / the account prefix
 // iterator), so a purged account with no metadata stops reaching its
 // transactions even though the index rows remain.
-func matchTxAddress(ls oracle.LedgerState, am *commonpb.AddressMatch, rec txRecordView) bool {
+func matchTxAddress(ls oracle.LedgerState, am *ledgerpb.AddressMatch, rec txRecordView) bool {
 	var roleMask uint8
 	switch am.GetRole() {
-	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
+	case ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE:
 		roleMask = oracle.AddrIndexedSource
-	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
+	case ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION:
 		roleMask = oracle.AddrIndexedDestination
 	default:
 		roleMask = oracle.AddrIndexedSource | oracle.AddrIndexedDestination
@@ -1767,11 +1767,11 @@ func matchTxAddress(ls oracle.LedgerState, am *commonpb.AddressMatch, rec txReco
 		}
 
 		switch m := am.GetMatch().(type) {
-		case *commonpb.AddressMatch_HardcodedPrefix:
+		case *ledgerpb.AddressMatch_HardcodedPrefix:
 			if !strings.HasPrefix(addr, m.HardcodedPrefix) {
 				continue
 			}
-		case *commonpb.AddressMatch_HardcodedExact:
+		case *ledgerpb.AddressMatch_HardcodedExact:
 			if addr != m.HardcodedExact {
 				continue
 			}
@@ -1791,23 +1791,23 @@ func matchTxAddress(ls oracle.LedgerState, am *commonpb.AddressMatch, rec txReco
 // builtins read the record's (possibly learned) server stamps; a still-unknown
 // stamp is an unknown verdict, not a miss — the record may well be in the
 // server's index.
-func matchTxBuiltinUint(cond *commonpb.BuiltinUintCondition, rec txRecordView) (match, known bool) {
+func matchTxBuiltinUint(cond *ledgerpb.BuiltinUintCondition, rec txRecordView) (match, known bool) {
 	switch cond.GetField() {
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:
+	case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:
 		return matchUintBounds(cond.GetCond(), rec.Id()), true
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+	case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 		if rec.Timestamp() == nil {
 			return false, false
 		}
 
 		return matchUintBounds(cond.GetCond(), rec.Timestamp().GetData()), true
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+	case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 		if rec.InsertedAt() == nil {
 			return false, false
 		}
 
 		return matchUintBounds(cond.GetCond(), rec.InsertedAt().GetData()), true
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+	case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
 		// Only reverted originals carry an rvat row. An un-reverted record is a
 		// known miss; a reverted one with an unlearned revert stamp is unknown.
 		if !rec.Reverted() {
@@ -1842,55 +1842,55 @@ func joinUint64(s []uint64) string {
 
 // describeFilter renders a filter as a compact prefix expression for assertion
 // details and debug logs.
-func describeFilter(f *commonpb.QueryFilter) string {
+func describeFilter(f *ledgerpb.QueryFilter) string {
 	return foldFilter(f, filterFold[string]{
 		and: func(children []string) string { return "and(" + strings.Join(children, ",") + ")" },
 		or:  func(children []string) string { return "or(" + strings.Join(children, ",") + ")" },
 		not: func(child string) string { return "not(" + child + ")" },
-		leaf: func(leaf *commonpb.QueryFilter) string {
+		leaf: func(leaf *ledgerpb.QueryFilter) string {
 			switch x := leaf.GetFilter().(type) {
 			case nil:
 				return "*"
-			case *commonpb.QueryFilter_Address:
+			case *ledgerpb.QueryFilter_Address:
 				role := ""
 				switch x.Address.GetRole() {
-				case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
+				case ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE:
 					role = "/src"
-				case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
+				case ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION:
 					role = "/dst"
 				}
 
 				switch m := x.Address.GetMatch().(type) {
-				case *commonpb.AddressMatch_HardcodedPrefix:
+				case *ledgerpb.AddressMatch_HardcodedPrefix:
 					return "addr^" + m.HardcodedPrefix + role
-				case *commonpb.AddressMatch_HardcodedExact:
+				case *ledgerpb.AddressMatch_HardcodedExact:
 					return "addr=" + m.HardcodedExact + role
 				}
 
 				return "addr?"
-			case *commonpb.QueryFilter_Reverted:
+			case *ledgerpb.QueryFilter_Reverted:
 				return "reverted=" + strconv.FormatBool(x.Reverted.GetValue())
-			case *commonpb.QueryFilter_Reference:
+			case *ledgerpb.QueryFilter_Reference:
 				return "ref=" + x.Reference.GetCond().GetHardcoded()
-			case *commonpb.QueryFilter_BuiltinUint:
+			case *ledgerpb.QueryFilter_BuiltinUint:
 				return describeBuiltinUint(x.BuiltinUint)
-			case *commonpb.QueryFilter_Field:
+			case *ledgerpb.QueryFilter_Field:
 				return "field:" + x.Field.GetField().GetMetadata() + describeFieldCondition(x.Field)
-			case *commonpb.QueryFilter_AccountHasAsset:
+			case *ledgerpb.QueryFilter_AccountHasAsset:
 				return "hasAsset:" + x.AccountHasAsset.GetAssetBase() + "/" + strconv.FormatUint(uint64(x.AccountHasAsset.GetPrecision()), 10)
-			case *commonpb.QueryFilter_Ledger:
+			case *ledgerpb.QueryFilter_Ledger:
 				return "ledger=" + x.Ledger.GetCond().GetHardcoded()
-			case *commonpb.QueryFilter_LogId:
+			case *ledgerpb.QueryFilter_LogId:
 				return "logId" + describeUintBounds(x.LogId.GetCond())
-			case *commonpb.QueryFilter_LogBuiltinUint:
+			case *ledgerpb.QueryFilter_LogBuiltinUint:
 				return "logDate" + describeUintBounds(x.LogBuiltinUint.GetCond())
-			case *commonpb.QueryFilter_Audit:
+			case *ledgerpb.QueryFilter_Audit:
 				field := "audit:" + strings.TrimPrefix(x.Audit.GetField().String(), "AUDIT_FIELD_")
 				if uc := x.Audit.GetUintCond(); uc != nil {
 					return field + describeUintBounds(uc)
 				}
 
-				if p, isPrefix := x.Audit.GetCondition().(*commonpb.AuditCondition_StringPrefix); isPrefix {
+				if p, isPrefix := x.Audit.GetCondition().(*ledgerpb.AuditCondition_StringPrefix); isPrefix {
 					return field + "^=" + p.StringPrefix
 				}
 
@@ -1908,12 +1908,12 @@ func describeFilter(f *commonpb.QueryFilter) string {
 
 // describeBuiltinUint renders a builtin-uint leaf: the field's short name and
 // its bounds, exclusive bounds parenthesized, absent ones as "_".
-func describeBuiltinUint(c *commonpb.BuiltinUintCondition) string {
-	name := map[commonpb.TransactionBuiltinIndex]string{
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:          "id",
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:   "ts",
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT: "iat",
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT: "rvat",
+func describeBuiltinUint(c *ledgerpb.BuiltinUintCondition) string {
+	name := map[ledgerpb.TransactionBuiltinIndex]string{
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:          "id",
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:   "ts",
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT: "iat",
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT: "rvat",
 	}[c.GetField()]
 	if name == "" {
 		name = c.GetField().String()
@@ -1925,7 +1925,7 @@ func describeBuiltinUint(c *commonpb.BuiltinUintCondition) string {
 // describeUintBounds renders a uint range, exclusive bounds parenthesized and
 // absent ones as "_". A finding must be diagnosable from its details alone, so
 // every generated leaf renders its bounds.
-func describeUintBounds(cond *commonpb.UintCondition) string {
+func describeUintBounds(cond *ledgerpb.UintCondition) string {
 	if cond == nil {
 		return "[nil]"
 	}
@@ -1951,26 +1951,26 @@ func describeUintBounds(cond *commonpb.UintCondition) string {
 // describeFieldCondition renders a Field leaf's condition — the bounds are
 // what a retype-window finding needs to be diagnosable from its details alone
 // (which coercions the serving types apply to them decides the verdict).
-func describeFieldCondition(fc *commonpb.FieldCondition) string {
+func describeFieldCondition(fc *ledgerpb.FieldCondition) string {
 	switch c := fc.GetCondition().(type) {
-	case *commonpb.FieldCondition_ExistsCond:
+	case *ledgerpb.FieldCondition_ExistsCond:
 		if c.ExistsCond.GetIncludeNull() {
 			return "?exists+null"
 		}
 
 		return "?exists"
-	case *commonpb.FieldCondition_StringCond:
+	case *ledgerpb.FieldCondition_StringCond:
 		return "=" + strconv.Quote(c.StringCond.GetHardcoded())
-	case *commonpb.FieldCondition_BoolCond:
+	case *ledgerpb.FieldCondition_BoolCond:
 		return "=" + strconv.FormatBool(c.BoolCond.GetHardcoded())
-	case *commonpb.FieldCondition_IntCond:
+	case *ledgerpb.FieldCondition_IntCond:
 		ic := c.IntCond
 
 		// min/max are proto3 optional: renderBound needs the pointer to tell an
 		// unset bound ("_") from a zero one.
 		//nolint:protogetter
 		return "[" + renderBound(ic.Min, ic.GetMinExclusive(), false) + "," + renderBound(ic.Max, ic.GetMaxExclusive(), true) + "]"
-	case *commonpb.FieldCondition_UintCond:
+	case *ledgerpb.FieldCondition_UintCond:
 		uc := c.UintCond
 
 		//nolint:protogetter // see describeFieldCondition's IntCond case

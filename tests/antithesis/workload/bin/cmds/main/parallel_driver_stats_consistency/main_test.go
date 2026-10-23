@@ -9,12 +9,12 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/usagebuilder"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -35,7 +35,7 @@ func TestStatsAllowsUsageLagAndConverges(t *testing.T) {
 	attrs := attributes.New()
 	const ledger = "default"
 	batch := primary.OpenWriteSession()
-	require.NoError(t, batch.SetProto(dal.NewKeyBuilder().PutZonePrefix(dal.ZoneGlobal, dal.SubGlobLedgerInfo).PutLedgerName(ledger).Build(), &commonpb.LedgerInfo{Name: ledger}))
+	require.NoError(t, batch.SetProto(dal.NewKeyBuilder().PutZonePrefix(dal.ZoneGlobal, dal.SubGlobLedgerInfo).PutLedgerName(ledger).Build(), &ledgerpb.LedgerInfo{Name: ledger}))
 	_, err = attrs.Boundary.Set(batch, domain.LedgerKey{Name: ledger}.Bytes(), &raftcmdpb.LedgerBoundaries{NextTransactionId: 2, NextLogId: 2})
 	require.NoError(t, err)
 	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -51,9 +51,9 @@ func TestStatsAllowsUsageLagAndConverges(t *testing.T) {
 	require.NoError(t, batch.SetProto(key(dal.SubHistoryAudit).Build(), &auditpb.AuditEntry{Sequence: 1, Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}}}))
 	require.NoError(t, batch.SetProto(key(dal.SubHistoryAppliedProposal).Build(), &proposalpb.AppliedProposal{Sequence: 1}))
 	require.NoError(t, batch.SetProto(key(dal.SubHistoryAuditItem).PutUint32(0).Build(), &auditpb.AuditItem{SerializedOrder: raw, LogSequence: 1}))
-	require.NoError(t, batch.SetProto(key(dal.SubHistoryLog).Build(), &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
-		LedgerName: ledger, Log: &commonpb.LedgerLog{Id: 1, Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
-			Transaction: &commonpb.Transaction{Id: 1, Postings: []*commonpb.Posting{{Source: "world", Destination: "user", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}}},
+	require.NoError(t, batch.SetProto(key(dal.SubHistoryLog).Build(), &ledgerpb.Log{Sequence: 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
+		LedgerName: ledger, Log: &ledgerpb.LedgerLog{Id: 1, Data: &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &ledgerpb.CreatedTransaction{
+			Transaction: &ledgerpb.Transaction{Id: 1, Postings: []*ledgerpb.Posting{{Source: "world", Destination: "user", Asset: "USD", Amount: ledgerpb.NewUint256FromUint64(1)}}},
 		}}}},
 	}}}}))
 	require.NoError(t, batch.Commit())
@@ -85,7 +85,7 @@ func TestStatsAllowsUsageLagAndConverges(t *testing.T) {
 
 func TestLiveStatsPreservesMainInvariantWithoutMixingUsage(t *testing.T) {
 	t.Parallel()
-	require.False(t, mainStoreStatsConsistent(&commonpb.LedgerStats{TransactionCount: 2, LogCount: 1}))
-	require.True(t, mainStoreStatsConsistent(&commonpb.LedgerStats{TransactionCount: 1, LogCount: 1, PostingCount: 4, RevertCount: 2}),
+	require.False(t, mainStoreStatsConsistent(&ledgerpb.LedgerStats{TransactionCount: 2, LogCount: 1}))
+	require.True(t, mainStoreStatsConsistent(&ledgerpb.LedgerStats{TransactionCount: 1, LogCount: 1, PostingCount: 4, RevertCount: 2}),
 		"usage may be ahead of the earlier main-store snapshot")
 }

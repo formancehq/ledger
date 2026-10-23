@@ -9,9 +9,9 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/invariants"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -61,7 +61,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	rescale := cmdutil.RescaleTarget(cmd)
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 
-	filter, err := cmdutil.BuildQueryFilter(filterExpr, prefix, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	filter, err := cmdutil.BuildQueryFilter(filterExpr, prefix, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	if err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 // aggregateVolumesTable builds the ASSET/COLOR/INPUT/OUTPUT/BALANCE table for
 // aggregate-volumes. It fails with an invariant error when --rescale meets an
 // invalid asset rather than rendering it at the wrong precision.
-func aggregateVolumesTable(vols []*commonpb.AggregatedVolume, rescale *uint8) (pterm.TableData, error) {
+func aggregateVolumesTable(vols []*ledgerpb.AggregatedVolume, rescale *uint8) (pterm.TableData, error) {
 	tableData := pterm.TableData{
 		{"ASSET", "COLOR", "INPUT", "OUTPUT", "BALANCE"},
 	}

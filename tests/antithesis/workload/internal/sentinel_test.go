@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/sdktest"
@@ -33,7 +33,7 @@ func (s *sentinelSDKServer) GetTransaction(_ context.Context, request *servicepb
 		return nil, status.Error(s.code, "sentinel read fixture")
 	}
 
-	return &servicepb.GetTransactionResponse{Transaction: &commonpb.Transaction{Id: 42}}, nil
+	return &servicepb.GetTransactionResponse{Transaction: &ledgerpb.Transaction{Id: 42}}, nil
 }
 
 func TestSentinelVerifySDK(t *testing.T) {

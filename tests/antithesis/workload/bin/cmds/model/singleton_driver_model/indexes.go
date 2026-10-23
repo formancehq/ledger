@@ -16,8 +16,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -47,8 +47,8 @@ import (
 
 // assetIndexID is the account-by-asset builtin index the has-asset condition is
 // served from. assetIndexCanonical is its stable map key.
-func assetIndexID() *commonpb.IndexID {
-	return indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+func assetIndexID() *ledgerpb.IndexID {
+	return indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
 }
 
 var assetIndexCanonical = indexes.Canonical(assetIndexID())
@@ -56,39 +56,39 @@ var assetIndexCanonical = indexes.Canonical(assetIndexID())
 // workloadTxBuiltins are the transaction builtin indexes the generator churns:
 // the index-backed leaves of the transactions filter grammar (reference, the
 // three date fields, and the three address-role account→tx mappings).
-var workloadTxBuiltins = []commonpb.TransactionBuiltinIndex{
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS,
+var workloadTxBuiltins = []ledgerpb.TransactionBuiltinIndex{
+	ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
+	ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+	ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+	ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
+	ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
+	ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
+	ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS,
 }
 
 // addressRoleBuiltin maps an address role to the tx builtin index serving it —
 // the model's copy of the compiler's txAddressIndexID.
-func addressRoleBuiltin(role commonpb.AddressRole) commonpb.TransactionBuiltinIndex {
+func addressRoleBuiltin(role ledgerpb.AddressRole) ledgerpb.TransactionBuiltinIndex {
 	switch role {
-	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
-		return commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS
-	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
-		return commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS
+	case ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE:
+		return ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS
+	case ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION:
+		return ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS
 	default:
-		return commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS
+		return ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS
 	}
 }
 
 // txBuiltinCanonical returns the canonical IndexID string of a tx builtin — the
 // model's index-map key the filter classifier and the lifecycle validation
 // share.
-func txBuiltinCanonical(field commonpb.TransactionBuiltinIndex) string {
+func txBuiltinCanonical(field ledgerpb.TransactionBuiltinIndex) string {
 	return indexes.Canonical(indexes.TxBuiltinID(field))
 }
 
 // workloadIndex is one index the generator churns: its wire ID and canonical key.
 type workloadIndex struct {
-	id        *commonpb.IndexID
+	id        *ledgerpb.IndexID
 	canonical string
 }
 
@@ -191,8 +191,8 @@ func assetWindow(ls oracle.LedgerState, base string, precision uint32, cursor st
 }
 
 // hasAssetTarget extracts the (base, precision) of a bare AccountHasAsset filter.
-func hasAssetTarget(f *commonpb.QueryFilter) (base string, precision uint32, ok bool) {
-	if ha, isHA := f.GetFilter().(*commonpb.QueryFilter_AccountHasAsset); isHA {
+func hasAssetTarget(f *ledgerpb.QueryFilter) (base string, precision uint32, ok bool) {
+	if ha, isHA := f.GetFilter().(*ledgerpb.QueryFilter_AccountHasAsset); isHA {
 		return ha.AccountHasAsset.GetAssetBase(), ha.AccountHasAsset.GetPrecision(), true
 	}
 
@@ -205,7 +205,7 @@ func hasAssetTarget(f *commonpb.QueryFilter) (base string, precision uint32, ok 
 // asset — the account-by-asset lifecycle path. Bare, its result set is exactly
 // EverAssetAccounts(base, precision); under a combinator, matchAccountFilterIn
 // composes it with the current-account leaves.
-func genAccountAssetFilter() *commonpb.QueryFilter {
+func genAccountAssetFilter() *ledgerpb.QueryFilter {
 	a := workloadAssets[int(random.RandomChoice([]uint8{0, 1, 2}))]
 
 	switch {
@@ -228,7 +228,7 @@ func genAccountAssetFilter() *commonpb.QueryFilter {
 
 // hasAssetPrecisionOverflow reports whether f is a bare has-asset leaf whose
 // precision exceeds the index cell.
-func hasAssetPrecisionOverflow(f *commonpb.QueryFilter) bool {
+func hasAssetPrecisionOverflow(f *ledgerpb.QueryFilter) bool {
 	return f.GetAccountHasAsset() != nil && f.GetAccountHasAsset().GetPrecision() > math.MaxUint8
 }
 
@@ -248,7 +248,7 @@ func hasAssetPrecisionOverflow(f *commonpb.QueryFilter) bool {
 // Any other error code is a finding. So is a result set no base can produce
 // (spurious rows without the index) and a rejection when every base has the index
 // active (ready everywhere, yet rejected).
-func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, next string, err error) {
+func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, filter *ledgerpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*ledgerpb.Account, next string, err error) {
 	if err != nil && !isIndexNotFound(err) && !isIndexNotReady(err) {
 		assert.Unreachable("singleton_driver_model: asset-index account query returned unexpected error", internal.Details{
 			"ledger": ledger,
@@ -308,7 +308,7 @@ func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, fil
 		return nextCursorLegal(next, more, lastAccountKey(serverAccts), len(serverAccts), pageSize)
 	})
 
-	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter,
+	c.noteQueryCoverage(ledger, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter,
 		map[string]struct{}{assetIndexCanonical: {}}, matched && gotResults, len(serverAccts))
 
 	if matched {
@@ -335,7 +335,7 @@ func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, fil
 		"reverse":    reverse,
 		"modelIdx":   indexStateLabel(exists, active),
 		"modelAddrs": strings.Join(modelWindow, ","),
-		"bases": c.describeCandidateVerdicts(maxTicket, ledger, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, map[string]struct{}{assetIndexCanonical: {}}, func(ls oracle.LedgerState) []string {
+		"bases": c.describeCandidateVerdicts(maxTicket, ledger, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, map[string]struct{}{assetIndexCanonical: {}}, func(ls oracle.LedgerState) []string {
 			return assetWindow(ls, base, precision, cursor, pageSize, reverse)
 		}),
 	}
@@ -360,7 +360,7 @@ func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, fil
 // base's view of addr and the server's enriched row — the diagnostic for a
 // finding whose page ADDRESSES match a candidate base while a row's content
 // does not. Empty when the row matches.
-func describeAccountContentDiff(ls oracle.LedgerState, addr string, serverAcct *commonpb.Account) string {
+func describeAccountContentDiff(ls oracle.LedgerState, addr string, serverAcct *ledgerpb.Account) string {
 	modelMeta := ls.AccountMetadata(addr)
 	serverMeta := serverAcct.GetMetadata()
 
@@ -416,7 +416,7 @@ func describeAccountContentDiff(ls oracle.LedgerState, addr string, serverAcct *
 // equals the server page address-for-address, the distinct first content
 // divergences (capped) — pinpointing WHICH row and field failed a page whose
 // membership was explainable. Empty when no base reproduces the addresses. Acquires c.mu.
-func (c *Checker) assetContentDiags(maxTicket uint64, ledger, assetBase string, precision uint32, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account) string {
+func (c *Checker) assetContentDiags(maxTicket uint64, ledger, assetBase string, precision uint32, cursor string, pageSize int, reverse bool, serverAccts []*ledgerpb.Account) string {
 	var diags []string
 
 	c.mu.Lock()
@@ -509,13 +509,13 @@ func (c *Checker) foldDiag(maxTicket uint64) string {
 // Apply request. Both are idempotent on the server (a duplicate create on a
 // present index is a no-op, a drop of an absent index a no-op — no
 // AlreadyExists / NotFound), so the model applies them as always-OK.
-func createIndexReq(ledger string, id *commonpb.IndexID) *servicepb.Request {
+func createIndexReq(ledger string, id *ledgerpb.IndexID) *servicepb.Request {
 	return &servicepb.Request{Type: &servicepb.Request_CreateIndex{
 		CreateIndex: &servicepb.CreateIndexRequest{Ledger: ledger, Id: id},
 	}}
 }
 
-func dropIndexReq(ledger string, id *commonpb.IndexID) *servicepb.Request {
+func dropIndexReq(ledger string, id *ledgerpb.IndexID) *servicepb.Request {
 	return &servicepb.Request{Type: &servicepb.Request_DropIndex{
 		DropIndex: &servicepb.DropIndexRequest{Ledger: ledger, Id: id},
 	}}
@@ -526,9 +526,9 @@ func dropIndexReq(ledger string, id *commonpb.IndexID) *servicepb.Request {
 // targets, so metadata index lifecycles churn alongside the builtins.
 func ledgerIndexPool(ls oracle.LedgerState) []workloadIndex {
 	all := workloadIndexes()
-	for _, target := range []commonpb.TargetType{
-		commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-		commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+	for _, target := range []ledgerpb.TargetType{
+		ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
+		ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 	} {
 		for key := range ls.FieldTypesFor(target).All() {
 			id := indexes.MetadataID(target, key)
@@ -587,9 +587,9 @@ func rollIndexOp(ls oracle.LedgerState) bool {
 func generateIndexOp(g oracle.GlobalState, ledger string) *servicepb.Request {
 	if oneIn(16) {
 		return createIndexReq(ledger, indexes.MetadataID(
-			random.RandomChoice([]commonpb.TargetType{
-				commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+			random.RandomChoice([]ledgerpb.TargetType{
+				ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
+				ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 			}), "undeclared-"+metaKey()))
 	}
 
@@ -924,7 +924,7 @@ func reconcileIndexes(ctx context.Context, c *Checker, conns internal.PerNodeCon
 //
 // Any other error code is a finding, as are rows without every needed index and
 // a rejection when every needed index is active on every base.
-func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction, next string, err error) {
+func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger string, filter *ledgerpb.QueryFilter, needed map[string]struct{}, afterID uint64, pageSize int, reverse bool, serverTxs []*ledgerpb.Transaction, next string, err error) {
 	errKind, ok := classifyIndexedQueryError(err)
 	if !ok {
 		assert.Unreachable("singleton_driver_model: indexed transaction query returned unexpected error", internal.Details{
@@ -943,12 +943,12 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 			return false
 		}
 
-		return indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
+		return indexedQueryOutcomeLegal(ls, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
 			return txWindowMatches(ls, filter, afterID, pageSize, reverse, serverTxs, next)
 		})
 	})
 
-	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed,
+	c.noteQueryCoverage(ledger, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed,
 		matched && errKind == indexedErrNone, len(serverTxs))
 
 	if matched {
@@ -981,7 +981,7 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 		"reverse":  reverse,
 		"modelIdx": strings.Join(idxStates, " "),
 		"modelIds": joinUint64(modelWindow),
-		"bases": c.describeCandidateVerdicts(maxTicket, ledger, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed, func(ls oracle.LedgerState) []string {
+		"bases": c.describeCandidateVerdicts(maxTicket, ledger, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed, func(ls oracle.LedgerState) []string {
 			ids := transactionWindow(ls, filter, afterID, pageSize, reverse)
 			out := make([]string, len(ids))
 			for i, id := range ids {
@@ -1029,15 +1029,15 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 // was never enumerated). Deduped on the rendered verdict, because enumeration
 // order front-loads near-identical bases and a first-N cap would hide the
 // interesting ones. Acquires c.mu.
-func (c *Checker) describeCandidateVerdicts(maxTicket uint64, ledger string, target commonpb.QueryTarget, filter *commonpb.QueryFilter, needed map[string]struct{}, window func(oracle.LedgerState) []string) string {
+func (c *Checker) describeCandidateVerdicts(maxTicket uint64, ledger string, target ledgerpb.QueryTarget, filter *ledgerpb.QueryFilter, needed map[string]struct{}, window func(oracle.LedgerState) []string) string {
 	const maxDistinct = 8
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	tt := commonpb.TargetType_TARGET_TYPE_ACCOUNT
-	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
-		tt = commonpb.TargetType_TARGET_TYPE_TRANSACTION
+	tt := ledgerpb.TargetType_TARGET_TYPE_ACCOUNT
+	if target == ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+		tt = ledgerpb.TargetType_TARGET_TYPE_TRANSACTION
 	}
 
 	head := func(w []string) string {
@@ -1101,10 +1101,10 @@ func rejectedIndexLabel(err error) string {
 
 // metadataCanonical is the canonical IndexID of the per-(target, key) metadata
 // index serving Field conditions on the given query target.
-func metadataCanonical(target commonpb.QueryTarget, key string) string {
-	tt := commonpb.TargetType_TARGET_TYPE_ACCOUNT
-	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
-		tt = commonpb.TargetType_TARGET_TYPE_TRANSACTION
+func metadataCanonical(target ledgerpb.QueryTarget, key string) string {
+	tt := ledgerpb.TargetType_TARGET_TYPE_ACCOUNT
+	if target == ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+		tt = ledgerpb.TargetType_TARGET_TYPE_TRANSACTION
 	}
 
 	return indexes.Canonical(indexes.MetadataID(tt, key))
@@ -1139,8 +1139,8 @@ func metadataCanonical(target commonpb.QueryTarget, key string) string {
 // existing single-view legality and accepts any.
 func indexedQueryOutcomeLegal(
 	ls oracle.LedgerState,
-	target commonpb.QueryTarget,
-	filter *commonpb.QueryFilter,
+	target ledgerpb.QueryTarget,
+	filter *ledgerpb.QueryFilter,
 	needed map[string]struct{},
 	errKind indexedErrKind,
 	rejectedIndex string,
@@ -1157,7 +1157,7 @@ func indexedQueryOutcomeLegal(
 	// ErrorInfo metadata. A sibling index being active must still make its
 	// own refusal a finding, even when this filter also touches a retype.
 	if errKind == indexedErrNotReady {
-		targetName := commonpb.TargetHumanName(target)
+		targetName := ledgerpb.TargetHumanName(target)
 		for _, ref := range refs {
 			if rejectedIndex == fmt.Sprintf("metadata[%q] on %s", ref.key, targetName) {
 				return true
@@ -1165,9 +1165,9 @@ func indexedQueryOutcomeLegal(
 		}
 	}
 
-	tt := commonpb.TargetType_TARGET_TYPE_ACCOUNT
-	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
-		tt = commonpb.TargetType_TARGET_TYPE_TRANSACTION
+	tt := ledgerpb.TargetType_TARGET_TYPE_ACCOUNT
+	if target == ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+		tt = ledgerpb.TargetType_TARGET_TYPE_TRANSACTION
 	}
 
 	// Cross-product over the per-key choices: the current declared type
@@ -1209,13 +1209,13 @@ func indexedQueryOutcomeLegal(
 // windowedFieldRefs collects the filter's distinct metadata keys whose index
 // has an open retype window on this base, with the accumulated types each
 // window may still serve.
-func windowedFieldRefs(ls oracle.LedgerState, target commonpb.QueryTarget, f *commonpb.QueryFilter) []windowedRef {
+func windowedFieldRefs(ls oracle.LedgerState, target ledgerpb.QueryTarget, f *ledgerpb.QueryFilter) []windowedRef {
 	seen := map[string]bool{}
 
 	var out []windowedRef
 
-	visitLeaves(f, func(leaf *commonpb.QueryFilter) {
-		x, ok := leaf.GetFilter().(*commonpb.QueryFilter_Field)
+	visitLeaves(f, func(leaf *ledgerpb.QueryFilter) {
+		x, ok := leaf.GetFilter().(*ledgerpb.QueryFilter_Field)
 		if !ok {
 			return
 		}
@@ -1236,13 +1236,13 @@ func windowedFieldRefs(ls oracle.LedgerState, target commonpb.QueryTarget, f *co
 
 type windowedRef struct {
 	key   string
-	types []commonpb.MetadataType
+	types []ledgerpb.MetadataType
 }
 
 func indexedQueryOutcomeLegalUnder(
 	ls oracle.LedgerState,
-	target commonpb.QueryTarget,
-	filter *commonpb.QueryFilter,
+	target ledgerpb.QueryTarget,
+	filter *ledgerpb.QueryFilter,
 	needed map[string]struct{},
 	errKind indexedErrKind,
 	windowMatches func(oracle.LedgerState) bool,
@@ -1306,7 +1306,7 @@ func classifyIndexedQueryError(err error) (indexedErrKind, bool) {
 // validateIndexedAccountQuery is the accounts twin of
 // validateIndexedTransactionQuery: same needed-set lifecycle gating, with the
 // ordered account window (accountWindow + accountMatches) as the result check.
-func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, next string, err error) {
+func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, filter *ledgerpb.QueryFilter, needed map[string]struct{}, cursor string, pageSize int, reverse bool, serverAccts []*ledgerpb.Account, next string, err error) {
 	errKind, ok := classifyIndexedQueryError(err)
 	if !ok {
 		assert.Unreachable("singleton_driver_model: indexed account query returned unexpected error", internal.Details{
@@ -1325,19 +1325,19 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 			return false
 		}
 
-		return indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
+		return indexedQueryOutcomeLegal(ls, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
 			return accountPageMatches(ls, filter, cursor, pageSize, reverse, serverAccts, next)
 		})
 	})
 
-	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed,
+	c.noteQueryCoverage(ledger, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed,
 		matched && errKind == indexedErrNone, len(serverAccts))
 
 	if matched {
 		switch errKind {
 		case indexedErrNone:
 			assert.Reachable("singleton_driver_model: indexed account query served results", internal.Details{"ledger": ledger})
-			if anyLeaf(filter, func(leaf *commonpb.QueryFilter) bool { return leaf.GetAccountHasAsset() != nil }) {
+			if anyLeaf(filter, func(leaf *ledgerpb.QueryFilter) bool { return leaf.GetAccountHasAsset() != nil }) {
 				// Coverage: a has-asset leaf composed with other arms matched the model.
 				assert.Reachable("singleton_driver_model: has-asset under a combinator served results", internal.Details{"ledger": ledger})
 			}
@@ -1367,7 +1367,7 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 		"reverse":    reverse,
 		"modelIdx":   strings.Join(idxStates, " "),
 		"modelAddrs": strings.Join(modelWindow, ","),
-		"bases": c.describeCandidateVerdicts(maxTicket, ledger, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, func(ls oracle.LedgerState) []string {
+		"bases": c.describeCandidateVerdicts(maxTicket, ledger, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, func(ls oracle.LedgerState) []string {
 			return accountWindow(ls, filter, cursor, pageSize, reverse)
 		}),
 	}

@@ -17,11 +17,12 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -30,10 +31,10 @@ func TestForwardedCursorPreservesCanceledLedgerStatus(t *testing.T) {
 
 	constructors := []struct {
 		name string
-		new  func(context.Context, ggrpc.ServerStreamingClient[commonpb.Account]) cursor.Cursor[*commonpb.Account]
+		new  func(context.Context, ggrpc.ServerStreamingClient[ledgerpb.Account]) cursor.Cursor[*ledgerpb.Account]
 	}{
-		{"upstream peek", NewUpstreamPeekCursor[commonpb.Account]},
-		{"generic identity", NewGRPCIdentityCursor[commonpb.Account]},
+		{"upstream peek", NewUpstreamPeekCursor[ledgerpb.Account]},
+		{"generic identity", NewGRPCIdentityCursor[ledgerpb.Account]},
 	}
 	for _, constructor := range constructors {
 		for _, structured := range []bool{true, false} {

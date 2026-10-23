@@ -8,10 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/blake3"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
@@ -62,10 +63,10 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 	// builder and the golden spec is caught regardless of outcome.
 	entry := &auditpb.AuditEntry{
 		Sequence:    42,
-		Timestamp:   &commonpb.Timestamp{Data: 1700000000},
+		Timestamp:   &ledgerpb.Timestamp{Data: 1700000000},
 		ProposalId:  77,
 		OrderCount:  2,
-		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		HashVersion: uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		Ledgers:     []string{"ledger-b", "ledger-a"}, // intentionally un-sorted: builder must sort
 		Outcome: &auditpb.AuditEntry_Success{
 			Success: &auditpb.AuditSuccess{
@@ -73,19 +74,19 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 				MaxLogSequence: 101,
 			},
 		},
-		CallerSnapshot: &commonpb.CallerSnapshot{
-			Principal: &commonpb.CallerSnapshot_Authenticated{
-				Authenticated: &commonpb.AuthenticatedCaller{
-					Identity: &commonpb.CallerIdentity{
+		CallerSnapshot: &ledgerpb.CallerSnapshot{
+			Principal: &ledgerpb.CallerSnapshot_Authenticated{
+				Authenticated: &ledgerpb.AuthenticatedCaller{
+					Identity: &ledgerpb.CallerIdentity{
 						Subject: "alice",
-						Source:  &commonpb.CallerIdentity_KeyId{KeyId: "kid-1"},
+						Source:  &ledgerpb.CallerIdentity_KeyId{KeyId: "kid-1"},
 					},
 					Scopes:    []string{"write", "read"}, // builder must sort
 					Superuser: false,
 				},
 			},
 		},
-		Idempotency: &commonpb.Idempotency{Key: "batch-key-42", ExpiresAt: 0x0102030405060708},
+		Idempotency: &ledgerpb.Idempotency{Key: "batch-key-42", ExpiresAt: 0x0102030405060708},
 		Signature: &signaturepb.SignedApplyBatch{
 			KeyId:     "sign-kid",
 			Signature: []byte("sig-bytes"),
@@ -111,7 +112,7 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 		hashSlices = append(hashSlices, BuildPerItemPayload(item))
 	}
 
-	g := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
+	g := processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
 	_, gotHash := g.Compute(nil, lastHash, hashSlices)
 
 	// 2. Recompute the same hash entirely by hand (no production helpers
@@ -141,7 +142,7 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 
 	require.Equal(t, expectedHash, gotHash,
 		"audit chain hash drifted from H(blake3-key(clusterID), header || items... || lastHash). "+
-			"If this drift is intentional, bump commonpb.HashAlgorithm and add a new envelope version.")
+			"If this drift is intentional, bump ledgerpb.HashAlgorithm and add a new envelope version.")
 }
 
 // TestHashChain_Envelope_SystemCaller pins the system principal tag in the hash
@@ -152,10 +153,10 @@ func TestHashChain_Envelope_SystemCaller(t *testing.T) {
 	base := func() *auditpb.AuditEntry {
 		return &auditpb.AuditEntry{
 			Sequence:    7,
-			Timestamp:   &commonpb.Timestamp{Data: 1700000000},
+			Timestamp:   &ledgerpb.Timestamp{Data: 1700000000},
 			ProposalId:  9,
 			OrderCount:  1,
-			HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+			HashVersion: uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 			Ledgers:     []string{"ledger-a"},
 			Outcome: &auditpb.AuditEntry_Success{
 				Success: &auditpb.AuditSuccess{MinLogSequence: 1, MaxLogSequence: 1},
@@ -183,20 +184,20 @@ func TestHashChain_Envelope_SystemCaller(t *testing.T) {
 func TestCallerSnapshotPayload_PrincipalVariantsGoldenAndDistinct(t *testing.T) {
 	t.Parallel()
 
-	snapshots := map[string]*commonpb.CallerSnapshot{
-		"oidc": {Principal: &commonpb.CallerSnapshot_Authenticated{Authenticated: &commonpb.AuthenticatedCaller{
-			Identity: &commonpb.CallerIdentity{Subject: "alice", Source: &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"}},
+	snapshots := map[string]*ledgerpb.CallerSnapshot{
+		"oidc": {Principal: &ledgerpb.CallerSnapshot_Authenticated{Authenticated: &ledgerpb.AuthenticatedCaller{
+			Identity: &ledgerpb.CallerIdentity{Subject: "alice", Source: &ledgerpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"}},
 			Scopes:   []string{"write", "read"},
 		}}},
-		"ed25519": {Principal: &commonpb.CallerSnapshot_Authenticated{Authenticated: &commonpb.AuthenticatedCaller{
-			Identity:  &commonpb.CallerIdentity{Subject: "service", Source: &commonpb.CallerIdentity_KeyId{KeyId: "key-7"}},
+		"ed25519": {Principal: &ledgerpb.CallerSnapshot_Authenticated{Authenticated: &ledgerpb.AuthenticatedCaller{
+			Identity:  &ledgerpb.CallerIdentity{Subject: "service", Source: &ledgerpb.CallerIdentity_KeyId{KeyId: "key-7"}},
 			Superuser: true,
 		}}},
-		"anonymous": {Principal: &commonpb.CallerSnapshot_Anonymous{Anonymous: &commonpb.AnonymousCaller{
+		"anonymous": {Principal: &ledgerpb.CallerSnapshot_Anonymous{Anonymous: &ledgerpb.AnonymousCaller{
 			Scopes: []string{"ledger:read"},
 		}}},
 		"system":        commands.SystemCallerSnapshot(commands.ComponentMirror),
-		"auth-disabled": {Principal: &commonpb.CallerSnapshot_AuthDisabled{AuthDisabled: &commonpb.AuthDisabledCaller{}}},
+		"auth-disabled": {Principal: &ledgerpb.CallerSnapshot_AuthDisabled{AuthDisabled: &ledgerpb.AuthDisabledCaller{}}},
 	}
 
 	encoded := make(map[string]string, len(snapshots))
@@ -229,16 +230,16 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 
 	entry := &auditpb.AuditEntry{
 		Sequence:    43,
-		Timestamp:   &commonpb.Timestamp{Data: 1700000001},
+		Timestamp:   &ledgerpb.Timestamp{Data: 1700000001},
 		ProposalId:  78,
 		OrderCount:  3,
-		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		HashVersion: uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		Ledgers:     []string{"ledger-a"},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
 
 				// Intentionally unsorted: the builder must sort the field keys.
-				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{
+				Details: ledgerpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{
 					"balance": "9",
 					"account": "bank",
 					"amount":  "10",
@@ -271,7 +272,7 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 		hashSlices = append(hashSlices, BuildPerItemPayload(item))
 	}
 
-	g := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
+	g := processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
 	_, gotHash := g.Compute(nil, lastHash, hashSlices)
 
 	keyMaterial := blake3.Sum256([]byte("audit-hash:blake3:v1:" + clusterID))
@@ -310,15 +311,15 @@ func TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns(t *testing.T) {
 
 	entry := &auditpb.AuditEntry{
 		Sequence:    99,
-		Timestamp:   &commonpb.Timestamp{Data: 1700000002},
+		Timestamp:   &ledgerpb.Timestamp{Data: 1700000002},
 		ProposalId:  100,
 		OrderCount:  1,
-		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		HashVersion: uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		Ledgers:     []string{"ledger-a"},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
 
-				Details: commonpb.MustFailureDetails("ACCOUNT_METADATA_KEY_LIMIT_EXCEEDED", map[string]string{
+				Details: ledgerpb.MustFailureDetails("ACCOUNT_METADATA_KEY_LIMIT_EXCEEDED", map[string]string{
 					"dimension": "value",
 					"limit":     "16",
 					"actual":    "17",
@@ -448,19 +449,19 @@ func goldenBuildFailure(f *auditpb.AuditFailure) []byte {
 	return buf
 }
 
-func goldenBuildSnapshot(s *commonpb.CallerSnapshot) []byte {
+func goldenBuildSnapshot(s *ledgerpb.CallerSnapshot) []byte {
 	var buf []byte
 	switch principal := s.GetPrincipal().(type) {
-	case *commonpb.CallerSnapshot_Authenticated:
+	case *ledgerpb.CallerSnapshot_Authenticated:
 		buf = append(buf, 0x01)
 		caller := principal.Authenticated
 		id := caller.GetIdentity()
 		buf = goldenLenString(buf, id.GetSubject())
 		switch src := id.GetSource().(type) {
-		case *commonpb.CallerIdentity_Issuer:
+		case *ledgerpb.CallerIdentity_Issuer:
 			buf = append(buf, 0x01)
 			buf = goldenLenString(buf, src.Issuer)
-		case *commonpb.CallerIdentity_KeyId:
+		case *ledgerpb.CallerIdentity_KeyId:
 			buf = append(buf, 0x02)
 			buf = goldenLenString(buf, src.KeyId)
 		default:
@@ -473,13 +474,13 @@ func goldenBuildSnapshot(s *commonpb.CallerSnapshot) []byte {
 			buf = append(buf, 0x00)
 		}
 		buf = goldenAppendScopes(buf, caller.GetScopes())
-	case *commonpb.CallerSnapshot_Anonymous:
+	case *ledgerpb.CallerSnapshot_Anonymous:
 		buf = append(buf, 0x02)
 		buf = goldenAppendScopes(buf, principal.Anonymous.GetScopes())
-	case *commonpb.CallerSnapshot_System:
+	case *ledgerpb.CallerSnapshot_System:
 		buf = append(buf, 0x03)
 		buf = goldenLenString(buf, principal.System.GetComponent())
-	case *commonpb.CallerSnapshot_AuthDisabled:
+	case *ledgerpb.CallerSnapshot_AuthDisabled:
 		buf = append(buf, 0x04)
 	default:
 		buf = append(buf, 0x00)

@@ -14,7 +14,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -47,25 +48,25 @@ var _ = Describe("Cross-store snapshot alignment", Ordered, func() {
 		ctx, node = testutil.SetupSingleNode()
 		client = node.Client
 
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-			{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "tier", Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
+			{TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "tier", Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 		})))
 		Expect(err).To(Succeed())
 
 		// Fold cost per log is multiplicative in the live index count.
 		for _, req := range []*servicepb.Request{
-			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
-			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
-			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS),
-			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS),
-			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS),
+			actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+			actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+			actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS),
+			actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS),
+			actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS),
 			actions.CreateAccountMetadataIndexAction(ledgerName, "tier"),
 			actions.CreateAccountAssetIndexAction(ledgerName),
 		} {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", req))
 			Expect(err).To(Succeed())
 		}
-		Expect(actions.WaitForBuiltinIndexReady(ctx, client, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)).To(Succeed())
+		Expect(actions.WaitForBuiltinIndexReady(ctx, client, ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)).To(Succeed())
 	})
 
 	It("never surfaces a committed tx as missing from a READY index", func() {
@@ -97,13 +98,13 @@ var _ = Describe("Cross-store snapshot alignment", Ordered, func() {
 						n++
 						a := fmt.Sprintf("load:%d:%d:a", w, n%128)
 						b := fmt.Sprintf("load:%d:%d:b", w, n%128)
-						reqs = append(reqs, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						reqs = append(reqs, actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 							actions.NewPosting("world", a, big.NewInt(1), "COIN"),
 							actions.NewPosting("world", b, big.NewInt(1), "EUR"),
 							actions.NewPosting("world", a, big.NewInt(1), "USD/2"),
-						}, nil, map[string]*commonpb.MetadataMap{
-							a: {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")}},
-							b: {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("silver")}},
+						}, nil, map[string]*ledgerpb.MetadataMap{
+							a: {Values: map[string]*ledgerpb.MetadataValue{"tier": ledgerpb.NewStringValue("gold")}},
+							b: {Values: map[string]*ledgerpb.MetadataValue{"tier": ledgerpb.NewStringValue("silver")}},
 						}))
 					}
 					if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", reqs...)); err != nil {
@@ -135,7 +136,7 @@ var _ = Describe("Cross-store snapshot alignment", Ordered, func() {
 		}
 		defer waitForPressure()
 
-		notTs := actions.NotFilter(actions.BuiltinUintRangeFilter(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, 0, ^uint64(0)))
+		notTs := actions.NotFilter(actions.BuiltinUintRangeFilter(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, 0, ^uint64(0)))
 		Eventually(func(g Gomega) uint64 {
 			st, err := actions.GetIndexStatus(ctx, client)
 			g.Expect(err).To(Succeed())
@@ -150,7 +151,7 @@ var _ = Describe("Cross-store snapshot alignment", Ordered, func() {
 		probeCtx, cancelProbe := context.WithTimeout(ctx, 3*time.Minute)
 		probe, err := client.ListTransactions(probeCtx, &servicepb.ListTransactionsRequest{
 			Ledger: ledgerName,
-			Options: &commonpb.ListOptions{
+			Options: &ledgerpb.ListOptions{
 				Filter: notTs,
 			},
 		})
@@ -159,7 +160,7 @@ var _ = Describe("Cross-store snapshot alignment", Ordered, func() {
 		waitForPressure()
 
 		var (
-			probeTxs []*commonpb.Transaction
+			probeTxs []*ledgerpb.Transaction
 			probeErr error
 		)
 		for {

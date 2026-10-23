@@ -3,8 +3,9 @@ package query
 import (
 	"fmt"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // ErrAggregateOverflow signals that summing colored or precision-rescaled
@@ -56,11 +57,11 @@ var _ domain.Describable = (*ErrAggregateOverflow)(nil)
 // meaning over accounts, and the target is fixed by the stored definition, so
 // the caller must either execute it in LIST mode or aggregate another query.
 type ErrPreparedQueryAggregateTarget struct {
-	Target commonpb.QueryTarget
+	Target ledgerpb.QueryTarget
 }
 
 func (e *ErrPreparedQueryAggregateTarget) Error() string {
-	return "AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries, this query targets " + commonpb.TargetHumanName(e.Target)
+	return "AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries, this query targets " + ledgerpb.TargetHumanName(e.Target)
 }
 
 func (*ErrPreparedQueryAggregateTarget) Kind() domain.ErrorKind { return domain.KindValidation }
@@ -70,7 +71,7 @@ func (*ErrPreparedQueryAggregateTarget) Kind() domain.ErrorKind { return domain.
 // out-of-range number. The request names something the server cannot execute,
 // which is an argument error rather than a server fault.
 type ErrQueryModeUnsupported struct {
-	Mode commonpb.QueryMode
+	Mode ledgerpb.QueryMode
 }
 
 func (e *ErrQueryModeUnsupported) Error() string {
@@ -82,7 +83,7 @@ func (*ErrQueryModeUnsupported) Kind() domain.ErrorKind { return domain.KindVali
 // ErrQueryModeReverseUnsupported rejects reverse on a mode that does not page:
 // an aggregate has no order to invert.
 type ErrQueryModeReverseUnsupported struct {
-	Mode commonpb.QueryMode
+	Mode ledgerpb.QueryMode
 }
 
 func (e *ErrQueryModeReverseUnsupported) Error() string {

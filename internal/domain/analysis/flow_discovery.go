@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -111,8 +112,8 @@ func (g *txGroupAccum) toFlowPattern() *servicepb.FlowPattern {
 	if g.count > 0 {
 		stats := &servicepb.TemporalStats{}
 		if g.hasSeen {
-			stats.FirstSeen = &commonpb.Timestamp{Data: g.firstSeen}
-			stats.LastSeen = &commonpb.Timestamp{Data: g.lastSeen}
+			stats.FirstSeen = &ledgerpb.Timestamp{Data: g.firstSeen}
+			stats.LastSeen = &ledgerpb.Timestamp{Data: g.lastSeen}
 
 			first := time.UnixMicro(int64(g.firstSeen))
 			last := time.UnixMicro(int64(g.lastSeen))

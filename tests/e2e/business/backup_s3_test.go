@@ -20,9 +20,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -131,8 +132,8 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		clusterClient = node.ClusterClient
 	})
 
-	s3Storage := func() *commonpb.BackupStorage {
-		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+	s3Storage := func() *ledgerpb.BackupStorage {
+		return testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 			Bucket:   backupS3Bucket,
 			Region:   backupS3Region,
 			Endpoint: minioEndpoint,
@@ -159,7 +160,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
-			[]*commonpb.Posting{
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
 			},
 			nil,
@@ -201,7 +202,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		// Add more data
 		for i := range 5 {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
-				[]*commonpb.Posting{
+				[]*ledgerpb.Posting{
 					actions.NewPosting("world", "users:bob", big.NewInt(int64(100*(i+1))), "EUR"),
 				},
 				nil,
@@ -270,7 +271,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 
 		// Add more data
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
-			[]*commonpb.Posting{
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP"),
 			},
 			nil,
@@ -307,7 +308,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 
 		// Add more data
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
-			[]*commonpb.Posting{
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "users:dave", big.NewInt(200), "JPY"),
 			},
 			nil,

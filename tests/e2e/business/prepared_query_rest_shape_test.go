@@ -11,11 +11,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // This suite exercises the REST prepared-query surface against the canonical
@@ -113,10 +115,10 @@ var _ = Describe("PreparedQuery REST shape (EN-1465)", Ordered, func() {
 	It("creates and executes a LOGS-target prepared query over REST (EN-1503)", func() {
 		// Produce a couple of logs on this ledger.
 		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-			actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "logs-rest-a", big.NewInt(10), "USD"),
 			}, nil),
-			actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "logs-rest-b", big.NewInt(20), "USD"),
 			}, nil)))
 		Expect(err).To(Succeed())

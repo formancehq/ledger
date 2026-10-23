@@ -17,10 +17,10 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	infrabackup "github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -196,8 +196,8 @@ func (f *recoveryFixture) seedLedger(seq uint64) {
 	f.t.Helper()
 	batch := f.store.OpenWriteSession()
 	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(seq).Build()
-	log := &commonpb.Log{Sequence: seq, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-		CreateLedger: &commonpb.CreatedLedgerLog{Name: fmt.Sprintf("ledger-%d", seq), Id: uint32(seq)},
+	log := &ledgerpb.Log{Sequence: seq, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+		CreateLedger: &ledgerpb.CreatedLedgerLog{Name: fmt.Sprintf("ledger-%d", seq), Id: uint32(seq)},
 	}}}
 	require.NoError(f.t, batch.SetProto(key, log))
 	require.NoError(f.t, batch.Commit())

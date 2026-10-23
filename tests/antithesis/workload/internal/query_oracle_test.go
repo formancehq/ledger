@@ -12,8 +12,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
@@ -116,7 +116,7 @@ func TestQueryOracleUnfaultedStreamPreservesEOF(t *testing.T) {
 		expected := seedOracle(t, ctx, client)
 		reader := &faultedQueryClient{BucketServiceClient: client}
 		stream, err := reader.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-			Ledger: "oracle", Options: &commonpb.ListOptions{Filter: actions.ReferenceFilter("reference")},
+			Ledger: "oracle", Options: &ledgerpb.ListOptions{Filter: actions.ReferenceFilter("reference")},
 		})
 		require.NoError(t, err)
 		tx, err := stream.Recv()
@@ -140,8 +140,8 @@ func TestQueryOracleSetupError(t *testing.T) {
 	drivertest.CheckEmissions(t, func() {
 		ctx, client := drivertest.StartServer(t)
 		err := workload.CreateQueryOracleLedger(ctx, client, "oracle",
-			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+			ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
+			ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 		require.Equal(t, codes.AlreadyExists, status.Code(err))
 		require.True(t, workload.HasErrorReason(err, domain.ErrReasonIndexAlreadyExists))
 	}, func(records []drivertest.Assertion) {
@@ -161,7 +161,7 @@ func TestQueryOracleSkipsLedgerNameCollision(t *testing.T) {
 	drivertest.CheckEmissions(t, func() {
 		ctx, client := drivertest.StartServer(t)
 		expected := seedOracle(t, ctx, client)
-		err := workload.CreateQueryOracleLedger(ctx, client, "oracle", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+		err := workload.CreateQueryOracleLedger(ctx, client, "oracle", ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 		require.Equal(t, codes.AlreadyExists, status.Code(err))
 		require.True(t, workload.HasErrorReason(err, domain.ErrReasonLedgerAlreadyExists))
 		ids, err := workload.ReadOracleTransactions(ctx, client, "oracle", actions.ReferenceFilter("reference"))
@@ -176,11 +176,11 @@ func TestQueryOracleSkipsLedgerNameCollision(t *testing.T) {
 
 func seedOracle(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient) []uint64 {
 	t.Helper()
-	require.NoError(t, workload.CreateQueryOracleLedger(ctx, client, "oracle", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
+	require.NoError(t, workload.CreateQueryOracleLedger(ctx, client, "oracle", ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
 	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("seed", &servicepb.Request{Type: &servicepb.Request_Apply{
 		Apply: &servicepb.LedgerApplyRequest{Ledger: "oracle", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-			CreateTransaction: &servicepb.CreateTransactionPayload{Reference: "reference", Force: true, Postings: []*commonpb.Posting{{
-				Source: "world", Destination: "account", Asset: "USD/2", Amount: commonpb.NewUint256FromUint64(1),
+			CreateTransaction: &servicepb.CreateTransactionPayload{Reference: "reference", Force: true, Postings: []*ledgerpb.Posting{{
+				Source: "world", Destination: "account", Asset: "USD/2", Amount: ledgerpb.NewUint256FromUint64(1),
 			}}},
 		}}},
 	}}))
@@ -204,7 +204,7 @@ type faultedQueryClient struct {
 	afterFailure func()
 }
 
-func (c *faultedQueryClient) ListTransactions(ctx context.Context, request *servicepb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error) {
+func (c *faultedQueryClient) ListTransactions(ctx context.Context, request *servicepb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Transaction], error) {
 	c.calls++
 	if c.once && c.calls > 1 {
 		return c.BucketServiceClient.ListTransactions(ctx, request, opts...)
@@ -225,12 +225,12 @@ func (c *faultedQueryClient) ListTransactions(ctx context.Context, request *serv
 }
 
 type faultedQueryStream struct {
-	grpc.ServerStreamingClient[commonpb.Transaction]
+	grpc.ServerStreamingClient[ledgerpb.Transaction]
 
 	failure error
 }
 
-func (s *faultedQueryStream) Recv() (*commonpb.Transaction, error) {
+func (s *faultedQueryStream) Recv() (*ledgerpb.Transaction, error) {
 	tx, err := s.ServerStreamingClient.Recv()
 	if errors.Is(err, io.EOF) && s.failure != nil {
 		return nil, s.failure

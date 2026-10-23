@@ -9,8 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestHandleListAllLedgers_Success(t *testing.T) {
@@ -18,8 +19,8 @@ func TestHandleListAllLedgers_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListLedgers(gomock.Any()).DoAndReturn(
-		func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
-			return cursor.NewSliceCursor([]*commonpb.LedgerInfo{
+		func(_ context.Context) (cursor.Cursor[*ledgerpb.LedgerInfo], error) {
+			return cursor.NewSliceCursor([]*ledgerpb.LedgerInfo{
 				{Name: "ledger-a"},
 				{Name: "ledger-b"},
 			}), nil
@@ -39,8 +40,8 @@ func TestHandleListAllLedgers_Empty(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListLedgers(gomock.Any()).DoAndReturn(
-		func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
-			return cursor.NewSliceCursor[*commonpb.LedgerInfo](nil), nil
+		func(_ context.Context) (cursor.Cursor[*ledgerpb.LedgerInfo], error) {
+			return cursor.NewSliceCursor[*ledgerpb.LedgerInfo](nil), nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -57,8 +58,8 @@ func TestHandleListAllLedgers_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListLedgers(gomock.Any()).DoAndReturn(
-		func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
-			return nil, commonpb.ErrNoLeader
+		func(_ context.Context) (cursor.Cursor[*ledgerpb.LedgerInfo], error) {
+			return nil, ledgerpb.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

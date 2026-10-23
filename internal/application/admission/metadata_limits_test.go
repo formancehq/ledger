@@ -8,9 +8,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -26,8 +27,8 @@ func metadataTestLimits() domain.MetadataLimits {
 	}
 }
 
-func metadataStringValue(s string) *commonpb.MetadataValue {
-	return &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: s}}
+func metadataStringValue(s string) *ledgerpb.MetadataValue {
+	return &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_StringValue{StringValue: s}}
 }
 
 // metadataApplyOrder wraps a ledger-apply payload in the ledger-scoped
@@ -56,7 +57,7 @@ func metadataMirrorOrder(entry *raftcmdpb.MirrorLogEntry) *raftcmdpb.Order {
 
 // metadataAddOrder is the AddMetadata order, whose payload message is
 // SaveMetadataOrder.
-func metadataAddOrder(m map[string]*commonpb.MetadataValue) *raftcmdpb.Order {
+func metadataAddOrder(m map[string]*ledgerpb.MetadataValue) *raftcmdpb.Order {
 	return metadataApplyOrder(&raftcmdpb.LedgerApplyOrder{
 		Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 			AddMetadata: &raftcmdpb.SaveMetadataOrder{Metadata: m},
@@ -85,7 +86,7 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 			order: metadataApplyOrder(&raftcmdpb.LedgerApplyOrder{
 				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 					CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-						Metadata: map[string]*commonpb.MetadataValue{"k": atValueCeiling},
+						Metadata: map[string]*ledgerpb.MetadataValue{"k": atValueCeiling},
 					},
 				},
 			}),
@@ -95,7 +96,7 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 			order: metadataApplyOrder(&raftcmdpb.LedgerApplyOrder{
 				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 					CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-						Metadata: map[string]*commonpb.MetadataValue{"k": overValueCeiling},
+						Metadata: map[string]*ledgerpb.MetadataValue{"k": overValueCeiling},
 					},
 				},
 			}),
@@ -106,8 +107,8 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 			order: metadataApplyOrder(&raftcmdpb.LedgerApplyOrder{
 				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 					CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-						AccountMetadata: map[string]*commonpb.MetadataMap{
-							"users:alice": {Values: map[string]*commonpb.MetadataValue{
+						AccountMetadata: map[string]*ledgerpb.MetadataMap{
+							"users:alice": {Values: map[string]*ledgerpb.MetadataValue{
 								"a": metadataStringValue("1"),
 								"b": metadataStringValue("2"),
 								"c": metadataStringValue("3"),
@@ -123,7 +124,7 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 			order: metadataApplyOrder(&raftcmdpb.LedgerApplyOrder{
 				Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 					RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-						Metadata: map[string]*commonpb.MetadataValue{"k": overValueCeiling},
+						Metadata: map[string]*ledgerpb.MetadataValue{"k": overValueCeiling},
 					},
 				},
 			}),
@@ -131,11 +132,11 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 		},
 		{
 			name:  "add metadata accepted at the ceiling",
-			order: metadataAddOrder(map[string]*commonpb.MetadataValue{"k": atValueCeiling}),
+			order: metadataAddOrder(map[string]*ledgerpb.MetadataValue{"k": atValueCeiling}),
 		},
 		{
 			name:          "add metadata over the value ceiling",
-			order:         metadataAddOrder(map[string]*commonpb.MetadataValue{"k": overValueCeiling}),
+			order:         metadataAddOrder(map[string]*ledgerpb.MetadataValue{"k": overValueCeiling}),
 			wantDimension: domain.MetadataLimitDimensionValue,
 		},
 		{
@@ -167,7 +168,7 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 		},
 		{
 			name:          "creation metadata over the value ceiling",
-			order:         metadataLedgerScopedOrder(&raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Metadata: map[string]*commonpb.MetadataValue{"k": overValueCeiling}}}}),
+			order:         metadataLedgerScopedOrder(&raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Metadata: map[string]*ledgerpb.MetadataValue{"k": overValueCeiling}}}}),
 			wantDimension: domain.MetadataLimitDimensionValue,
 		},
 		{
@@ -175,7 +176,7 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 			order: metadataLedgerScopedOrder(&raftcmdpb.LedgerScopedOrder{
 				Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{
 					SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{
-						Metadata: map[string]*commonpb.MetadataValue{"k": overValueCeiling},
+						Metadata: map[string]*ledgerpb.MetadataValue{"k": overValueCeiling},
 					},
 				},
 			}),
@@ -195,7 +196,7 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 			order: metadataMirrorOrder(&raftcmdpb.MirrorLogEntry{
 				Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
 					CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
-						Metadata: map[string]*commonpb.MetadataValue{"k": overValueCeiling},
+						Metadata: map[string]*ledgerpb.MetadataValue{"k": overValueCeiling},
 					},
 				},
 			}),
@@ -206,8 +207,8 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 			order: metadataMirrorOrder(&raftcmdpb.MirrorLogEntry{
 				Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
 					CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
-						AccountMetadata: map[string]*commonpb.MetadataMap{
-							"users:alice": {Values: map[string]*commonpb.MetadataValue{"k": overValueCeiling}},
+						AccountMetadata: map[string]*ledgerpb.MetadataMap{
+							"users:alice": {Values: map[string]*ledgerpb.MetadataValue{"k": overValueCeiling}},
 						},
 					},
 				},
@@ -219,7 +220,7 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 			order: metadataMirrorOrder(&raftcmdpb.MirrorLogEntry{
 				Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
 					SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
-						Metadata: map[string]*commonpb.MetadataValue{"k": overValueCeiling},
+						Metadata: map[string]*ledgerpb.MetadataValue{"k": overValueCeiling},
 					},
 				},
 			}),
@@ -230,7 +231,7 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 			order: metadataMirrorOrder(&raftcmdpb.MirrorLogEntry{
 				Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{
 					RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{
-						Metadata: map[string]*commonpb.MetadataValue{"k": overValueCeiling},
+						Metadata: map[string]*ledgerpb.MetadataValue{"k": overValueCeiling},
 					},
 				},
 			}),
@@ -269,9 +270,9 @@ func TestValidateCommandMetadata_NamesOffendingAccount(t *testing.T) {
 	order := metadataApplyOrder(&raftcmdpb.LedgerApplyOrder{
 		Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 			CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-				AccountMetadata: map[string]*commonpb.MetadataMap{
-					"users:alice": {Values: map[string]*commonpb.MetadataValue{"k": metadataStringValue("small")}},
-					"users:bob":   {Values: map[string]*commonpb.MetadataValue{"k": metadataStringValue(strings.Repeat("v", 17))}},
+				AccountMetadata: map[string]*ledgerpb.MetadataMap{
+					"users:alice": {Values: map[string]*ledgerpb.MetadataValue{"k": metadataStringValue("small")}},
+					"users:bob":   {Values: map[string]*ledgerpb.MetadataValue{"k": metadataStringValue(strings.Repeat("v", 17))}},
 				},
 			},
 		},
@@ -296,7 +297,7 @@ func TestValidateCommandMetadata_PerCommandTotalAcrossOrders(t *testing.T) {
 	// 8 + 16 = 24 bytes per order: one order fits the entity ceiling (40), two
 	// fit the command ceiling (60) at 48 bytes, three do not at 72.
 	orderWith := func(key string) *raftcmdpb.Order {
-		return metadataAddOrder(map[string]*commonpb.MetadataValue{
+		return metadataAddOrder(map[string]*ledgerpb.MetadataValue{
 			key: metadataStringValue(strings.Repeat("v", 16)),
 		})
 	}
@@ -323,7 +324,7 @@ func TestOrderMetadataBytes(t *testing.T) {
 	t.Parallel()
 
 	require.Equal(t, uint64(1+5), domain.OrderMetadataSize(
-		metadataAddOrder(map[string]*commonpb.MetadataValue{"k": metadataStringValue("value")})))
+		metadataAddOrder(map[string]*ledgerpb.MetadataValue{"k": metadataStringValue("value")})))
 
 	require.Equal(t, uint64(3), domain.OrderMetadataSize(metadataApplyOrder(&raftcmdpb.LedgerApplyOrder{
 		Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
@@ -341,7 +342,7 @@ func TestOrderMetadataBytes(t *testing.T) {
 func TestValidateCommandMetadata_UnconfiguredLimitsReject(t *testing.T) {
 	t.Parallel()
 
-	order := metadataAddOrder(map[string]*commonpb.MetadataValue{"k": metadataStringValue("v")})
+	order := metadataAddOrder(map[string]*ledgerpb.MetadataValue{"k": metadataStringValue("v")})
 
 	require.ErrorIs(t,
 		validateCommandMetadata([]*raftcmdpb.Order{order}, domain.MetadataLimits{}),
@@ -364,9 +365,9 @@ func TestMetadataWalkCoversTheSamePayloadForSizeAndShape(t *testing.T) {
 	order := metadataApplyOrder(&raftcmdpb.LedgerApplyOrder{
 		Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 			CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-				Metadata: map[string]*commonpb.MetadataValue{"tx": metadataStringValue("12345")},
-				AccountMetadata: map[string]*commonpb.MetadataMap{
-					"users:alice": {Values: map[string]*commonpb.MetadataValue{"acc": metadataStringValue("678")}},
+				Metadata: map[string]*ledgerpb.MetadataValue{"tx": metadataStringValue("12345")},
+				AccountMetadata: map[string]*ledgerpb.MetadataMap{
+					"users:alice": {Values: map[string]*ledgerpb.MetadataValue{"acc": metadataStringValue("678")}},
 				},
 			},
 		},
@@ -380,9 +381,9 @@ func TestMetadataWalkCoversTheSamePayloadForSizeAndShape(t *testing.T) {
 	dirty := metadataApplyOrder(&raftcmdpb.LedgerApplyOrder{
 		Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 			CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-				Metadata: map[string]*commonpb.MetadataValue{"tx": metadataStringValue("fine")},
-				AccountMetadata: map[string]*commonpb.MetadataMap{
-					"users:alice": {Values: map[string]*commonpb.MetadataValue{"bad\x00key": metadataStringValue("v")}},
+				Metadata: map[string]*ledgerpb.MetadataValue{"tx": metadataStringValue("fine")},
+				AccountMetadata: map[string]*ledgerpb.MetadataMap{
+					"users:alice": {Values: map[string]*ledgerpb.MetadataValue{"bad\x00key": metadataStringValue("v")}},
 				},
 			},
 		},
@@ -398,7 +399,7 @@ func TestValidateCommandMetadata_NilAccountMapIsSkipped(t *testing.T) {
 	order := metadataApplyOrder(&raftcmdpb.LedgerApplyOrder{
 		Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 			CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-				AccountMetadata: map[string]*commonpb.MetadataMap{"users:alice": nil},
+				AccountMetadata: map[string]*ledgerpb.MetadataMap{"users:alice": nil},
 			},
 		},
 	})
@@ -455,7 +456,7 @@ func TestMirrorDeletedMetadataValidation(t *testing.T) {
 
 func TestValidateOrderMetadataShapeSelectsStableKey(t *testing.T) {
 	t.Parallel()
-	order := metadataAddOrder(map[string]*commonpb.MetadataValue{
+	order := metadataAddOrder(map[string]*ledgerpb.MetadataValue{
 		"z": metadataStringValue("invalid\x00"),
 		"a": metadataStringValue("invalid\x00"),
 	})
@@ -471,9 +472,9 @@ func TestValidateOrderMetadataShapeSelectsStableKey(t *testing.T) {
 func TestCreateLedgerMetadataPreloadCost(t *testing.T) {
 	t.Parallel()
 	for _, count := range []int{0, 1, 128} {
-		metadata := make(map[string]*commonpb.MetadataValue, count)
+		metadata := make(map[string]*ledgerpb.MetadataValue, count)
 		for i := range count {
-			metadata[fmt.Sprintf("key%d", i)] = commonpb.NewStringValue("value")
+			metadata[fmt.Sprintf("key%d", i)] = ledgerpb.NewStringValue("value")
 		}
 		order := metadataLedgerScopedOrder(&raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Metadata: metadata}}})
 		needs := &plan.Coverage{}
@@ -485,9 +486,9 @@ func TestCreateLedgerMetadataPreloadCost(t *testing.T) {
 func BenchmarkCreateLedgerMetadataValidation(b *testing.B) {
 	for _, count := range []int{0, 1, 32, 128} {
 		b.Run(strconv.Itoa(count), func(b *testing.B) {
-			metadata := make(map[string]*commonpb.MetadataValue, count)
+			metadata := make(map[string]*ledgerpb.MetadataValue, count)
 			for i := range count {
-				metadata[fmt.Sprintf("key%d", i)] = commonpb.NewStringValue("value")
+				metadata[fmt.Sprintf("key%d", i)] = ledgerpb.NewStringValue("value")
 			}
 			order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "main", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Metadata: metadata}}}}}
 			b.ReportAllocs()

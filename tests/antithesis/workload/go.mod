@@ -12,6 +12,7 @@ replace github.com/formancehq/ledger/v3 => ../../../
 require (
 	github.com/antithesishq/antithesis-sdk-go v0.8.0-default-no-op
 	github.com/formancehq/go-libs/v5 v5.10.0
+	github.com/formancehq/ledger/pkg/proto/v3 v3.0.0
 	github.com/formancehq/ledger/v3 v3.0.0-00010101000000-000000000000
 	github.com/holiman/uint256 v1.3.2
 	github.com/stretchr/testify v1.11.1
@@ -25,9 +26,10 @@ require (
 	k8s.io/client-go v0.36.1
 )
 
+replace github.com/formancehq/ledger/pkg/proto/v3 => ../../../pkg/proto/v3
+
 require (
 	cel.dev/expr v0.25.2 // indirect
-	dario.cat/mergo v1.0.2 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1 // indirect
@@ -268,16 +270,16 @@ require (
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
-	golang.org/x/crypto v0.56.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
-	golang.org/x/mod v0.40.0 // indirect
-	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260811182544-a038080d80e5 // indirect
-	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/term v0.46.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f // indirect

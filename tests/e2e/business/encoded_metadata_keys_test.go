@@ -9,11 +9,13 @@ import (
 	"math/big"
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // EN-2015: exercise the real HTTP server and admission, including keys created
@@ -41,7 +43,7 @@ var _ = Describe("Encoded metadata keys (EN-2015)", func() {
 		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 		logs, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName,
-			[]*commonpb.Posting{actions.NewPosting("world", "alice", big.NewInt(1), "USD")}, nil, nil)))
+			[]*ledgerpb.Posting{actions.NewPosting("world", "alice", big.NewInt(1), "USD")}, nil, nil)))
 		Expect(err).To(Succeed())
 		txID := logs.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction().GetId()
 
@@ -57,15 +59,15 @@ var _ = Describe("Encoded metadata keys (EN-2015)", func() {
 			case "account":
 				account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 				g.Expect(err).To(Succeed())
-				return commonpb.MetadataToGoMap(account.GetMetadata())
+				return ledgerpb.MetadataToGoMap(account.GetMetadata())
 			case "transaction":
 				tx, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{Ledger: ledgerName, TransactionId: txID})
 				g.Expect(err).To(Succeed())
-				return commonpb.MetadataToGoMap(tx.GetTransaction().GetMetadata())
+				return ledgerpb.MetadataToGoMap(tx.GetTransaction().GetMetadata())
 			default:
 				ledger, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
 				g.Expect(err).To(Succeed())
-				return commonpb.MetadataToGoMap(ledger.GetMetadata())
+				return ledgerpb.MetadataToGoMap(ledger.GetMetadata())
 			}
 		}
 		request(http.MethodPost, ledgerName, path, `{"formance.com/reviewed":"yes","keep":"untouched"}`, http.StatusNoContent)
@@ -120,7 +122,7 @@ var _ = Describe("Encoded metadata keys (EN-2015)", func() {
 				fields := readFields(g)
 				g.Expect(fields).To(HaveLen(2))
 				g.Expect(fields).To(HaveKey(key))
-				g.Expect(fields[key].GetDeclaredType()).To(Equal(commonpb.MetadataType_METADATA_TYPE_STRING))
+				g.Expect(fields[key].GetDeclaredType()).To(Equal(ledgerpb.MetadataType_METADATA_TYPE_STRING))
 			}).Should(Succeed())
 		}
 
@@ -128,7 +130,7 @@ var _ = Describe("Encoded metadata keys (EN-2015)", func() {
 		Eventually(func(g Gomega) {
 			fields := readFields(g)
 			g.Expect(fields).To(HaveKey(key))
-			g.Expect(fields[key].GetDeclaredType()).To(Equal(commonpb.MetadataType_METADATA_TYPE_BOOL))
+			g.Expect(fields[key].GetDeclaredType()).To(Equal(ledgerpb.MetadataType_METADATA_TYPE_BOOL))
 		}).Should(Succeed())
 		request(http.MethodDelete, ledgerName, path+"formance.com%2Freviewed", "", http.StatusNoContent)
 		Eventually(func(g Gomega) {

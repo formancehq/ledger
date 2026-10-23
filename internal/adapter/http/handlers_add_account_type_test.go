@@ -10,8 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -21,7 +22,7 @@ func TestHandleAddAccountType_Success(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -98,7 +99,7 @@ func TestHandleAddAccountType_InvalidBody(t *testing.T) {
 func TestHandleAddAccountType_FullModel(t *testing.T) {
 	t.Parallel()
 
-	var captured *commonpb.AccountType
+	var captured *ledgerpb.AccountType
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
@@ -107,7 +108,7 @@ func TestHandleAddAccountType_FullModel(t *testing.T) {
 			require.Len(t, reqs, 1)
 			captured = reqs[0].GetAddAccountType().GetAccountType()
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -131,24 +132,24 @@ func TestHandleAddAccountType_FullModel(t *testing.T) {
 	require.NotNil(t, captured)
 	require.Equal(t, "user-checking", captured.GetName())
 	require.Equal(t, "users:{id}:checking", captured.GetPattern())
-	require.Equal(t, commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, captured.GetPersistence())
+	require.Equal(t, ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, captured.GetPersistence())
 
 	seg, ok := captured.GetSegmentTypes()["id"]
 	require.True(t, ok)
-	require.IsType(t, &commonpb.SegmentType_Uuid{}, seg.GetConstraint())
+	require.IsType(t, &ledgerpb.SegmentType_Uuid{}, seg.GetConstraint())
 }
 
 func TestHandleAddAccountType_RegexSegmentConstraint(t *testing.T) {
 	t.Parallel()
 
-	var captured *commonpb.AccountType
+	var captured *ledgerpb.AccountType
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			captured = req.GetUnsigned().GetRequests()[0].GetAddAccountType().GetAccountType()
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -170,10 +171,10 @@ func TestHandleAddAccountType_RegexSegmentConstraint(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 	require.NotNil(t, captured)
 	// Persistence defaults to NORMAL when omitted.
-	require.Equal(t, commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL, captured.GetPersistence())
+	require.Equal(t, ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL, captured.GetPersistence())
 
 	seg := captured.GetSegmentTypes()["iban"]
-	regex, ok := seg.GetConstraint().(*commonpb.SegmentType_Regex)
+	regex, ok := seg.GetConstraint().(*ledgerpb.SegmentType_Regex)
 	require.True(t, ok)
 	require.Equal(t, "[A-Z]{2}[0-9]{14}", regex.Regex)
 }

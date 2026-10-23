@@ -20,8 +20,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
@@ -34,7 +34,7 @@ func createTx(ctx context.Context, client servicepb.BucketServiceClient, key, le
 			Ledger: ledger,
 			Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 				CreateTransaction: &servicepb.CreateTransactionPayload{
-					Postings:  []*commonpb.Posting{{Source: "world", Destination: destination, Amount: commonpb.NewUint256FromUint64(100), Asset: "USD/2"}},
+					Postings:  []*ledgerpb.Posting{{Source: "world", Destination: destination, Amount: ledgerpb.NewUint256FromUint64(100), Asset: "USD/2"}},
 					Reference: ref, Force: true,
 				},
 			}},
@@ -51,7 +51,7 @@ func operationFailed(err error, stage string, details internal.Details) bool {
 	return err != nil
 }
 
-func confirmedTransaction(resp *servicepb.ApplyResponse, details internal.Details) *commonpb.CreatedTransaction {
+func confirmedTransaction(resp *servicepb.ApplyResponse, details internal.Details) *ledgerpb.CreatedTransaction {
 	created := internal.CheckCreatedTransaction(resp, details)
 	assert.Always(created != nil, "ledger deletion acknowledged transaction includes its created log", details)
 

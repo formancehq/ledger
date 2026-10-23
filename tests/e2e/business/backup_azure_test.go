@@ -16,9 +16,10 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -116,8 +117,8 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 		clusterClient = node.ClusterClient
 	})
 
-	azureStorage := func() *commonpb.BackupStorage {
-		return testutil.AzureBackupStorage(&commonpb.AzureStorageConfig{
+	azureStorage := func() *ledgerpb.BackupStorage {
+		return testutil.AzureBackupStorage(&ledgerpb.AzureStorageConfig{
 			AccountName: azuriteAccountName,
 			AccountKey:  azuriteAccountKey,
 			Container:   backupAzureContainer,
@@ -130,7 +131,7 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("azure-backup-test",
-			[]*commonpb.Posting{
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
 			},
 			nil,
@@ -168,7 +169,7 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 		checkpointLogSeq := fullResp.GetLastLogSequence()
 
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("azure-backup-test",
-			[]*commonpb.Posting{
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP"),
 			},
 			nil,

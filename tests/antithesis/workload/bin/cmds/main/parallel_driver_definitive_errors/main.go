@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
@@ -79,15 +79,15 @@ func main() {
 		// interleaving where another driver credits the source).
 		run := r.Uint64()
 		ledger := internal.PrefixDefinitiveErrors.WithSeed(run)
-		if err := internal.CreateQueryOracleLedger(ctx, client, ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE); err != nil {
+		if err := internal.CreateQueryOracleLedger(ctx, client, ledger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE); err != nil {
 			return
 		}
 
 		// Menu axis (issue #321 overflow class): boundary amounts 1, 2^63,
 		// and 2^256-1 — all strictly above the source's zero balance.
-		amounts := []*commonpb.Uint256{
-			commonpb.NewUint256FromUint64(1),
-			commonpb.NewUint256FromUint64(1 << 63),
+		amounts := []*ledgerpb.Uint256{
+			ledgerpb.NewUint256FromUint64(1),
+			ledgerpb.NewUint256FromUint64(1 << 63),
 			{V0: math.MaxUint64, V1: math.MaxUint64, V2: math.MaxUint64, V3: math.MaxUint64},
 		}
 
@@ -112,7 +112,7 @@ func main() {
 						Ledger: ledger,
 						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
+								Postings: []*ledgerpb.Posting{{
 									Source:      source,
 									Destination: "deferr-sink",
 									Amount:      amounts[i%len(amounts)],
@@ -168,10 +168,10 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: "deferr-marker",
-								Amount:      commonpb.NewUint256FromUint64(1),
+								Amount:      ledgerpb.NewUint256FromUint64(1),
 								Asset:       "USD/2",
 							}},
 							Force: true,

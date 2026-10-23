@@ -8,7 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
@@ -67,7 +68,7 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		{
 			name: "create_ledger",
 			req: &servicepb.Request{Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{Name: ledger, Metadata: map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("team")}},
+				CreateLedger: &servicepb.CreateLedgerRequest{Name: ledger, Metadata: map[string]*ledgerpb.MetadataValue{"owner": ledgerpb.NewStringValue("team")}},
 			}},
 			expect: expect{
 				kind:   wrapLedger,
@@ -108,8 +109,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 			req: &servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{
 				SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{
 					Ledger: ledger,
-					Metadata: map[string]*commonpb.MetadataValue{
-						"owner": {Type: &commonpb.MetadataValue_StringValue{StringValue: "team"}},
+					Metadata: map[string]*ledgerpb.MetadataValue{
+						"owner": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "team"}},
 					},
 				},
 			}},
@@ -146,7 +147,7 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 			req: &servicepb.Request{Type: &servicepb.Request_CreatePreparedQuery{
 				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 					Ledger: ledger,
-					Query:  &commonpb.PreparedQuery{Name: "q"},
+					Query:  &ledgerpb.PreparedQuery{Name: "q"},
 				},
 			}},
 			expect: expect{
@@ -213,9 +214,9 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 			req: &servicepb.Request{Type: &servicepb.Request_SetMetadataFieldType{
 				SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 					Ledger:     ledger,
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "age",
-					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 				},
 			}},
 			expect: expect{
@@ -233,7 +234,7 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 			req: &servicepb.Request{Type: &servicepb.Request_RemoveMetadataFieldType{
 				RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
 					Ledger:     ledger,
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "age",
 				},
 			}},
@@ -255,7 +256,7 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 					// Must be a builder-supported IndexID: validateOrderCreateIndex
 					// (run by requestToOrder→validateOrder) rejects unsupported
 					// kinds like the ACCT_BUILTIN UNSPECIFIED sentinel.
-					Id: &commonpb.IndexID{Kind: &commonpb.IndexID_AccountBuiltin{AccountBuiltin: commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET}},
+					Id: &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_AccountBuiltin{AccountBuiltin: ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET}},
 				},
 			}},
 			expect: expect{
@@ -271,7 +272,7 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 			req: &servicepb.Request{Type: &servicepb.Request_DropIndex{
 				DropIndex: &servicepb.DropIndexRequest{
 					Ledger: ledger,
-					Id:     &commonpb.IndexID{Kind: &commonpb.IndexID_AccountBuiltin{AccountBuiltin: commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED}},
+					Id:     &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_AccountBuiltin{AccountBuiltin: ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED}},
 				},
 			}},
 			expect: expect{
@@ -287,7 +288,7 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 			req: &servicepb.Request{Type: &servicepb.Request_AddAccountType{
 				AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 					Ledger:      ledger,
-					AccountType: &commonpb.AccountType{Name: "user"},
+					AccountType: &ledgerpb.AccountType{Name: "user"},
 				},
 			}},
 			expect: expect{
@@ -319,7 +320,7 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 			req: &servicepb.Request{Type: &servicepb.Request_SetDefaultEnforcementMode{
 				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
 					Ledger:          ledger,
-					EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
+					EnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
 				},
 			}},
 			expect: expect{
@@ -371,7 +372,7 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		{
 			name: "add_events_sink",
 			req: &servicepb.Request{Type: &servicepb.Request_AddEventsSink{
-				AddEventsSink: &servicepb.AddEventsSinkRequest{Config: &commonpb.SinkConfig{Name: "s"}},
+				AddEventsSink: &servicepb.AddEventsSinkRequest{Config: &ledgerpb.SinkConfig{Name: "s"}},
 			}},
 			expect: expect{
 				kind: wrapSystem,
@@ -513,7 +514,7 @@ func TestRequestToOrder_FamilyConversionSideEffects(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "1.0.0", latest)
 
-	config := &commonpb.SinkConfig{Name: "events"}
+	config := &ledgerpb.SinkConfig{Name: "events"}
 	added, err := admission.requestToOrder(t.Context(), &servicepb.Request{
 		Type: &servicepb.Request_AddEventsSink{AddEventsSink: &servicepb.AddEventsSinkRequest{Config: config}},
 	}, nil, overlay)

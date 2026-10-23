@@ -5,15 +5,16 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
-func stringValues(vs ...string) []*commonpb.MetadataValue {
-	out := make([]*commonpb.MetadataValue, 0, len(vs))
+func stringValues(vs ...string) []*ledgerpb.MetadataValue {
+	out := make([]*ledgerpb.MetadataValue, 0, len(vs))
 	for _, v := range vs {
-		out = append(out, &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: v}})
+		out = append(out, &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_StringValue{StringValue: v}})
 	}
 
 	return out

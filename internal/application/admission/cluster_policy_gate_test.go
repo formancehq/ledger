@@ -9,9 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -124,7 +125,7 @@ func TestAdmit_ClusterPolicyWriteReadinessGate(t *testing.T) {
 		)
 		defer cancel()
 
-		_, err := a.AdmitClusterPolicy(ctx, &commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 10})
+		_, err := a.AdmitClusterPolicy(ctx, &ledgerpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 10})
 		require.ErrorIs(t, err, sentinel)
 	})
 
@@ -143,7 +144,7 @@ func TestAdmit_ClusterPolicyWriteReadinessGate(t *testing.T) {
 		)
 		defer cancel()
 
-		_, err := a.AdmitClusterPolicy(ctx, &commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 10})
+		_, err := a.AdmitClusterPolicy(ctx, &ledgerpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 10})
 		require.ErrorIs(t, err, ErrMaintenanceMode)
 	})
 }

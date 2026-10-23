@@ -8,16 +8,16 @@ import (
 	"strconv"
 	"time"
 
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
-
-	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
 func withBloomVolumesExpectedKeys(n uint64) testservice.InstrumentationFunc {
@@ -195,7 +195,7 @@ var _ = Describe("Bloom filter config change preserves data", Ordered, func() {
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("post-bloom-change", nil)))
 		Expect(err).To(Succeed())
 
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("post-bloom-change", []*commonpb.Posting{
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("post-bloom-change", []*ledgerpb.Posting{
 			actions.NewPosting("world", "user:1", big.NewInt(999), "EUR"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())

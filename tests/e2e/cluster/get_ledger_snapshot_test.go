@@ -10,12 +10,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
 // GetLedger and ListLedgers both return a LedgerInfo assembled from two reads —
@@ -125,7 +127,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 		// checkInfo enforces the coupled invariant: a LedgerInfo's account-type
 		// count must equal its own meta["count"]. A read is valid only after it
 		// reaches and passes this comparison.
-		checkInfo := func(label string, info *commonpb.LedgerInfo) bool {
+		checkInfo := func(label string, info *ledgerpb.LedgerInfo) bool {
 			if info == nil {
 				fail("%s returned no ledger info", label)
 				return false
@@ -152,7 +154,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 		// runReader spins one read function until the writer is done, a tear is
 		// found, or the backstop fires.
 		runReader := func(
-			read func() (*commonpb.LedgerInfo, error),
+			read func() (*ledgerpb.LedgerInfo, error),
 			label string,
 			validated *atomic.Uint64,
 		) {
@@ -191,7 +193,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 		// GetLedger readers — the path the fix targets directly.
 		for range getReaders {
 			wg.Add(1)
-			go runReader(func() (*commonpb.LedgerInfo, error) {
+			go runReader(func() (*ledgerpb.LedgerInfo, error) {
 				return client.GetLedger(runCtx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 			}, "GetLedger", &validatedGetReads)
 		}
@@ -200,7 +202,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 		// metadata alongside its account types, sharing GetLedger's coupling.
 		for range listReaders {
 			wg.Add(1)
-			go runReader(func() (*commonpb.LedgerInfo, error) {
+			go runReader(func() (*ledgerpb.LedgerInfo, error) {
 				ledgers, err := actions.ListLedgers(runCtx, client)
 				if err != nil {
 					return nil, err

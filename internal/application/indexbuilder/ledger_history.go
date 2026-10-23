@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -92,9 +93,9 @@ func (b *Builder) observeCreatedLedger(ledger string) error {
 	return nil
 }
 
-func (b *Builder) observeLedgerPayload(ledger string, payload *commonpb.LedgerLogPayload) error {
-	category := commonpb.LedgerLogCategoryOf(payload)
-	if category == commonpb.LedgerLogCategory_LEDGER_LOG_CATEGORY_UNSPECIFIED {
+func (b *Builder) observeLedgerPayload(ledger string, payload *ledgerpb.LedgerLogPayload) error {
+	category := ledgerpb.LedgerLogCategoryOf(payload)
+	if category == ledgerpb.LedgerLogCategory_LEDGER_LOG_CATEGORY_UNSPECIFIED {
 		return historyReplayInvariantf("ledger %q emitted an unclassified ledger log payload %T", ledger, payload.GetPayload())
 	}
 
@@ -108,7 +109,7 @@ func (b *Builder) observeLedgerPayload(ledger string, payload *commonpb.LedgerLo
 	if b.wb == nil || b.wb.Batch() == nil {
 		return historyReplayInvariantf("ledger log for %q encountered without an active readstore batch", ledger)
 	}
-	if category != commonpb.LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY || state == ledgerHistoryNonEmpty {
+	if category != ledgerpb.LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY || state == ledgerHistoryNonEmpty {
 		return nil
 	}
 

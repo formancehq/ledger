@@ -10,8 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -26,7 +27,7 @@ func TestHandleCreatePreparedQuery_Success(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -57,7 +58,7 @@ func TestHandleCreatePreparedQuery_NestedOneofs(t *testing.T) {
 		func(_ context.Context, reqs *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			captured = reqs.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -169,7 +170,7 @@ func TestHandleCreatePreparedQuery_Filterless(t *testing.T) {
 				func(_ context.Context, reqs *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 					captured = reqs.GetUnsigned().GetRequests()[0]
 
-					return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+					return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 				})
 			srv := newTestServer(t, backend)
 
@@ -238,7 +239,7 @@ func TestHandleCreatePreparedQuery_LogsTargetAccepted(t *testing.T) {
 		func(_ context.Context, reqs *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			captured = reqs.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -253,7 +254,7 @@ func TestHandleCreatePreparedQuery_LogsTargetAccepted(t *testing.T) {
 	require.NotNil(t, captured)
 	create := captured.GetCreatePreparedQuery()
 	require.NotNil(t, create)
-	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_LOGS, create.GetQuery().GetTarget())
+	require.Equal(t, ledgerpb.QueryTarget_QUERY_TARGET_LOGS, create.GetQuery().GetTarget())
 	require.NotNil(t, create.GetQuery().GetFilter().GetLogId(), "logId condition must survive decoding for LOGS target")
 }
 

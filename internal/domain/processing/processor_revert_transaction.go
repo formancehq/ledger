@@ -6,12 +6,14 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionOrder, ctx *Context) (*ledgerpb.LedgerLogPayload, domain.SerializableError) {
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 	info := ctx.LedgerInfo
@@ -103,9 +105,9 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	// For a revert: original destination becomes source, original source becomes destination.
 	// Color carries over from the original posting — the funds were segregated under
 	// (account, asset, color) on the way out, so they must return under the same bucket.
-	revertPostings := make([]*commonpb.Posting, len(originalPostings))
+	revertPostings := make([]*ledgerpb.Posting, len(originalPostings))
 	for i, originalPosting := range originalPostings {
-		revertPostings[i] = &commonpb.Posting{
+		revertPostings[i] = &ledgerpb.Posting{
 			Source:      originalPosting.GetDestination(),
 			Destination: originalPosting.GetSource(),
 			Amount:      originalPosting.GetAmount(),
@@ -191,11 +193,11 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 		return nil, pcvErr
 	}
 
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-			RevertedTransaction: &commonpb.RevertedTransaction{
+	return &ledgerpb.LedgerLogPayload{
+		Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+			RevertedTransaction: &ledgerpb.RevertedTransaction{
 				RevertedTransactionId: order.GetTransactionId(),
-				RevertTransaction: &commonpb.Transaction{
+				RevertTransaction: &ledgerpb.Transaction{
 					Postings:           revertPostings,
 					Metadata:           order.GetMetadata(),
 					Timestamp:          revertTimestamp,
@@ -251,7 +253,7 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 func checkRevertTargetObservation(
 	ledger string,
 	transactionID uint64,
-	originalPostings []*commonpb.Posting,
+	originalPostings []*ledgerpb.Posting,
 	ctx *Context,
 ) domain.SerializableError {
 	expected := ctx.RevertTargetDigest

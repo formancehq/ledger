@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
@@ -31,13 +31,13 @@ func TestReconcileIndexes_BlockedNodeHasIndependentDeadline(t *testing.T) {
 	require.True(t, result.OK)
 	c.mu.Lock()
 	c.modelState = result.State
-	c.recordIndexCreates(bulk, &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 10}}})
+	c.recordIndexCreates(bulk, &servicepb.ApplyResponse{Logs: []*ledgerpb.Log{{Sequence: 10}}})
 	c.modelState.SetIndexActive("L", assetIndexCanonical)
 	c.mu.Unlock()
 	ready := &servicepb.GetIndexStatusResponse{
 		LastIndexedSequence: 10,
 		Indexes: []*servicepb.IndexEntry{{
-			Ledger: "L", Index: &commonpb.Index{Id: assetIndexID()}, CurrentVersion: 1,
+			Ledger: "L", Index: &ledgerpb.Index{Id: assetIndexID()}, CurrentVersion: 1,
 		}},
 	}
 	blocked, blockedNode := newIndexPollDeadlineNode(t, ready, true)

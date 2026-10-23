@@ -6,11 +6,13 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // Color × Numscript: the color dimension flows through the Numscript adapter
@@ -32,7 +34,7 @@ var _ = Describe("ColorNumscript", Ordered, func() {
 		//   GRANTS         : 200
 		//   OPS            : 100
 		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewColoredPosting("world", "alice", big.NewInt(300), "USD/2", ""),
 				actions.NewColoredPosting("world", "alice", big.NewInt(200), "USD/2", "GRANTS"),
 				actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", "OPS"),
@@ -195,7 +197,7 @@ var _ = Describe("AggregateVolumesColor", Ordered, func() {
 		//   alice / USD/2 / "OPS"    :  40
 		//   alice / EUR/2 / "GRANTS" :  50
 		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewColoredPosting("world", "alice", big.NewInt(10), "USD/2", ""),
 				actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", "GRANTS"),
 				actions.NewColoredPosting("world", "alice", big.NewInt(40), "USD/2", "OPS"),
@@ -215,7 +217,7 @@ var _ = Describe("AggregateVolumesColor", Ordered, func() {
 			g.Expect(result.Volumes).To(HaveLen(4))
 
 			type key struct{ asset, color string }
-			byKey := make(map[key]*commonpb.AggregatedVolume, len(result.Volumes))
+			byKey := make(map[key]*ledgerpb.AggregatedVolume, len(result.Volumes))
 			for _, v := range result.Volumes {
 				byKey[key{v.GetAsset(), v.GetColor()}] = v
 			}
@@ -250,7 +252,7 @@ var _ = Describe("AggregateVolumesColor", Ordered, func() {
 			// USD/2 (10+100+40 = 150) and EUR/2 (50), each under color = "".
 			g.Expect(result.Volumes).To(HaveLen(2))
 
-			byAsset := make(map[string]*commonpb.AggregatedVolume, len(result.Volumes))
+			byAsset := make(map[string]*ledgerpb.AggregatedVolume, len(result.Volumes))
 			for _, v := range result.Volumes {
 				g.Expect(v.GetColor()).To(Equal(""),
 					"collapse must surface every aggregated entry under the empty color bucket")
@@ -286,7 +288,7 @@ var _ = Describe("ColorRevert", Ordered, func() {
 
 		// world → alice 200 USD/2 color=GRANTS, world → alice 100 USD/2 uncolored.
 		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", ""),
 			}, nil, nil),
 		))
@@ -294,7 +296,7 @@ var _ = Describe("ColorRevert", Ordered, func() {
 
 		// The colored transaction is the one we'll revert.
 		resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewColoredPosting("world", "alice", big.NewInt(200), "USD/2", "GRANTS"),
 			}, nil, nil),
 		))

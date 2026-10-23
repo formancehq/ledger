@@ -1,6 +1,6 @@
 set dotenv-load
 
-pre-commit: fuzz-inventory-check generate generate-proto test-rpcauth-generator operator-generate test-dashboards tidy lint
+pre-commit: fuzz-inventory-check generate generate-proto generate-public-client test-rpcauth-generator operator-generate test-dashboards tidy lint
 pc: pre-commit
 
 # Compare the service contract with the current PR or merge-queue target.
@@ -38,7 +38,7 @@ lint:
     (cd tests/antithesis/workload && golangci-lint run --fix --build-tags enable_antithesis_sdk --timeout 5m)
 
 # Go modules kept tidy by `just tidy` (and checked by the Dirty CI job).
-tidy_modules := ". misc/operator tests/antithesis/workload"
+tidy_modules := ". misc/operator tests/antithesis/workload pkg/client/v3 pkg/proto/v3"
 
 tidy:
     #!/usr/bin/env bash
@@ -200,7 +200,7 @@ fuzz-check:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> Replaying fuzz seed corpora..."
-    go test ./internal/proto/commonpb/ -run 'Fuzz' -timeout 60s
+    go -C pkg/proto/v3 test ./ledgerpb/ -run 'Fuzz' -timeout 60s
     go test ./internal/proto/servicepb/ -run 'Fuzz' -timeout 60s
     go test ./internal/proto/rafttransportpb/ -run 'Fuzz' -timeout 60s
     go test ./internal/proto/raftcmdpb/ -run 'Fuzz' -timeout 60s
@@ -220,7 +220,13 @@ fuzz duration="30s": fuzz-inventory-check
     set -euo pipefail
     while read -r pkg name || [[ -n "${pkg:-}${name:-}" ]]; do
         echo "==> Fuzzing $name ({{duration}})..."
-        if ! go test "$pkg" -run '^$' -fuzz="^${name}$" -fuzztime="{{duration}}" -timeout 600s; then
+        if [[ "$pkg" == ./pkg/proto/v3/* ]]; then
+            nested_pkg="./${pkg#./pkg/proto/v3/}"
+            if ! (cd pkg/proto/v3 && go test "$nested_pkg" -run '^$' -fuzz="^${name}$" -fuzztime="{{duration}}" -timeout 600s); then
+                echo "FAIL: $name"
+                exit 1
+            fi
+        elif ! go test "$pkg" -run '^$' -fuzz="^${name}$" -fuzztime="{{duration}}" -timeout 600s; then
             echo "FAIL: $name"
             exit 1
         fi
@@ -244,6 +250,8 @@ test-coverage:
     mkdir -p {{coverage_dir}}
     echo "==> Unit tests with coverage..."
     scripts/go-test-coverage {{coverage_dir}}/unit.out -race -coverpkg={{coverage_pkgs}} -timeout 20m ./...
+    echo "==> Shared public protobuf module tests..."
+    go -C pkg/proto/v3 test -race ./...
 
 # Execute internal assertions behind optional feature tags (requires Docker).
 test-internal-coverage:
@@ -356,7 +364,7 @@ generate:
 # Generate gRPC code from protobuf files
 generate-proto:
     @echo "Generating gRPC code from proto files..."
-    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/clusterbootstrappb/*.pb.go internal/proto/auditpb/*.pb.go internal/proto/signaturepb/*.pb.go internal/proto/eventspb/*.pb.go internal/proto/restorepb/*.pb.go internal/proto/proposalpb/*.pb.go || true
+    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterbootstrappb/*.pb.go internal/proto/eventspb/*.pb.go internal/proto/proposalpb/*.pb.go || true
     mkdir -p internal/proto/clusterpb internal/proto/clusterbootstrappb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/signaturepb internal/proto/eventspb internal/proto/restorepb internal/proto/proposalpb
     @cd tools/protoc-gen-dethash && go build -o ../../build/protoc-gen-dethash .
     @cd tools/protoc-gen-reader && go build -o ../../build/protoc-gen-reader .
@@ -401,6 +409,7 @@ generate-proto:
         -I misc/proto \
         misc/proto/raft_transport.proto \
         misc/proto/common.proto \
+        misc/proto/internal_state.proto \
         misc/proto/cluster.proto \
         misc/proto/cluster_bootstrap.proto \
         misc/proto/bucket.proto \
@@ -411,6 +420,22 @@ generate-proto:
         misc/proto/events.proto \
         misc/proto/restore.proto \
         misc/proto/proposal.proto
+    # Public contract descriptors are generated in pkg/proto/v3. The backend
+    # only retains private state generated here; remove duplicate public
+    # descriptors emitted as protoc dependencies above.
+    @for dir in commonpb servicepb clusterpb auditpb signaturepb restorepb; do \
+        find "internal/proto/$dir" -maxdepth 1 -type f \( -name '*.pb.go' -o -name '*_gen.go' \) ! -name 'internal_state*' -delete; \
+    done
+    @sed -i.bak '/file_common_proto_init()/d' internal/proto/commonpb/internal_state.pb.go
+    @rm -f internal/proto/commonpb/internal_state.pb.go.bak
+
+# Generate the public protobuf projection from the canonical server schemas.
+generate-public-proto:
+    @bash scripts/generate-public-client.sh --proto-only
+
+# Generate the standalone public gRPC client without touching server protobufs
+generate-public-client:
+    @bash scripts/generate-public-client.sh
 
 test-rpcauth-generator:
     go -C tools/protoc-gen-rpcauth test ./...

@@ -1,14 +1,15 @@
 package processing
 
 import (
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // validateMetadataAtApply bounds caller metadata before a save or reversal
 // mutates state. Admission may have observed a more permissive policy; only
 // the committed policy on this scope determines the replicated outcome.
-func validateMetadataAtApply(metadata map[string]*commonpb.MetadataValue, ctx *Context) domain.SerializableError {
+func validateMetadataAtApply(metadata map[string]*ledgerpb.MetadataValue, ctx *Context) domain.SerializableError {
 	// Empty input stores no metadata and contributes no bytes to the budget.
 	if len(metadata) == 0 {
 		return nil

@@ -9,7 +9,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -50,19 +50,19 @@ func preparedQueryName() string {
 
 // preparedQueryTargets are the targets the FSM lets a prepared query be stored
 // on (domain.IsPreparedQueryExecutableTarget). AUDIT is rejected at write time.
-var preparedQueryTargets = []commonpb.QueryTarget{
-	commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-	commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-	commonpb.QueryTarget_QUERY_TARGET_LOGS,
+var preparedQueryTargets = []ledgerpb.QueryTarget{
+	ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+	ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+	ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 }
 
-func createPreparedQueryReq(ledger string, q *commonpb.PreparedQuery) *servicepb.Request {
+func createPreparedQueryReq(ledger string, q *ledgerpb.PreparedQuery) *servicepb.Request {
 	return &servicepb.Request{Type: &servicepb.Request_CreatePreparedQuery{
 		CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{Ledger: ledger, Query: q},
 	}}
 }
 
-func updatePreparedQueryReq(ledger, name string, filter *commonpb.QueryFilter) *servicepb.Request {
+func updatePreparedQueryReq(ledger, name string, filter *ledgerpb.QueryFilter) *servicepb.Request {
 	return &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{
 		UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{Ledger: ledger, Name: name, Filter: filter},
 	}}
@@ -96,7 +96,7 @@ func generatePreparedQueryOp(g oracle.GlobalState, ledger string) *servicepb.Req
 	if !exists {
 		target := random.RandomChoice(preparedQueryTargets)
 
-		var filter *commonpb.QueryFilter
+		var filter *ledgerpb.QueryFilter
 		if !oneIn(8) {
 			filter = genPreparedQueryFilter(ls, ledger, target)
 			if filter == nil {
@@ -104,7 +104,7 @@ func generatePreparedQueryOp(g oracle.GlobalState, ledger string) *servicepb.Req
 			}
 		}
 
-		return createPreparedQueryReq(ledger, &commonpb.PreparedQuery{
+		return createPreparedQueryReq(ledger, &ledgerpb.PreparedQuery{
 			Name:   name,
 			Target: target,
 			Filter: filter,
@@ -134,15 +134,15 @@ func generatePreparedQueryOp(g oracle.GlobalState, ledger string) *servicepb.Req
 // shape (rollFilterShape). A filter the write-time validation refuses is sent
 // all the same; the model predicts the refusal. Returns nil when the generator
 // produced no concrete filter; the caller then emits no op this round.
-func genPreparedQueryFilter(ls oracle.LedgerState, ledger string, target commonpb.QueryTarget) *commonpb.QueryFilter {
-	var concrete *commonpb.QueryFilter
+func genPreparedQueryFilter(ls oracle.LedgerState, ledger string, target ledgerpb.QueryTarget) *ledgerpb.QueryFilter {
+	var concrete *ledgerpb.QueryFilter
 
 	switch target {
-	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 		concrete = genAccountFilter(sampleFieldSeeds(ls, target))
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		concrete = genTransactionFilter(txFilterSeedsOf(ls))
-	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		concrete = genLogFilter(ledger, logDateSample(ls), 0)
 	default:
 		panic(fmt.Sprintf("genPreparedQueryFilter: non-executable target %v", target))
@@ -164,7 +164,7 @@ func genPreparedQueryFilter(ls oracle.LedgerState, ledger string, target commonp
 // --- parameterization ----------------------------------------------------
 
 // preparedParams is the parameter map an ExecutePreparedQuery call carries.
-type preparedParams map[string]*commonpb.ParameterValue
+type preparedParams map[string]*ledgerpb.ParameterValue
 
 // paramKind names the value shape a parameter reference expects. Address is
 // split out from the generic string kind only so generated values land in the
@@ -198,7 +198,7 @@ func (pz *paramizer) next() string {
 	return name
 }
 
-func (pz *paramizer) put(name string, v *commonpb.ParameterValue) string {
+func (pz *paramizer) put(name string, v *ledgerpb.ParameterValue) string {
 	pz.params[name] = v
 
 	return name
@@ -212,7 +212,7 @@ func rollParameterize() bool { return oneIn(2) }
 // leaf values rewritten into parameter references, recording each displaced
 // value in params. It is the inverse of substituteParams: for the params it
 // fills, substituteParams(parameterizeFilter(f, params), params) reproduces f.
-func parameterizeFilter(f *commonpb.QueryFilter, params preparedParams) *commonpb.QueryFilter {
+func parameterizeFilter(f *ledgerpb.QueryFilter, params preparedParams) *ledgerpb.QueryFilter {
 	if f == nil {
 		return nil
 	}
@@ -224,70 +224,70 @@ func parameterizeFilter(f *commonpb.QueryFilter, params preparedParams) *commonp
 	return out
 }
 
-func parameterizeInto(f *commonpb.QueryFilter, pz *paramizer) {
+func parameterizeInto(f *ledgerpb.QueryFilter, pz *paramizer) {
 	switch c := f.GetFilter().(type) {
-	case *commonpb.QueryFilter_And:
+	case *ledgerpb.QueryFilter_And:
 		for _, child := range c.And.GetFilters() {
 			parameterizeInto(child, pz)
 		}
-	case *commonpb.QueryFilter_Or:
+	case *ledgerpb.QueryFilter_Or:
 		for _, child := range c.Or.GetFilters() {
 			parameterizeInto(child, pz)
 		}
-	case *commonpb.QueryFilter_Not:
+	case *ledgerpb.QueryFilter_Not:
 		parameterizeInto(c.Not.GetFilter(), pz)
-	case *commonpb.QueryFilter_Address:
+	case *ledgerpb.QueryFilter_Address:
 		parameterizeAddress(c.Address, pz)
-	case *commonpb.QueryFilter_Reference:
+	case *ledgerpb.QueryFilter_Reference:
 		parameterizeString(c.Reference.GetCond(), pz)
-	case *commonpb.QueryFilter_Ledger:
+	case *ledgerpb.QueryFilter_Ledger:
 		parameterizeString(c.Ledger.GetCond(), pz)
-	case *commonpb.QueryFilter_LogId:
+	case *ledgerpb.QueryFilter_LogId:
 		parameterizeUint(c.LogId.GetCond(), pz)
-	case *commonpb.QueryFilter_BuiltinUint:
+	case *ledgerpb.QueryFilter_BuiltinUint:
 		parameterizeUint(c.BuiltinUint.GetCond(), pz)
-	case *commonpb.QueryFilter_LogBuiltinUint:
+	case *ledgerpb.QueryFilter_LogBuiltinUint:
 		parameterizeUint(c.LogBuiltinUint.GetCond(), pz)
-	case *commonpb.QueryFilter_Field:
+	case *ledgerpb.QueryFilter_Field:
 		parameterizeField(c.Field, pz)
 	}
 	// AccountHasAsset, Reverted and Audit carry no parameterizable value.
 }
 
-func parameterizeAddress(am *commonpb.AddressMatch, pz *paramizer) {
+func parameterizeAddress(am *ledgerpb.AddressMatch, pz *paramizer) {
 	if am == nil || !rollParameterize() {
 		return
 	}
 
 	switch m := am.GetMatch().(type) {
-	case *commonpb.AddressMatch_HardcodedPrefix:
-		am.Match = &commonpb.AddressMatch_ParamPrefix{
+	case *ledgerpb.AddressMatch_HardcodedPrefix:
+		am.Match = &ledgerpb.AddressMatch_ParamPrefix{
 			ParamPrefix: pz.put(pz.next(), stringParam(m.HardcodedPrefix)),
 		}
-	case *commonpb.AddressMatch_HardcodedExact:
-		am.Match = &commonpb.AddressMatch_ParamExact{
+	case *ledgerpb.AddressMatch_HardcodedExact:
+		am.Match = &ledgerpb.AddressMatch_ParamExact{
 			ParamExact: pz.put(pz.next(), stringParam(m.HardcodedExact)),
 		}
 	}
 }
 
-func parameterizeString(sc *commonpb.StringCondition, pz *paramizer) {
+func parameterizeString(sc *ledgerpb.StringCondition, pz *paramizer) {
 	if sc == nil || !rollParameterize() {
 		return
 	}
 
-	if m, ok := sc.GetValue().(*commonpb.StringCondition_Hardcoded); ok {
-		sc.Value = &commonpb.StringCondition_Param{Param: pz.put(pz.next(), stringParam(m.Hardcoded))}
+	if m, ok := sc.GetValue().(*ledgerpb.StringCondition_Hardcoded); ok {
+		sc.Value = &ledgerpb.StringCondition_Param{Param: pz.put(pz.next(), stringParam(m.Hardcoded))}
 	}
 }
 
-func parameterizeBool(bc *commonpb.BoolCondition, pz *paramizer) {
+func parameterizeBool(bc *ledgerpb.BoolCondition, pz *paramizer) {
 	if bc == nil || !rollParameterize() {
 		return
 	}
 
-	if m, ok := bc.GetValue().(*commonpb.BoolCondition_Hardcoded); ok {
-		bc.Value = &commonpb.BoolCondition_Param{Param: pz.put(pz.next(), boolParam(m.Hardcoded))}
+	if m, ok := bc.GetValue().(*ledgerpb.BoolCondition_Hardcoded); ok {
+		bc.Value = &ledgerpb.BoolCondition_Param{Param: pz.put(pz.next(), boolParam(m.Hardcoded))}
 	}
 }
 
@@ -295,7 +295,7 @@ func parameterizeBool(bc *commonpb.BoolCondition, pz *paramizer) {
 // a two-sided range can end up half hardcoded. The bound itself is cleared: the
 // compiler reads the parameter when the param name is set, and leaving the
 // literal behind would make the inverse ambiguous.
-func parameterizeUint(uc *commonpb.UintCondition, pz *paramizer) {
+func parameterizeUint(uc *ledgerpb.UintCondition, pz *paramizer) {
 	if uc == nil {
 		return
 	}
@@ -311,7 +311,7 @@ func parameterizeUint(uc *commonpb.UintCondition, pz *paramizer) {
 	}
 }
 
-func parameterizeInt(ic *commonpb.IntCondition, pz *paramizer) {
+func parameterizeInt(ic *ledgerpb.IntCondition, pz *paramizer) {
 	if ic == nil {
 		return
 	}
@@ -327,34 +327,34 @@ func parameterizeInt(ic *commonpb.IntCondition, pz *paramizer) {
 	}
 }
 
-func parameterizeField(fc *commonpb.FieldCondition, pz *paramizer) {
+func parameterizeField(fc *ledgerpb.FieldCondition, pz *paramizer) {
 	switch c := fc.GetCondition().(type) {
-	case *commonpb.FieldCondition_StringCond:
+	case *ledgerpb.FieldCondition_StringCond:
 		parameterizeString(c.StringCond, pz)
-	case *commonpb.FieldCondition_IntCond:
+	case *ledgerpb.FieldCondition_IntCond:
 		parameterizeInt(c.IntCond, pz)
-	case *commonpb.FieldCondition_UintCond:
+	case *ledgerpb.FieldCondition_UintCond:
 		parameterizeUint(c.UintCond, pz)
-	case *commonpb.FieldCondition_BoolCond:
+	case *ledgerpb.FieldCondition_BoolCond:
 		parameterizeBool(c.BoolCond, pz)
 	}
 	// ExistsCond carries no value.
 }
 
-func stringParam(v string) *commonpb.ParameterValue {
-	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_StringValue{StringValue: v}}
+func stringParam(v string) *ledgerpb.ParameterValue {
+	return &ledgerpb.ParameterValue{Value: &ledgerpb.ParameterValue_StringValue{StringValue: v}}
 }
 
-func uintParam(v uint64) *commonpb.ParameterValue {
-	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: v}}
+func uintParam(v uint64) *ledgerpb.ParameterValue {
+	return &ledgerpb.ParameterValue{Value: &ledgerpb.ParameterValue_Uint64Value{Uint64Value: v}}
 }
 
-func intParam(v int64) *commonpb.ParameterValue {
-	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: v}}
+func intParam(v int64) *ledgerpb.ParameterValue {
+	return &ledgerpb.ParameterValue{Value: &ledgerpb.ParameterValue_Int64Value{Int64Value: v}}
 }
 
-func boolParam(v bool) *commonpb.ParameterValue {
-	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_BoolValue{BoolValue: v}}
+func boolParam(v bool) *ledgerpb.ParameterValue {
+	return &ledgerpb.ParameterValue{Value: &ledgerpb.ParameterValue_BoolValue{BoolValue: v}}
 }
 
 // --- substitution (the inverse) ------------------------------------------
@@ -366,7 +366,7 @@ func boolParam(v bool) *commonpb.ParameterValue {
 // (extractString / extractUint64 / extractInt64 in internal/query/compile.go) —
 // here that surfaces as ok=false, so a base whose stored filter needs a missing
 // parameter predicts a rejection rather than a window.
-func substituteParams(f *commonpb.QueryFilter, params preparedParams) (*commonpb.QueryFilter, bool) {
+func substituteParams(f *ledgerpb.QueryFilter, params preparedParams) (*ledgerpb.QueryFilter, bool) {
 	if f == nil {
 		return nil, true
 	}
@@ -377,27 +377,27 @@ func substituteParams(f *commonpb.QueryFilter, params preparedParams) (*commonpb
 	return out, ok
 }
 
-func substituteInto(f *commonpb.QueryFilter, params preparedParams) bool {
+func substituteInto(f *ledgerpb.QueryFilter, params preparedParams) bool {
 	switch c := f.GetFilter().(type) {
-	case *commonpb.QueryFilter_And:
+	case *ledgerpb.QueryFilter_And:
 		return substituteChildren(c.And.GetFilters(), params)
-	case *commonpb.QueryFilter_Or:
+	case *ledgerpb.QueryFilter_Or:
 		return substituteChildren(c.Or.GetFilters(), params)
-	case *commonpb.QueryFilter_Not:
+	case *ledgerpb.QueryFilter_Not:
 		return substituteInto(c.Not.GetFilter(), params)
-	case *commonpb.QueryFilter_Address:
+	case *ledgerpb.QueryFilter_Address:
 		return substituteAddress(c.Address, params)
-	case *commonpb.QueryFilter_Reference:
+	case *ledgerpb.QueryFilter_Reference:
 		return substituteString(c.Reference.GetCond(), params)
-	case *commonpb.QueryFilter_Ledger:
+	case *ledgerpb.QueryFilter_Ledger:
 		return substituteString(c.Ledger.GetCond(), params)
-	case *commonpb.QueryFilter_LogId:
+	case *ledgerpb.QueryFilter_LogId:
 		return substituteUint(c.LogId.GetCond(), params)
-	case *commonpb.QueryFilter_BuiltinUint:
+	case *ledgerpb.QueryFilter_BuiltinUint:
 		return substituteUint(c.BuiltinUint.GetCond(), params)
-	case *commonpb.QueryFilter_LogBuiltinUint:
+	case *ledgerpb.QueryFilter_LogBuiltinUint:
 		return substituteUint(c.LogBuiltinUint.GetCond(), params)
-	case *commonpb.QueryFilter_Field:
+	case *ledgerpb.QueryFilter_Field:
 		return substituteField(c.Field, params)
 	default:
 		return true
@@ -407,7 +407,7 @@ func substituteInto(f *commonpb.QueryFilter, params preparedParams) bool {
 // substituteChildren resolves every child rather than stopping at the first
 // failure: the compiler walks the whole tree, and an unresolved reference
 // anywhere rejects the query regardless of where it sits.
-func substituteChildren(children []*commonpb.QueryFilter, params preparedParams) bool {
+func substituteChildren(children []*ledgerpb.QueryFilter, params preparedParams) bool {
 	ok := true
 	for _, child := range children {
 		if !substituteInto(child, params) {
@@ -418,29 +418,29 @@ func substituteChildren(children []*commonpb.QueryFilter, params preparedParams)
 	return ok
 }
 
-func substituteAddress(am *commonpb.AddressMatch, params preparedParams) bool {
+func substituteAddress(am *ledgerpb.AddressMatch, params preparedParams) bool {
 	switch m := am.GetMatch().(type) {
-	case *commonpb.AddressMatch_ParamPrefix:
+	case *ledgerpb.AddressMatch_ParamPrefix:
 		v, ok := lookupString(params, m.ParamPrefix)
 		if !ok {
 			return false
 		}
 
-		am.Match = &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: v}
-	case *commonpb.AddressMatch_ParamExact:
+		am.Match = &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: v}
+	case *ledgerpb.AddressMatch_ParamExact:
 		v, ok := lookupString(params, m.ParamExact)
 		if !ok {
 			return false
 		}
 
-		am.Match = &commonpb.AddressMatch_HardcodedExact{HardcodedExact: v}
+		am.Match = &ledgerpb.AddressMatch_HardcodedExact{HardcodedExact: v}
 	}
 
 	return true
 }
 
-func substituteString(sc *commonpb.StringCondition, params preparedParams) bool {
-	m, isParam := sc.GetValue().(*commonpb.StringCondition_Param)
+func substituteString(sc *ledgerpb.StringCondition, params preparedParams) bool {
+	m, isParam := sc.GetValue().(*ledgerpb.StringCondition_Param)
 	if !isParam {
 		return true
 	}
@@ -450,13 +450,13 @@ func substituteString(sc *commonpb.StringCondition, params preparedParams) bool 
 		return false
 	}
 
-	sc.Value = &commonpb.StringCondition_Hardcoded{Hardcoded: v}
+	sc.Value = &ledgerpb.StringCondition_Hardcoded{Hardcoded: v}
 
 	return true
 }
 
-func substituteBool(bc *commonpb.BoolCondition, params preparedParams) bool {
-	m, isParam := bc.GetValue().(*commonpb.BoolCondition_Param)
+func substituteBool(bc *ledgerpb.BoolCondition, params preparedParams) bool {
+	m, isParam := bc.GetValue().(*ledgerpb.BoolCondition_Param)
 	if !isParam {
 		return true
 	}
@@ -466,17 +466,17 @@ func substituteBool(bc *commonpb.BoolCondition, params preparedParams) bool {
 		return false
 	}
 
-	v, isBool := pv.GetValue().(*commonpb.ParameterValue_BoolValue)
+	v, isBool := pv.GetValue().(*ledgerpb.ParameterValue_BoolValue)
 	if !isBool {
 		return false
 	}
 
-	bc.Value = &commonpb.BoolCondition_Hardcoded{Hardcoded: v.BoolValue}
+	bc.Value = &ledgerpb.BoolCondition_Hardcoded{Hardcoded: v.BoolValue}
 
 	return true
 }
 
-func substituteUint(uc *commonpb.UintCondition, params preparedParams) bool {
+func substituteUint(uc *ledgerpb.UintCondition, params preparedParams) bool {
 	if uc == nil {
 		return true
 	}
@@ -504,7 +504,7 @@ func substituteUint(uc *commonpb.UintCondition, params preparedParams) bool {
 	return ok
 }
 
-func substituteInt(ic *commonpb.IntCondition, params preparedParams) bool {
+func substituteInt(ic *ledgerpb.IntCondition, params preparedParams) bool {
 	if ic == nil {
 		return true
 	}
@@ -532,15 +532,15 @@ func substituteInt(ic *commonpb.IntCondition, params preparedParams) bool {
 	return ok
 }
 
-func substituteField(fc *commonpb.FieldCondition, params preparedParams) bool {
+func substituteField(fc *ledgerpb.FieldCondition, params preparedParams) bool {
 	switch c := fc.GetCondition().(type) {
-	case *commonpb.FieldCondition_StringCond:
+	case *ledgerpb.FieldCondition_StringCond:
 		return substituteString(c.StringCond, params)
-	case *commonpb.FieldCondition_IntCond:
+	case *ledgerpb.FieldCondition_IntCond:
 		return substituteInt(c.IntCond, params)
-	case *commonpb.FieldCondition_UintCond:
+	case *ledgerpb.FieldCondition_UintCond:
 		return substituteUint(c.UintCond, params)
-	case *commonpb.FieldCondition_BoolCond:
+	case *ledgerpb.FieldCondition_BoolCond:
 		return substituteBool(c.BoolCond, params)
 	default:
 		return true
@@ -553,7 +553,7 @@ func lookupString(params preparedParams, name string) (string, bool) {
 		return "", false
 	}
 
-	v, isString := pv.GetValue().(*commonpb.ParameterValue_StringValue)
+	v, isString := pv.GetValue().(*ledgerpb.ParameterValue_StringValue)
 	if !isString {
 		return "", false
 	}
@@ -568,15 +568,15 @@ func lookupUint(params preparedParams, name string) (uint64, bool) {
 	}
 
 	switch v := pv.GetValue().(type) {
-	case *commonpb.ParameterValue_Uint64Value:
+	case *ledgerpb.ParameterValue_Uint64Value:
 		return v.Uint64Value, true
-	case *commonpb.ParameterValue_Int64Value:
+	case *ledgerpb.ParameterValue_Int64Value:
 		if v.Int64Value < 0 {
 			return 0, false
 		}
 
 		return uint64(v.Int64Value), true
-	case *commonpb.ParameterValue_StringValue:
+	case *ledgerpb.ParameterValue_StringValue:
 		n, err := strconv.ParseUint(v.StringValue, 10, 64)
 
 		return n, err == nil
@@ -592,15 +592,15 @@ func lookupInt(params preparedParams, name string) (int64, bool) {
 	}
 
 	switch v := pv.GetValue().(type) {
-	case *commonpb.ParameterValue_Int64Value:
+	case *ledgerpb.ParameterValue_Int64Value:
 		return v.Int64Value, true
-	case *commonpb.ParameterValue_Uint64Value:
+	case *ledgerpb.ParameterValue_Uint64Value:
 		if v.Uint64Value > math.MaxInt64 {
 			return 0, false
 		}
 
 		return int64(v.Uint64Value), true
-	case *commonpb.ParameterValue_StringValue:
+	case *ledgerpb.ParameterValue_StringValue:
 		n, err := strconv.ParseInt(v.StringValue, 10, 64)
 
 		return n, err == nil
@@ -615,54 +615,54 @@ func lookupInt(params preparedParams, name string) (int64, bool) {
 // carries, in tree order. The execution path generates a value per need; the
 // stored filter is the only source of truth for what a query expects, since the
 // driver keeps no copy of what it created.
-func collectParams(f *commonpb.QueryFilter) []paramNeed {
+func collectParams(f *ledgerpb.QueryFilter) []paramNeed {
 	var out []paramNeed
 	collectParamsInto(f, &out)
 
 	return out
 }
 
-func collectParamsInto(f *commonpb.QueryFilter, out *[]paramNeed) {
+func collectParamsInto(f *ledgerpb.QueryFilter, out *[]paramNeed) {
 	switch c := f.GetFilter().(type) {
-	case *commonpb.QueryFilter_And:
+	case *ledgerpb.QueryFilter_And:
 		for _, child := range c.And.GetFilters() {
 			collectParamsInto(child, out)
 		}
-	case *commonpb.QueryFilter_Or:
+	case *ledgerpb.QueryFilter_Or:
 		for _, child := range c.Or.GetFilters() {
 			collectParamsInto(child, out)
 		}
-	case *commonpb.QueryFilter_Not:
+	case *ledgerpb.QueryFilter_Not:
 		collectParamsInto(c.Not.GetFilter(), out)
-	case *commonpb.QueryFilter_Address:
+	case *ledgerpb.QueryFilter_Address:
 		switch m := c.Address.GetMatch().(type) {
-		case *commonpb.AddressMatch_ParamPrefix:
+		case *ledgerpb.AddressMatch_ParamPrefix:
 			*out = append(*out, paramNeed{m.ParamPrefix, paramKindAddress})
-		case *commonpb.AddressMatch_ParamExact:
+		case *ledgerpb.AddressMatch_ParamExact:
 			*out = append(*out, paramNeed{m.ParamExact, paramKindAddress})
 		}
-	case *commonpb.QueryFilter_Reference:
+	case *ledgerpb.QueryFilter_Reference:
 		collectStringParam(c.Reference.GetCond(), out)
-	case *commonpb.QueryFilter_Ledger:
+	case *ledgerpb.QueryFilter_Ledger:
 		collectStringParam(c.Ledger.GetCond(), out)
-	case *commonpb.QueryFilter_LogId:
+	case *ledgerpb.QueryFilter_LogId:
 		collectUintParams(c.LogId.GetCond(), out)
-	case *commonpb.QueryFilter_BuiltinUint:
+	case *ledgerpb.QueryFilter_BuiltinUint:
 		collectUintParams(c.BuiltinUint.GetCond(), out)
-	case *commonpb.QueryFilter_LogBuiltinUint:
+	case *ledgerpb.QueryFilter_LogBuiltinUint:
 		collectUintParams(c.LogBuiltinUint.GetCond(), out)
-	case *commonpb.QueryFilter_Field:
+	case *ledgerpb.QueryFilter_Field:
 		collectFieldParams(c.Field, out)
 	}
 }
 
-func collectStringParam(sc *commonpb.StringCondition, out *[]paramNeed) {
-	if m, ok := sc.GetValue().(*commonpb.StringCondition_Param); ok {
+func collectStringParam(sc *ledgerpb.StringCondition, out *[]paramNeed) {
+	if m, ok := sc.GetValue().(*ledgerpb.StringCondition_Param); ok {
 		*out = append(*out, paramNeed{m.Param, paramKindString})
 	}
 }
 
-func collectUintParams(uc *commonpb.UintCondition, out *[]paramNeed) {
+func collectUintParams(uc *ledgerpb.UintCondition, out *[]paramNeed) {
 	if uc.GetParamMin() != "" {
 		*out = append(*out, paramNeed{uc.GetParamMin(), paramKindUint})
 	}
@@ -672,7 +672,7 @@ func collectUintParams(uc *commonpb.UintCondition, out *[]paramNeed) {
 	}
 }
 
-func collectIntParams(ic *commonpb.IntCondition, out *[]paramNeed) {
+func collectIntParams(ic *ledgerpb.IntCondition, out *[]paramNeed) {
 	if ic.GetParamMin() != "" {
 		*out = append(*out, paramNeed{ic.GetParamMin(), paramKindInt})
 	}
@@ -682,16 +682,16 @@ func collectIntParams(ic *commonpb.IntCondition, out *[]paramNeed) {
 	}
 }
 
-func collectFieldParams(fc *commonpb.FieldCondition, out *[]paramNeed) {
+func collectFieldParams(fc *ledgerpb.FieldCondition, out *[]paramNeed) {
 	switch c := fc.GetCondition().(type) {
-	case *commonpb.FieldCondition_StringCond:
+	case *ledgerpb.FieldCondition_StringCond:
 		collectStringParam(c.StringCond, out)
-	case *commonpb.FieldCondition_IntCond:
+	case *ledgerpb.FieldCondition_IntCond:
 		collectIntParams(c.IntCond, out)
-	case *commonpb.FieldCondition_UintCond:
+	case *ledgerpb.FieldCondition_UintCond:
 		collectUintParams(c.UintCond, out)
-	case *commonpb.FieldCondition_BoolCond:
-		if m, ok := c.BoolCond.GetValue().(*commonpb.BoolCondition_Param); ok {
+	case *ledgerpb.FieldCondition_BoolCond:
+		if m, ok := c.BoolCond.GetValue().(*ledgerpb.BoolCondition_Param); ok {
 			*out = append(*out, paramNeed{m.Param, paramKindBool})
 		}
 	}
@@ -701,8 +701,8 @@ func collectFieldParams(fc *commonpb.FieldCondition, out *[]paramNeed) {
 
 // describePreparedQueries renders a registry listing for a finding's details,
 // name-sorted so the model and server renderings line up side by side.
-func describePreparedQueries(queries []*commonpb.PreparedQuery) string {
-	sorted := make([]*commonpb.PreparedQuery, len(queries))
+func describePreparedQueries(queries []*ledgerpb.PreparedQuery) string {
+	sorted := make([]*ledgerpb.PreparedQuery, len(queries))
 	copy(sorted, queries)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].GetName() < sorted[j].GetName() })
 
@@ -715,13 +715,13 @@ func describePreparedQueries(queries []*commonpb.PreparedQuery) string {
 	return strings.Join(parts, " ")
 }
 
-func describeQueryTarget(t commonpb.QueryTarget) string {
+func describeQueryTarget(t ledgerpb.QueryTarget) string {
 	switch t {
-	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 		return "accounts"
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		return "transactions"
-	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		return "logs"
 	default:
 		return t.String()
@@ -745,15 +745,15 @@ func describeParams(params preparedParams) string {
 	return strings.Join(parts, ",")
 }
 
-func describeParamValue(v *commonpb.ParameterValue) string {
+func describeParamValue(v *ledgerpb.ParameterValue) string {
 	switch t := v.GetValue().(type) {
-	case *commonpb.ParameterValue_StringValue:
+	case *ledgerpb.ParameterValue_StringValue:
 		return "s:" + t.StringValue
-	case *commonpb.ParameterValue_Uint64Value:
+	case *ledgerpb.ParameterValue_Uint64Value:
 		return fmt.Sprintf("u:%d", t.Uint64Value)
-	case *commonpb.ParameterValue_Int64Value:
+	case *ledgerpb.ParameterValue_Int64Value:
 		return fmt.Sprintf("i:%d", t.Int64Value)
-	case *commonpb.ParameterValue_BoolValue:
+	case *ledgerpb.ParameterValue_BoolValue:
 		return fmt.Sprintf("b:%t", t.BoolValue)
 	default:
 		return "?"
@@ -772,7 +772,7 @@ func describeParamValue(v *commonpb.ParameterValue) string {
 // The stored filter is the only source of truth for what a query expects: the
 // driver keeps no record of what it created, and a concurrent update may have
 // rewritten the references since.
-func genPreparedParams(ls oracle.LedgerState, stored *commonpb.QueryFilter) (preparedParams, bool) {
+func genPreparedParams(ls oracle.LedgerState, stored *ledgerpb.QueryFilter) (preparedParams, bool) {
 	needs := collectParams(stored)
 	params := make(preparedParams, len(needs))
 
@@ -808,7 +808,7 @@ func genPreparedParams(ls oracle.LedgerState, stored *commonpb.QueryFilter) (pre
 // genParamValue draws a plausible value for one parameter kind. Address values
 // come from the ledger's own account universe where it has one, so an address
 // parameter usually selects something instead of an empty window.
-func genParamValue(ls oracle.LedgerState, kind paramKind) *commonpb.ParameterValue {
+func genParamValue(ls oracle.LedgerState, kind paramKind) *ledgerpb.ParameterValue {
 	switch kind {
 	case paramKindAddress:
 		return stringParam(sampleCommittedAddress(ls))
@@ -825,7 +825,7 @@ func genParamValue(ls oracle.LedgerState, kind paramKind) *commonpb.ParameterVal
 
 // mistypedParam returns a value of a type the kind's condition rejects, so the
 // compiler's type gate is exercised as well as its presence gate.
-func mistypedParam(kind paramKind) *commonpb.ParameterValue {
+func mistypedParam(kind paramKind) *ledgerpb.ParameterValue {
 	if kind == paramKindUint || kind == paramKindInt {
 		return stringParam("not-a-number")
 	}

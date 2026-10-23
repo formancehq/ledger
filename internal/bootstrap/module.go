@@ -27,6 +27,7 @@ import (
 	oidcclient "github.com/formancehq/go-libs/v5/pkg/authn/oidc/client"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
@@ -62,7 +63,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
@@ -1552,7 +1552,7 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		return
 	}
 
-	desired := &commonpb.ClusterPolicy{
+	desired := &ledgerpb.ClusterPolicy{
 		Revision:                    cfg.ClusterPolicyRevision,
 		IdempotencyTtlMicros:        uint64(cfg.IdempotencyTTL.Microseconds()),
 		QueryCheckpointLimit:        cfg.QueryCheckpointLimit,

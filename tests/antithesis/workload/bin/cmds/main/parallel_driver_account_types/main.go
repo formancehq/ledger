@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -35,7 +35,7 @@ func main() {
 			Type: &servicepb.Request_AddAccountType{
 				AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 					Ledger: ledger,
-					AccountType: &commonpb.AccountType{
+					AccountType: &ledgerpb.AccountType{
 						Name:    typeName,
 						Pattern: pattern,
 					},
@@ -75,10 +75,10 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: matchingAddr,
-								Amount:      commonpb.NewUint256FromUint64(100),
+								Amount:      ledgerpb.NewUint256FromUint64(100),
 								Asset:       "USD/2",
 							}},
 							Force: true,
@@ -100,7 +100,7 @@ func main() {
 			Type: &servicepb.Request_SetDefaultEnforcementMode{
 				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
 					Ledger:          ledger,
-					EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+					EnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
 				},
 			},
 		}))
@@ -127,7 +127,7 @@ func main() {
 			Type: &servicepb.Request_SetDefaultEnforcementMode{
 				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
 					Ledger:          ledger,
-					EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
+					EnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
 				},
 			},
 		})); err != nil {

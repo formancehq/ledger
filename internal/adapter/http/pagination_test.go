@@ -9,9 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
@@ -38,8 +39,8 @@ func TestHandleListAccounts_PageLinks(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAccounts(gomock.Any(), "ledger1", uint32(3), "a", gomock.Any(), false).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
-			return cursor.NewSliceCursor([]*commonpb.Account{{Address: "b"}, {Address: "c"}, {Address: "d"}}), nil
+		func(_ context.Context, _ string, _ uint32, _ string, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Account], error) {
+			return cursor.NewSliceCursor([]*ledgerpb.Account{{Address: "b"}, {Address: "c"}, {Address: "d"}}), nil
 		}).Times(1)
 	srv := newTestServer(t, backend)
 
@@ -69,8 +70,8 @@ func TestHandleListAccounts_BackPage(t *testing.T) {
 	// query order.
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAccounts(gomock.Any(), "ledger1", uint32(3), "d", gomock.Any(), true).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
-			return cursor.NewSliceCursor([]*commonpb.Account{{Address: "c"}, {Address: "b"}}), nil
+		func(_ context.Context, _ string, _ uint32, _ string, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Account], error) {
+			return cursor.NewSliceCursor([]*ledgerpb.Account{{Address: "c"}, {Address: "b"}}), nil
 		}).Times(1)
 	srv := newTestServer(t, backend)
 

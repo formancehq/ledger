@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -129,13 +129,13 @@ func TestRejectionExplainsMatchesLedgersOrdersAndReason(t *testing.T) {
 func TestAuditPageViolationIsAnExtraOverTheModel(t *testing.T) {
 	t.Parallel()
 
-	ledgerA := filterAuditString(commonpb.AuditField_AUDIT_FIELD_LEDGER, "a")
+	ledgerA := filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, "a")
 	page := []auditEntry{{seq: 3, ledgers: []string{"a"}}, {seq: 2, ledgers: []string{"a"}}}
 	require.Empty(t, auditPageViolation(page, 2, true, ledgerA, 0, ""))
 	require.Equal(t, "page longer than requested", auditPageViolation(page, 1, true, ledgerA, 0, ""))
 	require.Equal(t, "ascending order violated", auditPageViolation(page, 2, false, ledgerA, 0, ""))
-	require.Equal(t, "entry outside the filter", auditPageViolation(page, 2, true, filterAuditString(commonpb.AuditField_AUDIT_FIELD_LEDGER, "b"), 0, ""))
-	require.Equal(t, "entry outside the filter", auditPageViolation(page, 2, true, filterAuditString(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure"), 0, ""))
+	require.Equal(t, "entry outside the filter", auditPageViolation(page, 2, true, filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, "b"), 0, ""))
+	require.Equal(t, "entry outside the filter", auditPageViolation(page, 2, true, filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, "failure"), 0, ""))
 }
 
 // A zone scan — no filter, a sequence bound, or an And of those — serves dense
@@ -157,14 +157,14 @@ func TestAuditPageViolationZoneScanIsDense(t *testing.T) {
 	require.Equal(t, "zone-scan page does not start at its lower bound", auditPageViolation(page(2, 3), 10, false, nil, 0, ""))
 
 	lo := uint64(2)
-	from2 := filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, &commonpb.UintCondition{Min: &lo})
+	from2 := filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE, &ledgerpb.UintCondition{Min: &lo})
 	require.Empty(t, auditPageViolation(page(2, 3), 10, false, from2, 0, ""))
-	require.Empty(t, auditPageViolation(page(3, 4), 10, false, filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, &commonpb.UintCondition{Min: &lo, MinExclusive: true}), 0, ""), "an exclusive bound starts one past it")
+	require.Empty(t, auditPageViolation(page(3, 4), 10, false, filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE, &ledgerpb.UintCondition{Min: &lo, MinExclusive: true}), 0, ""), "an exclusive bound starts one past it")
 	require.Equal(t, "zone-scan page does not start at its lower bound", auditPageViolation(page(1, 2), 10, false, from2, 0, ""))
 	require.Empty(t, auditPageViolation(page(5, 4, 3), 10, true, nil, 0, ""), "a reverse scan starts anywhere but stays dense")
 	require.Equal(t, "gap in a zone-scan page", auditPageViolation(page(5, 3), 10, true, nil, 0, ""))
 
-	indexed := filterAnd(from2, filterAuditString(commonpb.AuditField_AUDIT_FIELD_LEDGER, "a"))
+	indexed := filterAnd(from2, filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, "a"))
 	require.Empty(t, auditPageViolation(page(2, 5, 9), 10, false, indexed, 0, ""), "an indexed page selects sparsely")
 }
 
@@ -234,13 +234,13 @@ func TestValidateAuditPageKnownEntriesMustCertainlyMatch(t *testing.T) {
 	c.noteKnownAuditEntries([]auditEntry{known})
 
 	require.Equal(t, "audit page stopped short of an entry the trail served before",
-		c.validateAuditPage(0, c.auditLearnSeq, nil, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "add_metadata"), 5, 0, "").finding)
-	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, nil, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"), 5, 0, "").finding)
-	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, nil, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_LEDGER, "other"), 5, 0, "").finding)
+		c.validateAuditPage(0, c.auditLearnSeq, nil, false, filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "add_metadata"), 5, 0, "").finding)
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, nil, false, filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"), 5, 0, "").finding)
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, nil, false, filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, "other"), 5, 0, "").finding)
 
 	// A system-scoped entry names no logs, so no order type can be derived.
 	c.noteKnownAuditEntries([]auditEntry{{seq: 9, orderCount: 1}})
-	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, nil, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"), 5, 0, "").finding)
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, nil, false, filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"), 5, 0, "").finding)
 }
 
 // A resumed page starts past its cursor, in the iteration's own direction, and
@@ -267,7 +267,7 @@ func TestAuditPageViolationHonoursTheCursor(t *testing.T) {
 	require.Equal(t, "zone-scan page does not start at its lower bound", auditPageViolation(page(5, 6), 10, false, nil, 3, ""))
 
 	lo := uint64(8)
-	from8 := filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, &commonpb.UintCondition{Min: &lo})
+	from8 := filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE, &ledgerpb.UintCondition{Min: &lo})
 	require.Empty(t, auditPageViolation(page(8, 9), 10, false, from8, 3, ""), "the filter's bound outranks a lower cursor")
 
 	// The trail's universe is wider than the model's, so whether a token was
@@ -286,33 +286,33 @@ func TestAuditEntrySatisfiesEveryLeaf(t *testing.T) {
 
 	ok := auditEntry{seq: 10, proposalID: 77, timestamp: 5_000_000, subject: "alice", ledgers: []string{"a", "b"}, minLog: 40, maxLog: 42}
 	failed := auditEntry{seq: 11, ledgers: []string{"a"}, failed: true, reason: "VALIDATION"}
-	u := func(lo, hi uint64) *commonpb.UintCondition { return &commonpb.UintCondition{Min: &lo, Max: &hi} }
+	u := func(lo, hi uint64) *ledgerpb.UintCondition { return &ledgerpb.UintCondition{Min: &lo, Max: &hi} }
 	leaf := filterAuditUint
 	str := filterAuditString
 
 	require.True(t, auditEntrySatisfies(nil, ok))
-	require.True(t, auditEntrySatisfies(leaf(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, u(10, 10)), ok))
-	require.False(t, auditEntrySatisfies(leaf(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, u(11, 20)), ok))
-	require.True(t, auditEntrySatisfies(leaf(commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, u(70, 80)), ok))
-	require.True(t, auditEntrySatisfies(leaf(commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, u(4_000_000, 6_000_000)), ok))
-	require.True(t, auditEntrySatisfies(leaf(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, u(42, 50)), ok), "match-any over the entry's logs")
-	require.False(t, auditEntrySatisfies(leaf(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, u(43, 50)), ok))
-	require.False(t, auditEntrySatisfies(leaf(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, u(0, 100)), failed), "a rejection has no logs")
-	require.True(t, auditEntrySatisfies(str(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "success"), ok))
-	require.True(t, auditEntrySatisfies(str(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure"), failed))
-	require.True(t, auditEntrySatisfies(str(commonpb.AuditField_AUDIT_FIELD_LEDGER, "b"), ok))
-	require.True(t, auditEntrySatisfies(str(commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, "alice"), ok))
-	require.False(t, auditEntrySatisfies(str(commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, ""), failed), "an empty subject is never indexed")
-	require.True(t, auditEntrySatisfies(str(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "anything"), ok), "order types are judged by the model")
-	require.True(t, auditEntrySatisfies(filterAnd(str(commonpb.AuditField_AUDIT_FIELD_LEDGER, "a"), str(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "success")), ok))
-	require.False(t, auditEntrySatisfies(filterOr(str(commonpb.AuditField_AUDIT_FIELD_LEDGER, "c"), str(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure")), ok))
+	require.True(t, auditEntrySatisfies(leaf(ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE, u(10, 10)), ok))
+	require.False(t, auditEntrySatisfies(leaf(ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE, u(11, 20)), ok))
+	require.True(t, auditEntrySatisfies(leaf(ledgerpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, u(70, 80)), ok))
+	require.True(t, auditEntrySatisfies(leaf(ledgerpb.AuditField_AUDIT_FIELD_TIMESTAMP, u(4_000_000, 6_000_000)), ok))
+	require.True(t, auditEntrySatisfies(leaf(ledgerpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, u(42, 50)), ok), "match-any over the entry's logs")
+	require.False(t, auditEntrySatisfies(leaf(ledgerpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, u(43, 50)), ok))
+	require.False(t, auditEntrySatisfies(leaf(ledgerpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, u(0, 100)), failed), "a rejection has no logs")
+	require.True(t, auditEntrySatisfies(str(ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, "success"), ok))
+	require.True(t, auditEntrySatisfies(str(ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, "failure"), failed))
+	require.True(t, auditEntrySatisfies(str(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, "b"), ok))
+	require.True(t, auditEntrySatisfies(str(ledgerpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, "alice"), ok))
+	require.False(t, auditEntrySatisfies(str(ledgerpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, ""), failed), "an empty subject is never indexed")
+	require.True(t, auditEntrySatisfies(str(ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "anything"), ok), "order types are judged by the model")
+	require.True(t, auditEntrySatisfies(filterAnd(str(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, "a"), str(ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, "success")), ok))
+	require.False(t, auditEntrySatisfies(filterOr(str(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, "c"), str(ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, "failure")), ok))
 
 	// The exclusive extrema keep an empty range empty.
 	zero := uint64(0)
 	top := uint64(math.MaxUint64)
-	require.False(t, boundsMeetRange(&commonpb.UintCondition{Max: &zero, MaxExclusive: true}, 0, 100))
-	require.False(t, boundsMeetRange(&commonpb.UintCondition{Min: &top, MinExclusive: true}, 0, math.MaxUint64))
-	require.True(t, boundsMeetRange(&commonpb.UintCondition{Max: &zero}, 0, 100))
+	require.False(t, boundsMeetRange(&ledgerpb.UintCondition{Max: &zero, MaxExclusive: true}, 0, 100))
+	require.False(t, boundsMeetRange(&ledgerpb.UintCondition{Min: &top, MinExclusive: true}, 0, math.MaxUint64))
+	require.True(t, boundsMeetRange(&ledgerpb.UintCondition{Max: &zero}, 0, 100))
 }
 
 // The kind-to-token table is the indexer's own derivation.
@@ -361,18 +361,18 @@ func TestValidateAuditPageOrderTypesAndLogCoverage(t *testing.T) {
 	e42 := auditEntry{seq: 3, ledgers: []string{"L"}, orderCount: 1, minLog: 42, maxLog: 42}
 	e44 := auditEntry{seq: 5, ledgers: []string{"L"}, orderCount: 1, minLog: 44, maxLog: 44}
 
-	addMeta := filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "add_metadata")
-	createTx := filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction")
+	addMeta := filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "add_metadata")
+	createTx := filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction")
 	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e42}, false, addMeta, 50, 0, "").finding)
 	require.Equal(t, "audit entry outside the order-type scope", c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e42}, false, createTx, 50, 0, "").finding)
 
 	c.ledgerLogSeqs[43] = ledgerLogRecord{ledger: "L", kind: "saved_ledger_metadata"}
 	e43 := auditEntry{seq: 4, ledgers: []string{"L"}, orderCount: 1, minLog: 43, maxLog: 43}
-	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e43}, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "save_ledger_metadata"), 50, 0, "").finding)
-	require.Equal(t, "audit entry outside the order-type scope", c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e43}, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "delete_ledger_metadata"), 50, 0, "").finding, "the order behind a ledger-metadata log is known, so the other token does not hold")
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e43}, false, filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "save_ledger_metadata"), 50, 0, "").finding)
+	require.Equal(t, "audit entry outside the order-type scope", c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e43}, false, filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "delete_ledger_metadata"), 50, 0, "").finding, "the order behind a ledger-metadata log is known, so the other token does not hold")
 
 	lo, hi := uint64(40), uint64(50)
-	logRange := filterAuditUint(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, &commonpb.UintCondition{Min: &lo, Max: &hi})
+	logRange := filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, &ledgerpb.UintCondition{Min: &lo, Max: &hi})
 	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e42, e43, e44}, false, logRange, 50, 0, "").finding)
 	require.Equal(t, "audit trail misses a committed log", c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e42, e44}, false, logRange, 50, 0, "").finding, "43 is committed and in range")
 	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e42, e44}, false, logRange, 2, 0, "").finding, "a full page may have been cut before 43")
@@ -408,7 +408,7 @@ func TestValidateAuditPageReverseTail(t *testing.T) {
 
 	// A filtered page selects its own newest entry, so the global frontier says
 	// nothing about it.
-	upTo3 := filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, &commonpb.UintCondition{Max: &[]uint64{3}[0]})
+	upTo3 := filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE, &ledgerpb.UintCondition{Max: &[]uint64{3}[0]})
 	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{older}, true, upTo3, 50, 0, "").finding, "the newest bulk is outside this filter")
 
 	c.inflight[1] = oracle.Bulk{}
@@ -460,12 +460,12 @@ func TestAuditHistoryIsNeverPruned(t *testing.T) {
 	c := &Checker{rejections: map[rejectedBulk]struct{}{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{}}
 	first := oracle.Bulk{Requests: []*servicepb.Request{saveLedgerMetaReqL("L")}}
 	c.recordRejection(first, "VALIDATION")
-	c.learnLedgerLogSequences(first, []*commonpb.Log{{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_SavedLedgerMetadata{}}}})
+	c.learnLedgerLogSequences(first, []*ledgerpb.Log{{Sequence: 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_SavedLedgerMetadata{}}}})
 
 	for i := uint64(2); i <= 20_000; i++ {
 		later := oracle.Bulk{Requests: []*servicepb.Request{saveLedgerMetaReqL("L"), saveLedgerMetaReqL("L")}}
 		c.recordRejection(later, "INSUFFICIENT_FUNDS")
-		c.learnLedgerLogSequences(first, []*commonpb.Log{{Sequence: i, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_SavedLedgerMetadata{}}}})
+		c.learnLedgerLogSequences(first, []*ledgerpb.Log{{Sequence: i, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_SavedLedgerMetadata{}}}})
 	}
 
 	require.True(t, c.rejectionExplains(auditEntry{failed: true, ledgers: []string{"L"}, orderCount: 1, reason: "VALIDATION"}))
@@ -476,7 +476,7 @@ func TestAuditHistoryIsNeverPruned(t *testing.T) {
 
 func saveLedgerMetaReqL(ledger string) *servicepb.Request {
 	return &servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{
-		SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{Ledger: ledger, Metadata: map[string]*commonpb.MetadataValue{"k": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}}}},
+		SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{Ledger: ledger, Metadata: map[string]*ledgerpb.MetadataValue{"k": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "v"}}}},
 	}}
 }
 
@@ -532,8 +532,8 @@ func TestAuditEntryMatchesMixedOrInOnePass(t *testing.T) {
 	ledgerB := auditEntry{seq: 10, ledgers: []string{"b"}, orderCount: 1, minLog: 40, maxLog: 40}
 	metadataOnly := map[string]bool{"add_metadata": true}
 	mixed := filterOr(
-		filterAuditString(commonpb.AuditField_AUDIT_FIELD_LEDGER, "a"),
-		filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"),
+		filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, "a"),
+		filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"),
 	)
 
 	require.False(t, auditEntryMatches(mixed, ledgerB, metadataOnly), "neither arm holds")

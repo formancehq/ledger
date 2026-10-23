@@ -5,7 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -20,10 +21,10 @@ func TestRecoverState_QueryCheckpointLiveSet(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, SaveQueryCheckpoint(batch, &raftcmdpb.QueryCheckpointState{
-		CheckpointId: 3, MaxSequence: 30, CreatedAt: &commonpb.Timestamp{Data: 300},
+		CheckpointId: 3, MaxSequence: 30, CreatedAt: &ledgerpb.Timestamp{Data: 300},
 	}))
 	require.NoError(t, SaveQueryCheckpoint(batch, &raftcmdpb.QueryCheckpointState{
-		CheckpointId: 7, MaxSequence: 70, CreatedAt: &commonpb.Timestamp{Data: 700},
+		CheckpointId: 7, MaxSequence: 70, CreatedAt: &ledgerpb.Timestamp{Data: 700},
 	}))
 	require.NoError(t, batch.Commit())
 

@@ -1,10 +1,11 @@
 package eventspb
 
 import (
-	"github.com/formancehq/go-libs/v5/pkg/types/time"
+	"time"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // MarshalJSON implements json.Marshaler for Event.
@@ -16,7 +17,7 @@ func (x *Event) MarshalJSON() ([]byte, error) {
 		Ledger      string        `json:"ledger"`
 		Date        *time.Time    `json:"date,omitempty"`
 		LogSequence uint64        `json:"logSequence"`
-		Log         *commonpb.Log `json:"log,omitempty"`
+		Log         *ledgerpb.Log `json:"log,omitempty"`
 	}
 
 	aux := Aux{

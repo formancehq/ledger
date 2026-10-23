@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // ErrNotFound is a sentinel error for missing records in storage lookups. It
@@ -190,7 +190,7 @@ type Describable interface {
 type SerializableError interface {
 	Describable
 	// FailureDetails is the typed persisted outcome for an auditable error.
-	FailureDetails() *commonpb.FailureDetails
+	FailureDetails() *ledgerpb.FailureDetails
 }
 
 // UncommittedFailure marks a rejected internal proposal whose outcome is not
@@ -267,7 +267,7 @@ func PublicErrorDetails(d Describable) (message string, metadata map[string]stri
 type ReplayedFailure struct {
 	ErrReason string
 	Msg       string
-	Details   *commonpb.FailureDetails
+	Details   *ledgerpb.FailureDetails
 }
 
 func (e *ReplayedFailure) Error() string   { return e.Msg }
@@ -731,7 +731,7 @@ type ErrInvalidSkippableReason struct {
 	// Carried as the typed enum (not a free string) so wire roundtrips are
 	// lossless and the gRPC adapter renders the same identifier the client
 	// shipped.
-	Provided commonpb.ErrorReason
+	Provided ledgerpb.ErrorReason
 }
 
 func (e *ErrInvalidSkippableReason) Error() string {
@@ -1265,7 +1265,7 @@ func (*ErrNumscriptParse) Reason() string  { return ErrReasonNumscriptParseError
 // matching the message.
 type ErrNumscriptCompile struct {
 	Detail  string
-	Details *commonpb.FailureDetails
+	Details *ledgerpb.FailureDetails
 }
 
 func (e *ErrNumscriptCompile) Error() string { return "numscript compile error: " + e.Detail }
@@ -1296,10 +1296,10 @@ func (*unclassifiedNumscriptCompile) UncommittedFailure() {}
 // ErrInsufficientFunds.
 type ErrNumscriptExecution struct {
 	Detail  string
-	Details *commonpb.FailureDetails
+	Details *ledgerpb.FailureDetails
 }
 
-func NewNumscriptExecution(detail string, details *commonpb.FailureDetails) *ErrNumscriptExecution {
+func NewNumscriptExecution(detail string, details *ledgerpb.FailureDetails) *ErrNumscriptExecution {
 	if details == nil {
 		panic("numscript execution requires classified failure details")
 	}

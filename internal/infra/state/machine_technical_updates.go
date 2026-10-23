@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -97,7 +99,7 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 // alternating-byte persistence scheme in 0xFF can lose data on even-generation
 // skips. Reset the cache and purge 0xFF entirely — the preloader falls back to
 // Pebble reads (0xF1) and the cache rebuilds naturally.
-func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64, cfg *commonpb.ClusterConfig) error {
+func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64, cfg *ledgerpb.ClusterConfig) error {
 	oldThreshold := fsm.Registry.Cache.GenerationThreshold()
 	newThreshold := cfg.GetRotationThreshold()
 
@@ -224,7 +226,7 @@ func (fsm *Machine) applyEventsSinkUpdate(batch *dal.WriteSession, update *raftc
 			return fmt.Errorf("clearing sink status: %w", err)
 		}
 	} else if update.GetError() != nil {
-		if err := SetSinkStatus(batch, &commonpb.SinkStatus{
+		if err := SetSinkStatus(batch, &ledgerpb.SinkStatus{
 			SinkName: update.GetSinkName(),
 			Cursor:   update.GetCursor(),
 			Error:    update.GetError(),

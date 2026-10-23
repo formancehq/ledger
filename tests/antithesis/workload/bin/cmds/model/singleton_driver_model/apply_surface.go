@@ -3,12 +3,12 @@ package main
 import (
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
-func requestedEnforcementMode(req *servicepb.Request) *commonpb.ChartEnforcementMode {
+func requestedEnforcementMode(req *servicepb.Request) *ledgerpb.ChartEnforcementMode {
 	if setter := req.GetSetDefaultEnforcementMode(); setter != nil {
 		mode := setter.GetEnforcementMode()
 
@@ -65,41 +65,41 @@ func maybeAddSkippableReason(ls oracle.LedgerState, req *servicepb.Request) *ser
 		return applyCreate(req.GetApply().GetLedger(), create, reason)
 	}
 
-	req.GetApply().SkippableReasons = []commonpb.ErrorReason{reason}
+	req.GetApply().SkippableReasons = []ledgerpb.ErrorReason{reason}
 
 	return req
 }
 
 // generatedSkippableReason maps existing Apply actions to a skip reason.
 // Mode setters deliberately use a disallowed reason to cover admission rejection.
-func generatedSkippableReason(req *servicepb.Request) (commonpb.ErrorReason, bool) {
+func generatedSkippableReason(req *servicepb.Request) (ledgerpb.ErrorReason, bool) {
 	if reason, ok := allowedSkippableReason(req); ok {
 		return reason, true
 	}
 	if req.GetApply().GetAction().GetSetDefaultEnforcementMode() != nil {
-		return commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND, true
+		return ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND, true
 	}
 
-	return commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, false
+	return ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED, false
 }
 
 // allowedSkippableReason is the model's independent copy of the public
 // per-action whitelist. It must not use admission's generated lookup table.
-func allowedSkippableReason(req *servicepb.Request) (commonpb.ErrorReason, bool) {
+func allowedSkippableReason(req *servicepb.Request) (ledgerpb.ErrorReason, bool) {
 	action := req.GetApply().GetAction()
 	switch action.GetData().(type) {
 	case *servicepb.LedgerAction_CreateTransaction:
-		return commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, true
+		return ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, true
 	case *servicepb.LedgerAction_RevertTransaction:
-		return commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED, true
+		return ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED, true
 	case *servicepb.LedgerAction_DeleteMetadata:
-		return commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND, true
+		return ledgerpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND, true
 	case *servicepb.LedgerAction_AddAccountType:
-		return commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS, true
+		return ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS, true
 	case *servicepb.LedgerAction_RemoveAccountType:
-		return commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND, true
+		return ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND, true
 	default:
-		return commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, false
+		return ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED, false
 	}
 }
 
@@ -120,19 +120,19 @@ func bulkHasInvalidSkippableReason(bulk oracle.Bulk) bool {
 	return false
 }
 
-var skippedReasons = []commonpb.ErrorReason{
-	commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-	commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED,
-	commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND,
-	commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS,
-	commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,
+var skippedReasons = []ledgerpb.ErrorReason{
+	ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+	ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED,
+	ledgerpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND,
+	ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS,
+	ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,
 }
 
-func skipCoverageMessage(reason commonpb.ErrorReason) string {
+func skipCoverageMessage(reason ledgerpb.ErrorReason) string {
 	return coveragePrefix + "Apply skipped " + reason.String() + " and continued"
 }
 
-func modeCoverageMessage(mode commonpb.ChartEnforcementMode, nested bool) string {
+func modeCoverageMessage(mode ledgerpb.ChartEnforcementMode, nested bool) string {
 	form := "top-level"
 	if nested {
 		form = "ledger-action"
@@ -148,7 +148,7 @@ func applyCoverageMessages() []string {
 	for _, reason := range skippedReasons {
 		messages = append(messages, skipCoverageMessage(reason))
 	}
-	for _, mode := range []commonpb.ChartEnforcementMode{commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT} {
+	for _, mode := range []ledgerpb.ChartEnforcementMode{ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT} {
 		for _, nested := range []bool{false, true} {
 			messages = append(messages, modeCoverageMessage(mode, nested))
 		}

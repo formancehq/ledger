@@ -5383,7 +5383,7 @@ var File_raft_cmd_proto protoreflect.FileDescriptor
 
 const file_raft_cmd_proto_rawDesc = "" +
 	"\n" +
-	"\x0eraft_cmd.proto\x12\x04raft\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xc3\x01\n" +
+	"\x0eraft_cmd.proto\x12\x04raft\x1a\fcommon.proto\x1a\x14internal_state.proto\x1a\x0fsignature.proto\"\xc3\x01\n" +
 	"\x05Order\x12>\n" +
 	"\rledger_scoped\x18\x01 \x01(\v2\x17.raft.LedgerScopedOrderH\x00R\fledgerScoped\x12>\n" +
 	"\rsystem_scoped\x18\x02 \x01(\v2\x17.raft.SystemScopedOrderH\x00R\fsystemScoped\x122\n" +

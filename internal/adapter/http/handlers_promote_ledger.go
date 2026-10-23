@@ -3,7 +3,8 @@ package http
 import (
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -36,5 +37,5 @@ func (s *Server) handlePromoteLedger(w http.ResponseWriter, r *http.Request) {
 		panic(unexpectedLogPayload("promote-ledger", logEntry, details))
 	}
 
-	writeCreated(w, r, &commonpb.LedgerInfo{Name: promoteLedgerLog.GetName(), Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL})
+	writeCreated(w, r, &ledgerpb.LedgerInfo{Name: promoteLedgerLog.GetName(), Mode: ledgerpb.LedgerMode_LEDGER_MODE_NORMAL})
 }

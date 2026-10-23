@@ -6,9 +6,10 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
@@ -56,7 +57,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	var filter *commonpb.QueryFilter
+	var filter *ledgerpb.QueryFilter
 	if filterExpr != "" {
 		filter, err = filterexpr.Parse(filterExpr, target)
 		if err != nil {
@@ -86,14 +87,14 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func parseTarget(s string) (commonpb.QueryTarget, error) {
+func parseTarget(s string) (ledgerpb.QueryTarget, error) {
 	switch s {
 	case "accounts", "account":
-		return commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil
+		return ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil
 	case "transactions", "transaction", "txn":
-		return commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil
+		return ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil
 	case "logs", "log":
-		return commonpb.QueryTarget_QUERY_TARGET_LOGS, nil
+		return ledgerpb.QueryTarget_QUERY_TARGET_LOGS, nil
 	default:
 		return 0, fmt.Errorf("unknown target %q (use accounts, transactions, or logs)", s)
 	}

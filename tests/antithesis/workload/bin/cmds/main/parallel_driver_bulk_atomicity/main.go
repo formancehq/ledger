@@ -39,7 +39,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
@@ -73,7 +73,7 @@ func listIsEmpty(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	ledger string,
-	filter *commonpb.QueryFilter,
+	filter *ledgerpb.QueryFilter,
 ) (bool, []uint64, bool) {
 	ids, err := internal.ReadOracleTransactions(ctx, client, ledger, filter)
 
@@ -86,7 +86,7 @@ func main() {
 
 		run := r.Uint64()
 		ledger := internal.PrefixBulkAtomicity.WithSeed(run)
-		if err := internal.CreateQueryOracleLedger(ctx, client, ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS); err != nil {
+		if err := internal.CreateQueryOracleLedger(ctx, client, ledger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS); err != nil {
 			return
 		}
 
@@ -112,10 +112,10 @@ func main() {
 						Ledger: ledger,
 						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
+								Postings: []*ledgerpb.Posting{{
 									Source:      "world",
 									Destination: account,
-									Amount:      commonpb.NewUint256FromUint64(100),
+									Amount:      ledgerpb.NewUint256FromUint64(100),
 									Asset:       "USD/2",
 								}},
 								Reference: ref,
@@ -135,10 +135,10 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+							Postings: []*ledgerpb.Posting{{
 								Source:      fmt.Sprintf("bulkatom-void:%d", run%1_000_000),
 								Destination: "bulkatom-sink",
-								Amount:      commonpb.NewUint256FromUint64(1),
+								Amount:      ledgerpb.NewUint256FromUint64(1),
 								Asset:       "USD/2",
 							}},
 						},
@@ -177,10 +177,10 @@ func main() {
 					Ledger: helper,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: "bulkatom-marker",
-								Amount:      commonpb.NewUint256FromUint64(1),
+								Amount:      ledgerpb.NewUint256FromUint64(1),
 								Asset:       "USD/2",
 							}},
 							Force: true,
@@ -206,15 +206,15 @@ func main() {
 		// entries must be unique per ProposalId (a failed proposal writes
 		// exactly one Failure entry by design, machine.go:1163-1204).
 		auditStream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-			Options: &commonpb.ListOptions{
+			Options: &ledgerpb.ListOptions{
 				// Audit has no dedicated ledger field — scope via the generic filter.
-				Filter: &commonpb.QueryFilter{
-					Filter: &commonpb.QueryFilter_Audit{
-						Audit: &commonpb.AuditCondition{
-							Field: commonpb.AuditField_AUDIT_FIELD_LEDGER,
-							Condition: &commonpb.AuditCondition_StringCond{
-								StringCond: &commonpb.StringCondition{
-									Value: &commonpb.StringCondition_Hardcoded{Hardcoded: ledger},
+				Filter: &ledgerpb.QueryFilter{
+					Filter: &ledgerpb.QueryFilter_Audit{
+						Audit: &ledgerpb.AuditCondition{
+							Field: ledgerpb.AuditField_AUDIT_FIELD_LEDGER,
+							Condition: &ledgerpb.AuditCondition_StringCond{
+								StringCond: &ledgerpb.StringCondition{
+									Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: ledger},
 								},
 							},
 						},

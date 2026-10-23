@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 const Marker = "[redacted]"
@@ -140,7 +140,7 @@ func Redact[T proto.Message](message T) T {
 func redact(message protoreflect.Message) {
 	message.SetUnknown(nil)
 	message.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
-		if proto.GetExtension(field.Options(), commonpb.E_SensitiveUrl).(bool) {
+		if proto.GetExtension(field.Options(), ledgerpb.E_SensitiveUrl).(bool) {
 			if field.Kind() == protoreflect.StringKind && !field.IsList() && !field.IsMap() {
 				if value.String() != "" {
 					message.Set(field, protoreflect.ValueOfString(redactURL(value.String())))
@@ -151,7 +151,7 @@ func redact(message protoreflect.Message) {
 
 			return true
 		}
-		if proto.GetExtension(field.Options(), commonpb.E_Sensitive).(bool) {
+		if proto.GetExtension(field.Options(), ledgerpb.E_Sensitive).(bool) {
 			if field.Kind() == protoreflect.StringKind && !field.IsList() && !field.IsMap() {
 				if value.String() != "" {
 					message.Set(field, protoreflect.ValueOfString(Marker))

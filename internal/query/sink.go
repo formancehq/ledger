@@ -3,8 +3,9 @@ package query
 import (
 	"fmt"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -24,8 +25,8 @@ func ReadSinkCursor(reader dal.PebbleGetter, sinkName string) (uint64, error) {
 }
 
 // ReadAllSinkStatuses returns all persisted sink statuses from the given reader.
-func ReadAllSinkStatuses(reader dal.PebbleReader) ([]*commonpb.SinkStatus, error) {
-	statuses, err := dal.CollectZone[*commonpb.SinkStatus](reader, dal.ZoneGlobal, dal.SubGlobSinkStatus)
+func ReadAllSinkStatuses(reader dal.PebbleReader) ([]*ledgerpb.SinkStatus, error) {
+	statuses, err := dal.CollectZone[*ledgerpb.SinkStatus](reader, dal.ZoneGlobal, dal.SubGlobSinkStatus)
 	if err != nil {
 		return nil, fmt.Errorf("reading sink statuses: %w", err)
 	}
@@ -41,18 +42,18 @@ func ReadAllSinkStatuses(reader dal.PebbleReader) ([]*commonpb.SinkStatus, error
 // `sinks` are omitted. Callers pass a single reader (ideally one snapshot) so
 // statuses, cursors and the configs are read from one consistent point in
 // time.
-func BuildSinkStatuses(reader dal.PebbleReader, sinks []*commonpb.SinkConfig) ([]*commonpb.SinkStatus, error) {
+func BuildSinkStatuses(reader dal.PebbleReader, sinks []*ledgerpb.SinkConfig) ([]*ledgerpb.SinkStatus, error) {
 	errorStatuses, err := ReadAllSinkStatuses(reader)
 	if err != nil {
 		return nil, err
 	}
 
-	errorBySink := make(map[string]*commonpb.SinkStatus, len(errorStatuses))
+	errorBySink := make(map[string]*ledgerpb.SinkStatus, len(errorStatuses))
 	for _, s := range errorStatuses {
 		errorBySink[s.GetSinkName()] = s
 	}
 
-	statuses := make([]*commonpb.SinkStatus, 0, len(sinks))
+	statuses := make([]*ledgerpb.SinkStatus, 0, len(sinks))
 	for _, sink := range sinks {
 		cursor, err := ReadSinkCursor(reader, sink.GetName())
 		if err != nil {
@@ -61,7 +62,7 @@ func BuildSinkStatuses(reader dal.PebbleReader, sinks []*commonpb.SinkConfig) ([
 
 		status, ok := errorBySink[sink.GetName()]
 		if !ok {
-			status = &commonpb.SinkStatus{SinkName: sink.GetName()}
+			status = &ledgerpb.SinkStatus{SinkName: sink.GetName()}
 		}
 		status.Cursor = cursor
 		statuses = append(statuses, status)
@@ -71,13 +72,13 @@ func BuildSinkStatuses(reader dal.PebbleReader, sinks []*commonpb.SinkConfig) ([
 }
 
 // ReadAllSinkConfigs loads all sink configurations from the attributes zone.
-func ReadAllSinkConfigs(attr *attributes.Attribute[*commonpb.SinkConfig], reader dal.PebbleReader) ([]*commonpb.SinkConfig, error) {
+func ReadAllSinkConfigs(attr *attributes.Attribute[*ledgerpb.SinkConfig], reader dal.PebbleReader) ([]*ledgerpb.SinkConfig, error) {
 	entries, err := attr.ComputeAllForPrefix(reader, nil)
 	if err != nil {
 		return nil, fmt.Errorf("scanning sink configs: %w", err)
 	}
 
-	configs := make([]*commonpb.SinkConfig, 0, len(entries))
+	configs := make([]*ledgerpb.SinkConfig, 0, len(entries))
 	for _, entry := range entries {
 		configs = append(configs, entry.Value)
 	}

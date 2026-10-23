@@ -8,8 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -26,7 +28,7 @@ func TestProcessCreateTransactionRejectsExhaustedIDBeforeWrites(t *testing.T) {
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: math.MaxUint64, NextLogId: 1}
-	ledgerInfo := (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader()
+	ledgerInfo := (&ledgerpb.LedgerInfo{Name: "test-ledger"}).AsReader()
 	ledgers := setupLedgersStub(mockStore)
 	ledgers.expectGet(domain.LedgerKey{Name: "test-ledger"}, ledgerInfo, nil)
 	boundariesStub := setupBoundariesStub(mockStore)
@@ -36,8 +38,8 @@ func TestProcessCreateTransactionRejectsExhaustedIDBeforeWrites(t *testing.T) {
 		Ledger: "test-ledger",
 		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
 			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-				Postings: []*commonpb.Posting{{
-					Source: "world", Destination: "users:001", Amount: commonpb.NewUint256FromUint64(1), Asset: "USD",
+				Postings: []*ledgerpb.Posting{{
+					Source: "world", Destination: "users:001", Amount: ledgerpb.NewUint256FromUint64(1), Asset: "USD",
 				}},
 			}},
 		}},
@@ -64,7 +66,7 @@ func TestProcessApplyRejectsExhaustedLedgerLogBeforeTransactionWrites(t *testing
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: math.MaxUint64}
-	ledgerInfo := (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader()
+	ledgerInfo := (&ledgerpb.LedgerInfo{Name: "test-ledger"}).AsReader()
 	ledgers := setupLedgersStub(mockStore)
 	ledgers.expectGet(domain.LedgerKey{Name: "test-ledger"}, ledgerInfo, nil)
 	boundariesStub := setupBoundariesStub(mockStore)
@@ -74,8 +76,8 @@ func TestProcessApplyRejectsExhaustedLedgerLogBeforeTransactionWrites(t *testing
 		Ledger: "test-ledger",
 		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
 			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-				Postings: []*commonpb.Posting{{
-					Source: "world", Destination: "users:001", Amount: commonpb.NewUint256FromUint64(1), Asset: "USD",
+				Postings: []*ledgerpb.Posting{{
+					Source: "world", Destination: "users:001", Amount: ledgerpb.NewUint256FromUint64(1), Asset: "USD",
 				}},
 			}},
 		}},
@@ -95,12 +97,12 @@ func TestValidatePostings(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		posting *commonpb.Posting
+		posting *ledgerpb.Posting
 		wantErr error
 	}{
 		{
 			name: "valid posting",
-			posting: &commonpb.Posting{
+			posting: &ledgerpb.Posting{
 				Source:      "bank",
 				Destination: "users:alice",
 				Asset:       "USD",
@@ -109,7 +111,7 @@ func TestValidatePostings(t *testing.T) {
 		},
 		{
 			name: "invalid source",
-			posting: &commonpb.Posting{
+			posting: &ledgerpb.Posting{
 				Source:      "invalid source",
 				Destination: "users:alice",
 				Asset:       "USD",
@@ -119,7 +121,7 @@ func TestValidatePostings(t *testing.T) {
 		},
 		{
 			name: "invalid destination",
-			posting: &commonpb.Posting{
+			posting: &ledgerpb.Posting{
 				Source:      "bank",
 				Destination: "invalid destination",
 				Asset:       "USD",
@@ -129,7 +131,7 @@ func TestValidatePostings(t *testing.T) {
 		},
 		{
 			name: "invalid asset",
-			posting: &commonpb.Posting{
+			posting: &ledgerpb.Posting{
 				Source:      "bank",
 				Destination: "users:alice",
 				Asset:       "usd",
@@ -139,7 +141,7 @@ func TestValidatePostings(t *testing.T) {
 		},
 		{
 			name: "invalid color",
-			posting: &commonpb.Posting{
+			posting: &ledgerpb.Posting{
 				Source:      "bank",
 				Destination: "users:alice",
 				Asset:       "USD",
@@ -153,7 +155,7 @@ func TestValidatePostings(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validatePostings([]*commonpb.Posting{tt.posting})
+			err := validatePostings([]*ledgerpb.Posting{tt.posting})
 			if tt.wantErr == nil {
 				require.NoError(t, err)
 
@@ -176,7 +178,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	sourceKey := domain.NewVolumeKey("test-ledger", "bank", "USD", "")
@@ -184,18 +186,18 @@ func TestProcessCreateTransaction(t *testing.T) {
 
 	// Source has 1000 input, 0 output -> balance = 1000
 	sourceVolume := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(1000),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(1000),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	// Destination starts with 0
 	destVolume := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4) // Called for: ledger log date, timestamp fallback, InsertedAt, UpdatedAt
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, persisted *raftcmdpb.LedgerBoundaries) {
 		require.Equal(t, uint64(2), persisted.GetNextTransactionId())
@@ -219,11 +221,11 @@ func TestProcessCreateTransaction(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{
+						Postings: []*ledgerpb.Posting{
 							{
 								Source:      "bank",
 								Destination: "users:123",
-								Amount:      commonpb.NewUint256FromUint64(100),
+								Amount:      ledgerpb.NewUint256FromUint64(100),
 								Asset:       "USD",
 							},
 						},
@@ -263,12 +265,12 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 
 	// Source has only 50 balance (100 input - 50 output)
 	sourceVolume := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(100),
-		Output: commonpb.NewUint256FromUint64(50),
+		Input:  ledgerpb.NewUint256FromUint64(100),
+		Output: ledgerpb.NewUint256FromUint64(50),
 	}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	expectGetVolume(mockStore, sourceKey, sourceVolume.AsReader(), nil)
 
 	request := &servicepb.Request{
@@ -277,11 +279,11 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{
+						Postings: []*ledgerpb.Posting{
 							{
 								Source:      "users:123",
 								Destination: "merchant",
-								Amount:      commonpb.NewUint256FromUint64(100), // Wants 100, has only 50
+								Amount:      ledgerpb.NewUint256FromUint64(100), // Wants 100, has only 50
 								Asset:       "USD",
 							},
 						},
@@ -308,7 +310,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	worldKey := domain.NewVolumeKey("test-ledger", "world", "USD", "")
@@ -316,16 +318,16 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 
 	// World has negative balance (but "world" bypasses balance check)
 	worldVolume := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(1000000),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(1000000),
 	}
 	destVolume := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetVolume(mockStore, worldKey, worldVolume.AsReader(), nil)
@@ -341,11 +343,11 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{
+						Postings: []*ledgerpb.Posting{
 							{
 								Source:      "world", // Can go negative
 								Destination: "users:123",
-								Amount:      commonpb.NewUint256FromUint64(1000),
+								Amount:      ledgerpb.NewUint256FromUint64(1000),
 								Asset:       "USD",
 							},
 						},
@@ -379,13 +381,13 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "nonexistent",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
-					AddMetadata: &commonpb.SaveMetadataCommand{
-						Target: &commonpb.Target{
-							Target: &commonpb.Target_Account{
-								Account: &commonpb.TargetAccount{Addr: "test"},
+					AddMetadata: &ledgerpb.SaveMetadataCommand{
+						Target: &ledgerpb.Target{
+							Target: &ledgerpb.Target_Account{
+								Account: &ledgerpb.TargetAccount{Addr: "test"},
 							},
 						},
-						Metadata: map[string]*commonpb.MetadataValue{},
+						Metadata: map[string]*ledgerpb.MetadataValue{},
 					},
 				}},
 			},
@@ -408,8 +410,8 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 // after the multi-key dispatch fix (paul-nicolas review on #569).
 func setupNumscriptVolumeMocks(mockStore *MockScope) {
 	zeroVol := (&raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}).AsReader()
 	setupVolumesStub(mockStore).onGet(func(_ domain.VolumeKey) (raftcmdpb.VolumePairReader, error) {
 		return zeroVol, nil
@@ -427,12 +429,12 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	// Use flexible mocking for volume operations
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
@@ -445,7 +447,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: `
 								send [USD/2 10000] (
 									source = @world
@@ -489,11 +491,11 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
@@ -506,7 +508,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: `
 								vars {
 									monetary $amount
@@ -557,11 +559,11 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
@@ -574,7 +576,7 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: `
 								send [USD/2 10000] (
 									source = @world
@@ -625,11 +627,11 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	// Bank starts with 0 balance but can go negative with unbounded overdraft
@@ -643,7 +645,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: `
 								send [USD/2 100000] (
 									source = @bank:main allowing unbounded overdraft
@@ -694,7 +696,7 @@ func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
 	order := requestToOrderUnchecked(numscriptSendRequest(`
 		send [USD/2 invalid] (
@@ -733,7 +735,7 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	// numscript runs cleanly but emits no `send`. The processor rejects
 	// before bumping boundaries.
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -741,7 +743,7 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: "",
 						},
 					},
@@ -773,7 +775,7 @@ func TestProcessCreateTransaction_Numscript_NoSendStillRejected(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
 	// A numscript that declares a variable but never emits a `send`.
 	request := &servicepb.Request{
@@ -782,7 +784,7 @@ func TestProcessCreateTransaction_Numscript_NoSendStillRejected(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: "vars { account $a }",
 							Vars:  map[string]string{"a": "users:alice"},
 						},
@@ -808,11 +810,11 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
@@ -826,7 +828,7 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: `
 								send [USD/2 10000] (
 									source = @world
@@ -875,17 +877,17 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil, func(_ domain.TransactionKey, state *commonpb.TransactionState) {
-		metadata := commonpb.MetadataToGoMap(state.GetMetadata())
+		metadata := ledgerpb.MetadataToGoMap(state.GetMetadata())
 		require.Equal(t, "payment", metadata["type"])
 		require.Equal(t, "purchase", metadata["category"])
 	})
@@ -897,7 +899,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: `
 								set_tx_meta("type", "payment")
 								set_tx_meta("category", "purchase")
@@ -925,7 +927,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	require.NotNil(t, createdTx.GetTransaction().GetMetadata())
 
 	// Verify metadata was set
-	metaMap := commonpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
+	metaMap := ledgerpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
 	require.Equal(t, "payment", metaMap["type"])
 	require.Equal(t, "purchase", metaMap["category"])
 }
@@ -947,11 +949,11 @@ func TestProcessCreateTransaction_Numscript_DoesNotMutateOrderMetadata(t *testin
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
@@ -966,11 +968,11 @@ func TestProcessCreateTransaction_Numscript_DoesNotMutateOrderMetadata(t *testin
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Metadata: map[string]*commonpb.MetadataValue{
-							"type":        commonpb.NewStringValue("caller-wins"),
-							"caller-only": commonpb.NewStringValue("kept"),
+						Metadata: map[string]*ledgerpb.MetadataValue{
+							"type":        ledgerpb.NewStringValue("caller-wins"),
+							"caller-only": ledgerpb.NewStringValue("kept"),
 						},
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: `
 								set_tx_meta("type", "payment")
 								set_tx_meta("category", "purchase")
@@ -1002,7 +1004,7 @@ func TestProcessCreateTransaction_Numscript_DoesNotMutateOrderMetadata(t *testin
 	createdTx := result.GetApply().GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
 
-	metaMap := commonpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
+	metaMap := ledgerpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
 	require.Equal(t, "caller-wins", metaMap["type"], "caller metadata must win collisions")
 	require.Equal(t, "purchase", metaMap["category"], "script metadata must be merged in")
 	require.Equal(t, "kept", metaMap["caller-only"], "caller-only metadata must be preserved")
@@ -1025,11 +1027,11 @@ func TestProcessCreateTransaction_Numscript_RejectsEmptyMetadataKey(t *testing.T
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil).AnyTimes()
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	setupNumscriptVolumeMocks(mockStore)
 
@@ -1039,7 +1041,7 @@ func TestProcessCreateTransaction_Numscript_RejectsEmptyMetadataKey(t *testing.T
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: `
 								set_tx_meta("", "ghost")
 								send [USD/2 100] (
@@ -1107,11 +1109,11 @@ func TestProcessCreateTransaction_Numscript_RejectsNullByteMetadataValue(t *test
 			processor, err := NewRequestProcessor(nil, 0)
 			require.NoError(t, err)
 
-			now := &commonpb.Timestamp{Data: 1234567890}
+			now := &ledgerpb.Timestamp{Data: 1234567890}
 			boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 			expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil).AnyTimes()
-			expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+			expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 			mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 			setupNumscriptVolumeMocks(mockStore)
 
@@ -1121,7 +1123,7 @@ func TestProcessCreateTransaction_Numscript_RejectsNullByteMetadataValue(t *test
 						Ledger: "test-ledger",
 						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Script: &commonpb.Script{
+								Script: &ledgerpb.Script{
 									Plain: tt.script,
 									Vars: map[string]string{
 										"poison": "safe\x00poison",
@@ -1159,13 +1161,13 @@ func TestProcessCreateTransaction_Numscript_CompetingMetadataErrors(t *testing.T
 		processor, err := NewRequestProcessor(nil, 0)
 		require.NoError(t, err)
 		expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}).AsReader(), nil).AnyTimes()
-		expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-		mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
+		expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+		mockStore.EXPECT().GetDate().Return((&ledgerpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
 		setupNumscriptVolumeMocks(mockStore)
 		request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
 			Ledger: "test-ledger",
 			Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
-				Script: &commonpb.Script{Plain: script, Vars: map[string]string{"poison": "safe\x00poison"}},
+				Script: &ledgerpb.Script{Plain: script, Vars: map[string]string{"poison": "safe\x00poison"}},
 			}}},
 		}}}
 		_, err = processor.ProcessOrder(requestToOrder(t, request), mockStore)
@@ -1191,11 +1193,11 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
@@ -1215,8 +1217,8 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	// caller (processCreateTransaction). The numscript adapter no longer
 	// pre-writes. The FSM does not read previous values: the indexer
 	// resolves the prior encoded value via the reverse map.
-	expectPutAccountMetadata(t, mockStore, acctTypeKey, commonpb.NewStringValue("savings"))
-	expectPutAccountMetadata(t, mockStore, createdByKey, commonpb.NewStringValue("numscript"))
+	expectPutAccountMetadata(t, mockStore, acctTypeKey, ledgerpb.NewStringValue("savings"))
+	expectPutAccountMetadata(t, mockStore, createdByKey, ledgerpb.NewStringValue("numscript"))
 
 	// Test set_account_meta
 	request := &servicepb.Request{
@@ -1225,7 +1227,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: `
 								set_account_meta(@users:alice, "account_type", "savings")
 								set_account_meta(@users:alice, "created_by", "numscript")
@@ -1257,7 +1259,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	require.Contains(t, createdTx.GetAccountMetadata(), "users:alice", "AccountMetadata should contain users:alice")
 	aliceMeta := createdTx.GetAccountMetadata()["users:alice"]
 	require.NotNil(t, aliceMeta)
-	metaMap := commonpb.MetadataMapToGoMap(aliceMeta)
+	metaMap := ledgerpb.MetadataMapToGoMap(aliceMeta)
 	require.Equal(t, "savings", metaMap["account_type"])
 	require.Equal(t, "numscript", metaMap["created_by"])
 }
@@ -1279,11 +1281,11 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
@@ -1297,7 +1299,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 
 	// Exactly one write lands — the FSM no longer reads GetAccountMetadata
 	// to capture a previous value (it stores the client value verbatim).
-	expectPutAccountMetadata(t, mockStore, roleKey, commonpb.NewStringValue("viewer"))
+	expectPutAccountMetadata(t, mockStore, roleKey, ledgerpb.NewStringValue("viewer"))
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -1305,7 +1307,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: `
 								set_account_meta(@users:alice, "role", "viewer")
 								send [USD/2 100] (
@@ -1328,7 +1330,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 	// New metadata in the log.
 	aliceMeta := createdTx.GetAccountMetadata()["users:alice"]
 	require.NotNil(t, aliceMeta)
-	require.Equal(t, "viewer", commonpb.MetadataMapToGoMap(aliceMeta)["role"])
+	require.Equal(t, "viewer", ledgerpb.MetadataMapToGoMap(aliceMeta)["role"])
 }
 
 func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
@@ -1342,7 +1344,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	sourceKey := domain.NewVolumeKey("test-ledger", "users:123", "USD", "")
@@ -1350,16 +1352,16 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 
 	// Source has only 50 balance (100 input - 50 output) - not enough for 100
 	sourceVolume := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(100),
-		Output: commonpb.NewUint256FromUint64(50),
+		Input:  ledgerpb.NewUint256FromUint64(100),
+		Output: ledgerpb.NewUint256FromUint64(50),
 	}
 	destVolume := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetVolume(mockStore, sourceKey, sourceVolume.AsReader(), nil)
@@ -1383,11 +1385,11 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Force: true, // Force flag bypasses balance check
-						Postings: []*commonpb.Posting{
+						Postings: []*ledgerpb.Posting{
 							{
 								Source:      "users:123",
 								Destination: "merchant",
-								Amount:      commonpb.NewUint256FromUint64(100), // Wants 100, has only 50
+								Amount:      ledgerpb.NewUint256FromUint64(100), // Wants 100, has only 50
 								Asset:       "USD",
 							},
 						},
@@ -1421,7 +1423,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	sourceKey := domain.NewVolumeKey("test-ledger", "users:new", "USD", "")
@@ -1429,12 +1431,12 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 
 	// Source has zero balance, force=true skips balance check
 	zeroVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetVolume(mockStore, sourceKey, zeroVol.AsReader(), nil)
@@ -1455,11 +1457,11 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Force: true,
-						Postings: []*commonpb.Posting{
+						Postings: []*ledgerpb.Posting{
 							{
 								Source:      "users:new",
 								Destination: "merchant",
-								Amount:      commonpb.NewUint256FromUint64(100),
+								Amount:      ledgerpb.NewUint256FromUint64(100),
 								Asset:       "USD",
 							},
 						},
@@ -1485,12 +1487,12 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	// Account has 0 balance, but with force=true, Numscript should see unlimited balance
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	// Note: GetVolume might be called for volume updates but not for balance queries
@@ -1506,7 +1508,7 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Force: true, // Force bypasses balance checks in Numscript
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: `
 								send [USD/2 100000] (
 									source = @users:broke
@@ -1552,7 +1554,7 @@ func TestProcessCreateTransaction_Numscript_OverflowUint256(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	setupNumscriptVolumeMocks(mockStore)
 
 	// 2^256 = 115792089237316195423570985008687907853269984665640564039457584007913129639936
@@ -1565,7 +1567,7 @@ func TestProcessCreateTransaction_Numscript_OverflowUint256(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: `
 								vars {
 									monetary $amount
@@ -1605,7 +1607,7 @@ func TestProcessCreateTransaction_Numscript_NegativeAmount(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	setupNumscriptVolumeMocks(mockStore)
 
 	request := &servicepb.Request{
@@ -1614,7 +1616,7 @@ func TestProcessCreateTransaction_Numscript_NegativeAmount(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+						Script: &ledgerpb.Script{
 							Plain: `
 								vars {
 									monetary $amount
@@ -1655,29 +1657,29 @@ func TestProcessCreateTransaction_StoresAccountMetadataVerbatim(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	ledgerInfo := &commonpb.LedgerInfo{
+	ledgerInfo := &ledgerpb.LedgerInfo{
 		Name: "test-ledger",
 		Id:   1,
-		MetadataSchema: &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"age": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+		MetadataSchema: &ledgerpb.MetadataSchema{
+			AccountFields: map[string]*ledgerpb.MetadataFieldSchema{
+				"age": {Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		},
 	}
 
 	worldKey := domain.NewVolumeKey("test-ledger", "world", "USD", "")
 	destKey := domain.NewVolumeKey("test-ledger", "users:123", "USD", "")
-	zero := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)}
+	zero := &raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(0), Output: ledgerpb.NewUint256FromUint64(0)}
 
 	metaKey := domain.MetadataKey{
 		AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:123"},
 		Key:        "age",
 	}
 
-	clientSent := commonpb.NewStringValue("040")
+	clientSent := ledgerpb.NewStringValue("040")
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
@@ -1698,11 +1700,11 @@ func TestProcessCreateTransaction_StoresAccountMetadataVerbatim(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{
-							{Source: "world", Destination: "users:123", Amount: commonpb.NewUint256FromUint64(1000), Asset: "USD"},
+						Postings: []*ledgerpb.Posting{
+							{Source: "world", Destination: "users:123", Amount: ledgerpb.NewUint256FromUint64(1000), Asset: "USD"},
 						},
-						AccountMetadata: map[string]*commonpb.MetadataMap{
-							"users:123": {Values: map[string]*commonpb.MetadataValue{"age": clientSent}},
+						AccountMetadata: map[string]*ledgerpb.MetadataMap{
+							"users:123": {Values: map[string]*ledgerpb.MetadataValue{"age": clientSent}},
 						},
 					},
 				}},

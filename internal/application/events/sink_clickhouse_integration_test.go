@@ -15,9 +15,9 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/application/events"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -107,31 +107,31 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreatedLedgerLog{
-						Name: "orders", CreatedAt: commonpb.NewTimestamp(now),
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_CreateLedger{
+					CreateLedger: &ledgerpb.CreatedLedgerLog{
+						Name: "orders", CreatedAt: ledgerpb.NewTimestamp(now),
 					},
 				},
 			},
 		},
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 2,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(1000))).
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &ledgerpb.CreatedTransaction{
+									Transaction: ledgerpb.NewTransaction().
+										WithPostings(ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(1000))).
 										WithID(1).WithTimestamp(now),
-									AccountMetadata: map[string]*commonpb.MetadataMap{
-										"users:001": {Values: map[string]*commonpb.MetadataValue{
-											"name": commonpb.NewStringValue("Alice"),
+									AccountMetadata: map[string]*ledgerpb.MetadataMap{
+										"users:001": {Values: map[string]*ledgerpb.MetadataValue{
+											"name": ledgerpb.NewStringValue("Alice"),
 										}},
 									},
 								},
@@ -167,7 +167,7 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 	handle, err := store.NewDirectReadHandle()
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, handle.Close()) })
-	statuses, err := query.BuildSinkStatuses(handle, []*commonpb.SinkConfig{{Name: "ch-sink"}})
+	statuses, err := query.BuildSinkStatuses(handle, []*ledgerpb.SinkConfig{{Name: "ch-sink"}})
 	require.NoError(t, err)
 	require.Len(t, statuses, 1)
 	require.Equal(t, uint64(2), statuses[0].GetCursor())
@@ -235,27 +235,27 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreatedLedgerLog{
-						Name: "analytics", CreatedAt: commonpb.NewTimestamp(now),
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_CreateLedger{
+					CreateLedger: &ledgerpb.CreatedLedgerLog{
+						Name: "analytics", CreatedAt: ledgerpb.NewTimestamp(now),
 					},
 				},
 			},
 		},
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 2,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "analytics",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "merchant", "EUR", big.NewInt(4200))).
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &ledgerpb.CreatedTransaction{
+									Transaction: ledgerpb.NewTransaction().
+										WithPostings(ledgerpb.NewPosting("world", "merchant", "EUR", big.NewInt(4200))).
 										WithID(1).WithTimestamp(now),
 								},
 							},
@@ -351,25 +351,25 @@ func TestClickHouseSinkIntegration_RedeliveryIsIdempotent(t *testing.T) {
 	// at-least-once). The redelivered rows are byte-identical.
 	batch := []*eventspb.Event{
 		{
-			Type:        commonpb.EventType_CREATED_LEDGER,
+			Type:        ledgerpb.EventType_CREATED_LEDGER,
 			Ledger:      "orders",
 			LogSequence: 1,
-			Date:        commonpb.NewTimestamp(now),
-			Log: &commonpb.Log{
+			Date:        ledgerpb.NewTimestamp(now),
+			Log: &ledgerpb.Log{
 				Sequence: 1,
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_CreateLedger{
-						CreateLedger: &commonpb.CreatedLedgerLog{Name: "orders"},
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_CreateLedger{
+						CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "orders"},
 					},
 				},
 			},
 		},
 		{
-			Type:        commonpb.EventType_COMMITTED_TRANSACTION,
+			Type:        ledgerpb.EventType_COMMITTED_TRANSACTION,
 			Ledger:      "orders",
 			LogSequence: 2,
-			Date:        commonpb.NewTimestamp(now),
-			Log:         &commonpb.Log{Sequence: 2},
+			Date:        ledgerpb.NewTimestamp(now),
+			Log:         &ledgerpb.Log{Sequence: 2},
 		},
 	}
 

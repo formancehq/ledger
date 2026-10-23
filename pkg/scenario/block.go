@@ -5,7 +5,8 @@ import (
 	"errors"
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -97,16 +98,16 @@ func GetColoredAccountBalance(ctx context.Context, client servicepb.BucketServic
 }
 
 // GetNonRevertedTransaction finds a random non-reverted transaction in a ledger.
-func GetNonRevertedTransaction(ctx context.Context, client servicepb.BucketServiceClient, ledger string, randFn RandFunc) (*commonpb.Transaction, bool) {
+func GetNonRevertedTransaction(ctx context.Context, client servicepb.BucketServiceClient, ledger string, randFn RandFunc) (*ledgerpb.Transaction, bool) {
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger:  ledger,
-		Options: &commonpb.ListOptions{PageSize: 100},
+		Options: &ledgerpb.ListOptions{PageSize: 100},
 	})
 	if err != nil {
 		return nil, false
 	}
 
-	var candidates []*commonpb.Transaction
+	var candidates []*ledgerpb.Transaction
 	for {
 		tx, err := stream.Recv()
 		if err != nil {

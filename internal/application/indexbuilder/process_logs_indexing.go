@@ -6,8 +6,9 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -21,25 +22,25 @@ func (b *Builder) indexPayload(
 	excludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	switch p := payload.(type) {
-	case *commonpb.LedgerLogPayload_CreatedTransaction:
+	case *ledgerpb.LedgerLogPayload_CreatedTransaction:
 		return b.indexCreatedTransaction(kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes)
-	case *commonpb.LedgerLogPayload_RevertedTransaction:
+	case *ledgerpb.LedgerLogPayload_RevertedTransaction:
 		return b.indexRevertedTransaction(kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes)
-	case *commonpb.LedgerLogPayload_SavedMetadata:
+	case *ledgerpb.LedgerLogPayload_SavedMetadata:
 		return b.indexSavedMetadata(kb, cfg, ledgerName, p.SavedMetadata)
-	case *commonpb.LedgerLogPayload_DeletedMetadata:
+	case *ledgerpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(kb, cfg, ledgerName, p.DeletedMetadata)
-	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
+	case *ledgerpb.LedgerLogPayload_SetMetadataFieldType:
 		// Defer the rewrite to a background task instead of scanning
 		// the reverse map inline during the hot path. addSchemaRewriteTask
 		// also bumps pending_version in the current batch — propagate
 		// any persistence error so the batch aborts.
 		return b.addSchemaRewriteTask(cfg, ledgerName, p.SetMetadataFieldType)
-	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
+	case *ledgerpb.LedgerLogPayload_RemovedMetadataFieldType:
 		return b.handleRemovedMetadataFieldType(kb, cfg, ledgerName, p.RemovedMetadataFieldType)
-	case *commonpb.LedgerLogPayload_CreateIndex:
+	case *ledgerpb.LedgerLogPayload_CreateIndex:
 		return b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
-	case *commonpb.LedgerLogPayload_DropIndex:
+	case *ledgerpb.LedgerLogPayload_DropIndex:
 		if err := b.handleDroppedIndexLog(kb, ledgerName, p.DropIndex); err != nil {
 			return err
 		}
@@ -54,12 +55,12 @@ func (b *Builder) indexPayload(
 // log too, while the entity projections in indexLogEntry stay specific to a
 // data log's payload. A no-op for any other backfill kind. The caller has
 // already established that log belongs to the ledger being backfilled.
-func (b *Builder) backfillLogDateRow(cfg *ledgerIndexConfig, log *commonpb.Log) error {
-	if !cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
+func (b *Builder) backfillLogDateRow(cfg *ledgerIndexConfig, log *ledgerpb.Log) error {
+	if !cfg.isLogBuiltinIndexed(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
 		return nil
 	}
 
-	applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
+	applyLog, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply)
 	if !ok {
 		return nil
 	}
@@ -78,13 +79,13 @@ func (b *Builder) backfillLogDateRow(cfg *ledgerIndexConfig, log *commonpb.Log) 
 // It does NOT call WriteProgress — the caller batches that.
 // cfg is the index configuration to use for this log entry (may differ from
 // b.indexConfig during backfill, where a temporary config is used).
-func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, proposals *appliedProposalSync) error {
+func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *ledgerpb.Log, proposals *appliedProposalSync) error {
 	if log.GetPayload() == nil {
 		return nil
 	}
 
 	// Handle ledger deletion: remove all read indexes for the deleted ledger.
-	if dl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
+	if dl, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_DeleteLedger); ok {
 		if dl.DeleteLedger == nil {
 			return errors.New("invariant: nil DeletedLedger payload")
 		}
@@ -102,7 +103,7 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		return nil
 	}
 
-	applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
+	applyLog, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply)
 	if !ok {
 		return nil
 	}
@@ -138,13 +139,13 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 	// annotation: an unreachable second implementation of the schema rewrite is
 	// what this replaced.
 	switch p := ledgerLog.GetData().GetPayload().(type) {
-	case *commonpb.LedgerLogPayload_CreatedTransaction:
+	case *ledgerpb.LedgerLogPayload_CreatedTransaction:
 		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes)
-	case *commonpb.LedgerLogPayload_RevertedTransaction:
+	case *ledgerpb.LedgerLogPayload_RevertedTransaction:
 		return b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes)
-	case *commonpb.LedgerLogPayload_SavedMetadata:
+	case *ledgerpb.LedgerLogPayload_SavedMetadata:
 		return b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
-	case *commonpb.LedgerLogPayload_DeletedMetadata:
+	case *ledgerpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
 	}
 
@@ -161,7 +162,7 @@ func (b *Builder) indexCreatedTransaction(
 	kb *dal.KeyBuilder,
 	cfg *ledgerIndexConfig,
 	ledger string,
-	ct *commonpb.CreatedTransaction,
+	ct *ledgerpb.CreatedTransaction,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	if ct.GetTransaction() == nil {
@@ -173,9 +174,9 @@ func (b *Builder) indexCreatedTransaction(
 	wb := b.wb
 
 	// Collect unique accounts from postings (reuse builder's map)
-	indexAny := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
-	indexSource := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)
-	indexDestination := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)
+	indexAny := cfg.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
+	indexSource := cfg.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)
+	indexDestination := cfg.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)
 
 	clear(b.accounts)
 
@@ -198,14 +199,14 @@ func (b *Builder) indexCreatedTransaction(
 	for account, metadataMap := range ct.GetAccountMetadata() {
 		if metadataMap != nil {
 			for key, value := range metadataMap.GetValues() {
-				if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key) {
+				if !cfg.isMetadataIndexed(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key) {
 					continue
 				}
 
 				if err := b.dualWriteMetadataIndex(
 					kb,
 					ledger, readstore.NamespaceAccount, key,
-					commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					value, []byte(account),
 					func(version uint32) []byte {
 						return readstore.AccountReverseMapKeyV(kb, ledger, account, key, version)
@@ -228,14 +229,14 @@ func (b *Builder) indexCreatedTransaction(
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txn.GetId())
 		txID := txn.GetId()
 		for key, value := range txn.GetMetadata() {
-			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key) {
+			if !cfg.isMetadataIndexed(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, key) {
 				continue
 			}
 
 			if err := b.dualInsertKnownAbsentMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceTransaction, key,
-				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+				ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 				value, txIDBytes,
 				func(version uint32) []byte {
 					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
@@ -247,19 +248,19 @@ func (b *Builder) indexCreatedTransaction(
 	}
 
 	// Builtin indexes
-	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE) && txn.GetReference() != "" {
+	if cfg.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE) && txn.GetReference() != "" {
 		if err := wb.WriteTransactionReferenceIndex(kb, ledger, txn.GetReference(), txn.GetId()); err != nil {
 			return err
 		}
 	}
 
-	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && txn.GetTimestamp() != nil {
+	if cfg.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && txn.GetTimestamp() != nil {
 		if err := wb.WriteTransactionTimestampIndex(kb, ledger, txn.GetTimestamp().GetData(), txn.GetId()); err != nil {
 			return err
 		}
 	}
 
-	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT) && txn.GetInsertedAt() != nil {
+	if cfg.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT) && txn.GetInsertedAt() != nil {
 		if err := wb.WriteTransactionInsertedAtIndex(kb, ledger, txn.GetInsertedAt().GetData(), txn.GetId()); err != nil {
 			return err
 		}
@@ -276,7 +277,7 @@ func (b *Builder) indexRevertedTransaction(
 	kb *dal.KeyBuilder,
 	cfg *ledgerIndexConfig,
 	ledger string,
-	rt *commonpb.RevertedTransaction,
+	rt *ledgerpb.RevertedTransaction,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	if rt.GetRevertTransaction() == nil {
@@ -287,9 +288,9 @@ func (b *Builder) indexRevertedTransaction(
 	wb := b.wb
 
 	// Account→tx mapping for revert postings (reuse builder's map)
-	indexAny := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
-	indexSource := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)
-	indexDestination := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)
+	indexAny := cfg.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
+	indexSource := cfg.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)
+	indexDestination := cfg.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)
 
 	clear(b.accounts)
 
@@ -315,14 +316,14 @@ func (b *Builder) indexRevertedTransaction(
 		txIDBytes = readstore.EncodeTxID(txIDBytes, revertTxn.GetId())
 		txID := revertTxn.GetId()
 		for key, value := range revertTxn.GetMetadata() {
-			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key) {
+			if !cfg.isMetadataIndexed(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, key) {
 				continue
 			}
 
 			if err := b.dualInsertKnownAbsentMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceTransaction, key,
-				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+				ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 				value, txIDBytes,
 				func(version uint32) []byte {
 					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
@@ -334,13 +335,13 @@ func (b *Builder) indexRevertedTransaction(
 	}
 
 	// Builtin indexes (no reference on revert transactions)
-	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && revertTxn.GetTimestamp() != nil {
+	if cfg.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && revertTxn.GetTimestamp() != nil {
 		if err := wb.WriteTransactionTimestampIndex(kb, ledger, revertTxn.GetTimestamp().GetData(), revertTxn.GetId()); err != nil {
 			return err
 		}
 	}
 
-	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT) && revertTxn.GetInsertedAt() != nil {
+	if cfg.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT) && revertTxn.GetInsertedAt() != nil {
 		if err := wb.WriteTransactionInsertedAtIndex(kb, ledger, revertTxn.GetInsertedAt().GetData(), revertTxn.GetId()); err != nil {
 			return err
 		}
@@ -348,7 +349,7 @@ func (b *Builder) indexRevertedTransaction(
 
 	// reverted_at indexes the original transaction (the one being reverted) by
 	// the time it was reverted — the compensating transaction's timestamp.
-	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT) && revertTxn.GetTimestamp() != nil {
+	if cfg.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT) && revertTxn.GetTimestamp() != nil {
 		if err := wb.WriteTransactionRevertedAtIndex(kb, ledger, revertTxn.GetTimestamp().GetData(), rt.GetRevertedTransactionId()); err != nil {
 			return err
 		}
@@ -379,7 +380,7 @@ func (b *Builder) indexPostingAddressMappings(
 	// posting touches, for both source and destination, skipping excluded
 	// (transient/purged) volumes. Routed through the shared posting walk so
 	// created and reverted transactions are both covered.
-	if cfg.isAccountBuiltinIndexed(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET) {
+	if cfg.isAccountBuiltinIndexed(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET) {
 		assetBase, precision := domain.ParseAssetPrecision(asset)
 
 		if !sourceExcluded {
@@ -524,25 +525,25 @@ func (b *Builder) indexSavedMetadata(
 	kb *dal.KeyBuilder,
 	cfg *ledgerIndexConfig,
 	ledger string,
-	sm *commonpb.SavedMetadata,
+	sm *ledgerpb.SavedMetadata,
 ) error {
 	if sm.GetTarget() == nil || len(sm.GetMetadata()) == 0 {
 		return nil
 	}
 
 	switch t := sm.GetTarget().GetTarget().(type) {
-	case *commonpb.Target_Account:
+	case *ledgerpb.Target_Account:
 		account := t.Account.GetAddr()
 
 		for key, value := range sm.GetMetadata() {
-			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key) {
+			if !cfg.isMetadataIndexed(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key) {
 				continue
 			}
 
 			if err := b.dualWriteMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceAccount, key,
-				commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				value, []byte(account),
 				func(version uint32) []byte {
 					return readstore.AccountReverseMapKeyV(kb, ledger, account, key, version)
@@ -551,20 +552,20 @@ func (b *Builder) indexSavedMetadata(
 				return err
 			}
 		}
-	case *commonpb.Target_TransactionId:
+	case *ledgerpb.Target_TransactionId:
 		txID := t.TransactionId
 		txIDBytes := make([]byte, 0, 8)
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txID)
 
 		for key, value := range sm.GetMetadata() {
-			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key) {
+			if !cfg.isMetadataIndexed(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, key) {
 				continue
 			}
 
 			if err := b.dualWriteMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceTransaction, key,
-				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+				ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 				value, txIDBytes,
 				func(version uint32) []byte {
 					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
@@ -583,15 +584,15 @@ func (b *Builder) indexDeletedMetadata(
 	kb *dal.KeyBuilder,
 	cfg *ledgerIndexConfig,
 	ledger string,
-	dm *commonpb.DeletedMetadata,
+	dm *ledgerpb.DeletedMetadata,
 ) error {
 	if dm.GetTarget() == nil {
 		return nil
 	}
 
 	switch t := dm.GetTarget().GetTarget().(type) {
-	case *commonpb.Target_Account:
-		if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_ACCOUNT, dm.GetKey()) {
+	case *ledgerpb.Target_Account:
+		if !cfg.isMetadataIndexed(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, dm.GetKey()) {
 			return nil
 		}
 
@@ -601,14 +602,14 @@ func (b *Builder) indexDeletedMetadata(
 		return b.dualDeleteMetadataEntry(
 			kb,
 			ledger, readstore.NamespaceAccount, metaKey,
-			commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 			[]byte(account),
 			func(version uint32) []byte {
 				return readstore.AccountReverseMapKeyV(kb, ledger, account, metaKey, version)
 			},
 		)
-	case *commonpb.Target_TransactionId:
-		if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, dm.GetKey()) {
+	case *ledgerpb.Target_TransactionId:
+		if !cfg.isMetadataIndexed(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, dm.GetKey()) {
 			return nil
 		}
 
@@ -620,7 +621,7 @@ func (b *Builder) indexDeletedMetadata(
 		return b.dualDeleteMetadataEntry(
 			kb,
 			ledger, readstore.NamespaceTransaction, metaKey,
-			commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+			ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 			txIDBytes,
 			func(version uint32) []byte {
 				return readstore.TransactionReverseMapKeyV(kb, ledger, txID, metaKey, version)

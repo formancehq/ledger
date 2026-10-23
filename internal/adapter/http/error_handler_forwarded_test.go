@@ -132,7 +132,7 @@ func TestHandleErrorForwardedFromLeader(t *testing.T) {
 			expectedCode:   "COVERAGE_MISS",
 		},
 		{
-			// The ~20 commonpb.NewNotFoundError sites send no ErrorInfo.
+			// The ~20 ledgerpb.NewNotFoundError sites send no ErrorInfo.
 			name:           "bare NotFound with no ErrorInfo",
 			leaderErr:      status.Error(codes.NotFound, "ledger foo not found"),
 			expectedStatus: http.StatusNotFound,
