@@ -18,31 +18,62 @@ config:
           kind: Cluster
           spec:
             replicas: 1
+            nodeSelector:
+              formance.com/dedicated: ledger-m8a
+            tolerations:
+              - key: formance.com/dedicated
+                operator: Equal
+                value: ledger-m8a
+                effect: NoSchedule
+            additionalLabels:
+              benchmark.formance.com/isolated: "true"
+            affinity:
+              podAntiAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  - labelSelector:
+                      matchLabels:
+                        benchmark.formance.com/isolated: "true"
+                    topologyKey: kubernetes.io/hostname
+            monitoring:
+              serviceName: ledger
+              metrics:
+                enabled: true
+                exporter: otlp
+                endpoint: opentelemetry-collector.monitoring.svc.cluster.local.
+                port: "4317"
+                mode: grpc
+                insecure: "true"
+                exporterPushInterval: 15s
+                runtime: true
+                runtimeMinimumReadMemStatsInterval: 5s
+              pyroscope:
+                enabled: true
+                applicationName: ledger-acme-world-to-bank
+                serverAddress: http://pyroscope.monitoring.svc.cluster.local.:4040
             resources:
               requests:
-                cpu: "6"
-                memory: 12Gi
+                cpu: "8"
+                memory: 16Gi
               limits:
-                cpu: "6"
-                memory: 12Gi
-            config:
-              auth:
-                enabled: false
-              pebble:
-                memTableStopWritesThreshold: 4
-                l0StopWritesThreshold: 256
-                lBaseMaxBytes: 4294967296
-                cacheSize: 4294967296
-                bytesPerSync: 4194304
-                walBytesPerSync: 4194304
-                maxConcurrentCompactions: 2
-                snapshotThreshold: 1000
-              raft:
-                compactionMargin: 5000
-                proposeQueueCapacity: 4096
-                maxSizePerMsg: 4194304
-              cache:
-                rotationThreshold: 1000
+                cpu: "8"
+                memory: 16Gi
+            auth:
+              enabled: false
+            pebble:
+              memTableSize: 536870912
+              memTableStopWritesThreshold: 4
+              l0StopWritesThreshold: 24
+              lBaseMaxBytes: 4294967296
+              cacheSize: 4294967296
+              bytesPerSync: 4194304
+              walBytesPerSync: 4194304
+              maxConcurrentCompactions: 4
+            raft:
+              compactionMargin: 5000
+              proposeQueueCapacity: 4096
+              maxSizePerMsg: 4194304
+            cache:
+              rotationThreshold: 1000
             persistence:
               retentionPolicy:
                 whenDeleted: Delete
@@ -71,7 +102,7 @@ config:
         K6_STAGES: "1m:100,5m:100,1m:0"
         BULK_SIZE: "50"
         USE_NUMSCRIPT: "true"
-        K6_OTEL_GRPC_EXPORTER_ENDPOINT: "otel-opentelemetry-collector.ledger-v3.svc.cluster.local:4317"
+        K6_OTEL_GRPC_EXPORTER_ENDPOINT: "opentelemetry-collector.monitoring.svc.cluster.local:4317"
         K6_OTEL_GRPC_EXPORTER_INSECURE: "true"
         K6_OTEL_METRICS_FLUSH_INTERVAL: "5s"
         K6_OTEL_SERVICE_NAME: "k6-loadtest"
