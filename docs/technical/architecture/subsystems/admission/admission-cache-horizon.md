@@ -7,13 +7,15 @@
 ## What it is
 
 When admission builds a proposal's preload plan, it queries the dual-generation
-cache (`AttributeCache.CheckCache(at, key)`) to decide, per key, whether to
-emit a coverage-only `AttributeCoverage` (value nil) or a seed
-`AttributeCoverage` (value set). The decision compares the predicted
+cache (`AttributeCache.CheckCacheAndGet(at, key, tag)`) to decide, per key,
+whether to emit a coverage-only `AttributeCoverage` (value nil) or a seed
+`AttributeCoverage` (value set). A seed can come either from a matching Gen1
+snapshot captured under the cache lock or from a Pebble load after an ordinary
+miss. The decision compares the predicted
 apply-time generation `Gen(at, threshold)` against the FSM's current applied
 generation:
 
-| `Gen(at) − currentGen` | `CheckCache` result | Plan emitted |
+| `Gen(at) − currentGen` | `CheckCacheAndGet` result | Plan emitted |
 |---|---|---|
 | 0 | `CacheHit` / `CacheMiss` | coverage-only (`value = nil`) / seed (`value` set) |
 | 1 | `CacheHit` (Gen0-hit only) / `CacheMiss` | coverage-only / seed |
@@ -81,11 +83,12 @@ follow-up) to make this observable to SREs.
 
 ## Implementation
 
-- `internal/infra/cache/cache.go` — `CacheUnreachable` constant, the
-  default branch of `CheckCache`.
+- `internal/infra/cache/cache.go` — `CacheUnreachable` constant and
+  `CheckCacheAndGet`, which also returns a tag-validated Gen1 snapshot.
 - `internal/infra/plan/errors.go` — `ErrCacheHorizonExceeded` sentinel.
 - `internal/infra/plan/resolve.go` — short-circuit on
-  `CacheUnreachable`, return `ErrCacheHorizonExceeded`.
+  `CacheUnreachable`, return `ErrCacheHorizonExceeded`, and distinguish
+  captured live values from tombstone or typed-nil absence markers.
 - `internal/adapter/grpc/server.go` — `convertToGRPCError` maps
   `ErrCacheHorizonExceeded` to `codes.Unavailable`.
 - `internal/application/admission/admission.go` — already wraps the
@@ -94,7 +97,7 @@ follow-up) to make this observable to SREs.
 ## Tests
 
 - `cache_test.go` / `TestAttributeCache_IsGuaranteedInCache_TwoGenerationsAhead`
-  — `CheckCache` returns `CacheUnreachable` for the default case (both with
+  — `CheckCacheAndGet` returns `CacheUnreachable` for the default case (both with
   and without a stored value).
 - `builder_test.go` / `TestBuildPreloads_RejectsCacheHorizonExceeded` —
   end-to-end resolver short-circuits with `ErrCacheHorizonExceeded` when

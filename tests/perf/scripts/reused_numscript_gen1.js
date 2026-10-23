@@ -34,6 +34,17 @@ send $amount (
     destination = $merchant
 )`;
 
+function assertStoredTemplate(response, expectedVersion) {
+  if (response.status !== 200) {
+    throw new Error(`failed to read ${SCRIPT_NAME}@${expectedVersion}: HTTP ${response.status}`);
+  }
+
+  const data = response.json('data');
+  if (!data || data.name !== SCRIPT_NAME || data.version !== expectedVersion || data.content !== SETTLEMENT_SCRIPT) {
+    throw new Error(`stored ${SCRIPT_NAME}@${expectedVersion} does not match the benchmark template`);
+  }
+}
+
 const errorRate = new Rate('errors');
 const bulkLatency = new Trend('bulk_latency', true);
 const transactionsCreated = new Counter('transactions_created');
@@ -85,6 +96,12 @@ export function setup() {
   if (response.status !== 201 && response.status !== 409) {
     throw new Error(`failed to save ${SCRIPT_NAME}: HTTP ${response.status}`);
   }
+
+  const stored = http.get(`${scriptURL}?version=${encodeURIComponent(SCRIPT_SAVE_VERSION)}`);
+  assertStoredTemplate(stored, SCRIPT_SAVE_VERSION);
+
+  const latest = http.get(scriptURL);
+  assertStoredTemplate(latest, SCRIPT_SAVE_VERSION);
 
   console.log(`Setup complete: ${SCRIPT_NAME}@${SCRIPT_SAVE_VERSION} (reference: ${SCRIPT_REFERENCE_VERSION})`);
   console.log(`Merchant pool: ${MERCHANT_POOL_SIZE}, bulk size: ${BULK_SIZE}`);

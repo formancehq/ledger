@@ -23,7 +23,8 @@ const resolveParallelism = 16
 
 // resolveResult holds the output of a resolve call: a flat list of
 // AttributeCoverage entries plus the tracker keys. Each entry is either
-// coverage-only (value = nil) or a seed (value = Pebble-loaded payload).
+// coverage-only (value = nil) or a seed (value set to a live, non-zero payload
+// captured from Gen1 or loaded from Pebble).
 //
 // The FSM's Preload path routes seed entries through MirrorPreload
 // (gen0+gen1 write with gen1-wins semantics). Coverage-only entries are
@@ -124,8 +125,10 @@ func (s *entrySlab) appendSeed(id attributes.U128, tag uint64, attrCode byte, va
 //     fallback surfaces the entry on read, and KeyStore.Tombstone writes
 //     the gen0 tombstone if the handler deletes.
 //   - CacheMiss + bloom/Pebble-absent → coverage-only.
-//   - CacheMiss + matching Gen1 snapshot or Pebble-load-hit → seeded (value =
-//     the captured/loaded payload; MirrorPreload writes gen0+gen1).
+//   - CacheMiss + matching Gen1 snapshot or Pebble-load-hit → seeded when the
+//     entry is a live, non-zero value (value = the captured/loaded payload;
+//     MirrorPreload writes gen0+gen1). Gen1 tombstones and typed-nil absence
+//     markers remain coverage-only because they carry no live value to seed.
 //
 // FSM-side race protection is handled at Preload for seeds only (via
 // MirrorPreload's gen1-wins), and by the coverage_bits gate (invariant
