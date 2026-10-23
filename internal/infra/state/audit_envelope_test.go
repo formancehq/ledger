@@ -22,8 +22,8 @@ import (
 func TestCallerSnapshotPayloadPreservesRC1ScopeNames(t *testing.T) {
 	t.Parallel()
 
-	snapshot := &commonpb.CallerSnapshot{Principal: &commonpb.CallerSnapshot_Anonymous{
-		Anonymous: &commonpb.AnonymousCaller{Scopes: []string{"ledger:TransactionRead"}},
+	snapshot := &ledgerpb.CallerSnapshot{Principal: &ledgerpb.CallerSnapshot_Anonymous{
+		Anonymous: &ledgerpb.AnonymousCaller{Scopes: []string{"ledger:TransactionRead"}},
 	}}
 	oldPayload := buildCallerSnapshotPayload(snapshot)
 	require.Equal(t, goldenBuildSnapshot(snapshot), oldPayload)
