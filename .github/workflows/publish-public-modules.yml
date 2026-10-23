@@ -1,0 +1,61 @@
+name: Publish public Go modules
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/public-modules-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Publish nested module tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_HEAD_REF#release/public-modules-}"
+          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+            echo "Unexpected public module version: ${version}" >&2
+            exit 1
+          fi
+
+          commit="${{ github.event.pull_request.merge_commit_sha }}"
+          required_proto_version="$(awk '$1 == "github.com/formancehq/ledger/pkg/proto/v3" { print $2; exit }' pkg/client/v3/go.mod)"
+          if [[ "$required_proto_version" != "$version" ]]; then
+            echo "The client requires proto ${required_proto_version}, expected ${version}" >&2
+            exit 1
+          fi
+
+          publish_module_tag() {
+            local tag="$1"
+            local existing
+            existing="$(git ls-remote --tags origin "refs/tags/${tag}" "refs/tags/${tag}^{}" | awk 'END { print $1 }')"
+            if [[ -n "$existing" ]]; then
+              if [[ "$existing" != "$commit" ]]; then
+                echo "Tag ${tag} already points to ${existing}, expected ${commit}" >&2
+                exit 1
+              fi
+              return
+            fi
+
+            git tag "$tag" "$commit"
+            git push origin "refs/tags/${tag}"
+          }
+
+          # Publish the dependency first so the client is resolvable as soon
+          # as its tag becomes visible to the Go module proxy.
+          publish_module_tag "pkg/proto/${version}"
+          publish_module_tag "pkg/client/${version}"

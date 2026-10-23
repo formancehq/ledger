@@ -39,8 +39,10 @@ by `just generate-proto`. Server-only generators and helpers remain private;
 the shared module contains only generators and helpers that are deliberately
 part of the public contract.
 
-The release workflow publishes nested Go-module tags before the root release:
-`pkg/proto/vX.Y.Z` for public protobuf changes and `pkg/client/vX.Y.Z` for
-client-module changes. The first root release publishes both modules so their
-initial versions are downloadable. A server-only release does not advance
-either public module; consumers continue using the last compatible module tag.
+The release workflow publishes nested Go-module tags in a second phase. A root
+`vX.Y.Z` tag first builds the server release and opens an automated PR that
+updates `pkg/client/v3/go.mod` to require `pkg/proto/v3@vX.Y.Z`. Once that PR is
+merged, the publication workflow tags `pkg/proto/vX.Y.Z` first and then
+`pkg/client/vX.Y.Z` from the merged commit. This keeps the dependency resolvable
+without ever creating a stable module tag from an RC commit; the local
+`replace` directive remains only for monorepo development.
