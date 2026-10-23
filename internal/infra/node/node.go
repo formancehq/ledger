@@ -408,6 +408,10 @@ type Node struct {
 	drainOutstanding uint64 // guarded by proposalAdmissionMu
 	drainReleaseSeen uint64 // guarded by proposalAdmissionMu
 	drainGeneration  uint64 // guarded by proposalAdmissionMu
+	// proposalAdmission is the authoritative policy gate immediately before a
+	// proposal enters the Raft queue. It is injected at construction so every
+	// proposal producer shares the same serialized-boundary check.
+	proposalAdmission ProposalAdmission
 	// membership owns the Raft peer-address state (Pebble + in-memory
 	// cache) and the OnSnapshotInstalled / WriteConfChange callbacks
 	// wired into Applier and Machine. EN-1413.
@@ -478,6 +482,18 @@ type Node struct {
 	readIndexDurationHistogram        metric.Float64Histogram
 }
 
+// ProposalAdmission is the authoritative admission check applied immediately
+// before a proposal is queued for Raft.
+type ProposalAdmission func(context.Context, *Proposal) error
+
+// NodeOption configures a Node dependency at construction time.
+type NodeOption func(*Node)
+
+// WithProposalAdmission installs the serialized-boundary proposal gate.
+func WithProposalAdmission(admission ProposalAdmission) NodeOption {
+	return func(node *Node) { node.proposalAdmission = admission }
+}
+
 // NewNode creates a new wrapper around a RawNode.
 func NewNode(
 	cfg NodeConfig,
@@ -491,6 +507,7 @@ func NewNode(
 	synchronizer *state.Synchronizer,
 	membership *membership.Membership,
 	localResponses LocalResponses,
+	opts ...NodeOption,
 ) (*Node, error) {
 	if err := cfg.validateTickIntervals(); err != nil {
 		return nil, err
@@ -725,6 +742,9 @@ func NewNode(
 		lastAutoPromote:  make(map[uint64]time.Time),
 		indexTracker:     NewIndexTracker(initialIndex(wal)),
 		observer:         NewNoOpObserver(),
+	}
+	for _, opt := range opts {
+		opt(node)
 	}
 
 	// Start ready: no leadership transition is in progress yet.
@@ -2473,6 +2493,14 @@ func (node *Node) handleProposal(p *Proposal) {
 		} else {
 			err = node.rawNode.Propose(p.data)
 		}
+	}
+	if node.proposalAdmission != nil {
+		if admissionErr := node.proposalAdmission(context.Background(), p); admissionErr != nil {
+			err = admissionErr
+		}
+	}
+	if err == nil {
+		err = node.rawNode.Propose(p.data)
 	}
 	if err != nil {
 		// The IndexTracker was optimistically incremented in Propose().
