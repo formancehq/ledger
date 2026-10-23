@@ -81,6 +81,26 @@ import (
 // It is used to decide whether a joining node needs to register as a learner.
 type walFreshStart bool
 
+func activeCapabilityIDs(policy *commonpb.ClusterPolicy) []uint32 {
+	if policy == nil {
+		return nil
+	}
+
+	required := make([]uint32, 0, len(policy.GetCapabilityActivations()))
+	for _, activation := range policy.GetCapabilityActivations() {
+		if activation != nil && activation.GetActive() {
+			required = append(required, activation.GetId())
+		}
+	}
+	slices.Sort(required)
+
+	return required
+}
+
+func publishCapabilityGate(membership *raftmembership.Membership, policy *commonpb.ClusterPolicy) error {
+	return membership.SetCapabilityGate(activeCapabilityIDs(policy))
+}
+
 // nodeProvideResult groups the outputs of the Node provider so we can also
 // expose the WAL-fresh-start indicator through the fx dependency graph.
 type nodeProvideResult struct {
@@ -213,8 +233,10 @@ func Module() fx.Option {
 			// — applier, node, background workers — observes the FSM at its
 			// recovered state. NewMachine deliberately skips this step so it does
 			// not perform any Pebble read itself.
-			func(machine *state.Machine, store *dal.Store) (*state.Recovery, error) {
-				recovery := state.NewRecovery(machine, store)
+			func(machine *state.Machine, store *dal.Store, membership *raftmembership.Membership) (*state.Recovery, error) {
+				recovery := state.NewRecovery(machine, store, state.WithStateRecovered(func(recovered *state.FSMState) error {
+					return publishCapabilityGate(membership, recovered.ClusterPolicy)
+				}))
 				if err := recovery.RecoverState(); err != nil {
 					return nil, fmt.Errorf("recovering FSM state at boot: %w", err)
 				}
@@ -682,14 +704,7 @@ func Module() fx.Option {
 						return
 					}
 					if policy, err := query.ReadClusterPolicy(store); err == nil {
-						required := make([]uint32, 0, len(policy.GetCapabilityActivations()))
-						for _, activation := range policy.GetCapabilityActivations() {
-							if activation != nil && activation.GetActive() {
-								required = append(required, activation.GetId())
-							}
-						}
-						slices.Sort(required)
-						if err := raftNode.SetCapabilityGate(required); err != nil {
+						if err := raftNode.SetCapabilityGate(activeCapabilityIDs(policy)); err != nil {
 							logger.WithFields(map[string]any{"error": err}).Errorf("Invalid capability gate in committed cluster policy")
 
 							return
