@@ -511,28 +511,29 @@ Restore:
 
 ---
 
-## 11. persistedIndex + Backpressure (rare)
+## 11. Commit barrier at cache rotation
 
 ### 11.1 persistedIndex definition
 
 `persistedIndex` is the last Raft index whose effects are visible in Pebble after successful `Batch.Commit()`.
 
-Used for:
+It is useful for observing persistence lag and diagnosing restarts. Raft indexes
+still determine when the cache rotates. Before preparing an entry that crosses
+a generation boundary, the applier waits for the previous Pebble commit. Thus,
+when rotation evicts the old Gen1, every write from the preceding generation
+is already visible in Pebble. Admission can safely load a key that is no longer
+in Gen0 for a proposal in the next generation (`CheckCache` case 1).
 
-- observability: persistence lag
-- admission guardrail: ensure the store is up-to-date enough for reading values at boundary `B`
-- restart diagnostics
+### 11.2 Threshold changes
 
-It must never drive rotation/eviction.
+A cluster configuration entry that changes the rotation threshold resets the
+cache. The applier waits for the previous commit before preparing that entry,
+then uses the new threshold for subsequent entries. A configuration update
+that keeps the threshold follows the normal pipelined path.
 
-### 11.2 Backpressure condition
-
-If the store is too far behind to provide coherent values for accounts not in the cache:
-
-- condition: `storeIndex < baseIndex(gen1)` (equivalently: cannot read values at `B(i)`)
-- Admission must apply backpressure (queue/retry) until catch-up
-
-In practice: expected negligible with continuous Pebble flush (batch + no sync).
+Admission separately rejects a proposal predicted to land two or more
+generations ahead of the applied cache; such a proposal must be rebuilt after
+the FSM catches up. This horizon guard does not depend on `persistedIndex`.
 
 ---
 
@@ -643,13 +644,24 @@ we enforce:
 3. **Applier pre-split.** Before passing a `[]raftpb.Entry` slice to
    `PrepareEntries`, the applier scans for checkpoint triggers and splits
    the slice so any trigger entry is always the LAST in its sub-batch
-   (`findCheckpointBoundary`). Entries past the trigger go to the spool
+   (`findApplyBoundaryDecoded`). Entries past the trigger go to the spool
    and are replayed once the maintenance window clears.
 
 Result: every `PrepareEntries` → `CommitPreparedBatch` pair commits exactly
 one Pebble batch, and the post-commit sentinel reads a snapshot pinned to
 that commit. There is no concurrent commit path on the main store; any
 unexpected cache/pebble divergence remains fatal.
+
+The applier also splits an apply slice before an entry whose Raft index moves
+the cache to a new generation. It waits for the preceding Pebble commit before
+preparing that entry. Preparation can mutate the cache, so waiting only when
+submitting the new commit would be too late: rotation could evict a Gen1 value
+that admission still needs from Pebble. Replay uses the same split, with each
+sub-batch committed synchronously. A cluster configuration entry that changes
+the rotation threshold is isolated and waits for the preceding commit before
+preparation because that change resets the cache. The next sub-batch then uses
+the new threshold. A configuration update that retains the threshold keeps
+the normal pipelined path.
 
 The sentinel's expected-volume reduction follows the durable batch's lifecycle
 order: a successful `WriteSet` deletion cascade invalidates that ledger's
@@ -715,6 +727,6 @@ satisfy it.
 - Preload may include an "older" volume at `B(i)`; subsequent applies update absolute volumes in place, ensuring correctness.
 - Snapshots are not aligned across nodes → snapshot must embed `gen0 + gen1`.
 - Pebble stores one entry per canonical key (last-write-wins, overwritten in place).
-- `persistedIndex` is an operational guardrail and backpressure signal (rare), not a rotation input.
+- The applier waits for the preceding Pebble commit before a cache rotation or threshold-changing reset, so evicted values are durable when admission reads them.
 - Checkpoint-triggering orders are always the last in their proposal AND the last in their PrepareEntries slice, keeping `runCommitter` the sole writer to the main store.
 - `AttributeLoader` coordinates concurrent attribute loads to prevent duplicate store reads.
