@@ -307,6 +307,27 @@ The focused entry points are `TestSafeExecFromText_ColdWarmSameOutcome`,
 A finding needs a concrete pair of incidental histories with a different
 component of the transition; a slower cold path alone is not a finding.
 
+## Sentinel apply and replay evidence
+
+`TestSentinelRaftApplyLifecycle` and `TestSentinelRaftAntithesisEmission` drive
+the production applier through live commits, startup WAL replay after durable
+reopen, and spool replay. Bootstrap runs with sentinels disabled; require
+completed nonempty sentinel evidence from the reopened target path's first
+business commit and independently verify its final durable horizon and volumes.
+Setup-only success is insufficient. A valid balanced
+entry beyond `HardState.Commit` must remain unapplied on startup.
+
+`TestSentinelRaftPipelinedCommitBoundary` and
+`TestSentinelRaftCommitAntithesisEmission` prepare a later batch before committing
+the earlier one. The earlier sentinel must use its captured expectations and
+pinned committed snapshot, not the live cache. Missing or wrong balanced pairs
+must fail the exact-value check even though aggregate conservation would pass.
+The committed bytes remain durable after the check fails; successful-completion
+coverage and the published apply horizon must not advance through that failure.
+These are real local-store lifecycle fixtures, not distributed election or
+network-fault executions. Cross-replica account/audit comparison is an
+additional workload oracle; it is not a digest of the entire in-memory cache.
+
 ## Reachability, evidence, and rejection
 
 Each finding must provide:

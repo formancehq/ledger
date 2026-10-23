@@ -233,6 +233,35 @@ authority gates. General checkpoint/restore content correctness belongs to
 `persistence-restore-replay`; filesystem containment belongs to
 `filesystem-confinement-contracts`.
 
+## Antithesis witness and convergence evidence
+
+The workload's operational sentinels capture the complete acknowledged
+transaction and compare it after restart, scaling, configuration changes,
+quorum recovery and leadership transfer. These witnesses have private ledgers
+excluded from generic mutation. An ambiguous write is not an acknowledged
+witness; a transient read does not prove survival. Transfer coverage requires
+a fresh acknowledged business write as well as the transfer response.
+
+`eventually_cross_node_identity` requires every current member, including
+learners, to reach an exact durable horizon before comparing complete account
+listings and audit identity. Treat inaccessible current members as incomplete
+recovery evidence, not as replicas that can be excluded. Compare presence as
+well as contents; require successful stream completion and valid pagination.
+Read attribution depends on direct per-node addresses matching advertised
+membership, not a load-balanced service. The routed `GetClusterState` identity
+check validates the status response; it does not independently authenticate the
+endpoint of a stale read.
+Publish divergence only after final per-node/global/membership fences qualify
+the observation, retrying changed horizons. Keep qualification failures separate
+from actual unequal data. A one-member observation cannot prove replica
+agreement. This oracle does not compare uncommitted Raft suffixes or establish
+that every snapshot-install path was exercised.
+
+The local SDK sensitivity fixtures prove that these observations detect their
+target failures. They do not substitute for a remote campaign report or a
+quorum-backed distributed transition. See the
+[harness evidence contract](../../../tests/antithesis/README.md#raft-and-sentinel-evidence).
+
 ## Ownership and deduplication
 
 One finding represents one root cause and required correction, even when it

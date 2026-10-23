@@ -27,13 +27,14 @@ const metadataKeyConsistency = "x-consistency"
 const consistencyStale = "stale"
 
 // PerNodeConn is a single-target gRPC connection to one ledger node. Unlike the
-// shared round-robin connection from NewGRPCConn, a PerNodeConn always reaches
-// the same node, so a stale read served from it is attributable to that node.
+// shared round-robin connection from NewGRPCConn, a PerNodeConn dials one
+// target. That target must be a direct node address, not a load-balanced service,
+// for stale reads to be attributable to that node.
 type PerNodeConn struct {
 	// Addr is the dial target (e.g. "ledger-0:8888"), always populated.
 	Addr string
-	// NodeID is the Raft node ID resolved once via GetClusterState. Zero if it
-	// could not be resolved (node down at dial time); Addr is still usable.
+	// NodeID is the Raft node ID resolved once from advertised membership.
+	// Zero means unresolved; a nonzero value does not prove reachability.
 	NodeID uint64
 
 	conn    *grpc.ClientConn
@@ -86,13 +87,14 @@ func nodeAddresses() []string {
 // (no round-robin), so reads are attributable to the node that received them.
 //
 // Dialing is error-tolerant: grpc.NewClient is lazy and never fails on an
-// unreachable address, so a node that is down is simply skipped at read time
-// (its RPCs return UNAVAILABLE, which callers treat as transient). The caller
-// must Close the returned set.
+// unreachable address. Connections to unavailable nodes are retained; the
+// caller decides whether an unavailable observation invalidates its check.
+// The caller must Close the returned set.
 //
-// Each connection's NodeID is best-effort resolved once from the local node's
-// GetClusterState; if the node is unreachable at dial time the NodeID stays 0
-// and the connection is still returned (keyed by Addr).
+// Each connection's NodeID is best-effort resolved once from membership returned
+// by the routed GetClusterState call. Unresolved IDs stay 0 and the connection
+// is still returned (keyed by Addr). Consumers that need current membership
+// must refresh this startup snapshot.
 func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 	addrs := nodeAddresses()
 
@@ -129,8 +131,8 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 	// every peer; ServiceAdvertiseAddr is "<raft-host>:<grpc-port>", which is
 	// exactly the form of the LEDGER_GRPC_ADDR entries we dial. NodeID is
 	// required to poll a node's OWN applied index (GetClusterState{NodeId:id}
-	// routes to that node), so a connection whose ID cannot be resolved is left
-	// at 0 and callers skip it rather than compare at the leader's index.
+	// routes to that node). A connection whose ID cannot be resolved is left
+	// at 0; it must not be used to compare at the leader's index.
 	for _, c := range conns {
 		state, err := c.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		if err != nil {
