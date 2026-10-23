@@ -106,39 +106,27 @@ func main() {
 //go:wasmexport run
 func run() uint32 {
 	var current *preparedBlock
+	prefetched := make(map[uint64]chan preparationResult)
 	for {
 		best, err := rpcUint("getblockcount")
 		if err == nil && current == nil && moduleHeight <= best {
-			var prepareStarted = time.Now()
-			var beforePrepare runtime.MemStats
-			runtime.ReadMemStats(&beforePrepare)
-			current, err = prepareBlock(moduleHeight)
+			current, err = prepareMeasured(moduleHeight)
 			if err != nil {
 				logf(2, "bitcoin block %d: %v", moduleHeight, err)
 			}
 			if current != nil && current.height != moduleHeight {
 				current = nil
 			}
-			if current != nil {
-				var afterPrepare runtime.MemStats
-				runtime.ReadMemStats(&afterPrepare)
-				current.prepareAlloc = afterPrepare.TotalAlloc - beforePrepare.TotalAlloc
-				current.prepareDuration = time.Since(prepareStarted)
-			}
 		}
 		if current != nil {
-			// Build the next batch while the Ledger applies the current one. The
-			// result is bounded to one block, so a slow Ledger write cannot make
-			// the WASM heap grow without limit.
-			nextHeight := current.height + 1
-			next := make(chan *preparedBlock, 1)
-			go func() {
-				prepared, prepareErr := prepareBlock(nextHeight)
-				if prepareErr != nil {
-					logf(2, "bitcoin block %d: %v", nextHeight, prepareErr)
+			// Prepare a small bounded window concurrently while the Ledger applies
+			// the current block. Apply itself remains strictly ordered.
+			const prefetchDepth = 4
+			for height := current.height + 1; height <= best && height <= current.height+prefetchDepth; height++ {
+				if _, ok := prefetched[height]; !ok {
+					prefetched[height] = launchPrefetch(height)
 				}
-				next <- prepared
-			}()
+			}
 
 			var beforeApply runtime.MemStats
 			runtime.ReadMemStats(&beforeApply)
@@ -146,9 +134,20 @@ func run() uint32 {
 			applyErr := applyPrepared(current)
 			var afterApply runtime.MemStats
 			runtime.ReadMemStats(&afterApply)
-			preparedNext := <-next
+			nextHeight := current.height + 1
+			var preparedNext *preparedBlock
+			if next, ok := prefetched[nextHeight]; ok {
+				result := <-next
+				preparedNext = result.block
+				delete(prefetched, nextHeight)
+				if result.err != nil {
+					logf(2, "bitcoin block %d: %v", nextHeight, result.err)
+				}
+			}
 			if applyErr != nil {
 				logf(2, "bitcoin apply block %d: %v", moduleHeight, applyErr)
+				drainPrefetch(prefetched)
+				prefetched = make(map[uint64]chan preparationResult)
 				current = nil
 			} else {
 				moduleHeight++
@@ -160,6 +159,8 @@ func run() uint32 {
 				if preparedNext != nil && preparedNext.height == moduleHeight {
 					current = preparedNext
 				} else {
+					drainPrefetch(prefetched)
+					prefetched = make(map[uint64]chan preparationResult)
 					current = nil
 				}
 			}
@@ -231,6 +232,11 @@ type preparedBlock struct {
 	prepareAlloc    uint64
 }
 
+type preparationResult struct {
+	block *preparedBlock
+	err   error
+}
+
 func prepareBlock(height uint64) (*preparedBlock, error) {
 	started := time.Now()
 	b, err := fetchBlock(height)
@@ -242,6 +248,35 @@ func prepareBlock(height uint64) (*preparedBlock, error) {
 		return nil, err
 	}
 	return &preparedBlock{height: height, block: b, payload: payload, prepareDuration: time.Since(started)}, nil
+}
+
+func prepareMeasured(height uint64) (*preparedBlock, error) {
+	started := time.Now()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+	prepared, err := prepareBlock(height)
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+	if prepared != nil {
+		prepared.prepareAlloc = after.TotalAlloc - before.TotalAlloc
+		prepared.prepareDuration = time.Since(started)
+	}
+	return prepared, err
+}
+
+func launchPrefetch(height uint64) chan preparationResult {
+	result := make(chan preparationResult, 1)
+	go func() {
+		prepared, err := prepareMeasured(height)
+		result <- preparationResult{block: prepared, err: err}
+	}()
+	return result
+}
+
+func drainPrefetch(prefetched map[uint64]chan preparationResult) {
+	for _, result := range prefetched {
+		<-result
+	}
 }
 
 func fetchBlock(height uint64) (*block, error) {
