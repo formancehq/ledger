@@ -2,9 +2,9 @@
 package grpc
 
 import (
-    "context"
+	"context"
 
-    ggrpc "google.golang.org/grpc"
+	ggrpc "google.golang.org/grpc"
 )
 
 // ProtocolVersion is the Ledger service protocol revision implemented by this client.
@@ -15,13 +15,13 @@ const ProtocolMetadataKey = "ledger-protocol-version"
 
 // ClientOption declares this client's protocol revision for unary and streaming RPCs.
 func ClientOption() ggrpc.DialOption {
-    return ggrpc.WithPerRPCCredentials(protocolCredentials{})
+	return ggrpc.WithPerRPCCredentials(protocolCredentials{})
 }
 
 type protocolCredentials struct{}
 
 func (protocolCredentials) GetRequestMetadata(context.Context, ...string) (map[string]string, error) {
-    return map[string]string{ProtocolMetadataKey: ProtocolVersion}, nil
+	return map[string]string{ProtocolMetadataKey: ProtocolVersion}, nil
 }
 
 func (protocolCredentials) RequireTransportSecurity() bool { return false }

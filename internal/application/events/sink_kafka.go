@@ -14,6 +14,7 @@ import (
 	"github.com/xdg-go/scram"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 

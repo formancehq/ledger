@@ -11,7 +11,10 @@ import (
 	context "context"
 	reflect "reflect"
 
+	gomock "go.uber.org/mock/gomock"
+
 	ledgerpb "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	ctrl "github.com/formancehq/ledger/v3/internal/application/ctrl"
 	domain "github.com/formancehq/ledger/v3/internal/domain"
 	cursor "github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -19,7 +22,6 @@ import (
 	clusterpb "github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	servicepb "github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	query "github.com/formancehq/ledger/v3/internal/query"
-	gomock "go.uber.org/mock/gomock"
 )
 
 // MockBackend is a mock of Backend interface.

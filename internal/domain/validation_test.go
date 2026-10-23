@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/invariants"
-
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 

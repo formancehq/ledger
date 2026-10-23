@@ -10,9 +10,11 @@ package indexes_test
 import (
 	reflect "reflect"
 
-	ledgerpb "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-	domain "github.com/formancehq/ledger/v3/internal/domain"
 	gomock "go.uber.org/mock/gomock"
+
+	ledgerpb "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	domain "github.com/formancehq/ledger/v3/internal/domain"
 )
 
 // MockLookup is a mock of Lookup interface.

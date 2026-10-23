@@ -22,6 +22,7 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/pkg/antithesistest"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"

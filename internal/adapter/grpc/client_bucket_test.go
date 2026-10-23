@@ -12,8 +12,8 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
-
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
 	appctrl "github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain/attribution"

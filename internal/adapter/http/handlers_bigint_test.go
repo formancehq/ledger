@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	ledgerjson "github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 

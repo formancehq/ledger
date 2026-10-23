@@ -2,7 +2,6 @@ package state
 
 import (
 	"context"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"math"
 	"testing"
 
@@ -10,9 +9,11 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"

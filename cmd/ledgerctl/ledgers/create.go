@@ -11,6 +11,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/indexes"
 	domainindexes "github.com/formancehq/ledger/v3/internal/domain/indexes"

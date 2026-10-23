@@ -4,13 +4,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"math"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 

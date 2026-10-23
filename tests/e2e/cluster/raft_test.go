@@ -9,19 +9,20 @@ import (
 	"path/filepath"
 	"time"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/grpc/metadata"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	raftwal "github.com/formancehq/ledger/v3/internal/storage/wal"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"go.etcd.io/raft/v3/raftpb"
-	"google.golang.org/grpc/metadata"
 )
 
 var _ = Describe("Simple cluster", func() {

@@ -1,11 +1,12 @@
 package preload
 
 import (
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"sync"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 

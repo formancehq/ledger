@@ -5,9 +5,10 @@ package raftcmdpb
 
 import (
 	bytes "bytes"
+	slices "slices"
+
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
-	slices "slices"
 )
 
 // OrderReader provides read-only access to Order.

@@ -7,13 +7,15 @@
 package raftcmdpb
 
 import (
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
 const (

@@ -10,11 +10,11 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/oracle"
-
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
 // setupQueryCheckpoints establishes the inherited global lifecycle baseline.

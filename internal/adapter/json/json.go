@@ -9,6 +9,7 @@ import (
 	"io"
 
 	"github.com/bytedance/sonic"
+
 	publicjson "github.com/formancehq/ledger/pkg/proto/v3/json"
 )
 
