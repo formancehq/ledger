@@ -138,7 +138,7 @@ The bloom filter is consulted **here**, at the resolution layer, not below it: `
 
 This is the surviving typed shape, and `loader.go` (plus its test) is the entire package — the loaders are the only thing `internal/infra/preload` contains. Everything upstream of them, including the parallel resolution that drives them, lives in `internal/infra/plan`.
 
-The division of labour between the two layers is easy to get wrong: **the loader never touches the attribute cache.** The hit/miss verdict is taken above it, in the `plan` package — `resolveCoverage` asks `AttributeCache.CheckCache(nextIndex, id)` (`internal/infra/plan/resolve.go`) and only on a miss hands the loader a Pebble-`Get` closure. `loader.go` holds no cache reference at all; the only cache-derived thing it sees is a `cacheEpoch` scalar.
+The division of labour between the two layers is easy to get wrong: **the loader never touches the attribute cache.** The hit/miss verdict is taken above it, in the `plan` package — `resolveCoverage` asks `AttributeCache.CheckCacheAndGet(nextIndex, id, tag)` (`internal/infra/plan/resolve.go`) and only an ordinary miss without a matching Gen1 capture hands the loader a Pebble-`Get` closure. `loader.go` holds no cache reference at all; the only cache-derived thing it sees is a `cacheEpoch` scalar.
 
 Each loader then:
 
@@ -186,13 +186,14 @@ The discriminator between them: **only the `CacheSnapshotter` method takes `attr
 
 `AttributeCoverage` (`misc/proto/raft_cmd.proto:793`) carries `AttributeID id = 1`, `uint32 attr_code = 2` and an **optional** `AttributeValue value = 3`. That optionality is the whole distinction:
 
-- **`value` set ⇒ seed.** The key was a cache miss at admission and either the Pebble load hit or a matching Gen1 entry was captured while one rotation was predicted, so the entry carries the value and the FSM seeds the cache through `MirrorPreload`.
+- **`value` set ⇒ seed.** The key was a cache miss at admission and either the Pebble load hit or a matching Gen1 entry was captured while one rotation was predicted. Only a live, non-zero payload is seeded; the FSM restores it through `MirrorPreload`.
 - **`value` nil ⇒ coverage-only.** The entry authorises the read but writes nothing. No preemptive promote pass is needed: `AttributeCache.Get`'s gen0→gen1 fallback handles the read, and `KeyStore.Tombstone`'s lazy Gen0-tombstone fabrication handles the delete.
 
 When the captured Gen1 entry is a tombstone, admission deliberately uses
-coverage-only. After the predicted rotation the key is absent from the live
-cache, which has the same `Get`/delete semantics as a tombstone, and adding a
-tombstone variant to the wire contract would not improve correctness.
+coverage-only. Typed-nil absence markers use the same representation: after
+the predicted rotation the key is absent from the live cache, and neither
+case has a payload that can be serialized as a seed. Adding tombstone or
+typed-nil variants to the wire contract would not improve correctness.
 
 `AttributeValue` holds a single `bytes raw_value = 1` — the value is type-erased on the wire, and the FSM dispatches the typed unmarshal via the parent entry's `attr_code`.
 

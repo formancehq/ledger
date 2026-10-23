@@ -156,9 +156,11 @@ rotation, admission captures the matching Gen1 entry under the generation
 lock and emits a seed directly; the commit barrier from #2345 makes the same
 value durable, but no Pebble read is needed. A Gen1 tombstone is emitted as
 coverage-only because its apply-time read semantics are absence and the wire
-proto has no tombstone seed variant. Rewriting unchanged `LedgerInfo` on each
-mirror order is therefore unnecessary for correctness; it would add a clone
-and a persisted write merely to keep the cache warm.
+proto has no tombstone seed variant. A typed-nil absence marker follows the
+same coverage-only rule: it is a present cache entry representing absence, not
+a live payload that can be serialized as a seed. Rewriting unchanged
+`LedgerInfo` on each mirror order is therefore unnecessary for correctness; it
+would add a clone and a persisted write merely to keep the cache warm.
 
 ## Write paths
 
