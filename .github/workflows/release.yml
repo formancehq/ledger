@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
   packages: write
+  pull-requests: write
 
 jobs:
   GoReleaser:
@@ -22,7 +23,7 @@ jobs:
         uses: ./.github/actions/default
       - name: Set up Docker Buildx
         uses: namespacelabs/nscloud-setup-buildx-action@d059ed7184f0bc7c8b27e8810cea153d02bcc6dd # v0.0.23
-      - name: Publish Go module tags
+      - name: Validate release tag
         shell: bash
         run: |
           set -euo pipefail
@@ -31,85 +32,6 @@ jobs:
           if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
             echo "Unexpected release tag: $version" >&2
             exit 1
-          fi
-
-          commit="$(git rev-parse "${GITHUB_REF}^{commit}")"
-
-          previous_tag="$(git describe --tags --match 'v[0-9]*.[0-9]*.[0-9]*' --abbrev=0 "${commit}^" 2>/dev/null || true)"
-          publish_proto=false
-          publish_client=false
-
-          if [[ -z "$previous_tag" ]]; then
-            # The first root release must make both nested modules downloadable
-            # before any consumer can resolve the public client contract.
-            publish_proto=true
-            publish_client=true
-          else
-            changed_files="$(git diff --name-only "$previous_tag" "$commit")"
-            # Only changes to the public projection (or its generated output)
-            # advance the shared public module. Backend-only schemas such as
-            # internal_state.proto must not create a new public version.
-            if grep -qE '^(misc/proto/(common|signature|audit|bucket|cluster|restore)\.proto|pkg/proto/v3/)' <<<"$changed_files"; then
-              publish_proto=true
-            fi
-            if grep -qE '^pkg/client/v3/' <<<"$changed_files"; then
-              publish_client=true
-            fi
-          fi
-
-          publish_module_tag() {
-            local tag="$1"
-            local existing
-            existing="$(git ls-remote --tags origin "refs/tags/${tag}" "refs/tags/${tag}^{}" | awk 'END {print $1}')"
-
-            if [[ -n "$existing" ]]; then
-              if [[ "$existing" != "$commit" ]]; then
-                echo "Tag $tag already points to $existing, expected $commit" >&2
-                exit 1
-              fi
-              echo "Tag $tag already points to $commit"
-              return
-            fi
-
-            git tag "$tag" "$commit"
-            git push origin "refs/tags/$tag"
-          }
-
-          if [[ "$publish_client" == true ]]; then
-            required_proto_version="$(awk '$1 == "github.com/formancehq/ledger/pkg/proto/v3" { print $2; exit }' pkg/client/v3/go.mod)"
-            if [[ -z "$required_proto_version" ]]; then
-              echo "The public client does not declare a shared proto version" >&2
-              exit 1
-            fi
-
-            proto_tag="pkg/proto/${required_proto_version}"
-            if ! git ls-remote --tags origin "refs/tags/${proto_tag}" "refs/tags/${proto_tag}^{}" | awk 'NF { found = 1 } END { exit !found }'; then
-              # Never create a final dependency tag from a release candidate:
-              # that would make the eventual stable release unable to publish
-              # the same version if the contract changes before GA. RCs must
-              # consume an already-published stable proto contract instead.
-              if [[ "$version" == *-* ]]; then
-                echo "The RC client requires the already-published shared proto tag ${proto_tag}" >&2
-                exit 1
-              fi
-              if [[ "$publish_proto" != true ]]; then
-                echo "The client requires ${proto_tag}, but no public proto change was detected to publish it" >&2
-                exit 1
-              fi
-              publish_module_tag "$proto_tag"
-            fi
-          fi
-
-          if [[ "$publish_proto" == true ]]; then
-            publish_module_tag "pkg/proto/${version}"
-          else
-            echo "No public protobuf changes since ${previous_tag}; keeping the existing proto module version"
-          fi
-
-          if [[ "$publish_client" == true ]]; then
-            publish_module_tag "pkg/client/${version}"
-          else
-            echo "No public client changes since ${previous_tag}; keeping the existing client module version"
           fi
       - name: Login to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -131,3 +53,40 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           nix develop .#ci --command just operator-helm-publish "$version"
+      - name: Prepare public module publication
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_REF_NAME}"
+          branch="release/public-modules-${version}"
+          git fetch origin main --tags
+
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            git fetch origin "$branch"
+            git switch --create "$branch" --track "origin/$branch"
+          else
+            git switch --create "$branch" "${GITHUB_REF}^{commit}"
+          fi
+          go -C pkg/client/v3 mod edit -require="github.com/formancehq/ledger/pkg/proto/v3@${version}"
+          go -C pkg/client/v3 mod tidy
+          git add pkg/client/v3/go.mod pkg/client/v3/go.sum
+
+          if git diff --cached --quiet; then
+            echo "Public module dependency already targets ${version}"
+          else
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "chore(release): align public modules to ${version}"
+            git push --set-upstream origin "$branch"
+          fi
+
+          if [[ -z "$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open --json number --jq '.[].number')" ]]; then
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --head "$branch" \
+              --title "chore(release): publish public modules ${version}" \
+              --body "This automated release PR aligns pkg/client/v3 with pkg/proto/v3 at ${version}. Once merged, the public module publication workflow will tag both nested modules from the merged commit."
+          fi
