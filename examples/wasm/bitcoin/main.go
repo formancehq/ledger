@@ -108,9 +108,15 @@ func run() uint32 {
 		best, err := rpcUint("getblockcount")
 		if err == nil && moduleHeight <= best {
 			blockStarted := time.Now()
+			var beforeFetch runtime.MemStats
+			runtime.ReadMemStats(&beforeFetch)
 			b, fetchErr := fetchBlock(moduleHeight)
+			var afterFetch runtime.MemStats
+			runtime.ReadMemStats(&afterFetch)
 			if fetchErr == nil {
 				if applyErr := applyBlock(b); applyErr == nil {
+					var afterApply runtime.MemStats
+					runtime.ReadMemStats(&afterApply)
 					moduleHeight++
 					// The Go WASI collector does not reclaim this workload quickly
 					// enough during catch-up; force collection before the next block
@@ -119,7 +125,7 @@ func run() uint32 {
 					if moduleHeight%100 == 0 {
 						var stats runtime.MemStats
 						runtime.ReadMemStats(&stats)
-						logf(0, "bitcoin ingestion: next_height=%d transactions=%d block_duration_ms=%d heap_alloc_bytes=%d heap_inuse_bytes=%d heap_sys_bytes=%d gc_cycles=%d", moduleHeight, len(b.Tx), time.Since(blockStarted).Milliseconds(), stats.HeapAlloc, stats.HeapInuse, stats.HeapSys, stats.NumGC)
+						logf(0, "bitcoin ingestion: next_height=%d transactions=%d block_duration_ms=%d fetch_alloc_bytes=%d apply_alloc_bytes=%d heap_alloc_bytes=%d heap_inuse_bytes=%d heap_sys_bytes=%d gc_cycles=%d", moduleHeight, len(b.Tx), time.Since(blockStarted).Milliseconds(), afterFetch.TotalAlloc-beforeFetch.TotalAlloc, afterApply.TotalAlloc-afterFetch.TotalAlloc, stats.HeapAlloc, stats.HeapInuse, stats.HeapSys, stats.NumGC)
 					}
 					continue
 				} else {
