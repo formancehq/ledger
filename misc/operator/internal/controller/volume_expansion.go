@@ -106,7 +106,7 @@ type reconcileDiskUsage struct {
 
 // VolumeExpansionReconciler periodically grows the live PVCs owned by one
 // Cluster. It owns the per-volume expansion readiness conditions and the live
-// PVC storage requests plus their bookkeeping annotations. It never owns or
+// PVC storage requests, volume attributes, and bookkeeping annotations. It never owns or
 // mutates StatefulSet templates.
 type VolumeExpansionReconciler struct {
 	client.Client
@@ -126,6 +126,9 @@ type VolumeExpansionReconciler struct {
 // +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get
+// +kubebuilder:rbac:groups=storage.k8s.io,resources=volumeattributesclasses,verbs=get
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get
+// +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get
 
 func (r *VolumeExpansionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, reconcileErr error) {
 	var ledger ledgerv1alpha1.Cluster
@@ -150,44 +153,73 @@ func (r *VolumeExpansionReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	applyDefaults(&ledger)
 	definitions := enabledVolumeExpansionDefinitions(&ledger)
+	removeDisabledVolumeExpansionConditions(&ledger, definitions)
 	if len(definitions) == 0 {
 		deleteVolumeMetrics(ledger.Namespace, ledger.Name)
-		removeVolumeExpansionConditions(&ledger)
-
-		return ctrl.Result{}, nil
+	} else {
+		resetVolumeGaugeMetrics(ledger.Namespace, ledger.Name)
 	}
-	removeDisabledVolumeExpansionConditions(&ledger, definitions)
-	resetVolumeGaugeMetrics(ledger.Namespace, ledger.Name)
 
-	var statefulSet appsv1.StatefulSet
-	if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: resourceName(ledger.Name)}, &statefulSet); err != nil {
+	storage := persistenceStorageReconciler{client: r.Client, reader: r.APIReader, ledger: &ledger}
+	statefulSet, err := storage.liveStatefulSet(ctx)
+	if err != nil {
+		for _, definition := range persistenceVolumeDefinitions(&ledger) {
+			setStorageCondition(&ledger, definition.Name, metav1.ConditionFalse, "StatefulSetUnavailable", err.Error())
+		}
 		for _, definition := range definitions {
 			r.recordWarningf(&ledger, "VolumeExpansionPending", "%s auto-expansion is waiting for the live StatefulSet: %v", definition.Name, err)
 			setVolumeExpansionCondition(&ledger, definition.Name, metav1.ConditionFalse, "StatefulSetUnavailable", err.Error())
 		}
-		volumeExpansionErrorsMetric.WithLabelValues("statefulset", "cluster").Inc()
+		if len(definitions) > 0 {
+			volumeExpansionErrorsMetric.WithLabelValues("statefulset", "cluster").Inc()
+		}
 
 		return ctrl.Result{RequeueAfter: volumeExpansionRetryInterval}, nil
 	}
+	storage.statefulSet = statefulSet
 	liveReplicas := int32(1)
 	if statefulSet.Spec.Replicas != nil {
 		liveReplicas = *statefulSet.Spec.Replicas
 	}
 	if liveReplicas < 1 {
 		volumeExpansionErrorsMetric.WithLabelValues("statefulset", "cluster").Inc()
+		for _, definition := range persistenceVolumeDefinitions(&ledger) {
+			setStorageCondition(&ledger, definition.Name, metav1.ConditionFalse, "StatefulSetInvalid", fmt.Sprintf("live StatefulSet has %d replicas", liveReplicas))
+		}
 		for _, definition := range definitions {
 			setVolumeExpansionCondition(&ledger, definition.Name, metav1.ConditionFalse, "StatefulSetInvalid", fmt.Sprintf("live StatefulSet has %d replicas", liveReplicas))
 		}
 
 		return ctrl.Result{RequeueAfter: volumeExpansionRetryInterval}, fmt.Errorf("invariant: live StatefulSet %s/%s has %d replicas", statefulSet.Namespace, statefulSet.Name, liveReplicas)
 	}
-	tlsMode := currentTLSModeFromStatefulSet(&statefulSet)
+	tlsMode := currentTLSModeFromStatefulSet(statefulSet)
 
 	nextRequeue := volumeExpansionRequeueInterval
 	var reconcileErrors []error
 	usage := &reconcileDiskUsage{}
+	for _, definition := range persistenceVolumeDefinitions(&ledger) {
+		retrySoon, err := storage.reconcileVolume(ctx, definition, liveReplicas)
+		if retrySoon {
+			nextRequeue = volumeExpansionRetryInterval
+		}
+		if err != nil {
+			reconcileErrors = append(reconcileErrors, err)
+		}
+	}
+	// Explicit requests can still be pending while the independent automatic
+	// policy runs. It reloads the PVCs after any successful floor patch.
 	for _, definition := range definitions {
-		retrySoon, err := r.reconcileVolume(ctx, &ledger, definition, tlsMode, liveReplicas, usage)
+		retrySoon, err := r.reconcileVolume(ctx, &ledger, definition, tlsMode, liveReplicas, statefulSet, usage)
+		conditionType := dataStorageCondition
+		if definition.Name == "wal" {
+			conditionType = walStorageCondition
+		}
+		if condition := meta.FindStatusCondition(ledger.Status.Conditions, conditionType); condition != nil &&
+			(condition.Reason == "Ready" || condition.Reason == "StorageUpdatePending") {
+			if storage.refreshCondition(ctx, definition, liveReplicas) {
+				retrySoon = true
+			}
+		}
 		if retrySoon {
 			nextRequeue = volumeExpansionRetryInterval
 		}
@@ -220,6 +252,7 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 	definition persistenceVolumeDefinition,
 	tlsMode string,
 	replicas int32,
+	statefulSet *appsv1.StatefulSet,
 	usage *reconcileDiskUsage,
 ) (bool, error) {
 	logger := ctrl.LoggerFrom(ctx).WithValues("volume", definition.Name)
@@ -247,6 +280,12 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 		volumeExpansionErrorsMetric.WithLabelValues("pvc", definition.Name).Inc()
 		r.recordWarningf(ledger, "VolumeExpansionPending", "%s PVC group is not ready: %v", definition.Name, err)
 		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "PVCGroupNotReady", err.Error())
+
+		return true, nil
+	}
+	storage := persistenceStorageReconciler{client: r.Client, reader: r.APIReader, ledger: ledger, statefulSet: statefulSet}
+	if err := storage.validatePVCGroup(ctx, definition, pvcs); err != nil {
+		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "StorageUnsupported", err.Error())
 
 		return true, nil
 	}
@@ -296,7 +335,7 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 
 	switch decision.Kind {
 	case volumeExpansionDecisionConverge:
-		if err := r.patchPVCGroup(ctx, pvcs, decision.TargetBytes, decision.LastExpansionAt); err != nil {
+		if err := r.patchPVCGroup(ctx, pvcs, decision.TargetBytes, decision.LastExpansionAt, &storage, definition); err != nil {
 			volumeExpansionErrorsMetric.WithLabelValues("patch", definition.Name).Inc()
 			setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "PatchFailed", err.Error())
 
@@ -350,7 +389,7 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 		return false, nil
 	case volumeExpansionDecisionExpand:
 		now := r.now()
-		if err := r.patchPVCGroup(ctx, pvcs, decision.TargetBytes, now); err != nil {
+		if err := r.patchPVCGroup(ctx, pvcs, decision.TargetBytes, now, &storage, definition); err != nil {
 			volumeExpansionErrorsMetric.WithLabelValues("patch", definition.Name).Inc()
 			setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "PatchFailed", err.Error())
 
@@ -452,7 +491,11 @@ func (r *VolumeExpansionReconciler) loadVolumePVCs(
 }
 
 func (r *VolumeExpansionReconciler) validateExpandableStorageClasses(ctx context.Context, pvcs []*corev1.PersistentVolumeClaim) error {
-	if r.APIReader == nil {
+	return validateExpandableStorageClasses(ctx, r.APIReader, pvcs)
+}
+
+func validateExpandableStorageClasses(ctx context.Context, reader client.Reader, pvcs []*corev1.PersistentVolumeClaim) error {
+	if reader == nil {
 		return errors.New("invariant: APIReader is required for direct StorageClass reads")
 	}
 	checked := map[string]struct{}{}
@@ -465,7 +508,7 @@ func (r *VolumeExpansionReconciler) validateExpandableStorageClasses(ctx context
 			continue
 		}
 		var storageClass storagev1.StorageClass
-		if err := r.APIReader.Get(ctx, types.NamespacedName{Name: name}, &storageClass); err != nil {
+		if err := reader.Get(ctx, types.NamespacedName{Name: name}, &storageClass); err != nil {
 			return fmt.Errorf("getting StorageClass %s: %w", name, err)
 		}
 		if storageClass.AllowVolumeExpansion == nil || !*storageClass.AllowVolumeExpansion {
@@ -553,6 +596,8 @@ func setVolumeExpansionCondition(ledger *ledgerv1alpha1.Cluster, volume string, 
 func removeVolumeExpansionConditions(ledger *ledgerv1alpha1.Cluster) {
 	meta.RemoveStatusCondition(&ledger.Status.Conditions, walVolumeExpansionCondition)
 	meta.RemoveStatusCondition(&ledger.Status.Conditions, dataVolumeExpansionCondition)
+	meta.RemoveStatusCondition(&ledger.Status.Conditions, walStorageCondition)
+	meta.RemoveStatusCondition(&ledger.Status.Conditions, dataStorageCondition)
 }
 
 func removeDisabledVolumeExpansionConditions(ledger *ledgerv1alpha1.Cluster, definitions []persistenceVolumeDefinition) {
@@ -568,11 +613,12 @@ func removeDisabledVolumeExpansionConditions(ledger *ledgerv1alpha1.Cluster, def
 }
 
 func isVolumeExpansionCondition(condition metav1.Condition) bool {
-	return condition.Type == walVolumeExpansionCondition || condition.Type == dataVolumeExpansionCondition
+	return condition.Type == walVolumeExpansionCondition || condition.Type == dataVolumeExpansionCondition ||
+		condition.Type == walStorageCondition || condition.Type == dataStorageCondition
 }
 
 func (r *VolumeExpansionReconciler) persistVolumeExpansionConditions(ctx context.Context, desired *ledgerv1alpha1.Cluster) error {
-	desiredConditions := make([]metav1.Condition, 0, 2)
+	desiredConditions := make([]metav1.Condition, 0, 4)
 	for _, condition := range desired.Status.Conditions {
 		if isVolumeExpansionCondition(condition) {
 			desiredConditions = append(desiredConditions, condition)
@@ -631,27 +677,46 @@ func (r *VolumeExpansionReconciler) patchPVCGroup(
 	pvcs []*corev1.PersistentVolumeClaim,
 	targetBytes int64,
 	expansionTime time.Time,
+	storage *persistenceStorageReconciler,
+	definition persistenceVolumeDefinition,
 ) error {
 	if expansionTime.IsZero() {
 		expansionTime = r.now()
 	}
 	target := *resource.NewQuantity(targetBytes, resource.BinarySI)
 	for _, pvc := range pvcs {
-		current := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
-		if current.Value() >= targetBytes {
-			continue
-		}
-		base := pvc.DeepCopy()
-		if pvc.Spec.Resources.Requests == nil {
-			pvc.Spec.Resources.Requests = corev1.ResourceList{}
-		}
-		pvc.Spec.Resources.Requests[corev1.ResourceStorage] = target
-		if pvc.Annotations == nil {
-			pvc.Annotations = map[string]string{}
-		}
-		pvc.Annotations[annotationLastExpansionAt] = expansionTime.UTC().Format(time.RFC3339)
-		pvc.Annotations[annotationLastExpansionTarget] = target.String()
-		if err := r.Patch(ctx, pvc, client.MergeFromWithOptions(base, client.MergeFromWithOptimisticLock{})); err != nil {
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			var latest corev1.PersistentVolumeClaim
+			if r.APIReader == nil {
+				return errors.New("invariant: APIReader is required for direct PVC patch reads")
+			}
+			if err := r.APIReader.Get(ctx, client.ObjectKeyFromObject(pvc), &latest); err != nil {
+				return err
+			}
+			if latest.UID != pvc.UID {
+				return fmt.Errorf("PVC %s was replaced during expansion", pvc.Name)
+			}
+			if err := storage.validateCurrentPVC(ctx, definition, &latest); err != nil {
+				return err
+			}
+			current := latest.Spec.Resources.Requests[corev1.ResourceStorage]
+			if current.Cmp(target) >= 0 {
+				return nil
+			}
+			base := latest.DeepCopy()
+			if latest.Spec.Resources.Requests == nil {
+				latest.Spec.Resources.Requests = corev1.ResourceList{}
+			}
+			latest.Spec.Resources.Requests[corev1.ResourceStorage] = target
+			if latest.Annotations == nil {
+				latest.Annotations = map[string]string{}
+			}
+			latest.Annotations[annotationLastExpansionAt] = expansionTime.UTC().Format(time.RFC3339)
+			latest.Annotations[annotationLastExpansionTarget] = target.String()
+
+			return r.Patch(ctx, &latest, client.MergeFromWithOptions(base, client.MergeFromWithOptimisticLock{}))
+		})
+		if err != nil {
 			return fmt.Errorf("patching PVC %s to %s: %w", pvc.Name, target.String(), err)
 		}
 	}

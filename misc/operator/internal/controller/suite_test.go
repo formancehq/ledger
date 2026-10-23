@@ -86,9 +86,10 @@ func TestMain(m *testing.M) {
 	}
 
 	if err := (&ClusterReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("cluster-controller"),
+		APIReader: mgr.GetAPIReader(),
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		Recorder:  mgr.GetEventRecorderFor("cluster-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up Cluster controller: %v", err))
 	}

@@ -16,5 +16,7 @@ for the upgrade procedure and same-name Cluster replacement boundary.
 
 ## Documents
 
+- [Declarative storage reconciliation](storage-reconciliation.md) — configured
+  PVC minima/profiles, actual CSI status, and durable claim-template recovery.
 - [Automatic PVC expansion](volume-auto-expansion.md) — opt-in capacity policy,
   measurement path, convergence, cooldown, failure modes, and observability.

@@ -4,6 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -55,6 +59,47 @@ func TestComputeSpecHash_ExcludesNonPodFields(t *testing.T) {
 	withAutoExpansion.Persistence.WAL.AutoExpansion = &ledgerv1alpha1.VolumeAutoExpansionSpec{Enabled: true}
 	withAutoExpansion.Persistence.Data.AutoExpansion = &ledgerv1alpha1.VolumeAutoExpansionSpec{Enabled: true}
 	assert.Equal(t, baseHash, computeSpecHash(withAutoExpansion), "AutoExpansion change should not affect hash")
+	withStorage := base.DeepCopy()
+	withStorage.Persistence.Data.Size = resource.MustParse("200Gi")
+	withStorage.Persistence.WAL.VolumeAttributesClassName = "fast"
+	assert.Equal(t, baseHash, computeSpecHash(withStorage), "PVC size/profile changes should not roll Pods")
+	withStorageClass := base.DeepCopy()
+	withStorageClass.Persistence.WAL.StorageClass = "wal-class"
+	withStorageClass.Persistence.Data.StorageClass = "data-class"
+	assert.Equal(t, baseHash, computeSpecHash(withStorageClass), "claim StorageClass declarations do not affect running Pods")
+	withAccessMode := base.DeepCopy()
+	withAccessMode.Persistence.WAL.AccessMode = string(corev1.ReadWriteOncePod)
+	withAccessMode.Persistence.Data.AccessMode = string(corev1.ReadWriteMany)
+	assert.Equal(t, baseHash, computeSpecHash(withAccessMode), "claim access-mode declarations do not affect running Pods")
+}
+
+func TestPreserveStorageSpecHash_LegacyMigration(t *testing.T) {
+	t.Parallel()
+	cluster := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "migration", Namespace: "default"}}
+	applyDefaults(cluster)
+	legacyHash := computePodSpecHash(&cluster.Spec, false)
+	sts := &appsv1.StatefulSet{Spec: buildStatefulSetSpec(cluster, legacyHash, nil, tlsModeDisabled)}
+	before := sts.Spec.Template.DeepCopy()
+	cluster.Spec.Persistence.Data.Size = resource.MustParse("200Gi")
+	cluster.Spec.Persistence.WAL.VolumeAttributesClassName = "fast"
+	hash := computeSpecHash(&cluster.Spec)
+	desired := buildStatefulSetSpec(cluster, hash, nil, tlsModeDisabled)
+	got := preserveStorageSpecHash(cluster, sts, desired.Template, hash)
+	assert.Equal(t, *before, got, "first size/profile edit must preserve a hash produced by the released operator")
+
+	// The source template floor/profile changes after recreation, so the
+	// metadata hash must preserve this decision on every subsequent pass.
+	sts.Annotations = map[string]string{annotationPodConfigHash: hash, annotationPodConfigSpecHash: hash}
+	sts.Spec.VolumeClaimTemplates = desired.VolumeClaimTemplates
+	got = preserveStorageSpecHash(cluster, sts, desired.Template, hash)
+	assert.Equal(t, *before, got)
+	assert.Equal(t, corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("200Gi")}, desired.VolumeClaimTemplates[1].Spec.Resources.Requests)
+
+	cluster.Spec.Debug = !cluster.Spec.Debug
+	newHash := computeSpecHash(&cluster.Spec)
+	newDesired := buildStatefulSetSpec(cluster, newHash, nil, tlsModeDisabled)
+	got = preserveStorageSpecHash(cluster, sts, newDesired.Template, newHash)
+	assert.Equal(t, newHash, got.Annotations[annotationSpecHash], "a real workload change must still roll out")
 }
 
 func TestComputeSpecHash_IncludesPodFields(t *testing.T) {
@@ -64,6 +109,9 @@ func TestComputeSpecHash_IncludesPodFields(t *testing.T) {
 		DataDir: "/data",
 	}
 	baseHash := computeSpecHash(base)
+	withServiceAccount := base.DeepCopy()
+	withServiceAccount.ServiceAccount.Annotations = map[string]string{"eks.amazonaws.com/role-arn": "arn:aws:iam::111111111111:role/backup"}
+	assert.NotEqual(t, baseHash, computeSpecHash(withServiceAccount), "ServiceAccount annotations require fresh Pod admission")
 
 	// Changing Config should change the hash (affects env vars).
 	withConfig := base.DeepCopy()
