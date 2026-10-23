@@ -20,7 +20,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"

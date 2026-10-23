@@ -11,11 +11,10 @@ import (
 	context "context"
 	reflect "reflect"
 
-	gomock "go.uber.org/mock/gomock"
-
 	node "github.com/formancehq/ledger/v3/internal/infra/node"
 	state "github.com/formancehq/ledger/v3/internal/infra/state"
 	futures "github.com/formancehq/ledger/v3/internal/pkg/futures"
+	gomock "go.uber.org/mock/gomock"
 )
 
 // MockProposer is a mock of Proposer interface.
