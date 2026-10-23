@@ -18,7 +18,7 @@ func (b *Builder) indexPayload(
 	cfg *ledgerIndexConfig,
 	ledgerName string,
 	payload any,
-	excludedVolumes map[domain.AccountAssetKey]struct{},
+	excludedVolumes *postingExclusions,
 ) error {
 	switch p := payload.(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
@@ -162,7 +162,7 @@ func (b *Builder) indexCreatedTransaction(
 	cfg *ledgerIndexConfig,
 	ledger string,
 	ct *commonpb.CreatedTransaction,
-	excludedVolumes map[domain.AccountAssetKey]struct{},
+	excludedVolumes *postingExclusions,
 ) error {
 	if ct.GetTransaction() == nil {
 		return nil
@@ -277,7 +277,7 @@ func (b *Builder) indexRevertedTransaction(
 	cfg *ledgerIndexConfig,
 	ledger string,
 	rt *commonpb.RevertedTransaction,
-	excludedVolumes map[domain.AccountAssetKey]struct{},
+	excludedVolumes *postingExclusions,
 ) error {
 	if rt.GetRevertTransaction() == nil {
 		return nil
@@ -369,11 +369,15 @@ func (b *Builder) indexPostingAddressMappings(
 	indexAny bool,
 	indexSource bool,
 	indexDestination bool,
-	excludedVolumes map[domain.AccountAssetKey]struct{},
+	excludedVolumes *postingExclusions,
 ) error {
 	wb := b.wb
-	sourceExcluded := isExcluded(excludedVolumes, source, asset, color)
-	destinationExcluded := isExcluded(excludedVolumes, destination, asset, color)
+	var current, historical map[domain.AccountAssetKey]struct{}
+	if excludedVolumes != nil {
+		current, historical = excludedVolumes.current, excludedVolumes.historical
+	}
+	sourceExcluded := isExcluded(current, source, asset, color)
+	destinationExcluded := isExcluded(current, destination, asset, color)
 
 	// Account has-asset index: record every (account, assetBase, precision) a
 	// posting touches, for both source and destination, skipping excluded
@@ -395,6 +399,9 @@ func (b *Builder) indexPostingAddressMappings(
 		}
 	}
 
+	sourceExcluded = isExcluded(historical, source, asset, color)
+	destinationExcluded = isExcluded(historical, destination, asset, color)
+
 	if indexAny {
 		if !sourceExcluded {
 			if err := wb.WriteAccountTxMapping(kb, ledger, source, txID); err != nil {
@@ -409,9 +416,8 @@ func (b *Builder) indexPostingAddressMappings(
 		}
 	}
 
-	// Role-specific mappings skip transient and purged ephemeral volumes —
-	// matched per (account, asset) tuple so a multi-asset account keeps its
-	// mappings for the assets that survived this proposal.
+	// Historical role mappings skip only TRANSIENT cells. Purging an
+	// EPHEMERAL cell must not erase its source or destination relationship.
 	if indexSource && !sourceExcluded {
 		if err := wb.WriteSourceAccountTxMapping(kb, ledger, source, txID); err != nil {
 			return err

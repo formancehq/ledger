@@ -244,9 +244,8 @@ func (s *appliedProposalSync) close() error {
 // carried so the key matches the (account, asset, color) tuple isExcluded looks
 // up from each posting — dropping it would leave stale index rows for colored
 // evictions and wrongly exclude uncolored postings sharing the (account, asset).
-// Both categories share the same
-// downstream treatment: their acct->tx mappings must be skipped because
-// the volume entries no longer exist in the attribute store.
+// Both categories are excluded from current-state memberships. Historical
+// account-to-transaction mappings must survive either kind of eviction.
 //
 // Empty when the order that produced the log evicted nothing.
 func extractPurgedVolumes(ledgerLog ledgerLogWithPurgedVolumes) map[domain.AccountAssetKey]struct{} {
@@ -277,25 +276,31 @@ type ledgerLogWithPurgedVolumes interface {
 	GetEphemeralVolumes() []*commonpb.TouchedVolume
 }
 
-// excludedForLog returns the union of the transient (proposal-level) and
-// purged (per-log) exclusion sets for the given log. This is the single
-// helper used by process_logs.go (live path), indexLogEntry (backfill),
-// and processBackfillPostings — the three previously inlined the same
-// transientForLedger / extractPurgedVolumes / mergeExcluded combo. The
-// sync is allowed to be nil so backfill callers without an
-// AppliedProposal stream still get the purged side of the set.
-func (s *appliedProposalSync) excludedForLog(logSeq uint64, ledger string, log ledgerLogWithPurgedVolumes) map[domain.AccountAssetKey]struct{} {
-	if s == nil {
-		return extractPurgedVolumes(log)
-	}
-
-	return mergeExcluded(
-		s.transientForLedger(logSeq, ledger),
-		extractPurgedVolumes(log),
-	)
+// postingExclusions separates current account memberships from immutable
+// transaction history. Both sets are keyed by the full account/asset/color cell.
+// A nil pointer means that neither kind of membership is excluded.
+type postingExclusions struct {
+	current    map[domain.AccountAssetKey]struct{}
+	historical map[domain.AccountAssetKey]struct{}
 }
 
-// mergeExcluded unions two (account, asset) exclusion sets without mutating
+// excludedForLog is shared by live folding, generic replay and fast postings
+// backfill. Only TRANSIENT cells are excluded from historical mappings;
+// EPHEMERAL eviction also excludes the cell from current has-asset membership.
+// mergeExcluded never mutates the proposal's cached transient set.
+func (s *appliedProposalSync) excludedForLog(logSeq uint64, ledger string, log ledgerLogWithPurgedVolumes) *postingExclusions {
+	var transient map[domain.AccountAssetKey]struct{}
+	if s != nil {
+		transient = s.transientForLedger(logSeq, ledger)
+	}
+
+	return &postingExclusions{
+		current:    mergeExcluded(transient, extractPurgedVolumes(log)),
+		historical: transient,
+	}
+}
+
+// mergeExcluded unions two (account, asset, color) exclusion sets without mutating
 // either. The result is nil only when both inputs are empty.
 func mergeExcluded(a, b map[domain.AccountAssetKey]struct{}) map[domain.AccountAssetKey]struct{} {
 	if len(a) == 0 {
