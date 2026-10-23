@@ -374,7 +374,7 @@ for how they appear in Prometheus.
 | `admission.preload.cache_hits` | Low hit rate | Review account access patterns |
 | `admission.preload.gen1_captures` | Increasing during rotations | Confirms the Gen1 preload path is exercised; compare with `admission.preload.store_loads` |
 | `admission.preload.store_loads` | High relative to `gen1_captures` | The workload is falling back to Pebble rather than reusing Gen1 values |
-| `admission.preload.cache_unreachable` | Non-zero | Admission is predicting two or more rotations before apply; investigate apply lag or an overly low rotation threshold |
+| `admission.preload.cache_unreachables` | Non-zero | Admission is predicting two or more rotations before apply; investigate apply lag or an overly low rotation threshold |
 | `raft.apply_entries.duration` p99 | > 50ms | Check disk I/O, compaction backlog |
 | `pebble.write_stalls` | Any increase | Add disk IOPS, tune compaction |
 | `cache.rotations` | Frequency | Informational: correlates with K |
