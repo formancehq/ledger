@@ -452,7 +452,40 @@ message TechnicalUpdate {
     BackupOrder backup_order = 6;                          // Full-backup lifecycle
     IncrementalBackupOrder incremental_backup_order = 7;  // Incremental-backup lifecycle
     bytes audit_key = 8;  // One-time replicated audit key initialization.
+    WasmModuleUpdate wasm_module = 9;
   }
+}
+
+// WasmModuleUpdate is the Raft-replicated lifecycle and upload state for a
+// user-provided WASM module. The payload is intentionally opaque to the FSM:
+// the runtime owns execution, while the FSM owns durable bytes and lifecycle
+// metadata so a new leader can reconstruct the module.
+message WasmModuleUpdate {
+  string module_id = 1;
+  WasmModuleOperation operation = 2;
+  bytes chunk = 3;
+  bytes config = 4;
+  WasmModuleStatus status = 5;
+  string error = 6;
+  bool final_chunk = 7;
+  uint64 chunk_index = 8;
+  uint64 size = 9;
+}
+
+enum WasmModuleOperation {
+  WASM_MODULE_OPERATION_UNSPECIFIED = 0;
+  WASM_MODULE_OPERATION_UPLOAD_CHUNK = 1;
+  WASM_MODULE_OPERATION_SET_STATUS = 2;
+  WASM_MODULE_OPERATION_DELETE = 3;
+}
+
+enum WasmModuleStatus {
+  WASM_MODULE_STATUS_UNSPECIFIED = 0;
+  WASM_MODULE_STATUS_UPLOADING = 1;
+  WASM_MODULE_STATUS_INITIALIZING = 2;
+  WASM_MODULE_STATUS_RUNNING = 3;
+  WASM_MODULE_STATUS_STOPPED = 4;
+  WASM_MODULE_STATUS_ERROR = 5;
 }
 
 // ============================================================================

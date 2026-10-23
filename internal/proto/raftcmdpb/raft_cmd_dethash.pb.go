@@ -1593,6 +1593,17 @@ func (m *TechnicalUpdate) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
+func (m *WasmModuleUpdate) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
 func (m *BackupDestination) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA

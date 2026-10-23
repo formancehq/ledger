@@ -3909,6 +3909,113 @@ func NewTechnicalUpdateListReader(s []*TechnicalUpdate) TechnicalUpdateListReade
 	return technicalUpdateListReadonly(s)
 }
 
+// WasmModuleUpdateReader provides read-only access to WasmModuleUpdate.
+// Call Mutate() to obtain a mutable clone.
+type WasmModuleUpdateReader interface {
+	GetModuleId() string
+	GetOperation() WasmModuleOperation
+	GetChunk() []byte
+	GetConfig() []byte
+	GetStatus() WasmModuleStatus
+	GetError() string
+	GetFinalChunk() bool
+	GetChunkIndex() uint64
+	GetSize() uint64
+	Mutate() *WasmModuleUpdate
+}
+
+type wasmModuleUpdateReadonly WasmModuleUpdate
+
+func (r *wasmModuleUpdateReadonly) GetModuleId() string {
+	return (*WasmModuleUpdate)(r).GetModuleId()
+}
+
+func (r *wasmModuleUpdateReadonly) GetOperation() WasmModuleOperation {
+	return (*WasmModuleUpdate)(r).GetOperation()
+}
+
+func (r *wasmModuleUpdateReadonly) GetChunk() []byte {
+	return bytes.Clone((*WasmModuleUpdate)(r).GetChunk())
+}
+
+func (r *wasmModuleUpdateReadonly) GetConfig() []byte {
+	return bytes.Clone((*WasmModuleUpdate)(r).GetConfig())
+}
+
+func (r *wasmModuleUpdateReadonly) GetStatus() WasmModuleStatus {
+	return (*WasmModuleUpdate)(r).GetStatus()
+}
+
+func (r *wasmModuleUpdateReadonly) GetError() string {
+	return (*WasmModuleUpdate)(r).GetError()
+}
+
+func (r *wasmModuleUpdateReadonly) GetFinalChunk() bool {
+	return (*WasmModuleUpdate)(r).GetFinalChunk()
+}
+
+func (r *wasmModuleUpdateReadonly) GetChunkIndex() uint64 {
+	return (*WasmModuleUpdate)(r).GetChunkIndex()
+}
+
+func (r *wasmModuleUpdateReadonly) GetSize() uint64 {
+	return (*WasmModuleUpdate)(r).GetSize()
+}
+
+func (r *wasmModuleUpdateReadonly) Mutate() *WasmModuleUpdate {
+	return (*WasmModuleUpdate)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this WasmModuleUpdate.
+func (m *WasmModuleUpdate) AsReader() WasmModuleUpdateReader {
+	if m == nil {
+		return nil
+	}
+	return (*wasmModuleUpdateReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this WasmModuleUpdate.
+func (m *WasmModuleUpdate) Mutate() *WasmModuleUpdate {
+	return m.CloneVT()
+}
+
+// WasmModuleUpdateListReader provides read-only iteration over []*WasmModuleUpdate.
+type WasmModuleUpdateListReader interface {
+	Len() int
+	Get(i int) WasmModuleUpdateReader
+	Range(yield func(int, WasmModuleUpdateReader) bool)
+}
+
+type wasmModuleUpdateListReadonly []*WasmModuleUpdate
+
+func (l wasmModuleUpdateListReadonly) Len() int { return len(l) }
+
+func (l wasmModuleUpdateListReadonly) Get(i int) WasmModuleUpdateReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l wasmModuleUpdateListReadonly) Range(yield func(int, WasmModuleUpdateReader) bool) {
+	for i, v := range l {
+		var r WasmModuleUpdateReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewWasmModuleUpdateListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewWasmModuleUpdateListReader(s []*WasmModuleUpdate) WasmModuleUpdateListReader {
+	return wasmModuleUpdateListReadonly(s)
+}
+
 // BackupDestinationReader provides read-only access to BackupDestination.
 // Call Mutate() to obtain a mutable clone.
 type BackupDestinationReader interface {

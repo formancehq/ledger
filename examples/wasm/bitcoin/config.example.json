@@ -1,0 +1,10 @@
+{
+  "rpc_host": "bitcoin-node.ledger-v3.svc.cluster.local.",
+  "rpc_port": 8332,
+  "rpc_user": "",
+  "rpc_password": "",
+  "ledger": "bitcoin-mainnet",
+  "poll_interval_ms": 30000,
+  "start_height": 0,
+  "address_prefix": "btc"
+}

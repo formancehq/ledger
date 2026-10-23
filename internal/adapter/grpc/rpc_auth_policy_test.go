@@ -14,6 +14,7 @@ import (
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/wasmpb"
 )
 
 type unannotatedBucketService interface {
@@ -65,6 +66,7 @@ func TestPublicRPCPolicyValidationAcceptsGeneratedServiceDescriptors(t *testing.
 
 	servicepb.RegisterBucketServiceServer(srv.GetServer(), &servicepb.UnimplementedBucketServiceServer{})
 	clusterpb.RegisterClusterServiceServer(srv.GetServer(), &clusterpb.UnimplementedClusterServiceServer{})
+	wasmpb.RegisterWasmServiceServer(srv.GetServer(), &wasmpb.UnimplementedWasmServiceServer{})
 	healthpb.RegisterHealthServer(srv.GetServer(), health.NewServer())
 
 	require.NoError(t, srv.Listen())

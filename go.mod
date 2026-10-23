@@ -272,6 +272,7 @@ require (
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.2 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
+	github.com/tetratelabs/wazero v1.9.0
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect

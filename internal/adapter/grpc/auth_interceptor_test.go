@@ -40,6 +40,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
+	"github.com/formancehq/ledger/v3/internal/proto/wasmpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
@@ -215,6 +216,7 @@ func newAuthInterceptorServer(t *testing.T, mode ServiceAuthPolicy, cfg internal
 	servicepb.RegisterBucketServiceServer(server.GetServer(), implementation)
 	if mode == ServiceAuthPolicyPublic {
 		clusterpb.RegisterClusterServiceServer(server.GetServer(), &clusterpb.UnimplementedClusterServiceServer{})
+		wasmpb.RegisterWasmServiceServer(server.GetServer(), &wasmpb.UnimplementedWasmServiceServer{})
 	}
 	require.NoError(t, server.Listen())
 	go func() { _ = server.Serve() }()
@@ -626,6 +628,7 @@ func TestAuthInterceptorLoadedEd25519Privileges(t *testing.T) {
 	implementation := &authInterceptorClusterServer{}
 	servicepb.RegisterBucketServiceServer(server.GetServer(), &servicepb.UnimplementedBucketServiceServer{})
 	clusterpb.RegisterClusterServiceServer(server.GetServer(), implementation)
+	wasmpb.RegisterWasmServiceServer(server.GetServer(), &wasmpb.UnimplementedWasmServiceServer{})
 	require.NoError(t, server.Listen())
 	go func() {
 		// Stop closes the listener; shutdown errors are covered by the cleanup below.
