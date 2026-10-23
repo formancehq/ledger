@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble/v2"
+
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -14,6 +15,7 @@ func metadataPrefix() []byte {
 
 func chunkPrefix(moduleID string) []byte {
 	key := append([]byte{dal.ZoneClusterPersistent, dal.SubGlobWasmModule, 'c'}, moduleID...)
+
 	return append(key, 0)
 }
 
@@ -77,5 +79,6 @@ func loadChunks(reader dal.PebbleReader, moduleID string) ([]byte, error) {
 	if err := iter.Error(); err != nil {
 		return nil, fmt.Errorf("iterate wasm chunks for %s: %w", moduleID, err)
 	}
+
 	return wasm, nil
 }

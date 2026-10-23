@@ -5,6 +5,7 @@ package wasm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -47,7 +48,7 @@ func NewRuntime(ledger LedgerCaller, logger Logger) *Runtime {
 // run return values are zero for success and non-zero for failure.
 func (r *Runtime) Run(ctx context.Context, wasmBytes, config []byte) error {
 	if r == nil {
-		return fmt.Errorf("nil wasm runtime")
+		return errors.New("nil wasm runtime")
 	}
 
 	runtime := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfig().
@@ -109,7 +110,7 @@ func (r *Runtime) Run(ctx context.Context, wasmBytes, config []byte) error {
 	initFn := module.ExportedFunction("init")
 	runFn := module.ExportedFunction("run")
 	if alloc == nil || dealloc == nil || initFn == nil || runFn == nil {
-		return fmt.Errorf("wasm ABI requires alloc, dealloc, init and run exports")
+		return errors.New("wasm ABI requires alloc, dealloc, init and run exports")
 	}
 	executeGuest = func(callCtx context.Context, guest api.Module) error {
 		ptr, err := r.writeBytes(callCtx, guest, alloc, config)
@@ -131,12 +132,13 @@ func (r *Runtime) Run(ctx context.Context, wasmBytes, config []byte) error {
 		if len(result) != 1 || result[0] != 0 {
 			return fmt.Errorf("wasm run returned error code %d", firstResult(result))
 		}
+
 		return nil
 	}
 
 	start := module.ExportedFunction("_start")
 	if start == nil {
-		return fmt.Errorf("wasm module does not export _start")
+		return errors.New("wasm module does not export _start")
 	}
 	startErr := make(chan error, 1)
 	go func() {
@@ -150,7 +152,8 @@ func (r *Runtime) Run(ctx context.Context, wasmBytes, config []byte) error {
 		if err != nil {
 			return fmt.Errorf("wasm start trap: %w", err)
 		}
-		return fmt.Errorf("wasm start returned before ready")
+
+		return errors.New("wasm start returned before ready")
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -170,12 +173,12 @@ func (r *Runtime) writeBytes(ctx context.Context, module api.Module, alloc api.F
 		return 0, fmt.Errorf("wasm alloc trap: %w", err)
 	}
 	if len(result) != 1 || result[0] > uint64(^uint32(0)) {
-		return 0, fmt.Errorf("wasm alloc returned invalid pointer")
+		return 0, errors.New("wasm alloc returned invalid pointer")
 	}
 
 	ptr := uint32(result[0])
 	if ok := module.Memory().Write(ptr, bytes); !ok {
-		return 0, fmt.Errorf("wasm memory write out of bounds")
+		return 0, errors.New("wasm memory write out of bounds")
 	}
 
 	return ptr, nil
@@ -192,12 +195,14 @@ func (r *Runtime) ledgerCall(ctx context.Context, module api.Module, reqPtr, req
 		if r.log != nil {
 			r.log(3, fmt.Sprintf("ledger.call: %v", err))
 		}
+
 		return ^uint64(0)
 	}
 	if uint32(len(response)) > respCap {
 		if r.log != nil {
 			r.log(3, fmt.Sprintf("ledger.call response exceeds capacity: %d > %d", len(response), respCap))
 		}
+
 		return ^uint64(0)
 	}
 	if !module.Memory().Write(respPtr, response) {

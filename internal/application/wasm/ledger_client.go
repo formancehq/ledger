@@ -2,6 +2,7 @@ package wasm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -36,7 +37,7 @@ type GRPCLedgerCaller struct {
 
 func NewGRPCLedgerCaller(service servicepb.BucketServiceServer) (*GRPCLedgerCaller, error) {
 	if service == nil {
-		return nil, fmt.Errorf("nil bucket service")
+		return nil, errors.New("nil bucket service")
 	}
 	lis := bufconn.Listen(ledgerCallBufferSize)
 	// WASM modules execute as leader-owned background workers. Their calls use
@@ -60,8 +61,10 @@ func NewGRPCLedgerCaller(service servicepb.BucketServiceServer) (*GRPCLedgerCall
 	if err != nil {
 		server.Stop()
 		_ = lis.Close()
+
 		return nil, fmt.Errorf("create in-process ledger client: %w", err)
 	}
+
 	return &GRPCLedgerCaller{server: server, conn: conn, lis: lis}, nil
 }
 
@@ -78,6 +81,7 @@ func (c *GRPCLedgerCaller) Close() error {
 	if c.lis != nil {
 		_ = c.lis.Close()
 	}
+
 	return nil
 }
 
@@ -114,5 +118,6 @@ func (c *GRPCLedgerCaller) Call(ctx context.Context, request []byte) ([]byte, er
 	if err != nil {
 		return nil, fmt.Errorf("encode %s response: %w", method, err)
 	}
+
 	return proto.Marshal(&wasmpb.LedgerCallResponse{Payload: payload})
 }

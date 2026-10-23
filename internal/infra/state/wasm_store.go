@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -18,6 +19,7 @@ func wasmModuleMetadataKey(moduleID string) []byte {
 
 func wasmModuleChunkPrefix(moduleID string) []byte {
 	key := append([]byte{dal.ZoneClusterPersistent, dal.SubGlobWasmModule, 'c'}, moduleID...)
+
 	return append(key, 0)
 }
 
@@ -31,7 +33,7 @@ func wasmModuleChunkKey(moduleID string, index uint64) []byte {
 
 func applyWasmModuleUpdate(batch *dal.WriteSession, update *raftcmdpb.WasmModuleUpdate) error {
 	if update.GetModuleId() == "" {
-		return fmt.Errorf("module id is required")
+		return errors.New("module id is required")
 	}
 
 	metadataKey := wasmModuleMetadataKey(update.GetModuleId())

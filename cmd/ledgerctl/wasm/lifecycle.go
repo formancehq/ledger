@@ -26,6 +26,7 @@ func newListCommand() *cobra.Command {
 		for _, module := range response.GetModules() {
 			pterm.Printf("%s\t%s\t%d bytes\n", module.GetModuleId(), module.GetStatus().String(), module.GetSize())
 		}
+
 		return nil
 	}}
 }
@@ -40,6 +41,7 @@ func newStopCommand() *cobra.Command {
 		ctx, cancel := cmdutil.GetContext(cmd)
 		defer cancel()
 		_, err = client.Stop(ctx, &wasmpb.StopWasmModuleRequest{ModuleId: args[0]})
+
 		return err
 	}}
 }
@@ -61,6 +63,7 @@ func newGetCommand() *cobra.Command {
 		if module.GetLastError() != "" {
 			pterm.Printf("error: %s\n", module.GetLastError())
 		}
+
 		return nil
 	}}
 }
@@ -75,6 +78,7 @@ func newDeleteCommand() *cobra.Command {
 		ctx, cancel := cmdutil.GetContext(cmd)
 		defer cancel()
 		_, err = client.Delete(ctx, &wasmpb.DeleteWasmModuleRequest{ModuleId: args[0]})
+
 		return err
 	}}
 }
@@ -84,5 +88,6 @@ func wasmClient(cmd *cobra.Command) (wasmpb.WasmServiceClient, interface{ Close(
 	if err != nil {
 		return nil, nil, fmt.Errorf("connect to Ledger: %w", err)
 	}
+
 	return wasmpb.NewWasmServiceClient(conn), conn, nil
 }

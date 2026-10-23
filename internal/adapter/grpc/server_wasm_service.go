@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -22,6 +23,7 @@ import (
 
 type WasmServiceServer struct {
 	wasmpb.UnimplementedWasmServiceServer
+
 	logger  logging.Logger
 	store   *dal.Store
 	node    *node.Node
@@ -33,6 +35,7 @@ func NewWasmServiceServer(logger logging.Logger, store *dal.Store, raftNode *nod
 	server.manager = wasm.NewManager(server.propose, func(format string, args ...any) {
 		logger.Infof(format, args...)
 	}, ledgerCaller)
+
 	return server
 }
 
@@ -61,6 +64,7 @@ func (s *WasmServiceServer) Upload(stream wasmpb.WasmService_UploadServer) error
 	chunkIndex := uint64(0)
 	if err := s.uploadChunk(stream.Context(), moduleID, config, chunkIndex, first.GetChunk(), size); err != nil {
 		_ = s.deletePersisted(context.Background(), moduleID)
+
 		return err
 	}
 	size += uint64(len(first.GetChunk()))
@@ -68,16 +72,18 @@ func (s *WasmServiceServer) Upload(stream wasmpb.WasmService_UploadServer) error
 
 	for {
 		request, recvErr := stream.Recv()
-		if recvErr == io.EOF {
+		if errors.Is(recvErr, io.EOF) {
 			break
 		}
 		if recvErr != nil {
 			_ = s.deletePersisted(context.Background(), moduleID)
+
 			return recvErr
 		}
 		chunk := request.GetChunk()
 		if err := s.uploadChunk(stream.Context(), moduleID, config, chunkIndex, chunk, size+uint64(len(chunk))); err != nil {
 			_ = s.deletePersisted(context.Background(), moduleID)
+
 			return err
 		}
 		size += uint64(len(chunk))
@@ -93,18 +99,21 @@ func (s *WasmServiceServer) Upload(stream wasmpb.WasmService_UploadServer) error
 		Size:      size,
 	}); err != nil {
 		_ = s.deletePersisted(context.Background(), moduleID)
+
 		return err
 	}
 	if modules, loadErr := wasm.LoadModules(s.store); loadErr == nil {
 		for _, candidate := range modules {
 			if candidate.ID == moduleID {
 				module = candidate
+
 				break
 			}
 		}
 	}
 	s.manager.Add(module)
 	_ = s.manager.Start(moduleID)
+
 	return stream.SendAndClose(&wasmpb.UploadWasmResponse{ModuleId: moduleID})
 }
 
@@ -129,6 +138,7 @@ func (s *WasmServiceServer) List(ctx context.Context, _ *wasmpb.ListWasmModulesR
 	for _, module := range modules {
 		response.Modules = append(response.Modules, toProtoModule(module))
 	}
+
 	return response, nil
 }
 
@@ -142,6 +152,7 @@ func (s *WasmServiceServer) Get(ctx context.Context, request *wasmpb.GetWasmModu
 			return toProtoModule(module), nil
 		}
 	}
+
 	return nil, status.Error(codes.NotFound, "wasm module not found")
 }
 
@@ -153,6 +164,7 @@ func (s *WasmServiceServer) Stop(ctx context.Context, request *wasmpb.StopWasmMo
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	module, err := s.Get(ctx, &wasmpb.GetWasmModuleRequest{ModuleId: request.GetModuleId()})
+
 	return module, err
 }
 
@@ -166,6 +178,7 @@ func (s *WasmServiceServer) Delete(ctx context.Context, request *wasmpb.DeleteWa
 	if err := s.deletePersisted(ctx, request.GetModuleId()); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
 	return &wasmpb.DeleteWasmModuleResponse{}, nil
 }
 
@@ -202,6 +215,7 @@ func (s *WasmServiceServer) propose(ctx context.Context, update *raftcmdpb.WasmM
 	if _, err := future.Wait(ctx); err != nil {
 		return err
 	}
+
 	return nil
 }
 

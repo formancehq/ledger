@@ -15,6 +15,7 @@ import (
 func newUploadCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "upload <wasm-file>", Args: cobra.ExactArgs(1), RunE: runUpload}
 	cmd.Flags().String("config", "", "Path to the module configuration JSON")
+
 	return cmd
 }
 
@@ -69,5 +70,6 @@ func runUpload(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	pterm.Printf("Uploaded WASM module %s\n", response.GetModuleId())
+
 	return nil
 }

@@ -77,6 +77,7 @@ func (m *Manager) Remove(moduleID string) error {
 		return ErrModuleRunning
 	}
 	delete(m.modules, moduleID)
+
 	return nil
 }
 
@@ -90,6 +91,7 @@ func (m *Manager) List() []*Module {
 		clone.Config = append([]byte(nil), module.Config...)
 		result = append(result, &clone)
 	}
+
 	return result
 }
 
@@ -126,6 +128,7 @@ func (m *Manager) Start(moduleID string) error {
 		return node.ErrNotLeader
 	}
 	m.start(module)
+
 	return nil
 }
 
@@ -133,6 +136,7 @@ func (m *Manager) start(module *Module) {
 	m.mu.Lock()
 	if _, running := m.instances[module.ID]; running || !m.leader {
 		m.mu.Unlock()
+
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -214,5 +218,6 @@ func (m *Manager) persistStatus(module *Module, status raftcmdpb.WasmModuleStatu
 	module.Status = status
 	module.LastError = message
 	m.mu.Unlock()
+
 	return nil
 }

@@ -435,6 +435,7 @@ func Module() fx.Option {
 				if err != nil {
 					return nil, err
 				}
+
 				return grpcadp.NewWasmServiceServer(logger, store, n, ledgerCaller.Call), nil
 			},
 			func(cfg Config, logger logging.Logger, s *dal.Store, applier *node.Applier) snapshotpb.SnapshotServiceServer {

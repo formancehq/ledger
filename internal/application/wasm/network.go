@@ -64,6 +64,7 @@ func (n *network) read(ctx context.Context, module api.Module, id, bufferPtr, bu
 	if err != nil && count == 0 && !errors.Is(err, io.EOF) {
 		return ^uint32(0)
 	}
+
 	return uint32(count)
 }
 
@@ -81,6 +82,7 @@ func (n *network) write(ctx context.Context, module api.Module, id, bufferPtr, b
 	if err != nil && count == 0 {
 		return ^uint32(0)
 	}
+
 	return uint32(count)
 }
 
@@ -103,6 +105,7 @@ func contextConnIO(ctx context.Context, conn net.Conn, operation func() (int, er
 	}()
 	count, err := operation()
 	close(done)
+
 	return count, err
 }
 
@@ -120,6 +123,7 @@ func (n *network) close(_ context.Context, _ api.Module, id uint32) uint32 {
 	if err := conn.Close(); err != nil {
 		return ^uint32(0)
 	}
+
 	return 0
 }
 
@@ -127,5 +131,6 @@ func (n *network) get(id uint32) (net.Conn, bool) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	conn, ok := n.clients[id]
+
 	return conn, ok
 }

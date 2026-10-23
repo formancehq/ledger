@@ -4,18 +4,21 @@ import (
 	"context"
 	"testing"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/wasmpb"
-	"google.golang.org/protobuf/proto"
 )
 
 type fakeBucketService struct {
 	servicepb.UnimplementedBucketServiceServer
+
 	called bool
 }
 
 func (s *fakeBucketService) Apply(context.Context, *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
 	s.called = true
+
 	return &servicepb.ApplyResponse{}, nil
 }
 
