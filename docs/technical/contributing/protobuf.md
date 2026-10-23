@@ -113,11 +113,15 @@ change; review behavior changes separately for client impact.
    reservation does not replace migration.
 3. **Audit the hand-rolled wire sites** before changing a field's encoding or
    adding a new field — see below.
-4. Run `just generate-proto` **immediately**
+4. Run `just generate-proto` **immediately**.
 5. Run `just generate-public-client` when the change affects a selected public
-   schema or service.
-6. Update Go code that uses the generated types
-7. Rebuild: `go build ./...`
+   schema or service. This updates the generated public projection, shared
+   `pkg/proto/v3`, and `pkg/client/v3`; do not edit those outputs by hand.
+6. For a public schema change, run both generation commands before updating Go
+   callers. `just pre-commit` runs the same sequence and CI rejects generated
+   drift.
+7. Update Go code that uses the generated types.
+8. Rebuild: `go build ./...`
 
 ### Wire changes: audit the hand-rolled wire sites first
 
