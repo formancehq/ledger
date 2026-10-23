@@ -449,6 +449,16 @@ operator-install-plugin:
 operator-test:
     cd misc/operator && go test ./...
 
+# Run Ledger target admission regressions in the operator-tests Nix shell.
+operator-test-admission:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unset GOROOT
+    KUBEBUILDER_ASSETS=$(setup-envtest use 1.32.x -p path)
+    export KUBEBUILDER_ASSETS
+    cd misc/operator
+    go test -race -tags integration ./internal/controller -run '^TestLedgerAdmission' -count=1 -timeout 3m
+
 # Run operator pre-commit checks (generate + tidy + build)
 operator-pre-commit: operator-generate
     #!/usr/bin/env bash

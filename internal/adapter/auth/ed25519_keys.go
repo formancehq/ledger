@@ -101,7 +101,7 @@ func LoadEd25519KeySet(configPath string) (Ed25519KeySetResult, error) {
 // A claimed scope is permitted when the key lists it verbatim, or when it expands
 // through the scope mapping to a non-empty set of granular scopes that the key's
 // own expanded allowlist covers. A key allowed "ledger:read" can therefore sign a
-// least-privilege token that claims only "ledger:TransactionRead".
+// least-privilege token that claims only "ledger:ReadTransaction".
 // Returns an error if any claimed scope exceeds the key's allowlist.
 // Superuser-mode keys skip scope enforcement entirely.
 func enforceAllowedScopes(claimed []string, keyID string, allowed map[string][]string, superuserKeys map[string]bool, mapping ScopeMapping) error {

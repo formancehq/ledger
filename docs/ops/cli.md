@@ -4715,7 +4715,7 @@ on/off TLS toggle workflow.
 | `--auth-anonymous-scopes` | string | `""` | Comma-separated granular scopes (or `*:read` / `*:write` wildcards) granted to requests that arrive without a bearer token |
 | `--auth-discovery-timeout` | duration | `10s` | Bound the HTTP calls used for OIDC discovery and JWKS fetches (`0` = unbounded). Applies one operator-controlled timeout to both the discovery call and later JWKS key fetches. |
 
-Allows expanding virtual scopes into granular Ledger scopes. For example, mapping `ledger:read` to scopes such as `ledger:LedgerRead` and `ledger:TransactionRead`. Granular Ledger scopes use the `ledger:<Resource><Action>` shape. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
+Allows expanding virtual scopes into granular Ledger scopes. For example, mapping `ledger:read` to scopes such as `ledger:ReadLedger` and `ledger:ReadTransaction`. Granular Ledger scopes use the `ledger:<Action><Resource>` shape. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
 
 ```bash
 ledger run --auth-scope-mapping-file /etc/ledger/scope-mapping.json [other flags...]
@@ -4877,7 +4877,7 @@ ledger run \
   [other flags...]
 ```
 
-When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. By default, tokens may use the virtual scopes `ledger:read`, `ledger:write`, and `ledger:admin`, which expand to granular `ledger:<Resource><Action>` scopes.
+When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. By default, tokens may use the virtual scopes `ledger:read`, `ledger:write`, and `ledger:admin`, which expand to granular `ledger:<Action><Resource>` scopes.
 
 When `--auth-ed25519-keys` is set, both OIDC and Ed25519 authentication can coexist. See [Authentication Guide](authentication.md) for full Ed25519 setup instructions.
 
@@ -5418,3 +5418,13 @@ ledgerctl query-checkpoint get-schedule
 # Output (no schedule):
 #  SUCCESS  No query checkpoint schedule configured (automatic creation disabled)
 ```
+
+## ClickHouse legacy account metadata conversion
+
+The standalone `scripts/clickhouse-account-metadata` utility reads the migration's
+JSONEachRow export from stdin and writes converted rows to stdout. Run it with
+`nix develop --command go run ./scripts/clickhouse-account-metadata` from the
+repository root. It exits nonzero on invalid input or an output error; discard
+partial output after any failure. It does not connect to ClickHouse.
+Follow the complete [migration procedure](clickhouse-account-metadata.md),
+including preflights, backup, source preservation, import and verification.

@@ -50,7 +50,7 @@ func MultiCurrencyBlocks() *BlockGroup {
 	}
 }
 
-func multiCurrencyFund(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func multiCurrencyFund(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	currencies := MultiCurrencyCurrencies()
 	cur := currencies[RandIntN(r, len(currencies))]
 	amount := int64(100_000 + RandIntN(r, 900_000))
@@ -63,7 +63,7 @@ func multiCurrencyFund(ctx context.Context, client servicepb.BucketServiceClient
 	)
 }
 
-func multiCurrencyFX(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func multiCurrencyFX(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	currencies := MultiCurrencyCurrencies()
 	srcIdx := RandIntN(r, len(currencies))
 	dstIdx := (srcIdx + 1 + RandIntN(r, len(currencies)-1)) % len(currencies)
@@ -98,7 +98,7 @@ func multiCurrencyFX(ctx context.Context, client servicepb.BucketServiceClient, 
 	)
 }
 
-func multiCurrencyVendorPay(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func multiCurrencyVendorPay(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	currencies := MultiCurrencyCurrencies()
 	vendors := MultiCurrencyVendors()
 	cur := currencies[RandIntN(r, len(currencies))]
