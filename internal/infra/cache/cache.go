@@ -152,8 +152,21 @@ const (
 // raft index `at`. Takes a read lock on the cache to ensure a consistent view
 // of currentGeneration and the gen0/gen1 data during the check.
 func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus {
+	status, _, _ := a.CheckCacheAndGet(at, k, 0)
+
+	return status
+}
+
+// CheckCacheAndGet performs the cache horizon check and, for a key that is
+// only in Gen1 while one rotation is predicted, returns a coherent snapshot
+// that admission can use as a preload seed. A matching tag is required so a
+// U128 collision falls through to the canonical Pebble lookup. Tombstone
+// snapshots are intentionally returned too; callers represent them as
+// coverage-only because their read semantics are absence.
+func (a *AttributeCache[T]) CheckCacheAndGet(at uint64, k attributes.U128, tag uint64) (CacheStatus, attributes.Entry[T], bool) {
 	a.Cache.mu.RLock()
 	defer a.Cache.mu.RUnlock()
+	var zero attributes.Entry[T]
 
 	// Threshold + currentGeneration are read INSIDE the RLock so a concurrent
 	// ResetWithThreshold (write-lock holder) cannot bump one between our
@@ -176,7 +189,7 @@ func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus
 	// the concurrent apply resolves the outcome; do NOT let the uint64
 	// subtraction underflow into the CacheUnreachable default branch.
 	if futureGeneration < actualGeneration {
-		return CacheMiss
+		return CacheMiss, zero, false
 	}
 
 	switch futureGeneration - actualGeneration {
@@ -186,14 +199,14 @@ func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus
 		// falls back to Gen1, so the caller only needs to know "in
 		// cache anywhere".
 		if _, ok := a.gen0.Load().Get(k); ok {
-			return CacheHit
+			return CacheHit, zero, false
 		}
 
 		if _, ok := a.gen1.Load().Get(k); ok {
-			return CacheHit
+			return CacheHit, zero, false
 		}
 
-		return CacheMiss
+		return CacheMiss, zero, false
 	case 1:
 		// Next generation — one rotation expected before apply. Rotation
 		// moves old Gen0 into new Gen1 and empties new Gen0; old Gen1 is
@@ -203,20 +216,24 @@ func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus
 		// Get's gen0→gen1 fallback still surfaces it (and lazy Del promotes
 		// on tombstone if the handler deletes).
 		if _, ok := a.gen0.Load().Get(k); ok {
-			return CacheHit
+			return CacheHit, zero, false
 		}
 
-		// If Gen0 lacks the key, the entry (if it exists) lives in old
-		// Gen1 which rotation will discard — no promote can save it.
-		// Fall through to CacheMiss so the caller loads from store.
-		return CacheMiss
+		// Capture a matching Gen1 entry before rotation. The commit barrier
+		// makes it durable, but the snapshot avoids a Pebble read.
+		if entry, ok := a.gen1.Load().Get(k); ok && entry.Tag == tag {
+			return CacheMiss, entry, true
+		}
+
+		// A mismatched tag is a collision candidate; let Pebble validate it.
+		return CacheMiss, zero, false
 	default:
 		// 2+ generations ahead — any preload value computed now would be
 		// rotated out (gen0 -> gen1 -> discarded) before apply. Signal an
 		// unreachable horizon so admission can reject the proposal with a
 		// transient error; the client retries and admission re-admits with
 		// a fresh prediction once the FSM apply has caught up.
-		return CacheUnreachable
+		return CacheUnreachable, zero, false
 	}
 }
 

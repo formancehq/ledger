@@ -252,6 +252,68 @@ func TestAttributeCache_CheckCache_NextGeneration(t *testing.T) {
 		"Gen1-only at next-gen horizon is discarded by rotation")
 }
 
+func TestAttributeCache_CheckCacheAndGet_CapturesGen1(t *testing.T) {
+	t.Parallel()
+
+	c, err := New(10, nil)
+	require.NoError(t, err)
+	c.SetCurrentGeneration(0)
+
+	id := attributes.NewU128(7, 8)
+	entry := attributes.Entry[*raftcmdpb.VolumePair]{
+		Tag:  42,
+		Data: &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(9)},
+	}
+	c.Volumes.Gen1().Put(id, entry)
+
+	status, got, captured := c.Volumes.CheckCacheAndGet(15, id, entry.Tag)
+	require.Equal(t, CacheMiss, status)
+	require.True(t, captured)
+	require.Equal(t, entry, got)
+
+	_, _, captured = c.Volumes.CheckCacheAndGet(15, id, entry.Tag+1)
+	require.False(t, captured, "a tag mismatch must fall through to Pebble collision validation")
+}
+
+func TestAttributeCache_CheckCacheAndGet_CapturesTombstoneAsAbsence(t *testing.T) {
+	t.Parallel()
+
+	c, err := New(10, nil)
+	require.NoError(t, err)
+	c.SetCurrentGeneration(0)
+
+	id := attributes.NewU128(11, 12)
+	c.Volumes.Gen1().Put(id, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 99, Deleted: true})
+
+	status, got, captured := c.Volumes.CheckCacheAndGet(15, id, 99)
+	require.Equal(t, CacheMiss, status)
+	require.True(t, captured)
+	require.True(t, got.Deleted)
+}
+
+func BenchmarkAttributeCache_CheckCacheAndGet_Gen1(b *testing.B) {
+	c, err := New(10, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	c.SetCurrentGeneration(0)
+	id := attributes.NewU128(21, 22)
+	entry := attributes.Entry[*raftcmdpb.VolumePair]{
+		Tag:  123,
+		Data: &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1)},
+	}
+	c.Volumes.Gen1().Put(id, entry)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		status, _, captured := c.Volumes.CheckCacheAndGet(15, id, entry.Tag)
+		if status != CacheMiss || !captured {
+			b.Fatal("unexpected cache result")
+		}
+	}
+}
+
 func TestAttributeCache_CheckCache_TwoGenerationsAhead(t *testing.T) {
 	t.Parallel()
 
