@@ -87,6 +87,9 @@ type Admission struct {
 	preloadCounter                 metric.Int64Counter
 	preloadKeysNeededCounter       metric.Int64Counter
 	preloadCacheHitsCounter        metric.Int64Counter
+	preloadGen1CapturesCounter     metric.Int64Counter
+	preloadStoreLoadsCounter       metric.Int64Counter
+	preloadCacheUnreachableCounter metric.Int64Counter
 	missingCallerCounter           metric.Int64Counter
 	callerSubjectEmptyCounter      metric.Int64Counter
 	actionCounter                  metric.Int64Counter
@@ -300,6 +303,33 @@ func NewAdmission(
 		panic(err)
 	}
 
+	preloadGen1CapturesCounter, err := meter.Int64Counter(
+		"admission.preload.gen1_captures",
+		metric.WithDescription("Total number of live or absence snapshots captured from Gen1 instead of loading from store"),
+		metric.WithUnit("{capture}"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	preloadStoreLoadsCounter, err := meter.Int64Counter(
+		"admission.preload.store_loads",
+		metric.WithDescription("Total number of attribute keys loaded from Pebble during preload resolution"),
+		metric.WithUnit("{load}"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	preloadCacheUnreachableCounter, err := meter.Int64Counter(
+		"admission.preload.cache_unreachable",
+		metric.WithDescription("Total number of attribute keys rejected because the predicted cache horizon crossed two or more generations"),
+		metric.WithUnit("{key}"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	actionCounter, err := meter.Int64Counter(
 		"admission.actions",
 		metric.WithDescription("Total number of orders (actions) admission processed, tagged by order_type. Counts every order attempted in the batch; not gated on the FSM apply outcome."),
@@ -388,6 +418,9 @@ func NewAdmission(
 	a.preloadCounter = preloadCounter
 	a.preloadKeysNeededCounter = preloadKeysNeededCounter
 	a.preloadCacheHitsCounter = preloadCacheHitsCounter
+	a.preloadGen1CapturesCounter = preloadGen1CapturesCounter
+	a.preloadStoreLoadsCounter = preloadStoreLoadsCounter
+	a.preloadCacheUnreachableCounter = preloadCacheUnreachableCounter
 	a.missingCallerCounter = missingCallerCounter
 	a.callerSubjectEmptyCounter = callerSubjectEmptyCounter
 	a.actionCounter = actionCounter
@@ -759,6 +792,10 @@ func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.
 	// Merge pass over per-order Coverages.
 	build, err := a.builder.Build(needs, operations)
 	a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Seconds())
+	stats := build.PreloadStats()
+	a.preloadGen1CapturesCounter.Add(ctx, stats.Gen1Captures)
+	a.preloadStoreLoadsCounter.Add(ctx, stats.StoreLoads)
+	a.preloadCacheUnreachableCounter.Add(ctx, stats.CacheUnreachables)
 	if err != nil {
 		preloadSpan.End()
 		build.ReleaseLoaders()

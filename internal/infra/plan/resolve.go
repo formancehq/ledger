@@ -42,6 +42,16 @@ type resolveResult struct {
 	attributes      []*raftcmdpb.AttributeCoverage
 	idempotencyKeys []*raftcmdpb.ReloadIdempotencyKey
 	tracker         []attributes.U128
+	stats           PreloadStats
+}
+
+// PreloadStats describes where attribute preload values came from. It is kept
+// separate from the wire ExecutionPlan so observability can distinguish the
+// Gen1 capture path from an ordinary Pebble fallback.
+type PreloadStats struct {
+	Gen1Captures      int64
+	StoreLoads        int64
+	CacheUnreachables int64
 }
 
 // entrySlab holds three pre-sized backing arrays used to fabricate the
@@ -160,6 +170,7 @@ func resolveCoverage[T interface {
 		firstErr error
 		plans    = make([]*raftcmdpb.AttributeCoverage, 0, len(keys))
 		slab     = newEntrySlab(len(keys))
+		stats    PreloadStats
 	)
 
 	sem := make(chan struct{}, resolveParallelism)
@@ -176,6 +187,9 @@ func resolveCoverage[T interface {
 
 		switch status {
 		case cache.CacheUnreachable:
+			mu.Lock()
+			stats.CacheUnreachables++
+			mu.Unlock()
 			// Admission predicts ≥2 rotations between propose and apply.
 			// Any preload computed now would be discarded before the FSM
 			// reads it, so reject at admission and let the client retry
@@ -222,6 +236,12 @@ func resolveCoverage[T interface {
 			// coverage-only declaration is sufficient and keeps the proto
 			// unchanged.
 			if capturedGen1 {
+				mu.Lock()
+				// The snapshot is captured under the cache generation lock;
+				// count it even when it is a tombstone or typed-nil marker,
+				// because both avoid the Pebble fallback.
+				stats.Gen1Captures++
+				mu.Unlock()
 				if cachedEntry.Deleted {
 					mu.Lock()
 					plans = append(plans, slab.appendCoverage(id, tag, attrCode))
@@ -302,7 +322,10 @@ func resolveCoverage[T interface {
 				}
 
 				if result.FromLoad {
+					// Store loads are counted while holding the same mutex as
+					// the tracker and plan slices.
 					tracker = append(tracker, id)
+					stats.StoreLoads++
 				}
 
 				var zero T
@@ -347,10 +370,10 @@ func resolveCoverage[T interface {
 		// transient Pebble or marshal failures leave loader entries
 		// pinned for the rest of the process's lifetime — unbounded
 		// growth across retries.
-		return &resolveResult{tracker: tracker}, firstErr
+		return &resolveResult{tracker: tracker, stats: stats}, firstErr
 	}
 
-	return &resolveResult{attributes: plans, tracker: tracker}, nil
+	return &resolveResult{attributes: plans, tracker: tracker, stats: stats}, nil
 }
 
 // buildPreloadPayload marshals value into an AttributeValue envelope.

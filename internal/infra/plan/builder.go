@@ -66,7 +66,11 @@ type BuildResult struct {
 	nextIndexGen  uint64 // gen(nextIndex, threshold) — the future generation used by CheckCache
 	operations    []WriteOperation
 	aggregate     *Coverage
+	stats         PreloadStats
 }
+
+// PreloadStats reports how the current build resolved attribute keys.
+func (b *BuildResult) PreloadStats() PreloadStats { return b.stats }
 
 // ReleaseLoaders releases the loader cleanup token from the build.
 // Use this on error paths when AcquireProposalGuard was never called.
@@ -194,20 +198,21 @@ func (p *Builder) Build(aggregate *Coverage, operations []WriteOperation) (*Buil
 	snap := p.cache.Snapshot()
 	nextIndexGen := cache.Gen(nextIndex, snap.GenerationThreshold)
 
-	executionPlan, token, err := p.buildPreloadsAt(nextIndex, snap, aggregate)
+	executionPlan, token, stats, err := p.buildPreloadsAt(nextIndex, snap, aggregate)
 	if err != nil {
-		return &BuildResult{token: token, nextIndex: nextIndex, nextIndexGen: nextIndexGen, operations: operations, aggregate: aggregate}, err
+		return &BuildResult{token: token, stats: stats, nextIndex: nextIndex, nextIndexGen: nextIndexGen, operations: operations, aggregate: aggregate}, err
 	}
 
 	if p.maxPlanSize > 0 {
 		if size := len(executionPlan.GetAttributes()); size > p.maxPlanSize {
-			return &BuildResult{token: token, nextIndex: nextIndex, nextIndexGen: nextIndexGen, operations: operations, aggregate: aggregate},
+			return &BuildResult{token: token, stats: stats, nextIndex: nextIndex, nextIndexGen: nextIndexGen, operations: operations, aggregate: aggregate},
 				&domain.ErrExecutionPlanTooLarge{Size: size, Limit: p.maxPlanSize}
 		}
 	}
 
 	return &BuildResult{
 		ExecutionPlan: executionPlan,
+		stats:         stats,
 		token:         token,
 		nextIndex:     nextIndex,
 		nextIndexGen:  nextIndexGen,
@@ -264,8 +269,9 @@ func (p *Builder) AcquireProposalGuard(build *BuildResult) (*raftcmdpb.Execution
 		"nextIndexGenAfter":  nextIndexGenAfter,
 	})
 
-	executionPlan, token, err := p.buildPreloadsAt(p.tracker.Next(), snap, build.aggregate)
+	executionPlan, token, stats, err := p.buildPreloadsAt(p.tracker.Next(), snap, build.aggregate)
 	if err != nil {
+		build.stats = stats
 		// Keep the tracker lock held: we return a non-nil guard so the
 		// caller can `guard.ReleaseAll()` to unlock and release the
 		// loader token atomically. Unlocking here would race with that
@@ -273,6 +279,7 @@ func (p *Builder) AcquireProposalGuard(build *BuildResult) (*raftcmdpb.Execution
 		// mutex" on the second call.
 		return nil, &ProposalGuard{p: p, token: token}, err
 	}
+	build.stats = stats
 
 	return executionPlan, &ProposalGuard{p: p, token: token}, nil
 }
@@ -306,7 +313,7 @@ type buildResult struct {
 // buildPreloadsAt resolves all preload needs at the given nextIndex.
 // Each attribute type uses independent caches and loaders, so they are resolved
 // in parallel to reduce wall-clock time and shard lock hold duration.
-func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, needs *Coverage) (*raftcmdpb.ExecutionPlan, *preload.CleanupToken, error) {
+func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, needs *Coverage) (*raftcmdpb.ExecutionPlan, *preload.CleanupToken, PreloadStats, error) {
 	boundary := cache.BoundaryIndex(nextIndex, snap.GenerationThreshold)
 
 	if p.logger.Enabled(logging.TraceLevel) {
@@ -348,7 +355,7 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 				"keys":     len(needs.Attributes[attrCode]),
 			})
 
-			return nil, nil, fmt.Errorf("plan builder: no resolver for attrCode 0x%x", attrCode)
+			return nil, nil, PreloadStats{}, fmt.Errorf("plan builder: no resolver for attrCode 0x%x", attrCode)
 		}
 	}
 
@@ -358,6 +365,7 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 	}
 
 	results := make([]buildResult, slotCount)
+	var stats PreloadStats
 
 	var wg sync.WaitGroup
 	nextSlot := 0
@@ -440,8 +448,14 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 			})
 		}
 
+		if results[i].resolve != nil {
+			stats.Gen1Captures += results[i].resolve.stats.Gen1Captures
+			stats.StoreLoads += results[i].resolve.stats.StoreLoads
+			stats.CacheUnreachables += results[i].resolve.stats.CacheUnreachables
+		}
+
 		if results[i].err != nil {
-			return nil, token, results[i].err
+			return nil, token, stats, results[i].err
 		}
 
 		if results[i].resolve != nil {
@@ -450,5 +464,5 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 		}
 	}
 
-	return executionPlan, token, nil
+	return executionPlan, token, stats, nil
 }

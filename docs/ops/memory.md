@@ -190,7 +190,7 @@ The 9 caches and their approximate per-entry sizes:
 | Increase | More accounts served from RAM during admission (fewer Pebble preloads); higher memory; faster writes |
 | Decrease | Less memory; more Pebble reads during admission; higher write latency for active accounts that fall out of cache |
 
-**Recommendation:** Monitor `admission.preload.duration` and `admission.preload.cache_hits`. If preload latency is high, increase the threshold. The default of 1000 works well for most workloads.
+**Recommendation:** Monitor `admission.preload.duration`, `admission.preload.cache_hits`, `admission.preload.gen1_captures`, and `admission.preload.store_loads`. If preload latency is high, increase the threshold. The default of 1000 works well for most workloads.
 
 **Live tuning:** This parameter can be changed on a running cluster via [rolling upgrade](./cluster-operations.md#cluster-configuration-updates) without downtime. The new leader propagates the change through Raft consensus.
 

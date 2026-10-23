@@ -60,6 +60,8 @@ func TestResolveCoverage_CapturesGen1WithoutPebbleRead(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), getter.calls.Load(), "Gen1 capture must avoid Pebble")
+	require.Equal(t, int64(1), result.stats.Gen1Captures)
+	require.Zero(t, result.stats.StoreLoads)
 	require.Len(t, result.attributes, 1)
 	decoded := &commonpb.MetadataValue{}
 	require.NoError(t, decoded.UnmarshalVT(result.attributes[0].GetValue().GetRawValue()))
@@ -97,6 +99,8 @@ func TestResolveCoverage_Gen1TombstoneUsesCoverageOnly(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), getter.calls.Load())
+	require.Equal(t, int64(1), result.stats.Gen1Captures)
+	require.Zero(t, result.stats.StoreLoads)
 	require.Len(t, result.attributes, 1)
 	require.Nil(t, result.attributes[0].GetValue())
 }
