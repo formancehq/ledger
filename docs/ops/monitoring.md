@@ -371,10 +371,14 @@ Before proposing a batch, admission builds its preloads: for every key the batch
 | `admission.preloads` | Counter | `{preload}` | Successful preload builds: one per admitted batch, whatever the number of keys it needs. |
 | `admission.preload.keys_needed` | Counter | `{key}` | Keys the successful builds needed, before cache filtering: the total preload demand. |
 | `admission.preload.cache_hits` | Counter | `{key}` | Keys those builds found guaranteed in cache (no store read needed). |
+| `admission.preload.gen1_captures` | Counter | `{capture}` | Keys captured from the previous cache generation while one rotation was predicted, avoiding a Pebble read. |
+| `admission.preload.store_loads` | Counter | `{load}` | Keys actually loaded from Pebble during preload resolution. |
+| `admission.preload.cache_unreachable` | Counter | `{key}` | Keys rejected because admission predicted two or more cache rotations before apply. |
 
 **Derived Metrics** (all counters are cumulative, so use rates over one window):
 - **Cache hit ratio**: `rate(cache_hits) / rate(keys_needed)` — fraction of keys served from cache
 - **Store read ratio**: `(rate(keys_needed) - rate(cache_hits)) / rate(keys_needed)` — fraction of keys read from the store
+- **Gen1 capture share of resolved misses**: `rate(gen1_captures) / (rate(gen1_captures) + rate(store_loads))` — share of non-cache-hit keys served by the Gen1 optimization
 - **Keys per batch**: `rate(keys_needed) / rate(preloads)`
 
 These metrics help identify:
