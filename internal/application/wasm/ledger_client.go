@@ -13,11 +13,16 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/wasmpb"
 )
 
-const ledgerCallBufferSize = 1 << 20
+const (
+	ledgerCallBufferSize  = 1 << 20
+	ledgerCallMessageSize = 32 << 20
+)
 
 // GRPCLedgerCaller exposes the existing BucketService to WASM through an
 // in-process gRPC transport. It does not bind a socket and therefore avoids
@@ -34,12 +39,24 @@ func NewGRPCLedgerCaller(service servicepb.BucketServiceServer) (*GRPCLedgerCall
 		return nil, fmt.Errorf("nil bucket service")
 	}
 	lis := bufconn.Listen(ledgerCallBufferSize)
-	server := grpc.NewServer()
+	// WASM modules execute as leader-owned background workers. Their calls use
+	// the in-process transport, so stamp the context with the same system actor
+	// attribution that other internal workers use before entering admission.
+	server := grpc.NewServer(
+		grpc.MaxRecvMsgSize(ledgerCallMessageSize),
+		grpc.MaxSendMsgSize(ledgerCallMessageSize),
+		grpc.UnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+			return handler(internalauth.WithSystemActor(ctx, commands.ComponentWasm), req)
+		}),
+	)
 	servicepb.RegisterBucketServiceServer(server, service)
 	go func() { _ = server.Serve(lis) }()
 	conn, err := grpc.NewClient("passthrough:///wasm-ledger", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 		return lis.Dial()
-	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDefaultCallOptions(
+		grpc.MaxCallRecvMsgSize(ledgerCallMessageSize),
+		grpc.MaxCallSendMsgSize(ledgerCallMessageSize),
+	))
 	if err != nil {
 		server.Stop()
 		_ = lis.Close()

@@ -11,6 +11,7 @@ const (
 	ComponentQueryCheckpoint  = attribution.ComponentQueryCheckpoint
 	ComponentMirror           = attribution.ComponentMirror
 	ComponentEventsSink       = attribution.ComponentEventsSink
+	ComponentWasm             = attribution.ComponentWasm
 	ComponentClusterConfig    = attribution.ComponentClusterConfig
 	ComponentClusterPolicy    = attribution.ComponentClusterPolicy
 	ComponentIdempotencyEvict = attribution.ComponentIdempotencyEvict

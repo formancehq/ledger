@@ -125,6 +125,7 @@ func isAllowedSystemComponent(component string) bool {
 	case ComponentQueryCheckpoint,
 		ComponentMirror,
 		ComponentEventsSink,
+		ComponentWasm,
 		ComponentClusterConfig,
 		ComponentClusterPolicy,
 		ComponentIdempotencyEvict,
@@ -142,6 +143,7 @@ const (
 	ComponentQueryCheckpoint  SystemActor = "query-checkpoint-scheduler"
 	ComponentMirror           SystemActor = "mirror"
 	ComponentEventsSink       SystemActor = "events-sink"
+	ComponentWasm             SystemActor = "wasm-module"
 	ComponentClusterConfig    SystemActor = "cluster-config"
 	ComponentClusterPolicy    SystemActor = "cluster-policy"
 	ComponentIdempotencyEvict SystemActor = "idempotency-eviction"

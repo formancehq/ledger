@@ -11,6 +11,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/wasm"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
@@ -176,10 +177,15 @@ func (s *WasmServiceServer) deletePersisted(ctx context.Context, moduleID string
 }
 
 func (s *WasmServiceServer) propose(ctx context.Context, update *raftcmdpb.WasmModuleUpdate) error {
+	// Module lifecycle state is a Ledger-owned system proposal. The public WASM
+	// RPC is intentionally unauthenticated in this MVP, so attach the explicit
+	// system attribution before entering the normal admission path.
+	ctx = internalauth.WithSystemActor(ctx, commands.ComponentWasm)
 	if !s.node.IsLeader() {
 		return node.ErrNotLeader
 	}
 	command := commands.NewCommand()
+	command.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentWasm)
 	command.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_WasmModule{WasmModule: update}}}
 	data, err := command.MarshalVT()
 	if err != nil {

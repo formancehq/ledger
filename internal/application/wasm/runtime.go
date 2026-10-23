@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"sync"
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -14,8 +16,10 @@ import (
 )
 
 const (
-	// MemoryLimitPages is 64 MiB (WASI/WASM pages are 64 KiB).
-	MemoryLimitPages uint32 = 1024
+	// MemoryLimitPages is 512 MiB (WASI/WASM pages are 64 KiB). Go's WASI
+	// runtime and connectivity-style modules need more than the tiny default
+	// heap even when their application state is small.
+	MemoryLimitPages uint32 = 8192
 )
 
 // LedgerCaller is the generic opaque Ledger bridge exposed to the guest. The
@@ -55,9 +59,19 @@ func (r *Runtime) Run(ctx context.Context, wasmBytes, config []byte) error {
 		return fmt.Errorf("instantiate wasi: %w", err)
 	}
 
+	ready := make(chan struct{})
+	var readyOnce sync.Once
+	guestDone := make(chan error, 1)
+	var executeGuest func(context.Context, api.Module) error
 	host := runtime.NewHostModuleBuilder("ledger")
 	host.NewFunctionBuilder().WithFunc(r.ledgerCall).Export("call")
 	host.NewFunctionBuilder().WithFunc(r.logMessage).Export("log")
+	host.NewFunctionBuilder().WithFunc(func(ctx context.Context, module api.Module) {
+		readyOnce.Do(func() { close(ready) })
+		if executeGuest != nil {
+			guestDone <- executeGuest(ctx, module)
+		}
+	}).Export("ready")
 	if _, err := host.Instantiate(ctx); err != nil {
 		return fmt.Errorf("instantiate ledger host: %w", err)
 	}
@@ -79,12 +93,17 @@ func (r *Runtime) Run(ctx context.Context, wasmBytes, config []byte) error {
 	}
 	defer compiled.Close(ctx)
 
-	module, err := runtime.InstantiateModule(ctx, compiled, wazero.NewModuleConfig())
+	// The module exposes its own init/run ABI. Do not invoke WASI's `_start`
+	// automatically: the guest calls the ready import from main, and we invoke
+	// the ABI from that same guest call stack to avoid concurrent Go/WASM calls.
+	module, err := runtime.InstantiateModule(ctx, compiled, wazero.NewModuleConfig().
+		WithStartFunctions().
+		WithStderr(os.Stderr).
+		WithStdout(os.Stdout))
 	if err != nil {
 		return fmt.Errorf("instantiate wasm: %w", err)
 	}
 	defer module.Close(ctx)
-
 	alloc := module.ExportedFunction("alloc")
 	dealloc := module.ExportedFunction("dealloc")
 	initFn := module.ExportedFunction("init")
@@ -92,29 +111,49 @@ func (r *Runtime) Run(ctx context.Context, wasmBytes, config []byte) error {
 	if alloc == nil || dealloc == nil || initFn == nil || runFn == nil {
 		return fmt.Errorf("wasm ABI requires alloc, dealloc, init and run exports")
 	}
+	executeGuest = func(callCtx context.Context, guest api.Module) error {
+		ptr, err := r.writeBytes(callCtx, guest, alloc, config)
+		if err != nil {
+			return err
+		}
+		initResult, err := initFn.Call(callCtx, uint64(ptr), uint64(len(config)))
+		_, _ = dealloc.Call(callCtx, uint64(ptr), uint64(len(config)))
+		if err != nil {
+			return fmt.Errorf("wasm init trap: %w", err)
+		}
+		if len(initResult) != 1 || initResult[0] != 0 {
+			return fmt.Errorf("wasm init returned error code %d", firstResult(initResult))
+		}
+		result, err := runFn.Call(callCtx)
+		if err != nil {
+			return fmt.Errorf("wasm run trap: %w", err)
+		}
+		if len(result) != 1 || result[0] != 0 {
+			return fmt.Errorf("wasm run returned error code %d", firstResult(result))
+		}
+		return nil
+	}
 
-	ptr, err := r.writeBytes(ctx, module, alloc, config)
-	if err != nil {
+	start := module.ExportedFunction("_start")
+	if start == nil {
+		return fmt.Errorf("wasm module does not export _start")
+	}
+	startErr := make(chan error, 1)
+	go func() {
+		_, err := start.Call(ctx)
+		startErr <- err
+	}()
+	select {
+	case err := <-guestDone:
 		return err
+	case err := <-startErr:
+		if err != nil {
+			return fmt.Errorf("wasm start trap: %w", err)
+		}
+		return fmt.Errorf("wasm start returned before ready")
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	initResult, err := initFn.Call(ctx, uint64(ptr), uint64(len(config)))
-	_, _ = dealloc.Call(ctx, uint64(ptr), uint64(len(config)))
-	if err != nil {
-		return fmt.Errorf("wasm init trap: %w", err)
-	}
-	if len(initResult) != 1 || initResult[0] != 0 {
-		return fmt.Errorf("wasm init returned error code %d", firstResult(initResult))
-	}
-
-	result, err := runFn.Call(ctx)
-	if err != nil {
-		return fmt.Errorf("wasm run trap: %w", err)
-	}
-	if len(result) != 1 || result[0] != 0 {
-		return fmt.Errorf("wasm run returned error code %d", firstResult(result))
-	}
-
-	return nil
 }
 
 func firstResult(values []uint64) uint64 {
@@ -149,7 +188,16 @@ func (r *Runtime) ledgerCall(ctx context.Context, module api.Module, reqPtr, req
 	}
 
 	response, err := r.ledger(ctx, append([]byte(nil), request...))
-	if err != nil || uint32(len(response)) > respCap {
+	if err != nil {
+		if r.log != nil {
+			r.log(3, fmt.Sprintf("ledger.call: %v", err))
+		}
+		return ^uint64(0)
+	}
+	if uint32(len(response)) > respCap {
+		if r.log != nil {
+			r.log(3, fmt.Sprintf("ledger.call response exceeds capacity: %d > %d", len(response), respCap))
+		}
 		return ^uint64(0)
 	}
 	if !module.Memory().Write(respPtr, response) {

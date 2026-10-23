@@ -2,6 +2,8 @@ package wasm
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net"
 	"strconv"
 	"sync"
@@ -59,7 +61,7 @@ func (n *network) read(ctx context.Context, module api.Module, id, bufferPtr, bu
 		return ^uint32(0)
 	}
 	count, err := contextConnRead(ctx, conn, buffer)
-	if err != nil && count == 0 {
+	if err != nil && count == 0 && !errors.Is(err, io.EOF) {
 		return ^uint32(0)
 	}
 	return uint32(count)

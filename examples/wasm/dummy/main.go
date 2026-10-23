@@ -21,29 +21,34 @@ func ledgerCall(requestPtr, requestLen, responsePtr, responseCap uint32) uint64
 //go:wasmimport ledger log
 func ledgerLog(level, textPtr, textLen uint32)
 
+//go:wasmimport ledger ready
+func ledgerReady()
+
 var moduleConfig struct {
 	Ledger       string `json:"ledger"`
 	PollInterval uint64 `json:"poll_interval_ms"`
 }
 
-var allocations [][]byte
+func main() {
+	ledgerReady()
+	for {
+		time.Sleep(time.Hour)
+	}
+}
 
-func main() {}
-
-//export alloc
+//go:wasmexport alloc
 func alloc(size uint32) uint32 {
 	if size == 0 {
 		return 0
 	}
 	b := make([]byte, size)
-	allocations = append(allocations, b)
 	return uint32(uintptr(unsafe.Pointer(&b[0])))
 }
 
-//export dealloc
+//go:wasmexport dealloc
 func dealloc(uint32, uint32) {}
 
-//export init
+//go:wasmexport init
 func initModule(ptr, length uint32) uint32 {
 	if err := json.Unmarshal(unsafe.Slice((*byte)(unsafe.Pointer(uintptr(ptr))), length), &moduleConfig); err != nil {
 		return 1
@@ -58,7 +63,7 @@ func initModule(ptr, length uint32) uint32 {
 	return 0
 }
 
-//export run
+//go:wasmexport run
 func run() uint32 {
 	var sequence uint64
 	for {

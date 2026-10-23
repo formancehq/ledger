@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unsafe"
 
@@ -25,6 +24,9 @@ func ledgerCall(requestPtr, requestLen, responsePtr, responseCap uint32) uint64
 
 //go:wasmimport ledger log
 func ledgerLog(level, textPtr, textLen uint32)
+
+//go:wasmimport ledger ready
+func ledgerReady()
 
 //go:wasmimport net connect
 func netConnect(hostPtr, hostLen, port uint32) uint32
@@ -52,26 +54,21 @@ type config struct {
 var (
 	moduleConfig config
 	moduleHeight uint64
-	allocations  [][]byte
-	allocMu      sync.Mutex
 )
 
-//export alloc
+//go:wasmexport alloc
 func alloc(size uint32) uint32 {
 	if size == 0 {
 		return 0
 	}
 	b := make([]byte, size)
-	allocMu.Lock()
-	allocations = append(allocations, b)
-	allocMu.Unlock()
 	return uint32(uintptr(unsafe.Pointer(&b[0])))
 }
 
-//export dealloc
+//go:wasmexport dealloc
 func dealloc(_ uint32, _ uint32) {}
 
-//export init
+//go:wasmexport init
 func initModule(ptr, length uint32) uint32 {
 	if err := json.Unmarshal(unsafe.Slice((*byte)(unsafe.Pointer(uintptr(ptr))), length), &moduleConfig); err != nil {
 		logf(3, "invalid bitcoin config: %v", err)
@@ -93,7 +90,14 @@ func initModule(ptr, length uint32) uint32 {
 	return 0
 }
 
-//export run
+func main() {
+	ledgerReady()
+	for {
+		time.Sleep(time.Hour)
+	}
+}
+
+//go:wasmexport run
 func run() uint32 {
 	for {
 		best, err := rpcUint("getblockcount")
@@ -478,4 +482,3 @@ func logf(level uint32, format string, args ...any) {
 	}
 	ledgerLog(level, uint32(uintptr(unsafe.Pointer(&text[0]))), uint32(len(text)))
 }
-func main() {}
