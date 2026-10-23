@@ -85,6 +85,10 @@ func (r *Runtime) Run(ctx context.Context, wasmBytes, config []byte) error {
 	netHost.NewFunctionBuilder().WithFunc(network.connect).Export("connect")
 	netHost.NewFunctionBuilder().WithFunc(network.read).Export("read")
 	netHost.NewFunctionBuilder().WithFunc(network.write).Export("write")
+	netHost.NewFunctionBuilder().WithFunc(network.request).Export("request")
+	netHost.NewFunctionBuilder().WithFunc(network.pollRequest).Export("poll")
+	netHost.NewFunctionBuilder().WithFunc(network.responseSize).Export("response_size")
+	netHost.NewFunctionBuilder().WithFunc(network.readRequest).Export("response_read")
 	netHost.NewFunctionBuilder().WithFunc(network.close).Export("close")
 	if _, err := netHost.Instantiate(ctx); err != nil {
 		return fmt.Errorf("instantiate network host: %w", err)

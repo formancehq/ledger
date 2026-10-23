@@ -42,6 +42,18 @@ func netRead(handle, bufferPtr, bufferCap uint32) uint32
 //go:wasmimport net write
 func netWrite(handle, bufferPtr, bufferLen uint32) uint32
 
+//go:wasmimport net request
+func netRequest(hostPtr, hostLen, port, requestPtr, requestLen uint32) uint32
+
+//go:wasmimport net poll
+func netPoll(handle uint32) uint32
+
+//go:wasmimport net response_size
+func netResponseSize(handle uint32) uint32
+
+//go:wasmimport net response_read
+func netResponseRead(handle, bufferPtr, bufferCap uint32) uint32
+
 //go:wasmimport net close
 func netClose(handle uint32) uint32
 
@@ -647,24 +659,42 @@ func rpc(method string, params ...any) ([]byte, error) {
 	body, _ := json.Marshal(map[string]any{"jsonrpc": "1.0", "id": 1, "method": method, "params": params})
 	auth := base64.StdEncoding.EncodeToString([]byte(moduleConfig.RPCUser + ":" + moduleConfig.RPCPassword))
 	req := fmt.Sprintf("POST / HTTP/1.1\r\nHost: %s\r\nAuthorization: Basic %s\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: %d\r\n\r\n%s", moduleConfig.RPCHost, auth, len(body), body)
-	handle, err := dial(moduleConfig.RPCHost, moduleConfig.RPCPort)
-	if err != nil {
-		return nil, err
+	host := []byte(moduleConfig.RPCHost)
+	request := []byte(req)
+	handle := netRequest(uint32(uintptr(unsafe.Pointer(&host[0]))), uint32(len(host)), moduleConfig.RPCPort, uint32(uintptr(unsafe.Pointer(&request[0]))), uint32(len(request)))
+	if handle == ^uint32(0) {
+		return nil, fmt.Errorf("network request failed")
 	}
 	defer netClose(handle)
-	if err = writeAll(handle, []byte(req)); err != nil {
-		return nil, err
+	for {
+		status := netPoll(handle)
+		if status == 1 {
+			break
+		}
+		if status == ^uint32(0) {
+			return nil, fmt.Errorf("network request failed")
+		}
+		time.Sleep(time.Millisecond)
 	}
-	response, err := readAll(handle)
-	if err != nil {
-		return nil, err
+	responseSize := netResponseSize(handle)
+	if responseSize == ^uint32(0) {
+		return nil, fmt.Errorf("network response size failed")
 	}
+	buffer := make([]byte, responseSize)
+	if len(buffer) == 0 {
+		return nil, fmt.Errorf("empty network response")
+	}
+	responseLen := netResponseRead(handle, uint32(uintptr(unsafe.Pointer(&buffer[0]))), uint32(len(buffer)))
+	if responseLen == ^uint32(0) {
+		return nil, fmt.Errorf("network response read failed")
+	}
+	response := buffer[:responseLen]
 	parts := bytes.SplitN(response, []byte("\r\n\r\n"), 2)
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("invalid HTTP response")
 	}
 	var envelope rpcEnvelope
-	if err = json.Unmarshal(parts[1], &envelope); err != nil {
+	if err := json.Unmarshal(parts[1], &envelope); err != nil {
 		return nil, err
 	}
 	if envelope.Error != nil {
