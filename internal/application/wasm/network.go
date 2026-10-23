@@ -3,10 +3,12 @@ package wasm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"github.com/tetratelabs/wazero/api"
 )
@@ -15,10 +17,14 @@ type network struct {
 	mu      sync.Mutex
 	nextID  uint32
 	clients map[uint32]net.Conn
+	log     Logger
+	active  atomic.Int64
+	max     atomic.Int64
+	count   atomic.Uint64
 }
 
-func newNetwork() *network {
-	return &network{nextID: 1, clients: make(map[uint32]net.Conn)}
+func newNetwork(log Logger) *network {
+	return &network{nextID: 1, clients: make(map[uint32]net.Conn), log: log}
 }
 
 func (n *network) closeAll() {
@@ -36,6 +42,8 @@ func (n *network) connect(ctx context.Context, module api.Module, hostPtr, hostL
 	if !ok {
 		return ^uint32(0)
 	}
+	finish := n.begin("connect")
+	defer finish()
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", net.JoinHostPort(string(hostBytes), strconv.FormatUint(uint64(port), 10)))
 	if err != nil {
 		return ^uint32(0)
@@ -56,6 +64,8 @@ func (n *network) read(ctx context.Context, module api.Module, id, bufferPtr, bu
 	if !ok {
 		return ^uint32(0)
 	}
+	finish := n.begin("read")
+	defer finish()
 	buffer, ok := module.Memory().Read(bufferPtr, bufferCap)
 	if !ok {
 		return ^uint32(0)
@@ -74,6 +84,8 @@ func (n *network) write(ctx context.Context, module api.Module, id, bufferPtr, b
 	if !ok {
 		return ^uint32(0)
 	}
+	finish := n.begin("write")
+	defer finish()
 	buffer, ok := module.Memory().Read(bufferPtr, bufferLen)
 	if !ok {
 		return ^uint32(0)
@@ -107,6 +119,23 @@ func contextConnIO(ctx context.Context, conn net.Conn, operation func() (int, er
 	close(done)
 
 	return count, err
+}
+
+func (n *network) begin(operation string) func() {
+	active := n.active.Add(1)
+	for {
+		max := n.max.Load()
+		if active <= max || n.max.CompareAndSwap(max, active) {
+			break
+		}
+	}
+	return func() {
+		current := n.active.Add(-1)
+		count := n.count.Add(1)
+		if n.log != nil && count%100 == 0 {
+			n.log(0, fmt.Sprintf("wasm network: operation=%s operations=%d active=%d max_active=%d", operation, count, current, n.max.Load()))
+		}
+	}
 }
 
 // close(handle) -> zero on success, or ^uint32(0).

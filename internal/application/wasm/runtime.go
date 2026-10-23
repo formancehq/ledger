@@ -79,7 +79,7 @@ func (r *Runtime) Run(ctx context.Context, wasmBytes, config []byte) error {
 		return fmt.Errorf("instantiate ledger host: %w", err)
 	}
 
-	network := newNetwork()
+	network := newNetwork(r.log)
 	defer network.closeAll()
 	netHost := runtime.NewHostModuleBuilder("net")
 	netHost.NewFunctionBuilder().WithFunc(network.connect).Export("connect")
