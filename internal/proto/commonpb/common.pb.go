@@ -6204,8 +6204,9 @@ type LedgerLog struct {
 	// pre-existing non-zero balance in Pebble and this log brought it back to
 	// zero, causing the volume to be evicted from the attribute store at
 	// commit. Purged is DISJOINT from ephemeral_volumes and new_kept_volumes.
-	// The index builder skips account->transaction mappings for
-	// purged ∪ ephemeral (both are evicted from Pebble). The usagebuilder
+	// The index builder excludes purged and ephemeral cells from current
+	// has-asset memberships, but preserves their historical transaction
+	// address mappings. Only TRANSIENT cells are excluded from history. The usagebuilder
 	// subtracts len(purged_volumes) from VolumeCount — a draining eviction
 	// decreases the live cardinality by one.
 	PurgedVolumes []*TouchedVolume `protobuf:"bytes,4,rep,name=purged_volumes,json=purgedVolumes,proto3" json:"purged_volumes,omitempty"`
@@ -6219,8 +6220,8 @@ type LedgerLog struct {
 	// THIS log — pure ephemeral. Written to Pebble briefly then evicted at
 	// commit. Contributes +0 to VolumeCount (was zero, is zero after commit)
 	// and is tracked separately so:
-	//   - the index builder can skip acct->tx mappings for them (via
-	//     purged_volumes ∪ ephemeral_volumes);
+	//   - the index builder can skip current has-asset memberships for them
+	//     (via purged_volumes ∪ ephemeral_volumes), while retaining history;
 	//   - the log payload does not duplicate ephemeral tuples in two lists
 	//     (previous encoding carried them in both purged_volumes AND
 	//     new_volumes, doubling bytes on ephemeral-heavy workloads).

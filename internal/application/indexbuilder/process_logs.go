@@ -7,7 +7,6 @@ import (
 	"io"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -268,7 +267,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			}
 
 			cfg := b.ledgerConfig(ledgerName)
-			var excludedVolumes map[domain.AccountAssetKey]struct{}
+			var excludedVolumes *postingExclusions
 			if cfg.indexesPostingDerived() {
 				excludedVolumes = proposals.excludedForLog(lastSeq, ledgerName, ledgerLog)
 			}

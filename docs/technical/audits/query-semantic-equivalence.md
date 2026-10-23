@@ -148,6 +148,15 @@ role-specific address gates, served metadata versions, asset pin exclusion,
 missing point results and half-open ID bounds when challenging these helpers.
 Directional iterator construction and page oracles remain separate evidence.
 
+Exact transaction address matching uses retained historical role mappings even
+after an EPHEMERAL account's current attributes disappear. Require independently
+expected funding/draining IDs for ANY, SOURCE and DESTINATION in both directions,
+including parameters, boolean composition and page-size-one traversal. Keep
+reference and indexed transaction-metadata controls. Account exact predicates
+still require current existence; transaction prefixes still enumerate current
+accounts and therefore need not find absent historical addresses. Index population
+and repair readiness belong to `read-consistency-projections`.
+
 For each tested family, enumerate a non-empty target universe with positive and
 negative witnesses and the exact expected identities/cardinalities. Include
 intentional empty results only alongside witnesses proving the leaf was seeded.
