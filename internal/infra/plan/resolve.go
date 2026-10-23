@@ -23,7 +23,8 @@ const resolveParallelism = 16
 
 // resolveResult holds the output of a resolve call: a flat list of
 // AttributeCoverage entries plus the tracker keys. Each entry is either
-// coverage-only (value = nil) or a seed (value = Pebble-loaded payload).
+// coverage-only (value = nil) or a seed (value set to a live, non-zero payload
+// captured from Gen1 or loaded from Pebble).
 //
 // The FSM's Preload path routes seed entries through MirrorPreload
 // (gen0+gen1 write with gen1-wins semantics). Coverage-only entries are
@@ -41,6 +42,16 @@ type resolveResult struct {
 	attributes      []*raftcmdpb.AttributeCoverage
 	idempotencyKeys []*raftcmdpb.ReloadIdempotencyKey
 	tracker         []attributes.U128
+	stats           PreloadStats
+}
+
+// PreloadStats describes where attribute preload values came from. It is kept
+// separate from the wire ExecutionPlan so observability can distinguish the
+// Gen1 capture path from an ordinary Pebble fallback.
+type PreloadStats struct {
+	Gen1Captures      int64
+	StoreLoads        int64
+	CacheUnreachables int64
 }
 
 // entrySlab holds three pre-sized backing arrays used to fabricate the
@@ -124,8 +135,10 @@ func (s *entrySlab) appendSeed(id attributes.U128, tag uint64, attrCode byte, va
 //     fallback surfaces the entry on read, and KeyStore.Tombstone writes
 //     the gen0 tombstone if the handler deletes.
 //   - CacheMiss + bloom/Pebble-absent → coverage-only.
-//   - CacheMiss + Pebble-load-hit → seeded (value = the loaded payload;
-//     MirrorPreload writes gen0+gen1).
+//   - CacheMiss + matching Gen1 snapshot or Pebble-load-hit → seeded when the
+//     entry is a live, non-zero value (value = the captured/loaded payload;
+//     MirrorPreload writes gen0+gen1). Gen1 tombstones and typed-nil absence
+//     markers remain coverage-only because they carry no live value to seed.
 //
 // FSM-side race protection is handled at Preload for seeds only (via
 // MirrorPreload's gen1-wins), and by the coverage_bits gate (invariant
@@ -157,6 +170,7 @@ func resolveCoverage[T interface {
 		firstErr error
 		plans    = make([]*raftcmdpb.AttributeCoverage, 0, len(keys))
 		slab     = newEntrySlab(len(keys))
+		stats    PreloadStats
 	)
 
 	sem := make(chan struct{}, resolveParallelism)
@@ -169,8 +183,13 @@ func resolveCoverage[T interface {
 		canonicalKey := entry.Canonical
 		tag := entry.Tag
 
-		switch attrCache.CheckCache(nextIndex, id) {
+		status, cachedEntry, capturedGen1 := attrCache.CheckCacheAndGet(nextIndex, id, tag)
+
+		switch status {
 		case cache.CacheUnreachable:
+			mu.Lock()
+			stats.CacheUnreachables++
+			mu.Unlock()
 			// Admission predicts ≥2 rotations between propose and apply.
 			// Any preload computed now would be discarded before the FSM
 			// reads it, so reject at admission and let the client retry
@@ -210,6 +229,54 @@ func resolveCoverage[T interface {
 			continue
 
 		case cache.CacheMiss:
+			// When one rotation is predicted, CheckCacheAndGet may have
+			// captured a matching Gen1 entry under the generation lock. A
+			// live entry can be serialized directly; a tombstone is already
+			// the absence semantics required after Gen1 is discarded, so a
+			// coverage-only declaration is sufficient and keeps the proto
+			// unchanged.
+			if capturedGen1 {
+				mu.Lock()
+				// The snapshot is captured under the cache generation lock;
+				// count it even when it is a tombstone or typed-nil marker,
+				// because both avoid the Pebble fallback.
+				stats.Gen1Captures++
+				mu.Unlock()
+				if cachedEntry.Deleted {
+					mu.Lock()
+					plans = append(plans, slab.appendCoverage(id, tag, attrCode))
+					mu.Unlock()
+
+					continue
+				}
+
+				var zero T
+				if any(cachedEntry.Data) == any(zero) {
+					mu.Lock()
+					plans = append(plans, slab.appendCoverage(id, tag, attrCode))
+					mu.Unlock()
+
+					continue
+				}
+
+				attrValue, marshalErr := buildPreloadPayload(attrCode, cachedEntry.Data)
+				if marshalErr != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = marshalErr
+					}
+					mu.Unlock()
+
+					continue
+				}
+
+				mu.Lock()
+				plans = append(plans, slab.appendSeed(id, tag, attrCode, attrValue))
+				mu.Unlock()
+
+				continue
+			}
+
 			// Bloom filter short-circuit: when the key is definitely not
 			// in Pebble, skip the goroutine + Pebble Get and emit Declare
 			// (coverage-only, no value to seed).
@@ -255,7 +322,10 @@ func resolveCoverage[T interface {
 				}
 
 				if result.FromLoad {
+					// Store loads are counted while holding the same mutex as
+					// the tracker and plan slices.
 					tracker = append(tracker, id)
+					stats.StoreLoads++
 				}
 
 				var zero T
@@ -300,10 +370,10 @@ func resolveCoverage[T interface {
 		// transient Pebble or marshal failures leave loader entries
 		// pinned for the rest of the process's lifetime — unbounded
 		// growth across retries.
-		return &resolveResult{tracker: tracker}, firstErr
+		return &resolveResult{tracker: tracker, stats: stats}, firstErr
 	}
 
-	return &resolveResult{attributes: plans, tracker: tracker}, nil
+	return &resolveResult{attributes: plans, tracker: tracker, stats: stats}, nil
 }
 
 // buildPreloadPayload marshals value into an AttributeValue envelope.

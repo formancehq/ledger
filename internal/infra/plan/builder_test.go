@@ -261,6 +261,7 @@ func TestBuildPreloads_RejectsCacheHorizonExceeded(t *testing.T) {
 	require.Error(t, buildErr, "admission must reject when 2+ rotations are predicted")
 	require.ErrorIs(t, buildErr, ErrCacheHorizonExceeded,
 		"reject must surface ErrCacheHorizonExceeded so the gRPC adapter maps to codes.Unavailable")
+	require.Equal(t, int64(1), build.PreloadStats().CacheUnreachables)
 }
 
 // TestBuildPreloads_EmitsDeclareOnCacheHit pins the unified coverage

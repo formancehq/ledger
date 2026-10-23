@@ -28,7 +28,8 @@ tests/perf/
 │   ├── any_bounded_to_any.js            # Bounded overdraft transactions
 │   ├── any_unbounded_to_any.js          # Unbounded overdraft transactions
 │   ├── any_force_to_any.js              # Force mode transactions
-│   └── single_hot_account.js            # Extreme single account contention
+│   ├── single_hot_account.js            # Extreme single account contention
+│   └── reused_numscript_gen1.js         # Reused marketplace settlement template
 └── archives/                            # Generated k6 archives (gitignored)
 ```
 
@@ -130,8 +131,36 @@ Tests are configured via environment variables (see `scripts/shared/config.js`):
 ### High Contention Scenarios
 
 7. **single_hot_account.js**: Extreme contention on a single account
+8. **reused_numscript_gen1.js**: Marketplace settlement using one reusable
+   Numscript reference across a rotating merchant pool
 
 **Modes** (`CONTENTION_MODE` env var): `deposit`, `withdraw`, `transfer`, `mixed` (default)
+
+### Gen1 preload scenario
+
+`reused_numscript_gen1.js` models a marketplace paying many merchants with one
+immutable `marketplace-settlement@1.0.0` template, referenced as `latest`. The
+merchant volume keys are continually refreshed, but the template's
+`NumscriptVersion` and `NumscriptContent` keys are read-only and become Gen1
+after a cache rotation. That makes the workload a direct measurement of the
+Gen1 capture path.
+
+For a short run, configure the server's replicated `cache.rotationThreshold`
+to `20` (the environment variable below does not change server configuration),
+then use a small merchant pool and one proposal per request:
+
+```bash
+BULK_SIZE=1 \
+MERCHANT_POOL_SIZE=1000 \
+DURATION=2m \
+VUS=20 \
+nix develop .#perf --command k6 run scripts/reused_numscript_gen1.js
+```
+
+Set the same rotation threshold and workload parameters when comparing the
+base commit with the optimized branch. Keep `BULK_SIZE=1` for attribution: a
+bulk request is one Raft proposal, so larger bulks amortize the boundary read
+and dilute the Gen1 signal.
 
 ## Thresholds
 

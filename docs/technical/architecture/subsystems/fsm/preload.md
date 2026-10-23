@@ -4,7 +4,7 @@
 
 The FSM apply path is forbidden from reading Pebble (see [CLAUDE.md invariant #3](../../../../../AGENTS.md)). Every attribute it consults during apply must therefore already be resident in the in-memory **attribute cache** by the time the proposal lands. The job of preload is to make that true.
 
-Preload **resolves** at propose time, before the proposer acquires the proposal guard: it reads the cache first and falls back to Pebble on a miss. What it produces is not a cache mutation but a set of `AttributeCoverage` entries carried on the proposal's `ExecutionPlan` (`internal/infra/plan/resolve.go` only appends values). Those entries come in two kinds — **seeds**, carrying a value the resolver had to fetch from Pebble, and **coverage-only**, carrying no value because the cache already holds the key or it is confirmed absent. Only seeds are written into the cache; coverage-only entries just authorise the gated read. The distinction is spelled out under [seed vs coverage-only](#attributecoverage--seed-vs-coverage-only).
+Preload **resolves** at propose time, before the proposer acquires the proposal guard: it reads the cache first and falls back to Pebble on an ordinary miss. When one rotation is predicted, a tag-validated live Gen1 entry can also be captured under the cache lock without a store read. What it produces is not a cache mutation but a set of `AttributeCoverage` entries carried on the proposal's `ExecutionPlan` (`internal/infra/plan/resolve.go` only appends values). Those entries come in two kinds — **seeds**, carrying a live value captured from Gen1 or loaded from Pebble, and **coverage-only**, carrying no value because the cache already holds the key or it is confirmed absent. Only seeds are written into the cache; coverage-only entries just authorise the gated read. The distinction is spelled out under [seed vs coverage-only](#attributecoverage--seed-vs-coverage-only).
 
 The cache write happens later, on the **FSM apply path**: `CacheSnapshotter.MirrorPreload`, called from `Machine.Preload` strictly after `checkStaleProposal` has passed. That ordering is what makes the mechanism deterministic — every replica seeds from the same committed bytes, and a stale proposal is rejected before it can touch the cache — so the FSM sees the same value on every replica when it later does `Scope.GetX(...)`.
 
@@ -138,7 +138,7 @@ The bloom filter is consulted **here**, at the resolution layer, not below it: `
 
 This is the surviving typed shape, and `loader.go` (plus its test) is the entire package — the loaders are the only thing `internal/infra/preload` contains. Everything upstream of them, including the parallel resolution that drives them, lives in `internal/infra/plan`.
 
-The division of labour between the two layers is easy to get wrong: **the loader never touches the attribute cache.** The hit/miss verdict is taken above it, in the `plan` package — `resolveCoverage` asks `AttributeCache.CheckCache(nextIndex, id)` (`internal/infra/plan/resolve.go`) and only on a miss hands the loader a Pebble-`Get` closure. `loader.go` holds no cache reference at all; the only cache-derived thing it sees is a `cacheEpoch` scalar.
+The division of labour between the two layers is easy to get wrong: **the loader never touches the attribute cache.** The hit/miss verdict is taken above it, in the `plan` package — `resolveCoverage` asks `AttributeCache.CheckCacheAndGet(nextIndex, id, tag)` (`internal/infra/plan/resolve.go`) and only an ordinary miss without a matching Gen1 capture hands the loader a Pebble-`Get` closure. `loader.go` holds no cache reference at all; the only cache-derived thing it sees is a `cacheEpoch` scalar.
 
 Each loader then:
 
@@ -186,8 +186,14 @@ The discriminator between them: **only the `CacheSnapshotter` method takes `attr
 
 `AttributeCoverage` (`misc/proto/raft_cmd.proto:793`) carries `AttributeID id = 1`, `uint32 attr_code = 2` and an **optional** `AttributeValue value = 3`. That optionality is the whole distinction:
 
-- **`value` set ⇒ seed.** The key was a cache miss at admission and the Pebble load hit, so the entry carries the value and the FSM seeds the cache through `MirrorPreload`.
+- **`value` set ⇒ seed.** The key was a cache miss at admission and either the Pebble load hit or a matching Gen1 entry was captured while one rotation was predicted. Only a live, non-zero payload is seeded; the FSM restores it through `MirrorPreload`.
 - **`value` nil ⇒ coverage-only.** The entry authorises the read but writes nothing. No preemptive promote pass is needed: `AttributeCache.Get`'s gen0→gen1 fallback handles the read, and `KeyStore.Tombstone`'s lazy Gen0-tombstone fabrication handles the delete.
+
+When the captured Gen1 entry is a tombstone, admission deliberately uses
+coverage-only. Typed-nil absence markers use the same representation: after
+the predicted rotation the key is absent from the live cache, and neither
+case has a payload that can be serialized as a seed. Adding tombstone or
+typed-nil variants to the wire contract would not improve correctness.
 
 `AttributeValue` holds a single `bytes raw_value = 1` — the value is type-erased on the wire, and the FSM dispatches the typed unmarshal via the parent entry's `attr_code`.
 

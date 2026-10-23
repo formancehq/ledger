@@ -73,24 +73,27 @@ type Admission struct {
 	auditKeyCommitted      atomic.Bool
 
 	// Metrics (noop when metricsEnabled is false)
-	metricsEnabled                 bool
-	commandDurationHistogram       metric.Float64Histogram
-	commandSizeHistogram           metric.Int64Histogram
-	proposeQueueLoadHistogram      metric.Int64Histogram
-	proposeQueueInflight           atomic.Int32
-	proposeQueueFullCounter        metric.Int64Counter
-	proposeDurationHistogram       metric.Float64Histogram
-	fsmFutureWaitHistogram         metric.Float64Histogram
-	proposalGuardDurationHistogram metric.Float64Histogram
-	proposalGuardRebuildCounter    metric.Int64Counter
-	preloadDurationHistogram       metric.Float64Histogram
-	preloadCounter                 metric.Int64Counter
-	preloadKeysNeededCounter       metric.Int64Counter
-	preloadCacheHitsCounter        metric.Int64Counter
-	missingCallerCounter           metric.Int64Counter
-	callerSubjectEmptyCounter      metric.Int64Counter
-	actionCounter                  metric.Int64Counter
-	actionErrorsCounter            metric.Int64Counter
+	metricsEnabled                  bool
+	commandDurationHistogram        metric.Float64Histogram
+	commandSizeHistogram            metric.Int64Histogram
+	proposeQueueLoadHistogram       metric.Int64Histogram
+	proposeQueueInflight            atomic.Int32
+	proposeQueueFullCounter         metric.Int64Counter
+	proposeDurationHistogram        metric.Float64Histogram
+	fsmFutureWaitHistogram          metric.Float64Histogram
+	proposalGuardDurationHistogram  metric.Float64Histogram
+	proposalGuardRebuildCounter     metric.Int64Counter
+	preloadDurationHistogram        metric.Float64Histogram
+	preloadCounter                  metric.Int64Counter
+	preloadKeysNeededCounter        metric.Int64Counter
+	preloadCacheHitsCounter         metric.Int64Counter
+	preloadGen1CapturesCounter      metric.Int64Counter
+	preloadStoreLoadsCounter        metric.Int64Counter
+	preloadCacheUnreachablesCounter metric.Int64Counter
+	missingCallerCounter            metric.Int64Counter
+	callerSubjectEmptyCounter       metric.Int64Counter
+	actionCounter                   metric.Int64Counter
+	actionErrorsCounter             metric.Int64Counter
 
 	// Per-phase histograms — decompose command.duration into
 	// resolve_batch (signature verify) + orders_prep (orders + coverage
@@ -300,6 +303,33 @@ func NewAdmission(
 		panic(err)
 	}
 
+	preloadGen1CapturesCounter, err := meter.Int64Counter(
+		"admission.preload.gen1_captures",
+		metric.WithDescription("Total number of live or absence snapshots captured from Gen1 instead of loading from store"),
+		metric.WithUnit("{capture}"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	preloadStoreLoadsCounter, err := meter.Int64Counter(
+		"admission.preload.store_loads",
+		metric.WithDescription("Total number of attribute keys loaded from Pebble during preload resolution"),
+		metric.WithUnit("{load}"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	preloadCacheUnreachablesCounter, err := meter.Int64Counter(
+		"admission.preload.cache_unreachables",
+		metric.WithDescription("Total number of attribute keys rejected because the predicted cache horizon crossed two or more generations"),
+		metric.WithUnit("{key}"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	actionCounter, err := meter.Int64Counter(
 		"admission.actions",
 		metric.WithDescription("Total number of orders (actions) admission processed, tagged by order_type. Counts every order attempted in the batch; not gated on the FSM apply outcome."),
@@ -388,6 +418,9 @@ func NewAdmission(
 	a.preloadCounter = preloadCounter
 	a.preloadKeysNeededCounter = preloadKeysNeededCounter
 	a.preloadCacheHitsCounter = preloadCacheHitsCounter
+	a.preloadGen1CapturesCounter = preloadGen1CapturesCounter
+	a.preloadStoreLoadsCounter = preloadStoreLoadsCounter
+	a.preloadCacheUnreachablesCounter = preloadCacheUnreachablesCounter
 	a.missingCallerCounter = missingCallerCounter
 	a.callerSubjectEmptyCounter = callerSubjectEmptyCounter
 	a.actionCounter = actionCounter
@@ -759,6 +792,10 @@ func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.
 	// Merge pass over per-order Coverages.
 	build, err := a.builder.Build(needs, operations)
 	a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Seconds())
+	stats := build.PreloadStats()
+	a.preloadGen1CapturesCounter.Add(ctx, stats.Gen1Captures)
+	a.preloadStoreLoadsCounter.Add(ctx, stats.StoreLoads)
+	a.preloadCacheUnreachablesCounter.Add(ctx, stats.CacheUnreachables)
 	if err != nil {
 		preloadSpan.End()
 		build.ReleaseLoaders()
