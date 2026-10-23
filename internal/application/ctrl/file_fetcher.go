@@ -34,7 +34,7 @@ func (f *fileFetcher) fetchFile(ctx context.Context, entry *snapshotpb.FileEntry
 	for attempt := range f.maxRetries {
 		client, err := f.clientSource()
 		if err != nil {
-			return err
+			return fmt.Errorf("resolving snapshot file client: %w: %w", state.ErrNotAvailable, err)
 		}
 
 		err = f.fetchFileOnce(ctx, client, entry, targetDir, progress)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -118,6 +119,18 @@ func isDonorFallbackError(ctx context.Context, err error) bool {
 	if errors.Is(err, state.ErrNotAvailable) || errors.Is(err, errSnapshotDonorIntegrity) {
 		return true
 	}
+	// PrepareSnapshot reports a donor that is itself resynchronizing as a
+	// FailedPrecondition. The status is donor-specific: another member may
+	// already have a checkpointable store, so keep walking the candidates.
+	if isDonorResynchronizingError(err) {
+		return true
+	}
+	// The heartbeat wrapper has its own deadline. When it expires while the
+	// overall sync context is still live, only this donor timed out and the
+	// next donor should get a chance.
+	if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		return true
+	}
 
 	for current := err; current != nil; current = errors.Unwrap(current) {
 		if isRetryableError(ctx, current) || isSessionExpired(current) {
@@ -126,6 +139,11 @@ func isDonorFallbackError(ctx context.Context, err error) bool {
 	}
 
 	return false
+}
+
+func isDonorResynchronizingError(err error) bool {
+	s, ok := status.FromError(err)
+	return ok && s.Code() == codes.FailedPrecondition && strings.Contains(s.Message(), state.ErrStoreResynchronizing.Error())
 }
 
 // resetSnapshotTargetDir removes only the contents of the restore staging
@@ -189,6 +207,7 @@ func isSessionExpired(err error) bool {
 
 func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir string, progress *state.SyncProgress, minAppliedIndex uint64) (uint64, error) {
 	logger := f.logger.WithContext(ctx)
+	var lastErr error
 
 	for attempt := range f.retryCount {
 		if attempt > 0 {
@@ -208,6 +227,7 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 		if err == nil {
 			return size, nil
 		}
+		lastErr = err
 
 		if isUnavailableError(err) {
 			return 0, fmt.Errorf("snapshot fetch: %w", state.ErrNotAvailable)
@@ -227,6 +247,10 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 				return 0, waitErr
 			}
 		}
+	}
+
+	if lastErr != nil {
+		return 0, fmt.Errorf("snapshot fetch failed after %d attempts: %w", f.retryCount, lastErr)
 	}
 
 	return 0, fmt.Errorf("snapshot fetch failed after %d attempts", f.retryCount)

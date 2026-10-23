@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -240,6 +241,65 @@ func TestFallbackSnapshotFetcher_UsesNextDonorAfterUnavailable(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(targetDir, "data.bin"))
 	require.NoError(t, err)
 	require.Equal(t, []byte("ok"), data)
+}
+
+func TestFallbackSnapshotFetcher_UsesNextDonorAfterSessionRetriesExhausted(t *testing.T) {
+	t.Parallel()
+
+	firstClient := NewMockSnapshotServiceClient(gomock.NewController(t))
+	firstClient.EXPECT().PrepareSnapshot(gomock.Any(), gomock.Any()).
+		Return(nil, status.Error(codes.Internal, "donor is unhealthy")).Times(2)
+	secondClient, _ := buildMockClient(t, map[string][]byte{"data.bin": []byte("ok")})
+
+	fetcher := &fallbackSnapshotFetcher{
+		candidates: []snapshotDonorCandidate{
+			{id: 1, newFetch: func() (state.SnapshotFetcher, error) {
+				return &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(firstClient), logger: logging.Testing(), parallelism: 1, retryCount: 2, fileRetryCount: 1}, nil
+			}},
+			{id: 2, newFetch: func() (state.SnapshotFetcher, error) {
+				return &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(secondClient), logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}, nil
+			}},
+		},
+		logger: logging.Testing(),
+	}
+
+	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 10)
+	require.NoError(t, err)
+}
+
+func TestFallbackSnapshotFetcher_UsesNextDonorWhileResynchronizing(t *testing.T) {
+	t.Parallel()
+
+	firstClient := NewMockSnapshotServiceClient(gomock.NewController(t))
+	firstClient.EXPECT().PrepareSnapshot(gomock.Any(), gomock.Any()).
+		Return(nil, status.Error(codes.FailedPrecondition, state.ErrStoreResynchronizing.Error())).Times(1)
+	secondClient, _ := buildMockClient(t, map[string][]byte{"data.bin": []byte("ok")})
+
+	fetcher := &fallbackSnapshotFetcher{
+		candidates: []snapshotDonorCandidate{
+			{id: 1, newFetch: func() (state.SnapshotFetcher, error) {
+				return &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(firstClient), logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}, nil
+			}},
+			{id: 2, newFetch: func() (state.SnapshotFetcher, error) {
+				return &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(secondClient), logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}, nil
+			}},
+		},
+		logger: logging.Testing(),
+	}
+
+	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 10)
+	require.NoError(t, err)
+}
+
+func TestIsDonorFallbackError_ClassifiesLocalPrepareTimeout(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	require.True(t, isDonorFallbackError(ctx, fmt.Errorf("prepare timed out: %w", context.DeadlineExceeded)))
+
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	require.False(t, isDonorFallbackError(canceled, fmt.Errorf("prepare canceled: %w", context.DeadlineExceeded)))
 }
 
 func TestFallbackSnapshotFetcher_UsesNextDonorAfterIntegrityFailure(t *testing.T) {
