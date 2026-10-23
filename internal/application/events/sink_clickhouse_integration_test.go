@@ -129,9 +129,9 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 									Transaction: ledgerpb.NewTransaction().
 										WithPostings(ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(1000))).
 										WithID(1).WithTimestamp(now),
-									AccountMetadata: map[string]*commonpb.MetadataMap{
-										"users:001": {Values: map[string]*commonpb.MetadataValue{
-											"name": commonpb.NewStringValue("Alice"),
+									AccountMetadata: map[string]*ledgerpb.MetadataMap{
+										"users:001": {Values: map[string]*ledgerpb.MetadataValue{
+											"name": ledgerpb.NewStringValue("Alice"),
 										}},
 									},
 								},
@@ -167,7 +167,7 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 	handle, err := store.NewDirectReadHandle()
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, handle.Close()) })
-	statuses, err := query.BuildSinkStatuses(handle, []*commonpb.SinkConfig{{Name: "ch-sink"}})
+	statuses, err := query.BuildSinkStatuses(handle, []*ledgerpb.SinkConfig{{Name: "ch-sink"}})
 	require.NoError(t, err)
 	require.Len(t, statuses, 1)
 	require.Equal(t, uint64(2), statuses[0].GetCursor())
