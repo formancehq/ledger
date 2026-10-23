@@ -100,8 +100,13 @@ export function setup() {
   const stored = http.get(`${scriptURL}?version=${encodeURIComponent(SCRIPT_SAVE_VERSION)}`);
   assertStoredTemplate(stored, SCRIPT_SAVE_VERSION);
 
-  const latest = http.get(scriptURL);
-  assertStoredTemplate(latest, SCRIPT_SAVE_VERSION);
+  if (SCRIPT_REFERENCE_VERSION === 'latest') {
+    const latest = http.get(scriptURL);
+    assertStoredTemplate(latest, SCRIPT_SAVE_VERSION);
+  } else {
+    const referenced = http.get(`${scriptURL}?version=${encodeURIComponent(SCRIPT_REFERENCE_VERSION)}`);
+    assertStoredTemplate(referenced, SCRIPT_REFERENCE_VERSION);
+  }
 
   console.log(`Setup complete: ${SCRIPT_NAME}@${SCRIPT_SAVE_VERSION} (reference: ${SCRIPT_REFERENCE_VERSION})`);
   console.log(`Merchant pool: ${MERCHANT_POOL_SIZE}, bulk size: ${BULK_SIZE}`);
