@@ -120,6 +120,21 @@ representation loss, name the specific supported field/value and contract.
 
 ## Ownership and deduplication
 
+For ClickHouse, account metadata is account address → metadata key → string,
+with the hint `Map(String, Map(String, String))`; only the leaf values are
+strings. Inspect both the typed subcolumn and `toJSONString(data)` through the
+real sink. The explicit [existing-table migration](../../ops/clickhouse-account-metadata.md)
+and its [SQL](../../ops/clickhouse-account-metadata.sql) and
+`scripts/clickhouse-account-metadata` converter must preserve source
+rows and untouched values, refuse unrepresentable legacy strings before copy,
+and retain exact `UInt256` amounts. Its integration regression executes the
+documented statements and converter. Inspect raw-number preservation separately
+from typed UInt256 transport quoting, for both transaction and revert postings;
+unknown numeric fields must not change type. A failed conversion can leave a
+partial local output file, which must never be imported. Do not infer successful
+migration or round-trip delivery
+from the DDL assertion alone; Docker-backed execution remains a CI obligation.
+
 Attribute a symptom to the mechanism and required correction, not every domain
 whose files it touches. Keep one logical root cause across formats, sinks and
 repeated runs, with the additional affected surfaces as evidence.
