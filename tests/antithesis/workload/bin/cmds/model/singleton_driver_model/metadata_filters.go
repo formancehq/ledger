@@ -6,9 +6,9 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
-	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
 // Metadata Field filters. The compiler serves a Field condition from the

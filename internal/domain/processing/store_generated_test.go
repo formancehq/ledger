@@ -10,13 +10,11 @@ package processing
 import (
 	reflect "reflect"
 
-	gomock "go.uber.org/mock/gomock"
-
 	ledgerpb "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	domain "github.com/formancehq/ledger/v3/internal/domain"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	gomock "go.uber.org/mock/gomock"
 )
 
 // MockOrderTagger is a mock of OrderTagger interface.

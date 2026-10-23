@@ -11,10 +11,10 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/oracle"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // InspectIndex reads the metadata index a filtered query is served from, so it

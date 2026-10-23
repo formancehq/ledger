@@ -11,15 +11,13 @@ import (
 	context "context"
 	reflect "reflect"
 
-	gomock "go.uber.org/mock/gomock"
-
 	ledgerpb "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	domain "github.com/formancehq/ledger/v3/internal/domain"
 	cursor "github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	auditpb "github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	servicepb "github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	query "github.com/formancehq/ledger/v3/internal/query"
+	gomock "go.uber.org/mock/gomock"
 )
 
 // MockController is a mock of Controller interface.

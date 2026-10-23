@@ -10,10 +10,10 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/oracle"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // Prepared queries are named, stored filter templates: a create/update/delete
