@@ -194,10 +194,35 @@ arm cannot silently drop a filter. The full DSL is documented under `QueryFilter
 `internal/proto/commonpb/query_filter_test.go`; the REST wire is asserted in
 `tests/e2e/business/prepared_query_rest_shape_test.go`.
 
+The codec itself accepts any non-empty `$param` name, but creating or updating a
+prepared query refuses a name the textual grammar cannot read back as a single
+`$name` reference: it must match `[a-zA-Z_][a-zA-Z0-9_]*` and must not be a
+grammar keyword (`commonpb.IsTextualFilterParamName`, which shares
+`commonpb.FilterGrammarKeywords` with the lexer). A param arm set with an
+empty name is refused too. The same admission gate refuses a `logId`
+condition with no range. A range that is set but has no bound stays valid: it
+is a supported unbounded scan. These checks live in
+`domain.ValidateFilterAdmissionShape` and run at admission only. The FSM still
+re-runs `ValidateFilterForTarget`, which accepts both shapes, so a voter on this
+release applies an entry an older voter admitted exactly as that voter does.
+A prepared query stored before the gate can still hold these shapes. The
+formatter renders them as `$<invalid param "...">` and `<field> <uint?>` (also
+the rendering of an unbounded range, which has no textual form), which
+the parser refuses, so `ledgerctl ledgers configuration export` keeps working
+and a later `apply` fails loudly instead of re-creating a wider filter.
+
+The textual String token has no escapes, so the formatter single-quotes a
+string value that contains `"`. A value that contains both quote kinds has no
+textual form; it renders as `<unrepresentable string "...">`, which the parser
+refuses.
+
 This shape is shared by every filtered endpoint that accepts the structured JSON
-form: new conditions extend it as new `$match`/`$gt`/… over new field names. Audit
-conditions are **not** part of this JSON shape — they are textual-only (EN-1549);
-see [query-filter.md](query-filter.md).
+form: new conditions extend it as new `$match`/`$gt`/… over new field names, and
+the textual grammar gains the same field name in the same change
+(`TestDualFormatFieldParity`). Audit conditions decode from this shape only on the
+audit-entries endpoint, where the audit target resolves the bare audit field names;
+the encoder has no target and refuses them, and prepared queries are never
+audit-targeted. See [query-filter.md](query-filter.md).
 
 **REST prepared-query targets are `ACCOUNTS`, `TRANSACTIONS` and `LOGS`** (EN-1503).
 For each target `query.Execute` hydrates exactly one `PreparedQueryCursor` result

@@ -481,8 +481,7 @@ paths:
             type: string
           description: |
             A filter, decoded by the same shared dual-format decoder every list
-            endpoint uses (see the `ListFilter` parameter). In practice audit
-            filters use the **textual** representation, restricted to bare
+            endpoint uses (see the `ListFilter` parameter), restricted to bare
             audit fields (`outcome`, `ledger`, `seq`, `proposal_id`,
             `timestamp`, `log_seq`, `caller_subject`, `order_type`,
             `idempotency_key`). These are
@@ -504,17 +503,20 @@ paths:
             entry; bare alphanumeric values are accepted unquoted, while values
             containing `-`, `:`, spaces, or other non-identifier characters
             must be single- or double-quoted; keys containing both `"` and `'`
-            cannot be expressed in the textual DSL and require the gRPC API
-            directly: use `AuditCondition.string_cond` (one value per leaf) for
-            exact lookups, an `OrFilter` of such leaves for `in` lookups, and
-            `AuditCondition.string_prefix` for prefix lookups). Bare audit fields are resolved against the audit query
+            cannot be expressed in the textual DSL: use the structured form for
+            exact and `in` lookups (`{"$match":{"idempotency_key":"…"}}`, an
+            `$or` of such leaves) and the gRPC API directly
+            (`AuditCondition.string_prefix`) for prefix lookups). Bare audit fields are resolved against the audit query
             target: `timestamp` and `ledger` collide with the transaction
             `timestamp` field and the top-level `ledger` condition, so on the
             audit target they resolve to the audit condition (and only there —
-            hence audit fields are valid on this endpoint only). Audit
-            conditions have NO structured JSON QueryFilter representation, so
-            the textual form is the canonical one here; a JSON QueryFilter
-            cannot carry an audit condition and is rejected.
+            hence audit fields are valid on this endpoint only). The structured
+            JSON form uses the same bare field names, resolved against the
+            audit target the same way: `{"$match":{"outcome":"failure"}}`,
+            `{"$gte":{"seq":1000}}`, `{"$match":{"idempotency_key":"retry-123"}}`.
+            Parameters (`{"$param": …}`) are rejected on audit fields, and the
+            `idempotency_key ^=` prefix match has no structured form (the JSON
+            DSL has no prefix operator).
       responses:
         '200':
           description: List of audit entries
@@ -3431,7 +3433,14 @@ components:
         timestamp range). Selections that used to have dedicated aliases are
         expressed through this filter: an account address prefix via
         `filter=address ^= "users:"`, a transaction reference via
-        `filter={"$match":{"reference":"..."}}` (URL-encoded).
+        `filter=reference == "..."` or `filter={"$match":{"reference":"..."}}`
+        (URL-encoded).
+
+        Both representations cover the same fields under the same names:
+        `metadata[<key>]`, `address`, `source`, `destination`, `reference`,
+        `reverted`, `ledger`, `id`, `timestamp`, `insertedAt`, `revertedAt`,
+        `logId`, `date` (e.g. textual `id > 100 and reverted == false` or
+        structured `{"$and":[{"$gt":{"id":100}},{"$match":{"reverted":false}}]}`).
 
         Date fields accept either an RFC3339 timestamp or raw Unix microseconds,
         in both representations: on transactions `timestamp` / `insertedAt` /
@@ -3440,9 +3449,10 @@ components:
         on logs `date` (e.g. `filter=date >= "2023-11-14T22:13:20Z"`). An RFC3339
         value before the Unix epoch (1970-01-01) is rejected with 400.
 
-        Note: bare audit fields (`outcome`, `ledger`, `seq`, `proposal_id`,
-        `timestamp`, `log_seq`, `caller_subject`, `order_type`) have no
-        structured JSON form and must be passed in the textual representation.
+        Note: the bare audit fields (`outcome`, `ledger`, `seq`, `proposal_id`,
+        `timestamp`, `log_seq`, `caller_subject`, `order_type`,
+        `idempotency_key`) are valid only on the audit-entries endpoint, where
+        both representations resolve them against the audit target.
 
   headers:
     QueryProfileResult:
@@ -6340,9 +6350,14 @@ components:
         Supported fields: `metadata[<key>]`, `address`, `source`, `destination`,
         `reference`, `reverted` (bool), `ledger`, `id`, `timestamp`, `insertedAt`,
         `revertedAt`, `logId`, `date`. Not every field applies to every query target;
-        a field that does not apply is rejected. The numeric built-ins
-        (`id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`, `date`) are
-        **range-only** — use `$gt`/`$gte`/`$lt`/`$lte`; `$match` on them is rejected.
+        a field that does not apply is rejected. On the numeric built-ins
+        (`id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`, `date`) use
+        `$gt`/`$gte`/`$lt`/`$lte` for ranges; `$match` is an equality (the closed
+        range from the value to itself). On the audit-entries endpoint only, the
+        bare audit fields (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`,
+        `log_seq`, `caller_subject`, `order_type`, `idempotency_key`) replace the
+        `ledger`/`timestamp` meanings above: `$match` on any of them, range
+        operators on the numeric ones, no `$param` values.
         The log-only fields (`logId`, `date`, `ledger`) are valid only when the
         prepared query targets `LOGS`; they are rejected on `ACCOUNTS` and
         `TRANSACTIONS` targets.
