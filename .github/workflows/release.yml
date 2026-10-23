@@ -35,6 +35,25 @@ jobs:
 
           commit="$(git rev-parse "${GITHUB_REF}^{commit}")"
 
+          previous_tag="$(git describe --tags --match 'v[0-9]*.[0-9]*.[0-9]*' --abbrev=0 "${commit}^" 2>/dev/null || true)"
+          publish_proto=false
+          publish_client=false
+
+          if [[ -z "$previous_tag" ]]; then
+            # The first root release must make both nested modules downloadable
+            # before any consumer can resolve the public client contract.
+            publish_proto=true
+            publish_client=true
+          else
+            changed_files="$(git diff --name-only "$previous_tag" "$commit")"
+            if grep -qE '^(misc/proto/|pkg/proto/v3/)' <<<"$changed_files"; then
+              publish_proto=true
+            fi
+            if grep -qE '^pkg/client/v3/' <<<"$changed_files"; then
+              publish_client=true
+            fi
+          fi
+
           publish_module_tag() {
             local tag="$1"
             local existing
@@ -53,8 +72,31 @@ jobs:
             git push origin "refs/tags/$tag"
           }
 
-          publish_module_tag "pkg/proto/${version}"
-          publish_module_tag "pkg/client/${version}"
+          if [[ "$publish_proto" == true ]]; then
+            publish_module_tag "pkg/proto/${version}"
+          else
+            echo "No public protobuf changes since ${previous_tag}; keeping the existing proto module version"
+          fi
+
+          if [[ "$publish_client" == true ]]; then
+            publish_module_tag "pkg/client/${version}"
+          else
+            echo "No public client changes since ${previous_tag}; keeping the existing client module version"
+          fi
+
+          if [[ "$publish_client" == true ]]; then
+            required_proto_version="$(awk '$1 == "github.com/formancehq/ledger/pkg/proto/v3" { print $2; exit }' pkg/client/v3/go.mod)"
+            if [[ -z "$required_proto_version" ]]; then
+              echo "The public client does not declare a shared proto version" >&2
+              exit 1
+            fi
+
+            proto_tag="pkg/proto/${required_proto_version}"
+            if ! git ls-remote --tags origin "refs/tags/${proto_tag}" "refs/tags/${proto_tag}^{}" | awk 'NF { found = 1 } END { exit !found }'; then
+              echo "The shared proto tag ${proto_tag} is not published before the client release" >&2
+              exit 1
+            fi
+          fi
       - name: Login to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
