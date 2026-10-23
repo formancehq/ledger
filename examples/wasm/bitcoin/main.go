@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -110,6 +111,13 @@ func run() uint32 {
 			if fetchErr == nil {
 				if applyErr := applyBlock(b); applyErr == nil {
 					moduleHeight++
+					// Go's WASI heap is monotonic at the linear-memory level. Force
+					// collection between blocks so catch-up from height zero does not
+					// retain every decoded block and protobuf batch until the next GC.
+					runtime.GC()
+					// Give the collector a scheduling point while catching up a long
+					// chain; the normal polling interval only applies at the tip.
+					time.Sleep(10 * time.Millisecond)
 					continue
 				} else {
 					logf(2, "bitcoin apply block %d: %v", moduleHeight, applyErr)
@@ -120,6 +128,7 @@ func run() uint32 {
 		} else if err != nil {
 			logf(2, "bitcoin getblockcount: %v", err)
 		}
+		runtime.GC()
 		time.Sleep(time.Duration(pollInterval()) * time.Millisecond)
 	}
 }
