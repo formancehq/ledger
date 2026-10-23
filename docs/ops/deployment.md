@@ -214,6 +214,339 @@ spec:
       whenDeleted: Retain
 ```
 
+For PVC-backed WAL and data volumes, `size` is a minimum for existing PVCs as
+well as future claims. Increasing it requests in-place capacity growth even
+when `autoExpansion` is disabled. Larger live requests/capacities, including
+automatic growth, are retained. Lowering `size` does not shrink storage or
+lower an existing, larger claim-template minimum. New claims start from that
+template minimum. An enabled automatic policy can later grow them as part of
+group convergence, without changing the template.
+
+To change an existing volume's IOPS/throughput profile, set a supported,
+nonempty `volumeAttributesClassName` under `persistence.wal` or
+`persistence.data`. The operator patches existing PVCs through CSI and updates
+templates for future claims. It does not replace volumes or call AWS APIs.
+Clearing a previously configured class is unsupported and is reported instead
+of silently clearing it. Existing StorageClass/access-mode migrations are not
+supported, and hostPath paths/layout are unchanged.
+
+Size/profile template alignment preserves the existing StorageClass and access
+modes even when the desired declaration differs. If a template omitted the
+StorageClass and its PVCs received a default class, retaining the omitted/empty
+declaration or explicitly selecting that same effective PVC class is accepted;
+neither rewrites the template class. Live PVC validation separately reports a
+genuine migration as `StorageUnsupported` on the affected storage condition
+without changing PVC class/access modes. Mutable workload updates and
+independently safe growth of owned PVCs continue under their normal gates.
+Unsupported profile clearing and incompatible claim layouts remain separate
+limits.
+
+WAL/data size, profile, StorageClass and access-mode declarations are excluded
+from the Pod restart hash. HostPath wiring and ServiceAccount configuration
+remain rollout inputs. Adding, replacing or removing ServiceAccount annotations
+therefore still requests the normal Pod rollout, including when combined with
+a storage edit. Admission-time inputs in existing Pods do not change merely
+because the ServiceAccount was updated; verify the completed rollout and
+effective runtime access separately.
+
+Capacity growth requires the existing StorageClass to set
+`allowVolumeExpansion: true` and the driver/resizer/filesystem to support
+expansion. Profile changes additionally require enabled Kubernetes
+`VolumeAttributesClass` support, a class for the same CSI driver and driver
+support for volume modification. Confirm the exact Kubernetes distribution,
+driver and sidecar versions in the target environment. A successful API patch
+does not prove the underlying capacity or profile was applied.
+
+Admission webhooks must accept dry-run desired-Pod-template normalization,
+replacement creation and any legacy-hash comparison update, and preserve the
+requested replacement spec. The normalization uses an Update of the existing
+StatefulSet with the desired Pod template before comparing admitted templates;
+defaulted probes must not leave a settled workload waiting for rollout. For
+dry-run errors, inspect the API/webhook diagnostics, restore availability and
+dry-run support, and correct conflicting mutations or missing API features.
+A rejected preview can block the reconcile pass; the operator does not bypass
+this check or trigger a Pod rollout as a fallback.
+Normalization and legacy-hash preview errors set
+`ClaimTemplatesReady=False/AdmissionCheckFailed` on the Cluster.
+
+Upgrade the CRD and Operator alone with the Cluster declaration unchanged,
+then wait for a valid hash association on the current owned StatefulSet before
+storage or ServiceAccount edits. Its metadata
+`ledger.formance.com/pod-config-hash` and installed Pod-template
+`ledger.formance.com/spec-hash` must both be nonempty, and its metadata
+`ledger.formance.com/pod-config-spec-hash` must equal that installed Pod hash.
+Marker presence alone is insufficient. The association records the actual
+retained hash, including historical hashes, and survives StatefulSet recreation
+without depending on UID or generation. If combined edits report
+`HashMigrationRequired`, restore only their authentic previous declared inputs,
+wait for the valid association and reapply. This requires known history; do not
+infer it from live claim templates or the current ServiceAccount. PVC
+reconciliation is independent and may already have accepted growth; never shrink PVCs or reverse
+live growth. If reconstruction still fails or the previous declaration is
+unavailable, recover the evidence and keep the ambiguous migration blocked.
+Strict historical proof remains an alternative when retaining the edits.
+ServiceAccount reconciliation can already have updated that resource before a
+hash migration error blocks the Pod-template update. The error does not undo
+those annotations or refresh existing Pods' admission inputs.
+
+Released full-spec hashes migrate automatically when the installed hash can be
+reconstructed. Missing or broken association uses this same verified migration;
+it does not alone request a storage-only rollout. For an unknown source without
+proof, the operator compares the admitted desired Pod template using the
+installed hash with the live template.
+A difference requests the normal canonical-hash rollout for image,
+configuration or TLS changes, including an image tag inherited from the
+operator's `LEDGER_IMAGE_TAG`. Sequential RC and TLS gates still apply.
+Equal templates leave external admission inputs ambiguous and report
+`ClaimTemplatesReady=False/HashMigrationRequired` without advancing either
+workload hash or starting storage replacement. For this case, supply the Cluster
+annotation
+`ledger.formance.com/legacy-spec-hash-proof` with one JSON object containing
+`version: 1`, the current StatefulSet `sourceUID`, its installed Pod-template
+`oldSpecHash`, and `spec`, the complete historical effective `ClusterSpec`
+after the released operator's `applyDefaults`. Reconstruct image defaults using
+that deployment's historical `LEDGER_IMAGE_REPOSITORY` and `LEDGER_IMAGE_TAG`
+values. Preserve other omitted fields as hashed, including storage quantities
+and access modes; rendered claim defaults are not historical spec values.
+Recover these inputs from trusted historical records; the current CR,
+ServiceAccount and defaults cannot establish unknown history. The operator
+recomputes the released hash and reports `HashMigrationInvalid` for malformed,
+foreign, stale or inconsistent proof, including when the desired template
+differs. It does not accept a caller's canonical hash assertion or change the
+public CRD schema. Correct invalid supplied proof or deliberately remove it
+before retrying the no-proof path; a rollout does not bypass its validation.
+
+Matching recomputed historical/current canonical hashes still require an equal
+admission-normalized template before preserving the old Pod hash. Changed
+nonstorage inputs request the normal rollout. Only a valid hash association
+gives canonical metadata precedence over leftover proof; a trusted canonical
+mismatch requests new Pods. Remove the proof annotation from GitOps after
+success; verify any recovery, rollout and runtime access independently.
+Normal and preparatory Raft scale-down writes save both metadata hashes
+atomically after final Pod-template resolution, associating the actual retained
+Pod hash. The preparatory write retains the previous replica count before Raft
+exec. A later exec failure leaves that valid pair in place for retry; the
+controller does not reject its original proof against its own changed Pod hash.
+Raft membership removal still precedes replica reduction. Do not reset the
+StatefulSet hash annotations to bypass migration. Follow the
+[proof construction procedure](../../misc/operator/README.md#released-workload-hash-migration).
+
+##### Applying a storage edit
+
+When upgrading from an Operator that only managed initial PVC settings, first
+disable external storage reconciliation Jobs and review the configured minima
+and profiles. The new controller applies them to existing claims on upgrade;
+no additional spec edit is required to trigger a larger configured minimum.
+Install the updated CRD, finish the Operator rollout and wait for the canonical
+workload hash's valid association before new storage or ServiceAccount edits.
+
+1. Keep the original StorageClass declaration, access mode, retention and
+   deletion protection settings when editing the WAL/data minimum or profile in
+   Git. An omitted/defaulted class differs from the effective live PVC class;
+   retaining the declaration does not request a class migration.
+2. Inspect `WALStorageReady` / `DataStorageReady` for existing PVC convergence
+   and `ClaimTemplatesReady` for future-claim template recovery.
+3. Compare each PVC request with `status.capacity`; inspect resize conditions,
+   `status.currentVolumeAttributesClassName`, `status.modifyVolumeStatus` and
+   CSI events/errors.
+4. Verify mounted capacity and retained Ledger data in the target storage
+   environment before declaring the change complete.
+
+Claim templates are immutable on an existing StatefulSet. The operator first
+finishes the current workload rollout, then prepares new claim templates while
+preserving the existing Pod template, replica count and selector. It prepares
+independent copies of the source, replacement and retained identities under
+stable source/Pod/binding/admission checks. It records the canonical hash and
+association to the actual retained Pod hash on the replacement before encoding
+the complete payload once. A domain-separated SHA-256 covers Cluster UID, namespace, fixed journal
+base and exact JSON bytes. Its first 32 hex characters produce the journal name
+`<StatefulSet-name>-storage-recovery-<digest-prefix>`; status retains the full
+lowercase digest.
+The saved replacement already contains both hashes; the operator never edits
+an existing immutable journal to add them.
+
+Before any ConfigMap create, the operator compares-and-swaps nil
+`status.claimTemplateRecovery` to Preparing with required `sourceUID`,
+`payloadSHA256` and `configMapName`, without `configMapUID`. The same
+nonterminating Cluster UID, prepared generation and absence of another operation
+are required. The API must preserve that whole intent; an older CRD that prunes
+it blocks the operation before orphan deletion. Only then does the operator
+create the immutable Cluster-owned journal with the exact encoded bytes.
+`AlreadyExists` never overwrites it: reuse requires fresh preparation, durable
+matching intent and direct owner/nontermination/immutability/full-digest checks.
+Only then does it decode the authenticated payload and validate its version,
+source UID and workload/claim structure. The decoded source UID must match
+protected status before binding. It compares-and-swaps that exact Preparing
+pointer to Active by binding the observed UID and verifies persistence, then
+directly rereads and reauthenticates the journal against that bound UID before
+any dependencies, deletion or creation. A missing or changed journal stops
+that pass.
+
+Every active resume authenticates status and ConfigMap name/UID/owner,
+nontermination, immutability and full digest before decoding or using any
+dependencies or workload effects. The decoded source UID must match status.
+Protected Cluster status is the authority; ConfigMap ownerReference, structure
+or a self-declared digest cannot supply it. All pointer transitions compare the
+whole expected previous pointer plus optimistic resourceVersion; conflicts
+require new observations rather than overwriting a newer operation. A nil
+pointer never adopts a standalone ConfigMap or blocks normal work because of
+its presence. Late unbound journals have no workload authority and may remain
+for Cluster garbage collection. Different payloads derive different names;
+identical-payload reuse still requires fresh preparation and durable intent.
+The feature is unpublished: missing required authentication fields fail closed,
+without retroactive migration. Journal version `1`, Ledger data, Raft, audit and
+service protocol versions stay unchanged.
+
+The operator then orphan-deletes the source with UID/resourceVersion
+preconditions and recreates from the authenticated snapshot. It retains Active
+until the exact owned replacement has its generation observed, all expected
+nonterminating Pods are adopted, and saved
+PVC/PV identities and bindings are verified. It compares-and-swaps that Active
+pointer to Completed before deleting the journal and clearing only the expected
+Completed pointer. Completed requires a bound UID; cleanup checks owner/UID and
+uses UID/resourceVersion delete preconditions without payload, immutability or
+dependency checks. Corrupt payload cannot strand cleanup; a foreign UID still
+fails. A lost delete response can resume from `NotFound`. After source deletion,
+neither `ReadyReplicas` nor `UpdatedReplicas` is required for cleanup: this gate proves
+controller continuity, not workload availability. The source rollout must still
+be ready before deletion starts. A size/profile-only edit does not request a
+Pod rollout; filesystem completion still depends on the storage driver.
+Combined image/configuration changes finish their rollout with the previous
+storage wiring before template recreation.
+
+After a restart, the operator resumes the saved recovery before other workload
+mutations. Scale, image and TLS changes wait while recovery is active. A failed
+snapshot write leaves the StatefulSet in place. After orphan deletion, failed
+creation leaves the snapshot, Pods and claims for retry; after creation, failed
+generation observation/adoption or cleanup leaves the snapshot for retry.
+If preparation fails before any durable status-intent write attempt, safe
+mutable-workload and volume-protection work can continue with the old templates
+only after the direct APIReader establishes the same nonterminating Cluster UID
+has no pointer. The attempt sets the preparation failure condition and returns
+the error for retry; concurrent status writers can race condition observation.
+From the first attempted durable intent write, any error ends the pass without
+normal mutable-workload continuation, including rejection/no commit or later
+journal `NotFound`: the write may still commit. Typed errors retain the phase
+and original cause. An existing pointer, changed identity or uncertain fence
+read blocks continuation; standalone ConfigMaps alone do not.
+
+Failed attempted durable intent/journal preparation, including response loss,
+starts a mutex-protected memory retry hold with one entry per Cluster
+namespace/name, retaining only its latest UID and full prepared payload digest.
+The delay starts at two seconds and increases exponentially to 30 seconds.
+Preparation checks the hold before writing a Preparing condition or attempting
+a new intent CAS. Watch
+events during the hold cannot write that intent, churn preparation conditions,
+increment the attempt or slide its deadline. Normal status can still reflect
+workload availability.
+
+While waiting, safe mutable-workload/protection work with old templates requires
+the same direct APIReader same-UID/nonterminating/nil-pointer fence and no
+durable intent/journal attempt in that pass. The controller requests a positive
+`RequeueAfter`, retaining an earlier positive requeue from normal work, with no
+preparation error unless another actual error occurs. Scheduling is advisory.
+New UID/digest resets the hold; successful start or Completed-pointer clear
+removes matching state. Safe Preparing absence-abort retains the hold;
+`NotFound` or deletion removes the entry. Ten minutes without a failed attempt
+expires it after its retry deadline. There is no cardinality cap or active-entry
+eviction; cleanup scans scale with recently failed Cluster count. Restart loses
+this rate-control memory; it never authorizes a journal or weakens Preparing
+absence-abort.
+
+Preparing with no bound UID and a directly absent named journal can be cleared
+only by exact-pointer compare-and-swap after direct observations prove the same
+nonterminating Cluster UID and expected Cluster-controlled, nonterminating
+StatefulSet with saved source UID. Readiness, source generation and current CR
+validity do not matter. This pass reads no dependencies or old claims, writes
+no workload and deletes no journal; a successful clear returns handled with a
+requested two-second requeue, not a guaranteed execution cadence. Missing,
+terminating, replaced or foreign sources and uncertain reads fail closed. Bind and abort race on the same Preparing pointer;
+only one wins. A late journal after abort remains unbound. A missing Active
+journal remains a hard error and blocks initial creation.
+An expected Pod missing after recreation reports
+`ClaimTemplatesReady=False/AwaitingAdoption` with its name and a short requeue.
+Recovery retains its journal until every expected Pod exists, is
+nonterminating and is controlled by the replacement. Other Pod-read errors
+remain recovery errors.
+PVC patches are independent: some claims can already have grown or requested
+a new profile even when template recovery or another claim fails. Preserve
+these partial effects and inspect their current state. If the same original
+StatefulSet UID changes
+generation or becomes unready before deletion, with no deletion timestamp, the
+operator marks the obsolete journal completed and cleans it up before normal
+workload repair and replanning. Once deletion starts, a terminating/absent
+source or a replacement UID must recover from the committed snapshot.
+
+Do not downgrade the Operator during active journal recovery. After completion,
+a released Operator can preserve unknown metadata while changing the installed
+Pod hash, breaking the association detected by the new Operator. In an
+A-to-released-B-to-A ServiceAccount transition, an opaque equal template without
+proof reports `HashMigrationRequired`; authentic B history instead requests
+the rollout to A. The old binary can itself request a storage-hash rollout;
+the new controller adds none when exact legacy reconstruction succeeds.
+
+After authenticating active status and exact journal bytes, auth-key projection,
+required cluster-secret maintenance and volume protection use the saved
+workload's auth/TLS wiring, replicas and claim names. Current Credentials can
+refresh the mounted ConfigMap without deleting
+it; an empty match removes stale entries through an explicit empty key set,
+and unresolved matching keys keep their fail-safe handling. The existing
+inter-node token is retained. Protection uses the current toggle with the saved
+workload geometry. Dependency errors are reported while StatefulSet restoration
+can still proceed. Services, NetworkPolicy and other normal resource updates
+wait for recovery to finish.
+Independent auth-key ConfigMap and cluster-secret writes preserve the live
+Cluster's `spec.additionalLabels`.
+
+For saved workloads that mount auth keys,
+`AuthKeysRolloutDeferred=True/StorageRecovery` reports deferred application to
+running Pods. The current key loader rejects an empty key set on new starts;
+removing all matching Credentials can therefore prevent a restarted Pod with
+the saved key-file wiring from starting. It does not disable authentication.
+The condition clears after the recovery pointer is gone and a normal
+StatefulSet pass succeeds; verify the actual Pod rollout separately. Recovery
+reads current Credentials and their referenced Secrets directly from the API.
+
+Ed25519 keys and authorization metadata are loaded once at Pod boot. ConfigMap
+refresh alone does not revoke keys or reduce scopes in running Pods. The
+required normal rollout waits for recovery and cleanup. An adopted but unready
+Pod, including after an OOM or empty-key startup failure, does not block that
+cleanup or the return to normal repair. Missing/unadopted Pods, an unobserved
+generation or identity failures still block recovery. Resolve those failures,
+complete the normal rollout and verify authorization on the serving Pods.
+Do not treat a refreshed ConfigMap as proof of effective runtime revocation.
+
+For a replacement mismatch, inspect the protected source UID/full digest and
+journal name/UID, live StatefulSet ownership/UID/operation annotation/spec,
+and retained Pod/PVC/PV
+identities and bindings. Correct admission or restore the exact trusted
+replacement specification where Kubernetes permits it. Identity and immutable
+mismatches require an operator-led recovery that preserves the snapshot and
+storage; the controller does not force adoption. Aggregate `Pending`,
+`Ready=False` or `0/N` can reflect StatefulSet absence while retained Pods still
+run, so inspect those Pods directly.
+
+Do not delete or edit the recovery ConfigMap to unblock reconciliation. It is
+recovery intent, not a data backup. Do not delete PVCs/PVs or disable deletion
+protection to apply a storage edit. A Git revert cannot shrink accepted
+capacity or undo an accepted CSI operation. Revert a profile only to a supported
+nonempty class, and let snapshot recovery finish before subsequent workload
+changes. See the [operator recovery sequence](../../misc/operator/README.md#claim-template-recovery-sequence)
+for failure boundaries and residual state.
+
+Do not clear the recovery pointer or delete the Cluster to unblock recovery.
+Cluster deletion during the orphan window can leave surviving Pods outside
+normal owner-based garbage collection. An intentional deletion requires an
+inventory of surviving Pods/claims and the configured retention/protection
+policy; envtest does not prove real garbage collection in this window.
+
+Automatic expansion remains an independent opt-in policy. Its `maximumSize`
+caps automatic growth only, not an explicit minimum. If live requests exceed
+the cap, raise it before expecting further automatic growth. Automatic growth
+does not rewrite the Cluster or claim templates. See
+[Automatic Volume Expansion](../../misc/operator/README.md#automatic-volume-expansion)
+for thresholds, cooldown, conditions, events and metrics.
+
 #### Service Configuration
 
 ```yaml

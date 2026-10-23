@@ -2627,7 +2627,7 @@
                       "type": "string"
                     }
                   ],
-                  "description": "Size is the initial and minimum requested capacity of the volume. Automatic\nexpansion updates the live PVCs only and never rewrites this field or the\nStatefulSet VolumeClaimTemplates.",
+                  "description": "Size is the initial and minimum requested capacity of the volume. Increases\nreconcile existing PVCs and claim templates; decreases never shrink them.\nAutomatic expansion updates live PVCs only and never rewrites this field\nor the StatefulSet VolumeClaimTemplates.",
                   "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
                   "x-kubernetes-int-or-string": true
                 },
@@ -2636,7 +2636,7 @@
                   "type": "string"
                 },
                 "volumeAttributesClassName": {
-                  "description": "VolumeAttributesClassName is the name of the VolumeAttributesClass to use for the PVC.\nRequires the VolumeAttributesClass feature gate to be enabled (beta in K8s 1.31+).\nMutually exclusive with hostPath.",
+                  "description": "VolumeAttributesClassName selects the CSI performance profile for new and\nexisting PVCs. Changes are applied in place; clearing a non-empty class is\nunsupported. Completion is reported separately from accepting the request.\nRequires the VolumeAttributesClass feature gate to be enabled (beta in K8s 1.31+).\nMutually exclusive with hostPath.",
                   "type": "string"
                 }
               },
@@ -2775,7 +2775,7 @@
                       "type": "string"
                     }
                   ],
-                  "description": "Size is the initial and minimum requested capacity of the volume. Automatic\nexpansion updates the live PVCs only and never rewrites this field or the\nStatefulSet VolumeClaimTemplates.",
+                  "description": "Size is the initial and minimum requested capacity of the volume. Increases\nreconcile existing PVCs and claim templates; decreases never shrink them.\nAutomatic expansion updates live PVCs only and never rewrites this field\nor the StatefulSet VolumeClaimTemplates.",
                   "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
                   "x-kubernetes-int-or-string": true
                 },
@@ -2784,7 +2784,7 @@
                   "type": "string"
                 },
                 "volumeAttributesClassName": {
-                  "description": "VolumeAttributesClassName is the name of the VolumeAttributesClass to use for the PVC.\nRequires the VolumeAttributesClass feature gate to be enabled (beta in K8s 1.31+).\nMutually exclusive with hostPath.",
+                  "description": "VolumeAttributesClassName selects the CSI performance profile for new and\nexisting PVCs. Changes are applied in place; clearing a non-empty class is\nunsupported. Completion is reported separately from accepting the request.\nRequires the VolumeAttributesClass feature gate to be enabled (beta in K8s 1.31+).\nMutually exclusive with hostPath.",
                   "type": "string"
                 }
               },
@@ -4081,6 +4081,37 @@
       "additionalProperties": false,
       "description": "ClusterStatus defines the observed state of Cluster.",
       "properties": {
+        "claimTemplateRecovery": {
+          "additionalProperties": false,
+          "description": "ClaimTemplateRecovery identifies the durable journal for a claim-template\nreplacement. The operator restores that workload before newer spec edits.",
+          "properties": {
+            "completed": {
+              "type": "boolean"
+            },
+            "configMapName": {
+              "description": "ConfigMapName includes a prefix of the complete authorized digest.",
+              "type": "string"
+            },
+            "configMapUID": {
+              "description": "ConfigMapUID is bound only after the immutable journal is authenticated.",
+              "type": "string"
+            },
+            "payloadSHA256": {
+              "description": "PayloadSHA256 covers the complete JSON payload and its Cluster identity.",
+              "type": "string"
+            },
+            "sourceUID": {
+              "description": "SourceUID identifies the original StatefulSet saved in the payload.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "configMapName",
+            "payloadSHA256",
+            "sourceUID"
+          ],
+          "type": "object"
+        },
         "conditions": {
           "description": "Conditions represent the latest available observations.",
           "items": {

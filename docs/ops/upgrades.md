@@ -17,7 +17,9 @@ RC updates are sequential: upgrade from `v3.0.0-rc.1` to `v3.0.0-rc.2`
 before proceeding to `v3.0.0-rc.3`. The same rule applies to each release
 line. Skipping an RC is not supported. For operator-managed clusters, the
 operator compares the current StatefulSet template's Ledger image tag with
-`spec.image.tag`. It rejects an unknown or non-adjacent source, or an incomplete
+the effective requested image tag: `spec.image.tag`, or `LEDGER_IMAGE_TAG`
+from the operator deployment when that field is omitted (`latest` if neither
+sets it). It rejects an unknown or non-adjacent source, or an incomplete
 source rollout, before changing cluster resources. The current image must have
 a canonical RC tag; an untagged digest does not establish its release version.
 If the StatefulSet is temporarily absent during recreation, restore the image
@@ -59,6 +61,114 @@ and
 [Upgrading across an FSM error-identity change](./deployment.md#upgrading-across-an-fsm-error-identity-change)
 describe development upgrades before `v3.0.0-rc.1`. Their reset instructions
 do not apply to upgrades from the RC or any later release.
+
+## Operator workload-hash migration
+
+Install the updated CRD and upgrade the Operator alone before changing storage
+or ServiceAccount inputs. Keep the current Cluster declaration unchanged and
+wait for a valid hash association on the current owned StatefulSet before
+applying those edits. StatefulSet metadata `ledger.formance.com/pod-config-hash`
+and installed Pod-template `ledger.formance.com/spec-hash` must both be
+nonempty, and StatefulSet metadata `ledger.formance.com/pod-config-spec-hash`
+must equal that installed Pod hash. Marker presence alone is insufficient.
+The association records the actual retained hash, including historical hashes;
+it survives recreation without depending on StatefulSet UID or generation.
+This permits automatic exact reconstruction even when a released hash includes
+an earlier declared storage size that never reached its claim templates.
+
+If combined edits already produce `HashMigrationRequired`, temporarily restore
+only those concurrent declared inputs to their authentic previous declaration,
+wait for the valid association, then reapply the edits. The previous declaration
+must be known from trusted records; live claim templates and the current
+ServiceAccount cannot establish it. The PVC reconciler runs independently and
+may already have accepted growth. Do not shrink PVCs or revert live growth;
+restoring declared inputs does not undo accepted capacity or CSI effects. If
+the prior declaration is unavailable or reconstruction still fails, recover the
+missing evidence and leave the ambiguous migration blocked. Strict historical
+proof, described below, is an alternative that retains the concurrent edits.
+ServiceAccount reconciliation can already have written requested annotations
+before a migration error blocks the Pod-template update. That error does not
+undo those annotations or refresh existing Pods' admission inputs.
+
+Released StatefulSets can carry the full-spec Pod hash without a valid
+canonical association. Missing or broken association uses verified legacy
+migration and does not alone request a storage-only rollout. The operator first
+attempts exact reconstruction using the current nonstorage inputs and retained
+claim settings. If it cannot reconstruct the hash and no proof is supplied, it
+compares the admitted desired Pod template using the installed hash with the
+live template. A difference requests the normal rollout; upgrading to the
+adjacent RC does not require historical proof just because the explicit image
+tag or the operator's implicit `LEDGER_IMAGE_TAG` changed. Configuration and
+TLS changes follow the same rule. Existing RC admission, TLS sequencing and
+storage rollout gates remain in force.
+
+Equal templates cannot establish whether external admission inputs such as
+ServiceAccount annotations changed. Only this ambiguous no-proof case reports
+`ClaimTemplatesReady=False/HashMigrationRequired` without advancing workload
+hashes or starting storage replacement. If the unchanged-input procedure above
+does not establish history, follow the
+[historical proof procedure](../../misc/operator/README.md#released-workload-hash-migration)
+using the admitted historical spec, the released `applyDefaults` values and
+that deployment's `LEDGER_IMAGE_REPOSITORY`/`LEDGER_IMAGE_TAG`. Retain omissions
+where they entered the released hash. Explicitly supplied malformed, foreign,
+stale or inconsistent proof remains `HashMigrationInvalid` even when the desired
+template differs. Correct that proof or deliberately remove it before retrying
+the no-proof path; a rollout cannot bypass supplied proof validation. Do not
+reset hash annotations or reconstruct Ledger business data to bypass this
+operational metadata check.
+
+Only a valid association gives canonical metadata precedence over leftover
+proof; a trusted canonical mismatch still requests the normal rollout. Normal
+and preparatory Raft scale-down writes record both metadata hashes atomically
+after final Pod-template resolution, using its actual retained hash. The
+preparatory write retains the old replica count before Raft exec. If the Raft
+operation then fails, retry uses that durable pair instead of rejecting the
+original proof against the updated Pod hash. This write does not prove rollout
+or Raft completion. Verify the subsequent rollout,
+membership removal, replica count and retained storage separately.
+The replacement snapshot also records both metadata hashes before encoding and
+digesting. Existing immutable journals are never edited to add the association.
+
+The updated CRD must also retain the whole claim-template recovery intent:
+`sourceUID`, full `payloadSHA256`, digest-derived `configMapName` and the optional
+`configMapUID` binding. Preparing status is committed and verified before the
+immutable journal is created; an old CRD that prunes these fields blocks the
+operation before orphan deletion. Protected status authorizes exact journal
+bytes, and nil status never adopts a standalone ConfigMap. Do not downgrade
+the Operator while this pointer exists. The feature is unpublished, so there is
+no migration of unauthenticated old feature pointers. Journal version `1`,
+Ledger data, Raft, audit and service protocol versions stay unchanged. See the
+[durable recovery contract](../technical/architecture/subsystems/operator/storage-reconciliation.md#durable-template-replacement)
+for pointer CAS, absence-abort and late-journal handling.
+
+After recovery completes, a released Operator can retain unknown metadata while
+changing the Pod hash. The new Operator detects the broken association and
+repeats verified migration. For a new-Operator configuration A followed by
+released-Operator ServiceAccount B and then desired A, an opaque equal template
+without usable history must report `HashMigrationRequired`. Authentic B history
+instead establishes the required rollout to A. Stale A metadata cannot certify
+B's installed hash. The old binary can itself request a storage-hash rollout;
+the new controller adds none when exact legacy reconstruction succeeds.
+
+Failed attempted intent/journal preparation uses memory rate control per
+Cluster namespace/name, retaining only its latest UID and full prepared payload
+digest: an initial two-second hold increases exponentially to 30 seconds.
+Before a new Preparing condition or intent CAS, the controller checks the hold. Watch events cannot
+bypass it, churn preparation conditions, increment its attempt or slide its
+deadline. Safe mutable-workload/protection work during the hold still requires
+no durable attempt in that pass and direct APIReader proof of the same
+nonterminating Cluster UID with no recovery pointer. The controller requests
+a positive `RequeueAfter`, retaining an earlier positive requeue from normal
+work, without a preparation error; other actual errors and normal availability
+status remain visible. A Preparing absence-abort
+still requests a two-second requeue. Neither request guarantees execution at
+that cadence. Mutex-protected state keeps one entry per namespace/name. New
+UID/digest resets the hold; successful start or Completed-pointer clear removes
+matching state. Safe Preparing absence-abort retains the hold; deletion or
+`NotFound` removes the entry.
+Ten minutes without a failed attempt expires it after its retry deadline, with
+no cardinality cap or active-entry eviction. Cleanup scans scale with recently
+failed Cluster count. Restart loses it. This rate-control memory never authorizes recovery or changes journal trust.
 
 ## Preflight
 
