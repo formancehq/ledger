@@ -681,3 +681,16 @@ upgrades, those high-ID operations remain unreliable through older servers; comp
 This change does not alter persisted member identities, Raft transport,
 committed entry application, audit history, snapshots or backups, and requires
 no persisted-state migration. Existing configured high IDs remain intact.
+
+## Granular scope naming during the RC line
+
+The 14 Ledger granular authorization labels change from
+`ledger:<Resource><Action>` to `ledger:<Action><Resource>`. Clients that send
+granular labels in JWTs must request and receive the new labels. The aggregate
+`ledger:read`, `ledger:write`, and `ledger:admin` labels retain their meaning,
+and the gRPC wire contract remains at revision 40. This authentication behavior
+change requires updated token mappings but no client protocol revision change.
+Custom and anonymous scope mappings must use the new granular values; see the
+[authentication migration](../../../../ops/authentication.md#migration-from-rc1-granular-labels).
+Persisted audit snapshots retain the exact effective scope strings captured at
+admission, so historical hashes remain verifiable without a storage migration.
