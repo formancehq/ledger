@@ -196,6 +196,86 @@ func TestGRPCSnapshotFetcher_HappyPath(t *testing.T) {
 	require.Equal(t, int32(1), csState.closeCalled.Load())
 }
 
+func TestFallbackSnapshotFetcher_UsesNextDonorAfterUnavailable(t *testing.T) {
+	t.Parallel()
+
+	firstClient := NewMockSnapshotServiceClient(gomock.NewController(t))
+	firstClient.EXPECT().PrepareSnapshot(gomock.Any(), gomock.Any()).
+		Return(nil, status.Error(codes.Unavailable, "donor is down")).Times(1)
+
+	secondClient, secondState := buildMockClient(t, map[string][]byte{"data.bin": []byte("ok")})
+
+	targetDir := t.TempDir()
+	progress := state.NewSyncProgress()
+	progress.AddReceived(99)
+	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "stale.bin"), []byte("stale"), 0600))
+
+	fetcher := &fallbackSnapshotFetcher{
+		candidates: []snapshotDonorCandidate{
+			{id: 1, newFetch: func() (state.SnapshotFetcher, error) {
+				return &grpcSnapshotFetcher{
+					clientSource: fixedSnapshotClient(firstClient),
+					logger:       logging.Testing(),
+					parallelism:  1, retryCount: 1, fileRetryCount: 1,
+				}, nil
+			}},
+			{id: 2, newFetch: func() (state.SnapshotFetcher, error) {
+				return &grpcSnapshotFetcher{
+					clientSource: fixedSnapshotClient(secondClient),
+					logger:       logging.Testing(),
+					parallelism:  1, retryCount: 1, fileRetryCount: 1,
+				}, nil
+			}},
+		},
+		logger: logging.Testing(),
+	}
+
+	size, err := fetcher.FetchSnapshot(t.Context(), targetDir, progress, 10)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), size)
+	require.Equal(t, uint64(2), progress.BytesReceived(), "progress must describe the winning session only")
+	require.NoFileExists(t, filepath.Join(targetDir, "stale.bin"))
+	require.Equal(t, int32(1), secondState.closeCalled.Load())
+
+	data, err := os.ReadFile(filepath.Join(targetDir, "data.bin"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("ok"), data)
+}
+
+func TestFallbackSnapshotFetcher_UsesNextDonorAfterIntegrityFailure(t *testing.T) {
+	t.Parallel()
+
+	badClient, _ := newMockSnapshotClient(t,
+		&snapshotpb.PrepareSnapshotResponse{
+			SessionId: "bad-session",
+			Manifest:  &snapshotpb.SnapshotManifest{Files: []*snapshotpb.FileEntry{{Path: "data.bin", Size: 7}}},
+		}, nil,
+		map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]{
+			"data.bin": newFileStream(t, fileStreamScript{
+				responses: []*snapshotpb.FetchFileResponse{{Data: []byte("corrupt"), Eof: true, Sha256: fileSHA256([]byte("correct"))}},
+				failAt:    -1,
+			}),
+		},
+	)
+	goodClient, _ := buildMockClient(t, map[string][]byte{"data.bin": []byte("correct")})
+
+	fetcher := &fallbackSnapshotFetcher{
+		candidates: []snapshotDonorCandidate{
+			{id: 1, newFetch: func() (state.SnapshotFetcher, error) {
+				return &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(badClient), logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}, nil
+			}},
+			{id: 2, newFetch: func() (state.SnapshotFetcher, error) {
+				return &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(goodClient), logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}, nil
+			}},
+		},
+		logger: logging.Testing(),
+	}
+
+	size, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 10)
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), size)
+}
+
 func TestGRPCSnapshotFetcher_ParallelFetch(t *testing.T) {
 	t.Parallel()
 

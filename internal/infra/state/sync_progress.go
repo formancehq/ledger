@@ -26,3 +26,13 @@ func (p *SyncProgress) SetFilesTotal(n uint64) { p.filesTotal.Store(n) }
 func (p *SyncProgress) AddFileCompleted()      { p.filesCompleted.Add(1) }
 func (p *SyncProgress) FilesCompleted() uint64 { return p.filesCompleted.Load() }
 func (p *SyncProgress) FilesTotal() uint64     { return p.filesTotal.Load() }
+
+// Reset clears the counters before a fresh donor session starts. A fallback
+// session replaces the previous staging attempt, so retaining its byte/file
+// counts would report progress for data that is no longer present.
+func (p *SyncProgress) Reset() {
+	p.bytesReceived.Store(0)
+	p.bytesTotal.Store(0)
+	p.filesCompleted.Store(0)
+	p.filesTotal.Store(0)
+}
