@@ -50,18 +50,18 @@ func TestRunWithoutPreload_ClearsPreSetExecutionPlan(t *testing.T) {
 	}
 
 	marshalled := false
-	marshalFn := func(p *raftcmdpb.Proposal) ([]byte, error) {
+	finalizeFn := func(p *raftcmdpb.Proposal) error {
 		marshalled = true
 		require.Nil(t, p.GetExecutionPlan(), "ExecutionPlan must be cleared before marshal")
 
-		return []byte{0}, nil
+		return nil
 	}
 
 	proposer := stubFailingProposer{err: errors.New("stub")}
 
-	_, err := builder.Run(context.Background(), cmd, build, marshalFn, proposer)
+	_, err := builder.Run(context.Background(), cmd, build, finalizeFn, proposer)
 	require.Error(t, err, "stub proposer should bubble its error")
-	require.True(t, marshalled, "marshalFn must have run")
+	require.True(t, marshalled, "finalizeFn must have run")
 	require.Nil(t, cmd.GetExecutionPlan(), "cmd.ExecutionPlan must be nil after Run on the no-preload fast path")
 }
 
@@ -103,7 +103,7 @@ func TestRun_IdempotencyOnlyNeedsTakesFastPath(t *testing.T) {
 		token:      &preload.CleanupToken{},
 	}
 
-	marshalFn := func(p *raftcmdpb.Proposal) ([]byte, error) {
+	finalizeFn := func(p *raftcmdpb.Proposal) error {
 		ep := p.GetExecutionPlan()
 		require.NotNil(t, ep, "ExecutionPlan must survive to carry IdempotencyKeys")
 		require.Empty(t, ep.GetAttributes(), "Attributes must be dropped on the fast path")
@@ -111,12 +111,12 @@ func TestRun_IdempotencyOnlyNeedsTakesFastPath(t *testing.T) {
 		require.Len(t, ep.GetIdempotencyKeys(), 1, "IdempotencyKeys must survive")
 		require.Equal(t, "idem-only", ep.GetIdempotencyKeys()[0].GetKey())
 
-		return []byte{0}, nil
+		return nil
 	}
 
 	proposer := stubFailingProposer{err: errors.New("stub")}
 
-	_, err := builder.Run(context.Background(), cmd, build, marshalFn, proposer)
+	_, err := builder.Run(context.Background(), cmd, build, finalizeFn, proposer)
 	require.Error(t, err, "stub proposer should bubble its error")
 
 	ep := cmd.GetExecutionPlan()

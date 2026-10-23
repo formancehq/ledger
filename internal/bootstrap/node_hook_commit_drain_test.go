@@ -17,7 +17,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -100,11 +99,8 @@ func TestNodeHookStopCancellationRetainsRealCommitDrain(t *testing.T) {
 	command.ExecutionPlan = &raftcmdpb.ExecutionPlan{Attributes: []*raftcmdpb.AttributeCoverage{{
 		Id: &raftcmdpb.AttributeID{Id: ledgerKey[:]}, AttrCode: uint32(dal.SubAttrLedger),
 	}}}
-	required, err := capabilities.PrepareProposal(command)
+	proposal, err := node.NewProposal(command.GetId(), command)
 	require.NoError(t, err)
-	data, err := command.MarshalVT()
-	require.NoError(t, err)
-	proposal := node.NewPreparedProposal(command.GetId(), data, required)
 	future, err := n.Propose(ctx, proposal)
 	require.NoError(t, err)
 	select {

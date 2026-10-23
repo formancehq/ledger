@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
@@ -25,14 +24,13 @@ func (p *capabilityPolicyTestProposer) Propose(context.Context, *node.Proposal) 
 func capabilityPolicyProposal(t *testing.T) *node.Proposal {
 	t.Helper()
 
-	data, err := (&raftcmdpb.Proposal{
+	proposal := &raftcmdpb.Proposal{
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{},
-	}).MarshalVT()
-	require.NoError(t, err)
-	prepared, err := capabilities.PrepareProposal(&raftcmdpb.Proposal{ExecutionPlan: &raftcmdpb.ExecutionPlan{}})
+	}
+	result, err := node.NewProposal(1, proposal)
 	require.NoError(t, err)
 
-	return node.NewPreparedProposal(1, data, prepared)
+	return result
 }
 
 func TestCapabilityPolicyProposerAllowsUnrelatedProposal(t *testing.T) {

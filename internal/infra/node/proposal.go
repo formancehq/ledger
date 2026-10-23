@@ -3,6 +3,7 @@ package node
 import (
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 type Proposal struct {
@@ -27,11 +28,21 @@ func newProposal(commandID uint64, data []byte, required []capabilities.Capabili
 	}
 }
 
-// NewPreparedProposal is the only public proposal factory. Callers must pass
-// the opaque result returned by capabilities.PrepareProposal for the same
-// command before serialization; the raw constructor remains package-private.
-func NewPreparedProposal(commandID uint64, data []byte, prepared capabilities.PreparedProposal) *Proposal {
-	return newProposal(commandID, data, prepared.RequiredCapabilities())
+// NewProposal is the only public proposal factory. It derives the capability
+// declaration and serializes the same final command, making it impossible for
+// the typed admission metadata to diverge from the wire payload.
+func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, error) {
+	prepared, err := capabilities.PrepareProposal(command)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := command.MarshalVT()
+	if err != nil {
+		return nil, err
+	}
+
+	return newProposal(commandID, data, prepared.RequiredCapabilities()), nil
 }
 
 // Data returns the serialized proposal data.
