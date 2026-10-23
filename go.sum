@@ -618,8 +618,6 @@ github.com/testcontainers/testcontainers-go/modules/clickhouse v0.40.0 h1:JhYAFt
 github.com/testcontainers/testcontainers-go/modules/clickhouse v0.40.0/go.mod h1:UoMHEYTzGmwKyeCQaKfcQHSVs/kQwimfzX+y1gVSRIk=
 github.com/testcontainers/testcontainers-go/modules/kafka v0.40.0 h1:BW4CMO6rYLvJRC7UF4l0rudnwm7IX/kJPvGd9MCJM6I=
 github.com/testcontainers/testcontainers-go/modules/kafka v0.40.0/go.mod h1:O4U0SUR8blhkRLLfIFHQqNRKzee7fOxzya2H+rnl4OY=
-github.com/tetratelabs/wazero v1.9.0 h1:IcZ56OuxrtaEz8UYNRHBrUa9bYeX9oVY93KspZZBf/I=
-github.com/tetratelabs/wazero v1.9.0/go.mod h1:TSbcXCfFP0L2FGkRPxHphadXPjo1T6W+CseNNY7EkjM=
 github.com/tetratelabs/wazero v1.12.0 h1:DuWcpNu/FzgEXgGBDp8J1Spc+CWOvvtvVyjKlaZopYU=
 github.com/tetratelabs/wazero v1.12.0/go.mod h1:LvKtzl2RqO4gyF27BiXU+nKAjcV8f38U+kP/q2vgxh0=
 github.com/thessem/zap-prettyconsole v0.7.0 h1:NIBesiXkPAewO9UEWtIm2kY6oWV0MKndJ/zeATCKyd8=
