@@ -2,6 +2,7 @@ package plan
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -42,4 +43,21 @@ func TestCapabilityPolicyProposerAllowsUnrelatedProposal(t *testing.T) {
 	_, err := proposer.Propose(context.Background(), capabilityPolicyProposal(t))
 	require.NoError(t, err)
 	require.True(t, delegate.called)
+}
+
+func TestCapabilityPolicyProposerRejectsPolicyReadFailureForBothProposalModes(t *testing.T) {
+	t.Parallel()
+
+	for _, businessWrite := range []bool{false, true} {
+		t.Run(map[bool]string{false: "technical", true: "business"}[businessWrite], func(t *testing.T) {
+			delegate := new(capabilityPolicyTestProposer)
+			proposer := NewCapabilityPolicyProposer(delegate, func() (*commonpb.ClusterPolicy, error) {
+				return nil, errors.New("policy unavailable")
+			}, nil, businessWrite)
+
+			_, err := proposer.Propose(context.Background(), capabilityPolicyProposal(t))
+			require.ErrorContains(t, err, "policy unavailable")
+			require.False(t, delegate.called)
+		})
+	}
 }
