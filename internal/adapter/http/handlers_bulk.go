@@ -348,7 +348,7 @@ func bulkElementError(r *http.Request, err error) (status int, code, description
 	// Retryable infra sentinels handled before Describable dispatch,
 	// mirroring handleError.
 	if errors.Is(err, ledgerpb.ErrNoLeader) || errors.Is(err, plan.ErrCacheHorizonExceeded) {
-		return http.StatusServiceUnavailable, "UNAVAILABLE", err.Error()
+		return http.StatusServiceUnavailable, "ERROR", err.Error()
 	}
 
 	c := classifyError(err)
