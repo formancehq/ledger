@@ -29,6 +29,21 @@ Old and new voters must communicate and apply each committed entry identically
 while they coexist. A change that cannot meet this requirement needs a staged
 rollout design or must wait for a different compatibility line.
 
+### Maintainer-declared CLI break
+
+The `ledgerctl cluster add-learner` command is intentionally removed from the
+capability-evidence release. Existing scripts or runbooks invoking that command
+must be updated; the command is not kept as a compatibility alias and no
+protocol-version bump is required because the service gRPC contract is
+unchanged.
+
+To add a new node, configure its peer seed and start the Ledger binary. The
+bootstrap sequence calls `JoinAsLearner` and advertises the capabilities
+compiled into that binary. A node restarting with an existing WAL uses
+`RefreshMembership` to publish updated endpoints and capability evidence.
+The administrative `AddLearner` RPC remains an internal recovery API, but it is
+not a supported replacement for the removed CLI workflow.
+
 Before tagging a new release, verify the upgrade with state created by the
 supported source releases. Cover affected Pebble records, Raft log and snapshot
 state, backup and restore formats, audit verification, and rebuildable
