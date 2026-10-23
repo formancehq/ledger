@@ -532,13 +532,7 @@ ledgerctl restore validate
 |------|----------|-------------|
 | `--timeout` | No | Request timeout (default: 50s) |
 
-Calls `RestoreService.ValidateRestore` (server-streaming). The server opens the staging directory as a read-only Pebble database and runs the full integrity checker (`check.Checker`). The checker performs three passes:
-
-1. **Log sequence verification**: Iterates all logs from sequence 1 to the last sequence. Verifies sequence continuity (no gaps).
-
-2. **Volume verification**: For every (account, asset) pair accumulated during log replay, computes the expected input/output from the attribute storage and compares against the replayed totals.
-
-3. **Metadata verification**: For every metadata key accumulated during replay, compares the expected value from attribute storage against the replayed state.
+Calls `RestoreService.ValidateRestore` (server-streaming). The server opens the staging directory as a read-only Pebble database and runs the full integrity checker (`check.Checker`). For each projection its passes cover, the checker re-derives the expected state from the audit chain and compares it with what the staging store holds. The passes cover the audit hash chain, log sequence continuity, volumes per `(ledger, account, asset, color)` (each color bucket is checked separately), metadata, transaction state, reversions, idempotency outcomes, the index registry and signing keys; see [Checker](../technical/architecture/subsystems/checker/checker.md#the-verification-passes) for the complete list. A successful validation says nothing about the fields the checker does not verify, such as transaction `insertedAt` / `updatedAt` in ledger-log payloads, per-replica index version state and read-index contents; see [What is not verified](../technical/architecture/subsystems/checker/checker.md#what-is-not-verified).
 
 Progress events (percentage) and error events are streamed back to the client in real time.
 
