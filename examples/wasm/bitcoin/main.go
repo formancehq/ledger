@@ -112,6 +112,10 @@ func run() uint32 {
 			if fetchErr == nil {
 				if applyErr := applyBlock(b); applyErr == nil {
 					moduleHeight++
+					// The Go WASI collector does not reclaim this workload quickly
+					// enough during catch-up; force collection before the next block
+					// to keep the linear memory bounded.
+					runtime.GC()
 					if moduleHeight%100 == 0 {
 						var stats runtime.MemStats
 						runtime.ReadMemStats(&stats)
