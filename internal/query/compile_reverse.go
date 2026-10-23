@@ -695,16 +695,17 @@ func compileAddressPrefixRev(ctx *compileCtx, addrPrefix string, role commonpb.A
 }
 
 func compileAddressExactRev(ctx *compileCtx, exactAddr string, role commonpb.AddressRole) (readstore.ReverseIterator, error) {
-	exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
-	if err != nil {
-		return nil, fmt.Errorf("checking account existence: %w", err)
-	}
-
-	if !exists {
-		return emptyReverse(), nil
-	}
-
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+		// Keep current-account membership separate from retained transaction history.
+		exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
+		if err != nil {
+			return nil, fmt.Errorf("checking account existence: %w", err)
+		}
+
+		if !exists {
+			return emptyReverse(), nil
+		}
+
 		iter := readstore.NewReverseSliceIterator([][]byte{[]byte(exactAddr)})
 
 		return trackReverse(iter, ctx.profile, &IteratorStats{

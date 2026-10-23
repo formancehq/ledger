@@ -1088,18 +1088,18 @@ func compileAddressPrefix(ctx *compileCtx, addrPrefix string, role commonpb.Addr
 }
 
 func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
-	// Check if the exact account exists in Pebble by looking for any attribute key
-	// with prefix [0xF1][ledger\x00][address\x00]
-	exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
-	if err != nil {
-		return nil, fmt.Errorf("checking account existence: %w", err)
-	}
-
-	if !exists {
-		return readstore.NewSliceIterator(nil), nil
-	}
-
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+		// Account membership requires a current attribute. Historical transaction
+		// mappings remain searchable after the account's attributes are purged.
+		exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
+		if err != nil {
+			return nil, fmt.Errorf("checking account existence: %w", err)
+		}
+
+		if !exists {
+			return readstore.NewSliceIterator(nil), nil
+		}
+
 		iter := readstore.NewSliceIterator([][]byte{[]byte(exactAddr)})
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
