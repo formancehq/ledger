@@ -142,8 +142,13 @@ expected O(1) cost; admission lookup is O(k), where k is the outstanding removal
 history of that ordinal, and does not scan other nodes. Memory and existing
 background waiters grow with total outstanding removals. The trigger is observed
 committed removal, not ordinary reads or proposals; there is no proposal/WAL
-amplification. Apply lag or tombstone verification failure can retain an
-unbounded history until progress or node restart; no TTL/eviction is safe.
+amplification. Apply lag can retain an unbounded history until apply reaches
+each event and its tombstone verification succeeds. The background waiter
+verifies only once and exits on a missing tombstone or read error; later apply
+progress alone does not retry verification or release that event. After a
+verification failure, cleanup requires successful verification of the same
+event by a foreground waiter that is still active, or a node restart. No
+TTL/eviction is safe.
 Operationally sustained lag or verification failure requires investigation;
 large retained histories are a trigger to reassess cleanup scheduling and
 resource limits without weakening identity protection. The deterministic
