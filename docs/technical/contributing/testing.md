@@ -383,9 +383,10 @@ wrapped with `scenario.RandFunc`. Custom `Block.Run` callbacks must accept
 module and leaves the choice of random source to the caller.
 
 The Numscript lifecycle and projection-alignment drivers expose reusable
-execution functions with explicit business inputs. Their Composer entry points
-retain the existing fixed version pair (`1.0.0`, `2.0.0`) and asset (`USD/2`),
-SDK entropy for technical identities, RPC sequence and assertion names.
+execution functions with explicit business inputs. Their generated inputs retain
+the original fixed version pair (`1.0.0`, `2.0.0`) and asset (`USD/2`) as explicit
+regression branches. Technical identities still use SDK entropy; the RPC sequence
+and assertion names are preserved.
 
 #### Dedicated-ledger query oracles
 
