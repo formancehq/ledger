@@ -19,7 +19,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/antithesistest"

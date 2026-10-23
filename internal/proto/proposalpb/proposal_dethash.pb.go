@@ -5,10 +5,9 @@ package proposalpb
 
 import (
 	binary "encoding/binary"
+	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	slices "slices"
 	sync "sync"
-
-	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 )
 
 // Map-key scratch pools. Each MarshalToSizedBufferDeterministicVT that

@@ -11,10 +11,9 @@ import (
 	context "context"
 	reflect "reflect"
 
+	snapshotpb "github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 	gomock "go.uber.org/mock/gomock"
 	grpc "google.golang.org/grpc"
-
-	snapshotpb "github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 )
 
 // MockSnapshotServiceClient is a mock of SnapshotServiceClient interface.

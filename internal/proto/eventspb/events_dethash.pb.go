@@ -5,7 +5,6 @@ package eventspb
 
 import (
 	binary "encoding/binary"
-
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 )
 

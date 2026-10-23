@@ -20,7 +20,6 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -30,6 +29,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 

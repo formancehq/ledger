@@ -10,12 +10,12 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/oracle"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // The model-conformance checks: every observed server outcome — a committed

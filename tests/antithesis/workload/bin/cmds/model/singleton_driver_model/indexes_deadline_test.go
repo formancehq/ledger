@@ -15,11 +15,11 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func TestReconcileIndexes_BlockedNodeHasIndependentDeadline(t *testing.T) {
