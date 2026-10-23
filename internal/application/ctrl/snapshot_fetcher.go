@@ -2,7 +2,10 @@ package ctrl
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -34,6 +37,12 @@ const (
 	prepareSnapshotHeartbeat = 10 * time.Second
 )
 
+// errSnapshotDonorIntegrity marks failures that are specific to a donor's
+// advertised checkpoint or streamed bytes. They are safe reasons to discard
+// the current donor session and try another candidate; local staging errors
+// deliberately do not use this sentinel.
+var errSnapshotDonorIntegrity = errors.New("snapshot donor integrity")
+
 // snapshotClientSource resolves the client for the peer being synced from.
 // It is called before every attempt so a fetch survives the Raft transport
 // restarting the shared peer connection: calls on the closed connection fail
@@ -47,6 +56,98 @@ type grpcSnapshotFetcher struct {
 	parallelism    int
 	retryCount     int
 	fileRetryCount int
+}
+
+type snapshotDonorCandidate struct {
+	id       uint64
+	newFetch func() (state.SnapshotFetcher, error)
+}
+
+// fallbackSnapshotFetcher tries one complete checkpoint session per donor.
+// Sessions are never mixed: a session ID and its manifest belong to exactly
+// one donor, so changing source is only safe after the previous attempt has
+// been discarded and the staging directory has been reset.
+type fallbackSnapshotFetcher struct {
+	candidates []snapshotDonorCandidate
+	logger     logging.Logger
+}
+
+func (f *fallbackSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir string, progress *state.SyncProgress, minAppliedIndex uint64) (uint64, error) {
+	if len(f.candidates) == 0 {
+		return 0, fmt.Errorf("snapshot fetch: %w", state.ErrNotAvailable)
+	}
+
+	errs := make([]error, 0, len(f.candidates))
+	for i, candidate := range f.candidates {
+		if i > 0 {
+			if err := resetSnapshotTargetDir(targetDir); err != nil {
+				return 0, fmt.Errorf("resetting snapshot staging directory before donor %d: %w", candidate.id, err)
+			}
+			if progress != nil {
+				progress.Reset()
+			}
+		}
+
+		fetcher, err := candidate.newFetch()
+		if err != nil {
+			errs = append(errs, fmt.Errorf("donor %d: %w", candidate.id, err))
+			continue
+		}
+
+		size, err := fetcher.FetchSnapshot(ctx, targetDir, progress, minAppliedIndex)
+		if err == nil {
+			return size, nil
+		}
+
+		errs = append(errs, fmt.Errorf("donor %d: %w", candidate.id, err))
+		if !isDonorFallbackError(ctx, err) {
+			return 0, err
+		}
+
+		f.logger.WithFields(map[string]any{
+			"donor":           candidate.id,
+			"minAppliedIndex": minAppliedIndex,
+			"error":           err.Error(),
+		}).Errorf("Snapshot donor failed, trying next candidate")
+	}
+
+	return 0, fmt.Errorf("snapshot fetch failed from all donors: %w", errors.Join(errs...))
+}
+
+func isDonorFallbackError(ctx context.Context, err error) bool {
+	if errors.Is(err, state.ErrNotAvailable) || errors.Is(err, errSnapshotDonorIntegrity) {
+		return true
+	}
+
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		if isRetryableError(ctx, current) || isSessionExpired(current) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// resetSnapshotTargetDir removes only the contents of the restore staging
+// directory. IncomingRestoreFactory owns this directory, so clearing it
+// between donor sessions cannot affect the live Pebble store.
+func resetSnapshotTargetDir(targetDir string) error {
+	entries, err := os.ReadDir(targetDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+
+		return err
+	}
+
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(targetDir, entry.Name())); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // isUnavailableError checks if the error is a gRPC Unavailable error (connection refused, etc.)
@@ -206,7 +307,7 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, client snaps
 
 	manifest := resp.GetManifest()
 	if err := validateSnapshotManifest(manifest); err != nil {
-		return 0, fmt.Errorf("validating snapshot manifest: %w", err)
+		return 0, fmt.Errorf("%w: validating snapshot manifest: %v", errSnapshotDonorIntegrity, err)
 	}
 
 	totalSize := manifestTotalSize(manifest)
@@ -330,6 +431,40 @@ func (p *grpcSnapshotFetcherProvider) GetForPeer(id uint64) (state.SnapshotFetch
 		parallelism:    p.parallelism,
 		retryCount:     p.retryCount,
 		fileRetryCount: p.fileRetryCount,
+	}, nil
+}
+
+// GetForPeers builds a lazy, ordered donor fallback. Connections are resolved
+// only when their candidate is attempted, so one unavailable peer cannot make
+// the whole provider construction fail.
+func (p *grpcSnapshotFetcherProvider) GetForPeers(ids []uint64) (state.SnapshotFetcher, error) {
+	candidates := make([]snapshotDonorCandidate, 0, len(ids))
+	seen := make(map[uint64]struct{}, len(ids))
+	for _, id := range ids {
+		if id == 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+
+		candidateID := id
+		candidates = append(candidates, snapshotDonorCandidate{
+			id: candidateID,
+			newFetch: func() (state.SnapshotFetcher, error) {
+				return p.GetForPeer(candidateID)
+			},
+		})
+	}
+
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("no snapshot donors available")
+	}
+
+	return &fallbackSnapshotFetcher{
+		candidates: candidates,
+		logger:     p.logger,
 	}, nil
 }
 
