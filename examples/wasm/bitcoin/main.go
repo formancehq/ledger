@@ -6,13 +6,17 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 	"unsafe"
+
+	"golang.org/x/crypto/ripemd160"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -169,6 +173,7 @@ type vout struct {
 }
 type script struct {
 	Address string `json:"address"`
+	Hex     string `json:"hex"`
 }
 
 func fetchBlock(height uint64) (*block, error) {
@@ -204,14 +209,14 @@ func applyBlock(b *block) error {
 			return err
 		}
 		fees = append(fees, txFees...)
-		requests = append(requests, transactionRequest(postings, metadata, source.TxID, b.Time))
+		requests = append(requests, transactionRequest(postings, metadata, source.TxID, b.Time, nil))
 	}
 	if coinbase != nil {
-		postings, metadata, err := mapCoinbase(*coinbase, b, fees)
+		postings, metadata, accountMetadata, err := mapCoinbase(*coinbase, b, fees)
 		if err != nil {
 			return err
 		}
-		requests = append(requests, transactionRequest(postings, metadata, coinbase.TxID, b.Time))
+		requests = append(requests, transactionRequest(postings, metadata, coinbase.TxID, b.Time, accountMetadata))
 	}
 	requests = append(requests, &servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{
 		Ledger: moduleConfig.Ledger,
@@ -283,8 +288,8 @@ type feeEntry struct {
 	amount  uint64
 }
 
-func transactionRequest(postings []*commonpb.Posting, metadata map[string]*commonpb.MetadataValue, txID string, blockTime int64) *servicepb.Request {
-	payload := &servicepb.CreateTransactionPayload{Postings: postings, Reference: fmt.Sprintf("%d:%s", moduleHeight, txID), Metadata: metadata, Timestamp: &commonpb.Timestamp{Data: uint64(blockTime) * 1_000_000}}
+func transactionRequest(postings []*commonpb.Posting, metadata map[string]*commonpb.MetadataValue, txID string, blockTime int64, accountMetadata map[string]*commonpb.MetadataMap) *servicepb.Request {
+	payload := &servicepb.CreateTransactionPayload{Postings: postings, Reference: fmt.Sprintf("%d:%s", moduleHeight, txID), Metadata: metadata, Timestamp: &commonpb.Timestamp{Data: uint64(blockTime) * 1_000_000}, AccountMetadata: accountMetadata}
 	action := &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: payload}}
 	return &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: moduleConfig.Ledger, Action: action}}}
 }
@@ -299,7 +304,11 @@ func mapRegular(source tx, b *block) ([]*commonpb.Posting, map[string]*commonpb.
 	staging := "staging:" + sanitize(source.TxID)
 	var inputs, outputs uint64
 	for _, input := range source.Vin {
-		if input.Prevout == nil || input.Prevout.Script.Address == "" {
+		if input.Prevout == nil {
+			continue
+		}
+		address := resolveAddress(input.Prevout.Script)
+		if address == "" {
 			continue
 		}
 		amount, err := satoshis(input.Prevout.Value)
@@ -307,10 +316,11 @@ func mapRegular(source tx, b *block) ([]*commonpb.Posting, map[string]*commonpb.
 			return nil, nil, nil, err
 		}
 		inputs += amount
-		postings = append(postings, posting(moduleConfig.AddressPref+":"+sanitize(input.Prevout.Script.Address), staging, amount))
+		postings = append(postings, posting(moduleConfig.AddressPref+":"+sanitize(address), staging, amount))
 	}
 	for _, output := range source.Vout {
-		if output.Script.Address == "" {
+		address := resolveAddress(output.Script)
+		if address == "" {
 			continue
 		}
 		amount, err := satoshis(output.Value)
@@ -318,7 +328,7 @@ func mapRegular(source tx, b *block) ([]*commonpb.Posting, map[string]*commonpb.
 			return nil, nil, nil, err
 		}
 		outputs += amount
-		postings = append(postings, posting(staging, moduleConfig.AddressPref+":"+sanitize(output.Script.Address), amount))
+		postings = append(postings, posting(staging, moduleConfig.AddressPref+":"+sanitize(address), amount))
 	}
 	var fees []feeEntry
 	if inputs > outputs {
@@ -341,26 +351,138 @@ func mapRegular(source tx, b *block) ([]*commonpb.Posting, map[string]*commonpb.
 	return postings, metadata, fees, nil
 }
 
-func mapCoinbase(source tx, b *block, fees []feeEntry) ([]*commonpb.Posting, map[string]*commonpb.MetadataValue, error) {
+func mapCoinbase(source tx, b *block, fees []feeEntry) ([]*commonpb.Posting, map[string]*commonpb.MetadataValue, map[string]*commonpb.MetadataMap, error) {
 	metadata := baseMetadata(source, b)
 	metadata["coinbase"] = &commonpb.MetadataValue{Type: &commonpb.MetadataValue_BoolValue{BoolValue: true}}
-	destination := "burn"
-	for _, output := range source.Vout {
-		if output.Script.Address != "" {
-			destination = moduleConfig.AddressPref + ":" + sanitize(output.Script.Address)
+	var address string
+	selectedOutput := -1
+	for i, output := range source.Vout {
+		if resolved := resolveAddress(output.Script); resolved != "" {
+			address = resolved
+			selectedOutput = i
 			break
 		}
 	}
-	mining := "mining:" + sanitize(destination)
-	postings := []*commonpb.Posting{posting("world", mining, blockSubsidy(moduleHeight)), posting(mining, destination, blockSubsidy(moduleHeight))}
+	var destination string
+	if address != "" {
+		destination = moduleConfig.AddressPref + ":" + sanitize(address)
+	}
+	postings := make([]*commonpb.Posting, 0, len(source.Vout)+len(fees)+2)
+	if destination == "" {
+		if subsidy := blockSubsidy(moduleHeight); subsidy > 0 {
+			postings = append(postings, posting("world", "burn", subsidy))
+		}
+		for _, fee := range fees {
+			postings = append(postings, posting(fee.account, "burn", fee.amount))
+		}
+	} else {
+		mining := "mining:" + sanitize(address)
+		subsidy := blockSubsidy(moduleHeight)
+		if subsidy > 0 {
+			postings = append(postings, posting("world", mining, subsidy), posting(mining, destination, subsidy))
+		}
+		for i, output := range source.Vout {
+			if i == selectedOutput {
+				continue
+			}
+			resolved := resolveAddress(output.Script)
+			if resolved == "" {
+				continue
+			}
+			amount, err := satoshis(output.Value)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			postings = append(postings, posting("world", moduleConfig.AddressPref+":"+sanitize(resolved), amount))
+		}
+		for _, fee := range fees {
+			postings = append(postings, posting(fee.account, destination, fee.amount))
+		}
+	}
 	metadata["subsidy"] = metadataUint(blockSubsidy(moduleHeight))
 	var totalFees uint64
 	for _, fee := range fees {
-		postings = append(postings, posting(fee.account, destination, fee.amount))
 		totalFees += fee.amount
 	}
 	metadata["total_fees"] = metadataUint(totalFees)
-	return postings, metadata, nil
+	accountMetadata := make(map[string]*commonpb.MetadataMap)
+	for _, p := range postings {
+		if p.GetSource() == "world" || p.GetDestination() == "" || strings.HasPrefix(p.GetDestination(), "fees:") {
+			continue
+		}
+		accountMetadata[p.GetDestination()] = &commonpb.MetadataMap{Values: map[string]*commonpb.MetadataValue{"miner": metadataBool(true)}}
+	}
+	return postings, metadata, accountMetadata, nil
+}
+
+func resolveAddress(value script) string {
+	if value.Address != "" {
+		return value.Address
+	}
+	return p2pkToAddress(value.Hex)
+}
+
+func p2pkToAddress(scriptHex string) string {
+	script, err := hex.DecodeString(scriptHex)
+	if err != nil || len(script) < 2 || script[len(script)-1] != 0xac {
+		return ""
+	}
+	pushLen := int(script[0])
+	pubkey := script[1 : len(script)-1]
+	if len(pubkey) != pushLen || (len(pubkey) != 33 && len(pubkey) != 65) {
+		return ""
+	}
+	if len(pubkey) == 65 && pubkey[0] == 0x04 {
+		compressed := make([]byte, 33)
+		if pubkey[64]%2 == 0 {
+			compressed[0] = 0x02
+		} else {
+			compressed[0] = 0x03
+		}
+		copy(compressed[1:], pubkey[1:33])
+		pubkey = compressed
+	}
+	if len(pubkey) != 33 || (pubkey[0] != 0x02 && pubkey[0] != 0x03) {
+		return ""
+	}
+	h := sha256.Sum256(pubkey)
+	r := ripemd160.New()
+	_, _ = r.Write(h[:])
+	payload := append([]byte{0}, r.Sum(nil)...)
+	first := sha256.Sum256(payload)
+	second := sha256.Sum256(first[:])
+	return base58Encode(append(payload, second[:4]...))
+}
+
+func base58Encode(input []byte) string {
+	const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+	leading := 0
+	for leading < len(input) && input[leading] == 0 {
+		leading++
+	}
+	buf := make([]byte, len(input)*138/100+1)
+	length := 0
+	for _, b := range input {
+		carry := int(b)
+		for i := 0; i < length || carry != 0; i++ {
+			if i < length {
+				carry += 256 * int(buf[i])
+			}
+			buf[i] = byte(carry % 58)
+			carry /= 58
+			if i >= length {
+				length = i + 1
+			}
+		}
+	}
+	result := make([]byte, leading+length)
+	for i := 0; i < leading; i++ {
+		result[i] = '1'
+	}
+	for i := 0; i < length; i++ {
+		result[leading+i] = alphabet[buf[length-1-i]]
+	}
+	return string(result)
 }
 
 func metadataBool(value bool) *commonpb.MetadataValue {
