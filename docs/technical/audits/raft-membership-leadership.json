@@ -68,6 +68,7 @@
     "docs/technical/contributing/ai-audit-challenge.md"
   ],
   "invariants": [
+    "Valid historical remove/add/remove cycles at one ordinal replay in one Ready or across delayed cleanup without conflicts. Each committed removal retains independent identity admission protection until its durable applied index and matching tuple tombstone are verified; exact duplicates reuse the event, same-index contradictory identities fail, and stale cleanup cannot release another event. Caller cancellation cannot own protection.",
     "A normal Raft entry or ConfChange becomes committed only under the quorum rules of the configuration that governs that transition; no minority, stale leader, learner, or removed member may acknowledge a successful quorum-dependent operation.",
     "Leadership acquisition must establish an applied local horizon at least as new as the leadership barrier before opening leader-only admission, membership orchestration, forwarding ownership, or quorum-certified reads; leadership loss must fence pending leader-owned operations without reinterpreting a committed outcome as rejected.",
     "A successful mutation or membership response is emitted only after the correlated committed entry has completed its required local durable apply. Cancellation or leadership loss after commit must expose an unknown-or-committed outcome with enough stable evidence to avoid resolving a later operation's waiter.",
@@ -82,6 +83,7 @@
     "Committed entry ordering and membership outcomes must survive leader crash, transfer, restart, retained-log catch-up, and snapshot catch-up without loss, double durable effect, or configuration regression. Pure deterministic FSM/cache correctness after the consensus boundary belongs to fsm-determinism-cache-coverage."
   ],
   "adversarial_questions": [
+    "Can one follower Ready contain several removals at a reused ordinal before async FSM submission? Do all identity guards survive canceled foreground waits, delayed cleanup, duplicate observations and restart while fresh identities remain eligible? Does cleanup delete only the original node/index/pointer after durable tombstone verification, and is lookup confined to that ordinal's pending history?",
     "At each transition from follower or candidate to leader, what exact index is drained/applied before leader-only admission, learner promotion, forwarding ownership, and leadership notifications become effective, and can a concurrent step-down reopen a stale path?",
     "What happens when leadership changes after request admission, proposal enqueue, Raft acceptance, quorum commit, ConfChange observation, local durable apply, or immediately before response delivery? Which identity correlates the response or committed-unknown error to the original operation?",
     "Can two concurrent add, promote, remove, force-remove, update, or rejoin requests bypass pending-ConfChange serialization, reuse a node ID with the wrong instance ID, or allow a delayed committed ConfChange to resolve a newer waiter?",
@@ -97,6 +99,7 @@
     "Which immediate leadership observers update routing and membership authority synchronously, and can their failure expose stale authority? Deep goroutine ownership, cancellation, shutdown joins, and event/mirror/backup worker generations belong to concurrency-lifecycle-shutdown."
   ],
   "dynamic_checks_to_consider": [
+    "replay remove(A), add(B), remove(B) through a real follower RawNode Ready and WAL restart; compare with durable apply between changes, retain both tombstones, delay cleanup across newer events, cancel foreground waits, and test duplicate observation, same-index contradictory identity, stale pointer deletion and per-ordinal cost shape",
     "just test-model-cluster 300",
     "go test -race ./internal/infra/node/... ./internal/infra/transport/... ./internal/infra/membership/... ./internal/application/membership/...",
     "go test -tags e2e ./tests/e2e/cluster/... -timeout=600s",

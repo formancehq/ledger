@@ -87,6 +87,19 @@ Prove rejoin and promotion behavior through every production entry rather than
 assuming that one admission check covers direct add, auto-promotion, discovery,
 or leadership change.
 
+For retained-log catch-up, feed a real follower RawNode committed remove(A),
+add(B), remove(B) at one ordinal in a single Ready; also delay cleanup across
+separate Readies and compare with durable apply between cycles. Every removal
+must remain an independent node/index event with immutable identity. Verify all
+removed identities stay protected until their own durable index and tuple
+tombstone, fresh identities remain eligible, and exact duplicates reuse events
+while same-index contradictory identities fail. Cancel foreground waits, delay
+old cleanup across newer events or replacement pointers, and recover the same
+history through WAL replay. Require both tombstones and final ConfState parity.
+Missing tombstones/read failures must retain protection. Check the lookup cost
+partition and benchmark growing per-ordinal history separately from unrelated
+nodes; no set lock may span apply, store reads or proposal waits.
+
 ### Leadership and quorum transitions
 
 Use committed/applied indexes, not callback order or the locally reported Raft
