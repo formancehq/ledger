@@ -43,41 +43,6 @@ import (
 
 var tracer = otel.Tracer("admission")
 
-// capabilityPolicyProposer is the final admission barrier for capability
-// policy. It deliberately wraps the node proposer instead of checking during
-// request preparation: plan.Builder.Run may rebuild a proposal under its
-// tracker guard, and this wrapper therefore observes the exact bytes that are
-// about to be queued for Raft.
-type capabilityPolicyProposer struct {
-	delegate      plan.Proposer
-	readPolicy    func() (*commonpb.ClusterPolicy, error)
-	readMembers   func() []capabilities.Member
-	businessWrite bool
-}
-
-func (p capabilityPolicyProposer) Propose(ctx context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
-	policy, err := p.readPolicy()
-	if err != nil {
-		return nil, fmt.Errorf("reading cluster capability policy before proposal: %w", err)
-	}
-	state := capabilities.FromPolicy(policy)
-	if err := state.Validate(); err != nil {
-		return nil, err
-	}
-
-	required := proposal.RequiredCapabilities()
-	var members []capabilities.Member
-	if p.readMembers != nil {
-		members = p.readMembers()
-	}
-	decision := capabilities.Evaluate(state, required, p.businessWrite, members)
-	if !decision.Allowed {
-		return nil, fmt.Errorf("%w: %s", capabilities.ErrCapabilityUnsupported, decision.Reason)
-	}
-
-	return p.delegate.Propose(ctx, proposal)
-}
-
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source admission.go -destination proposer_generated_test.go -typed -package admission . Proposer
 type Proposer interface {
 	Propose(context.Context, *node.Proposal) (*futures.Future[state.ApplyResult], error)
@@ -99,8 +64,7 @@ type Admission struct {
 	waitLeaderReady func(context.Context) error
 	// auditProjectionState is node-local admission state. It may reject a
 	// checkpoint proposal before Raft, but never affects deterministic apply.
-	auditProjectionState  func() (disabled, rebuilding bool)
-	readCapabilityMembers func() []capabilities.Member
+	auditProjectionState func() (disabled, rebuilding bool)
 
 	// clusterPolicyCommitted latches once the replicated cluster policy is
 	// observed committed (revision > 0). The steady-state write path then skips
@@ -170,10 +134,6 @@ func WithAuditProjectionState(state func() (disabled, rebuilding bool)) func(*Ad
 	return func(a *Admission) {
 		a.auditProjectionState = state
 	}
-}
-
-func WithCapabilityMembership(read func() []capabilities.Member) func(*Admission) {
-	return func(a *Admission) { a.readCapabilityMembers = read }
 }
 
 func NewAdmission(
@@ -640,7 +600,7 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 		return nil, err
 	}
 
-	fsmFuture, cleanup, err := a.proposeAdmission(ctx, cmd, build, admPlan.businessBatch)
+	fsmFuture, cleanup, err := a.proposeAdmission(ctx, cmd, build)
 	if err != nil {
 		return nil, err
 	}
@@ -829,7 +789,7 @@ func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.
 	return cmd, build, nil
 }
 
-func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposal, build *plan.BuildResult, businessWrite bool) (*futures.Future[state.ApplyResult], func(), error) {
+func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
 	// Step 5: Marshal + acquire proposal guard + set PredictedIndex
 	// + propose, all via the shared preload runner. The runner also
 	// patches PredictedIndex onto the pre-marshaled buffer (or
@@ -843,15 +803,6 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 	// rebuild, keeping bits and plans in sync.
 	ctx, proposeSpan := tracer.Start(ctx, "admission.propose")
 
-	// Keep the policy check inside the canonical runner's proposer callback. This
-	// is the last point before the proposal enters the node queue, including the
-	// runner's rebuild path, so a policy update cannot be bypassed by a stale
-	// preflight check. The policy is read from the replicated store rather than
-	// from process-local configuration.
-	policyProposer := capabilityPolicyProposer{delegate: a.proposer, readPolicy: func() (*commonpb.ClusterPolicy, error) {
-		return query.ReadClusterPolicy(a.store)
-	}, readMembers: a.readCapabilityMembers, businessWrite: businessWrite}
-
 	runResult, err := a.builder.Run(
 		ctx, cmd, build,
 		func(c *raftcmdpb.Proposal) ([]byte, error) {
@@ -860,7 +811,7 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 			// admission metrics.
 			return a.marshalCommand(ctx, c)
 		},
-		policyProposer,
+		a.proposer,
 	)
 	if err != nil {
 		proposeSpan.End()
