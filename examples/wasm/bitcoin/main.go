@@ -105,36 +105,68 @@ func main() {
 
 //go:wasmexport run
 func run() uint32 {
+	var current *preparedBlock
 	for {
 		best, err := rpcUint("getblockcount")
-		if err == nil && moduleHeight <= best {
-			blockStarted := time.Now()
-			var beforeFetch runtime.MemStats
-			runtime.ReadMemStats(&beforeFetch)
-			b, fetchErr := fetchBlock(moduleHeight)
-			var afterFetch runtime.MemStats
-			runtime.ReadMemStats(&afterFetch)
-			if fetchErr == nil {
-				if applyErr := applyBlock(b); applyErr == nil {
-					var afterApply runtime.MemStats
-					runtime.ReadMemStats(&afterApply)
-					moduleHeight++
-					if moduleHeight%100 == 0 {
-						var stats runtime.MemStats
-						runtime.ReadMemStats(&stats)
-						logf(0, "bitcoin ingestion: next_height=%d transactions=%d block_duration_ms=%d fetch_alloc_bytes=%d apply_alloc_bytes=%d heap_alloc_bytes=%d heap_inuse_bytes=%d heap_sys_bytes=%d gc_cycles=%d", moduleHeight, len(b.Tx), time.Since(blockStarted).Milliseconds(), afterFetch.TotalAlloc-beforeFetch.TotalAlloc, afterApply.TotalAlloc-afterFetch.TotalAlloc, stats.HeapAlloc, stats.HeapInuse, stats.HeapSys, stats.NumGC)
-					}
-					continue
-				} else {
-					logf(2, "bitcoin apply block %d: %v", moduleHeight, applyErr)
-				}
-			} else {
-				logf(2, "bitcoin block %d: %v", moduleHeight, fetchErr)
+		if err == nil && current == nil && moduleHeight <= best {
+			var prepareStarted = time.Now()
+			var beforePrepare runtime.MemStats
+			runtime.ReadMemStats(&beforePrepare)
+			current, err = prepareBlock(moduleHeight)
+			if err != nil {
+				logf(2, "bitcoin block %d: %v", moduleHeight, err)
 			}
+			if current != nil && current.height != moduleHeight {
+				current = nil
+			}
+			if current != nil {
+				var afterPrepare runtime.MemStats
+				runtime.ReadMemStats(&afterPrepare)
+				current.prepareAlloc = afterPrepare.TotalAlloc - beforePrepare.TotalAlloc
+				current.prepareDuration = time.Since(prepareStarted)
+			}
+		}
+		if current != nil {
+			// Build the next batch while the Ledger applies the current one. The
+			// result is bounded to one block, so a slow Ledger write cannot make
+			// the WASM heap grow without limit.
+			nextHeight := current.height + 1
+			next := make(chan *preparedBlock, 1)
+			go func() {
+				prepared, prepareErr := prepareBlock(nextHeight)
+				if prepareErr != nil {
+					logf(2, "bitcoin block %d: %v", nextHeight, prepareErr)
+				}
+				next <- prepared
+			}()
+
+			var beforeApply runtime.MemStats
+			runtime.ReadMemStats(&beforeApply)
+			applyStarted := time.Now()
+			applyErr := applyPrepared(current)
+			var afterApply runtime.MemStats
+			runtime.ReadMemStats(&afterApply)
+			preparedNext := <-next
+			if applyErr != nil {
+				logf(2, "bitcoin apply block %d: %v", moduleHeight, applyErr)
+				current = nil
+			} else {
+				moduleHeight++
+				if moduleHeight%100 == 0 {
+					var stats runtime.MemStats
+					runtime.ReadMemStats(&stats)
+					logf(0, "bitcoin ingestion: next_height=%d transactions=%d prepare_duration_ms=%d apply_duration_ms=%d prepare_alloc_bytes=%d apply_alloc_bytes=%d heap_alloc_bytes=%d heap_inuse_bytes=%d heap_sys_bytes=%d gc_cycles=%d", moduleHeight, len(current.block.Tx), current.prepareDuration.Milliseconds(), time.Since(applyStarted).Milliseconds(), current.prepareAlloc, afterApply.TotalAlloc-beforeApply.TotalAlloc, stats.HeapAlloc, stats.HeapInuse, stats.HeapSys, stats.NumGC)
+				}
+				if preparedNext != nil && preparedNext.height == moduleHeight {
+					current = preparedNext
+				} else {
+					current = nil
+				}
+			}
+			continue
 		} else if err != nil {
 			logf(2, "bitcoin getblockcount: %v", err)
 		}
-		runtime.GC()
 		time.Sleep(time.Duration(pollInterval()) * time.Millisecond)
 	}
 }
@@ -191,6 +223,27 @@ type script struct {
 	Hex     string `json:"hex"`
 }
 
+type preparedBlock struct {
+	height          uint64
+	block           *block
+	payload         []byte
+	prepareDuration time.Duration
+	prepareAlloc    uint64
+}
+
+func prepareBlock(height uint64) (*preparedBlock, error) {
+	started := time.Now()
+	b, err := fetchBlock(height)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := buildApplyPayload(height, b)
+	if err != nil {
+		return nil, err
+	}
+	return &preparedBlock{height: height, block: b, payload: payload, prepareDuration: time.Since(started)}, nil
+}
+
 func fetchBlock(height uint64) (*block, error) {
 	hashRaw, err := rpc("getblockhash", height)
 	if err != nil {
@@ -209,7 +262,7 @@ func fetchBlock(height uint64) (*block, error) {
 	return &result, err
 }
 
-func applyBlock(b *block) error {
+func buildApplyPayload(height uint64, b *block) ([]byte, error) {
 	var requests []*servicepb.Request
 	var fees []feeEntry
 	var coinbase *tx
@@ -219,38 +272,43 @@ func applyBlock(b *block) error {
 			coinbase = &source
 			continue
 		}
-		postings, metadata, txFees, err := mapRegular(source, b)
+		postings, metadata, txFees, err := mapRegular(height, source, b)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		fees = append(fees, txFees...)
-		requests = append(requests, transactionRequest(postings, metadata, source.TxID, b.Time, nil))
+		requests = append(requests, transactionRequest(height, postings, metadata, source.TxID, b.Time, nil))
 	}
 	if coinbase != nil {
-		postings, metadata, accountMetadata, err := mapCoinbase(*coinbase, b, fees)
+		postings, metadata, accountMetadata, err := mapCoinbase(height, *coinbase, b, fees)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		requests = append(requests, transactionRequest(postings, metadata, coinbase.TxID, b.Time, accountMetadata))
+		requests = append(requests, transactionRequest(height, postings, metadata, coinbase.TxID, b.Time, accountMetadata))
 	}
 	requests = append(requests, &servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{
 		Ledger: moduleConfig.Ledger,
 		Metadata: map[string]*commonpb.MetadataValue{
-			"bitcoin_next_height": metadataUint(moduleHeight + 1),
+			"bitcoin_next_height": metadataUint(height + 1),
 		},
 	}}})
 	if len(requests) == 0 {
-		return nil
+		return nil, nil
 	}
-	apply := &servicepb.ApplyRequest{Variant: &servicepb.ApplyRequest_Unsigned{Unsigned: &servicepb.ApplyBatch{Requests: requests, IdempotencyKey: fmt.Sprintf("bitcoin:block:%d", moduleHeight)}}, SkipResponse: true}
+	apply := &servicepb.ApplyRequest{Variant: &servicepb.ApplyRequest_Unsigned{Unsigned: &servicepb.ApplyBatch{Requests: requests, IdempotencyKey: fmt.Sprintf("bitcoin:block:%d", height)}}, SkipResponse: true}
 	payload, err := apply.MarshalVT()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	request, err := (&wasmpb.LedgerCallRequest{Method: "Apply", Payload: payload}).MarshalVT()
 	if err != nil {
-		return err
+		return nil, err
 	}
+	return request, nil
+}
+
+func applyPrepared(prepared *preparedBlock) error {
+	request := prepared.payload
 	response := ledgerResponse
 	result := ledgerCall(uint32(uintptr(unsafe.Pointer(&request[0]))), uint32(len(request)), uint32(uintptr(unsafe.Pointer(&response[0]))), uint32(len(response)))
 	if result == ^uint64(0) || result > uint64(len(response)) {
@@ -303,18 +361,18 @@ type feeEntry struct {
 	amount  uint64
 }
 
-func transactionRequest(postings []*commonpb.Posting, metadata map[string]*commonpb.MetadataValue, txID string, blockTime int64, accountMetadata map[string]*commonpb.MetadataMap) *servicepb.Request {
-	payload := &servicepb.CreateTransactionPayload{Postings: postings, Reference: fmt.Sprintf("%d:%s", moduleHeight, txID), Metadata: metadata, Timestamp: &commonpb.Timestamp{Data: uint64(blockTime) * 1_000_000}, AccountMetadata: accountMetadata}
+func transactionRequest(height uint64, postings []*commonpb.Posting, metadata map[string]*commonpb.MetadataValue, txID string, blockTime int64, accountMetadata map[string]*commonpb.MetadataMap) *servicepb.Request {
+	payload := &servicepb.CreateTransactionPayload{Postings: postings, Reference: fmt.Sprintf("%d:%s", height, txID), Metadata: metadata, Timestamp: &commonpb.Timestamp{Data: uint64(blockTime) * 1_000_000}, AccountMetadata: accountMetadata}
 	action := &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: payload}}
 	return &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: moduleConfig.Ledger, Action: action}}}
 }
 
-func baseMetadata(source tx, b *block) map[string]*commonpb.MetadataValue {
-	return map[string]*commonpb.MetadataValue{"block_height": {Type: &commonpb.MetadataValue_StringValue{StringValue: strconv.FormatUint(moduleHeight, 10)}}, "block_hash": {Type: &commonpb.MetadataValue_StringValue{StringValue: b.Hash}}, "tx_hash": {Type: &commonpb.MetadataValue_StringValue{StringValue: source.TxID}}}
+func baseMetadata(height uint64, source tx, b *block) map[string]*commonpb.MetadataValue {
+	return map[string]*commonpb.MetadataValue{"block_height": {Type: &commonpb.MetadataValue_StringValue{StringValue: strconv.FormatUint(height, 10)}}, "block_hash": {Type: &commonpb.MetadataValue_StringValue{StringValue: b.Hash}}, "tx_hash": {Type: &commonpb.MetadataValue_StringValue{StringValue: source.TxID}}}
 }
 
-func mapRegular(source tx, b *block) ([]*commonpb.Posting, map[string]*commonpb.MetadataValue, []feeEntry, error) {
-	metadata := baseMetadata(source, b)
+func mapRegular(height uint64, source tx, b *block) ([]*commonpb.Posting, map[string]*commonpb.MetadataValue, []feeEntry, error) {
+	metadata := baseMetadata(height, source, b)
 	var postings []*commonpb.Posting
 	staging := "staging:" + sanitize(source.TxID)
 	var inputs, outputs uint64
@@ -348,7 +406,7 @@ func mapRegular(source tx, b *block) ([]*commonpb.Posting, map[string]*commonpb.
 	var fees []feeEntry
 	if inputs > outputs {
 		fee := inputs - outputs
-		account := fmt.Sprintf("fees:%d:%s", moduleHeight, sanitize(source.TxID))
+		account := fmt.Sprintf("fees:%d:%s", height, sanitize(source.TxID))
 		postings = append(postings, posting(staging, account, fee))
 		fees = append(fees, feeEntry{account: account, amount: fee})
 		metadata["total_fees"] = metadataUint(fee)
@@ -366,8 +424,8 @@ func mapRegular(source tx, b *block) ([]*commonpb.Posting, map[string]*commonpb.
 	return postings, metadata, fees, nil
 }
 
-func mapCoinbase(source tx, b *block, fees []feeEntry) ([]*commonpb.Posting, map[string]*commonpb.MetadataValue, map[string]*commonpb.MetadataMap, error) {
-	metadata := baseMetadata(source, b)
+func mapCoinbase(height uint64, source tx, b *block, fees []feeEntry) ([]*commonpb.Posting, map[string]*commonpb.MetadataValue, map[string]*commonpb.MetadataMap, error) {
+	metadata := baseMetadata(height, source, b)
 	metadata["coinbase"] = &commonpb.MetadataValue{Type: &commonpb.MetadataValue_BoolValue{BoolValue: true}}
 	var address string
 	selectedOutput := -1
@@ -384,7 +442,7 @@ func mapCoinbase(source tx, b *block, fees []feeEntry) ([]*commonpb.Posting, map
 	}
 	postings := make([]*commonpb.Posting, 0, len(source.Vout)+len(fees)+2)
 	if destination == "" {
-		if subsidy := blockSubsidy(moduleHeight); subsidy > 0 {
+		if subsidy := blockSubsidy(height); subsidy > 0 {
 			postings = append(postings, posting("world", "burn", subsidy))
 		}
 		for _, fee := range fees {
@@ -392,7 +450,7 @@ func mapCoinbase(source tx, b *block, fees []feeEntry) ([]*commonpb.Posting, map
 		}
 	} else {
 		mining := "mining:" + sanitize(address)
-		subsidy := blockSubsidy(moduleHeight)
+		subsidy := blockSubsidy(height)
 		if subsidy > 0 {
 			postings = append(postings, posting("world", mining, subsidy), posting(mining, destination, subsidy))
 		}
@@ -414,7 +472,7 @@ func mapCoinbase(source tx, b *block, fees []feeEntry) ([]*commonpb.Posting, map
 			postings = append(postings, posting(fee.account, destination, fee.amount))
 		}
 	}
-	metadata["subsidy"] = metadataUint(blockSubsidy(moduleHeight))
+	metadata["subsidy"] = metadataUint(blockSubsidy(height))
 	var totalFees uint64
 	for _, fee := range fees {
 		totalFees += fee.amount
