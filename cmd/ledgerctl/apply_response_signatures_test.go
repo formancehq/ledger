@@ -42,10 +42,12 @@ func TestQueryMutationResponseSignatures(t *testing.T) {
 				verify    bool
 				signed    bool
 				corrupt   bool
+				alterLog  bool
 				wantError string
 			}{
 				{name: "missing", verify: true, wantError: "log 7: missing response signature"},
 				{name: "invalid", verify: true, signed: true, corrupt: true, wantError: "log 7: response signature verification failed"},
+				{name: "altered visible log", verify: true, signed: true, alterLog: true, wantError: "log 8: visible response log does not match signed payload"},
 				{name: "valid", verify: true, signed: true},
 				{name: "verification disabled"},
 			} {
@@ -62,6 +64,9 @@ func TestQueryMutationResponseSignatures(t *testing.T) {
 						require.NotNil(t, log.GetResponseSignature())
 						if signature.corrupt {
 							log.ResponseSignature.Signature[0] ^= 1
+						}
+						if signature.alterLog {
+							log.Sequence = 8
 						}
 					}
 

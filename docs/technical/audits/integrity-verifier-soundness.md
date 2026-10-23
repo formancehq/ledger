@@ -104,6 +104,12 @@ ledger projection are not its policy oracle. Record actual persisted keys as
 well as embedded names. Agreement between the two stored copies is insufficient
 when both are corrupted.
 
+Include a canonical row at the bare attribute prefix (an empty canonical key):
+the streaming iterator omits it, so the policy pass must read it separately
+from the same primary snapshot. A full checker regression must start healthy,
+inject a valid LedgerInfo there, and require exactly one canonical
+UNAUDITED_LEDGER event with an empty ledger identity and no terminal error.
+
 Coverage includes missing and surplus rows, name, schema, account types,
 default enforcement mode, normal/mirror mode, complete source configuration
 and exact deletion timestamp. Audited deletion retains tombstones and their

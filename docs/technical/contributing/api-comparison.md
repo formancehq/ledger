@@ -12,6 +12,14 @@ For the per-operation Ledger v2 → v3 path mapping, see
 [`v2-to-v3-endpoint-map.json`](v2-to-v3-endpoint-map.json). Update it in the same
 change when a route it names is renamed or removed.
 
+Cluster membership changes are exposed through the v3 `ClusterService`; the v2
+business endpoint map has no corresponding operation. Internal retries of one
+add, promote or remove call retain the original committed outcome through slow
+WAL persistence, rather than reporting a second admission error after the
+membership already changed. Success still requires local durable FSM apply;
+distinct calls keep their existing admission and cancellation semantics. This
+correction changes no route, message, field, status schema or protocol revision.
+
 HTTP typed metadata preserves exact integer values, including signed 64-bit
 bounds and values above 2^53, for metadata writes, transaction creation and
 reversal (unitary and bulk). Integral decimal/exponent spellings are accepted;
@@ -562,7 +570,7 @@ The v2 schemaVersion/parallel options are not added to v3 by this correction.
 ### 5. Ledger Management
 
 **Endpoints:**
-- `POST /v3/{ledgerName}` - Create a ledger. Optional body fields: `metadata`, `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` (metadata field types), and `accountTypes` (full account-type model — name/pattern/persistence/segmentTypes). These mirror the gRPC `CreateLedgerRequest`. Initial typed metadata is atomic with creation in normal and mirror modes and requires only `ledger:LedgerWrite`; later saves require `ledger:MetadataWrite`. JSON null entries are omitted. Schema declarations do not enforce write-time value types. See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md).
+- `POST /v3/{ledgerName}` - Create a ledger. Optional body fields: `metadata`, `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` (metadata field types), and `accountTypes` (full account-type model — name/pattern/persistence/segmentTypes). These mirror the gRPC `CreateLedgerRequest`. Initial typed metadata is atomic with creation in normal and mirror modes and requires only `ledger:WriteLedger`; later saves require `ledger:WriteMetadata`. JSON null entries are omitted. Schema declarations do not enforce write-time value types. See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md).
 - `DELETE /v3/{ledgerName}` - Delete a ledger
 - `GET /v3/{ledgerName}` - Get ledger info (read)
 - `GET /v3/` - List all ledgers (read)
@@ -829,7 +837,7 @@ ledgerctl indexes list --ledger my-ledger
 
 These endpoints are documented in Section 3 (Metadata Management) above.
 
-Both routes require `ledger:MetadataWrite`; `ledger:write` grants it under
+Both routes require `ledger:WriteMetadata`; `ledger:write` grants it under
 the default scope mapping. SDK metadata-key parameters take the raw key, such
 as `formance.com/reviewed`, and encode it as one path segment. Direct HTTP
 clients perform that encoding themselves; the server decodes exactly once.
@@ -1217,7 +1225,7 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
 | `GET /v3/{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
 | `GET /v3/{ledgerName}/volumes` | ✅ | ✅ | Aggregate volumes (per-asset, generic account `filter`) |
-| `GET /v3/{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs, ascending by ledger-local log id unless `reverse=true` ([pagination](#pagination)). Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`) on both transports |
+| `GET /v3/{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs, ascending by ledger-local log id unless `reverse=true` ([pagination](#pagination)). Ledger-scoped read → requires `ledger:read` (granular `ledger:ReadLedger`) on both transports |
 | `GET /v3/{ledgerName}/stats` | ✅ | ✅ | Ledger usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts). A missing or deleted ledger returns `404 LEDGER_NOT_FOUND` |
 | `GET /v3/{ledgerName}` | ✅ | ✅ | Get ledger info |
 | `POST /v3/{ledgerName}/promote` | ✅ | ❌ | Promote mirror ledger to normal mode |
@@ -1236,16 +1244,16 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (version selector, empty/latest = greatest semver) |
 | `GET /v3/{ledgerName}/numscripts/{name}/usage` | ✅ | ❌ | Get invocation count + last-used timestamp. A missing or deleted ledger returns `404 LEDGER_NOT_FOUND`; a never-invoked template returns a zero-valued `200` response |
 | `GET /v3/{ledgerName}/numscripts/{name}/versions` | ✅ | ❌ | List version history |
-| `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Save an immutable version (explicit full semver). Requires `ledger:LedgerWrite` on both the dedicated route and gRPC `Apply(SaveNumscript)` |
+| `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Save an immutable version (explicit full semver). Requires `ledger:WriteLedger` on both the dedicated route and gRPC `Apply(SaveNumscript)` |
 | `GET /v3/{ledgerName}/account-types` | ✅ | ❌ | List account types |
 | `GET /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Get account type |
-| `POST /v3/{ledgerName}/account-types` | ✅ | ❌ | Add account type. Requires `ledger:MetadataWrite` on both the dedicated route and gRPC `Apply` |
-| `DELETE /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type. Requires `ledger:MetadataWrite` on both the dedicated route and gRPC `Apply` |
-| `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT). Requires `ledger:MetadataWrite` on both the dedicated route and gRPC `Apply` |
-| `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence. No ledger identity → requires `ledger` ops-read (granular `ledger:OpsRead`) |
+| `POST /v3/{ledgerName}/account-types` | ✅ | ❌ | Add account type. Requires `ledger:WriteMetadata` on both the dedicated route and gRPC `Apply` |
+| `DELETE /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type. Requires `ledger:WriteMetadata` on both the dedicated route and gRPC `Apply` |
+| `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT). Requires `ledger:WriteMetadata` on both the dedicated route and gRPC `Apply` |
+| `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence. No ledger identity → requires `ledger` ops-read (granular `ledger:ReadOps`) |
 | `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink cursor and error status, including startup failures (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`); cursor zero without error means delivery is pending, while a nonzero cursor can also reflect filtered or internal logs rather than external delivery |
-| `POST /v3/_/events-sinks` | ✅ | ❌ | Create an instance-wide sink from protobuf JSON; `ledger:OpsWrite`, `201 {data: {name}}`, optional `Idempotency-Key` |
-| `DELETE /v3/_/events-sinks/{sinkName}` | ✅ | ❌ | Remove an instance-wide sink; `ledger:OpsWrite`, optional `controllerId` precondition and `Idempotency-Key`, `204` |
+| `POST /v3/_/events-sinks` | ✅ | ❌ | Create an instance-wide sink from protobuf JSON; `ledger:WriteOps`, `201 {data: {name}}`, optional `Idempotency-Key` |
+| `DELETE /v3/_/events-sinks/{sinkName}` | ✅ | ❌ | Remove an instance-wide sink; `ledger:WriteOps`, optional `controllerId` precondition and `Idempotency-Key`, `204` |
 | `GET /v3/_/signing-keys` | ✅ | ❌ | List registered Ed25519 signing keys, paged by key id ([pagination](#pagination)) |
 | `GET /v3/{ledgerName}/indexes` | ✅ | ❌ | List indexes registered on a ledger |
 | `GET /v3/{ledgerName}/indexes/{canonicalId}` | ✅ | ❌ | Get a single Index registry entry |
@@ -1387,17 +1395,17 @@ Paged list RPCs follow the shared `ListOptions` contract and publish the
 | `ListPreparedQueries` | List all prepared queries for a ledger | ✅ |
 | `ExecutePreparedQuery` | Execute a prepared query against the read index | ✅ |
 | `Barrier` | No-op Raft proposal to ensure all prior writes are applied | ✅ |
-| `Apply` | Apply a ledger action (write operations). Authorization is **per request in the batch**: each variant requires the same granular scope as its dedicated HTTP route or gRPC RPC — `Apply` is never a lower bar than the single-shot path. Unknown or malformed variants fail closed on `ledger:OpsWrite`. See [Apply request scopes](#apply-request-scopes) | ✅ |
+| `Apply` | Apply a ledger action (write operations). Authorization is **per request in the batch**: each variant requires the same granular scope as its dedicated HTTP route or gRPC RPC — `Apply` is never a lower bar than the single-shot path. Unknown or malformed variants fail closed on `ledger:WriteOps`. See [Apply request scopes](#apply-request-scopes) | ✅ |
 | `Apply(CreateLedger)` with mirror mode | Create a mirror ledger | ✅ |
 | `Apply(PromoteLedger)` | Promote mirror ledger to normal mode | ✅ |
-| `Apply(SaveNumscript)` | Save an immutable numscript version (explicit full semver). Requires `ledger:LedgerWrite`, matching `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ |
+| `Apply(SaveNumscript)` | Save an immutable numscript version (explicit full semver). Requires `ledger:WriteLedger`, matching `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ |
 | `GetNumscript` | Get a numscript by name and version selector | ✅ |
 | `ListNumscripts` | List the greatest version of each saved numscript | ✅ |
 | `ListNumscriptVersions` | List the latest pointer and every stored version | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure). Request is `{ options }` only — no dedicated filter fields. Follows the shared `ListOptions` contract: cursor/page_size/reverse/checkpoint_id plus a bare-audit-field `QueryFilter` (outcome, ledger, caller_subject, order_type, idempotency_key, seq, proposal_id, timestamp, log_seq — bare fields resolved against the audit query target, EN-1549 replacing the old `audit[...]` syntax) resolved through the audit secondary index. `idempotency_key` supports equality and prefix matching and may return several historical entries after key reuse. Ledger scope and outcome selection are expressed as filter conditions | ✅ |
 | `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
-| `ListLogs` | Stream system logs for a ledger (requires `ledger` field). Follows the shared `ListOptions` contract: cursor/page_size/reverse (descending ledger-local id)/checkpoint_id plus `log_id` and date filters. Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`), same as the HTTP `GET /v3/{ledgerName}/logs` route | ✅ |
-| `GetLog` | Get a single system log by bucket-wide sequence number. No ledger identity in the request → requires `ledger` ops-read (granular `ledger:OpsRead`), like the HTTP `GET /v3/_/logs/{sequence}` route | ✅ |
+| `ListLogs` | Stream system logs for a ledger (requires `ledger` field). Follows the shared `ListOptions` contract: cursor/page_size/reverse (descending ledger-local id)/checkpoint_id plus `log_id` and date filters. Ledger-scoped read → requires `ledger:read` (granular `ledger:ReadLedger`), same as the HTTP `GET /v3/{ledgerName}/logs` route | ✅ |
+| `GetLog` | Get a single system log by bucket-wide sequence number. No ledger identity in the request → requires `ledger` ops-read (granular `ledger:ReadOps`), like the HTTP `GET /v3/_/logs/{sequence}` route | ✅ |
 | `ListSigningKeys` | Stream registered signing keys, paged by key id | ✅ |
 | `Discovery` | Return server capabilities (response signing config), build info (`ServerInfo`: version, commit, build date, Go version), and committed `ClusterPolicy` | ✅ |
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
@@ -1440,23 +1448,23 @@ The governing rule: **a batched operation requires the same scope as its dedicat
 
 | Request variant | Scope | Matches |
 |---|---|---|
-| `apply` (`create_transaction`, `revert_transaction`) | `ledger:TransactionWrite` | `POST /v3/{ledgerName}/transactions` |
-| `apply` (`add_metadata`, `delete_metadata`) | `ledger:MetadataWrite` | metadata routes |
-| `apply` (`add_account_type`, `remove_account_type`, `set_default_enforcement_mode`) | `ledger:MetadataWrite` | `/v3/{ledgerName}/account-types*` |
-| `create_ledger`, `delete_ledger`, `promote_ledger`, `create_index`, `drop_index`, `save_numscript` | `ledger:LedgerWrite` | the `requireLedgersWrite` route group |
-| `save_ledger_metadata`, `delete_ledger_metadata`, `add_account_type`, `remove_account_type`, `set_default_enforcement_mode`, `set_metadata_field_type`, `remove_metadata_field_type` | `ledger:MetadataWrite` | the `requireMetadataWrite` route group |
-| `create_prepared_query`, `update_prepared_query`, `delete_prepared_query` | `ledger:QueryWrite` | the `requireQueriesWrite` route group |
-| `create_query_checkpoint`, `delete_query_checkpoint`, `set_query_checkpoint_schedule`, `delete_query_checkpoint_schedule` | `ledger:ClusterWrite` | none — `BucketService.Apply` only |
-| events sinks | `ledger:OpsWrite` | `POST /v3/_/events-sinks`, `DELETE /v3/_/events-sinks/{sinkName}` |
-| signing keys, maintenance mode | `ledger:OpsWrite` | operator surface, no dedicated business route |
-| unknown / malformed / unset variant | `ledger:OpsWrite` | fail-closed default |
+| `apply` (`create_transaction`, `revert_transaction`) | `ledger:WriteTransaction` | `POST /v3/{ledgerName}/transactions` |
+| `apply` (`add_metadata`, `delete_metadata`) | `ledger:WriteMetadata` | metadata routes |
+| `apply` (`add_account_type`, `remove_account_type`, `set_default_enforcement_mode`) | `ledger:WriteMetadata` | `/v3/{ledgerName}/account-types*` |
+| `create_ledger`, `delete_ledger`, `promote_ledger`, `create_index`, `drop_index`, `save_numscript` | `ledger:WriteLedger` | the `requireLedgersWrite` route group |
+| `save_ledger_metadata`, `delete_ledger_metadata`, `add_account_type`, `remove_account_type`, `set_default_enforcement_mode`, `set_metadata_field_type`, `remove_metadata_field_type` | `ledger:WriteMetadata` | the `requireMetadataWrite` route group |
+| `create_prepared_query`, `update_prepared_query`, `delete_prepared_query` | `ledger:WriteQuery` | the `requireQueriesWrite` route group |
+| `create_query_checkpoint`, `delete_query_checkpoint`, `set_query_checkpoint_schedule`, `delete_query_checkpoint_schedule` | `ledger:WriteCluster` | none — `BucketService.Apply` only |
+| events sinks | `ledger:WriteOps` | `POST /v3/_/events-sinks`, `DELETE /v3/_/events-sinks/{sinkName}` |
+| signing keys, maintenance mode | `ledger:WriteOps` | operator surface, no dedicated business route |
+| unknown / malformed / unset variant | `ledger:WriteOps` | fail-closed default |
 
 Two properties are enforced by tests rather than convention:
 
 - **Exhaustiveness.** `request_scope_exhaustiveness_test.go` walks the `Request.type` and `LedgerAction.data` oneof descriptors and fails when a variant has no explicit scope decision. A new proto variant cannot ship on an accidental default — CI blocks it until someone classifies it.
-- **Fail-closed is only for the unknown.** The classifier reports whether a decision was explicit, so "nobody decided" is distinguishable from a deliberate `ledger:OpsWrite`.
+- **Fail-closed is only for the unknown.** The classifier reports whether a decision was explicit, so "nobody decided" is distinguishable from a deliberate `ledger:WriteOps`.
 
-> **Breaking change (EN-1506).** The four `*_query_checkpoint*` variants previously resolved to `ledger:OpsWrite`. Because `DefaultMapping` grants `ledger:OpsWrite` to any `ledger:write` token but `ledger:ClusterWrite` only to `ledger:admin`, a non-admin caller could create or delete query checkpoints through `Apply` — an operation the dedicated `ClusterService` RPCs restrict to admins. They now require `ledger:ClusterWrite`. Callers driving query checkpoints through `Apply` with a `ledger:write` token must move to `ledger:admin` or add the granular `ledger:ClusterWrite` scope.
+> **Breaking change (EN-1506).** The four `*_query_checkpoint*` variants previously resolved to `ledger:WriteOps`. Because `DefaultMapping` grants `ledger:WriteOps` to any `ledger:write` token but `ledger:WriteCluster` only to `ledger:admin`, a non-admin caller could create or delete query checkpoints through `Apply` — an operation the dedicated `ClusterService` RPCs restrict to admins. They now require `ledger:WriteCluster`. Callers driving query checkpoints through `Apply` with a `ledger:write` token must move to `ledger:admin` or add the granular `ledger:WriteCluster` scope.
 
 > **Breaking change (EN-1954).** `BucketService.CreatePreparedQuery`, `UpdatePreparedQuery`, `DeletePreparedQuery` and `ClusterService.CreateQueryCheckpoint`, `DeleteQueryCheckpoint` are removed. Every one of these operations is a `ledger.Request` variant submitted through `BucketService.Apply`, so it is now batchable, idempotent under a batch key, signable as part of the batch, scope-checked once, and forwarded to the leader through the single Apply path. Required scopes and error semantics are unchanged. A newly executed checkpoint creation waits for local read-index readiness (leader only with `skip_response`), unless concurrent deletion supersedes it. An idempotent replay returns the historical logs immediately, including after deletion or while the original creation still materializes; it does not guarantee current existence or readiness. Server-produced response provenance preserves this distinction across follower forwarding. The HTTP prepared-query routes are unchanged — they already delegated to the same Apply backend.
 

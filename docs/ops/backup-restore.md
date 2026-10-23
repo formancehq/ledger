@@ -107,13 +107,20 @@ ownership or remove that Job before provisioning can resume. The controller neve
 adopts or deletes a foreign Job automatically. Retryable provisioning errors are
 persisted in the message without rewriting unchanged diagnostics. If that status
 write fails, the run stays nonterminal and reconciliation retries. The message is
-cleared after the owned Job becomes available, before processing its outcome.
+cleared when the owned Job is observed still running or its result is captured.
 Definitive local construction errors and API
 `Invalid`/`BadRequest` creation rejections mark the run Failed; other provisioning
 errors retry. Transient reads of the parent Backup or Cluster also retry rather
 than ending the run during recovery. Once the owned Job completes, its outcome
 and valid result payload are persisted on the run, including after a controller
-restart.
+restart. Pod listing, temporarily absent Pods, and fallback log opening or reading
+errors leave the run Running with a diagnostic and return an error for controller
+backoff. The same owned Job is reused, siblings remain blocked, and history pruning
+cannot remove the nonterminal run. Unchanged diagnostics do not cause status writes.
+Acquired malformed summaries and failed Jobs still mark the run Failed. A missing
+result that never becomes available requires operator intervention; no new timeout
+or automatic backup resubmission is introduced. Runs already marked Failed by an
+older operator remain terminal.
 
 The run history limits retain Kubernetes `BackupRun` resources only. They do
 not retain historical backup artifacts or restore points in object storage.
@@ -484,7 +491,7 @@ The server-side job:
    sha256 embedded in its object key. A mismatch fails the job
    (`DOWNLOAD_STATE_FAILED`) with an error that names the file, and the
    staging directory is wiped.
-4. Applies any incremental export segments on top of the checkpoint and rebuilds derived state (volumes, metadata, transactions, reversion bitsets, prepared queries, the index registry) from the exported logs, starting at the checkpoint's last log sequence. Every object must contain the explicit stream footer and the complete sequence range advertised by the manifest; physical EOF or incomplete coverage fails the download closed. This is the same `ApplyExports` + `RebuildDelta` path used by the offline `ledgerctl store bootstrap` command, so a manifest with incremental backups restores all data written after the last full checkpoint. Prepared-query create, update, and delete logs are folded in order, including multiple mutations within one delta. The index registry fold covers the full lifecycle — create, retype version bump, drop, and the removal cascade — see [Restore Lifecycle](../technical/architecture/subsystems/indexer/indexes.md#restore-lifecycle); per-replica read indexes are deliberately NOT restored and are rebuilt by each node's indexbuilder from the restored registry.
+4. Applies any incremental export segments on top of the checkpoint and rebuilds derived state (volumes, metadata, transactions, reversion bitsets, prepared queries, the index registry) from the exported logs, starting at the checkpoint's last log sequence. Every object must terminate with the explicit stream footer at the exact end, match the manifest byte size, and contain the complete sequence range advertised by the manifest; physical EOF, trailing bytes, size mismatch, or incomplete coverage fails the download closed. This is the same `ApplyExports` + `RebuildDelta` path used by the offline `ledgerctl store bootstrap` command, so a manifest with incremental backups restores all data written after the last full checkpoint. Prepared-query create, update, and delete logs are folded in order, including multiple mutations within one delta. The index registry fold covers the full lifecycle — create, retype version bump, drop, and the removal cascade — see [Restore Lifecycle](../technical/architecture/subsystems/indexer/indexes.md#restore-lifecycle); per-replica read indexes are deliberately NOT restored and are rebuilt by each node's indexbuilder from the restored registry.
 5. On success, marks the staging as ready.
 
 If the job fails or is cancelled, the staging directory is wiped so the
@@ -588,10 +595,14 @@ Finalization performs these steps:
 
 1. Prepares the staged store ([Backup Preparation on Restore](#backup-preparation-on-restore): applied index preserved as the genesis boundary, persisted config/bloom/peers/cache reset).
 2. Reads back `lastAppliedIndex` and `lastAppliedTimestamp` from the prepared store.
-3. Writes the **RESTORED marker** JSON file to `{dataDir}/RESTORED`.
-4. Creates `{dataDir}/checkpoints/` directory.
-5. **Atomically** hard-links the staging directory to `{dataDir}/checkpoints/0` (using a temp directory + `os.Rename` for crash safety).
-6. Removes the staging directory.
+3. Closes the staging Pebble handle, creates `{dataDir}/checkpoints/`, and removes any existing `checkpoints/0` path.
+4. Hard-links staging into a temporary checkpoint directory, then renames it to `{dataDir}/checkpoints/0`.
+5. Writes the **RESTORED marker** JSON file to `{dataDir}/RESTORED`. The marker is the commit point and is written only after checkpoint placement.
+6. Removes the staging directory. A cleanup failure is logged after success; the published checkpoint and marker remain valid.
+
+One finalization owns the staged generation from preparation through publication and cleanup. A concurrent call fails with `FailedPrecondition` without changing the owner's staging or checkpoint. A repeated call after success also fails because the staging handle is gone; it does not return success again. Shutdown waits for an admitted finalizer before closing restore resources.
+
+If preparation fails, the staging handle remains open and the marker is absent; the staged bytes may already have changed if Pebble committed before reporting an error. If publication fails after the handle closes, staging files remain but cannot be finalized again in the same server process. A marker-write failure removes the newly placed checkpoint; if that rollback fails, remove the leftover checkpoint manually. Restart restore mode with a fresh target and repeat download and validation before retrying. Never treat a failed finalization as a committed restore.
 
 On next startup, `ScanLatestCheckpointID()` scans the `checkpoints/` directory for the highest numbered subdirectory to find the active checkpoint.
 
@@ -620,9 +631,9 @@ Client                       Restore Server                    Disk / S3
   |<-- summary -------------------|--- OpenReadOnly(staging) ---->|
   |                               |                               |
   |--- FinalizeRestore ---------->|                               |
-  |                               |--- Write RESTORED marker ---->|
   |                               |--- HardLink staging --------->|
   |                               |    -> checkpoints/0           |
+  |                               |--- Write RESTORED marker ---->|
   |                               |--- Remove staging ----------->|
   |<-- response ------------------|                               |
 

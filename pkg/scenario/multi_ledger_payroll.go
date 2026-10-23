@@ -28,7 +28,7 @@ func MultiLedgerPayrollBlocks() *BlockGroup {
 	}
 }
 
-func payrollFundClearing(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func payrollFundClearing(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	departments := MultiLedgerPayrollDepartments()
 	var totalNeeded int64
 	for _, dept := range departments {
@@ -42,7 +42,7 @@ func payrollFundClearing(ctx context.Context, client servicepb.BucketServiceClie
 	)
 }
 
-func payrollDistribute(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func payrollDistribute(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	departments := MultiLedgerPayrollDepartments()
 	dept := departments[RandIntN(r, len(departments))]
 	amount := int64(dept.Employees) * MultiLedgerPayrollBaseSalary
@@ -60,7 +60,7 @@ func payrollDistribute(ctx context.Context, client servicepb.BucketServiceClient
 	)
 }
 
-func payrollPaySalary(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func payrollPaySalary(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	departments := MultiLedgerPayrollDepartments()
 	dept := departments[RandIntN(r, len(departments))]
 	empID := 1 + RandIntN(r, dept.Employees)
@@ -77,7 +77,7 @@ func payrollPaySalary(ctx context.Context, client servicepb.BucketServiceClient,
 	)
 }
 
-func payrollCostAlloc(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func payrollCostAlloc(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	type allocation struct {
 		from   string
 		to     string
