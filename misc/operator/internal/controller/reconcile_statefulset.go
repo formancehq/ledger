@@ -12,6 +12,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -39,9 +40,25 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *le
 	return r.reconcileStatefulSetWithExec(ctx, ledger, specHash, credentials, podExecWithTimeout)
 }
 
-func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, ledger *ledgerv1alpha1.Cluster, specHash string, credentials []credentialsKeyInfo, exec ledgerctlExec) (ctrl.Result, error) {
+func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, ledger *ledgerv1alpha1.Cluster, specHash string, credentials []credentialsKeyInfo, exec ledgerctlExec) (result ctrl.Result, reconcileErr error) {
+	// Keep a preparation failure visible and retry it after independently safe
+	// workload/protection changes. Once a durable operation exists it owns the
+	// workload exclusively; the API fence below decides whether continuation is safe.
+	var preparationErr error
+	var preparationRetryAfter time.Duration
+	defer func() {
+		if preparationErr != nil {
+			reconcileErr = errors.Join(preparationErr, reconcileErr)
+		}
+		if reconcileErr == nil && preparationRetryAfter > 0 && (result.RequeueAfter == 0 || result.RequeueAfter > preparationRetryAfter) {
+			result.RequeueAfter = preparationRetryAfter
+		}
+	}()
 	logger := log.FromContext(ctx)
 	name := resourceName(ledger.Name)
+	if handled, result, err := r.resumeClaimTemplateRecovery(ctx, ledger); handled || err != nil {
+		return result, err
+	}
 
 	// Determine the TLS_MODE to apply this pass. The operator walks the
 	// StatefulSet through "optional" during a toggle so peers on either side
@@ -94,11 +111,18 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			savedReplicas := effective.Spec.Replicas
 			effective.Spec.Replicas = &previousReplicas
 			desired := buildStatefulSetSpec(effective, specHash, credentials, targetTLSMode)
+			var hashErr error
+			desired.Template, hashErr = r.resolveStorageSpecHash(ctx, effective, existing, desired.Template, specHash)
 			effective.Spec.Replicas = savedReplicas
+			if hashErr != nil {
+				setStorageSpecHashFailure(ledger, hashErr)
+
+				return ctrl.Result{}, hashErr
+			}
 			if volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
 				desired.Template = preserveExistingStorageWiring(existing.Spec.Template, desired.Template)
 			}
-			sts, err := r.upsertStatefulSet(ctx, ledger, desired, &previousReplicas)
+			sts, err := r.upsertStatefulSet(ctx, ledger, desired, &previousReplicas, specHash)
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("updating StatefulSet spec before scale-down: %w", err)
 			}
@@ -129,6 +153,58 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		if notControlledBy(existing, ledger) {
 			return ctrl.Result{}, nameConflictError("StatefulSet", existing, ledger)
 		}
+		var hashErr error
+		desired.Template, hashErr = r.resolveStorageSpecHash(ctx, effective, existing, desired.Template, specHash)
+		if hashErr != nil {
+			setStorageSpecHashFailure(ledger, hashErr)
+
+			return ctrl.Result{}, hashErr
+		}
+		desired.Template = withKubectlRestartedAt(existing.Spec.Template, desired.Template)
+		if !volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
+			claims, changed, err := alignedClaimTemplates(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates)
+			switch {
+			case err != nil:
+				setClaimTemplatesCondition(ledger, false, "UnsupportedChange", err.Error())
+				// Unsupported storage migration must not park unrelated image,
+				// configuration or membership updates. Keep the old immutable
+				// templates and continue reconciling the mutable workload fields.
+			case changed:
+				// Finish image/TLS/Pod-template changes first. The durable
+				// replacement then copies that settled workload verbatim.
+				if rolloutConverged(existing) && currentTLSModeFromStatefulSet(existing) == desiredTLSMode(ledger) && !scalingDown {
+					preview, err := r.normalizeStoragePodTemplate(ctx, existing, desired.Template)
+					if err != nil {
+						setClaimTemplatesCondition(ledger, false, "AdmissionCheckFailed", err.Error())
+
+						return ctrl.Result{}, err
+					}
+					if apiequality.Semantic.DeepEqual(preview, existing.Spec.Template) {
+						result, err := r.startClaimTemplateRecovery(ctx, ledger, existing, claims)
+						if err == nil {
+							return result, nil
+						}
+						if _, ok := errors.AsType[*claimTemplateJournalWriteError](err); ok {
+							return result, err
+						}
+						uncommitted, fenceErr := r.claimTemplatePreparationUncommitted(ctx, ledger)
+						if fenceErr != nil || !uncommitted {
+							return result, errors.Join(err, fenceErr)
+						}
+						if wait, ok := errors.AsType[*claimTemplateRecoveryRetryWait](err); ok {
+							preparationRetryAfter = wait.after
+						} else {
+							preparationErr = err
+						}
+
+						break // Preserve conditions and continue fenced mutable work.
+					}
+				}
+				setClaimTemplatesCondition(ledger, false, "WaitingForRollout", "Waiting for the existing workload rollout before refreshing claim templates")
+			default:
+				setClaimTemplatesCondition(ledger, true, "Ready", "Claim templates meet the configured capacity floor and volume profile")
+			}
+		}
 		if volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
 			if scalingDown || deferRCVolumeClaimRecreation(ledger.Spec.Image.Tag, existing) {
 				logger.Info("deferring StatefulSet recreation until RC rollout converges")
@@ -147,7 +223,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		}
 	}
 
-	sts, err := r.upsertStatefulSet(ctx, ledger, desired, nil)
+	sts, err := r.upsertStatefulSet(ctx, ledger, desired, nil, specHash)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -223,7 +299,7 @@ func (r *ClusterReconciler) cleanupPendingScaleDownPVCs(ctx context.Context, led
 // upsertStatefulSet is the single path that creates or updates the workload.
 // The stopped-upgrade gate calls the ordinary reconciler only after every old
 // Pod has disappeared; it never constructs a second StatefulSet spec.
-func (r *ClusterReconciler) upsertStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, desired appsv1.StatefulSetSpec, scaleDownFrom *int32) (*appsv1.StatefulSet, error) {
+func (r *ClusterReconciler) upsertStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, desired appsv1.StatefulSetSpec, scaleDownFrom *int32, specHash string) (*appsv1.StatefulSet, error) {
 	sts := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: resourceName(ledger.Name), Namespace: ledger.Namespace}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
 		sts.Labels = commonLabels(ledger)
@@ -240,6 +316,7 @@ func (r *ClusterReconciler) upsertStatefulSet(ctx context.Context, ledger *ledge
 			// are immutable after creation.
 			applyMutableStatefulSetSpec(sts, desired)
 		}
+		recordPodConfigHash(sts, specHash)
 
 		return setOwnedControllerReference(ledger, sts, r.Scheme, "StatefulSet")
 	})
@@ -272,6 +349,196 @@ func (r *ClusterReconciler) reconcileStatefulSetRetentionPolicy(ctx context.Cont
 	}
 
 	return true, nil
+}
+
+// claimTemplatePreparationUncommitted fences a failed preparation with direct
+// API observations, after the caller has established that no durable intent or
+// journal write was attempted. A pointer or an uncertain read keeps normal
+// mutations behind recovery. Standalone journals have no workload authority.
+func (r *ClusterReconciler) claimTemplatePreparationUncommitted(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (bool, error) {
+	if r.APIReader == nil {
+		return false, errors.New("uncached API reader is required to fence storage preparation failure")
+	}
+	reader := r.APIReader
+	latest := &ledgerv1alpha1.Cluster{}
+	if err := reader.Get(ctx, client.ObjectKeyFromObject(ledger), latest); err != nil {
+		return false, fmt.Errorf("checking storage recovery pointer after preparation failure: %w", err)
+	}
+	if latest.UID != ledger.UID || !latest.DeletionTimestamp.IsZero() {
+		return false, errors.New("cluster identity changed or is deleting after storage preparation failure")
+	}
+
+	return latest.Status.ClaimTemplateRecovery == nil, nil
+}
+
+// recordPodConfigHash binds the canonical inputs to the final installed Pod
+// hash, including a retained historical hash. Write both with that template.
+func recordPodConfigHash(sts *appsv1.StatefulSet, canonical string) {
+	if sts.Annotations == nil {
+		sts.Annotations = make(map[string]string)
+	}
+	sts.Annotations[annotationPodConfigHash] = canonical
+	sts.Annotations[annotationPodConfigSpecHash] = sts.Spec.Template.Annotations[annotationSpecHash]
+}
+
+func hasPodConfigHashBinding(sts *appsv1.StatefulSet) bool {
+	installed := sts.Spec.Template.Annotations[annotationSpecHash]
+
+	return sts.Annotations[annotationPodConfigHash] != "" && installed != "" && sts.Annotations[annotationPodConfigSpecHash] == installed
+}
+
+// preserveStorageSpecHash recognizes an old full-spec hash by reconstructing
+// its PVC-only inputs from the unchanged source templates. Once recognized,
+// the workload hash lives on STS metadata and remains valid after recreation.
+func preserveStorageSpecHash(ledger *ledgerv1alpha1.Cluster, existing *appsv1.StatefulSet, desired corev1.PodTemplateSpec, hash string) corev1.PodTemplateSpec {
+	old := existing.Spec.Template.Annotations[annotationSpecHash]
+	if old == "" {
+		return desired
+	}
+	if hasPodConfigHashBinding(existing) {
+		if existing.Annotations[annotationPodConfigHash] == hash {
+			desired.Annotations[annotationSpecHash] = old
+		}
+
+		return desired
+	}
+	if legacyStorageSpecHashMatches(ledger, existing) {
+		desired.Annotations[annotationSpecHash] = old
+	}
+
+	return desired
+}
+
+// Return evidence separately from the selected hash: equal desired/installed
+// annotations alone cannot certify an unpaired canonical marker.
+func legacyStorageSpecHashMatches(ledger *ledgerv1alpha1.Cluster, existing *appsv1.StatefulSet) bool {
+	old := existing.Spec.Template.Annotations[annotationSpecHash]
+	compatible := computePodSpecHash(&ledger.Spec, false) == old
+	if !compatible {
+		legacy := ledger.Spec.DeepCopy()
+		for _, claim := range existing.Spec.VolumeClaimTemplates {
+			var volume *ledgerv1alpha1.VolumeSpec
+			switch claim.Name {
+			case "wal":
+				volume = &legacy.Persistence.WAL
+			case "data":
+				volume = &legacy.Persistence.Data
+			default:
+				continue // Non-WAL/data templates are outside this hash migration.
+			}
+			volume.StorageClass = ""
+			if claim.Spec.StorageClassName != nil {
+				volume.StorageClass = *claim.Spec.StorageClassName
+			}
+			volume.AccessMode = ""
+			if len(claim.Spec.AccessModes) == 1 {
+				volume.AccessMode = string(claim.Spec.AccessModes[0])
+			}
+			volume.Size = claim.Spec.Resources.Requests[corev1.ResourceStorage].DeepCopy()
+			volume.VolumeAttributesClassName = ""
+			if claim.Spec.VolumeAttributesClassName != nil {
+				volume.VolumeAttributesClassName = *claim.Spec.VolumeAttributesClassName
+			}
+		}
+		// Released CRs may omit size/access mode while templates carry their
+		// defaults. Enumerate the sixteen bounded variants for two volumes.
+		for omitted := range 16 {
+			candidate := legacy.DeepCopy()
+			if omitted&1 != 0 {
+				candidate.Persistence.WAL.Size = resource.Quantity{}
+			}
+			if omitted&2 != 0 {
+				candidate.Persistence.Data.Size = resource.Quantity{}
+			}
+			if omitted&4 != 0 {
+				candidate.Persistence.WAL.AccessMode = ""
+			}
+			if omitted&8 != 0 {
+				candidate.Persistence.Data.AccessMode = ""
+			}
+			if computePodSpecHash(candidate, false) == old {
+				compatible = true
+
+				break
+			}
+		}
+	}
+
+	return compatible
+}
+
+// resolveStorageSpecHash preserves installed hashes only with evidence about
+// every hashed runtime input. Exact legacy reconstruction is sufficient for
+// known claim-only edits. A changed admitted template already requires a rollout.
+// Equal templates still require authenticated history for opaque released hashes:
+// their equality cannot detect changed ServiceAccount annotations.
+func (r *ClusterReconciler) resolveStorageSpecHash(ctx context.Context, ledger *ledgerv1alpha1.Cluster, existing *appsv1.StatefulSet, desired corev1.PodTemplateSpec, hash string) (corev1.PodTemplateSpec, error) {
+	old := existing.Spec.Template.Annotations[annotationSpecHash]
+	if old == "" {
+		return desired, nil
+	}
+	if hasPodConfigHashBinding(existing) {
+		// Only paired metadata records the installed runtime/admission inputs.
+		// Ignore leftover proof only while this association remains intact.
+		if existing.Annotations[annotationPodConfigHash] == hash {
+			desired.Annotations[annotationSpecHash] = old
+		}
+
+		return desired, nil
+	}
+	if ledger.Annotations[annotationLegacySpecHashProof] == "" {
+		if legacyStorageSpecHashMatches(ledger, existing) {
+			desired.Annotations[annotationSpecHash] = old
+
+			return desired, nil
+		}
+		candidate := *desired.DeepCopy()
+		candidate.Annotations[annotationSpecHash] = old
+		preview, err := r.normalizeStoragePodTemplate(ctx, existing, candidate)
+		if err != nil {
+			return desired, err
+		}
+		if !apiequality.Semantic.DeepEqual(preview, existing.Spec.Template) {
+			// The rollout also refreshes external admission inputs. No history is
+			// needed unless equal templates could hide such an input change.
+			return desired, nil
+		}
+	}
+	prior, err := readLegacySpecHashProof(ledger, existing)
+	if err != nil {
+		return desired, err
+	}
+	if computeSpecHash(prior) != hash {
+		// A different canonical hash includes external admission changes, even if
+		// substituting the old hash would produce the same admitted Pod template.
+		return desired, nil
+	}
+	candidate := *desired.DeepCopy()
+	candidate.Annotations[annotationSpecHash] = old
+	preview, err := r.normalizeStoragePodTemplate(ctx, existing, candidate)
+	if err != nil {
+		return desired, err
+	}
+	if apiequality.Semantic.DeepEqual(preview, existing.Spec.Template) {
+		return *existing.Spec.Template.DeepCopy(), nil
+	}
+
+	return desired, nil
+}
+
+// normalizeStoragePodTemplate uses the same API defaults and admission as a real
+// workload update, without changing its claims or persisting any mutation.
+// Partial comparisons cannot establish compatibility: omitted scalar defaults
+// (such as probe timeouts) differ from the source, while removed desired fields
+// must still count as workload changes.
+func (r *ClusterReconciler) normalizeStoragePodTemplate(ctx context.Context, existing *appsv1.StatefulSet, desired corev1.PodTemplateSpec) (corev1.PodTemplateSpec, error) {
+	preview := existing.DeepCopy()
+	preview.Spec.Template = withKubectlRestartedAt(existing.Spec.Template, *desired.DeepCopy())
+	if err := r.Update(ctx, preview, client.DryRunAll); err != nil {
+		return corev1.PodTemplateSpec{}, fmt.Errorf("checking Pod template compatibility: %w", err)
+	}
+
+	return preview.Spec.Template, nil
 }
 
 // preserveExistingStorageWiring keeps the Pod template compatible with the

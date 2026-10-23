@@ -37,5 +37,7 @@ conflict as `ResourceNamesAvailable=False`.
 
 - [Derived object ownership](derived-object-ownership.md) — ownership checks on
   writes, prunes, status and execs, conflict reporting, and accepted races.
+- [Declarative storage reconciliation](storage-reconciliation.md) — configured
+  PVC minima/profiles, actual CSI status, and durable claim-template recovery.
 - [Automatic PVC expansion](volume-auto-expansion.md) — opt-in capacity policy,
   measurement path, convergence, cooldown, failure modes, and observability.
