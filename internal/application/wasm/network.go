@@ -133,7 +133,7 @@ func (n *network) begin(operation string) func() {
 		current := n.active.Add(-1)
 		count := n.count.Add(1)
 		if n.log != nil && count%100 == 0 {
-			n.log(0, fmt.Sprintf("wasm network: operation=%s operations=%d active=%d max_active=%d", operation, count, current, n.max.Load()))
+			n.log(1, fmt.Sprintf("wasm network: operation=%s operations=%d active=%d max_active=%d", operation, count, current, n.max.Load()))
 		}
 	}
 }
