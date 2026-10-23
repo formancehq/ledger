@@ -111,11 +111,13 @@ type RunResult struct {
 //  2. iterates build.operations to assign coverage bits over plans,
 //  3. invokes the productions assigner if any,
 //  4. finalizes cmd before proposal construction,
-//  5. acquires the proposal guard (IndexTracker mutex),
-//  6. patches cmd.PredictedIndex from the tracker's next index,
-//  7. re-runs steps 2-4 + marshal if the next-index generation shifted,
-//  8. submits the proposal via proposer.Propose,
-//  9. releases the proposal-lock side of the guard.
+//  5. marshals the proposal before acquiring the proposal guard,
+//  6. acquires the proposal guard (IndexTracker mutex),
+//  7. patches PredictedIndex from the tracker's next index,
+//  8. re-runs steps 2-4 + marshal if the next-index generation shifted,
+//  9. submits the proposal via proposer.Propose,
+//
+// 10. releases the proposal-lock side of the guard.
 //
 // PredictedIndex is always set. It is a no-cost backstop: the FSM
 // rejects with ErrStaleProposal if the actual Raft index doesn't
@@ -182,6 +184,17 @@ func (p *Builder) Run(
 		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
 	}
 
+	// Serialize the full payload before taking the shared proposal lock. The
+	// predicted index is zero at this point and is patched below once the
+	// tracker guard is held.
+	cmd.PredictedIndex = 0
+	proposal, err := node.NewProposal(cmd.GetId(), cmd)
+	if err != nil {
+		build.ReleaseLoaders()
+
+		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
+	}
+
 	guardStart := time.Now()
 
 	updatedPreloads, guard, err := p.AcquireProposalGuard(build)
@@ -197,8 +210,6 @@ func (p *Builder) Run(
 
 		return nil, fmt.Errorf("%w: %w", ErrAcquireProposalGuard, err)
 	}
-
-	cmd.PredictedIndex = p.TrackerNext()
 
 	result := &RunResult{Guard: guard}
 
@@ -221,14 +232,16 @@ func (p *Builder) Run(
 
 			return nil, fmt.Errorf("%w (under guard): %w", ErrMarshalProposal, err)
 		}
+
+		proposal, err = node.NewProposal(cmd.GetId(), cmd)
+		if err != nil {
+			guard.ReleaseAll()
+
+			return nil, fmt.Errorf("%w (under guard): %w", ErrMarshalProposal, err)
+		}
 	}
 
-	proposal, err := node.NewProposal(cmd.GetId(), cmd)
-	if err != nil {
-		guard.ReleaseAll()
-
-		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
-	}
+	proposal.SetPredictedIndex(p.TrackerNext())
 
 	result.ProposeStartTime = time.Now()
 	fsmFuture, err := proposer.Propose(ctx, proposal)
@@ -343,19 +356,23 @@ func (p *Builder) runWithoutPreload(
 		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
 	}
 
+	// Marshal before taking the tracker lock; only the bounded predicted-index
+	// append below belongs in the critical section.
+	cmd.PredictedIndex = 0
+	proposal, err := node.NewProposal(cmd.GetId(), cmd)
+	if err != nil {
+		build.ReleaseLoaders()
+
+		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
+	}
+
 	guard := &ProposalGuard{p: p, token: build.token}
 
 	lockStart := time.Now()
 
 	p.LockTracker()
 
-	cmd.PredictedIndex = p.TrackerNext()
-	proposal, err := node.NewProposal(cmd.GetId(), cmd)
-	if err != nil {
-		guard.ReleaseLoaders()
-
-		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
-	}
+	proposal.SetPredictedIndex(p.TrackerNext())
 
 	proposeStart := time.Now()
 	fsmFuture, err := proposer.Propose(ctx, proposal)

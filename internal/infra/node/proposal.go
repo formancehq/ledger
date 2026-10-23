@@ -1,10 +1,22 @@
 package node
 
 import (
+	"google.golang.org/protobuf/encoding/protowire"
+
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
+	"github.com/formancehq/ledger/v3/internal/pkg/protowireutil"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+var predictedIndexField = func() protowire.Number {
+	fd := (&raftcmdpb.Proposal{}).ProtoReflect().Descriptor().Fields().ByName("predicted_index")
+	if fd == nil {
+		panic("invariant: Proposal has no predicted_index field")
+	}
+
+	return fd.Number()
+}()
 
 type Proposal struct {
 	*futures.Future[any]
@@ -48,6 +60,18 @@ func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, erro
 // Data returns the serialized proposal data.
 func (p *Proposal) Data() []byte {
 	return append([]byte(nil), p.data...)
+}
+
+// SetPredictedIndex patches the predicted Raft index onto the already
+// serialized proposal. NewProposal deliberately serializes with a zero index;
+// callers can therefore perform the expensive payload serialization before
+// acquiring the shared proposal lock and hold it only for this bounded append.
+func (p *Proposal) SetPredictedIndex(index uint64) {
+	if index == 0 {
+		return
+	}
+
+	p.data = protowireutil.AppendFixed64(p.data, predictedIndexField, index)
 }
 
 // RequiredCapabilities returns the capabilities derived by the producer from
