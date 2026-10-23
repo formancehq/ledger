@@ -519,7 +519,7 @@ func TestHTTPAuthMiddleware_EdDSA_GranularScopeFromVirtualScopeKey(t *testing.T)
 	handler := HTTPAuthMiddleware(cfg)(ok200)
 
 	// Least-privilege token: a single granular scope covered by the key's "ledger:read".
-	claims := newTestClaims("ledger:TransactionRead")
+	claims := newTestClaims("ledger:ReadTransaction")
 	claims.Issuer = ""
 	token := signEdDSA(t, edPriv, "ed-http-key", claims)
 

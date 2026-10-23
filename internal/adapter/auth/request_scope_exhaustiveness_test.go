@@ -117,7 +117,7 @@ func requestScopeCases() map[string]scopeCase {
 		"drop_index":     {&servicepb.Request{Type: &servicepb.Request_DropIndex{}}, ScopeLedgersWrite},
 		"save_numscript": {&servicepb.Request{Type: &servicepb.Request_SaveNumscript{}}, ScopeLedgersWrite},
 
-		// Cluster operations — ClusterService requires ledger:ClusterWrite
+		// Cluster operations — ClusterService requires ledger:WriteCluster
 		// (server_cluster.go:442, 481), granted only by ledger:admin.
 		"create_query_checkpoint":          {&servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{}}, ScopeClusterWrite},
 		"delete_query_checkpoint":          {&servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{}}, ScopeClusterWrite},
@@ -139,7 +139,7 @@ func requestScopeCases() map[string]scopeCase {
 		"update_prepared_query": {&servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{}}, ScopeQueriesWrite},
 		"delete_prepared_query": {&servicepb.Request{Type: &servicepb.Request_DeletePreparedQuery{}}, ScopeQueriesWrite},
 
-		// Operator surface — no business identity, ledger:OpsWrite by design.
+		// Operator surface — no business identity, ledger:WriteOps by design.
 		"register_signing_key": {&servicepb.Request{Type: &servicepb.Request_RegisterSigningKey{}}, ScopeOpsWrite},
 		"revoke_signing_key":   {&servicepb.Request{Type: &servicepb.Request_RevokeSigningKey{}}, ScopeOpsWrite},
 		"set_signing_config":   {&servicepb.Request{Type: &servicepb.Request_SetSigningConfig{}}, ScopeOpsWrite},

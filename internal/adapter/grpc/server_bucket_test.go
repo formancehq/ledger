@@ -29,7 +29,7 @@ func TestAdoptForwardedSnapshotIfTrusted_TrustsClusterInternal(t *testing.T) {
 					Subject: "alice",
 					Source:  &ledgerpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
 				},
-				Scopes: []string{"ledger:TransactionWrite"},
+				Scopes: []string{"ledger:WriteTransaction"},
 			},
 		},
 	}
