@@ -151,11 +151,14 @@ not an independently owned message.
 
 Mirror bypasses application admission, but still declares `SubAttrLedger`
 for ingest and standalone `MirrorSync` and uses the shared `Builder.Build/Run`
-preload pipeline. When a Gen1-only ledger would be evicted by the predicted
-rotation, `CheckCache` reports a miss, the builder loads a seed from Pebble,
-and `Machine.Preload` restores it before processing. Rewriting unchanged
-`LedgerInfo` on each mirror order is therefore unnecessary for correctness;
-it would add a clone and a persisted write merely to keep the cache warm.
+preload pipeline. When a Gen1-only key would be evicted by the predicted
+rotation, admission captures the matching Gen1 entry under the generation
+lock and emits a seed directly; the commit barrier from #2345 makes the same
+value durable, but no Pebble read is needed. A Gen1 tombstone is emitted as
+coverage-only because its apply-time read semantics are absence and the wire
+proto has no tombstone seed variant. Rewriting unchanged `LedgerInfo` on each
+mirror order is therefore unnecessary for correctness; it would add a clone
+and a persisted write merely to keep the cache warm.
 
 ## Write paths
 
