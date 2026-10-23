@@ -107,6 +107,7 @@ func run() uint32 {
 	for {
 		best, err := rpcUint("getblockcount")
 		if err == nil && moduleHeight <= best {
+			blockStarted := time.Now()
 			b, fetchErr := fetchBlock(moduleHeight)
 			if fetchErr == nil {
 				if applyErr := applyBlock(b); applyErr == nil {
@@ -115,6 +116,11 @@ func run() uint32 {
 					// collection between blocks so catch-up from height zero does not
 					// retain every decoded block and protobuf batch until the next GC.
 					runtime.GC()
+					if moduleHeight%100 == 0 {
+						var stats runtime.MemStats
+						runtime.ReadMemStats(&stats)
+						logf(0, "bitcoin ingestion: next_height=%d transactions=%d block_duration_ms=%d heap_alloc_bytes=%d heap_inuse_bytes=%d heap_sys_bytes=%d gc_cycles=%d", moduleHeight, len(b.Tx), time.Since(blockStarted).Milliseconds(), stats.HeapAlloc, stats.HeapInuse, stats.HeapSys, stats.NumGC)
+					}
 					continue
 				} else {
 					logf(2, "bitcoin apply block %d: %v", moduleHeight, applyErr)

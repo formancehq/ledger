@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -35,8 +36,9 @@ type Logger func(level uint32, text string)
 // Runtime executes one module instance. A Runtime is not safe for concurrent
 // Run calls, but its host callbacks may be invoked from the guest goroutine.
 type Runtime struct {
-	ledger LedgerCaller
-	log    Logger
+	ledger      LedgerCaller
+	log         Logger
+	ledgerCalls atomic.Uint64
 }
 
 func NewRuntime(ledger LedgerCaller, logger Logger) *Runtime {
@@ -185,6 +187,7 @@ func (r *Runtime) writeBytes(ctx context.Context, module api.Module, alloc api.F
 }
 
 func (r *Runtime) ledgerCall(ctx context.Context, module api.Module, reqPtr, reqLen, respPtr, respCap uint32) uint64 {
+	callNumber := r.ledgerCalls.Add(1)
 	request, ok := module.Memory().Read(reqPtr, reqLen)
 	if !ok || r.ledger == nil {
 		return ^uint64(0)
@@ -207,6 +210,9 @@ func (r *Runtime) ledgerCall(ctx context.Context, module api.Module, reqPtr, req
 	}
 	if !module.Memory().Write(respPtr, response) {
 		return ^uint64(0)
+	}
+	if r.log != nil && callNumber%100 == 0 {
+		r.log(0, fmt.Sprintf("wasm runtime memory: linear_memory_bytes=%d ledger_calls=%d request_bytes=%d response_bytes=%d", module.Memory().Size(), callNumber, len(request), len(response)))
 	}
 
 	return uint64(len(response))
