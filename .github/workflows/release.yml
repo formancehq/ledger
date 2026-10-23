@@ -77,11 +77,25 @@ jobs:
           # the module sources when a release branch is cut.
           base_remote_sha="$(git ls-remote origin "refs/heads/${base_branch}" | awk '{print $1}')"
           if [[ -n "$base_remote_sha" ]]; then
-            if [[ "$base_remote_sha" != "$(git rev-parse "$tag_commit")" ]]; then
-              echo "${base_branch} does not point to ${version}" >&2
-              exit 1
-            fi
             git fetch origin "$base_branch"
+            tag_sha="$(git rev-parse "$tag_commit")"
+            if [[ "$base_remote_sha" != "$tag_sha" ]]; then
+              # A previous publication PR may already have merged into the
+              # base branch while nested-tag publication was failing. Accept
+              # that retry state only when the merge is rooted at the server
+              # tag and changed only the client dependency metadata.
+              git merge-base --is-ancestor "$tag_sha" "$base_remote_sha" || {
+                echo "${base_branch} is not based on ${version}" >&2
+                exit 1
+              }
+              base_changed_files="$(git diff --name-only "$tag_sha" "$base_remote_sha")"
+              while IFS= read -r path; do
+                [[ -z "$path" || "$path" == "pkg/client/v3/go.mod" || "$path" == "pkg/client/v3/go.sum" ]] || {
+                  echo "${base_branch} contains unexpected changes after ${version}: ${path}" >&2
+                  exit 1
+                }
+              done <<< "$base_changed_files"
+            fi
           else
             git switch --create "$base_branch" "$tag_commit"
             git push --set-upstream origin "$base_branch"
