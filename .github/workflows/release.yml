@@ -84,11 +84,14 @@ jobs:
 
             proto_tag="pkg/proto/${required_proto_version}"
             if ! git ls-remote --tags origin "refs/tags/${proto_tag}" "refs/tags/${proto_tag}^{}" | awk 'NF { found = 1 } END { exit !found }'; then
-              # The client module pins the shared proto module independently
-              # of the root release tag (for example, an RC may still use
-              # the stable proto contract). Publish that exact dependency at
-              # this release commit before publishing the client tag, so a
-              # downstream consumer never observes an unresolvable client.
+              # Never create a final dependency tag from a release candidate:
+              # that would make the eventual stable release unable to publish
+              # the same version if the contract changes before GA. RCs must
+              # consume an already-published stable proto contract instead.
+              if [[ "$version" == *-* ]]; then
+                echo "The RC client requires the already-published shared proto tag ${proto_tag}" >&2
+                exit 1
+              fi
               if [[ "$publish_proto" != true ]]; then
                 echo "The client requires ${proto_tag}, but no public proto change was detected to publish it" >&2
                 exit 1
