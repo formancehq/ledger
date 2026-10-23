@@ -2305,6 +2305,17 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 		return nil, err
 	}
 
+	// Evaluate the authoritative policy gate while proposalAdmissionMu and the
+	// IndexTracker guard are held by the caller. A rejected proposal therefore
+	// never consumes a predicted Raft index and can never leave a hole for the
+	// proposals already queued behind it. Policy-changing proposals use the
+	// same canonical runner, so this is also their serialization point.
+	if node.proposalAdmission != nil {
+		if err := node.proposalAdmission(ctx, proposal); err != nil {
+			return nil, err
+		}
+	}
+
 	// Create a separate future for Machine results.
 	// The proposal's embedded Future is for Raft consensus (resolved by rawNode.Propose).
 	// The fsmFuture is for Machine processing (resolved when entry is applied).
@@ -2336,10 +2347,9 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 	}
 }
 
-// rejectQueuedProposal resolves a proposal that was admitted before a terminal
-// command failure but can no longer be handed to rawNode. The admission caller
-// has released the tracker guard before this runs, so Decrement takes the
-// regular synchronized rollback path.
+// rejectQueuedProposal resolves a proposal drained during terminal shutdown.
+// Normal capability rejection happens before index reservation in Propose and
+// never reaches the queue.
 func (node *Node) rejectQueuedProposal(proposal *Proposal, err error) {
 	node.indexTracker.Decrement(1)
 	node.applier.ResolveDroppedFuture(proposal.commandID, err)
@@ -2350,14 +2360,6 @@ func (node *Node) rejectQueuedProposal(proposal *Proposal, err error) {
 // if Raft drops the proposal (e.g. the node is no longer leader).
 // Must be called from the readyLoop goroutine.
 func (node *Node) handleProposal(p *Proposal) {
-	if node.proposalAdmission != nil {
-		if err := node.proposalAdmission(context.Background(), p); err != nil {
-			node.rejectQueuedProposal(p, err)
-
-			return
-		}
-	}
-
 	err := node.rawNode.Propose(p.data)
 	if err != nil {
 		// The IndexTracker was optimistically incremented in Propose().
