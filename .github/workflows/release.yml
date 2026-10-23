@@ -46,7 +46,10 @@ jobs:
             publish_client=true
           else
             changed_files="$(git diff --name-only "$previous_tag" "$commit")"
-            if grep -qE '^(misc/proto/|pkg/proto/v3/)' <<<"$changed_files"; then
+            # Only changes to the public projection (or its generated output)
+            # advance the shared public module. Backend-only schemas such as
+            # internal_state.proto must not create a new public version.
+            if grep -qE '^(misc/proto/(common|signature|audit|bucket|cluster|restore)\.proto|pkg/proto/v3/)' <<<"$changed_files"; then
               publish_proto=true
             fi
             if grep -qE '^pkg/client/v3/' <<<"$changed_files"; then
@@ -72,6 +75,28 @@ jobs:
             git push origin "refs/tags/$tag"
           }
 
+          if [[ "$publish_client" == true ]]; then
+            required_proto_version="$(awk '$1 == "github.com/formancehq/ledger/pkg/proto/v3" { print $2; exit }' pkg/client/v3/go.mod)"
+            if [[ -z "$required_proto_version" ]]; then
+              echo "The public client does not declare a shared proto version" >&2
+              exit 1
+            fi
+
+            proto_tag="pkg/proto/${required_proto_version}"
+            if ! git ls-remote --tags origin "refs/tags/${proto_tag}" "refs/tags/${proto_tag}^{}" | awk 'NF { found = 1 } END { exit !found }'; then
+              # The client module pins the shared proto module independently
+              # of the root release tag (for example, an RC may still use
+              # the stable proto contract). Publish that exact dependency at
+              # this release commit before publishing the client tag, so a
+              # downstream consumer never observes an unresolvable client.
+              if [[ "$publish_proto" != true ]]; then
+                echo "The client requires ${proto_tag}, but no public proto change was detected to publish it" >&2
+                exit 1
+              fi
+              publish_module_tag "$proto_tag"
+            fi
+          fi
+
           if [[ "$publish_proto" == true ]]; then
             publish_module_tag "pkg/proto/${version}"
           else
@@ -82,20 +107,6 @@ jobs:
             publish_module_tag "pkg/client/${version}"
           else
             echo "No public client changes since ${previous_tag}; keeping the existing client module version"
-          fi
-
-          if [[ "$publish_client" == true ]]; then
-            required_proto_version="$(awk '$1 == "github.com/formancehq/ledger/pkg/proto/v3" { print $2; exit }' pkg/client/v3/go.mod)"
-            if [[ -z "$required_proto_version" ]]; then
-              echo "The public client does not declare a shared proto version" >&2
-              exit 1
-            fi
-
-            proto_tag="pkg/proto/${required_proto_version}"
-            if ! git ls-remote --tags origin "refs/tags/${proto_tag}" "refs/tags/${proto_tag}^{}" | awk 'NF { found = 1 } END { exit !found }'; then
-              echo "The shared proto tag ${proto_tag} is not published before the client release" >&2
-              exit 1
-            fi
           fi
       - name: Login to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
