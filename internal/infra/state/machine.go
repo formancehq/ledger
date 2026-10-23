@@ -321,6 +321,7 @@ func (fsm *Machine) ClusterPolicy() *commonpb.ClusterPolicy {
 	if fsm.State.ClusterPolicy == nil {
 		return nil
 	}
+
 	return fsm.State.ClusterPolicy.CloneVT()
 }
 
