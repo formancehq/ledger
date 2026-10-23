@@ -33,6 +33,15 @@ jobs:
           fi
 
           commit="${{ github.event.pull_request.merge_commit_sha }}"
+          root_tag_commit="$(git rev-parse "${version}^{commit}")"
+          changed_files="$(git diff --name-only "$root_tag_commit" "$commit")"
+          while IFS= read -r path; do
+            [[ -z "$path" || "$path" == "pkg/client/v3/go.mod" || "$path" == "pkg/client/v3/go.sum" ]] || {
+              echo "Public module publication contains changes outside the client dependency metadata: ${path}" >&2
+              exit 1
+            }
+          done <<< "$changed_files"
+
           required_proto_version="$(awk '$1 == "github.com/formancehq/ledger/pkg/proto/v3" { print $2; exit }' pkg/client/v3/go.mod)"
           if [[ "$required_proto_version" != "$version" ]]; then
             echo "The client requires proto ${required_proto_version}, expected ${version}" >&2

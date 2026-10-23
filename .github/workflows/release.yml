@@ -61,31 +61,57 @@ jobs:
           set -euo pipefail
 
           version="${GITHUB_REF_NAME}"
+          tag_commit="${GITHUB_REF}^{commit}"
+          base_branch="release/public-modules-base-${version}"
           branch="release/public-modules-${version}"
-          git fetch origin main --tags
+
+          proto_tag_exists="$(git ls-remote --tags origin "refs/tags/pkg/proto/${version}" | awk 'END { print $1 }')"
+          client_tag_exists="$(git ls-remote --tags origin "refs/tags/pkg/client/${version}" | awk 'END { print $1 }')"
+          if [[ -n "$proto_tag_exists" && -n "$client_tag_exists" ]]; then
+            echo "Public modules ${version} are already published"
+            exit 0
+          fi
+
+          # Keep the publication PR on the exact server release snapshot. A
+          # base branch created from the tag avoids merging moving main into
+          # the module sources when a release branch is cut.
+          base_remote_sha="$(git ls-remote origin "refs/heads/${base_branch}" | awk '{print $1}')"
+          if [[ -n "$base_remote_sha" ]]; then
+            if [[ "$base_remote_sha" != "$(git rev-parse "$tag_commit")" ]]; then
+              echo "${base_branch} does not point to ${version}" >&2
+              exit 1
+            fi
+            git fetch origin "$base_branch"
+          else
+            git switch --create "$base_branch" "$tag_commit"
+            git push --set-upstream origin "$base_branch"
+          fi
 
           if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
             git fetch origin "$branch"
             git switch --create "$branch" --track "origin/$branch"
           else
-            git switch --create "$branch" "${GITHUB_REF}^{commit}"
+            git switch --create "$branch" "origin/${base_branch}"
           fi
           go -C pkg/client/v3 mod edit -require="github.com/formancehq/ledger/pkg/proto/v3@${version}"
           go -C pkg/client/v3 mod tidy
           git add pkg/client/v3/go.mod pkg/client/v3/go.sum
 
           if git diff --cached --quiet; then
-            echo "Public module dependency already targets ${version}"
+            # A no-op dependency update still needs a merge event to trigger
+            # publication. The empty commit is also safe to retry.
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit --allow-empty -m "chore(release): publish public modules ${version}"
           else
             git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
               commit -m "chore(release): align public modules to ${version}"
-            git push --set-upstream origin "$branch"
           fi
+          git push --set-upstream origin "$branch"
 
           if [[ -z "$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open --json number --jq '.[].number')" ]]; then
             gh pr create \
               --repo "$GITHUB_REPOSITORY" \
-              --base main \
+              --base "$base_branch" \
               --head "$branch" \
               --title "chore(release): publish public modules ${version}" \
               --body "This automated release PR aligns pkg/client/v3 with pkg/proto/v3 at ${version}. Once merged, the public module publication workflow will tag both nested modules from the merged commit."
