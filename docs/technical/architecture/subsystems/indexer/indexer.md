@@ -134,6 +134,32 @@ At `CreateIndex`, `EMPTY` promotes a fresh version directly (`current > 0`, `pen
 
 ## Handlers
 
+### Current account cells and historical transaction addresses
+
+Users must be able to discover a transaction by the exact posting address after
+an EPHEMERAL cell disappears from current account storage. Each log therefore
+has two posting exclusion sets: current memberships exclude TRANSIENT cells and
+the log's purged/ephemeral cells; immutable address mappings exclude TRANSIENT
+cells only. All keys include account, asset and color. The shared posting writer
+uses current exclusions for has-asset and historical exclusions for ANY, SOURCE
+and DESTINATION mappings, in live folding and both backfill engines. Cached
+proposal TRANSIENT sets remain immutable.
+
+The work stays linear in posting count, with constant-time membership probes and
+at most four historical puts per posting (two ANY, one SOURCE, one DESTINATION)
+before duplicate-key coalescing. Purged EPHEMERAL postings now incur their
+legitimate historical puts. Exclusion construction uses space proportional to
+the proposal's transient cells plus the log's evicted cells; no account scan or
+FSM-path read is added. Exact address lookup retains the existing materialized
+union cost, proportional to matching transaction IDs, rather than page size.
+
+Index writes and cursor/progress publication retain the existing batch order
+and rollback contract. Previously omitted rows require explicit repair; see
+[Upgrades](../../../../ops/upgrades.md#repairing-historical-transaction-address-indexes).
+Current-account cleanup remains a separate lifecycle contract. Exact historical
+matching and prefixes over current accounts are documented in the
+[query pipeline](../read-path/query-pipeline.md).
+
 `internal/application/indexbuilder/process_logs_indexing.go` — the `indexPayload` dispatcher and every per-payload handler live in this file.
 
 | Log type | Handler | What it writes |

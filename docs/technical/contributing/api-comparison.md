@@ -12,6 +12,14 @@ For the per-operation Ledger v2 → v3 path mapping, see
 [`v2-to-v3-endpoint-map.json`](v2-to-v3-endpoint-map.json). Update it in the same
 change when a route it names is renamed or removed.
 
+Cluster membership changes are exposed through the v3 `ClusterService`; the v2
+business endpoint map has no corresponding operation. Internal retries of one
+add, promote or remove call retain the original committed outcome through slow
+WAL persistence, rather than reporting a second admission error after the
+membership already changed. Success still requires local durable FSM apply;
+distinct calls keep their existing admission and cancellation semantics. This
+correction changes no route, message, field, status schema or protocol revision.
+
 HTTP typed metadata preserves exact integer values, including signed 64-bit
 bounds and values above 2^53, for metadata writes, transaction creation and
 reversal (unitary and bulk). Integral decimal/exponent spellings are accepted;
@@ -571,6 +579,23 @@ The v2 schemaVersion/parallel options are not added to v3 by this correction.
 - ✅ Persistence modes: `NORMAL` (default), `EPHEMERAL` (purged when zero balance), `TRANSIENT` (never persisted, must be zero at end of batch)
 
 ### 6. Transaction Read
+
+Exact transaction address filters use retained historical mappings for any,
+source and destination roles, independently of current account existence. An
+EPHEMERAL volume purge must therefore preserve funding and draining transaction
+matches. Address prefixes continue enumerating current accounts; historical
+prefix expansion is not supported. Indexed transaction metadata and reference
+searches retain their existing behavior. Account-target exact lookup still
+requires current account existence.
+
+This restores the historical-search principle of v2: `release/v2.4` at
+`21d1e51378b4dbb6b9858313cafc2d8bab62f329`,
+`internal/storage/ledger/transactions.go`, records posting sources/destinations
+on transactions and filters those arrays without probing current accounts.
+V3 retains its existing routes, envelopes, filter syntax, index requirements,
+errors and pagination. No v2 EPHEMERAL lifecycle equivalence is implied. Existing
+omitted v3 mappings need the explicit repair described in
+[Upgrades](../../ops/upgrades.md); restarting alone does not reconstruct them.
 
 **Endpoint:** `GET /v3/{ledgerName}/transactions/{transactionId}`
 
