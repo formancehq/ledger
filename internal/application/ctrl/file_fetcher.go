@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -110,6 +112,10 @@ func (f *fileFetcher) fetchFileOnce(ctx context.Context, client snapshotpb.Snaps
 	for {
 		resp, err := stream.Recv()
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return fmt.Errorf("%w: premature end of stream for %s", errSnapshotDonorIntegrity, entry.GetPath())
+			}
+
 			return fmt.Errorf("receiving chunk for %s: %w", entry.GetPath(), err)
 		}
 
