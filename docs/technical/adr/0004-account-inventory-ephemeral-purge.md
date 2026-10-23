@@ -1,14 +1,18 @@
-# EN-2036 account inventory experiment
+# 0004 — Do not adopt the tested account inventory for EPHEMERAL purge
 
-**Status:** rejected as implemented after the ACME benchmark on 23 October 2026. This is a historical experiment, not the current Ledger design. The implementation is preserved in the closed [code PR #2366](https://github.com/formancehq/ledger/pull/2366).
+**Status:** Rejected (2026-10-23). The measured implementation is preserved in the closed [code PR #2366](https://github.com/formancehq/ledger/pull/2366). This decision covers that implementation and workload, not every possible account inventory design.
 
-## Problem and hypothesis
+## Context
 
 When an EPHEMERAL account's final volume reaches zero, Ledger must remove its current volumes and metadata. Raft apply cannot read Pebble to discover attributes that admission missed. The experiment tested whether a persisted per-account inventory could make preload completeness checkable while preserving deterministic apply.
 
 The proposed inventory also made account materialization explicit. It recorded a creation date that survived cache rotation and ordinary updates, and changed after the account was fully removed and created again.
 
-## Implementation tested
+## Decision
+
+Do not merge the tested per-account inventory implementation. On the corrected ACME configuration it reduced successful throughput by 6.9% for `world_to_bank` and 31.8% for `any_unbounded_to_any`, and it introduced client-visible failures under load. The available data does not identify which part of the implementation caused most of the loss. No replacement purge design is selected by this ADR.
+
+## Design evaluated
 
 The experimental branch `codex/en-2036-incarnation` added `SubAttrAccountInventory` (`0x0D`) under the primary attribute key space. An entry existed for every account with at least one persisted volume or metadata key, regardless of account type. Its `AccountInventoryState` held `birth_index`, `inventory_revision`, `volume_count`, `metadata_count`, and `created_at`.
 
@@ -37,7 +41,7 @@ The initial and repeated pairs used 6 CPU and 12 GiB. After those runs, we found
 
 With the corrected configuration, HTTP p95 rose from **54 to 59 ms** for `world_to_bank` and from **120 to 176 ms** for `any_unbounded_to_any`. The base had 3 and 0 HTTP errors in those runs, respectively. The higher absolute throughput under the corrected configuration does not remove the relative regression.
 
-## Why we stopped
+## Interpretation and limits
 
 The goal was complete, safe purge without a material cost to ordinary writes. The corrected pair lost about **7%** throughput on `world_to_bank` and **32%** on `any_unbounded_to_any`, and exposed failures to clients under load. This implementation did not meet that goal.
 
@@ -47,8 +51,10 @@ The benchmark compares the **whole feature** with the base. It does not isolate 
 
 Each table row contains one run per version. Variation between the first two pairs prevents a precise percentage or confidence interval. The direction of the regression repeats across all three pairs. The benchmark operator reported failure after k6 completed because its Grafana snapshot URL was unset; k6 summaries supplied the figures in this report. Temporary ACME benchmark resources, private GHCR images, and local benchmark files were removed after the report was recorded.
 
-## Outcome
+## Consequences and revisit conditions
 
-The experiment demonstrated an explicit account inventory and creation date, along with a way to reject a stale or incomplete purge proposal. It was **not selected in this form** because of the measured throughput loss and client-visible errors. A future attempt should first count `STALE_PROPOSAL` by check and phase, profile admission and FSM work, and compare controlled variants on the same code base.
+The experiment demonstrated an explicit account inventory and creation date, along with a way to reject a stale or incomplete purge proposal. Neither the inventory key nor its `created_at` field becomes part of the accepted Ledger architecture through this ADR. The existing code path remains the baseline until a separate design is selected.
+
+Revisit this choice if a candidate can keep purge completeness without the measured client errors and throughput cost. First count `STALE_PROPOSAL` by check and phase, profile admission and FSM work, and compare controlled variants on the same code base. Repeat paired benchmarks with enough runs to measure variability before accepting a new design.
 
 `bash scripts/agent-check` passed on the experimental branch. A broader `agent-check-pr` run passed normalization, lint, compilation, and affected product race tests before an unrelated timeout in `scripts/internal/testenv`. That test passed five focused race reruns; the aggregate command did not pass.
