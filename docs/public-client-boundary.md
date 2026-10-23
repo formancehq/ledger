@@ -38,3 +38,9 @@ Backend-only schemas remain under `misc/proto/` and are generated exclusively
 by `just generate-proto`. Server-only generators and helpers remain private;
 the shared module contains only generators and helpers that are deliberately
 part of the public contract.
+
+The release workflow publishes nested Go-module tags before the root release:
+`pkg/proto/vX.Y.Z` for public protobuf changes and `pkg/client/vX.Y.Z` for
+client-module changes. The first root release publishes both modules so their
+initial versions are downloadable. A server-only release does not advance
+either public module; consumers continue using the last compatible module tag.
