@@ -341,6 +341,7 @@ func Module() fx.Option {
 					Recovery       *state.Recovery
 					Synchronizer   *state.Synchronizer
 					Membership     *raftmembership.Membership
+					Store          *dal.Store
 					LocalResponses node.LocalResponses
 				},
 			) (nodeProvideResult, error) {
@@ -359,6 +360,28 @@ func Module() fx.Option {
 					"snapshotTerm":  snapshot.GetMetadata().GetTerm(),
 				}).Infof("WAL fresh start detection")
 
+				var raftNode *node.Node
+				proposalAdmission := func(_ context.Context, proposal *node.Proposal) error {
+					policy, err := query.ReadClusterPolicy(params.Store)
+					if err != nil {
+						return fmt.Errorf("reading cluster capability policy before Raft proposal: %w", err)
+					}
+					if raftNode == nil {
+						return errors.New("raft proposal gate is not initialized")
+					}
+
+					state := capabilities.FromPolicy(policy)
+					if err := state.Validate(); err != nil {
+						return err
+					}
+					decision := capabilities.Evaluate(state, proposal.RequiredCapabilities(), false, raftNode.CapabilityMembers())
+					if !decision.Allowed {
+						return fmt.Errorf("%w: %s", capabilities.ErrCapabilityUnsupported, decision.Reason)
+					}
+
+					return nil
+				}
+
 				n, err := node.NewNode(
 					params.NodeConfig,
 					params.Transport,
@@ -371,10 +394,12 @@ func Module() fx.Option {
 					params.Synchronizer,
 					params.Membership,
 					params.LocalResponses,
+					node.WithProposalAdmission(proposalAdmission),
 				)
 				if err != nil {
 					return nodeProvideResult{}, err
 				}
+				raftNode = n
 
 				return nodeProvideResult{Node: n, FreshStart: freshStart}, nil
 			},
@@ -578,7 +603,6 @@ func Module() fx.Option {
 				}
 
 				opts = append(opts, admission.WithAuditProjectionState(rs.AuditProjectionState))
-				opts = append(opts, admission.WithCapabilityMembership(node.CapabilityMembers))
 
 				return admission.NewAdmission(
 					store,
