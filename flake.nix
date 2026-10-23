@@ -113,6 +113,7 @@
             protoc-gen-go-grpc
             protoc-gen-go-vtproto
             just
+            tinygo
           ]) ++ [
             golangci-lint
             pkgs.nur.repos.goreleaser.goreleaser-pro

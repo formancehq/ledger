@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package ledger.wasm;
+
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/wasmpb";
+
+import "common.proto";
+
+// WasmService manages user-provided WASM modules. Authentication is
+// intentionally absent for the MVP; deployment-level access control remains
+// the responsibility of the surrounding environment.
+service WasmService {
+  rpc Upload(stream UploadWasmRequest) returns (UploadWasmResponse) {
+    option (common.auth_policy) = { public: true };
+  }
+  rpc List(ListWasmModulesRequest) returns (ListWasmModulesResponse) {
+    option (common.auth_policy) = { public: true };
+  }
+  rpc Get(GetWasmModuleRequest) returns (WasmModule) {
+    option (common.auth_policy) = { public: true };
+  }
+  rpc Stop(StopWasmModuleRequest) returns (WasmModule) {
+    option (common.auth_policy) = { public: true };
+  }
+  rpc Delete(DeleteWasmModuleRequest) returns (DeleteWasmModuleResponse) {
+    option (common.auth_policy) = { public: true };
+  }
+}
+
+message UploadWasmRequest {
+  // The first message must contain config. Subsequent messages carry chunks.
+  bytes config = 1;
+  bytes chunk = 2;
+}
+
+message UploadWasmResponse {
+  string module_id = 1;
+}
+
+message ListWasmModulesRequest {}
+
+message ListWasmModulesResponse {
+  repeated WasmModule modules = 1;
+}
+
+message GetWasmModuleRequest {
+  string module_id = 1;
+}
+
+message StopWasmModuleRequest {
+  string module_id = 1;
+}
+
+message DeleteWasmModuleRequest {
+  string module_id = 1;
+}
+
+message DeleteWasmModuleResponse {}
+
+// LedgerCallRequest is the opaque, generic request envelope exposed to WASM.
+// Method is a BucketService RPC name (for example "/ledger.BucketService/Apply")
+// and payload is the serialized protobuf request for that RPC.
+message LedgerCallRequest {
+  string method = 1;
+  bytes payload = 2;
+}
+
+// LedgerCallResponse contains the serialized protobuf response payload.
+message LedgerCallResponse {
+  bytes payload = 1;
+  string error = 2;
+}
+
+message WasmModule {
+  string module_id = 1;
+  bytes config = 2;
+  WasmModuleStatus status = 3;
+  string last_error = 4;
+  uint64 size = 5;
+}
+
+enum WasmModuleStatus {
+  WASM_MODULE_STATUS_UNSPECIFIED = 0;
+  WASM_MODULE_STATUS_UPLOADING = 1;
+  WASM_MODULE_STATUS_INITIALIZING = 2;
+  WASM_MODULE_STATUS_RUNNING = 3;
+  WASM_MODULE_STATUS_STOPPED = 4;
+  WASM_MODULE_STATUS_ERROR = 5;
+}

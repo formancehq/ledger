@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/wasmpb"
 )
 
 func TestRPCAuthPoliciesCoverEveryPublicServiceMethod(t *testing.T) {
@@ -17,6 +18,7 @@ func TestRPCAuthPoliciesCoverEveryPublicServiceMethod(t *testing.T) {
 	descriptors := []*ggrpc.ServiceDesc{
 		&servicepb.BucketService_ServiceDesc,
 		&clusterpb.ClusterService_ServiceDesc,
+		&wasmpb.WasmService_ServiceDesc,
 	}
 
 	methodCount := 0
@@ -59,6 +61,11 @@ func TestRPCAuthPoliciesPinExceptionalMethods(t *testing.T) {
 
 	require.Equal(t, map[string]bool{
 		"/ledger.BucketService/Discovery": true,
+		"/ledger.wasm.WasmService/Upload": true,
+		"/ledger.wasm.WasmService/List":   true,
+		"/ledger.wasm.WasmService/Get":    true,
+		"/ledger.wasm.WasmService/Stop":   true,
+		"/ledger.wasm.WasmService/Delete": true,
 	}, publicMethods)
 	require.Equal(t, map[string]commonpb.DynamicAuthResolver{
 		"/ledger.BucketService/Apply":               commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_APPLY,

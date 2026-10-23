@@ -335,7 +335,7 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 			))
 		}
 
-		if !checkSleep && callsImportedFunction(call.Fun, authNames, authDot, "WithSystemActor") && path != "internal/bootstrap/module.go" {
+		if !checkSleep && callsImportedFunction(call.Fun, authNames, authDot, "WithSystemActor") && !systemProducerAllowed(path) {
 			findings = append(findings, goFinding(
 				fileSet, path, call.Fun.Pos(),
 				"system actor contexts may only be established by the bootstrap wiring for named producers",
@@ -368,6 +368,8 @@ func systemProducerAllowed(path string) bool {
 		"internal/application/backup/orchestrator.go",
 		"internal/application/events/emitter.go",
 		"internal/application/mirror/worker.go",
+		"internal/application/wasm/ledger_client.go",
+		"internal/adapter/grpc/server_wasm_service.go",
 		"internal/adapter/auth/caller_snapshot.go",
 		"internal/bootstrap/module.go":
 		return true

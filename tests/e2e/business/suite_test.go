@@ -11,6 +11,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/wasmpb"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -18,6 +19,7 @@ import (
 
 var (
 	sharedClient        servicepb.BucketServiceClient
+	sharedWasmClient    wasmpb.WasmServiceClient
 	sharedClusterClient clusterpb.ClusterServiceClient
 	sharedCtx           context.Context
 	sharedHTTPPort      int
@@ -37,6 +39,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	ctx, node := testutil.SetupSingleNode()
 	sharedCtx = ctx
 	sharedClient = node.Client
+	sharedWasmClient = wasmpb.NewWasmServiceClient(node.GRPCConn)
 	sharedClusterClient = node.ClusterClient
 	sharedHTTPPort = node.HTTPPort
 
@@ -55,6 +58,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	Expect(err).To(Succeed())
 
 	sharedClient = client
+	sharedWasmClient = wasmpb.NewWasmServiceClient(conn)
 	sharedClusterClient = clusterClient
 	sharedCtx = logging.TestingContext()
 	sharedHTTPPort = ports.HTTP

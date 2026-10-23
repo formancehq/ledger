@@ -116,6 +116,17 @@ build-full:
 build-client:
     go build -o ./build/ledgerctl ./cmd/ledgerctl
 
+# Compile the example Bitcoin WASI module. The generated binary is ignored and
+# intentionally rebuilt from the versioned source when needed.
+wasm-bitcoin:
+    mkdir -p build/wasm
+    GOOS=wasip1 GOARCH=wasm go build -o build/wasm/bitcoin.wasm ./examples/wasm/bitcoin
+
+# Build the deterministic dummy module used by the WASM lifecycle e2e test.
+wasm-dummy:
+    mkdir -p build/wasm
+    GOOS=wasip1 GOARCH=wasm go build -o build/wasm/dummy.wasm ./examples/wasm/dummy
+
 # Run the application locally (single node)
 run:
     go run . run --node-id 1 --cluster-id local-dev --bootstrap --bind-addr 127.0.0.1:7777 --grpc-port 8888 --wal-dir ./wal/node-1 --data-dir ./data/node-1
@@ -356,8 +367,8 @@ generate:
 # Generate gRPC code from protobuf files
 generate-proto:
     @echo "Generating gRPC code from proto files..."
-    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/clusterbootstrappb/*.pb.go internal/proto/auditpb/*.pb.go internal/proto/signaturepb/*.pb.go internal/proto/eventspb/*.pb.go internal/proto/restorepb/*.pb.go internal/proto/proposalpb/*.pb.go || true
-    mkdir -p internal/proto/clusterpb internal/proto/clusterbootstrappb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/signaturepb internal/proto/eventspb internal/proto/restorepb internal/proto/proposalpb
+    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/clusterbootstrappb/*.pb.go internal/proto/auditpb/*.pb.go internal/proto/signaturepb/*.pb.go internal/proto/eventspb/*.pb.go internal/proto/restorepb/*.pb.go internal/proto/proposalpb/*.pb.go internal/proto/wasmpb/*.pb.go || true
+    mkdir -p internal/proto/clusterpb internal/proto/clusterbootstrappb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/signaturepb internal/proto/eventspb internal/proto/restorepb internal/proto/proposalpb internal/proto/wasmpb
     @cd tools/protoc-gen-dethash && go build -o ../../build/protoc-gen-dethash .
     @cd tools/protoc-gen-reader && go build -o ../../build/protoc-gen-reader .
     @cd tools/protoc-gen-skippable && go build -o ../../build/protoc-gen-skippable .
@@ -410,7 +421,8 @@ generate-proto:
         misc/proto/signature.proto \
         misc/proto/events.proto \
         misc/proto/restore.proto \
-        misc/proto/proposal.proto
+        misc/proto/proposal.proto \
+        misc/proto/wasm.proto
 
 test-rpcauth-generator:
     go -C tools/protoc-gen-rpcauth test ./...

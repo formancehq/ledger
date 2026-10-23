@@ -329,6 +329,9 @@ const (
 	// authenticate audit history. It is part of checkpoints, unlike the
 	// operational cluster identity removed during restore preparation.
 	SubGlobAuditKey byte = 0x15
+	// SubGlobWasmModule stores Raft-replicated WASM module metadata and bytes.
+	// Metadata is keyed by module ID; chunks are keyed by module ID and index.
+	SubGlobWasmModule byte = 0x16
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).

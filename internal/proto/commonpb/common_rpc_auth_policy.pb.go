@@ -118,6 +118,16 @@ func RPCAuthPolicyForMethod(fullMethod string) (*MethodAuthPolicy, error) {
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}}, nil
 	case "/ledger.BucketService/Barrier":
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}}, nil
+	case "/ledger.wasm.WasmService/Upload":
+		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_Public{Public: true}}, nil
+	case "/ledger.wasm.WasmService/List":
+		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_Public{Public: true}}, nil
+	case "/ledger.wasm.WasmService/Get":
+		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_Public{Public: true}}, nil
+	case "/ledger.wasm.WasmService/Stop":
+		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_Public{Public: true}}, nil
+	case "/ledger.wasm.WasmService/Delete":
+		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_Public{Public: true}}, nil
 	default:
 		return nil, &UnknownRPCMethodError{FullMethod: fullMethod}
 	}
@@ -175,5 +185,10 @@ func AllRPCAuthPolicies() map[string]*MethodAuthPolicy {
 		"/ledger.BucketService/ListNumscriptVersions":        &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_QUERY_READ}},
 		"/ledger.BucketService/InspectIndex":                 &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}},
 		"/ledger.BucketService/Barrier":                      &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}},
+		"/ledger.wasm.WasmService/Upload":                    &MethodAuthPolicy{Policy: &MethodAuthPolicy_Public{Public: true}},
+		"/ledger.wasm.WasmService/List":                      &MethodAuthPolicy{Policy: &MethodAuthPolicy_Public{Public: true}},
+		"/ledger.wasm.WasmService/Get":                       &MethodAuthPolicy{Policy: &MethodAuthPolicy_Public{Public: true}},
+		"/ledger.wasm.WasmService/Stop":                      &MethodAuthPolicy{Policy: &MethodAuthPolicy_Public{Public: true}},
+		"/ledger.wasm.WasmService/Delete":                    &MethodAuthPolicy{Policy: &MethodAuthPolicy_Public{Public: true}},
 	}
 }

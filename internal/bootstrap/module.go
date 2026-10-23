@@ -40,6 +40,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/membership"
 	"github.com/formancehq/ledger/v3/internal/application/mirror"
 	"github.com/formancehq/ledger/v3/internal/application/usagebuilder"
+	wasmapp "github.com/formancehq/ledger/v3/internal/application/wasm"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
@@ -66,6 +67,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
+	"github.com/formancehq/ledger/v3/internal/proto/wasmpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -428,6 +430,14 @@ func Module() fx.Option {
 			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, respSigner *signing.ResponseSigner, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
 				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, respSigner, cfg.QueryProfileThreshold, cfg.ClusterID, meterProvider, n, servicePool, info)
 			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`, ``)),
+			func(logger logging.Logger, store *dal.Store, n *node.Node, bucketService servicepb.BucketServiceServer) (*grpcadp.WasmServiceServer, error) {
+				ledgerCaller, err := wasmapp.NewGRPCLedgerCaller(bucketService)
+				if err != nil {
+					return nil, err
+				}
+
+				return grpcadp.NewWasmServiceServer(logger, store, n, ledgerCaller.Call), nil
+			},
 			func(cfg Config, logger logging.Logger, s *dal.Store, applier *node.Applier) snapshotpb.SnapshotServiceServer {
 				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, applier.WaitForCheckpointable)
 			},
@@ -805,6 +815,11 @@ func Module() fx.Option {
 
 				return nil
 			},
+			func(serviceServer *grpcadp.ServiceServer, wasmServiceServer *grpcadp.WasmServiceServer) error {
+				wasmpb.RegisterWasmServiceServer(serviceServer.GetServer(), wasmServiceServer)
+
+				return nil
+			},
 			func(serviceServer *grpcadp.ServiceServer, clusterServiceServer clusterpb.ClusterServiceServer) error {
 				grpcadp.RegisterClusterService(serviceServer.GetServer(), clusterServiceServer)
 
@@ -878,6 +893,7 @@ func Module() fx.Option {
 				mirrorManager *mirror.Manager,
 				backupOrchestrator *backupapp.Orchestrator,
 				healthChecker *clusterhealth.HealthChecker,
+				wasmService *grpcadp.WasmServiceServer,
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
@@ -903,6 +919,7 @@ func Module() fx.Option {
 						// perform the potentially slow Pebble reconciliation
 						// asynchronously.
 						handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
+						wasmService.OnLeadershipChange(e.IsLeader)
 					case node.LeaderReadyEvent:
 						healthChecker.OnLeaderReady()
 						// Recorded before the cluster-config proposal, which

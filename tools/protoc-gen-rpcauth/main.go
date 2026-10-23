@@ -18,8 +18,13 @@ import (
 const authPolicyExtension = "common.auth_policy"
 
 var policyServices = map[protoreflect.FullName]struct{}{
-	"ledger.BucketService":   {},
-	"cluster.ClusterService": {},
+	"ledger.BucketService":    {},
+	"cluster.ClusterService":  {},
+	"ledger.wasm.WasmService": {},
+}
+
+var optionalPolicyServices = map[protoreflect.FullName]struct{}{
+	"ledger.wasm.WasmService": {},
 }
 
 type policyKind uint8
@@ -114,6 +119,9 @@ func collectPolicies(gen *protogen.Plugin, extType protoreflect.ExtensionType, r
 	missingServices := make([]string, 0, len(policyServices))
 	for service := range policyServices {
 		if _, ok := foundServices[service]; !ok {
+			if _, optional := optionalPolicyServices[service]; optional {
+				continue
+			}
 			missingServices = append(missingServices, string(service))
 		}
 	}

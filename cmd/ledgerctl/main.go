@@ -31,6 +31,7 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/store"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/transactions"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/upgrade"
+	wasmcmd "github.com/formancehq/ledger/v3/cmd/ledgerctl/wasm"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
@@ -160,6 +161,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(querycheckpoint.NewCommand())
 	rootCmd.AddCommand(queries.NewCommand())
 	rootCmd.AddCommand(numscripts.NewCommand())
+	rootCmd.AddCommand(wasmcmd.NewCommand())
 
 	// Wire shell completion for every --ledger flag in the tree.
 	registerLedgerFlagCompletion(rootCmd)

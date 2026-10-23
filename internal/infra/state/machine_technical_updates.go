@@ -79,6 +79,10 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 			if err := fsm.applyIncrementalBackupOrder(batch, raftIndex, kind.IncrementalBackupOrder); err != nil {
 				return fmt.Errorf("applying technical_updates[%d] incremental backup order: %w", i, err)
 			}
+		case *raftcmdpb.TechnicalUpdate_WasmModule:
+			if err := applyWasmModuleUpdate(batch, kind.WasmModule); err != nil {
+				return fmt.Errorf("applying technical_updates[%d] wasm module update: %w", i, err)
+			}
 		default:
 			// Unknown technical updates violate the committed proposal
 			// contract and must surface rather than silently diverge.

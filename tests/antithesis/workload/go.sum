@@ -218,8 +218,9 @@ github.com/formancehq/pebble/v2 v2.1.7 h1:izJr/+dUVT7OzYANXqUuCqez9RZyOMFJYHTmI/
 github.com/formancehq/pebble/v2 v2.1.7/go.mod h1:JhU5cqqYkr2BdsBHbZhRZOryAtfhcV3eNI/oBcbrxWc=
 github.com/fortytw2/leaktest v1.3.0 h1:u8491cBMTQ8ft8aeV+adlcytMZylmA5nnwwkRZjI8vw=
 github.com/fortytw2/leaktest v1.3.0/go.mod h1:jDsjWgpAGjm2CA7WthBh/CdZYEPF31XHquHwclZch5g=
-github.com/fsnotify/fsnotify v1.5.4 h1:jRbGcIw6P2Meqdwuo0H1p6JVLbL5DHKAKlYndzMwVZI=
 github.com/fsnotify/fsnotify v1.5.4/go.mod h1:OVB6XrOHzAwXMpEM7uPOzcehqUV2UqJxmVXmkdnm1bU=
+github.com/fsnotify/fsnotify v1.7.0 h1:8JEhPFa5W2WU7YfeZzPNqzMP6Lwt7L2715Ggo0nosvA=
+github.com/fsnotify/fsnotify v1.7.0/go.mod h1:40Bi/Hjc2AVfZrqy+aj+yEI+/bRxZnMJyTJwOpGvigM=
 github.com/fxamacker/cbor/v2 v2.9.0 h1:NpKPmjDBgUfBms6tr6JZkTHtfFGcMKsw3eGcmD/sapM=
 github.com/fxamacker/cbor/v2 v2.9.0/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
 github.com/getkin/kin-openapi v0.144.0 h1:hIRcTH+KjLfkLpYU6bSSfdFpi0fZi1fp+hSPi4aQu9Y=
@@ -558,6 +559,8 @@ github.com/testcontainers/testcontainers-go/modules/clickhouse v0.40.0 h1:JhYAFt
 github.com/testcontainers/testcontainers-go/modules/clickhouse v0.40.0/go.mod h1:UoMHEYTzGmwKyeCQaKfcQHSVs/kQwimfzX+y1gVSRIk=
 github.com/testcontainers/testcontainers-go/modules/kafka v0.40.0 h1:BW4CMO6rYLvJRC7UF4l0rudnwm7IX/kJPvGd9MCJM6I=
 github.com/testcontainers/testcontainers-go/modules/kafka v0.40.0/go.mod h1:O4U0SUR8blhkRLLfIFHQqNRKzee7fOxzya2H+rnl4OY=
+github.com/tetratelabs/wazero v1.12.0 h1:DuWcpNu/FzgEXgGBDp8J1Spc+CWOvvtvVyjKlaZopYU=
+github.com/tetratelabs/wazero v1.12.0/go.mod h1:LvKtzl2RqO4gyF27BiXU+nKAjcV8f38U+kP/q2vgxh0=
 github.com/thessem/zap-prettyconsole v0.7.0 h1:NIBesiXkPAewO9UEWtIm2kY6oWV0MKndJ/zeATCKyd8=
 github.com/thessem/zap-prettyconsole v0.7.0/go.mod h1:VxXZiwztq2kvlHIFltV338vM0eOWuupGJI4z/8QOyRY=
 github.com/tidwall/gjson v1.18.0 h1:FIDeeyB800efLX89e5a8Y0BNH+LOngJyGrIWxG2FKQY=
