@@ -262,7 +262,7 @@ ledgerctl --auth-token @token.txt ledgers list
 
 Ed25519 keys have a per-key scope allowlist defined in `auth-keys.json`. A token cannot claim scopes beyond what the key allows, even if the JWT payload contains them. This provides defense-in-depth: the server restricts what each key can do, independent of what the client requests.
 
-The server compares claimed scopes with the key's allowlist after expansion through the scope mapping. A claimed scope is accepted when the key lists it verbatim, or when every granular scope it expands to is covered by the key's expanded allowlist. For example, a key allowed `ledger:read` can sign a least-privilege token that claims only `ledger:TransactionRead`. A key allowed only `ledger:TransactionRead` cannot sign a token that claims `ledger:read`. A scope that the mapping does not know is rejected unless the key lists it verbatim.
+The server compares claimed scopes with the key's allowlist after expansion through the scope mapping. A claimed scope is accepted when the key lists it verbatim, or when every granular scope it expands to is covered by the key's expanded allowlist. For example, a key allowed `ledger:read` can sign a least-privilege token that claims only `ledger:ReadTransaction`. A key allowed only `ledger:ReadTransaction` cannot sign a token that claims `ledger:read`. A scope that the mapping does not know is rejected unless the key lists it verbatim.
 
 ### Superuser Mode
 

@@ -52,7 +52,7 @@ If no bearer is present, the request is treated as **anonymous** and given whate
 3. Verify signature against the composite keyset (OIDC JWKS + Ed25519 statics).
 4. Verify expiration.
 5. For OIDC, verify issuer.
-6. For Ed25519, enforce the key's scope allowlist (`ed25519_keys.go:enforceAllowedScopes`). Each claimed scope must be listed verbatim by the key, or expand through the scope mapping to a non-empty granular set covered by the key's expanded allowlist. A key allowed `ledger:read` can therefore sign a `ledger:TransactionRead`-only token; an unknown scope never passes by expansion.
+6. For Ed25519, enforce the key's scope allowlist (`ed25519_keys.go:enforceAllowedScopes`). Each claimed scope must be listed verbatim by the key, or expand through the scope mapping to a non-empty granular set covered by the key's expanded allowlist. A key allowed `ledger:read` can therefore sign a `ledger:ReadTransaction`-only token; an unknown scope never passes by expansion.
 
 The lack of cache is deliberate at this stage — JWKS lookups are local to the in-memory keyset (the OIDC discovery is done once at boot, see below).
 

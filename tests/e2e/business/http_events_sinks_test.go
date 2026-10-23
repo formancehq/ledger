@@ -350,7 +350,7 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 		// invalid input so readiness cannot create business state.
 		bucket := servicepb.NewBucketServiceClient(conn)
 		probe := servicepb.UnsignedApplyRequest("write-gate-probe", actions.CreateLedgerAction("", nil))
-		probeCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token("ledger:LedgerWrite"))
+		probeCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token("ledger:WriteLedger"))
 		Eventually(func() codes.Code {
 			_, err := bucket.Apply(probeCtx, probe)
 			return status.Code(err)
