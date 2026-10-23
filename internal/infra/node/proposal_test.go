@@ -5,20 +5,18 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func TestNewPreparedProposalCopiesSerializedData(t *testing.T) {
-	prepared, err := capabilities.PrepareProposal(&raftcmdpb.Proposal{})
+func TestNewProposalBindsCapabilitiesToSerializedCommand(t *testing.T) {
+	command := &raftcmdpb.Proposal{Id: 1}
+	proposal, err := NewProposal(1, command)
 	require.NoError(t, err)
 
-	input := []byte{1, 2, 3}
-	proposal := NewPreparedProposal(1, input, prepared)
-	input[0] = 9
-	require.Equal(t, []byte{1, 2, 3}, proposal.Data())
+	command.RequiredCapabilities = []uint32{99}
+	require.NotEqual(t, command.GetRequiredCapabilities(), proposal.RequiredCapabilities())
 
 	data := proposal.Data()
-	data[1] = 9
-	require.Equal(t, []byte{1, 2, 3}, proposal.Data())
+	data[0] ^= 0xff
+	require.NotEqual(t, data, proposal.Data())
 }

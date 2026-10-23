@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
@@ -96,22 +95,22 @@ type RunResult struct {
 // The caller is responsible for:
 //   - Calling Build with the slice of WriteOperations the proposal
 //     carries (emitting whatever metrics it likes around that call).
-//   - Marshaling the command via the marshalFn callback (proto marshal
-//     plus caller-specific instrumentation like commandSize.Record).
+//   - Finalizing the command via the finalizeFn callback (caller-specific
+//     instrumentation like commandSize.Record).
 //   - Releasing the loaders via guard.ReleaseLoaders() at the
 //     appropriate time.
 //
 // Run assigns coverage_bits (and production_bits when a productions
 // assigner was attached via WithProductions) on each operation right
-// before every marshalFn invocation — both on the happy path and on the
-// rare rebuild path under the proposal guard. The caller's marshalFn
+// before every finalizeFn invocation — both on the happy path and on the
+// rare rebuild path under the proposal guard. The caller's finalizeFn
 // must not touch those fields.
 //
 // On the happy path Run:
 //  1. attaches build.ExecutionPlan to cmd,
 //  2. iterates build.operations to assign coverage bits over plans,
 //  3. invokes the productions assigner if any,
-//  4. calls marshalFn to serialize cmd,
+//  4. finalizes cmd before proposal construction,
 //  5. acquires the proposal guard (IndexTracker mutex),
 //  6. patches cmd.PredictedIndex from the tracker's next index,
 //  7. re-runs steps 2-4 + marshal if the next-index generation shifted,
@@ -126,7 +125,7 @@ func (p *Builder) Run(
 	ctx context.Context,
 	cmd *raftcmdpb.Proposal,
 	build *BuildResult,
-	marshalFn func(*raftcmdpb.Proposal) ([]byte, error),
+	finalizeFn func(*raftcmdpb.Proposal) error,
 	proposer Proposer,
 ) (*RunResult, error) {
 	// Every producer that uses the shared runner (mirror, events, backup and
@@ -140,7 +139,7 @@ func (p *Builder) Run(
 	}
 
 	// Guarantee a unique command ID. The applier keys FSM futures by
-	// `cmd.Id` (`node.NewPreparedProposal(cmd.GetId(), data, required)` below); two in-flight
+	// `cmd.Id` (used by the node proposal factory); two in-flight
 	// proposals sharing Id=0 would overwrite each other in
 	// `Applier.StoreFuture`, hanging one waiter and routing the apply
 	// result to the wrong caller. Several technical callers build
@@ -167,24 +166,17 @@ func (p *Builder) Run(
 	// cache reset between Build and apply would spuriously reject the
 	// proposal as stale even though it never consulted the cache.
 	if build.aggregate.AttributeKeysCount() == 0 {
-		return p.runWithoutPreload(ctx, cmd, build, marshalFn, proposer)
+		return p.runWithoutPreload(ctx, cmd, build, finalizeFn, proposer)
 	}
 
 	cmd.ExecutionPlan = build.ExecutionPlan
-	required, err := capabilities.PrepareProposal(cmd)
-	if err != nil {
-		build.ReleaseLoaders()
-
-		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
-	}
 	if err := build.applyBits(cmd, build.ExecutionPlan.GetAttributes()); err != nil {
 		build.ReleaseLoaders()
 
 		return nil, fmt.Errorf("%w: %w", ErrIncompleteCoverage, err)
 	}
 
-	data, err := marshalFn(cmd)
-	if err != nil {
+	if err := finalizeFn(cmd); err != nil {
 		build.ReleaseLoaders()
 
 		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
@@ -218,32 +210,25 @@ func (p *Builder) Run(
 		// possibly values.
 		result.Rebuilt = true
 		cmd.ExecutionPlan = updatedPreloads
-		required, err = capabilities.PrepareProposal(cmd)
-		if err != nil {
-			guard.ReleaseAll()
-
-			return nil, fmt.Errorf("%w (under guard): %w", ErrMarshalProposal, err)
-		}
 		if err := build.applyBits(cmd, updatedPreloads.GetAttributes()); err != nil {
 			guard.ReleaseAll()
 
 			return nil, fmt.Errorf("%w: %w", ErrIncompleteCoverage, err)
 		}
 
-		data, err = marshalFn(cmd)
-		if err != nil {
+		if err := finalizeFn(cmd); err != nil {
 			guard.ReleaseAll()
 
 			return nil, fmt.Errorf("%w (under guard): %w", ErrMarshalProposal, err)
 		}
-	} else {
-		// Common path: patch the PredictedIndex onto the pre-marshaled
-		// buffer rather than re-marshaling the whole proposal (which
-		// can be megabytes for large batches).
-		data = AppendProposalPredictedIndex(data, cmd.GetPredictedIndex())
 	}
 
-	proposal := node.NewPreparedProposal(cmd.GetId(), data, required)
+	proposal, err := node.NewProposal(cmd.GetId(), cmd)
+	if err != nil {
+		guard.ReleaseAll()
+
+		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
+	}
 
 	result.ProposeStartTime = time.Now()
 	fsmFuture, err := proposer.Propose(ctx, proposal)
@@ -320,7 +305,7 @@ func (p *Builder) runWithoutPreload(
 	ctx context.Context,
 	cmd *raftcmdpb.Proposal,
 	build *BuildResult,
-	marshalFn func(*raftcmdpb.Proposal) ([]byte, error),
+	finalizeFn func(*raftcmdpb.Proposal) error,
 	proposer Proposer,
 ) (*RunResult, error) {
 	// The empty-needs path reads nothing from the cache, so neither
@@ -346,21 +331,13 @@ func (p *Builder) runWithoutPreload(
 	} else {
 		cmd.ExecutionPlan = nil
 	}
-	required, err := capabilities.PrepareProposal(cmd)
-	if err != nil {
-		build.ReleaseLoaders()
-
-		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
-	}
-
 	if err := build.applyBits(cmd, nil); err != nil {
 		build.ReleaseLoaders()
 
 		return nil, fmt.Errorf("%w: %w", ErrIncompleteCoverage, err)
 	}
 
-	data, err := marshalFn(cmd)
-	if err != nil {
+	if err := finalizeFn(cmd); err != nil {
 		build.ReleaseLoaders()
 
 		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
@@ -373,9 +350,12 @@ func (p *Builder) runWithoutPreload(
 	p.LockTracker()
 
 	cmd.PredictedIndex = p.TrackerNext()
-	data = AppendProposalPredictedIndex(data, cmd.GetPredictedIndex())
+	proposal, err := node.NewProposal(cmd.GetId(), cmd)
+	if err != nil {
+		guard.ReleaseLoaders()
 
-	proposal := node.NewPreparedProposal(cmd.GetId(), data, required)
+		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
+	}
 
 	proposeStart := time.Now()
 	fsmFuture, err := proposer.Propose(ctx, proposal)

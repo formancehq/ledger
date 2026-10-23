@@ -25,14 +25,12 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -798,18 +796,21 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 	// Per-order coverage bits depend on the final AttributeCoverage slice
 	// (positions in cmd.ExecutionPlan.Attributes), and AcquireProposalGuard may
 	// swap cmd.ExecutionPlan for a rebuilt ExecutionPlan on a generation shift.
-	// Compute the bits inside marshalFn so every (re-)marshal sees the
-	// current Preload — the runner calls marshalFn again after the
+	// Compute the bits before final proposal construction so every rebuild sees the
+	// current Preload — the runner calls finalizeFn again after the
 	// rebuild, keeping bits and plans in sync.
 	ctx, proposeSpan := tracer.Start(ctx, "admission.propose")
 
 	runResult, err := a.builder.Run(
 		ctx, cmd, build,
-		func(c *raftcmdpb.Proposal) ([]byte, error) {
+		func(c *raftcmdpb.Proposal) error {
 			// Coverage and productions are already assigned by the
-			// runner before this callback runs. We just marshal + emit
-			// admission metrics.
-			return a.marshalCommand(ctx, c)
+			// runner before this callback runs. The node proposal factory
+			// performs the canonical serialization; this callback only
+			// records the final command size.
+			a.commandSizeHistogram.Record(ctx, int64(c.SizeVT()))
+
+			return nil
 		},
 		a.proposer,
 	)
@@ -1011,20 +1012,13 @@ func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
 	}
 
 	cmd := commands.NewCommand() // no orders = no-op
-	// Barrier bypasses plan.Builder.Run, so it must still stamp the semantic
-	// capability declaration before serialization. The no-op command created by
-	// commands.NewCommand carries an empty ExecutionPlan, which is itself a
-	// protocol dependency for replaying the envelope.
-	required, err := capabilities.PrepareProposal(cmd)
-	if err != nil {
-		return 0, fmt.Errorf("stamping barrier capabilities: %w", err)
-	}
-	proposalData, err := a.marshalCommand(ctx, cmd)
+	// The proposal factory stamps the semantic capability declaration and
+	// serializes this final command atomically.
+	a.commandSizeHistogram.Record(ctx, int64(cmd.SizeVT()))
+	proposal, err := node.NewProposal(cmd.GetId(), cmd)
 	if err != nil {
 		return 0, fmt.Errorf("marshaling barrier command: %w", err)
 	}
-
-	proposal := node.NewPreparedProposal(cmd.GetId(), proposalData, required)
 
 	// Lock the tracker to serialize the Increment with guarded proposals,
 	// preventing preload boundary mismatches in the FSM.
@@ -1056,23 +1050,6 @@ func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
 	}
 
 	return result.AppliedIndex, nil
-}
-
-// marshalCommand marshals a proposal command into a newly allocated byte slice
-// using a pooled buffer. The returned slice is safe for Raft retention.
-func (a *Admission) marshalCommand(ctx context.Context, cmd *raftcmdpb.Proposal) ([]byte, error) {
-	_, marshalSpan := tracer.Start(ctx, "admission.marshal")
-	defer marshalSpan.End()
-
-	proposalData, err := vtmarshal.MarshalCopy(cmd)
-	if err != nil {
-		return nil, fmt.Errorf("marshaling command: %w", err)
-	}
-
-	a.commandSizeHistogram.Record(ctx, int64(len(proposalData)))
-	marshalSpan.SetAttributes(attribute.Int("command.size_bytes", len(proposalData)))
-
-	return proposalData, nil
 }
 
 // verifiedBatch is the trusted content of an ApplyRequest after signature
