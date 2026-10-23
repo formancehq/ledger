@@ -25,7 +25,7 @@ func LoadModules(store *dal.Store) ([]*Module, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open wasm store reader: %w", err)
 	}
-	defer handle.Close()
+	defer func() { _ = handle.Close() }()
 
 	prefix := metadataPrefix()
 	end := append(append([]byte(nil), prefix[:len(prefix)-1]...), prefix[len(prefix)-1]+1)
@@ -33,7 +33,7 @@ func LoadModules(store *dal.Store) ([]*Module, error) {
 	if err != nil {
 		return nil, fmt.Errorf("iterate wasm metadata: %w", err)
 	}
-	defer iter.Close()
+	defer func() { _ = iter.Close() }()
 
 	var modules []*Module
 	for iter.First(); iter.Valid(); iter.Next() {
@@ -68,7 +68,7 @@ func loadChunks(reader dal.PebbleReader, moduleID string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("iterate wasm chunks for %s: %w", moduleID, err)
 	}
-	defer iter.Close()
+	defer func() { _ = iter.Close() }()
 
 	var wasm []byte
 	for iter.First(); iter.Valid(); iter.Next() {

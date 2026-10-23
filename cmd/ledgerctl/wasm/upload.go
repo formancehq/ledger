@@ -23,7 +23,7 @@ func runUpload(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("open WASM module: %w", err)
 	}
-	defer module.Close()
+	defer func() { _ = module.Close() }()
 	var config []byte
 	if path, _ := cmd.Flags().GetString("config"); path != "" {
 		config, err = os.ReadFile(path)
@@ -35,7 +35,7 @@ func runUpload(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 	stream, err := wasmpb.NewWasmServiceClient(conn).Upload(ctx)

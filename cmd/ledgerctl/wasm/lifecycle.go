@@ -16,7 +16,7 @@ func newListCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		ctx, cancel := cmdutil.GetContext(cmd)
 		defer cancel()
 		response, err := client.List(ctx, &wasmpb.ListWasmModulesRequest{})
@@ -36,7 +36,7 @@ func newStopCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		ctx, cancel := cmdutil.GetContext(cmd)
 		defer cancel()
 		_, err = client.Stop(ctx, &wasmpb.StopWasmModuleRequest{ModuleId: args[0]})
@@ -50,7 +50,7 @@ func newGetCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		ctx, cancel := cmdutil.GetContext(cmd)
 		defer cancel()
 		module, err := client.Get(ctx, &wasmpb.GetWasmModuleRequest{ModuleId: args[0]})
@@ -71,7 +71,7 @@ func newDeleteCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		ctx, cancel := cmdutil.GetContext(cmd)
 		defer cancel()
 		_, err = client.Delete(ctx, &wasmpb.DeleteWasmModuleRequest{ModuleId: args[0]})

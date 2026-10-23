@@ -91,7 +91,7 @@ func (r *Runtime) Run(ctx context.Context, wasmBytes, config []byte) error {
 	if err != nil {
 		return fmt.Errorf("compile wasm: %w", err)
 	}
-	defer compiled.Close(ctx)
+	defer func() { _ = compiled.Close(ctx) }()
 
 	// The module exposes its own init/run ABI. Do not invoke WASI's `_start`
 	// automatically: the guest calls the ready import from main, and we invoke
@@ -103,7 +103,7 @@ func (r *Runtime) Run(ctx context.Context, wasmBytes, config []byte) error {
 	if err != nil {
 		return fmt.Errorf("instantiate wasm: %w", err)
 	}
-	defer module.Close(ctx)
+	defer func() { _ = module.Close(ctx) }()
 	alloc := module.ExportedFunction("alloc")
 	dealloc := module.ExportedFunction("dealloc")
 	initFn := module.ExportedFunction("init")

@@ -25,7 +25,7 @@ func TestGRPCLedgerCallerDispatchesGenericUnaryCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer caller.Close()
+	defer func() { _ = caller.Close() }()
 
 	payload, err := proto.Marshal(&servicepb.ApplyRequest{})
 	if err != nil {
