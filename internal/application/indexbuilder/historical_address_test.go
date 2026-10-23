@@ -35,6 +35,7 @@ func TestHistoricalAddressMappingsSurvivePurgedCells(t *testing.T) {
 					{Source: "normal", Destination: "hold", Asset: "EUR", Color: "blue"},
 					{Source: "transient", Destination: "normal", Asset: "USD"},
 					{Source: "transient", Destination: "normal", Asset: "USD", Color: "blue"},
+					{Source: "transient-only-source", Destination: "transient-only-destination", Asset: "USD"},
 				}
 				log := makeCreatedTxLog(10, "test", 9, postings)
 				if eviction == "compensating" {
@@ -47,7 +48,7 @@ func TestHistoricalAddressMappingsSurvivePurgedCells(t *testing.T) {
 				} else {
 					ll.PurgedVolumes = []*commonpb.TouchedVolume{cell}
 				}
-				proposals := newTestAppliedProposalSync(testAppliedProposal(1, 10, 10, "test", "transient"))
+				proposals := newTestAppliedProposalSync(testAppliedProposal(1, 10, 10, "test", "transient", "transient-only-source", "transient-only-destination"))
 				b.initBatch(b.readStore.NewBatch())
 				b.wb.SetEventSequence(10)
 				switch mode {
@@ -72,9 +73,16 @@ func TestHistoricalAddressMappingsSurvivePurgedCells(t *testing.T) {
 				}
 				require.NotContains(t, scanAccountByAsset(t, b.readStore, "test", "USD", 0), "hold")
 				require.Contains(t, scanAccountByAsset(t, b.readStore, "test", "EUR", 0), "hold")
+				for _, address := range []string{"transient-only-source", "transient-only-destination"} {
+					for _, prefix := range []byte{readstore.PrefixAccountTx, readstore.PrefixSourceAccountTx, readstore.PrefixDestinationAccountTx} {
+						require.False(t, readStoreKeyExists(t, b.readStore, readstore.AccountTxKey(dal.NewKeyBuilder(), prefix, "test", address, 9)), "TRANSIENT-only address %s must not have history in bucket %x", address, prefix)
+					}
+					require.NotContains(t, scanAccountByAsset(t, b.readStore, "test", "USD", 0), address)
+				}
 				// The blue cell on the TRANSIENT address remains historical: the
 				// proposal exclusion is specific to the uncolored USD cell.
 				require.True(t, readStoreKeyExists(t, b.readStore, readstore.AccountTxKey(dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, "test", "transient", 9)))
+				require.Contains(t, scanAccountByAsset(t, b.readStore, "test", "USD", 0), "transient")
 			})
 		}
 	}

@@ -187,6 +187,9 @@ lifetimes. Live folding, generic replay and fast postings backfill exclude
 TRANSIENT cells from both, but purged/ephemeral cells only from current has-asset
 membership. Exercise draining, same-log net-zero and compensating transactions,
 including partial asset/color purges, with independent expected role mappings.
+TRANSIENT negative controls must use source and destination addresses without
+valid postings sharing their historical or has-asset keys. Keep a valid colored
+posting on an otherwise excluded address as a positive control in each mode.
 This contract does not require complete current-account lifecycle cleanup.
 
 For previously omitted mappings, seed non-empty READY indexes and drive supported

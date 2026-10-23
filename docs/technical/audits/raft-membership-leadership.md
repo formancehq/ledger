@@ -81,6 +81,12 @@ Inspect serialization against a pending ConfChange, learner/voter role checks,
 updates, the committed-index wait, and response/error mapping. Concurrent
 operations against the same node must be distinguished by proposal identity and
 expected change type; a late commit must not satisfy a replacement waiter.
+Within one logical operation, retries must retain the same waiter. Delay WAL
+ConfState persistence beyond the retry timer after consuming the correlated
+waiter, then release the WAL and queued retry. Require the original committed
+index, no second admission/proposal, and durable local FSM application before
+success. Cancellation must release the caller without resolving a different
+operation or reporting premature success.
 
 For removal, every member carries a mandatory 16-byte instance_id (enforced at every admission, persistence, and promotion boundary). The replicated tombstone guarantee applies to every removal; identity-less phantom learners are no longer a supported member state. Distinguish a removal with a normal committed ConfChange from a force removal, which bypasses Raft consensus and relies on operator preconditions instead of quorum safety.
 Prove rejoin and promotion behavior through every production entry rather than
@@ -184,6 +190,12 @@ restart out of sync, elect among themselves, resynchronize from a peer, and
 run a sink created inside the checkpoint. `TestSyncDonor`,
 `TestAddLearnerWaitsForLeaderReady`, `TestCheckAndPromoteLearnersWaitsForLeaderReady`,
 and `TestManagerLeadership` pin the donor rotation and the gates.
+
+After real snapshot catch-up, `tests/e2e/cluster/raft_test.go` restarts the
+recovered voter again and verifies retained business state through a
+linearizable read. Accept a healthy `Follower` or `Leader` with a known leader:
+a restarted voter may win an election, so a follower-only role assertion is not
+a valid recovery oracle.
 
 This domain owns the consensus-side selection, transfer, installation order and
 authority gates. General checkpoint/restore content correctness belongs to

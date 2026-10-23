@@ -12,6 +12,14 @@ For the per-operation Ledger v2 → v3 path mapping, see
 [`v2-to-v3-endpoint-map.json`](v2-to-v3-endpoint-map.json). Update it in the same
 change when a route it names is renamed or removed.
 
+Cluster membership changes are exposed through the v3 `ClusterService`; the v2
+business endpoint map has no corresponding operation. Internal retries of one
+add, promote or remove call retain the original committed outcome through slow
+WAL persistence, rather than reporting a second admission error after the
+membership already changed. Success still requires local durable FSM apply;
+distinct calls keep their existing admission and cancellation semantics. This
+correction changes no route, message, field, status schema or protocol revision.
+
 HTTP typed metadata preserves exact integer values, including signed 64-bit
 bounds and values above 2^53, for metadata writes, transaction creation and
 reversal (unitary and bulk). Integral decimal/exponent spellings are accepted;
