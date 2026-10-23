@@ -33,10 +33,14 @@ import (
 type ClusterReconciler struct {
 	client.Client
 
+	APIReader client.Reader
+
 	Scheme    *runtime.Scheme
 	Config    *rest.Config
 	Clientset kubernetes.Interface
 	Recorder  record.EventRecorder
+
+	claimTemplateRetries claimTemplateRetries
 }
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch;create;update;patch;delete
@@ -64,11 +68,17 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Fetch the Cluster CR
 	ledger := &ledgerv1alpha1.Cluster{}
 	if err := r.Get(ctx, req.NamespacedName, ledger); err != nil {
+		if apierrors.IsNotFound(err) {
+			r.claimTemplateRetries.forget(req.NamespacedName)
+		}
+
 		return ctrl.Result{}, ignoreNotFound(err)
 	}
 
 	// Handle deletion — owned resources are garbage-collected via owner references.
 	if !ledger.DeletionTimestamp.IsZero() {
+		r.claimTemplateRetries.forget(req.NamespacedName)
+
 		return ctrl.Result{}, nil
 	}
 	// Commit the identity before any resource can start a Ledger process. An
@@ -104,6 +114,12 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			logger.Error(statusErr, "failed to update status")
 		}
 	}()
+
+	// Restore an interrupted claim-template replacement before applying any new
+	// desired changes, including an invalid spec or a changed RC target.
+	if handled, result, err := r.resumeClaimTemplateRecovery(ctx, ledger); handled || err != nil {
+		return result, err
+	}
 
 	// Validate spec — report errors via status condition instead of retrying.
 	if err := validateSpec(ledger); err != nil {
@@ -338,6 +354,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		logger.Error(err, "failed to reconcile StatefulSet")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling StatefulSet: %w", err)
+	}
+	if ledger.Status.ClaimTemplateRecovery == nil {
+		// The normal workload pass can now apply the refreshed key projection.
+		// A pass that just started a recovery must retain the deferred signal.
+		meta.RemoveStatusCondition(&ledger.Status.Conditions, "AuthKeysRolloutDeferred")
 	}
 
 	// Now that reconcileStatefulSet has run (not pending), the pod template has

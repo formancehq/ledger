@@ -1134,9 +1134,10 @@ type VolumeSpec struct {
 	// +optional
 	AccessMode string `json:"accessMode,omitempty"`
 
-	// Size is the initial and minimum requested capacity of the volume. Automatic
-	// expansion updates the live PVCs only and never rewrites this field or the
-	// StatefulSet VolumeClaimTemplates.
+	// Size is the initial and minimum requested capacity of the volume. Increases
+	// reconcile existing PVCs and claim templates; decreases never shrink them.
+	// Automatic expansion updates live PVCs only and never rewrites this field
+	// or the StatefulSet VolumeClaimTemplates.
 	// +optional
 	Size resource.Quantity `json:"size,omitempty"`
 
@@ -1145,7 +1146,9 @@ type VolumeSpec struct {
 	// +optional
 	AutoExpansion *VolumeAutoExpansionSpec `json:"autoExpansion,omitempty"`
 
-	// VolumeAttributesClassName is the name of the VolumeAttributesClass to use for the PVC.
+	// VolumeAttributesClassName selects the CSI performance profile for new and
+	// existing PVCs. Changes are applied in place; clearing a non-empty class is
+	// unsupported. Completion is reported separately from accepting the request.
 	// Requires the VolumeAttributesClass feature gate to be enabled (beta in K8s 1.31+).
 	// Mutually exclusive with hostPath.
 	// +optional
@@ -1349,6 +1352,11 @@ type TLSRolloutStatus struct {
 
 // ClusterStatus defines the observed state of Cluster.
 type ClusterStatus struct {
+	// ClaimTemplateRecovery identifies the durable journal for a claim-template
+	// replacement. The operator restores that workload before newer spec edits.
+	// +optional
+	ClaimTemplateRecovery *ClaimTemplateRecoveryStatus `json:"claimTemplateRecovery,omitempty"`
+
 	// TLSRollout preserves certificate references and mode across operator restarts
 	// and StatefulSet recreation. Cleared after the disabled rollout converges.
 	// +optional
@@ -1381,6 +1389,23 @@ type ClusterStatus struct {
 	// exposes the intermediate "optional" mode used during a toggle.
 	// +optional
 	TLSMigrationPhase string `json:"tlsMigrationPhase,omitempty"`
+}
+
+// ClaimTemplateRecoveryStatus authorizes exact journal bytes before creation.
+// An empty ConfigMapUID is Preparing; a bound UID is Active. Completed retains
+// the binding until cleanup succeeds, including after a lost delete response.
+type ClaimTemplateRecoveryStatus struct {
+	// ConfigMapName includes a prefix of the complete authorized digest.
+	ConfigMapName string `json:"configMapName"`
+	// SourceUID identifies the original StatefulSet saved in the payload.
+	SourceUID string `json:"sourceUID"`
+	// PayloadSHA256 covers the complete JSON payload and its Cluster identity.
+	PayloadSHA256 string `json:"payloadSHA256"`
+	// ConfigMapUID is bound only after the immutable journal is authenticated.
+	// +optional
+	ConfigMapUID string `json:"configMapUID,omitempty"`
+	// +optional
+	Completed bool `json:"completed,omitempty"`
 }
 
 // EndpointsStatus contains the resolved endpoints for a Cluster.

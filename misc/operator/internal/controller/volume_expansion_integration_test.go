@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -66,19 +67,31 @@ func TestVolumeExpansionReconcilerPatchesPVCInEnvtest(t *testing.T) {
 	require.NoError(t, k8sClient.Status().Update(ctx, pvc))
 
 	// The volume reconciler watches Cluster objects, not PVCs. Wait until the
-	// primary reconciler has created the live StatefulSet, then enqueue one
-	// deterministic Cluster update after the PVC is Bound.
+	// primary reconciler has created the live StatefulSet, then supply the
+	// retained claim's live Pod evidence before enqueueing a Cluster update.
 	requireEventually(t, func() bool {
 		var statefulSet appsv1.StatefulSet
 
 		return k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: "ledger-auto-expand"}, &statefulSet) == nil
 	}, "StatefulSet should exist before triggering volume expansion")
+	var statefulSet appsv1.StatefulSet
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: "ledger-auto-expand"}, &statefulSet))
+	require.NoError(t, k8sClient.Create(ctx, &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "ledger-auto-expand-0", Namespace: namespace, OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(&statefulSet, appsv1.SchemeGroupVersion.WithKind("StatefulSet"))}},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "ledger", Image: "test"}},
+			Volumes:    []corev1.Volume{{Name: "data", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvc.Name}}}},
+		},
+	}))
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: cluster.Name}, cluster))
+	beforeTrigger := cluster.DeepCopy()
 	if cluster.Annotations == nil {
 		cluster.Annotations = map[string]string{}
 	}
 	cluster.Annotations["ledger.formance.com/test-volume-expansion-trigger"] = "ready"
-	require.NoError(t, k8sClient.Update(ctx, cluster))
+	// Trigger only our annotation; cached resourceVersions can lag concurrent
+	// controller status writes and must not make this fixture fail before resize.
+	require.NoError(t, k8sClient.Patch(ctx, cluster, client.MergeFrom(beforeTrigger)))
 
 	requireEventually(t, func() bool {
 		var current corev1.PersistentVolumeClaim

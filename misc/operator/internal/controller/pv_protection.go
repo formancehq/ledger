@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -46,6 +47,18 @@ import (
 func reconcileVolumeProtection(ctx context.Context, clientset kubernetes.Interface,
 	namespace, stsName string, replicas int32, volumeNames []string, protect bool,
 ) (bool, error) {
+	return reconcileVolumeProtectionWithIdentities(ctx, clientset, namespace, stsName, replicas, volumeNames, protect, nil)
+}
+
+// reconcileVolumeProtectionWithIdentities restricts recovery writes to the saved
+// PVC/PV identities and binding. A nil inventory preserves normal reconciliation.
+// Recovery validates both resources before either write, then fences each patch
+// with its observed UID and resourceVersion. A conflict is retried by the next
+// reconcile, which must read and validate the identities again.
+func reconcileVolumeProtectionWithIdentities(ctx context.Context, clientset kubernetes.Interface,
+	namespace, stsName string, replicas int32, volumeNames []string, protect bool,
+	retainedClaims map[string]retainedClaimIdentity,
+) (bool, error) {
 	logger := log.FromContext(ctx)
 	pvcClient := clientset.CoreV1().PersistentVolumeClaims(namespace)
 	pvClient := clientset.CoreV1().PersistentVolumes()
@@ -56,7 +69,7 @@ func reconcileVolumeProtection(ctx context.Context, clientset kubernetes.Interfa
 			pvcName := fmt.Sprintf("%s-%s-%d", vol, stsName, ordinal)
 			pvc, err := pvcClient.Get(ctx, pvcName, metav1.GetOptions{})
 			if err != nil {
-				if kerrors.IsNotFound(err) {
+				if kerrors.IsNotFound(err) && retainedClaims == nil {
 					// Expected to be created by the StatefulSet controller. Requeue
 					// regardless of direction so the PVC is reconciled to the desired
 					// label state once it appears: when protecting, the new PVC (and
@@ -71,7 +84,31 @@ func reconcileVolumeProtection(ctx context.Context, clientset kubernetes.Interfa
 				return false, fmt.Errorf("getting PVC %s: %w", pvcName, err)
 			}
 
-			patch, err := protectionLabelPatch(pvc.Labels, protect)
+			var pv *corev1.PersistentVolume
+			var pvcPreconditions, pvPreconditions *metav1.Preconditions
+			if retainedClaims != nil {
+				retained, ok := retainedClaims[pvcName]
+				if !ok || retained.Name != pvcName || retained.UID == "" || retained.VolumeName == "" || retained.PVUID == "" {
+					return false, fmt.Errorf("missing or invalid retained identity for PVC %s", pvcName)
+				}
+				if pvc.UID != retained.UID || pvc.Spec.VolumeName != retained.VolumeName ||
+					pvc.Status.Phase != corev1.ClaimBound || !pvc.DeletionTimestamp.IsZero() || pvc.ResourceVersion == "" {
+					return false, fmt.Errorf("retained PVC %s identity or binding changed, is deleting, or has no resourceVersion", pvcName)
+				}
+				pv, err = pvClient.Get(ctx, retained.VolumeName, metav1.GetOptions{})
+				if err != nil {
+					return false, fmt.Errorf("getting retained PV %s: %w", retained.VolumeName, err)
+				}
+				ref := pv.Spec.ClaimRef
+				if pv.UID != retained.PVUID || !pv.DeletionTimestamp.IsZero() || pv.ResourceVersion == "" ||
+					ref == nil || ref.UID != retained.UID || ref.Namespace != namespace || ref.Name != pvcName {
+					return false, fmt.Errorf("retained PV %s identity or binding changed, is deleting, or has no resourceVersion", retained.VolumeName)
+				}
+				pvcPreconditions = &metav1.Preconditions{UID: &pvc.UID, ResourceVersion: &pvc.ResourceVersion}
+				pvPreconditions = &metav1.Preconditions{UID: &pv.UID, ResourceVersion: &pv.ResourceVersion}
+			}
+
+			patch, err := protectionLabelPatch(pvc.Labels, protect, pvcPreconditions)
 			if err != nil {
 				return false, fmt.Errorf("building deletion-protection patch for PVC %s: %w", pvcName, err)
 			}
@@ -91,13 +128,15 @@ func reconcileVolumeProtection(ctx context.Context, clientset kubernetes.Interfa
 				continue
 			}
 
-			pv, err := pvClient.Get(ctx, pvc.Spec.VolumeName, metav1.GetOptions{})
-			if err != nil {
-				if kerrors.IsNotFound(err) {
-					continue
-				}
+			if pv == nil {
+				pv, err = pvClient.Get(ctx, pvc.Spec.VolumeName, metav1.GetOptions{})
+				if err != nil {
+					if kerrors.IsNotFound(err) {
+						continue
+					}
 
-				return false, fmt.Errorf("getting PV %s: %w", pvc.Spec.VolumeName, err)
+					return false, fmt.Errorf("getting PV %s: %w", pvc.Spec.VolumeName, err)
+				}
 			}
 
 			// Only touch a PV that is still claimed by this PVC; a PV rebound to
@@ -106,7 +145,7 @@ func reconcileVolumeProtection(ctx context.Context, clientset kubernetes.Interfa
 				continue
 			}
 
-			pvPatch, err := protectionLabelPatch(pv.Labels, protect)
+			pvPatch, err := protectionLabelPatch(pv.Labels, protect, pvPreconditions)
 			if err != nil {
 				return false, fmt.Errorf("building deletion-protection patch for PV %s: %w", pv.Name, err)
 			}
@@ -125,7 +164,7 @@ func reconcileVolumeProtection(ctx context.Context, clientset kubernetes.Interfa
 // protectionLabelPatch returns a JSON merge patch that adds (protect) or removes
 // (!protect) the deletion-protection label, or nil when the current labels are
 // already in the desired state. A null value in a merge patch deletes the key.
-func protectionLabelPatch(current map[string]string, protect bool) ([]byte, error) {
+func protectionLabelPatch(current map[string]string, protect bool, preconditions *metav1.Preconditions) ([]byte, error) {
 	hasDesiredValue := current[labelDeletionProtection] == labelDeletionProtectionValue
 	_, present := current[labelDeletionProtection]
 
@@ -141,11 +180,12 @@ func protectionLabelPatch(current map[string]string, protect bool) ([]byte, erro
 		value = nil // remove the key
 	}
 
-	patch, err := json.Marshal(map[string]any{
-		"metadata": map[string]any{
-			"labels": map[string]any{labelDeletionProtection: value},
-		},
-	})
+	metadata := map[string]any{"labels": map[string]any{labelDeletionProtection: value}}
+	if preconditions != nil {
+		metadata["uid"] = *preconditions.UID
+		metadata["resourceVersion"] = *preconditions.ResourceVersion
+	}
+	patch, err := json.Marshal(map[string]any{"metadata": metadata})
 	if err != nil {
 		return nil, fmt.Errorf("marshaling deletion-protection label patch: %w", err)
 	}
