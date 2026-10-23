@@ -112,10 +112,6 @@ func run() uint32 {
 			if fetchErr == nil {
 				if applyErr := applyBlock(b); applyErr == nil {
 					moduleHeight++
-					// Go's WASI heap is monotonic at the linear-memory level. Force
-					// collection between blocks so catch-up from height zero does not
-					// retain every decoded block and protobuf batch until the next GC.
-					runtime.GC()
 					if moduleHeight%100 == 0 {
 						var stats runtime.MemStats
 						runtime.ReadMemStats(&stats)
