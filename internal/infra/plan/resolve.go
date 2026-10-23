@@ -15,6 +15,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+// A changed epoch is retryable even if the bounded build retries exhaust or
+// the proposal guard's rebuild encounters another reset.
+var errCacheEpochChanged = fmt.Errorf("%w: cache epoch changed during preload admission", ErrCacheHorizonExceeded)
+
+// ErrTombstoneActivationRequired prevents an unsafe mixed-version proposal.
+// EN-3046 will provide the capability decision that permits this seed.
+var ErrTombstoneActivationRequired = fmt.Errorf("%w: tombstone preload requires EN-3046 activation", ErrCacheHorizonExceeded)
+
 // resolveParallelism is the maximum number of concurrent Pebble Gets within
 // a single attribute type resolution. The workload is I/O bound (Ceph RBD
 // reads at ~1ms per miss), so moderate parallelism saturates the storage
@@ -23,7 +31,7 @@ const resolveParallelism = 16
 
 // resolveResult holds the output of a resolve call: a flat list of
 // AttributeCoverage entries plus the tracker keys. Each entry is either
-// coverage-only (value = nil) or a seed (value = Pebble-loaded payload).
+// coverage-only (value = nil) or a seed (value captured from Gen1 or Pebble).
 //
 // The FSM's Preload path routes seed entries through MirrorPreload
 // (gen0+gen1 write with gen1-wins semantics). Coverage-only entries are
@@ -123,12 +131,13 @@ func (s *entrySlab) appendSeed(id attributes.U128, tag uint64, attrCode byte, va
 //   - CacheHit → coverage-only (value nil); AttributeCache.Get's gen0→gen1
 //     fallback surfaces the entry on read, and KeyStore.Tombstone writes
 //     the gen0 tombstone if the handler deletes.
-//   - CacheMiss + bloom/Pebble-absent → coverage-only.
-//   - CacheMiss + Pebble-load-hit → seeded (value = the loaded payload;
-//     MirrorPreload writes gen0+gen1).
+//   - Gen1-only at a one-rotation horizon → direct live seed; tombstone
+//     admission remains closed until EN-3046 activates mixed-version support.
+//   - Genuine miss + bloom/Pebble-absent → coverage-only.
+//   - Genuine miss + Pebble-load-hit → seeded.
 //
-// FSM-side race protection is handled at Preload for seeds only (via
-// MirrorPreload's gen1-wins), and by the coverage_bits gate (invariant
+// FSM-side race protection is handled at Preload for seeds (via
+// Gen0 > Gen1 > incoming precedence), and by the coverage_bits gate (invariant
 // #9) for reads. Keys a concurrent-write race populated are visible to
 // the handler via the gen0→gen1 fallback; keys nothing populated see
 // ErrNotFound and produce the expected NotFound business outcome.
@@ -169,7 +178,58 @@ func resolveCoverage[T interface {
 		canonicalKey := entry.Canonical
 		tag := entry.Tag
 
-		switch attrCache.CheckCache(nextIndex, id) {
+		observation, observeErr := attrCache.ObserveAdmission(nextIndex, id, tag)
+		if observeErr != nil {
+			mu.Lock()
+			if firstErr == nil {
+				firstErr = observeErr
+			}
+			mu.Unlock()
+
+			continue
+		}
+		if observation.Epoch != cacheEpoch {
+			mu.Lock()
+			if firstErr == nil {
+				firstErr = errCacheEpochChanged
+			}
+			mu.Unlock()
+
+			continue
+		}
+		if observation.HasSource {
+			if observation.Source.Deleted {
+				attrCache.Cache.RecordPreloadEvent("tombstone_activation_blocked")
+				// EN-3046 owns mixed-version activation. An older applier
+				// would decode a tombstone seed as a live empty value.
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = ErrTombstoneActivationRequired
+				}
+				mu.Unlock()
+
+				continue
+			}
+			value, marshalErr := buildPreloadPayload(attrCode, observation.Source.Data)
+			if marshalErr != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = marshalErr
+				}
+				mu.Unlock()
+
+				continue
+			}
+			attrCache.Cache.RecordPreloadEvent("direct_live_seed")
+
+			mu.Lock()
+			plans = append(plans, slab.appendSeed(id, tag, attrCode, value))
+			mu.Unlock()
+
+			continue
+		}
+
+		switch observation.Status {
 		case cache.CacheUnreachable:
 			// Admission predicts ≥2 rotations between propose and apply.
 			// Any preload computed now would be discarded before the FSM
@@ -220,6 +280,7 @@ func resolveCoverage[T interface {
 
 				continue
 			}
+			attrCache.Cache.RecordPreloadEvent("pebble_fallback")
 
 			if logger.Enabled(logging.TraceLevel) {
 				logger.WithFields(map[string]any{

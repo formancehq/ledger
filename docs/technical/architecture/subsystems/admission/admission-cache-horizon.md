@@ -10,8 +10,8 @@ When admission builds a proposal's preload plan, it queries the dual-generation
 cache (`AttributeCache.CheckCache(at, key)`) to decide, per key, whether to
 emit a coverage-only `AttributeCoverage` (value nil) or a seed
 `AttributeCoverage` (value set). The decision compares the predicted
-apply-time generation `Gen(at, threshold)` against the FSM's current applied
-generation:
+apply-time generation `Gen(at, threshold)` against the FSM's current prepared
+generation and the last index durably committed to Pebble:
 
 | `Gen(at) − currentGen` | `CheckCache` result | Plan emitted |
 |---|---|---|
@@ -20,6 +20,30 @@ generation:
 | **≥ 2** | **`CacheUnreachable`** | **proposal rejected at admission** |
 
 The ≥ 2 case is the "cache horizon exceeded" condition this document is about.
+Admission also rejects when `Gen(at) − Gen(lastPersistedIndex) ≥ 2`, even if
+`Gen(at) − currentGen` is zero. Preparation rotates the in-memory cache before
+its Pebble batch commits. Two prepared rotations can evict a recent write from
+both cache generations while Pebble still contains its older value. In that
+window, a cache miss must not seed the proposal from Pebble. The durable cursor
+advances only after `batch.Commit()` returns and is restored from Pebble on
+startup and follower synchronization.
+
+## Threshold-change reset barrier
+
+Changing the rotation threshold clears both cache generations. Without a
+commit barrier, the applier could prepare that reset while the preceding
+batch's writes exist only in memory: admission would see a cache miss and read
+their older values from Pebble under the new epoch. The generation-distance
+guard cannot detect this when the new, larger threshold places both the
+durable and predicted indexes in one generation.
+
+The applier therefore splits a `ClusterConfig` entry into its own FSM batch
+and waits for the preceding Pebble commit **before** preparing that entry.
+Replay uses the same split and commits each prefix synchronously. Admission
+builds that began before the reset are still checked by the cache epoch;
+builds that begin after it can read the now-durable primary-store values.
+The split scans the already-decoded entries once, and the extra commit wait
+occurs only for a cluster-config proposal, not for ordinary business batches.
 
 ## Why we reject instead of preload
 
@@ -62,11 +86,10 @@ responsibility for this proposal.
 
 Under a correctly tuned rotation threshold (`--cache-rotation-threshold`,
 default 1000) and an FSM apply rate that keeps up with proposals, the
-≥ 2-generation horizon should never be reached: admission's `nextIndex`
-would have to sit at least `2 × threshold` indices past the FSM's
-last-applied index. In a healthy single-leader cluster that means
-**2000+ in-flight proposals** between admit and apply — well outside
-the normal operating envelope.
+≥ 2-generation horizon should be rare. It can occur with two prepared
+rotations ahead of Pebble, including when a pending batch crosses a
+generation boundary. The exact index gap depends on where the durable cursor
+lies within its generation.
 
 Recurring `ErrCacheHorizonExceeded` is therefore an *operational* signal:
 
@@ -82,7 +105,10 @@ follow-up) to make this observable to SREs.
 ## Implementation
 
 - `internal/infra/cache/cache.go` — `CacheUnreachable` constant, the
-  default branch of `CheckCache`.
+  generation and durable-cursor horizon checks in `CheckCache` and
+  `ObserveAdmission`.
+- `internal/infra/state/machine.go` — publishes the durable cursor to the
+  cache together with `lastPersistedIndex` after commit or recovery.
 - `internal/infra/plan/errors.go` — `ErrCacheHorizonExceeded` sentinel.
 - `internal/infra/plan/resolve.go` — short-circuit on
   `CacheUnreachable`, return `ErrCacheHorizonExceeded`.

@@ -926,6 +926,61 @@ func TestCacheSnapshotter_EN1377_MirrorPreloadEmptyRawValue(t *testing.T) {
 	require.Equal(t, tag, restored.Tag)
 }
 
+func TestTombstonePreloadRoundTripAndLocalPrecedence(t *testing.T) {
+	t.Parallel()
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+	id := attributes.HashU128([]byte("tombstone-preload"))
+	attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: 31}
+	gen0Byte := byte(registry.Cache.CurrentGeneration() % 2)
+	gen1Byte := gen0Byte ^ 1
+
+	batch := dataStore.OpenWriteSession()
+	tombstone := &raftcmdpb.AttributeValue{Deleted: true}
+	require.NoError(t, snapshotter.MirrorPreload(batch, gen0Byte, gen1Byte, attrID, dal.SubAttrBoundary, tombstone))
+	require.NoError(t, batch.Commit())
+	for _, gen := range []int{0, 1} {
+		entry, ok := registry.Cache.Boundaries.Gen0().Get(id)
+		if gen == 1 {
+			entry, ok = registry.Cache.Boundaries.Gen1().Get(id)
+		}
+		require.True(t, ok)
+		require.True(t, entry.Deleted)
+	}
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore(dataStore))
+	restored, ok := registry.Cache.Boundaries.Gen0().Get(id)
+	require.True(t, ok)
+	require.True(t, restored.Deleted)
+
+	// A newer local live entry must not be replaced by a stale tombstone.
+	live := &raftcmdpb.LedgerBoundaries{}
+	registry.Cache.Boundaries.Gen0().Put(id, attributes.Entry[*raftcmdpb.LedgerBoundaries]{Tag: 31, Data: live})
+	batch = dataStore.OpenWriteSession()
+	require.NoError(t, snapshotter.MirrorPreload(batch, gen0Byte, gen1Byte, attrID, dal.SubAttrBoundary, tombstone))
+	require.NoError(t, batch.Commit())
+	got, ok := registry.Cache.Boundaries.Gen0().Get(id)
+	require.True(t, ok)
+	require.Same(t, live, got.Data)
+	require.False(t, got.Deleted)
+}
+
+func TestPreloadPromotesNewerGen1TombstoneAndRejectsCollision(t *testing.T) {
+	t.Parallel()
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+	id := attributes.HashU128([]byte("gen1-tombstone"))
+	attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: 37}
+	registry.Cache.Boundaries.Gen1().Put(id, attributes.Entry[*raftcmdpb.LedgerBoundaries]{Tag: 37, Deleted: true})
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, snapshotter.MirrorPreload(batch, 0, 1, attrID, dal.SubAttrBoundary, &raftcmdpb.AttributeValue{}))
+	require.NoError(t, batch.Commit())
+	got, ok := registry.Cache.Boundaries.Gen0().Get(id)
+	require.True(t, ok)
+	require.True(t, got.Deleted)
+
+	wrongTag := &raftcmdpb.AttributeID{Id: id[:], Tag: 38}
+	require.ErrorContains(t, snapshotter.ValidatePreload(wrongTag, dal.SubAttrBoundary, &raftcmdpb.AttributeValue{}), "collision")
+}
+
 // TestCacheSnapshotter_EN1377_RestoreRejectsShortValue asserts the
 // snapshotter panics on a 0xFF row shorter than the lean header. Every
 // row is produced by writeCacheRaw which writes at least cacheValueHeaderLen

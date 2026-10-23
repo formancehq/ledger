@@ -5303,6 +5303,7 @@ func NewAttributeCoverageListReader(s []*AttributeCoverage) AttributeCoverageLis
 // Call Mutate() to obtain a mutable clone.
 type AttributeValueReader interface {
 	GetRawValue() []byte
+	GetDeleted() bool
 	Mutate() *AttributeValue
 }
 
@@ -5310,6 +5311,10 @@ type attributeValueReadonly AttributeValue
 
 func (r *attributeValueReadonly) GetRawValue() []byte {
 	return bytes.Clone((*AttributeValue)(r).GetRawValue())
+}
+
+func (r *attributeValueReadonly) GetDeleted() bool {
+	return (*AttributeValue)(r).GetDeleted()
 }
 
 func (r *attributeValueReadonly) Mutate() *AttributeValue {

@@ -8,6 +8,8 @@ import (
 
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -99,6 +101,20 @@ func TestMachineLastPersistedIndex(t *testing.T) {
 	machine.lastPersistedIndex.Store(42)
 	idx = machine.LastPersistedIndex()
 	require.Equal(t, uint64(42), idx)
+}
+
+func TestPublishAppliedAdvancesAdmissionCacheHorizon(t *testing.T) {
+	t.Parallel()
+	machine, _, _ := newTestMachine(t)
+	machine.Registry.Cache.SetCurrentGeneration(2)
+	key := attributes.NewU128(1, 2)
+	require.Equal(t, cache.CacheUnreachable,
+		machine.Registry.Cache.Volumes.CheckCache(2001, key))
+
+	machine.publishApplied(1001)
+	require.Equal(t, uint64(1001), machine.LastPersistedIndex())
+	require.Equal(t, cache.CacheMiss,
+		machine.Registry.Cache.Volumes.CheckCache(2001, key))
 }
 
 func TestMachineIsStoreUpToDate(t *testing.T) {

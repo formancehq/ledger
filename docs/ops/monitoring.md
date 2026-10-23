@@ -581,9 +581,11 @@ The attribute cache stores computed attribute values (volumes, metadata) in memo
 |--------|------|------|-------------|
 | `cache.rotations` | Counter | `{rotation}` | Number of cache generation rotations |
 | `cache.generation` | Gauge | - | Current cache generation number |
+| `cache.preload_events` | Counter | `{event}` | Preload source selections and rejections, grouped by `event` |
 | `cache.size` | Gauge | `{entry}` | Number of entries in the cache by attribute type |
 
 **Attributes**:
+- `event`: Preload outcome (`direct_live_seed`, `pebble_fallback`, `epoch_retry`, `horizon_rejection`, `tombstone_activation_blocked`, `invalid_payload`, `invalid_live_entry`, or `collision`)
 - `type`: Attribute type (`input`, `output`, `account_metadata`, `ledger_metadata`, `reversions`, `idempotency_keys`)
 
 **Attribute Types**:

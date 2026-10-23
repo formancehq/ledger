@@ -1929,6 +1929,7 @@ func (m *AttributeValue) CloneVT() *AttributeValue {
 		return (*AttributeValue)(nil)
 	}
 	r := AttributeValueFromVTPool()
+	r.Deleted = m.Deleted
 	if rhs := m.RawValue; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -5411,6 +5412,9 @@ func (this *AttributeValue) EqualVT(that *AttributeValue) bool {
 		return false
 	}
 	if string(this.RawValue) != string(that.RawValue) {
+		return false
+	}
+	if this.Deleted != that.Deleted {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -10241,6 +10245,16 @@ func (m *AttributeValue) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Deleted {
+		i--
+		if m.Deleted {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x10
+	}
 	if len(m.RawValue) > 0 {
 		i -= len(m.RawValue)
 		copy(dAtA[i:], m.RawValue)
@@ -12759,6 +12773,9 @@ func (m *AttributeValue) SizeVT() (n int) {
 	l = len(m.RawValue)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Deleted {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -23916,6 +23933,26 @@ func (m *AttributeValue) UnmarshalVT(dAtA []byte) error {
 				m.RawValue = []byte{}
 			}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Deleted", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Deleted = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

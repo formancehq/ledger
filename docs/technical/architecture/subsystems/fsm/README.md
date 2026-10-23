@@ -21,7 +21,7 @@ metadata writes while preserving the failure audit entry.
 |----------|-------------|
 | [deterministic-fsm.md](deterministic-fsm.md) | Deterministic FSM with generation-based caching, preloading, authoritative sequence-exhaustion rules, and deletion-aware post-commit accounting sentinels. |
 | [cache-layers.md](cache-layers.md) | FSM-side read/write layering and ledger configuration reader/clone ownership: gatedScope → WriteSet → DerivedKeyStore → KeyStore → AttributeCache. |
-| [preload.md](preload.md) | Preload contract: `plan.Coverage` declaration, `MirrorPreload`, `PredictedIndex` stale-detection, and the producer-owns-its-declaration rule. |
+| [preload.md](preload.md) | Preload contract: `plan.Coverage` declaration, atomic cache-source capture, live and tombstone seed precedence, `PredictedIndex` stale-detection, and the producer-owns-its-declaration rule. |
 | [coverage-gate.md](coverage-gate.md) | The per-order coverage bits the FSM uses to gate every cache read against admission's declared `plan.Coverage`. |
 | [skippable-orders.md](skippable-orders.md) | Continue-on-failure batches: the commit-or-discard `orderOverlayScope` / `skipSafeScope` rollback mechanism, the per-action skippable whitelist, and checker verification. |
 

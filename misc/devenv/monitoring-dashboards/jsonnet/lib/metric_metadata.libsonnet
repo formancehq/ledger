@@ -49,6 +49,7 @@
   'bloom.negatives': { kind: 'counter', unit: '{lookup}' },
   'bloom.ready': { kind: 'gauge', unit: null },
   'cache.generation': { kind: 'gauge', unit: null },
+  'cache.preload_events': { kind: 'counter', unit: '{event}' },
   'cache.rotations': { kind: 'counter', unit: '{rotation}' },
   'cache.size': { kind: 'gauge', unit: '{entry}' },
   'ctrl.apply.duration': { kind: 'histogram', unit: 's' },
