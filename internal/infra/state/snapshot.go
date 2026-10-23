@@ -31,3 +31,11 @@ type SnapshotFetcher interface {
 type SnapshotFetcherProvider interface {
 	GetForPeer(id uint64) (SnapshotFetcher, error)
 }
+
+// SnapshotFetcherCandidatesProvider is an optional extension implemented by
+// providers that can try more than one snapshot donor. The base provider
+// interface remains single-peer compatible for embedders and tests that do not
+// have membership information available.
+type SnapshotFetcherCandidatesProvider interface {
+	GetForPeers(ids []uint64) (SnapshotFetcher, error)
+}

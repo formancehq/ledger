@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -34,7 +36,7 @@ func (f *fileFetcher) fetchFile(ctx context.Context, entry *snapshotpb.FileEntry
 	for attempt := range f.maxRetries {
 		client, err := f.clientSource()
 		if err != nil {
-			return err
+			return fmt.Errorf("resolving snapshot file client: %w: %w", state.ErrNotAvailable, err)
 		}
 
 		err = f.fetchFileOnce(ctx, client, entry, targetDir, progress)
@@ -68,7 +70,7 @@ func (f *fileFetcher) fetchFile(ctx context.Context, entry *snapshotpb.FileEntry
 
 func (f *fileFetcher) fetchFileOnce(ctx context.Context, client snapshotpb.SnapshotServiceClient, entry *snapshotpb.FileEntry, targetDir string, progress *state.SyncProgress) error {
 	if !filepath.IsLocal(entry.GetPath()) {
-		return fmt.Errorf("invalid snapshot path: %q", entry.GetPath())
+		return fmt.Errorf("%w: invalid snapshot path: %q", errSnapshotDonorIntegrity, entry.GetPath())
 	}
 
 	root, err := os.OpenRoot(targetDir)
@@ -110,13 +112,17 @@ func (f *fileFetcher) fetchFileOnce(ctx context.Context, client snapshotpb.Snaps
 	for {
 		resp, err := stream.Recv()
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return fmt.Errorf("%w: premature end of stream for %s", errSnapshotDonorIntegrity, entry.GetPath())
+			}
+
 			return fmt.Errorf("receiving chunk for %s: %w", entry.GetPath(), err)
 		}
 
 		if len(resp.GetData()) > 0 {
 			received += uint64(len(resp.GetData()))
 			if received > entry.GetSize() {
-				return fmt.Errorf("size mismatch for %s: expected %d bytes, got at least %d", entry.GetPath(), entry.GetSize(), received)
+				return fmt.Errorf("%w: size mismatch for %s: expected %d bytes, got at least %d", errSnapshotDonorIntegrity, entry.GetPath(), entry.GetSize(), received)
 			}
 
 			if _, err := tmpFile.Write(resp.GetData()); err != nil {
@@ -144,17 +150,17 @@ func (f *fileFetcher) fetchFileOnce(ctx context.Context, client snapshotpb.Snaps
 	}
 
 	if received != entry.GetSize() {
-		return fmt.Errorf("size mismatch for %s: expected %d bytes, got %d", entry.GetPath(), entry.GetSize(), received)
+		return fmt.Errorf("%w: size mismatch for %s: expected %d bytes, got %d", errSnapshotDonorIntegrity, entry.GetPath(), entry.GetSize(), received)
 	}
 
 	expectedDigest, err := hex.DecodeString(expectedHash)
 	if err != nil || len(expectedDigest) != sha256.Size {
-		return fmt.Errorf("invalid or missing SHA-256 digest for %s", entry.GetPath())
+		return fmt.Errorf("%w: invalid or missing SHA-256 digest for %s", errSnapshotDonorIntegrity, entry.GetPath())
 	}
 
 	gotHash := hex.EncodeToString(hash.Sum(nil))
 	if expectedHash != gotHash {
-		return fmt.Errorf("hash mismatch for %s: expected %s, got %s", entry.GetPath(), expectedHash, gotHash)
+		return fmt.Errorf("%w: hash mismatch for %s: expected %s, got %s", errSnapshotDonorIntegrity, entry.GetPath(), expectedHash, gotHash)
 	}
 
 	if err := root.Rename(tmpPath, entry.GetPath()); err != nil {

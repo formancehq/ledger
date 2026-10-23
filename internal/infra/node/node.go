@@ -712,6 +712,15 @@ func NewNode(
 	}
 
 	node.confState.Store(initialConfState)
+	// Snapshot recovery normally starts from the current leader, but a
+	// follower may need another voter when that leader is unavailable or its
+	// checkpoint is stale. Keep the candidate resolver on the node so it tracks
+	// the committed ConfState, including joint-consensus membership.
+	applier.SetSnapshotDonorCandidates(func() []uint64 {
+		return slices.DeleteFunc(node.MemberIDs(), func(id uint64) bool {
+			return id == node.GetNodeID()
+		})
+	})
 
 	// Initialize node metrics
 	node.appendEntriesHistogram, err = meter.Float64Histogram("raft.append_entries.duration",

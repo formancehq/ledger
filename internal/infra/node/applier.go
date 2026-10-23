@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"runtime/pprof"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -82,6 +83,12 @@ type Applier struct {
 	compactionMargin        uint64
 	replayBatchSize         int
 	snapshotFetcherProvider state.SnapshotFetcherProvider
+
+	// snapshotDonorCandidates is installed by Node once the committed
+	// ConfState is available. It is intentionally a callback so membership
+	// changes are reflected on every recovery attempt without copying a stale
+	// peer list into the Applier.
+	snapshotDonorCandidates func() []uint64
 
 	status           *atomic.Int32
 	gatingReason     atomic.Int32 // gatingReason* constants — for observability
@@ -1068,6 +1075,13 @@ func (a *Applier) TrySyncSnapshot(leader uint64) bool {
 	}
 }
 
+// SetSnapshotDonorCandidates supplies the current committed membership to the
+// optional multi-donor snapshot provider. It is called during node wiring,
+// before the applier goroutine starts.
+func (a *Applier) SetSnapshotDonorCandidates(fn func() []uint64) {
+	a.snapshotDonorCandidates = fn
+}
+
 // startSyncSnapshot is called from Run to perform the actual sync.
 func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 	syncDetails := map[string]any{
@@ -1082,7 +1096,24 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 	a.syncProgress.Store(progress)
 
 	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (maintenanceTaskResult, error) {
-		snapshotFetcher, err := a.snapshotFetcherProvider.GetForPeer(leader)
+		candidateIDs := []uint64{leader}
+		if a.snapshotDonorCandidates != nil {
+			for _, candidateID := range a.snapshotDonorCandidates() {
+				if candidateID == 0 || candidateID == leader || slices.Contains(candidateIDs, candidateID) {
+					continue
+				}
+
+				candidateIDs = append(candidateIDs, candidateID)
+			}
+		}
+
+		var snapshotFetcher state.SnapshotFetcher
+		var err error
+		if candidatesProvider, ok := a.snapshotFetcherProvider.(state.SnapshotFetcherCandidatesProvider); ok {
+			snapshotFetcher, err = candidatesProvider.GetForPeers(candidateIDs)
+		} else {
+			snapshotFetcher, err = a.snapshotFetcherProvider.GetForPeer(leader)
+		}
 		if err != nil {
 			a.logger.WithFields(map[string]any{
 				"leader": leader,
