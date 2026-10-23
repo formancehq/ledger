@@ -13,7 +13,7 @@ import (
 // requested or written.
 func validateSnapshotManifest(manifest *snapshotpb.SnapshotManifest) error {
 	if manifest == nil {
-		return nil
+		return fmt.Errorf("snapshot manifest is missing")
 	}
 
 	files := manifest.GetFiles()
