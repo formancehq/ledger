@@ -3,12 +3,13 @@
 package business
 
 import (
-	"github.com/formancehq/ledger/v3/pkg/actions"
-
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 var _ = Describe("Ledger Metadata", Ordered, func() {

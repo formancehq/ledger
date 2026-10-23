@@ -10,7 +10,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
-
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 

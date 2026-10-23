@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 

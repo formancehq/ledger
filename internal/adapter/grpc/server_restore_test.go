@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,9 +13,11 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )

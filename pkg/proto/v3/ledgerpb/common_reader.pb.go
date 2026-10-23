@@ -5,8 +5,9 @@ package ledgerpb
 
 import (
 	bytes "bytes"
-	uint256 "github.com/holiman/uint256"
 	slices "slices"
+
+	uint256 "github.com/holiman/uint256"
 )
 
 // MethodAuthPolicyReader provides read-only access to MethodAuthPolicy.

@@ -7,12 +7,13 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/pkg/actions"
-
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // collectCheckStoreEvents runs the CheckStore RPC and returns all errors and progress events.

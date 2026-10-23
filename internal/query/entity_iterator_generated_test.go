@@ -10,8 +10,9 @@ package query_test
 import (
 	reflect "reflect"
 
-	readstore "github.com/formancehq/ledger/v3/internal/storage/readstore"
 	gomock "go.uber.org/mock/gomock"
+
+	readstore "github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 // MockEntityIterator is a mock of EntityIterator interface.

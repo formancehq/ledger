@@ -11,9 +11,10 @@ import (
 	context "context"
 	reflect "reflect"
 
-	ledgerpb "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	gomock "go.uber.org/mock/gomock"
 	grpc "google.golang.org/grpc"
+
+	ledgerpb "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // MockBucketServiceClient is a mock of BucketServiceClient interface.

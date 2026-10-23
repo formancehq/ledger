@@ -10,8 +10,9 @@ package backup
 import (
 	reflect "reflect"
 
-	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	gomock "go.uber.org/mock/gomock"
+
+	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // MockStaleProvider is a mock of StaleProvider interface.

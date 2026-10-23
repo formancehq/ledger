@@ -5,15 +5,15 @@ package controller
 import (
 	"testing"
 
-	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 	"github.com/google/uuid"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 func TestReconcile_MinimalCluster(t *testing.T) {

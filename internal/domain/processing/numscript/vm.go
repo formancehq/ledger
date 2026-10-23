@@ -5,9 +5,9 @@ import (
 	"errors"
 	"math/big"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	numscriptlib "github.com/formancehq/numscript"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
 

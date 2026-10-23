@@ -11,8 +11,8 @@ import (
 
 	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
 	"github.com/formancehq/go-libs/v5/pkg/service"
-
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 )
 

@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
+
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 

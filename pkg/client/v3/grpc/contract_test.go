@@ -3,8 +3,9 @@ package grpc_test
 import (
 	"testing"
 
-	ledgergrpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/stretchr/testify/require"
+
+	ledgergrpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestInternalCallerAttributionReasonIsAbsentFromPublicDescriptor(t *testing.T) {

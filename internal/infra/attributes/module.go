@@ -1,13 +1,14 @@
 package attributes
 
 import (
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"reflect"
 
 	"go.uber.org/fx"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
