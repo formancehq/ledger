@@ -306,9 +306,9 @@ func (m *Manager) Stop(ctx context.Context) error {
 		close(m.stopChannel)
 		m.logger.Debug("stopping manager signal sent")
 		select {
-		case <-signalChannel:
+		case err := <-signalChannel:
 			m.logger.Info("manager stopped")
-			return nil
+			return err
 		case <-ctx.Done():
 			m.logger.Error("context canceled while waiting for manager termination")
 			return ctx.Err()

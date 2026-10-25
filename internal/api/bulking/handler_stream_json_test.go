@@ -41,8 +41,8 @@ func TestBulkStreamHandlerJSON(t *testing.T) {
 			t.Parallel()
 
 			reader, writer := io.Pipe()
-			defer reader.Close()
-			defer writer.Close()
+			defer func() { _ = reader.Close() }()
+			defer func() { _ = writer.Close() }()
 
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodPost, "/", reader)
@@ -69,8 +69,8 @@ func TestBulkStreamHandlerJSON(t *testing.T) {
 			receiveClosed := false
 			t.Cleanup(func() {
 				// Unblock the producer and decoder even if an assertion fails.
-				reader.Close()
-				writer.Close()
+				_ = reader.Close()
+				_ = writer.Close()
 				for range send {
 				}
 				if !receiveClosed {
