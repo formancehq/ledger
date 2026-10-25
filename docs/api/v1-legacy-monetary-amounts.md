@@ -27,3 +27,10 @@ JSON encoder cannot preserve large integer tokens, send the amount as a decimal 
 Code paths that supply an already-decoded float64 (rather than JSON) accept only whole values within the IEEE-754
 safe-integer range, -(2^53 - 1) through 2^53 - 1. Fractional and out-of-range floats return an ErrInvalidMonetaryAmount
 error.
+
+JSON numeric monetary amounts are limited to 309 expanded decimal integer digits (the maximum digit count of the
+former float64 decoder). Oversized exponent forms are rejected before expansion; no exponent-sized numerator or
+denominator is allocated. Use a decimal string for larger amounts; existing string handling is unchanged.
+
+Integral scalar numeric variables also preserve exact precision and normalize decimal and exponent forms: 1000,
+1000.0, and 1e3 all reach the interpreter as 1000. Fractional scalar variables remain invalid for a number variable.

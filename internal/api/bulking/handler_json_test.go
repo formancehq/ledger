@@ -160,3 +160,24 @@ func TestJSONBulkInvalidFractionalLegacyAmountReturnsValidationWithoutCallingCon
 	require.Equal(t, common.ErrValidation, response.Data[0].ErrorCode)
 	require.Contains(t, response.Data[0].ErrorDescription, "amount must be an integer")
 }
+
+func TestJSONBulkExponentExpansionReturnsValidationWithoutCallingController(t *testing.T) {
+	t.Parallel()
+	requestBody := `[{"action":"CREATE_TRANSACTION","data":{"script":{"vars":{"amount":{"asset":"USD","amount":1e1000000}}}}}]`
+	request := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(requestBody))
+	handler := NewJSONBulkHandler(0)
+	bulk, results, ok := handler.GetChannels(httptest.NewRecorder(), request)
+	require.True(t, ok)
+	controller := NewLedgerController(gomock.NewController(t))
+	controller.EXPECT().CreateTransaction(gomock.Any(), gomock.Any()).Times(0)
+	require.NoError(t, NewBulker(controller).Run(context.Background(), bulk, results, BulkingOptions{}))
+	responseRecorder := httptest.NewRecorder()
+	handler.Terminate(responseRecorder, request)
+	require.Equal(t, http.StatusBadRequest, responseRecorder.Code)
+	var response struct {
+		Data []APIResult `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(responseRecorder.Body.Bytes(), &response))
+	require.Len(t, response.Data, 1)
+	require.Equal(t, common.ErrValidation, response.Data[0].ErrorCode)
+}
