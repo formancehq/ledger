@@ -154,14 +154,14 @@ func (h accountsResourceHandler) Expand(opts common.ResourceQuery[any], property
 	}
 
 	return h.store.db.NewSelect().
-			With("rows", selectRowsQuery).
-			ModelTableExpr("rows").
-			Column("accounts_address").
-			ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + strcase.SnakeCase(property)).
-			Group("accounts_address"), &common.JoinCondition{
-			Left:  "address",
-			Right: "accounts_address",
-		}, nil
+		With("rows", selectRowsQuery).
+		ModelTableExpr("rows").
+		Column("accounts_address").
+		ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + strcase.SnakeCase(property)).
+		Group("accounts_address"), &common.JoinCondition{
+		Left:  "address",
+		Right: "accounts_address",
+	}, nil
 }
 
 var _ common.RepositoryHandler[any] = accountsResourceHandler{}
