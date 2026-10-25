@@ -28,9 +28,8 @@ func ParseTextStream(scanner *bufio.Scanner) (*BulkElement, error) {
 				idempotencyKeySeen := false
 				emptyIdempotencyKey := false
 				for _, part := range strings.Split(text, ",") {
-					key, value, hasValue := strings.Cut(strings.TrimSpace(part), "=")
+					key, value, hasValue := strings.Cut(part, "=")
 					key = strings.TrimSpace(key)
-					value = strings.TrimSpace(value)
 					switch key {
 					case "ik":
 						if !hasValue {

@@ -251,3 +251,15 @@ func TestParseStreamRejectsDuplicateIdempotencyKeyAfterEmptyValue(t *testing.T) 
 	_, err := ParseTextStream(bufio.NewScanner(bytes.NewBufferString("//script ik=,ik=foo\n//end")))
 	require.ErrorContains(t, err, "idempotency key already set")
 }
+
+func TestParseStreamPreservesIdempotencyValueWhitespace(t *testing.T) {
+	t.Parallel()
+
+	for _, key := range []string{" foo", "\tfoo", "foo bar", " foo=bar=="} {
+		t.Run(key, func(t *testing.T) {
+			element, err := ParseTextStream(bufio.NewScanner(bytes.NewBufferString("//script ik=" + key + "\n//end")))
+			require.NoError(t, err)
+			require.Equal(t, key, element.IdempotencyKey)
+		})
+	}
+}

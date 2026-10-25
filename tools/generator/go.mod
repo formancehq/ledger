@@ -2,6 +2,8 @@ module github.com/formancehq/ledger/tools/generator
 
 go 1.26.0
 
+toolchain go1.27.3
+
 replace github.com/formancehq/ledger => ../..
 
 replace github.com/formancehq/ledger/pkg/client => ../../pkg/client
