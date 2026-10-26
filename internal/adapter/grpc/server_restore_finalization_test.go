@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -95,25 +96,47 @@ func TestFinalizeRestoreCompetingOwnerPreservesPublishedCheckpoint(t *testing.T)
 	server.mu.Unlock()
 	require.NotNil(t, retainedStore, "the rejected call must not close the owner's handle")
 
-	shutdownDone := make(chan struct{})
-	go func() {
-		server.Shutdown()
-		close(shutdownDone)
-	}()
-	select {
-	case <-shutdownDone:
-		t.Fatal("shutdown returned before the active finalizer published")
-	default:
-	}
-
 	releaseOnce.Do(func() { close(release) })
 	require.NoError(t, <-firstDone)
-	<-shutdownDone
 	requirePublishedRestore(t, server)
+}
 
-	_, err = server.FinalizeRestore(context.Background(), &restorepb.FinalizeRestoreRequest{})
-	require.Equal(t, codes.Unavailable, status.Code(err), "shutdown rejects later calls")
-	requirePublishedRestore(t, server)
+func TestRestoreShutdownWaitsForActiveFinalizer(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		server := stagedFinalizationServer(t)
+		beforeClose := make(chan struct{})
+		release := make(chan struct{})
+		var releaseOnce sync.Once
+		defer releaseOnce.Do(func() { close(release) })
+		server.beforeFinalizeClose = func() {
+			close(beforeClose)
+			<-release
+		}
+		finalizeDone := make(chan error, 1)
+		go func() {
+			_, err := server.FinalizeRestore(t.Context(), &restorepb.FinalizeRestoreRequest{})
+			finalizeDone <- err
+		}()
+		<-beforeClose
+
+		shutdownDone := make(chan struct{})
+		go func() {
+			server.Shutdown()
+			close(shutdownDone)
+		}()
+		synctest.Wait() // Let Shutdown reach its WaitGroup join before observing it.
+		select {
+		case <-shutdownDone:
+			t.Fatal("shutdown returned before the active finalizer published")
+		default:
+		}
+
+		releaseOnce.Do(func() { close(release) })
+		require.NoError(t, <-finalizeDone)
+		<-shutdownDone
+		requirePublishedRestore(t, server)
+	})
 }
 
 func TestFinalizeRestoreSequentialRetryPreservesPublishedCheckpoint(t *testing.T) {
