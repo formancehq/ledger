@@ -172,7 +172,7 @@ func newTestApplierSetupWithHandlers(t *testing.T, sink LocalResponses, notifier
 
 	applier, err := NewApplier(
 		fsm, recovery, synchronizer, defaultSpool, pebbleStore, w, logger, meter,
-		0, 1000, nil, func() {}, sink,
+		0, 1000, nil, nil, func() {}, sink,
 	)
 	require.NoError(t, err)
 

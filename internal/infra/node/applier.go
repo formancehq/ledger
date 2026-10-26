@@ -86,10 +86,8 @@ type Applier struct {
 	replayBatchSize         int
 	snapshotFetcherProvider state.SnapshotFetcherProvider
 
-	// snapshotDonorCandidates is installed by Node once the committed
-	// ConfState is available. It is intentionally a callback so membership
-	// changes are reflected on every recovery attempt without copying a stale
-	// peer list into the Applier.
+	// snapshotDonorCandidates resolves the current membership for every
+	// recovery attempt, avoiding a stale peer list in the Applier.
 	snapshotDonorCandidates func() []uint64
 
 	status           *atomic.Int32
@@ -189,6 +187,7 @@ func NewApplier(
 	compactionMargin uint64,
 	replayBatchSize int,
 	snapshotFetcherProvider state.SnapshotFetcherProvider,
+	snapshotDonorCandidates func() []uint64,
 	onSnapshotInstalled func(),
 	responseSink LocalResponses,
 ) (*Applier, error) {
@@ -213,6 +212,7 @@ func NewApplier(
 		compactionMargin:        compactionMargin,
 		replayBatchSize:         replayBatchSize,
 		snapshotFetcherProvider: snapshotFetcherProvider,
+		snapshotDonorCandidates: snapshotDonorCandidates,
 		responseSink:            responseSink,
 		status:                  &initialStatus,
 		ch:                      make(chan applyWork, 1),
@@ -1075,13 +1075,6 @@ func (a *Applier) TrySyncSnapshot(leader uint64) bool {
 	default:
 		return false
 	}
-}
-
-// SetSnapshotDonorCandidates supplies the current committed membership to the
-// optional multi-donor snapshot provider. It is called during node wiring,
-// before the applier goroutine starts.
-func (a *Applier) SetSnapshotDonorCandidates(fn func() []uint64) {
-	a.snapshotDonorCandidates = fn
 }
 
 // startSyncSnapshot is called from Run to perform the actual sync.
