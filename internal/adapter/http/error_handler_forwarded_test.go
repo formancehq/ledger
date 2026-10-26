@@ -69,6 +69,13 @@ func TestHandleErrorForwardedFromLeader(t *testing.T) {
 			expectedCode:   "METADATA_FIELD_NOT_IN_SCHEMA",
 		},
 		{
+			name: "unready mirror promotion keeps its precondition classification",
+			leaderErr: leaderStatus(t, codes.FailedPrecondition,
+				"mirror sample is not caught up: cursor=0 head=20 sync_error=false", "INVALID_REQUEST"),
+			expectedStatus: http.StatusBadRequest,
+			expectedCode:   "INVALID_REQUEST",
+		},
+		{
 			// The collapse case. Both KindConflict and KindPrecondition are sent
 			// as codes.FailedPrecondition, so deriving the kind from the code
 			// alone answers 400 here where the leader answers 409.

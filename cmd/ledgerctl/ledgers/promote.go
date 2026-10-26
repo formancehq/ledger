@@ -59,8 +59,26 @@ func runPromote(cmd *cobra.Command, args []string) error {
 
 	yes, _ := cmd.Flags().GetBool("yes")
 	if !yes {
+		client, conn, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return err
+		}
+		ctx, cancel := cmdutil.GetContext(cmd)
+		ledger, getErr := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: name})
+		cancel()
+		_ = conn.Close()
+		if getErr != nil {
+			return cmdutil.FormatGRPCError("failed to read mirror progress", getErr)
+		}
 		pterm.Warning.Printfln("You are about to promote mirror ledger %s to normal mode", name)
 		pterm.Warning.Println("This will stop mirror replication permanently.")
+		if progress := ledger.GetMirrorSyncProgress(); progress != nil {
+			pterm.Warning.Printfln("Mirror cursor: %d, source head: %d, remaining: %d",
+				progress.GetCursor(), progress.GetSourceLogCount(), progress.GetRemainingLogs())
+			if progress.GetError() != nil {
+				pterm.Warning.Println("Mirror synchronization currently reports an error.")
+			}
+		}
 
 		confirmed, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
 			WithDefaultText(fmt.Sprintf("Promote ledger '%s'?", name)).
