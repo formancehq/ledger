@@ -71,6 +71,7 @@ func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, erro
 			}
 		}
 	}
+
 	return proposal, nil
 }
 
