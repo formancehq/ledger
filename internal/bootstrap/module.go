@@ -337,6 +337,11 @@ func Module() fx.Option {
 
 						return membership.WriteConfChangeWithPolicy(entry, session, policy)
 					},
+					func(policy *commonpb.ClusterPolicy) {
+						if err := publishCapabilityGate(membership, policy); err != nil {
+							logger.WithFields(map[string]any{"error": err}).Errorf("Publishing committed capability policy failed")
+						}
+					},
 				)
 				if err != nil {
 					return nil, err
@@ -712,7 +717,7 @@ func Module() fx.Option {
 
 						return
 					}
-					reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger)
+					reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger, raftNode.CapabilityMembers)
 				})
 			},
 		),
@@ -1351,7 +1356,16 @@ func membershipRefreshHook(cfg Config, logger logging.Logger) fx.Hook {
 				"serviceAddress": cfg.ServiceAdvertiseAddr(),
 			}).Infof("Restart mode: refreshing membership capabilities")
 
-			return tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logger)
+			if err := tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logger); err != nil {
+				// TODO(rc.3): replace this compatibility fallback with explicit
+				// startup error handling once every supported peer implements
+				// RefreshMembership. The leader-side reconciler below keeps
+				// polling membership evidence and will arm capabilities only
+				// after all current members converge.
+				logger.WithFields(map[string]any{"error": err}).Errorf("Membership capability refresh failed; continuing with conservative evidence")
+			}
+
+			return nil
 		},
 	}
 }
@@ -1567,38 +1581,35 @@ func tryRefreshMembership(ctx context.Context, cfg Config, tlsCfg TLSConfig, log
 		ctx = metadata.AppendToOutgoingContext(ctx, node.MetadataKeyClusterID, cfg.ClusterID)
 	}
 
-	backoff := 500 * time.Millisecond
-	for {
-		for _, peer := range cfg.RaftConfig.Peers {
-			conn, dialErr := ggrpc.NewClient(peer.Address, dialOpts...)
-			if dialErr != nil {
-				logger.WithFields(map[string]any{"peer": peer.ID, "address": peer.Address, "error": dialErr}).Infof("Failed to dial peer for membership refresh, will retry")
+	var lastErr error
+	for _, peer := range cfg.RaftConfig.Peers {
+		conn, dialErr := ggrpc.NewClient(peer.Address, dialOpts...)
+		if dialErr != nil {
+			lastErr = dialErr
+			logger.WithFields(map[string]any{"peer": peer.ID, "address": peer.Address, "error": dialErr}).Infof("Failed to dial peer for membership refresh")
 
-				continue
-			}
+			continue
+		}
 
-			_, callErr := clusterbootstrappb.NewClusterBootstrapServiceClient(conn).RefreshMembership(ctx, req)
-			_ = conn.Close()
-			if callErr == nil {
-				logger.WithFields(map[string]any{"peer": peer.ID}).Infof("Successfully refreshed membership capabilities")
+		_, callErr := clusterbootstrappb.NewClusterBootstrapServiceClient(conn).RefreshMembership(ctx, req)
+		_ = conn.Close()
+		if callErr == nil {
+			logger.WithFields(map[string]any{"peer": peer.ID}).Infof("Successfully refreshed membership capabilities")
 
-				return nil
-			}
+			return nil
+		}
 
-			if isRetryableMembershipRefreshError(callErr) {
-				continue
-			}
-
+		lastErr = callErr
+		if !isRetryableMembershipRefreshError(callErr) {
 			return fmt.Errorf("failed to refresh membership via peer %d (%s): %w", peer.ID, peer.Address, callErr)
 		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(backoff):
-		}
-		backoff = min(backoff*2, 5*time.Second)
 	}
+
+	if lastErr == nil {
+		return errors.New("no configured peer available for membership refresh")
+	}
+
+	return fmt.Errorf("membership refresh unavailable: %w", lastErr)
 }
 
 func isRetryableMembershipRefreshError(err error) bool {
@@ -1749,7 +1760,7 @@ func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, build
 // through AdmitClusterPolicy as an internal audited SetClusterPolicy order so
 // the checker can re-derive it; the write-readiness gate exempts this
 // non-business proposal so it is never blocked by its own cluster-policy gate.
-func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, logger logging.Logger) {
+func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, logger logging.Logger, memberReaders ...func() []capabilities.Member) {
 	if !isLeader() {
 		return
 	}
@@ -1777,6 +1788,28 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 			if activation != nil {
 				desired.CapabilityActivations = append(desired.CapabilityActivations, activation.CloneVT())
 			}
+		}
+	}
+	if len(memberReaders) > 0 {
+		ready, readyErr := capabilities.Ready(capabilities.SupportedIDs(), memberReaders[0]())
+		if readyErr != nil {
+			logger.WithFields(map[string]any{"error": readyErr}).Errorf("Capability evidence is invalid; delaying policy reconciliation")
+
+			return
+		}
+		active := make(map[uint32]bool, len(desired.GetCapabilityActivations()))
+		for _, activation := range desired.GetCapabilityActivations() {
+			if activation != nil {
+				active[activation.GetId()] = activation.GetActive()
+			}
+		}
+		for _, id := range ready {
+			if _, exists := active[uint32(id)]; !exists {
+				desired.CapabilityActivations = append(desired.CapabilityActivations, &commonpb.CapabilityActivation{Id: uint32(id), Active: true})
+			}
+		}
+		if applied != nil && !applied.EqualVT(desired) && desired.GetRevision() <= applied.GetRevision() {
+			desired.Revision = applied.GetRevision() + 1
 		}
 	}
 

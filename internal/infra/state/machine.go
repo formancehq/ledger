@@ -172,7 +172,15 @@ type Machine struct {
 // confChangeHandler is invoked from PrepareEntries for every
 // EntryConfChange* in the in-flight batch (see the field comment on
 // Machine). Must be non-nil.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, auditKey string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, auditKey string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error, capabilityPolicyCommitHandlers ...func(*commonpb.ClusterPolicy)) (*Machine, error) {
+	var capabilityPolicyCommitHandler func(*commonpb.ClusterPolicy)
+	if len(capabilityPolicyCommitHandlers) > 1 {
+		return nil, errors.New("at most one capability policy commit handler is allowed")
+	}
+	if len(capabilityPolicyCommitHandlers) == 1 {
+		capabilityPolicyCommitHandler = capabilityPolicyCommitHandlers[0]
+	}
+
 	sentinelMode := sentinel.IsEnabled()
 	// raft.* metrics describe the consensus engine and follow the
 	// upstream etcd-raft naming convention; numscript.* metrics are
@@ -247,6 +255,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		bloomRebuildCh:                 make(chan string, 1),
 		auditHashBuf:                   make([]byte, 0, 4096),
 		confChangeHandler:              confChangeHandler,
+		capabilityPolicyCommitHandler:  capabilityPolicyCommitHandler,
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 	fsm.cacheSnapshotter = cacheSnapshotter
@@ -2082,13 +2091,6 @@ type PreparedBatch struct {
 	capabilityPolicy           *commonpb.ClusterPolicy
 
 	entryCount int
-}
-
-// SetCapabilityPolicyCommitHandler installs the post-commit hook used to
-// publish the authoritative membership admission gate. The callback runs only
-// after the corresponding FSM batch has committed.
-func (fsm *Machine) SetCapabilityPolicyCommitHandler(handler func(*commonpb.ClusterPolicy)) {
-	fsm.capabilityPolicyCommitHandler = handler
 }
 
 // Close cancels the uncommitted batch. Must be called if CommitPreparedBatch
