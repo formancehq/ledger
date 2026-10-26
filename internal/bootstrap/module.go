@@ -1356,14 +1356,16 @@ func membershipRefreshHook(cfg Config, logger logging.Logger) fx.Hook {
 				"serviceAddress": cfg.ServiceAdvertiseAddr(),
 			}).Infof("Restart mode: refreshing membership capabilities")
 
-			if err := tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logger); err != nil {
-				// TODO(rc.3): replace this compatibility fallback with explicit
-				// startup error handling once every supported peer implements
-				// RefreshMembership. The leader-side reconciler below keeps
-				// polling membership evidence and will arm capabilities only
-				// after all current members converge.
-				logger.WithFields(map[string]any{"error": err}).Errorf("Membership capability refresh failed; continuing with conservative evidence")
-			}
+			go func() {
+				if err := tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logger); err != nil {
+					// TODO(rc.3): replace this compatibility fallback with explicit
+					// startup error handling once every supported peer implements
+					// RefreshMembership. The leader-side reconciler below keeps
+					// polling membership evidence and will arm capabilities only
+					// after all current members converge.
+					logger.WithFields(map[string]any{"error": err}).Errorf("Membership capability refresh failed; continuing with conservative evidence")
+				}
+			}()
 
 			return nil
 		},
@@ -1581,35 +1583,42 @@ func tryRefreshMembership(ctx context.Context, cfg Config, tlsCfg TLSConfig, log
 		ctx = metadata.AppendToOutgoingContext(ctx, node.MetadataKeyClusterID, cfg.ClusterID)
 	}
 
-	var lastErr error
-	for _, peer := range cfg.RaftConfig.Peers {
-		conn, dialErr := ggrpc.NewClient(peer.Address, dialOpts...)
-		if dialErr != nil {
-			lastErr = dialErr
-			logger.WithFields(map[string]any{"peer": peer.ID, "address": peer.Address, "error": dialErr}).Infof("Failed to dial peer for membership refresh")
+	backoff := 500 * time.Millisecond
+	for {
+		var lastErr error
+		for _, peer := range cfg.RaftConfig.Peers {
+			conn, dialErr := ggrpc.NewClient(peer.Address, dialOpts...)
+			if dialErr != nil {
+				lastErr = dialErr
+				logger.WithFields(map[string]any{"peer": peer.ID, "address": peer.Address, "error": dialErr}).Infof("Failed to dial peer for membership refresh")
 
-			continue
+				continue
+			}
+
+			_, callErr := clusterbootstrappb.NewClusterBootstrapServiceClient(conn).RefreshMembership(ctx, req)
+			_ = conn.Close()
+			if callErr == nil {
+				logger.WithFields(map[string]any{"peer": peer.ID}).Infof("Successfully refreshed membership capabilities")
+
+				return nil
+			}
+
+			lastErr = callErr
+			if !isRetryableMembershipRefreshError(callErr) {
+				return fmt.Errorf("failed to refresh membership via peer %d (%s): %w", peer.ID, peer.Address, callErr)
+			}
 		}
 
-		_, callErr := clusterbootstrappb.NewClusterBootstrapServiceClient(conn).RefreshMembership(ctx, req)
-		_ = conn.Close()
-		if callErr == nil {
-			logger.WithFields(map[string]any{"peer": peer.ID}).Infof("Successfully refreshed membership capabilities")
-
-			return nil
+		if lastErr == nil {
+			lastErr = errors.New("no configured peer available for membership refresh")
 		}
-
-		lastErr = callErr
-		if !isRetryableMembershipRefreshError(callErr) {
-			return fmt.Errorf("failed to refresh membership via peer %d (%s): %w", peer.ID, peer.Address, callErr)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
 		}
+		backoff = min(backoff*2, 5*time.Second)
 	}
-
-	if lastErr == nil {
-		return errors.New("no configured peer available for membership refresh")
-	}
-
-	return fmt.Errorf("membership refresh unavailable: %w", lastErr)
 }
 
 func isRetryableMembershipRefreshError(err error) bool {
@@ -1804,9 +1813,19 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 			}
 		}
 		for _, id := range ready {
-			if _, exists := active[uint32(id)]; !exists {
-				desired.CapabilityActivations = append(desired.CapabilityActivations, &commonpb.CapabilityActivation{Id: uint32(id), Active: true})
+			if enabled, exists := active[uint32(id)]; exists {
+				if !enabled {
+					for _, activation := range desired.CapabilityActivations {
+						if activation != nil && activation.GetId() == uint32(id) {
+							activation.Active = true
+							break
+						}
+					}
+				}
+
+				continue
 			}
+			desired.CapabilityActivations = append(desired.CapabilityActivations, &commonpb.CapabilityActivation{Id: uint32(id), Active: true})
 		}
 		if applied != nil && !applied.EqualVT(desired) && desired.GetRevision() <= applied.GetRevision() {
 			desired.Revision = applied.GetRevision() + 1

@@ -10,9 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // Sentinel errors returned by Run to let callers distinguish which
@@ -130,16 +128,6 @@ func (p *Builder) Run(
 	finalizeFn func(*raftcmdpb.Proposal) error,
 	proposer Proposer,
 ) (*RunResult, error) {
-	// Every producer that uses the shared runner (mirror, events, backup and
-	// bootstrap maintenance) gets the same final policy check. Admission wraps
-	// its business writes separately with businessWrite=true; this default
-	// wrapper covers technical/control-plane proposals.
-	if p.store != nil {
-		proposer = NewCapabilityPolicyProposer(proposer, func() (*commonpb.ClusterPolicy, error) {
-			return query.ReadClusterPolicy(p.store)
-		}, p.readMembers, false)
-	}
-
 	// Guarantee a unique command ID. The applier keys FSM futures by
 	// `cmd.Id` (used by the node proposal factory); two in-flight
 	// proposals sharing Id=0 would overwrite each other in

@@ -70,6 +70,22 @@ func TestValidateCapabilityEvidenceRequiresActiveCapabilities(t *testing.T) {
 	require.NoError(t, ValidateCapabilityEvidence(&ConfChangeContext{InstanceID: bytesN(0x42)}, nil))
 }
 
+func TestValidateTransitionEvidenceReadsCommittedPolicyBeforeCachedGate(t *testing.T) {
+	m := newTestMembership(t)
+	m.requiredCapabilities = nil // simulate the post-commit cache update window
+	m.capabilityPolicyProvider = func() (*commonpb.ClusterPolicy, error) {
+		return &commonpb.ClusterPolicy{
+			CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 7, Active: true}},
+		}, nil
+	}
+
+	err := m.ValidateTransitionEvidence(&ConfChangeContext{
+		InstanceID:   fixedInstanceID(1),
+		Capabilities: nil,
+	})
+	require.ErrorContains(t, err, "capability 7 is required")
+}
+
 func TestWriteConfChangeRejectsCapabilitiesMissingFromCommittedPolicy(t *testing.T) {
 	m := newTestMembership(t)
 	m.capabilityPolicyProvider = func() (*commonpb.ClusterPolicy, error) {

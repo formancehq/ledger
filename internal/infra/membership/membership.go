@@ -280,7 +280,29 @@ func (m *Membership) CapabilityGate() (required []uint32) {
 func (m *Membership) ValidateTransitionEvidence(ctx *ConfChangeContext) error {
 	m.mu.RLock()
 	required := append([]uint32(nil), m.requiredCapabilities...)
+	provider := m.capabilityPolicyProvider
 	m.mu.RUnlock()
+
+	// Read the durable policy at the admission boundary as well as the
+	// published cache.  The cache is updated immediately after the Pebble
+	// commit; consulting the provider closes the small window where a newly
+	// activated capability is durable but the in-memory gate has not caught up
+	// yet.  In that window, a proposal must be checked against the stricter,
+	// committed policy rather than admitted optimistically.
+	if provider != nil {
+		policy, err := provider()
+		if err != nil {
+			return fmt.Errorf("reading committed cluster policy: %w", err)
+		}
+		if policy != nil {
+			required = required[:0]
+			for _, activation := range policy.GetCapabilityActivations() {
+				if activation != nil && activation.GetActive() {
+					required = append(required, activation.GetId())
+				}
+			}
+		}
+	}
 
 	return ValidateCapabilityEvidence(ctx, required)
 }
