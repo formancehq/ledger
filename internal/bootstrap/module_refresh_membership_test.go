@@ -105,3 +105,16 @@ func TestTryRefreshMembershipStopsRetryingWhenContextIsCanceled(t *testing.T) {
 	cancel()
 	require.ErrorIs(t, <-result, context.Canceled)
 }
+
+func TestTryRefreshMembershipPropagatesPermanentRejection(t *testing.T) {
+	t.Parallel()
+
+	peer := &retryingRefreshServer{firstErr: status.Error(codes.FailedPrecondition, "removed incarnation")}
+	cfg := refreshTestConfig(t, serveRefreshMembership(t, peer))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	t.Cleanup(cancel)
+	err := tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logging.Testing())
+	require.ErrorContains(t, err, "removed incarnation")
+	require.Equal(t, int32(1), peer.attempts.Load(), "permanent rejection must not be retried")
+}
