@@ -1613,11 +1613,9 @@ func tryRefreshMembership(ctx context.Context, cfg Config, tlsCfg TLSConfig, log
 
 	backoff := 500 * time.Millisecond
 	for {
-		var lastErr error
 		for _, peer := range cfg.RaftConfig.Peers {
 			conn, dialErr := ggrpc.NewClient(peer.Address, dialOpts...)
 			if dialErr != nil {
-				lastErr = dialErr
 				logger.WithFields(map[string]any{"peer": peer.ID, "address": peer.Address, "error": dialErr}).Infof("Failed to dial peer for membership refresh")
 
 				continue
@@ -1631,14 +1629,9 @@ func tryRefreshMembership(ctx context.Context, cfg Config, tlsCfg TLSConfig, log
 				return nil
 			}
 
-			lastErr = callErr
 			if !isRetryableMembershipRefreshError(callErr) {
 				return fmt.Errorf("failed to refresh membership via peer %d (%s): %w", peer.ID, peer.Address, callErr)
 			}
-		}
-
-		if lastErr == nil {
-			lastErr = errors.New("no configured peer available for membership refresh")
 		}
 		select {
 		case <-ctx.Done():
