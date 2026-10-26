@@ -89,13 +89,16 @@ func TestLifecycleModelMatchesService(t *testing.T) {
 	require.Equal(t, mirrorAccountsBefore, mirrorAccountsAfter)
 	require.Equal(t, mirrorTransactionsBefore, mirrorTransactionsAfter)
 	promote := &servicepb.Request{Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: "mirror"}}}
-	apply(promote)
-	apply(promote)
+	for range 2 {
+		_, err = sc.Client.Apply(sc.Ctx(), servicepb.UnsignedApplyRequest("", promote))
+		require.Equal(t, codes.FailedPrecondition, status.Code(err))
+		require.ErrorContains(t, err, "cursor=0 head=0", "an unobserved source cannot be promoted")
+	}
 	apply(oracletest.TxReqL("mirror", "world", "cash:1", "USD/2", 1))
 	info, err := sc.Client.GetLedger(sc.Ctx(), &servicepb.GetLedgerRequest{Ledger: "mirror"})
 	require.NoError(t, err)
-	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, info.GetMode())
-	require.Nil(t, info.GetMirrorSource())
+	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, info.GetMode())
+	require.NotNil(t, info.GetMirrorSource())
 
 	t.Cleanup(func() {
 		_, cleanupErr := sc.Client.Apply(sc.Ctx(), servicepb.UnsignedApplyRequest("", actions.SetMaintenanceModeAction(false)))
@@ -122,4 +125,18 @@ func TestLifecycleModelMatchesService(t *testing.T) {
 	info, err = sc.Client.GetLedger(sc.Ctx(), &servicepb.GetLedgerRequest{Ledger: "mirror"})
 	require.NoError(t, err)
 	require.Equal(t, "recovered", info.GetMetadata()["k"].GetStringValue())
+}
+
+func TestCreateThenPromoteMirrorBatchIsRejected(t *testing.T) {
+	sc := scenariotest.SetupSingleNode(t)
+	create := &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
+		Name: "new-mirror", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+		MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "unconfigured"},
+	}}}
+	promote := &servicepb.Request{Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: "new-mirror"}}}
+	_, err := sc.Client.Apply(sc.Ctx(), servicepb.UnsignedApplyRequest("", create, promote))
+	require.Equal(t, codes.NotFound, status.Code(err))
+	require.ErrorContains(t, err, "new-mirror")
+	_, err = sc.Client.GetLedger(sc.Ctx(), &servicepb.GetLedgerRequest{Ledger: "new-mirror"})
+	require.Equal(t, codes.NotFound, status.Code(err), "the rejected batch must commit no create order")
 }
