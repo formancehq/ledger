@@ -256,3 +256,14 @@ bash scripts/ai-audit-challenge <audit-result.json>
 Both passes require the same exact clean `HEAD`; the providers remain read-only.
 Do not launch either command while reviewing this manifest PR. Jira preview or
 publication is a separate explicitly authorized action.
+
+## Received snapshot Ready suffix evidence
+
+For a Ready containing both a snapshot and subsequent entries, retain the
+original entries/HardState durability order, then verify that snapshot
+installation cannot erase the suffix from `LastIndex`, `Term`, `Entries` or
+a reopened WAL before storage acknowledgement. Identify the residual
+in-memory snapshot/cache and durable WAL prefix on any failure. The focused
+regression is `process_ready_snapshot_test.go` under `internal/infra/node/`.
+Snapshot-only processing retains its existing append count; a combined Ready
+reappends only the suffix once, with no retained-log scan.

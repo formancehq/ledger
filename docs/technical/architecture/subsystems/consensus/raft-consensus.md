@@ -671,31 +671,42 @@ The leader tracks each follower's state:
 | `StateReplicate` | Normal operation, pipeline enabled |
 | `StateSnapshot` | Snapshot is being sent, waiting for confirmation |
 
-#### Code Reference
+#### Receiving a snapshot Ready
 
-In `internal/infra/node/node.go`, the follower receives and applies the snapshot through a two-phase process. The Applier is drained first to ensure no concurrent FSM access:
+`Node.processReady` keeps these durability and mutation boundaries:
 
-```go
-// Phase 1: Install snapshot to FSM (in-memory state)
-if !raft.IsEmptySnap(rd.Snapshot) {
-    node.logger.Infof("Applying snapshot sent by leader")
+1. Persist the Ready's entries and HardState together through `WAL.Append`.
+   Persisting HardState without its entries would expose a committed-log gap
+   on a crash before snapshot installation.
+2. Ask the Applier to drain pending commits, interrupt conflicting maintenance,
+   and enter `statusInstallingSnapshot` before changing snapshot/FSM state.
+3. `WAL.ApplySnapshot` replaces its in-memory snapshot and cached entry window.
+   It saves the full snapshot file, writes a durable guard snapshot record,
+   saves HardState, then writes the snapshot record again as the sync barrier.
+   Persistence failure leaves the preceding in-memory mutations visible and
+   returns an error; the node stops instead of acknowledging the Ready.
+4. If this same Ready carries entries after the snapshot, append that suffix
+   again to restore the cached Storage window before any peer or local storage
+   acknowledgement. This repeats at most the Ready suffix's bytes once, only
+   on a snapshot Ready; ordinary Ready persistence has no additional append.
+5. `Synchronizer.InstallSnapshot` records the expected snapshot index and resets
+   caches. It does not install business data from the Raft message. Enqueue
+   checkpoint synchronization, then release the Ready's messages and local
+   storage responses.
 
-    // Drain the Applier to ensure no concurrent FSM access
-    node.applier.Drain(stop)
+The suffix restoration uses the existing WAL format and append path. Live
+`LastIndex`, `Term` and `Entries` must expose the same suffix that a reopened
+WAL recovers. The repeated `Append` updates cached entries before its durable
+write. If that write fails, the installed snapshot and suffix stay
+visible in memory while disk retains the last successfully written WAL prefix.
+Ready processing stops before storage acknowledgement; these in-memory changes
+are not rolled back.
 
-    // Write snapshot to WAL
-    node.wal.ApplySnapshot(rd.Snapshot)
-
-    // Install snapshot state in FSM (fast, in-memory)
-    node.fsm.InstallSnapshot(ctx, rd.Snapshot)
-
-    // Report success to Raft
-    node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
-
-    // Start async synchronization with leader
-    node.applier.SyncSnapshot(ctx, node.lastSoftState.Load().Lead)
-}
-```
+The suffix restoration changes no wire or persisted fields and requires no
+migration of released RC state. Old and new voters remain interoperable during
+a rolling upgrade. The WAL suffix is cluster-local Raft state; cross-cluster
+restore continues to rebuild its independent Raft domain from the restored
+business checkpoint and exported delta.
 
 #### Snapshot Synchronization Flow
 
