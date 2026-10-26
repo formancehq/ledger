@@ -72,9 +72,14 @@ expired sessions, and donor-side size/hash/manifest failures are candidate
 failures; local staging or restore errors stop the recovery instead of being
 masked by another donor.
 
-The initial eligibility contract is the existing `PrepareSnapshot` barrier:
-the serving FSM must have applied at least the requested snapshot index before
-the temporary checkpoint is created. A future protocol revision may expose the
+The fetcher first calls `CheckSnapshotReadiness` with a five-second timeout.
+A stale or resynchronizing donor is rejected immediately, without creating a
+checkpoint, and the next candidate is tried. A transient probe failure follows
+the normal retry/backoff budget; if that budget is exhausted, the donor is
+abandoned. Donors that return `Unimplemented` use the compatibility fallback
+to `PrepareSnapshot`. That call remains the final eligibility barrier: the
+serving FSM must have applied at least the requested snapshot index before the
+temporary checkpoint is created. A future protocol revision may expose the
 checkpoint index and source generation explicitly, but changing donors within
 one session is never valid.
 
