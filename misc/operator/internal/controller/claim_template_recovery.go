@@ -346,10 +346,11 @@ func (r *ClusterReconciler) persistClaimTemplateRecovery(ctx context.Context, le
 // deletion can have happened, even an invalid or reversed spec must not prevent
 // restoring the saved workload. New desired changes wait until adoption ends.
 func (r *ClusterReconciler) resumeClaimTemplateRecovery(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (handled bool, result ctrl.Result, reconcileErr error) {
-	// The initial uncached refresh can fail before journal authentication or
-	// binding. It is still a recovery error once preparation has handed off.
+	// A known pointer, including Preparing after handoff, makes an initial
+	// refresh error a recovery failure. An ordinary probe with no known recovery
+	// must return its read error without inventing a recovery condition.
 	defer func() {
-		if reconcileErr != nil {
+		if reconcileErr != nil && ledger.Status.ClaimTemplateRecovery != nil {
 			setClaimTemplatesCondition(ledger, false, "RecoveryFailed", reconcileErr.Error())
 		}
 	}()

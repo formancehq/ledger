@@ -627,6 +627,12 @@ Preparing pointer and journal, and attempt no dependency or workload mutations.
 A fresh reconciler must then bind that journal and progress normally. Install
 error handling before the refresh and its identity checks so these early
 failures cannot retain `Recreating`.
+Keep ordinary no-recovery probing separate: fail the initial direct Cluster
+read with a nil recovery pointer and assert that the full `Reconcile` does not
+persist a new or relabeled `ClaimTemplatesReady` condition. Cover both absent
+and existing conditions, then recover the read and stop at ordinary invalid-spec
+validation to prove that it cannot leave a fabricated recovery failure behind.
+The known Preparing-pointer handoff case must still report `RecoveryFailed`.
 
 An optimistic PVC-lock regression must place a larger concurrent request after
 the authoritative read and before the patch. Observe the actual stale-patch

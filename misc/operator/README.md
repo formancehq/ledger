@@ -656,6 +656,8 @@ After preparation hands control to recovery, failures retain
 `ClaimTemplatesReady=False/RecoveryFailed`, including a failed initial
 Cluster refresh, orphan-delete or replacement-create attempt. The journal and
 protected pointer remain available for retry.
+An ordinary reconcile with no known recovery pointer returns a failed initial
+Cluster refresh without publishing a storage-recovery failure condition.
 
 Protected Cluster status authorizes the journal. A ConfigMap ownerReference,
 name, structure or digest supplied only by the ConfigMap cannot authorize it.
