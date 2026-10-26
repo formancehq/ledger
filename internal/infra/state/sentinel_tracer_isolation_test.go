@@ -49,6 +49,7 @@ func TestSentinelTracerIsolatedAcrossBatches(t *testing.T) {
 		"test-cluster",
 		0,
 		noopConfChangeHandler,
+		NoopCapabilityPolicyCommitHandler,
 	)
 	require.NoError(t, err)
 	require.NoError(t, NewRecovery(machine, dataStore).RecoverState())

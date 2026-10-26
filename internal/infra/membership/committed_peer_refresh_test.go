@@ -61,6 +61,7 @@ func TestCommittedPeerRefreshUpdatesRaftTransport(t *testing.T) {
 		"self:8000",
 		[]byte("self-instance-id"),
 		logger,
+		membership.NoopClusterPolicyProvider,
 	)
 	require.NoError(t, err)
 	m.Start()

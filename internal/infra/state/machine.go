@@ -162,6 +162,11 @@ type Machine struct {
 	capabilityPolicyCommitHandler func(*commonpb.ClusterPolicy)
 }
 
+// NoopCapabilityPolicyCommitHandler is an explicit dependency for callers
+// that do not maintain an in-memory membership gate (for example replay and
+// isolated FSM tests). Production bootstrap injects the membership publisher.
+func NoopCapabilityPolicyCommitHandler(*commonpb.ClusterPolicy) {}
+
 // NewMachine constructs the hot-path FSM. It composes pre-built sub-objects
 // (Registry, CacheSnapshotter) so the constructor reads no Pebble and keeps
 // the surface focused on hot-path concerns. The bootstrap is responsible for
@@ -172,13 +177,9 @@ type Machine struct {
 // confChangeHandler is invoked from PrepareEntries for every
 // EntryConfChange* in the in-flight batch (see the field comment on
 // Machine). Must be non-nil.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, auditKey string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error, capabilityPolicyCommitHandlers ...func(*commonpb.ClusterPolicy)) (*Machine, error) {
-	var capabilityPolicyCommitHandler func(*commonpb.ClusterPolicy)
-	if len(capabilityPolicyCommitHandlers) > 1 {
-		return nil, errors.New("at most one capability policy commit handler is allowed")
-	}
-	if len(capabilityPolicyCommitHandlers) == 1 {
-		capabilityPolicyCommitHandler = capabilityPolicyCommitHandlers[0]
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, auditKey string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error, capabilityPolicyCommitHandler func(*commonpb.ClusterPolicy)) (*Machine, error) {
+	if capabilityPolicyCommitHandler == nil {
+		return nil, errors.New("capability policy commit handler is required")
 	}
 
 	sentinelMode := sentinel.IsEnabled()

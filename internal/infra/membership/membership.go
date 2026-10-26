@@ -101,7 +101,15 @@ type Membership struct {
 // Failure to read the peer rows is fatal: without them the node would
 // boot with an empty cache while the WAL ConfState still claims the
 // cluster has voters.
-func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger, policyProviders ...func() (*commonpb.ClusterPolicy, error)) (*Membership, error) {
+// NoopClusterPolicyProvider is an explicit dependency for isolated membership
+// users that do not have a durable ClusterPolicy projection (for example unit
+// tests). Production bootstrap injects the Pebble-backed provider.
+func NoopClusterPolicyProvider() (*commonpb.ClusterPolicy, error) { return nil, nil }
+
+func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger, policyProvider func() (*commonpb.ClusterPolicy, error)) (*Membership, error) {
+	if policyProvider == nil {
+		return nil, errors.New("cluster policy provider is required")
+	}
 	if err := ValidateInstanceID(selfInstanceID); err != nil {
 		return nil, fmt.Errorf("invalid self identity: %w", err)
 	}
@@ -114,11 +122,6 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 	logger.WithFields(map[string]any{
 		"peerCount": len(addresses),
 	}).Infof("Loaded cluster membership from Pebble")
-
-	var policyProvider func() (*commonpb.ClusterPolicy, error)
-	if len(policyProviders) > 0 {
-		policyProvider = policyProviders[0]
-	}
 
 	return &Membership{
 		store:                    store,

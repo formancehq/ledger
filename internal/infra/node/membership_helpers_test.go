@@ -47,6 +47,7 @@ func newTestMembership(t *testing.T) *membership.Membership {
 		42, "self:7777", "self:8888",
 		[]byte("self-instance-id"),
 		logging.Testing(),
+		membership.NoopClusterPolicyProvider,
 	)
 	require.NoError(t, err)
 	m.Start()

@@ -257,6 +257,7 @@ func (r *signingBatchRunner) restart() *keystore.KeyStore {
 		logger, registry, NewCacheSnapshotter(logger, registry, nil), r.store,
 		dal.NewSentinelFactory(r.store, false), meterProvider, recovered,
 		NewSharedState(), newNoopNotifier(r.t), nil, "test-cluster", 0, noopConfChangeHandler,
+		NoopCapabilityPolicyCommitHandler,
 	)
 	require.NoError(r.t, err)
 	require.NoError(r.t, NewRecovery(machine, r.store).RecoverState())

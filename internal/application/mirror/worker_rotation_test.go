@@ -82,7 +82,7 @@ func TestWorker_RotationPreloadsReadOnlyLedger(t *testing.T) {
 			require.NoError(t, err)
 			registry := state.NewStateRegistry(c, attrs)
 			notifier := signal.NewNotifications()
-			machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keystore.NewKeyStore(), state.NewSharedState(), notifier, nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+			machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keystore.NewKeyStore(), state.NewSharedState(), notifier, nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 			require.NoError(t, err)
 			writeMirrorMetadataPolicy(t, store, mirrorMetadataPolicy())
 			require.NoError(t, state.NewRecovery(machine, store).RecoverState())
