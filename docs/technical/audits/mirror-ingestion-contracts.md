@@ -104,6 +104,16 @@ are excluded. Source construction checks the database/session, privileges and
 sequence before ingestion starts; these checks do not establish that an
 operator will refrain from an unsupported concurrent import.
 
+For PostgreSQL 16, changing the cache through a committed `ALTER SEQUENCE`
+before ingestion replaces the sequence storage transactionally. Existing
+backends discard unissued reservations when they next access that sequence.
+`TestPostgresSourceCacheChangeInvalidatesReservations` keeps the original
+allocating session alive across the cache change and a locked gap read, then
+checks that its next inserted row has a fresh ID above the mirrored boundary.
+This is distinct from application-held IDs already returned by `nextval`:
+those must not be retained for later insertion across source preparation.
+See the [source prerequisite evidence](../architecture/subsystems/events-mirror/mirror.md#postgresql-visibility-and-permanent-gaps).
+
 Contiguous pages use one bounded query. A page with a hole is discarded and
 reread from the applied boundary under a bucket-wide `SHARE` lock in an explicit
 `READ COMMITTED` transaction. `NOWAIT` conflicts fail immediately and cause no

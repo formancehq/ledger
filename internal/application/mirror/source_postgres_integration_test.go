@@ -104,6 +104,49 @@ func TestPostgresSourceRejectsSelectOnlyCredentials(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, source.Close()) })
 }
 
+func TestPostgresSourceCacheChangeInvalidatesReservations(t *testing.T) {
+	t.Parallel()
+	dsn, observer := newPostgresLogFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err := observer.Exec(ctx, "ALTER SEQUENCE source_bucket.log_id_1 CACHE 4")
+	require.NoError(t, err)
+	writer, err := pgx.Connect(ctx, dsn)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, writer.Close(context.Background())) })
+	var id, reserved uint64
+	require.NoError(t, writer.QueryRow(ctx, "SELECT nextval('source_bucket.log_id_1')").Scan(&id))
+	require.Equal(t, uint64(1), id)
+	require.NoError(t, observer.QueryRow(ctx, "SELECT last_value FROM source_bucket.log_id_1").Scan(&reserved))
+	require.Equal(t, uint64(4), reserved, "the idle writer must have unissued reservations before ALTER")
+	// ALTER CACHE transactionally replaces the sequence storage. The existing
+	// backend must invalidate its cached 2..4 on its next nextval call.
+	_, err = observer.Exec(ctx, "ALTER SEQUENCE source_bucket.log_id_1 CACHE 1")
+	require.NoError(t, err)
+	var cacheSize int64
+	require.NoError(t, observer.QueryRow(ctx, "SELECT cache_size FROM pg_sequences WHERE schemaname='source_bucket' AND sequencename='log_id_1'").Scan(&cacheSize))
+	require.Equal(t, int64(1), cacheSize)
+	require.NoError(t, observer.QueryRow(ctx, `INSERT INTO source_bucket.logs VALUES(nextval('source_bucket.log_id_1'),'source-ledger','SET_METADATA',now(),'{}',NULL) RETURNING id`).Scan(&id))
+	require.Equal(t, uint64(5), id)
+	source, err := v2.NewPostgresSource(ctx, &commonpb.PostgresMirrorSourceConfig{Dsn: dsn}, "source-ledger")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, source.Close()) })
+	logs, more, err := source.FetchLogs(ctx, 0, 10)
+	require.NoError(t, err)
+	require.False(t, more)
+	require.Len(t, logs, 1)
+	require.Equal(t, uint64(5), logs[0].ID)
+	// Keep the original backend alive across both ALTER and the locked gap
+	// read. It must not insert an old reserved ID behind the mirror boundary.
+	require.NoError(t, writer.QueryRow(ctx, `INSERT INTO source_bucket.logs VALUES(nextval('source_bucket.log_id_1'),'source-ledger','SET_METADATA',now(),'{}',NULL) RETURNING id`).Scan(&id))
+	require.Equal(t, uint64(6), id, "the original session must discard its old cached reservations")
+	logs, more, err = source.FetchLogs(ctx, 5, 10)
+	require.NoError(t, err)
+	require.False(t, more)
+	require.Len(t, logs, 1)
+	require.Equal(t, uint64(6), logs[0].ID, "the next committed row must remain available after the permanent gap")
+}
+
 func TestPostgresSourceContiguousPageDoesNotLockWriters(t *testing.T) {
 	t.Parallel()
 	dsn, observer := newPostgresLogFixture(t)

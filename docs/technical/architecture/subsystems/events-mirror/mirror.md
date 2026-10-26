@@ -141,6 +141,20 @@ Source requirements are checked during PostgreSQL source construction:
   historical backfills and sequence reseeding are unsupported: they can insert
   an old ID after a synchronized read has already completed.
 
+For PostgreSQL 16, a committed `ALTER SEQUENCE ... CACHE 1` before ingestion
+invalidates unissued reservations in existing backend sessions. The cache
+option makes `AlterSequence` replace the sequence storage transactionally;
+`init_sequence` detects the changed file identity and discards the backend's
+unissued cache before `nextval` can return it. See the
+[PostgreSQL 16 implementation](https://github.com/postgres/postgres/blob/REL_16_4/src/backend/commands/sequence.c).
+`TestPostgresSourceCacheChangeInvalidatesReservations` reserves a larger cache
+in an idle session, changes it from another session, mirrors a higher row, and
+then verifies that the original session allocates a fresh higher ID rather
+than inserting behind the applied source boundary. This covers backend-held
+unissued reservations; IDs already returned to application code are outside
+that mechanism. Do not retain such IDs for later insertion across source
+preparation, or change sequence settings during ingestion.
+
 The lock covers the bucket, including other ledgers sharing it, and lasts only
 for the bounded reread and transaction completion. A gap adds one discarded
 page and one locked reread, each bounded by `batch_size + 1`; contiguous pages
