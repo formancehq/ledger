@@ -136,27 +136,19 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		// A transport error does not prove Create failed. Keep the reservation
 		// and retry the deterministic name, including after AlreadyExists.
-		provisioningErr := fmt.Errorf("provisioning backup Job: %w", err)
-		if run.Status.Message != provisioningErr.Error() {
-			run.Status.Message = provisioningErr.Error()
-			if err := r.Status().Update(ctx, &run); err != nil {
-				return ctrl.Result{}, errors.Join(provisioningErr, fmt.Errorf("recording provisioning error: %w", err))
-			}
-		}
-
-		return ctrl.Result{}, provisioningErr
-	}
-
-	// Clear a previous provisioning diagnostic once the owned Job is available.
-	if run.Status.Message != "" {
-		run.Status.Message = ""
-		if err := r.Status().Update(ctx, &run); err != nil {
-			return ctrl.Result{}, err
-		}
+		return r.retryRun(ctx, &run, fmt.Errorf("provisioning backup Job: %w", err))
 	}
 
 	succeeded, terminal, jobMsg := jobTerminalCondition(job)
 	if !terminal {
+		// Clear a previous diagnostic once the owned Job is available and running.
+		if run.Status.Message != "" {
+			run.Status.Message = ""
+			if err := r.Status().Update(ctx, &run); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+
 		// Job still running: wait for the next status update via the Owns watch.
 		logger.V(1).Info("backup Job still in progress", "job", job.Name, "active", job.Status.Active)
 
@@ -172,13 +164,19 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.setRunFailed(ctx, &run, message)
 	}
 
-	// Success: parse the JSON summary from the pod logs and lift it onto status.
+	// A completed Job's result may be temporarily unavailable. Retry observation
+	// without releasing the reservation or misclassifying the execution outcome.
 	if err := r.applyJobResult(ctx, &run, &cluster, job); err != nil {
+		if _, ok := errors.AsType[*backupResultReadError](err); ok {
+			return r.retryRun(ctx, &run, fmt.Errorf("reading backup result: %w", err))
+		}
+
 		return r.setRunFailed(ctx, &run, fmt.Sprintf("reading backup result: %v", err))
 	}
 
 	completion := metav1.Now()
 	run.Status.Phase = ledgerv1alpha1.BackupRunPhaseSucceeded
+	run.Status.Message = ""
 	run.Status.CompletionTime = &completion
 	meta.SetStatusCondition(&run.Status.Conditions, metav1.Condition{
 		Type:               "BackupCompleted",
@@ -278,7 +276,7 @@ func (r *BackupRunReconciler) applyJobResult(
 ) error {
 	payload, err := fetchJobResultPayload(ctx, r.Clientset, job.Namespace, job.Name)
 	if err != nil {
-		return err
+		return &backupResultReadError{err}
 	}
 
 	now := metav1.Now()
@@ -322,6 +320,27 @@ func (r *BackupRunReconciler) applyJobResult(
 	}
 
 	return nil
+}
+
+// backupResultReadError distinguishes unavailable evidence from an acquired
+// payload that definitively cannot be interpreted as a backup summary.
+type backupResultReadError struct {
+	error
+}
+
+func (e *backupResultReadError) Unwrap() error { return e.error }
+
+// retryRun preserves the execution reservation and records changed diagnostics.
+// Returning the cause asks controller-runtime to retry with its error backoff.
+func (r *BackupRunReconciler) retryRun(ctx context.Context, run *ledgerv1alpha1.BackupRun, cause error) (ctrl.Result, error) {
+	if run.Status.Message != cause.Error() {
+		run.Status.Message = cause.Error()
+		if err := r.Status().Update(ctx, run); err != nil {
+			return ctrl.Result{}, errors.Join(cause, fmt.Errorf("recording retry error: %w", err))
+		}
+	}
+
+	return ctrl.Result{}, cause
 }
 
 // setRunFailed transitions the run to Failed with the given message and returns a terminal result.

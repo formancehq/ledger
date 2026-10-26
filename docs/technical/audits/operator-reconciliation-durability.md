@@ -72,7 +72,7 @@ ledger after finalizer removal.
 ## Backup Secret delivery boundary
 
 Backup S3 static authentication uses same-namespace Secret key references.
-Reconciliation persists the Job before setting the BackupRun to Running; kubelet
+Reconciliation reserves the BackupRun as Running before persisting the Job; kubelet
 credential resolution happens later. A missing required Secret/key prevents
 container startup, so Running does not establish delivery or backup success.
 Subsequent container starts resolve current Secret values; existing process
@@ -125,6 +125,23 @@ layout. Test both hostPath-to-PVC and PVC-to-hostPath against a Kubernetes API
 server: a fake client does not validate the interim Pod template. Reconstruct
 an interrupted rollout with a fresh reconciler, and inspect retained Pods or
 PVCs when the StatefulSet is absent so source verification cannot be skipped.
+
+## Completed backup result observation
+
+For a successful owned Job, distinguish result acquisition from interpretation.
+Pod-list failures, temporarily absent Pods and fallback log open/read errors must
+preserve the nonterminal reservation and retry across fresh reconciler instances.
+A malformed acquired summary or failed Job remains terminal. Inspect diagnostic
+write failures and repeated errors as separate persisted prefixes: no completion
+or successful summary is certified before the result status write succeeds.
+
+Use the result-read and fallback-log recovery regressions as evidence oracles:
+verify actual fail-then-success acquisition, unchanged Job identity, final literal
+summary values, sibling exclusion and parent full-summary/incremental eligibility.
+With zero history retention, the run must survive pending acquisition and can be
+pruned only after terminal accounting is recorded. These fake-client and HTTP
+fixtures do not prove Kubernetes garbage collection, kubelet execution or live
+manager backoff. Historical terminal failures are not automatically reopened.
 
 ## Severity
 
