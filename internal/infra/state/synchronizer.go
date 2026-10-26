@@ -56,11 +56,8 @@ func (s *Synchronizer) SynchronizeWithLeader(ctx context.Context, snapshotFetche
 	if err := s.restoreCheckpoint(ctx, snapshotFetcher, progress, s.apply.State.SnapshotIndex); err != nil {
 		return 0, fmt.Errorf("restoring checkpoint from leader: %w", err)
 	}
-	// Restore cache from Pebble (the checkpoint contains the leader's cache data)
-	if err := s.recovery.RestoreCacheFromStore(); err != nil {
-		return 0, fmt.Errorf("restoring cache after sync: %w", err)
-	}
 	// Reload all FSM state from Pebble (the checkpoint contains the leader's state).
+	// This installs the committed Bloom shape before its blocks are restored.
 	// This also recovers lastAppliedIndex from the restored Pebble — the fresh
 	// checkpoint is at an index >= snapshotIndex, so spool replay correctly
 	// skips entries already in the checkpoint.
@@ -72,6 +69,12 @@ func (s *Synchronizer) SynchronizeWithLeader(ctx context.Context, snapshotFetche
 
 	if err != nil {
 		return 0, fmt.Errorf("recovering state after sync: %w", err)
+	}
+	// Restore cache and Bloom from the same checkpoint after the committed
+	// configuration is installed. Restoring Bloom first would publish a ready
+	// snapshot that RecoverState immediately discards.
+	if err := s.recovery.RestoreCacheFromStore(); err != nil {
+		return 0, fmt.Errorf("restoring cache after sync: %w", err)
 	}
 
 	lifecycle.SendEvent("sync_with_leader_complete", map[string]any{

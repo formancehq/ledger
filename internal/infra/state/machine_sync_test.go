@@ -14,9 +14,55 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/bloom"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestSynchronizeWithLeaderRestoresCommittedBloomBeforeReplay(t *testing.T) {
+	t.Parallel()
+	meter := noop.NewMeterProvider().Meter("test")
+	logger := logging.Testing()
+	leader, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = leader.Close() })
+
+	committed := &commonpb.ClusterConfig{
+		RotationThreshold: 1000,
+		BloomVolumes:      &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	}
+	key := attributes.HashU128([]byte("checkpoint-volume"))
+	filters := bloom.NewFilterSet(committed, meter)
+	filters.AddCanonicalKeys(&bloom.BloomUpdates{Volumes: []attributes.U128{key}})
+	batch := leader.OpenWriteSession()
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig}, &commonpb.PersistedClusterState{Config: committed}))
+	require.NoError(t, SetAppliedIndex(batch, 100))
+	require.NoError(t, filters.PersistDirtyBlocks(batch))
+	require.NoError(t, batch.Commit())
+	_, err = leader.CreateSnapshot()
+	require.NoError(t, err)
+	checkpoint, err := leader.GetCheckpointPath(1)
+	require.NoError(t, err)
+
+	follower, followerStore, _ := newTestMachine(t)
+	local := &commonpb.ClusterConfig{BloomMetadata: &commonpb.BloomTypeConfig{ExpectedKeys: 10, FpRate: 0.2}}
+	followerFilters := bloom.NewFilterSet(local, meter)
+	followerFilters.SetReady(true)
+	follower.BloomFilters = followerFilters
+	follower.cacheSnapshotter.bloomFilters = followerFilters
+	recovery := NewRecovery(follower, followerStore)
+	syncer := NewSynchronizer(follower, recovery, dal.NewIncomingRestoreFactory(followerStore))
+	require.NoError(t, syncer.InstallSnapshot(t.Context(), &raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(100)}}))
+
+	index, err := syncer.SynchronizeWithLeader(t.Context(), &copyDirFetcher{srcDir: checkpoint}, nil)
+	require.NoError(t, err)
+	require.Equal(t, uint64(100), index)
+	require.True(t, followerFilters.IsReady(), "checkpoint Bloom must remain ready after state recovery")
+	require.True(t, followerFilters.FilterForAttrType(dal.SubAttrVolume).MayContain(key))
+	require.Nil(t, followerFilters.FilterForAttrType(dal.SubAttrMetadata))
+}
 
 // copyDirFetcher is a test SnapshotFetcher that copies a local directory into
 // the target directory provided by the machine (simulating a real peer fetch).
