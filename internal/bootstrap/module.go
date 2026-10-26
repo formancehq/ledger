@@ -396,6 +396,24 @@ func Module() fx.Option {
 					if raftNode == nil {
 						return errors.New("raft proposal gate is not initialized")
 					}
+					// A policy activation is itself a consensus-sensitive write.  Do
+					// not rely solely on the periodic reconciler: callers that submit a
+					// SetClusterPolicy command must carry the same all-member evidence
+					// before the command can enter Raft.  NewProposal derives this
+					// typed candidate from the final command, so this check does not
+					// decode the serialized proposal or trust caller-supplied metadata.
+					activePolicyCapabilities := proposal.ActivePolicyCapabilities()
+					if len(activePolicyCapabilities) > 0 {
+						ready, readyErr := capabilities.Ready(capabilities.SupportedIDs(), raftNode.CapabilityMembers())
+						if readyErr != nil {
+							return fmt.Errorf("validating capability activation evidence: %w", readyErr)
+						}
+						for _, required := range activePolicyCapabilities {
+							if !slices.Contains(ready, required) {
+								return fmt.Errorf("%w: capability %d is not acknowledged by every current member", capabilities.ErrCapabilityUnsupported, required)
+							}
+						}
+					}
 
 					state := capabilities.FromPolicy(policy)
 					if err := state.Validate(); err != nil {
