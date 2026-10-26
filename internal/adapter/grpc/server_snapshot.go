@@ -100,22 +100,21 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 	// that is itself resynchronizing is refused outright: the requester
 	// treats FailedPrecondition as final and moves on to another donor
 	// instead of waiting out its PrepareSnapshot budget here.
-	if minIdx := req.GetMinAppliedIndex(); minIdx > 0 {
-		waitStart := time.Now()
-		if err := s.donor.WaitForCheckpointable(ctx, minIdx); err != nil {
-			if errors.Is(err, state.ErrStoreResynchronizing) {
-				return nil, status.Error(codes.FailedPrecondition, err.Error())
-			}
-
-			return nil, fmt.Errorf("waiting for FSM to apply index %d: %w", minIdx, err)
+	minIdx := req.GetMinAppliedIndex()
+	waitStart := time.Now()
+	if err := s.donor.WaitForCheckpointable(ctx, minIdx); err != nil {
+		if errors.Is(err, state.ErrStoreResynchronizing) {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
 
-		if d := time.Since(waitStart); d > 100*time.Millisecond {
-			s.logger.WithFields(map[string]any{
-				"minAppliedIndex": minIdx,
-				"duration":        d.String(),
-			}).Infof("FSM caught up to minAppliedIndex for PrepareSnapshot")
-		}
+		return nil, fmt.Errorf("waiting for FSM to apply index %d: %w", minIdx, err)
+	}
+
+	if d := time.Since(waitStart); d > 100*time.Millisecond {
+		s.logger.WithFields(map[string]any{
+			"minAppliedIndex": minIdx,
+			"duration":        d.String(),
+		}).Infof("FSM caught up to minAppliedIndex for PrepareSnapshot")
 	}
 
 	syncName := "follower-sync-" + strconv.FormatUint(s.nextSyncID.Add(1), 10)

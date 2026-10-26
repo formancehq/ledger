@@ -39,6 +39,15 @@ func TestPrepareSnapshotRefusesResynchronizingDonor(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 }
 
+func TestPrepareSnapshotRefusesResynchronizingDonorAtZeroIndex(t *testing.T) {
+	t.Parallel()
+
+	server := NewSnapshotServiceServer(noopLogger{}, nil, 0, testSnapshotDonor{waitErr: state.ErrStoreResynchronizing})
+
+	_, err := server.PrepareSnapshot(context.Background(), &snapshotpb.PrepareSnapshotRequest{})
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+}
+
 // TestPrepareSnapshotKeepsOtherWaitErrorsOpaque guards the branch above: an
 // ordinary wait failure must not be reported as a donor refusal.
 func TestPrepareSnapshotKeepsOtherWaitErrorsOpaque(t *testing.T) {
