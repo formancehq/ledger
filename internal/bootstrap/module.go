@@ -1836,7 +1836,7 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		for _, id := range ready {
 			if enabled, exists := active[uint32(id)]; exists {
 				if !enabled {
-					for _, activation := range desired.CapabilityActivations {
+					for _, activation := range desired.GetCapabilityActivations() {
 						if activation != nil && activation.GetId() == uint32(id) {
 							activation.Active = true
 							break

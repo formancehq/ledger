@@ -39,6 +39,7 @@ func TestIsRetryableMembershipRefreshError(t *testing.T) {
 
 type retryingRefreshServer struct {
 	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
+
 	attempts atomic.Int32
 	firstErr error
 }
