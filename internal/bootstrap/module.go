@@ -402,16 +402,8 @@ func Module() fx.Option {
 					// typed candidate from the final command, so this check does not
 					// decode the serialized proposal or trust caller-supplied metadata.
 					activePolicyCapabilities := proposal.ActivePolicyCapabilities()
-					if len(activePolicyCapabilities) > 0 {
-						ready, readyErr := capabilities.Ready(capabilities.SupportedIDs(), raftNode.CapabilityMembers())
-						if readyErr != nil {
-							return fmt.Errorf("validating capability activation evidence: %w", readyErr)
-						}
-						for _, required := range activePolicyCapabilities {
-							if !slices.Contains(ready, required) {
-								return fmt.Errorf("%w: capability %d is not acknowledged by every current member", capabilities.ErrCapabilityUnsupported, required)
-							}
-						}
+					if err := validateCapabilityActivationEvidence(capabilities.SupportedIDs(), activePolicyCapabilities, raftNode.CapabilityMembers()); err != nil {
+						return err
 					}
 
 					state := capabilities.FromPolicy(policy)
@@ -1168,6 +1160,24 @@ func Module() fx.Option {
 	)
 }
 
+func validateCapabilityActivationEvidence(supported, active []capabilities.CapabilityID, members []capabilities.Member) error {
+	if len(active) == 0 {
+		return nil
+	}
+
+	ready, err := capabilities.Ready(supported, members)
+	if err != nil {
+		return fmt.Errorf("validating capability activation evidence: %w", err)
+	}
+	for _, required := range active {
+		if !slices.Contains(ready, required) {
+			return fmt.Errorf("%w: capability %d is not acknowledged by every current member", capabilities.ErrCapabilityUnsupported, required)
+		}
+	}
+
+	return nil
+}
+
 // JoinAuthError is returned when a joining node is rejected by the target
 // cluster's inter-node RaftServer with codes.Unauthenticated. This is always
 // a cluster-secret misconfiguration (EN-1080): the join flow carries no user
@@ -1368,22 +1378,34 @@ func membershipRefreshHook(cfg Config, logger logging.Logger) fx.Hook {
 	var cancel context.CancelFunc
 
 	return fx.Hook{
-		OnStart: func(context.Context) error {
+		OnStart: func(ctx context.Context) error {
 			logger.WithFields(map[string]any{
 				"nodeID":         cfg.RaftConfig.NodeID,
 				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
 				"serviceAddress": cfg.ServiceAdvertiseAddr(),
 			}).Infof("Restart mode: refreshing membership capabilities")
 
+			// Perform one synchronous attempt before the node starts serving. A
+			// permanent rejection (for example a removed incarnation or invalid
+			// identity) must abort startup rather than letting stale WAL membership
+			// evidence escape into the cluster. Only the rolling-upgrade cases that
+			// are explicitly classified as transient are handed to the background
+			// retry loop.
+			err := tryRefreshMembershipOnce(ctx, cfg, cfg.TLSConfig, logger)
+			if err == nil {
+				return nil
+			}
+			if !errors.Is(err, errMembershipRefreshTransient) {
+				return err
+			}
+
 			refreshCtx, refreshCancel := context.WithCancel(context.Background())
 			cancel = refreshCancel
 			go func() {
 				if err := tryRefreshMembership(refreshCtx, cfg, cfg.TLSConfig, logger); err != nil {
-					// TODO(rc.3): replace this compatibility fallback with explicit
-					// startup error handling once every supported peer implements
-					// RefreshMembership. The leader-side reconciler below keeps
-					// polling membership evidence and will arm capabilities only
-					// after all current members converge.
+					// TODO(rc.3): remove this compatibility fallback once every
+					// supported peer implements RefreshMembership. The leader-side
+					// reconciler keeps retrying transient evidence until convergence.
 					logger.WithFields(map[string]any{"error": err}).Errorf("Membership capability refresh failed; continuing with conservative evidence")
 				}
 			}()
@@ -1585,6 +1607,25 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 // tryAddLearner: a node with a populated WAL already owns Raft progress and
 // must never be admitted through the empty-WAL learner path.
 func tryRefreshMembership(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger) error {
+	backoff := 500 * time.Millisecond
+	for {
+		err := tryRefreshMembershipOnce(ctx, cfg, tlsCfg, logger)
+		if err == nil || !errors.Is(err, errMembershipRefreshTransient) {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, 5*time.Second)
+	}
+}
+
+var errMembershipRefreshTransient = errors.New("membership refresh temporarily unavailable")
+
+func tryRefreshMembershipOnce(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger) error {
 	instanceID, err := wal.EnsureInstanceID(cfg.RaftConfig.WalDir)
 	if err != nil {
 		return fmt.Errorf("ensuring instance id for membership refresh: %w", err)
@@ -1611,39 +1652,39 @@ func tryRefreshMembership(ctx context.Context, cfg Config, tlsCfg TLSConfig, log
 		ctx = metadata.AppendToOutgoingContext(ctx, node.MetadataKeyClusterID, cfg.ClusterID)
 	}
 
-	backoff := 500 * time.Millisecond
-	for {
-		for _, peer := range cfg.RaftConfig.Peers {
-			conn, dialErr := ggrpc.NewClient(peer.Address, dialOpts...)
-			if dialErr != nil {
-				logger.WithFields(map[string]any{"peer": peer.ID, "address": peer.Address, "error": dialErr}).Infof("Failed to dial peer for membership refresh")
-
-				continue
-			}
-
-			_, callErr := clusterbootstrappb.NewClusterBootstrapServiceClient(conn).RefreshMembership(ctx, req)
-			_ = conn.Close()
-			if callErr == nil {
-				logger.WithFields(map[string]any{"peer": peer.ID}).Infof("Successfully refreshed membership capabilities")
-
-				return nil
-			}
-
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-
-			if !isRetryableMembershipRefreshError(callErr) {
-				return fmt.Errorf("failed to refresh membership via peer %d (%s): %w", peer.ID, peer.Address, callErr)
-			}
+	var lastTransient error
+	for _, peer := range cfg.RaftConfig.Peers {
+		conn, dialErr := ggrpc.NewClient(peer.Address, dialOpts...)
+		if dialErr != nil {
+			logger.WithFields(map[string]any{"peer": peer.ID, "address": peer.Address, "error": dialErr}).Infof("Failed to dial peer for membership refresh")
+			lastTransient = dialErr
+			continue
 		}
-		select {
-		case <-ctx.Done():
+
+		_, callErr := clusterbootstrappb.NewClusterBootstrapServiceClient(conn).RefreshMembership(ctx, req)
+		_ = conn.Close()
+		if callErr == nil {
+			logger.WithFields(map[string]any{"peer": peer.ID}).Infof("Successfully refreshed membership capabilities")
+
+			return nil
+		}
+
+		if ctx.Err() != nil {
 			return ctx.Err()
-		case <-time.After(backoff):
 		}
-		backoff = min(backoff*2, 5*time.Second)
+
+		if !isRetryableMembershipRefreshError(callErr) {
+			return fmt.Errorf("failed to refresh membership via peer %d (%s): %w", peer.ID, peer.Address, callErr)
+		}
+		lastTransient = callErr
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if lastTransient != nil {
+		return fmt.Errorf("%w: %v", errMembershipRefreshTransient, lastTransient)
+	}
+	return errMembershipRefreshTransient
 }
 
 func isRetryableMembershipRefreshError(err error) bool {
