@@ -2,6 +2,7 @@ package state
 
 import (
 	"bytes"
+	"context"
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -106,4 +107,38 @@ func TestBloomCommittedEnableDisableAndRecovery(t *testing.T) {
 	require.False(t, filters.Enabled(), "a committed update must disable without restart")
 	require.NoError(t, NewRecovery(machine, store).RecoverState())
 	require.False(t, filters.Enabled())
+}
+
+func TestBloomProjectionSealTracksAppliedIndex(t *testing.T) {
+	t.Parallel()
+	machine, store, _ := newTestMachine(t)
+	filters := bloom.NewFilterSet(&commonpb.ClusterConfig{
+		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	}, noop.NewMeterProvider().Meter("test"))
+	machine.BloomFilters = filters
+	machine.cacheSnapshotter.bloomFilters = filters
+	filters.SetReady(true)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, filters.PersistDirtyBlocks(batch))
+	require.NoError(t, bloom.SealProjectionAt(batch, 0))
+	require.NoError(t, batch.Commit())
+	epoch, replace := filters.PersistedReplacement()
+	require.True(t, replace)
+	filters.ConfirmPersistedReplacement(epoch)
+
+	_, err := machine.ApplyEntries(context.Background(), store,
+		makeEntry(t, 1, makeProposal(1, createLedgerOrder("projection-seal"))))
+	require.NoError(t, err)
+	verified, err := bloom.HasVerifiedProjection(store)
+	require.NoError(t, err)
+	require.True(t, verified, "the FSM must advance the seal with the durable applied index")
+
+	// An older binary would advance this index without touching the seal.
+	batch = store.OpenWriteSession()
+	require.NoError(t, SetAppliedIndex(batch, 2))
+	require.NoError(t, batch.Commit())
+	verified, err = bloom.HasVerifiedProjection(store)
+	require.NoError(t, err)
+	require.False(t, verified)
 }

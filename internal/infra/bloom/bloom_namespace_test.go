@@ -158,6 +158,7 @@ func TestFilterSet_ProjectionSealOutsideLegacyBlockNamespace(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, fs.PersistDirtyBlocks(batch))
+	require.NoError(t, SealProjectionAt(batch, 0))
 	require.NoError(t, batch.Commit())
 	verified, err := HasVerifiedProjection(store)
 	require.NoError(t, err)

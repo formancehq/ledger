@@ -23,8 +23,9 @@ func verifiedProjectionKey() []byte {
 	return []byte{dal.ZoneClusterPersistent, dal.SubGlobBloomProjectionSeal}
 }
 
-// HasVerifiedProjection reports whether persisted blocks were produced after
-// a full attribute scan or restored from another sealed projection.
+// HasVerifiedProjection reports whether the seal still covers the durable
+// applied index. An older binary can leave the seal intact while writing
+// attributes without Bloom; its later applied index invalidates the seal.
 func HasVerifiedProjection(store dal.PebbleGetter) (bool, error) {
 	value, err := dal.GetValue(store, verifiedProjectionKey())
 	if err != nil {
@@ -33,11 +34,28 @@ func HasVerifiedProjection(store dal.PebbleGetter) (bool, error) {
 	if value == nil {
 		return false, nil
 	}
-	if len(value) != 1 || value[0] != 1 {
+	if len(value) != 8 {
 		return false, fmt.Errorf("invalid Bloom projection seal value %x", value)
 	}
+	appliedIndex, err := dal.ReadUint64(store, []byte{dal.ZoneClusterPersistent, dal.SubGlobLastAppliedIndex}, 0)
+	if err != nil {
+		return false, fmt.Errorf("reading applied index for Bloom projection seal: %w", err)
+	}
 
-	return true, nil
+	return binary.BigEndian.Uint64(value) == appliedIndex, nil
+}
+
+// SealProjectionAt advances the projection provenance in the same batch as
+// the durable applied index. Call only while the filter is ready and its full
+// projection has already been persisted (or is being persisted in this batch).
+func SealProjectionAt(batch *dal.WriteSession, appliedIndex uint64) error {
+	value := make([]byte, 8)
+	binary.BigEndian.PutUint64(value, appliedIndex)
+	if err := batch.Set(verifiedProjectionKey(), value, pebble.NoSync); err != nil {
+		return fmt.Errorf("persisting Bloom projection seal: %w", err)
+	}
+
+	return nil
 }
 
 // BloomConfigEnabled returns true if at least one bloom filter type has a
@@ -576,9 +594,6 @@ func (fs *FilterSet) PersistDirtyBlocks(batch *dal.WriteSession) error {
 		if err != nil {
 			return err
 		}
-	}
-	if err := batch.Set(verifiedProjectionKey(), []byte{1}, pebble.NoSync); err != nil {
-		return fmt.Errorf("persisting Bloom projection seal: %w", err)
 	}
 
 	return nil

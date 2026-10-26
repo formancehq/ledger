@@ -744,13 +744,14 @@ func (s *CacheSnapshotter) validateCacheNamespace(reader dal.PebbleReader, gen0B
 }
 
 // restoreBloomFilters publishes a ready bloom on top of Pebble's
-// persisted state. On a simple restart (persisted bloom blocks exist),
-// the rebuild runs SYNCHRONOUSLY before this function returns: the cost
+// persisted state. On a simple restart with a current projection seal,
+// block restoration runs synchronously before this function returns: the cost
 // is bounded (O(blocks) + O(cache gen0+gen1)) and running it inline
 // closes the EN-1410 window where the replayWAL goroutine would
 // otherwise race the background rebuild and drive cache rotations
-// while !IsReady. On cold start / post-Rebuild (no persisted blocks),
-// the rebuild stays async because the full attribute scan via
+// while !IsReady. With missing blocks, unsealed legacy blocks, or a seal
+// stale against the durable applied index, the rebuild stays async because
+// the full attribute scan via
 // PopulateFromStore can take minutes on a large database -- blocking
 // boot is unacceptable. The cold-start path's correctness is guarded
 // separately at the cache-rotation site, which inhibits rotation while
@@ -809,7 +810,7 @@ func (s *CacheSnapshotter) restoreBloomFilters(store dal.RecoveryReader) error {
 		// Legacy nodes could leave valid-looking but incomplete blocks while
 		// local flags disabled Bloom against an enabled committed config. The
 		// full attribute scan is the only safe way to establish completeness.
-		s.StartAsyncBloomPopulate(store, "legacy bloom blocks have no completeness seal")
+		s.StartAsyncBloomPopulate(store, "Bloom projection seal absent or stale against applied index")
 
 		return nil
 	}

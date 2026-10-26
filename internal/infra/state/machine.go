@@ -738,6 +738,16 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 
 		return nil, fmt.Errorf("setting applied index: %w", err)
 	}
+	if fsm.BloomFilters != nil && fsm.BloomFilters.IsReady() {
+		_, replace := fsm.BloomFilters.PersistedReplacement()
+		if !replace || bloomReplacement {
+			if err := bloom.SealProjectionAt(batch, fsm.State.LastAppliedIndex); err != nil {
+				_ = batch.Cancel()
+
+				return nil, err
+			}
+		}
+	}
 
 	err = StoreLastAppliedTimestamp(batch, fsm.State.LastAppliedTimestamp)
 	if err != nil {

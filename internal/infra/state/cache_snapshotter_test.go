@@ -98,6 +98,7 @@ func TestCacheSnapshotter_LegacyBlocksCannotHideColdAttribute(t *testing.T) {
 	require.True(t, replace)
 	batch = store.OpenWriteSession()
 	require.NoError(t, filters.PersistDirtyBlocks(batch))
+	require.NoError(t, bloom.SealProjectionAt(batch, 0))
 	require.NoError(t, batch.Commit())
 	filters.ConfirmPersistedReplacement(epoch)
 	verified, err := bloom.HasVerifiedProjection(store)
@@ -110,6 +111,32 @@ func TestCacheSnapshotter_LegacyBlocksCannotHideColdAttribute(t *testing.T) {
 	require.NoError(t, restartedSnapshotter.RestoreFromStore(store))
 	require.True(t, restarted.IsReady())
 	require.True(t, restarted.FilterForAttrType(dal.SubAttrVolume).MayContain(coldID))
+
+	// Roll back to a binary that does not maintain the seal and starts with
+	// Bloom locally disabled. Its committed attribute write advances the Raft
+	// index but leaves both the blocks and the seal unchanged.
+	rollbackKey := newVolumeKey(domain.AccountKey{LedgerName: "legacy", Account: "rollback"}, "USD/2")
+	rollbackID := attributes.HashU128(rollbackKey.Bytes())
+	batch = store.OpenWriteSession()
+	_, err = registry.Attrs.Volume.Set(batch, rollbackKey.Bytes(), pair)
+	require.NoError(t, err)
+	require.NoError(t, SetAppliedIndex(batch, 1))
+	require.NoError(t, batch.Commit())
+	verified, err = bloom.HasVerifiedProjection(store)
+	require.NoError(t, err)
+	require.False(t, verified, "rollback-era writes must invalidate the old seal")
+
+	reupgraded := bloom.NewFilterSet(cfg, meter)
+	reupgradedSnapshotter, _, _ := newTestCacheSnapshotter(t, reupgraded)
+	defer reupgradedSnapshotter.Stop()
+	reupgradedSnapshotter.Pause()
+	require.NoError(t, reupgradedSnapshotter.RestoreFromStore(store))
+	require.False(t, reupgraded.IsReady())
+	require.True(t, reupgradedSnapshotter.bloomPopulatePending)
+	reupgradedSnapshotter.Resume(store)
+	require.Eventually(t, func() bool {
+		return reupgraded.IsReady() && reupgraded.FilterForAttrType(dal.SubAttrVolume).MayContain(rollbackID)
+	}, 5*time.Second, 10*time.Millisecond)
 }
 
 // TestCacheSnapshotter_StopPreventsBloomRestart protects the ownership

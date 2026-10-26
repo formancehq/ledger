@@ -40,6 +40,7 @@ func TestSynchronizeWithLeaderRestoresCommittedBloomBeforeReplay(t *testing.T) {
 	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig}, &commonpb.PersistedClusterState{Config: committed}))
 	require.NoError(t, SetAppliedIndex(batch, 100))
 	require.NoError(t, filters.PersistDirtyBlocks(batch))
+	require.NoError(t, bloom.SealProjectionAt(batch, 100))
 	require.NoError(t, batch.Commit())
 	_, err = leader.CreateSnapshot()
 	require.NoError(t, err)
