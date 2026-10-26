@@ -3,6 +3,7 @@
   "title": "Concurrency, lifecycle, cancellation, and shutdown",
   "purpose": "Find races, deadlocks, leaks, use-after-close behavior, shutdown corruption, stale callbacks or process-global state, and generation-fencing bugs across Ledger's concurrent startup, shutdown, and leadership transitions.",
   "paths": [
+    "internal/pkg/testpostgres/**",
     "cmd/server/**",
     "internal/bootstrap/**",
     "internal/adapter/grpc/server.go",
@@ -89,6 +90,7 @@
     "docs/ops/deployment.md"
   ],
   "invariants": [
+    "A PostgreSQL mirror gap reread owns its pooled transaction until commit or rollback. NOWAIT lock conflicts return no batch. Caller cancellation must not return a live transaction or SHARE lock to the pool: rollback uses a detached context bounded to five seconds, and pgx closes a connection whose rollback fails. No source transaction survives into translation, preload or Raft application; distinguish this source-session cleanup from the unchanged applied-cursor contract.",
     "Every asynchronous task, callback, registration, and mutable runtime snapshot has one explicit authority token: Fx process lifetime, node run generation, ordered leadership generation, replicated resource identity, local resource-entry identity, pending index version, task invocation, durable cursor, or request/session context. A callback or cached snapshot captured under an older token must be rejected or joined before it can mutate, publish, propose, restart, tear down, or observe a replacement generation.",
     "Process-scoped ownership is defined by the Fx lifecycle: bootstrap hooks, listeners, gRPC/HTTP servers, stores, health workers, metric callbacks, observers, and shared workers must unwind startup failures in dependency order. Start and Stop must be safe under the component's documented call cardinality, and a synchronous Stop or OnStop must not return while its owned goroutines or callbacks can still use dependencies that later hooks close.",
     "The Raft Node, Applier, decoder/committer pipeline, transport, and FSM snapshot/synchronization tasks are bounded by the node run/stop and maintenance gates; after joining the ready processor, terminal shutdown must cancel and join the final leader-ready waiter and synchronous observer callback before FSM cleanup or Run completion, including after prior leadership loss or task failure; the production cluster-config observer must inherit readiness-generation cancellation so its pending proposal does not consume its independent timeout during the join; every in-flight commit must reach its documented drain point before a barrier or dependency close, and request cancellation must not reinterpret already committed work as rolled back.",
@@ -120,6 +122,7 @@
     "Do optional event sinks and disabled-feature implementations obey the same Start, Stop, Close, retry, and flush ownership contract as the default build?"
   ],
   "dynamic_checks_to_consider": [
+    "Inspect the integration-only PostgreSQL gap-cancellation regression in internal/adapter/v2: a real pgx query tracer cancels immediately after successful SHARE lock acquisition, then checks no returned rows, a successful retry with one pooled connection and a subsequent source INSERT without a leaked lock. Preserve independent manager startup-cancellation tests. Use an explicitly supplied disposable native PostgreSQL service when Docker is prohibited locally; otherwise these integration fixtures require Docker.",
     "go test -race ./internal/bootstrap ./internal/adapter/grpc ./internal/application/ctrl ./internal/infra/node ./internal/infra/transport ./internal/pkg/worker ./internal/pkg/tailworker ./internal/pkg/futures ./internal/pkg/signal",
     "go test -race ./internal/application/events ./internal/application/mirror ./internal/application/backup ./internal/infra/backup",
     "go test -race ./internal/application/admission ./internal/application/mirror",
