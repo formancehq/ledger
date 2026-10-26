@@ -172,7 +172,7 @@ func newDeleteSentinelApplier(t *testing.T, dir string) (*testApplierSetup, func
 	}
 	sink := make(LocalResponses, 10)
 	applier, err := NewApplier(fsm, recovery, state.NewSynchronizer(fsm, recovery, dal.NewIncomingRestoreFactory(s)),
-		sp, s, w, logger, meter, 0, 1000, nil, nil, sink)
+		sp, s, w, logger, meter, 0, 1000, nil, noopSnapshotMembership{}, sink)
 	require.NoError(t, err)
 
 	return &testApplierSetup{applier: applier, store: s, wal: w, spool: sp, fsm: fsm,

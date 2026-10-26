@@ -30,6 +30,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
 
+type noopSnapshotMembership struct{}
+
+func (noopSnapshotMembership) SnapshotDonorCandidates() []uint64 { return nil }
+func (noopSnapshotMembership) OnSnapshotInstalled()              {}
+
 func newNoopNotifier(t *testing.T) *MockNotifier {
 	t.Helper()
 
@@ -171,7 +176,7 @@ func newTestApplierSetupWithHandlers(t *testing.T, sink LocalResponses, notifier
 
 	applier, err := NewApplier(
 		fsm, recovery, synchronizer, defaultSpool, pebbleStore, w, logger, meter,
-		0, 1000, nil, nil, sink,
+		0, 1000, nil, noopSnapshotMembership{}, sink,
 	)
 	require.NoError(t, err)
 
