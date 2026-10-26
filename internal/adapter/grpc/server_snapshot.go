@@ -112,56 +112,75 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 	// that is itself resynchronizing is refused outright: the requester
 	// treats FailedPrecondition as final and moves on to another donor
 	// instead of waiting out its PrepareSnapshot budget here.
-	minIdx := req.GetMinAppliedIndex()
+	minAppliedIndex := req.GetMinAppliedIndex()
 	waitStart := time.Now()
-	if err := s.donor.WaitForCheckpointable(ctx, minIdx); err != nil {
+	if err := s.donor.WaitForCheckpointable(ctx, minAppliedIndex); err != nil {
 		if errors.Is(err, state.ErrStoreResynchronizing) {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
 
-		return nil, fmt.Errorf("waiting for FSM to apply index %d: %w", minIdx, err)
+		return nil, fmt.Errorf("waiting for FSM to apply index %d: %w", minAppliedIndex, err)
 	}
 
 	if d := time.Since(waitStart); d > 100*time.Millisecond {
 		s.logger.WithFields(map[string]any{
-			"minAppliedIndex": minIdx,
+			"minAppliedIndex": minAppliedIndex,
 			"duration":        d.String(),
 		}).Infof("FSM caught up to minAppliedIndex for PrepareSnapshot")
 	}
 
 	nodeID := req.GetNodeId()
-	s.prepareMu.Lock()
-	if s.prepareSlots == nil {
-		s.prepareSlots = make(chan struct{}, 1)
-	}
-	if s.preparations == nil {
-		s.preparations = make(map[string]*snapshotPreparation)
-	}
-	if existing, ok := s.preparations[nodeID]; ok {
-		s.prepareMu.Unlock()
-		select {
-		case <-existing.done:
-			return existing.resp, existing.err
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-	prep := &snapshotPreparation{done: make(chan struct{})}
-	s.preparations[nodeID] = prep
-	s.prepareMu.Unlock()
-	defer func() {
+	var prep *snapshotPreparation
+	for {
 		s.prepareMu.Lock()
-		delete(s.preparations, nodeID)
-		close(prep.done)
+		if s.prepareSlots == nil {
+			s.prepareSlots = make(chan struct{}, 1)
+		}
+		if s.preparations == nil {
+			s.preparations = make(map[string]*snapshotPreparation)
+		}
+		if nodeID != "" {
+			if existing, ok := s.preparations[nodeID]; ok {
+				if existing.minAppliedIndex >= minAppliedIndex {
+					s.prepareMu.Unlock()
+					select {
+					case <-existing.done:
+						return existing.resp, existing.err
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
+				}
+				done := existing.done
+				s.prepareMu.Unlock()
+				select {
+				case <-done:
+					continue
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+		}
+		prep = &snapshotPreparation{done: make(chan struct{}), minAppliedIndex: minAppliedIndex}
+		if nodeID != "" {
+			s.preparations[nodeID] = prep
+		}
 		s.prepareMu.Unlock()
-	}()
-	select {
-	case s.prepareSlots <- struct{}{}:
-		defer func() { <-s.prepareSlots }()
-	case <-ctx.Done():
-		prep.err = ctx.Err()
-
-		return nil, prep.err
+		defer func() {
+			s.prepareMu.Lock()
+			if nodeID != "" && s.preparations[nodeID] == prep {
+				delete(s.preparations, nodeID)
+			}
+			close(prep.done)
+			s.prepareMu.Unlock()
+		}()
+		select {
+		case s.prepareSlots <- struct{}{}:
+			defer func() { <-s.prepareSlots }()
+		case <-ctx.Done():
+			prep.err = ctx.Err()
+			return nil, prep.err
+		}
+		break
 	}
 
 	syncName := "follower-sync-" + strconv.FormatUint(s.nextSyncID.Add(1), 10)
