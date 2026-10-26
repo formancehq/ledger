@@ -84,21 +84,25 @@ func TestFinalizeRestoreCompetingOwnerPreservesPublishedCheckpoint(t *testing.T)
 	}()
 	<-beforeClose // The first call owns the generation after preparation and metadata reads.
 
-	_, err := server.FinalizeRestore(context.Background(), &restorepb.FinalizeRestoreRequest{})
-	require.Equal(t, codes.FailedPrecondition, status.Code(err))
-	require.Contains(t, status.Convert(err).Message(), "already running")
-	require.EqualValues(t, 1, entered.Load(), "the competitor must not prepare or publish")
-	marker, err := node.ReadRestoredMarker(server.dataDir)
-	require.NoError(t, err)
-	require.Nil(t, marker)
+	_, competitorErr := server.FinalizeRestore(context.Background(), &restorepb.FinalizeRestoreRequest{})
+	preReleaseEntries := entered.Load()
+	markerBeforeRelease, markerErr := node.ReadRestoredMarker(server.dataDir)
 	server.mu.Lock()
 	retainedStore := server.stagingStore
 	server.mu.Unlock()
-	require.NotNil(t, retainedStore, "the rejected call must not close the owner's handle")
 
 	releaseOnce.Do(func() { close(release) })
-	require.NoError(t, <-firstDone)
+	firstErr := <-firstDone
+	// Check the durable result first. Without the ownership guard, the second
+	// call succeeds and the delayed first call deletes its checkpoint here.
 	requirePublishedRestore(t, server)
+	require.Equal(t, codes.FailedPrecondition, status.Code(competitorErr))
+	require.Contains(t, status.Convert(competitorErr).Message(), "already running")
+	require.EqualValues(t, 1, preReleaseEntries, "the competitor must not prepare or publish")
+	require.NoError(t, markerErr)
+	require.Nil(t, markerBeforeRelease)
+	require.NotNil(t, retainedStore, "the rejected call must not close the owner's handle")
+	require.NoError(t, firstErr)
 }
 
 func TestRestoreShutdownWaitsForActiveFinalizer(t *testing.T) {
