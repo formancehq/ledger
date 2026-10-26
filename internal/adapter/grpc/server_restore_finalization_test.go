@@ -205,38 +205,73 @@ func TestFinalizeRestoreMarkerFailureRollsBackCheckpoint(t *testing.T) {
 func TestFinalizeRestorePublishesRebuiltPostCheckpointDelta(t *testing.T) {
 	t.Parallel()
 
-	server := stagedFinalizationServer(t)
-	server.mu.Lock()
-	store := server.stagingStore
-	server.mu.Unlock()
-	batch := store.OpenWriteSession()
-	logKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(1).Build()
-	auditKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(1).Build()
-	require.NoError(t, batch.SetProto(logKey, &commonpb.Log{
-		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{Name: "delta-ledger", Id: 2},
-		}},
-	}))
-	require.NoError(t, batch.SetProto(auditKey, &auditpb.AuditEntry{
-		Sequence: 1,
-		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{
-			MinLogSequence: 1, MaxLogSequence: 1,
-		}},
-	}))
-	require.NoError(t, batch.Commit())
-	require.NoError(t, backup.RebuildDelta(t.Context(), noopLogger{}, store, 0, 0))
+	server := NewRestoreServiceServer(t.TempDir(), "target-cluster", 1, noopLogger{})
+	t.Cleanup(server.Shutdown)
+	source, err := dal.OpenDirect(filepath.Join(t.TempDir(), "source"), noopLogger{})
+	require.NoError(t, err)
+	writeHistory := func(batch *dal.WriteSession, seq uint64, name string, id uint32) {
+		logKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(seq).Build()
+		auditKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(seq).Build()
+		require.NoError(t, batch.SetProto(logKey, &commonpb.Log{
+			Sequence: seq,
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
+				CreateLedger: &commonpb.CreatedLedgerLog{Name: name, Id: id},
+			}},
+		}))
+		require.NoError(t, batch.SetProto(auditKey, &auditpb.AuditEntry{
+			Sequence: seq,
+			Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{
+				MinLogSequence: seq, MaxLogSequence: seq,
+			}},
+		}))
+	}
 
-	_, err := server.FinalizeRestore(t.Context(), &restorepb.FinalizeRestoreRequest{})
+	// Capture a real Pebble checkpoint at sequence 1. Its projection already
+	// contains the prefix ledger, while the second creation exists only in the
+	// later log/audit delta.
+	batch := source.OpenWriteSession()
+	require.NoError(t, state.SaveLedger(batch, "restored-ledger", &commonpb.LedgerInfo{Name: "restored-ledger"}))
+	writeHistory(batch, 1, "restored-ledger", 1)
+	require.NoError(t, batch.Commit())
+	checkpointPath, err := source.CreateTemporaryCheckpoint("before-delta")
+	require.NoError(t, err)
+	require.NoError(t, dal.HardLink(checkpointPath, server.stagingDir()))
+	require.NoError(t, source.Close())
+
+	store, err := dal.OpenDirect(server.stagingDir(), noopLogger{})
+	require.NoError(t, err)
+	server.stagingStore = store
+	server.downloaded = true
+	server.validated = true
+	batch = store.OpenWriteSession()
+	writeHistory(batch, 2, "delta-ledger", 2)
+	require.NoError(t, batch.Commit())
+	_, err = query.GetLedgerByName(t.Context(), store, "delta-ledger")
+	require.Error(t, err, "the delta projection must be absent before replay")
+	require.NoError(t, backup.RebuildDelta(t.Context(), noopLogger{}, store, 1, 1))
+
+	_, err = server.FinalizeRestore(t.Context(), &restorepb.FinalizeRestoreRequest{})
 	require.NoError(t, err)
 	marker, err := node.ReadRestoredMarker(server.dataDir)
 	require.NoError(t, err)
 	require.NotNil(t, marker)
 	checkpoint, err := dal.OpenDirect(filepath.Join(server.dataDir, "checkpoints", "0"), noopLogger{})
 	require.NoError(t, err)
-	info, err := query.GetLedgerByName(t.Context(), checkpoint, "delta-ledger")
-	require.NoError(t, err)
-	require.Equal(t, "delta-ledger", info.GetName())
+	for _, name := range []string{"restored-ledger", "delta-ledger"} {
+		info, queryErr := query.GetLedgerByName(t.Context(), checkpoint, name)
+		require.NoError(t, queryErr)
+		require.Equal(t, name, info.GetName())
+	}
+	for _, seq := range []uint64{1, 2} {
+		logKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(seq).Build()
+		auditKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(seq).Build()
+		log, readErr := dal.ReadProto[*commonpb.Log](checkpoint, logKey)
+		require.NoError(t, readErr)
+		require.Equal(t, seq, log.GetSequence())
+		audit, readErr := dal.ReadProto[*auditpb.AuditEntry](checkpoint, auditKey)
+		require.NoError(t, readErr)
+		require.Equal(t, seq, audit.GetSequence())
+	}
 	require.NoError(t, checkpoint.Close())
 	requirePublishedRestore(t, server)
 }
