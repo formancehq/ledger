@@ -140,7 +140,14 @@ type RestoreServiceServerImpl struct {
 	downloaded     bool
 	validating     bool
 	validated      bool
-	finalizing     bool
+	// finalizing claims the staged generation before preparation and remains set
+	// until publication and cleanup return. It is protected by mu.
+	finalizing bool
+	// beforeFinalizePrepare is a test barrier immediately after the claim.
+	beforeFinalizePrepare func()
+	// beforeFinalizeClose is a test barrier after preparation and metadata reads.
+	// It is nil in production; finalizing must remain owned while it runs.
+	beforeFinalizeClose func()
 
 	// job holds the single active download (if any). Only one job runs at a
 	// time because the staging directory is a singleton. Successive Start
@@ -476,6 +483,9 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	}()
 
 	stagingDir := s.stagingDir()
+	if s.beforeFinalizePrepare != nil {
+		s.beforeFinalizePrepare()
+	}
 
 	// Prepare Global-zone keys (applied index pinned to the restore-genesis
 	// index, cluster-local state reset) so the staged backup is restartable
@@ -497,6 +507,10 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	lastAppliedTimestamp, err := query.ReadLastAppliedTimestamp(store)
 	if err != nil {
 		return nil, fmt.Errorf("getting last applied timestamp: %w", err)
+	}
+
+	if s.beforeFinalizeClose != nil {
+		s.beforeFinalizeClose()
 	}
 
 	// Close the staging Pebble before the filesystem move. The hard-link
