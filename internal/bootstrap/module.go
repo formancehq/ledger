@@ -1348,16 +1348,20 @@ func joinPreflightHook(cfg Config, logger logging.Logger) fx.Hook {
 }
 
 func membershipRefreshHook(cfg Config, logger logging.Logger) fx.Hook {
+	var cancel context.CancelFunc
+
 	return fx.Hook{
-		OnStart: func(ctx context.Context) error {
+		OnStart: func(context.Context) error {
 			logger.WithFields(map[string]any{
 				"nodeID":         cfg.RaftConfig.NodeID,
 				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
 				"serviceAddress": cfg.ServiceAdvertiseAddr(),
 			}).Infof("Restart mode: refreshing membership capabilities")
 
+			refreshCtx, refreshCancel := context.WithCancel(context.Background())
+			cancel = refreshCancel
 			go func() {
-				if err := tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logger); err != nil {
+				if err := tryRefreshMembership(refreshCtx, cfg, cfg.TLSConfig, logger); err != nil {
 					// TODO(rc.3): replace this compatibility fallback with explicit
 					// startup error handling once every supported peer implements
 					// RefreshMembership. The leader-side reconciler below keeps
@@ -1366,6 +1370,13 @@ func membershipRefreshHook(cfg Config, logger logging.Logger) fx.Hook {
 					logger.WithFields(map[string]any{"error": err}).Errorf("Membership capability refresh failed; continuing with conservative evidence")
 				}
 			}()
+
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			if cancel != nil {
+				cancel()
+			}
 
 			return nil
 		},
