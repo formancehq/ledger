@@ -46,6 +46,8 @@ func TestCacheSnapshotter_DisabledBloomNeverPopulatesOnSync(t *testing.T) {
 	snapshotter2.Pause()
 	require.True(t, snapshotter2.bloomPopulatePending)
 	filters.Rebuild(nil)
+	snapshotter2.StartAsyncBloomPopulate(store2, "committed disable")
+	require.False(t, snapshotter2.bloomPopulatePending, "disable must cancel queued work before Resume")
 	snapshotter2.Resume(store2)
 	snapshotter2.Stop()
 	require.False(t, filters.IsReady())
