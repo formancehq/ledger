@@ -55,7 +55,7 @@ audited SHA; historical line numbers in subsystem docs are not stable evidence.
 | Translation | `internal/adapter/v2/translator.go`, `translator_test.go`, `translator_rewrite_test.go` | Four supported business variants; exact amount/target/metadata conversion, source dates, synthesized gaps and configured rewrite output. |
 | CEL | `internal/adapter/v2/celrewrite/`, `internal/application/admission/validate_order.go`, `misc/proto/common.proto` | Rule compilation, scope/action oneofs, order/stop, address and metadata actions, drop, expression failure policy and typed coercion. |
 | Worker | `internal/application/mirror/worker.go`, `worker_test.go`, `worker_rotation_test.go`, `manager.go` | Applied-boundary resume, speculative translation/prefetch, confirmation and error invalidation; manager is context for the mode transition only. |
-| Apply and promotion | `internal/domain/processing/processor_mirror.go`, `processor_mirror_test.go`, `processor_apply.go`, `misc/proto/raft_cmd.proto` | Mirror mode gate, source prefix, skipped transaction IDs, imported fields, promotion and the maintenance whitelist in `isMirrorSafeApply`. |
+| Apply and promotion | `internal/application/admission/mirror_promotion*.go`, `internal/domain/processing/processor_mirror.go`, `processor_mirror_test.go`, `processor_apply.go`, `misc/proto/raft_cmd.proto` | Admission eligibility, mirror mode gate, source prefix, skipped transaction IDs, imported fields, promotion and the maintenance whitelist in `isMirrorSafeApply`. |
 | Progress | `internal/query/mirror.go`, `mirror_test.go`, `internal/infra/state/machine_technical_updates.go` | Applied cursor versus observed head and error reporting; reporting does not authorize consumption. |
 | Destination integration | `tests/e2e/cluster/mirror_test.go` | Existing HTTP fixture, import, rewrite/drop, source insertion dates and promotion followed by normal writes. |
 
@@ -180,12 +180,14 @@ ingestion boundary. Use
 to distinguish these roles, and load routed FSM/storage documentation if a
 hypothesis requires tracing rollback or durable writes beyond this boundary.
 
-Promotion sets the ledger to `NORMAL`, clears its source and emits the named
+Promotion admission requires an existing mirror with an observed nonzero source
+head, an applied boundary at or beyond it, and no recorded sync error. This
+also rejects a create-then-promote batch before the new mirror is visible.
+Apply sets the ledger to `NORMAL`, clears its source and emits the named
 promotion log. Subsequent mirror ingest rejects at the mode gate; normal writes
 continue from retained boundaries. The manager reconciles the committed change.
-No source-freeze, zero-lag admission check or atomic v2/v3 handoff is established
-by `processPromoteLedger`. Manual cutover coordination is not an automatic
-product guarantee. Likewise, "mirror read-only" does not exclude the explicit
+The observed head is not a source-freeze or atomic v2/v3 handoff certificate;
+manual cutover coordination remains necessary. Likewise, "mirror read-only" does not exclude the explicit
 schema/index/account-type maintenance operations allowed by `isMirrorSafeApply`.
 
 ## Ownership and deduplication

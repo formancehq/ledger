@@ -2,11 +2,39 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"maps"
+	"strings"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 )
+
+// The model's mirror source is deliberately unconfigured. The oracle models
+// committed FSM orders, while promotion now has an admission-only eligibility
+// check; this exact rejection leaves the entire bulk uncommitted.
+func isUnobservedMirrorPromotion(bulk oracle.Bulk, err error) bool {
+	if status.Code(err) != codes.FailedPrecondition {
+		return false
+	}
+	message := status.Convert(err).Message()
+	for _, req := range bulk.Requests {
+		promote := req.GetPromoteLedger()
+		if promote == nil {
+			continue
+		}
+		prefix := fmt.Sprintf("mirror %s is not caught up: cursor=0 head=0 sync_error=", promote.GetLedger())
+		if strings.HasSuffix(message, prefix+"false") || strings.HasSuffix(message, prefix+"true") {
+			return true
+		}
+	}
+
+	return false
+}
 
 // validateLifecycleLog checks the top-level payloads that carry no ledger-local
 // log. An absent payload is never equivalent to a false maintenance toggle.

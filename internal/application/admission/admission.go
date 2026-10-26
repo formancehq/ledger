@@ -662,6 +662,9 @@ func (a *Admission) prepareBatchOrders(ctx context.Context, batch verifiedBatch)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
+	if err := a.checkMirrorPromotions(ctx, orders, admPlan.key); err != nil {
+		return orders, nil, nil, err
+	}
 
 	// Metadata shape was checked during conversion. Replicated metadata policy
 	// belongs to the FSM, after idempotency lookup: fresh refusals are audited,
