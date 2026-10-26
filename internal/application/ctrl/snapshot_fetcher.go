@@ -211,6 +211,7 @@ func isSessionExpired(err error) bool {
 }
 
 func (f *grpcSnapshotFetcher) checkSnapshotReadiness(ctx context.Context, client snapshotpb.SnapshotServiceClient, minAppliedIndex uint64) error {
+	// TODO(v3.0.0-rc.1): remove this compatibility probe before v3.0.0-rc.2.
 	probeCtx, cancel := context.WithTimeout(ctx, snapshotReadinessTimeout)
 	defer cancel()
 
