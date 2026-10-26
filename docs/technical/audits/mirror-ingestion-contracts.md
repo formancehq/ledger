@@ -109,9 +109,12 @@ before ingestion replaces the sequence storage transactionally. Existing
 backends discard unissued reservations when they next access that sequence.
 `TestPostgresSourceCacheChangeInvalidatesReservations` keeps the original
 allocating session alive across the cache change and a locked gap read, then
-checks that its next inserted row has a fresh ID above the mirrored boundary.
-This is distinct from application-held IDs already returned by `nextval`:
-those must not be retained for later insertion across source preparation.
+checks that its next inserted row has ID 6 after fetching ID 5. A second fetch
+with the manually supplied `afterID=5` returns ID 6. This proves source-adapter
+and sequence-allocation behavior, not worker/FSM application or a durable
+applied boundary. This is distinct from application-held IDs already returned
+by `nextval`: those must not be retained for later insertion across source
+preparation.
 See the [source prerequisite evidence](../architecture/subsystems/events-mirror/mirror.md#postgresql-visibility-and-permanent-gaps).
 
 Contiguous pages use one bounded query. A page with a hole is discarded and

@@ -148,11 +148,13 @@ option makes `AlterSequence` replace the sequence storage transactionally;
 unissued cache before `nextval` can return it. See the
 [PostgreSQL 16 implementation](https://github.com/postgres/postgres/blob/REL_16_4/src/backend/commands/sequence.c).
 `TestPostgresSourceCacheChangeInvalidatesReservations` reserves a larger cache
-in an idle session, changes it from another session, mirrors a higher row, and
-then verifies that the original session allocates a fresh higher ID rather
-than inserting behind the applied source boundary. This covers backend-held
-unissued reservations; IDs already returned to application code are outside
-that mechanism. Do not retain such IDs for later insertion across source
+in an idle session, changes it from another session, fetches source log ID 5,
+then verifies that the original session allocates ID 6 and that a fetch with
+the manually supplied `afterID=5` returns it. This is source-adapter and
+sequence-allocation coverage; it does not run the worker or FSM or establish a
+durable applied boundary. It covers backend-held unissued reservations;
+IDs already returned to application code are outside that mechanism.
+Do not retain such IDs for later insertion across source
 preparation, or change sequence settings during ingestion.
 
 The lock covers the bucket, including other ledgers sharing it, and lasts only
