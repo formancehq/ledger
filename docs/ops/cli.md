@@ -2898,6 +2898,76 @@ ledgerctl cluster transfer-leader 2
 ledgerctl cluster transfer-leader 3 --timeout 5s
 ```
 
+#### cluster add-learner
+
+Add a non-voting (learner) node to the Raft cluster. The request is forwarded to the current leader.
+
+```bash
+ledgerctl cluster add-learner <node-id> <raft-address> <service-address> <instance-id> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- The request is forwarded to the current leader if sent to a follower
+- `instance-id` is the 32-character hexadecimal encoding of the target node's 16-byte persisted `INSTANCE_ID` file
+- An existing member with replicated progress rejects a different identity with `FailedPrecondition`; retrying the same active identity returns `AlreadyExists`. With no replicated progress, a different identity refreshes the registration.
+- For stale progress, retire the old instance, remove its membership, then retry. If quorum is unavailable, use the leader-only `cluster remove-node --force` procedure in [Cluster operations](./cluster-operations.md), ensuring the retired instance cannot rejoin.
+- The leader proposes a ConfChange to add the node as a learner (non-voting member)
+- Once committed, all nodes add the learner to their transport and service pool
+- The learner receives log entries and snapshots but cannot vote or become leader
+
+**Example:**
+
+```bash
+# Read the INSTANCE_ID from the target node's configured --wal-dir (default: ./wal).
+# When running under the Formance Operator, the mount path is /data/raft by default.
+WAL_DIR=${WAL_DIR:-./wal}
+INSTANCE_ID_HEX=$(od -An -tx1 "$WAL_DIR/INSTANCE_ID" | tr -d ' \n')
+
+# Add node 4 as a learner
+ledgerctl cluster add-learner 4 node-4:7777 node-4:8888 "$INSTANCE_ID_HEX"
+
+# Add node 5 as a learner - read its own WAL directory for its unique INSTANCE_ID.
+# Reusing node-4 identity here would register node-5 under the wrong incarnation.
+NODE5_WAL_DIR=${NODE5_WAL_DIR:-./wal}
+NODE5_INSTANCE_ID_HEX=$(od -An -tx1 "$NODE5_WAL_DIR/INSTANCE_ID" | tr -d ' \n')
+ledgerctl cluster add-learner 5 node-5:7777 node-5:8888 "$NODE5_INSTANCE_ID_HEX" --timeout 30s
+```
+
+#### cluster promote-learner
+
+Promote a learner (non-voting) node to a full voter in the Raft cluster. The request is forwarded to the leader.
+
+```bash
+ledgerctl cluster promote-learner <node-id> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout` | `30s` | Request timeout |
+
+**Behavior:**
+- The request is forwarded to the current leader if sent to a follower
+- The leader proposes a ConfChange to promote the learner to a voter
+- Once committed, the node participates in elections and can become leader
+
+**Example:**
+
+```bash
+# Promote learner node 4 to voter
+ledgerctl cluster promote-learner 4
+
+# Promote with custom timeout
+ledgerctl cluster promote-learner 5 --timeout 60s
+```
+
 #### cluster remove-node
 
 Remove a node (voter or learner) from the Raft cluster. The request is forwarded to the leader. Cannot remove the leader itself; transfer leadership first.
