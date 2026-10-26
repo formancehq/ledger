@@ -11,7 +11,7 @@ func TestAddLearnerPathsRejectInvalidInstanceIDBeforeRaftAccess(t *testing.T) {
 	t.Parallel()
 
 	n := &Node{}
-	require.ErrorContains(t, n.AddLearner(context.Background(), 1, "r:1", "s:1", nil), "instance_id must be 16 bytes")
+	require.ErrorContains(t, n.AddLearner(context.Background(), 1, "r:1", "s:1", nil, nil), "instance_id must be 16 bytes")
 	require.ErrorContains(t, n.JoinAsLearner(context.Background(), 1, "r:1", "s:1", []byte("short"), nil), "instance_id must be 16 bytes")
 }
 
