@@ -205,3 +205,14 @@ bash scripts/ai-audit-challenge <audit-result.json>
 
 The same clean HEAD must be used for both passes. Manifest work must not launch
 the product audit. Jira publication and fixes remain separately authorized.
+
+## Snapshot delivery result publishers
+
+A sent snapshot result belongs to the peer connection's lifetime and is consumed
+by the node's orchestrate owner. The bounded result queue must backpressure
+instead of silently losing the only event that releases `StateSnapshot`. Peer
+removal cancels its publishers before joining the connection; transport stop
+releases dispatcher publishers as well. Delayed acknowledgement and abandoned
+pending-response cleanup must produce at most one snapshot outcome per attempt.
+Exercise both connection rejection/recovery and cancellation while no result
+consumer is available; transport acceptance alone does not prove FSM readiness.

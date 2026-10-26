@@ -188,6 +188,44 @@ func (c *MockTransportSendCall) DoAndReturn(f func([]*raftpb.Message)) *MockTran
 	return c
 }
 
+// SnapshotStatus mocks base method.
+func (m *MockTransport) SnapshotStatus() <-chan SnapshotStatus {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SnapshotStatus")
+	ret0, _ := ret[0].(<-chan SnapshotStatus)
+	return ret0
+}
+
+// SnapshotStatus indicates an expected call of SnapshotStatus.
+func (mr *MockTransportMockRecorder) SnapshotStatus() *MockTransportSnapshotStatusCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SnapshotStatus", reflect.TypeOf((*MockTransport)(nil).SnapshotStatus))
+	return &MockTransportSnapshotStatusCall{Call: call}
+}
+
+// MockTransportSnapshotStatusCall wrap *gomock.Call
+type MockTransportSnapshotStatusCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockTransportSnapshotStatusCall) Return(arg0 <-chan SnapshotStatus) *MockTransportSnapshotStatusCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockTransportSnapshotStatusCall) Do(f func() <-chan SnapshotStatus) *MockTransportSnapshotStatusCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockTransportSnapshotStatusCall) DoAndReturn(f func() <-chan SnapshotStatus) *MockTransportSnapshotStatusCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // Unreachable mocks base method.
 func (m *MockTransport) Unreachable() <-chan uint64 {
 	m.ctrl.T.Helper()
