@@ -556,7 +556,7 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 	// rebuild synchronously and returns once IsReady() is true -- closes
 	// the EN-1410 window where replayWAL would race the rebuild and drive
 	// rotations while !IsReady.
-	if s.bloomFilters != nil {
+	if s.bloomFilters != nil && s.bloomFilters.Enabled() {
 		if err := s.restoreBloomFilters(store); err != nil {
 			return fmt.Errorf("restoring bloom filters: %w", err)
 		}
@@ -791,9 +791,9 @@ func (s *CacheSnapshotter) restoreBloomFilters(store dal.RecoveryReader) error {
 	}
 
 	if configDrift {
-		// The node booted with CLI bloom settings that disable an attribute the
-		// persisted config had enabled. Those old-but-valid blocks belong to no
-		// enabled filter, so the persisted set is stale for the current config.
+		// The incoming checkpoint can contain blocks for an attribute disabled
+		// by its committed config. Those old-but-valid blocks belong to no
+		// enabled filter, so the persisted set is stale for that config.
 		// Take the full-rebuild path (async attribute scan) instead of trusting
 		// the persisted blocks; do NOT abort, or the node could never boot far
 		// enough to propose the config update that purges and rebuilds them.

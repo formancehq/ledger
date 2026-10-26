@@ -80,11 +80,21 @@ Dirty blocks are flushed to Pebble at every batch commit:
 
 ### Boot path — populate from the attribute store
 
+The active filter set is constructed from the persisted, Raft-committed
+`ClusterConfig`, never the node's CLI Bloom settings. An empty configuration
+still creates a lifecycle handle with no enabled filters, so a later committed
+update can enable Bloom without restarting. Recovery (including follower
+checkpoint installation) rebuilds that handle from `LastClusterConfig` before
+cache restore or WAL replay. A committed change purges old Bloom blocks and
+publishes a not-ready snapshot before a full population; admission then reads
+Pebble until the rebuild completes. Local Bloom settings are only desired
+values used by the leader's cluster-config reconciler.
+
 `PopulateFromStore()` (`bloom.go:536`) scans the attribute zones at boot and re-adds every key to the relevant filter. This handles three cases:
 
 1. The node has never run before (no persisted bloom rows).
 2. A snapshot was installed — the bloom rows from the donor node may not match this node's view.
-3. Persisted rows exist for a known attribute type disabled by the current configuration, so the enabled filters require a full rescan.
+3. Persisted rows exist for a known attribute type disabled by the committed configuration, so the enabled filters require a full rescan.
 
 The populate runs **asynchronously** after boot (`StartAsyncBloomPopulate` in `cache_snapshotter.go`). Until it completes, the bloom is in a "not-ready" state and the plan builder ignores it — meaning preload behaves as if the bloom didn't exist and every cache miss reaches Pebble. `SetReadyIfEpoch()` (`bloom.go`) closes the window via an epoch number, preventing a stale rebuild from publishing over a fresh one.
 

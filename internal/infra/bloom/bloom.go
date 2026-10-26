@@ -779,13 +779,9 @@ func newFilter(expectedKeys uint, fpRate float64, attrCode byte, meter metric.Me
 	}
 }
 
-// NewFilterSet creates a new FilterSet with per-type bloom filters from a
-// ClusterConfig. Returns nil if no bloom filter type is enabled.
+// NewFilterSet creates a stable lifecycle handle. Even a disabled committed
+// configuration needs a handle so a later committed update can enable filters.
 func NewFilterSet(cfg *commonpb.ClusterConfig, meter metric.Meter) *FilterSet {
-	if !BloomConfigEnabled(cfg) {
-		return nil
-	}
-
 	if meter == nil {
 		meter = noop.Meter{}
 	}
@@ -808,6 +804,21 @@ func NewFilterSet(cfg *commonpb.ClusterConfig, meter metric.Meter) *FilterSet {
 	fs.filters.Store(snap)
 
 	return fs
+}
+
+// Enabled reports whether the current committed snapshot has any filters.
+func (fs *FilterSet) Enabled() bool {
+	snap := fs.filters.Load()
+	if snap == nil {
+		return false
+	}
+	for _, filter := range snap.allFilters() {
+		if filter != nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 // attrCounter wraps a counter to always include a fixed attribute.
