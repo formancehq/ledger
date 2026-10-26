@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -128,70 +129,74 @@ func TestAttributeLoader_LoadOrWait_EpochMismatchReloadsEvenWithLowerBoundary(t 
 func TestAttributeLoader_LoadOrWait_ConcurrentLoads(t *testing.T) {
 	t.Parallel()
 
-	loader := NewAttributeLoader[int]()
-	key := attributes.NewU128(1, 2)
+	synctest.Test(t, func(t *testing.T) {
+		loader := NewAttributeLoader[int]()
+		key := attributes.NewU128(1, 2)
 
-	var loadCount atomic.Int32
+		var loadCount atomic.Int32
 
-	loadStarted := make(chan struct{})
-	loadContinue := make(chan struct{})
+		loadStarted := make(chan struct{})
+		loadContinue := make(chan struct{})
 
-	// Start first goroutine that will hold the load
-	var wg sync.WaitGroup
+		// Start first goroutine that will hold the load
+		var wg sync.WaitGroup
 
-	wg.Go(func() {
-		result, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
-			loadCount.Add(1)
-			close(loadStarted)
-			<-loadContinue // Wait for signal to continue
-
-			return 42, nil
-		})
-		require.NoError(t, err)
-		assert.Equal(t, 42, result.Value)
-		assert.True(t, result.FromLoad)
-	})
-
-	// Wait for first load to start
-	<-loadStarted
-
-	// Start multiple concurrent goroutines that should wait
-	const numWaiters = 5
-	wg.Add(numWaiters)
-	results := make(chan *LoadResult[int], numWaiters)
-
-	for range numWaiters {
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			result, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
 				loadCount.Add(1)
+				close(loadStarted)
+				<-loadContinue // Wait for signal to continue
 
-				return 999, nil // Should never be called
+				return 42, nil
 			})
 			require.NoError(t, err)
+			assert.Equal(t, 42, result.Value)
+			assert.True(t, result.FromLoad)
+		})
 
-			results <- result
-		}()
-	}
+		// Wait for first load to start
+		<-loadStarted
 
-	// Wait to confirm no extra loads are triggered while first load is in progress
-	require.Never(t, func() bool { return loadCount.Load() > 1 }, 50*time.Millisecond, 10*time.Millisecond)
+		// Start multiple concurrent goroutines that should wait
+		const numWaiters = 5
+		wg.Add(numWaiters)
+		results := make(chan *LoadResult[int], numWaiters)
 
-	// Release the first load
-	close(loadContinue)
+		for range numWaiters {
+			go func() {
+				defer wg.Done()
 
-	wg.Wait()
-	close(results)
+				result, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+					loadCount.Add(1)
 
-	// All waiters should have received the cached value
-	for result := range results {
-		assert.Equal(t, 42, result.Value, "Waiters should get cached value")
-		assert.False(t, result.FromLoad, "Waiters should not have loaded")
-	}
+					return 999, nil // Should never be called
+				})
+				require.NoError(t, err)
 
-	// Load function should only be called once
-	assert.Equal(t, int32(1), loadCount.Load(), "Load function should be called exactly once")
+				results <- result
+			}()
+		}
+
+		// Once Wait returns, every waiter is parked on the in-flight load:
+		// none of them triggered an extra load.
+		synctest.Wait()
+		require.Equal(t, int32(1), loadCount.Load())
+
+		// Release the first load
+		close(loadContinue)
+
+		wg.Wait()
+		close(results)
+
+		// All waiters should have received the cached value
+		for result := range results {
+			assert.Equal(t, 42, result.Value, "Waiters should get cached value")
+			assert.False(t, result.FromLoad, "Waiters should not have loaded")
+		}
+
+		// Load function should only be called once
+		assert.Equal(t, int32(1), loadCount.Load(), "Load function should be called exactly once")
+	})
 }
 
 func TestAttributeLoader_LoadOrWait_Error(t *testing.T) {
@@ -226,67 +231,68 @@ func TestAttributeLoader_LoadOrWait_Error(t *testing.T) {
 func TestAttributeLoader_LoadOrWait_ErrorReleasesWaiters(t *testing.T) {
 	t.Parallel()
 
-	loader := NewAttributeLoader[int]()
-	key := attributes.NewU128(1, 2)
+	synctest.Test(t, func(t *testing.T) {
+		loader := NewAttributeLoader[int]()
+		key := attributes.NewU128(1, 2)
 
-	loadStarted := make(chan struct{})
-	loadContinue := make(chan struct{})
+		loadStarted := make(chan struct{})
+		loadContinue := make(chan struct{})
 
-	// Start first goroutine that will fail
-	var wg sync.WaitGroup
+		// Start first goroutine that will fail
+		var wg sync.WaitGroup
 
-	wg.Go(func() {
-		_, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
-			close(loadStarted)
-			<-loadContinue
+		wg.Go(func() {
+			_, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+				close(loadStarted)
+				<-loadContinue
 
-			return 0, errors.New("load failed")
+				return 0, errors.New("load failed")
+			})
+			require.Error(t, err)
 		})
-		require.Error(t, err)
-	})
 
-	// Wait for first load to start
-	<-loadStarted
+		// Wait for first load to start
+		<-loadStarted
 
-	// Start waiter
-	wg.Add(1)
+		// Start waiter
+		wg.Add(1)
 
-	waiterDone := make(chan struct{})
+		waiterDone := make(chan struct{})
 
-	go func() {
-		defer wg.Done()
-		// This should wait, then try to load again since the first one failed
-		result, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
-			return 42, nil
-		})
-		require.NoError(t, err)
-		assert.Equal(t, 42, result.Value)
-		assert.True(t, result.FromLoad, "Should load since previous failed")
-		close(waiterDone)
-	}()
+		go func() {
+			defer wg.Done()
+			// This should wait, then try to load again since the first one failed
+			result, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+				return 42, nil
+			})
+			require.NoError(t, err)
+			assert.Equal(t, 42, result.Value)
+			assert.True(t, result.FromLoad, "Should load since previous failed")
+			close(waiterDone)
+		}()
 
-	// Wait to confirm waiter hasn't completed yet (it should be blocked)
-	require.Never(t, func() bool {
+		// Once Wait returns the waiter is parked on the in-flight load; it
+		// must not have completed yet.
+		synctest.Wait()
 		select {
 		case <-waiterDone:
-			return true
+			t.Fatal("waiter completed while the first load was still in flight")
 		default:
-			return false
 		}
-	}, 50*time.Millisecond, 10*time.Millisecond)
 
-	// Release the first load (which will fail)
-	close(loadContinue)
+		// Release the first load (which will fail)
+		close(loadContinue)
 
-	// Wait for completion
-	select {
-	case <-waiterDone:
-		// Success
-	case <-time.After(2 * time.Second):
-		t.Fatal("Waiter did not complete in time - may be deadlocked")
-	}
+		// Wait for completion
+		select {
+		case <-waiterDone:
+			// Success
+		case <-time.After(2 * time.Second):
+			t.Fatal("Waiter did not complete in time - may be deadlocked")
+		}
 
-	wg.Wait()
+		wg.Wait()
+	})
 }
 
 func TestAttributeLoader_Release(t *testing.T) {

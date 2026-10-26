@@ -56,7 +56,7 @@ func (s *snapshotDeliveryServer) StreamMessages(stream grpc.BidiStreamingServer[
 				return err
 			}
 			success := true
-			if m.GetType() == raftpb.MsgSnap && s.attempts.Add(1) == 1 {
+			if s.attempts.Add(1) == 1 {
 				switch s.mode {
 				case "rejected":
 					success = false
@@ -66,16 +66,33 @@ func (s *snapshotDeliveryServer) StreamMessages(stream grpc.BidiStreamingServer[
 			}
 			responses = append(responses, &rafttransportpb.RaftResponseMessage{RequestId: message.GetId(), Success: success})
 		}
+		if s.mode == "duplicate" {
+			responses = append(responses, responses...)
+		}
 		if err := stream.Send(&rafttransportpb.SendMessageResponse{Message: &rafttransportpb.SendMessageResponse_Raft{Raft: &rafttransportpb.RaftResponseBatch{Messages: responses}}}); err != nil {
 			return err
 		}
 	}
 }
 
-func TestTransportReportsSentSnapshotDelivery(t *testing.T) {
+func TestTransportReportsMessageDelivery(t *testing.T) {
 	t.Parallel()
-	for _, mode := range []string{"accepted", "rejected", "closed"} {
-		t.Run(mode, func(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		messageType raftpb.MessageType
+		mode        string
+	}{
+		{"snapshot duplicate", raftpb.MsgSnap, "duplicate"},
+		{"heartbeat duplicate", raftpb.MsgHeartbeat, "duplicate"},
+		{"snapshot accepted", raftpb.MsgSnap, "accepted"},
+		{"snapshot rejected", raftpb.MsgSnap, "rejected"},
+		{"snapshot closed", raftpb.MsgSnap, "closed"},
+		{"heartbeat accepted", raftpb.MsgHeartbeat, "accepted"},
+		{"heartbeat rejected", raftpb.MsgHeartbeat, "rejected"},
+		{"heartbeat closed", raftpb.MsgHeartbeat, "closed"},
+	} {
+		mode := tc.mode
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
 			require.NoError(t, err)
@@ -107,30 +124,39 @@ func TestTransportReportsSentSnapshotDelivery(t *testing.T) {
 					t.Fatal("peer stream did not start")
 				}
 			}
-			waitStatus := func(expected raft.SnapshotStatus) {
+			waitStatus := func(expected bool) {
 				t.Helper()
 				select {
-				case result := <-tr.SnapshotStatus():
-					require.Equal(t, SnapshotStatus{PeerID: 1, Status: expected}, result)
+				case result := <-tr.DeliveryResults():
+					require.Equal(t, DeliveryResult{PeerID: 1, Type: tc.messageType, Success: expected}, result)
 				case <-ctx.Done():
 					t.Fatal("sent snapshot did not produce a delivery result")
 				}
 			}
-			snapshot := []*raftpb.Message{{Type: new(raftpb.MsgSnap), From: proto.Uint64(3), To: proto.Uint64(1), Snapshot: &raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(36), Term: proto.Uint64(2)}}}}
+			snapshot := []*raftpb.Message{{Type: new(tc.messageType), From: proto.Uint64(3), To: proto.Uint64(1), Snapshot: &raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(36), Term: proto.Uint64(2)}}}}
 			waitStream()
 			tr.Send(snapshot, t.Context().Done())
-			if mode == "accepted" {
-				waitStatus(raft.SnapshotFinish)
+			if mode == "accepted" || mode == "duplicate" {
+				waitStatus(true)
 				require.Equal(t, int32(1), peer.attempts.Load())
+				if mode == "duplicate" {
+					tr.Send([]*raftpb.Message{msg(raftpb.MsgApp, 3, 1)}, t.Context().Done())
+					select {
+					case result := <-tr.DeliveryResults():
+						require.Equal(t, DeliveryResult{PeerID: 1, Type: raftpb.MsgApp, Success: true}, result, "duplicate acknowledgement must not publish twice")
+					case <-ctx.Done():
+						t.Fatal("sentinel delivery did not complete")
+					}
+				}
 
 				return
 			}
-			waitStatus(raft.SnapshotFailure)
+			waitStatus(false)
 			if mode == "closed" {
 				waitStream()
 			}
 			tr.Send(snapshot, t.Context().Done())
-			waitStatus(raft.SnapshotFinish)
+			waitStatus(true)
 			require.Equal(t, int32(2), peer.attempts.Load())
 		})
 	}
@@ -142,31 +168,31 @@ func TestTransportReportsSnapshotQueueDrops(t *testing.T) {
 	t.Run("dispatcher queue", func(t *testing.T) {
 		t.Parallel()
 		tr := newTestTransport(t, 0)
-		tr.snapshotStatusCh = make(chan SnapshotStatus, 1)
+		tr.deliveryResultsCh = make(chan DeliveryResult, 1)
 		tr.Send(snapshot, t.Context().Done())
-		require.Equal(t, SnapshotStatus{PeerID: 2, Status: raft.SnapshotFailure}, <-tr.SnapshotStatus())
+		require.Equal(t, DeliveryResult{PeerID: 2, Type: raftpb.MsgSnap, Success: false}, <-tr.DeliveryResults())
 	})
 	t.Run("peer queue", func(t *testing.T) {
 		t.Parallel()
-		results := make(chan SnapshotStatus, 1)
+		results := make(chan DeliveryResult, 1)
 		conn := newTestPeerConn(t, 2, func(uint64) bool { return true })
 		conn.stopCtx = t.Context()
-		conn.reportSnapshotStatus = func(_ <-chan struct{}, peerID uint64, status raft.SnapshotStatus) {
-			results <- SnapshotStatus{PeerID: peerID, Status: status}
+		conn.reportDelivery = func(_ <-chan struct{}, result DeliveryResult) {
+			results <- result
 		}
 		require.False(t, conn.pushMessages(2, snapshot))
-		require.Equal(t, SnapshotStatus{PeerID: 2, Status: raft.SnapshotFailure}, <-results)
+		require.Equal(t, DeliveryResult{PeerID: 2, Type: raftpb.MsgSnap, Success: false}, <-results)
 	})
 }
 
 func TestSnapshotStatusBackpressureEndsOnCancellation(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		tr := &DefaultTransport{snapshotStatusCh: make(chan SnapshotStatus), stopCh: make(chan struct{})}
+		tr := &DefaultTransport{deliveryResultsCh: make(chan DeliveryResult), stopCh: make(chan struct{})}
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan struct{})
 		go func() {
-			tr.reportSnapshotStatus(ctx.Done(), 1, raft.SnapshotFailure)
+			tr.reportDelivery(ctx.Done(), DeliveryResult{PeerID: 1, Type: raftpb.MsgSnap})
 			close(done)
 		}()
 		synctest.Wait()
@@ -185,9 +211,9 @@ func TestSnapshotQueueRejectionPreservesBackpressure(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		tr := newTestTransport(t, 0)
-		tr.snapshotStatusCh = make(chan SnapshotStatus, 1)
-		previous := SnapshotStatus{PeerID: 2, Status: raft.SnapshotFinish}
-		tr.snapshotStatusCh <- previous
+		tr.deliveryResultsCh = make(chan DeliveryResult, 1)
+		previous := DeliveryResult{PeerID: 2, Type: raftpb.MsgSnap, Success: true}
+		tr.deliveryResultsCh <- previous
 		done := make(chan struct{})
 		go func() {
 			tr.Send([]*raftpb.Message{msg(raftpb.MsgSnap, 1, 3)}, t.Context().Done())
@@ -195,10 +221,10 @@ func TestSnapshotQueueRejectionPreservesBackpressure(t *testing.T) {
 		}()
 		synctest.Wait()
 		require.False(t, shutdownComplete(done), "queue rejection must wait for status capacity")
-		require.Equal(t, previous, <-tr.SnapshotStatus())
+		require.Equal(t, previous, <-tr.DeliveryResults())
 		synctest.Wait()
 		require.True(t, shutdownComplete(done))
-		require.Equal(t, SnapshotStatus{PeerID: 3, Status: raft.SnapshotFailure}, <-tr.SnapshotStatus())
+		require.Equal(t, DeliveryResult{PeerID: 3, Type: raftpb.MsgSnap, Success: false}, <-tr.DeliveryResults())
 	})
 }
 
@@ -207,16 +233,16 @@ func TestReadySnapshotBackpressureEndsBeforeTransportShutdown(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tr := newTestTransport(t, 0) // Every batch is rejected by the dispatcher queue.
 		tr.stopCh = make(chan struct{})
-		tr.snapshotStatusCh = make(chan SnapshotStatus, 100)
-		for range cap(tr.snapshotStatusCh) {
-			tr.snapshotStatusCh <- SnapshotStatus{PeerID: 2, Status: raft.SnapshotFailure}
+		tr.deliveryResultsCh = make(chan DeliveryResult, 100)
+		for range cap(tr.deliveryResultsCh) {
+			tr.deliveryResultsCh <- DeliveryResult{PeerID: 2, Type: raftpb.MsgSnap, Success: false}
 		}
 
 		// Keep status consumption disabled to model an orchestrator that has
 		// stopped. Send still traverses the real Ready worker and transport.
 		transport := NewMockTransport(gomock.NewController(t))
 		transport.EXPECT().Unreachable().AnyTimes().Return((<-chan uint64)(nil))
-		transport.EXPECT().SnapshotStatus().AnyTimes().Return((<-chan SnapshotStatus)(nil))
+		transport.EXPECT().DeliveryResults().AnyTimes().Return((<-chan DeliveryResult)(nil))
 		transport.EXPECT().RecvHighPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
 		transport.EXPECT().RecvMediumPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
 		transport.EXPECT().RecvLowPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
@@ -244,6 +270,6 @@ func TestReadySnapshotBackpressureEndsBeforeTransportShutdown(t *testing.T) {
 		require.False(t, shutdownComplete(tr.stopCh), "transport must remain live throughout the node join")
 		require.NoError(t, <-stopped)
 		require.NoError(t, <-result)
-		require.Len(t, tr.snapshotStatusCh, 100, "shutdown must not depend on draining status results")
+		require.Len(t, tr.deliveryResultsCh, 100, "shutdown must not depend on draining status results")
 	})
 }

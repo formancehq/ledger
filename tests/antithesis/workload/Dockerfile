@@ -1,10 +1,11 @@
 # Compiler
-FROM golang:1.27.3-trixie AS compiler
+FROM golang:1.27.3-trixie AS toolchain
 ARG GOARCH
 ARG GOOS
 
 RUN apt-get update && apt-get install -y bash git gcc
 
+FROM toolchain AS instrumentor
 # Built from the Formance fork rather than `go install ...@version`: the fork
 # keeps the upstream module path, so it is reachable only through the go.mod
 # replace, which `go install pkg@version` ignores. Keep this SHA equal to the
@@ -15,6 +16,7 @@ RUN git clone --quiet https://github.com/formancehq/antithesis-sdk-go /sdk \
  && cd /sdk/tools/antithesis-go-instrumentor \
  && go build -o /usr/local/bin/antithesis-go-instrumentor .
 
+FROM toolchain AS sources
 COPY go.* /src/
 COPY cmd/server /src/cmd/server
 COPY internal /src/internal
@@ -23,6 +25,15 @@ COPY tests/oracle /src/tests/oracle
 COPY tests/antithesis/workload/go.* /src/tests/antithesis/workload/
 COPY tests/antithesis/workload/bin /src/tests/antithesis/workload/bin
 COPY tests/antithesis/workload/internal /src/tests/antithesis/workload/internal
+
+# A small native-loader check, built with the workload's race/SDK flags but
+# without instrumenting or compiling the complete driver fleet.
+FROM sources AS hegel-smoke-build
+WORKDIR /src/tests/antithesis/workload
+RUN mkdir -p /build && go build -race -tags enable_antithesis_sdk -o /build/hegel-smoke ./bin/hegel-smoke
+
+FROM sources AS compiler
+COPY --from=instrumentor /usr/local/bin/antithesis-go-instrumentor /usr/local/bin/antithesis-go-instrumentor
 
 # The instrumentor outputs to /instrumented/customer/ and runs go mod tidy there.
 # The replace directive (../../../) resolves to / from that path, so place the root module at /.
@@ -78,9 +89,17 @@ RUN set -e; \
         | xargs -P"$(nproc)" -I{} sh -c 'mkdir -p "/cmds/$(dirname "$1")" && go build -race -tags enable_antithesis_sdk -o "/cmds/$1" "./bin/cmds/$1"' _ {}
 
 # Runner
-FROM debian:trixie AS runner
+FROM debian:trixie AS runtime
 
-RUN apt-get update && apt-get install -y curl jq
+# Hegel embeds a native library requiring glibc >= 2.34 and libgcc_s.so.1.
+# Keep the smoke and production workload on exactly the same runtime base.
+RUN apt-get update && apt-get install -y curl jq libgcc-s1
+
+FROM runtime AS hegel-smoke
+COPY --from=hegel-smoke-build /build/hegel-smoke /opt/antithesis/hegel-smoke
+ENTRYPOINT ["/opt/antithesis/hegel-smoke"]
+
+FROM runtime AS runner
 
 COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.44 /ko-app/grpc-health-probe /bin/grpc_health_probe
 

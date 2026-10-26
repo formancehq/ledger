@@ -12,11 +12,12 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_queries", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
-		queryName := fmt.Sprintf("q-%d", internal.Rand().Uint64()%100)
+	internal.RunGeneratedDriver("parallel_driver_queries", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
+		queryName := fmt.Sprintf("q-%d", src.Uint64Range(0, 99))
 		details := internal.Details{"ledger": ledger, "queryName": queryName}
 
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{

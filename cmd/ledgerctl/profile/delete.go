@@ -45,7 +45,10 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	if !skipConfirm {
 		pterm.Warning.Printfln("Delete profile %q?", name)
 
-		result, _ := pterm.DefaultInteractiveConfirm.Show()
+		result, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm)
+		if err != nil {
+			return fmt.Errorf("failed to read confirmation: %w", err)
+		}
 		if !result {
 			pterm.Info.Println("Cancelled.")
 

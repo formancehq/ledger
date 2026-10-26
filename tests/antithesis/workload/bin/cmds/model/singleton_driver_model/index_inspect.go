@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -15,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // InspectIndex reads the metadata index a filtered query is served from, so it
@@ -29,16 +29,16 @@ import (
 // space lands on a page needs the index's own order-preserving encoding per
 // declared type, which the model does not reproduce; the counters need no
 // ordering, so they are exact.
-func runInspectIndex(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 2)
+func runInspectIndex(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	ledger, absent := pickLedgerReadTarget(src, c.ledgerNamesSnapshot(), 2)
 
 	target := commonpb.TargetType_TARGET_TYPE_ACCOUNT
 	queryTarget := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
-	if oneIn(2) {
+	if oneIn(src, 2) {
 		target, queryTarget = commonpb.TargetType_TARGET_TYPE_TRANSACTION, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
 	}
 
-	key, declared := c.pickInspectKey(ledger, queryTarget)
+	key, declared := c.pickInspectKey(src, ledger, queryTarget)
 	if key == "" {
 		return
 	}
@@ -46,21 +46,21 @@ func runInspectIndex(ctx context.Context, client servicepb.BucketServiceClient, 
 	// Summary carries the only arm held to the model, and a successful
 	// inspection is already rare — the index has to be built and the key
 	// declared — so it takes half the rolls rather than a third.
-	mode := random.RandomChoice([]servicepb.InspectIndexMode{
+	mode := generation.Choice(src, []servicepb.InspectIndexMode{
 		servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES,
 		servicepb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS,
 		servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY,
 		servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY,
 	})
-	requestedPageSize, pageSize := queryPageSize()
+	requestedPageSize, pageSize := queryPageSize(src)
 	noteClampedPageSize(requestedPageSize, pageSize)
 
 	// A frozen checkpoint answers from its own index snapshot; a checkpoint the
 	// fleet has since dropped answers NotFound.
 	var checkpointID uint64
-	if oneIn(4) {
+	if oneIn(src, 4) {
 		c.mu.Lock()
-		checkpointID, _, _ = c.pickCheckpointReadTarget()
+		checkpointID, _, _ = c.pickCheckpointReadTarget(src)
 		c.mu.Unlock()
 	}
 
@@ -170,9 +170,9 @@ func runInspectIndex(ctx context.Context, client servicepb.BucketServiceClient, 
 // pickInspectKey chooses a declared metadata key of the target, or — one read
 // in five — one the ledger never declared, whose index the registry does not
 // hold. Acquires c.mu.
-func (c *Checker) pickInspectKey(ledger string, target commonpb.QueryTarget) (key string, declared commonpb.MetadataType) {
-	if oneIn(5) {
-		return "undeclared-" + metaKey(), commonpb.MetadataType_METADATA_TYPE_STRING
+func (c *Checker) pickInspectKey(src *generation.Source, ledger string, target commonpb.QueryTarget) (key string, declared commonpb.MetadataType) {
+	if oneIn(src, 5) {
+		return "undeclared-" + metaKey(src), commonpb.MetadataType_METADATA_TYPE_STRING
 	}
 
 	c.mu.Lock()
@@ -191,7 +191,7 @@ func (c *Checker) pickInspectKey(ledger string, target commonpb.QueryTarget) (ke
 		return "", commonpb.MetadataType_METADATA_TYPE_STRING
 	}
 
-	key = keys[internal.Rand().Intn(len(keys))]
+	key = keys[src.Intn(len(keys))]
 
 	return key, types[key]
 }

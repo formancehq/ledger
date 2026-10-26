@@ -39,17 +39,25 @@ the audit fields are bare (no audit[...] prefix), combined with and/or:
   proposal_id == 42
   timestamp >= "2023-11-14T22:13:20Z"    # RFC3339 or raw unix microseconds
   log_seq == 500
+  idempotency_key == "payment-42"
+  idempotency_key ^= "import-2026-"    # index-backed prefix match
 
 Supported fields: seq, proposal_id, log_seq (numeric); timestamp
 (RFC3339 or unix microseconds); outcome (success|failure), ledger,
-caller_subject, order_type (string).
-Unsupported conditions (not, non-indexed fields) are rejected.
+caller_subject, order_type, idempotency_key (string). Only idempotency_key
+supports the ^= prefix operator; a reused key returns every audit entry
+recorded under it.
+Unsupported conditions (not, non-indexed fields) are rejected. The JSON DSL
+takes the same bare fields, e.g. '{"$match":{"outcome":"failure"}}', without
+the ^= prefix operator.
 
 Examples:
   ledgerctl audit list
   ledgerctl audit list --reverse
   ledgerctl audit list --filter 'outcome == failure'
   ledgerctl audit list --filter 'ledger == "my-ledger"'
+  ledgerctl audit list --filter 'idempotency_key == "payment-42"'
+  ledgerctl audit list --filter '{"$match":{"outcome":"failure"}}'
   ledgerctl audit list --checkpoint-id 7`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
@@ -57,7 +65,9 @@ Examples:
 	}
 
 	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{SupportsReverse: true})
-	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{})
+	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{
+		FilterHelp: `Filter expression: textual grammar ("outcome == failure") or JSON DSL ('{"$match":{"outcome":"failure"}}')`,
+	})
 	cmdutil.AddConsistencyFlags(cmd)
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")

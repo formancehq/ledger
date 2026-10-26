@@ -226,18 +226,34 @@ func TestCompileErrorParity(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ascIter, ascErr := query.Compile(
-				reader, dal.NewKeyBuilder(), tc.filter,
-				tc.target, parityLedger,
-				nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
+			ascIter, ascErr := query.Compile(tc.filter, query.CompileOptions{
+				IndexReader:     reader,
+				KeyBuilder:      dal.NewKeyBuilder(),
+				Target:          tc.target,
+				LedgerName:      parityLedger,
+				Schema:          paritySchema(),
+				LedgerInfo:      parityInfo(),
+				IndexRegistry:   parityRegistry(),
+				IndexVersionFor: parityResolver(),
+				MainReader:      reader,
+				Pin:             parityPin,
+			})
 			if ascErr == nil {
 				ascIter.Close()
 			}
 
-			descIter, descErr := query.CompileReverse(
-				reader, dal.NewKeyBuilder(), tc.filter,
-				tc.target, parityLedger,
-				nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
+			descIter, descErr := query.CompileReverse(tc.filter, query.CompileOptions{
+				IndexReader:     reader,
+				KeyBuilder:      dal.NewKeyBuilder(),
+				Target:          tc.target,
+				LedgerName:      parityLedger,
+				Schema:          paritySchema(),
+				LedgerInfo:      parityInfo(),
+				IndexRegistry:   parityRegistry(),
+				IndexVersionFor: parityResolver(),
+				MainReader:      reader,
+				Pin:             parityPin,
+			})
 			if descErr == nil {
 				descIter.Close()
 			}
@@ -270,18 +286,34 @@ func TestCompileErrorParity_AcceptanceIsAlsoShared(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ascIter, ascErr := query.Compile(
-				reader, dal.NewKeyBuilder(), tc.filter,
-				tc.target, parityLedger,
-				nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
+			ascIter, ascErr := query.Compile(tc.filter, query.CompileOptions{
+				IndexReader:     reader,
+				KeyBuilder:      dal.NewKeyBuilder(),
+				Target:          tc.target,
+				LedgerName:      parityLedger,
+				Schema:          paritySchema(),
+				LedgerInfo:      parityInfo(),
+				IndexRegistry:   parityRegistry(),
+				IndexVersionFor: parityResolver(),
+				MainReader:      reader,
+				Pin:             parityPin,
+			})
 			require.NoError(t, ascErr)
 
 			ascIter.Close()
 
-			descIter, descErr := query.CompileReverse(
-				reader, dal.NewKeyBuilder(), tc.filter,
-				tc.target, parityLedger,
-				nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
+			descIter, descErr := query.CompileReverse(tc.filter, query.CompileOptions{
+				IndexReader:     reader,
+				KeyBuilder:      dal.NewKeyBuilder(),
+				Target:          tc.target,
+				LedgerName:      parityLedger,
+				Schema:          paritySchema(),
+				LedgerInfo:      parityInfo(),
+				IndexRegistry:   parityRegistry(),
+				IndexVersionFor: parityResolver(),
+				MainReader:      reader,
+				Pin:             parityPin,
+			})
 			require.NoError(t, descErr, "a filter the ascending compiler accepts must compile descending too")
 
 			descIter.Close()

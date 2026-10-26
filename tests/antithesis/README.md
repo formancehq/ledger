@@ -30,6 +30,83 @@ two templates:
 Adding a driver is just adding a directory under `bin/cmds/main/` with a
 `main.go`. No manifest to update; no Dockerfile to touch.
 
+## Hegel input generation
+
+Business drivers, scenario blocks and the concurrent model use typed Hegel
+choices through `internal/generation`. The existing `main` and `model` template
+boundaries, SDK assertions and chaos controls remain in place. A guarded cloud
+episode executes its callback at most once, including on native engine errors;
+it cannot shrink or replay RPC effects against the shared cluster. Local
+property tests use the same generators with a fresh logical ledger per attempt
+and an independent accounting oracle.
+
+Read [the integration guide](HEGEL.md) for commands and validation limits, and
+[the complete applicability inventory](HEGEL-INVENTORY.md) before adding a new
+generator or driver. Never share a `generation.Source` between goroutines or
+retain it after its callback. Pre-generate concurrent payloads or create an
+independent episode inside each worker. Technical identities and retry keys
+retain their existing source and lifetime.
+
+The native smoke program under `workload/bin/hegel-smoke` is deliberately
+outside Composer's template tree. It checks the Linux FFI loader, independent
+concurrent contexts and error propagation; it does not exercise Ledger or prove
+an Antithesis campaign outcome.
+
+Run the same smoke and complete workload build gates as CI from the repository
+root (neither command publishes images):
+
+```sh
+nix develop .#ci --command just --justfile tests/antithesis/Justfile hegel-smoke
+nix develop .#ci --command just --justfile tests/antithesis/Justfile workload-build-check
+```
+
+## Focused driver checks and limits
+
+- Idempotency conflicts include a variant where only the amount changes, as
+  well as the original destination/asset variant. Equal generated amounts are
+  made distinct without overflowing `uint64`.
+- Reference races require a visible transaction after an acknowledged create
+  and a successful marker/read, in addition to the existing uniqueness check.
+  An ambiguous RPC may still commit later; goroutines alone do not prove
+  overlapping admission.
+- Concurrent reverts check each successful response against the submitted
+  postings, ledger and target transaction. This checks the acknowledged log,
+  not final shared-account volumes or uniqueness of persisted reversal effects.
+- List completeness checks the requested page-size limit as well as ordering,
+  uniqueness and acknowledged-row coverage after a complete traversal. It does
+  not require a snapshot across pages under concurrent writes.
+
+## Launch selection
+
+From this directory, use `just run 60 'Compose run' '' model` for a 60-minute
+Compose run or `just k8s-run-minutes 60 'Kubernetes run' '' main,model` for a
+Kubernetes run. The optional `test_templates` argument selects comma-separated
+templates; an empty value runs all templates. `include` still filters which
+driver binaries are shipped in the workload image.
+
+Compose `just run` now takes minutes and sends `antithesis.duration` instead of
+`custom.duration`. Convert existing hour-based invocations to minutes. These
+parameters require launchers that support `antithesis.duration` and
+`custom.test_templates`; coordinate rollout with the Antithesis team.
+
+The manual workflow also accepts `test_templates`. With an empty selection,
+it can still launch source refs whose `k8s-launch-minutes` recipe accepts only
+two arguments. A nonempty selection requires a compatible recipe; the workflow
+checks that before building or publishing images.
+
+The manual `Run Antithesis` workflow reports acceptance only when its launch
+step succeeds. A failed, skipped, cancelled or unknown launch outcome does not
+confirm acceptance. Workflow completion is not a campaign result.
+
+The model's `restore cycle completed` marker records orchestration completion.
+It does not independently prove that a nonempty post-checkpoint business delta
+was restored and checked by the model oracle.
+
+Aggregate comparisons retain stored zero-volume cells, including those created
+by zero-amount postings. These cells participate in precision normalization and
+color grouping. Purged cells are removed from the oracle state instead; missing
+or invented zero buckets still fail the comparison.
+
 ## Model checkpoint coverage
 
 The model template exclusively owns the checkpoint timeline, with no other
@@ -158,6 +235,66 @@ The prefix encodes **how Antithesis schedules the binary**:
 | `singleton_driver_` | Exactly one instance at a time, runs to completion. | Cluster-wide operations (scaling, rolling restart, backup, signing key rotation). |
 | `eventually_` | Runs at the **end** of the workload, after writers have quiesced. | Cross-checks that only make sense after the system has had time to converge (balance audits, cross-node identity). |
 | `first_` | Runs **before** the parallel pool starts. | One-shot setup (e.g. `first_default_ledger`). |
+
+## Raft and sentinel evidence
+
+The Kubernetes and local Compose configurations enable `SENTINEL_MODE`. The
+server checks local accounting effects during apply and against a snapshot
+pinned after each durable commit. These checks also run through follower apply
+and WAL/spool replay. They do not establish agreement between replicas: two
+different, locally balanced histories need a separate comparison.
+
+Operational drivers retain a deep copy of each acknowledged witness
+transaction. The shared sentinel verifies its complete protobuf content,
+including postings, metadata, timestamps and historical post-commit volumes.
+Witness ledgers are excluded from generic writers, so metadata/revert changes
+are not legitimate for these transactions. A missing transaction or changed
+content is a safety failure; a transient read is inconclusive and cannot emit
+successful-read coverage. Unknown write outcomes do not become acknowledged
+witnesses. Rolling restart, structured scaling, configuration changes and
+quorum recovery share this check. Leadership transfer additionally brackets
+the transition with acknowledged business writes: a returned leader ID alone
+does not satisfy post-transfer write coverage.
+While faults remain active, another election may remove that leader even after
+the witness commits. The subsequent leader observation is availability coverage,
+not a safety assertion; strict recovery qualification belongs to the eventual
+oracle after fault injection stops.
+
+`eventually_cross_node_identity` compares all current members, including
+learners and unavailable members, after writers and faults stop. Configured
+addresses for absent scale-up slots are excluded using current membership.
+Each member's routed status must identify that member and reach the same exact
+**durable** index. Stale reads are attributed through the configured direct
+per-node addresses, matched against advertised membership; these addresses must
+not target a load-balanced service. `GetClusterState{NodeId: id}` can forward to
+the requested node, so its identity check alone cannot establish which endpoint
+received a separate stale read. The oracle reads every ledger and account
+through those direct connections, including driver-owned sentinel accounts and
+all asset colors.
+It compares complete paginated audit headers and the full latest audit entry;
+successful EOF, cursor progress and the independently queried audit tip are
+part of the evidence. A missing account, ledger or audit entry on one replica
+cannot silently disappear from the comparison.
+
+Results are buffered until final per-node durable-index, global barrier and
+membership checks validate the observation. A late proposal or membership
+change discards the attempt and retries the complete capture. Failure to
+obtain an all-member observation within the bounded budget reports an oracle
+qualification/recovery failure, separately from an observed data divergence.
+The command allows three attempts within five minutes. Complete scans cost
+O(replicas × (accounts + audit entries)); the deadline is a qualification
+budget, not permission to compare truncated data. One-member topologies cannot
+satisfy cross-node identity coverage.
+
+Local SDK tests inject wrong witness contents, missing data, unavailable
+members, changing horizons and incomplete streams. Server-side
+`TestSentinelRaft*` tests exercise real apply, durable reopen/replay and
+pipelined commit boundaries, including balanced corruption that only the
+exact post-commit comparison catches. These are local regression and emission
+tests, not evidence that an Antithesis campaign exercised every path. The
+oracle compares business/audit state at qualified horizons; it is not a hash
+of every Raft entry or the entire in-memory cache. A distributed snapshot
+installation campaign still needs direct evidence of that recovery path.
 
 ## Asynchronous stats convergence
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -13,42 +14,44 @@ import (
 func TestForceRemoveNodeAdmittedCommandStopsBeforeExecution(t *testing.T) {
 	t.Parallel()
 
-	n := &Node{
-		clusterCommandCh: make(chan *clusterCommand, 1),
-		terminalCh:       make(chan struct{}),
-		runDone:          make(chan struct{}),
-	}
-	t.Cleanup(func() {
-		select {
-		case <-n.runDone:
-		default:
-			close(n.runDone)
+	synctest.Test(t, func(t *testing.T) {
+		n := &Node{
+			clusterCommandCh: make(chan *clusterCommand, 1),
+			terminalCh:       make(chan struct{}),
+			runDone:          make(chan struct{}),
 		}
+		t.Cleanup(func() {
+			select {
+			case <-n.runDone:
+			default:
+				close(n.runDone)
+			}
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		result := make(chan error, 1)
+		go func() { result <- n.ForceRemoveNode(ctx, 2) }()
+
+		// Observe actual admission, then model Run stopping before orchestrate
+		// executes the command. A nil rawNode ensures execution cannot be hidden.
+		select {
+		case <-n.clusterCommandCh:
+		case <-time.After(time.Second):
+			t.Fatal("force-removal was not admitted")
+		}
+		cancel()
+		close(n.runDone)
+		require.ErrorIs(t, receiveForceRemoveError(t, result), raft.ErrStopped)
+
+		// The caller must release the shared configuration-change lock, allowing
+		// later operations to observe shutdown instead of blocking behind it.
+		locked := n.confChangeMu.TryLock()
+		require.True(t, locked, "shutdown must release the configuration-change lock")
+		n.confChangeMu.Unlock()
+		require.ErrorIs(t, n.ForceRemoveNode(context.Background(), 3), raft.ErrStopped)
+		require.Empty(t, n.clusterCommandCh, "an already stopped node must reject admission")
 	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	result := make(chan error, 1)
-	go func() { result <- n.ForceRemoveNode(ctx, 2) }()
-
-	// Observe actual admission, then model Run stopping before orchestrate
-	// executes the command. A nil rawNode ensures execution cannot be hidden.
-	select {
-	case <-n.clusterCommandCh:
-	case <-time.After(time.Second):
-		t.Fatal("force-removal was not admitted")
-	}
-	cancel()
-	close(n.runDone)
-	require.ErrorIs(t, receiveForceRemoveError(t, result), raft.ErrStopped)
-
-	// The caller must release the shared configuration-change lock, allowing
-	// later operations to observe shutdown instead of blocking behind it.
-	locked := n.confChangeMu.TryLock()
-	require.True(t, locked, "shutdown must release the configuration-change lock")
-	n.confChangeMu.Unlock()
-	require.ErrorIs(t, n.ForceRemoveNode(context.Background(), 3), raft.ErrStopped)
-	require.Empty(t, n.clusterCommandCh, "an already stopped node must reject admission")
 }
 
 func TestClusterCommandResultAfterStopPreservesCompletedOutcome(t *testing.T) {

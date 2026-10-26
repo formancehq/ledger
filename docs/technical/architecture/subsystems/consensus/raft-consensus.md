@@ -175,6 +175,37 @@ A stalled initialization or drain can therefore retain the hook and its
 resources until it completes. Fatal `Run` errors retain their existing
 process-failure behavior.
 
+#### Termination during learner preflight
+
+The join preflight precedes inbound Raft serving, membership startup and
+`Node.Run`. Its outbound registration connections and cancellation subscription
+belong to the preflight itself; Fx does not stop a hook whose start failed.
+SIGTERM or interrupt latches process termination, retains the Fx shutdown
+notification, and cancels only the dedicated registration child context. Keeping
+the private application startup context live permits rollback of previously
+started dependency hooks after intentional registration cancellation.
+
+A positive `total-stop-timeout` arms an absolute signal-time deadline for startup
+unwind and deferred logger finalization. At expiry the private application
+context is canceled and outer waiting fails. As with an expired Fx stop context,
+this is not proof of hook completion or resource closure. Zero leaves this
+waiting unlimited. If startup succeeds, the retained notification invokes normal
+Fx stopping with its existing separate stop budget; the signal deadline is not
+one end-to-end budget for every lifecycle phase. Signal-time logger finalization
+uses the remaining signal deadline and cannot turn expiry into success.
+
+Successful intentional cancellation requires successful rollback and
+finalization; fatal registration statuses, marker-write errors and cleanup
+failures retain failure status even when a signal races them. A later signal does
+not reclassify a completed peer cancellation:
+the registration RPC captures its local cancellation cause in gRPC's completion
+callback, before connection cleanup or caller-side result handling. Cancellation
+does not reverse a remotely committed learner addition. A canceled response can
+leave membership without `CLUSTER_JOINED`; restart still follows the existing
+`AlreadyExists` versus stale-progress rules. See
+[cluster operations](../../../../ops/cluster-operations.md#phase-3-learner-registration-preflight)
+and [server termination](../../../../ops/cli.md#server-termination).
+
 #### Leader readiness generations
 
 Leadership acquisition does not admit writes immediately. The node first
@@ -478,6 +509,23 @@ the request context is cancelled after commit but before local durable apply,
 the call returns an error even though the committed change may still apply;
 only a nil response establishes the full local durability postcondition.
 
+The internal retry timer detects configuration proposals that Raft may have
+dropped while another change was pending; it is not a durability deadline.
+One logical operation retains the same proposal ID and waiter across attempts.
+Once `finishReady` consumes that waiter for a correlated committed entry, a
+queued retry must skip admission and proposal on the orchestrator, even if WAL
+ConfState persistence has not yet resolved the future. Otherwise an already
+committed promotion or removal can be reported as an admission error, or a
+retry can wait on a replacement future that no entry will resolve. The original
+future completes only after the existing WAL update, followed by the unchanged
+durable FSM barrier. Caller cancellation still bounds the wait; a distinct API
+invocation retains its own identity and admission checks.
+
+This adds a constant-time waiter lookup per retry and retains one waiter per
+serialized membership operation, rather than allocating one per attempt. It
+changes no Raft entry, persisted format, quorum, or apply behavior, so mixed
+release-candidate versions continue to apply identical committed entries.
+
 ### Why a Partition Cannot Commit Two Histories
 
 A voter grants at most one vote per term, a candidate needs a majority to
@@ -650,7 +698,7 @@ sequenceDiagram
     Leader->>Transport: MsgSnap; destination progress = StateSnapshot
     Transport->>Follower: Queue snapshot message
     Follower-->>Transport: Transport acknowledgement
-    Transport-->>Leader: SnapshotStatus(destination peer ID, Finish)
+    Transport-->>Leader: DeliveryResult(destination peer ID, MsgSnap, success)
     Note over Leader: ReportSnapshot returns progress to StateProbe
     Follower->>Follower: Persist Ready, install snapshot, fetch checkpoint
     Leader->>Follower: Resume AppendEntries after probing
@@ -659,25 +707,33 @@ sequenceDiagram
 
 #### Sent snapshot results
 
-`DefaultTransport` reports each sent snapshot's delivery result through its
-local `SnapshotStatus` channel. The orchestrate goroutine alone calls
+`DefaultTransport` reports a generic per-message delivery outcome through its
+local `DeliveryResults` channel: destination peer ID, Raft message type and
+success. The transport does not import Raft snapshot-status semantics. Node
+ignores non-snapshot outcomes and translates `MsgSnap` outcomes to
+`SnapshotFinish` or `SnapshotFailure`. The orchestrate goroutine alone calls
 `RawNode.ReportSnapshot`, using the destination **peer ID**, never the snapshot
 index. A positive transport acknowledgement means the peer queued the message;
 it does not certify that the follower installed the snapshot, applied the
 suffix, or completed its independent checkpoint restore.
 
-Queue rejection, failed delivery and abandoned pending snapshot responses
-report `SnapshotFailure`. Acknowledged acceptance reports `SnapshotFinish`.
-A pending response keeps only its destination and snapshot classification,
-not the snapshot payload. Abandonment clears that classification before a late
-response can report a second snapshot outcome. The bounded status channel
-backpressures publishers rather than dropping results; peer removal cancels
+Queue rejection, failed delivery and abandoned pending responses report
+failure; acknowledged acceptance reports success. A pending response keeps
+only its outcome metadata and a reported flag, not the message payload.
+Abandonment sets that flag before a late response can report a second outcome.
+The bounded result channel backpressures publishers rather than dropping results; peer removal cancels
 peer publishers, and transport shutdown releases dispatcher and peer publishers.
 Dispatcher-queue rejection runs synchronously in the Ready worker and also
 observes that task's stop channel through `Transport.Send`. Node shutdown closes
 the task stop channels before joining Ready; it must not wait for the later
 transport stop hook or for its still-live run context to be cancelled. During
-normal operation a full status queue continues to backpressure the publisher.
+normal operation a full result queue continues to backpressure the publisher.
+
+Each message adds one bounded-channel publication and one orchestrator receive,
+including ordinary traffic. Pending metadata is constant-size per in-flight
+message; no payload copy, log scan, RPC or durable write is added. The queue
+bounds memory and backpressures producers; all owners cancel publication before
+joining. Only snapshot outcomes call into Raft or trigger a Ready check.
 
 This result is necessary even when the network later becomes healthy. If a
 follower's `MsgAppResp` is lost, `ReportUnreachable` and heartbeat replies alone
@@ -713,8 +769,17 @@ rescue write or a weaker read barrier.
 
 The suffix restoration uses the existing WAL format and append path. Live
 `LastIndex`, `Term` and `Entries` must expose the same suffix that a reopened
-WAL recovers. A failed suffix append stops Ready processing before storage
-acknowledgement; there is no rollback of the installed in-memory snapshot.
+WAL recovers. The repeated `Append` updates cached entries before its durable
+write. If that write fails, the installed snapshot and suffix stay
+visible in memory while disk retains the last successfully written WAL prefix.
+Ready processing stops before storage acknowledgement; these in-memory changes
+are not rolled back.
+
+The suffix restoration changes no wire or persisted fields and requires no
+migration of released RC state. Old and new voters remain interoperable during
+a rolling upgrade. The WAL suffix is cluster-local Raft state; cross-cluster
+restore continues to rebuild its independent Raft domain from the restored
+business checkpoint and exported delta.
 
 #### Checkpoint synchronization
 
@@ -821,6 +886,30 @@ indexes need their own progress barrier:
    independent Raft certificate to cover fixed `H`.
 7. The certificate is re-read from the projection snapshot used by the query;
    the wait never follows the moving store head.
+
+**Request identity across restarts**:
+
+Each invocation uses a fresh random UUID as its opaque request context. The
+pending-read map keys the complete context; an unknown, malformed, duplicate,
+or earlier invocation's response cannot complete another waiter. A term check
+alone is insufficient: an unchanged leader can retain an outstanding read at
+index `C` across a follower restart, then return that certificate after a later
+write at `D > C` completes. Reusing a process-local counter would let a new read
+accept `C`. Request identities must therefore remain distinct across process
+incarnations, even with the same persisted member identity, leader, and term.
+Only the matching fresh certificate can release the waiter, after which the
+existing local applied-index barrier still must complete.
+
+The UUID is transient correlation state generated outside FSM apply. It adds
+constant work per read and increases the context from eight to sixteen bytes;
+lookup and retained state remain constant per pending request. No business
+state, audit record, Raft entry encoding, snapshot, or backup format changes.
+
+During a rolling upgrade, older etcd/raft peers echo the opaque context bytes
+without decoding them, so they can certify upgraded callers. Upgraded callers
+ignore delayed legacy contexts. Older callers remain susceptible to counter
+reuse until their process is upgraded. The public API and frozen service
+protocol revision are unchanged; no persisted-state migration is required.
 
 **Benefits**:
 - **Linearizable reads on leaders, followers, and caught-up learners** that can reach quorum

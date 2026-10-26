@@ -21,7 +21,7 @@ import (
 // selectively losing only the follower snapshot acknowledgement.
 func TestSnapshotStatusRestoresQuiescentFollowerProgress(t *testing.T) {
 	t.Parallel()
-	for _, mode := range []string{"missing", "finish", "failure"} {
+	for _, mode := range []string{"missing", "unrelated delivery", "finish", "failure"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Parallel()
 			nodes := map[uint64]*raft.RawNode{}
@@ -123,10 +123,12 @@ func TestSnapshotStatusRestoresQuiescentFollowerProgress(t *testing.T) {
 			t.Logf("before report: state=%s readIndex=%d businessApplied=%d raftApplied=%d", nodes[3].Status().Progress[1].State, readIndex, applied[1], nodes[1].Status().Applied)
 			dropSnapshotAck = false
 			switch mode {
+			case "unrelated delivery":
+				routeSnapshotStatusThroughOrchestrator(t, nodes[3], DeliveryResult{PeerID: 1, Type: raftpb.MsgHeartbeat, Success: true})
 			case "finish":
-				routeSnapshotStatusThroughOrchestrator(t, nodes[3], SnapshotStatus{PeerID: 1, Status: raft.SnapshotFinish})
+				routeSnapshotStatusThroughOrchestrator(t, nodes[3], DeliveryResult{PeerID: 1, Type: raftpb.MsgSnap, Success: true})
 			case "failure":
-				routeSnapshotStatusThroughOrchestrator(t, nodes[3], SnapshotStatus{PeerID: 1, Status: raft.SnapshotFailure})
+				routeSnapshotStatusThroughOrchestrator(t, nodes[3], DeliveryResult{PeerID: 1, Type: raftpb.MsgSnap, Success: false})
 			}
 			for range 5 {
 				nodes[3].Tick()
@@ -135,7 +137,7 @@ func TestSnapshotStatusRestoresQuiescentFollowerProgress(t *testing.T) {
 			// No proposals or rescue writes after the initial current-term no-op40.
 			require.Equal(t, uint64(40), nodes[3].Status().GetCommit())
 			t.Logf("after %s report: state=%s readIndex=%d businessApplied=%d raftApplied=%d", mode, nodes[3].Status().Progress[1].State, readIndex, applied[1], nodes[1].Status().Applied)
-			if mode == "missing" {
+			if mode == "missing" || mode == "unrelated delivery" {
 				require.Equal(t, tracker.StateSnapshot, nodes[3].Status().Progress[1].State)
 				require.Less(t, applied[1], readIndex, "RED behavior: unresolved FSM horizon after healed quiescence")
 			} else {
@@ -149,13 +151,13 @@ func TestSnapshotStatusRestoresQuiescentFollowerProgress(t *testing.T) {
 // Give the real orchestrator exclusive ownership while the transport delivers
 // its result. Reading progress through execClusterCommand avoids cross-thread
 // RawNode access. Stop and join before returning ownership to the message pump.
-func routeSnapshotStatusThroughOrchestrator(t *testing.T, rn *raft.RawNode, result SnapshotStatus) {
+func routeSnapshotStatusThroughOrchestrator(t *testing.T, rn *raft.RawNode, result DeliveryResult) {
 	t.Helper()
 	setup := newTestApplierSetup(t)
 	require.NoError(t, setup.wal.UpdateSnapshotConfState(&raftpb.ConfState{Voters: []uint64{3}}))
 	tr := NewMockTransport(gomock.NewController(t))
-	statuses := make(chan SnapshotStatus)
-	tr.EXPECT().SnapshotStatus().AnyTimes().Return((<-chan SnapshotStatus)(statuses))
+	statuses := make(chan DeliveryResult)
+	tr.EXPECT().DeliveryResults().AnyTimes().Return((<-chan DeliveryResult)(statuses))
 	tr.EXPECT().Unreachable().AnyTimes().Return((<-chan uint64)(nil))
 	tr.EXPECT().RecvHighPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
 	tr.EXPECT().RecvMediumPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
@@ -184,7 +186,11 @@ func routeSnapshotStatusThroughOrchestrator(t *testing.T, rn *raft.RawNode, resu
 		t.Fatal("orchestrator did not receive sent-snapshot result")
 	}
 	require.NoError(t, n.execClusterCommand(ctx, false, func() error {
-		if got := rn.Status().Progress[result.PeerID].State; got != tracker.StateProbe {
+		expected := tracker.StateProbe
+		if result.Type != raftpb.MsgSnap {
+			expected = tracker.StateSnapshot
+		}
+		if got := rn.Status().Progress[result.PeerID].State; got != expected {
 			return fmt.Errorf("transport snapshot result did not reach leader progress: got %s", got)
 		}
 

@@ -285,6 +285,19 @@ The project uses `just` for common commands. See the `justfile` for available co
 
 For a reproducible environment, use `nix develop` to enter the environment and `nix build` to build the application.
 
+### CI cache volume
+
+CI jobs share one Namespace cache volume that holds `/nix`, the Go build and module caches, and the golangci-lint cache. A volume that grows past the runner profile's cache size starts the next job empty, so the `Cache Expiry` workflow (`.github/workflows/cache-expiry.yml`) trims it every night at 04:17 UTC, while CI is idle:
+
+- It deletes Go build and golangci-lint entries unused for three days. Run the workflow manually to choose another age.
+- It rebuilds the Go module cache with the modules the checked-out revision needs: the default branch on the nightly run, or the branch you pick on a manual run.
+- It garbage-collects the Nix store down to the dev shells of the checked-out revision and their flake inputs. A branch with other flake inputs downloads its Nix closure again on its first run after the trim, which adds about a minute to its Setup Env step.
+- If the caches still exceed 35 GiB, it lowers the Go build and golangci-lint age limit a day at a time until only entries used in the last hour remain, and reports a warning when that is not enough. On the nightly run that empties both caches; a manual run during working hours keeps what overlapping jobs just used.
+
+The trimmed copy becomes the base for the next jobs because it is the newest commit, so a CI job that overlaps the trim and finishes after it commits its untrimmed copy over the trimmed one on its node. When a job starts entering a new dev shell, add it to `ci_shells` in `scripts/ci-expire-caches`.
+
+The workflow runs `just ci-expire-caches`. On your machine, the recipe only runs as a preview, because a real run would wipe your Go module cache and garbage-collect your Nix store: `DRY_RUN=1 just ci-expire-caches` reports what the first pass would delete, without the lower age limits a real run applies when the caches stay over budget.
+
 ### Debugging
 
 #### Logs
@@ -306,7 +319,7 @@ Use `pprof` for profiling by accessing the pprof endpoint at `/debug/pprof/profi
 - [ ] Documentation updated if necessary
 - [ ] OpenAPI updated if new API
 - [ ] Protobufs regenerated if modified
-- [ ] No `time.Sleep` in tests (Use `Eventually`)
+- [ ] No `time.Sleep` in tests outside a `testing/synctest` bubble (use `synctest` or `Eventually`)
 - [ ] Error handling appropriate
 - [ ] Structured logs with context
 - [ ] Minimize I/O in FSMs -- I/O is not strictly forbidden but should be minimized and optimized

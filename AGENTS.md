@@ -13,9 +13,10 @@ steps are documented. Follow [the upgrade policy](docs/ops/upgrades.md#release-r
 
 Each RC update is upgraded sequentially from the immediately preceding RC in
 the same release line. The operator rejects skipped RCs by comparing the
-current StatefulSet image tag with the requested Cluster image tag. Old and new
-voters must communicate and apply the same committed entries identically while
-they coexist.
+current StatefulSet image tag with the requested Cluster image tag. RC upgrades
+are rolling unless the embedded operator lists a mandatory stopped-upgrade
+boundary. Such a boundary must preserve committed data and prove non-empty
+replay. Old and new voters must apply entries identically whenever they coexist.
 
 - Classify persisted, Raft, snapshot, backup, and audit changes against the RC
   baseline. Include a tested migration or prove existing data remains valid.
@@ -101,7 +102,7 @@ Key rules that apply broadly:
 - Every CLI invoked by repository scripts or documented as a contributor prerequisite must be provided by the Nix development environment and pinned through `flake.lock`; do not add host-only CLI dependencies.
 - Build artifacts belong under `build/`, never the repository root.
 - JSON properties use camelCase.
-- In tests, do not use `time.Sleep`; prefer `require.Eventually` or deterministic synchronization.
+- In tests, do not use `time.Sleep` outside a `testing/synctest` bubble. Run in-process timing tests (retry delays, tickers, deadlines) in `synctest.Test`; otherwise use deterministic synchronization or `require.Eventually`. See `docs/technical/contributing/testing.md`.
 - Unit tests should use `t.Parallel()` where supported by existing test conventions.
 - Do not hand-roll mocks for mockgen-managed interfaces; regenerate generated mocks after interface changes.
 - Treat every path received through an API, RPC, manifest, archive, or peer as untrusted. Validate lexical locality and enforce containment with a root-scoped filesystem capability at the final `open`/`create`/`remove`/`rename`; `filepath.Join`, `Clean`, or `Rel` string equality is not a containment boundary. See the follower-sync storage documentation for the canonical `filepath.IsLocal` + `os.Root` pattern.

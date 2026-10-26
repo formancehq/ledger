@@ -88,10 +88,9 @@ func runConfigurationApply(cmd *cobra.Command, args []string) error {
 	}
 
 	if !yes {
-		confirmed, err := pterm.DefaultInteractiveConfirm.
+		confirmed, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
 			WithDefaultText(fmt.Sprintf("Apply %d changes to ledger %q?", len(actions), ledgerName)).
-			WithDefaultValue(false).
-			Show()
+			WithDefaultValue(false))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}

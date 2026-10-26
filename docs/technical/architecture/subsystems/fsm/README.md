@@ -15,6 +15,19 @@ authoritative audit failure (including its reason, code, and facts), so selectio
 must not depend on Go map iteration. A failed order discards its posting and
 metadata writes while preserving the failure audit entry.
 
+Transaction account metadata addresses are checked after the merged metadata
+shape, entity limits and command budget, before staging account metadata writes.
+When multiple addresses are invalid, the lexicographically smallest invalid
+address determines the typed failure; the empty address sorts first. Admission
+checks caller addresses too, but apply retains this check for committed input
+and script output. The scan uses linear time and constant auxiliary space.
+Posting and transaction mutations staged earlier are discarded on rejection;
+the failure audit entry and a keyed definitive failure still commit.
+
+Changing this selection from unordered traversal requires the
+[maintenance-gated rolling upgrade](../../../../ops/upgrades.md#account-metadata-address-validation)
+when upgrading affected releases. Existing stored audit failures are preserved.
+
 ## Documents
 
 | Document | Description |

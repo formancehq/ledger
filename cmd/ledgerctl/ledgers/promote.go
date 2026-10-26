@@ -62,10 +62,9 @@ func runPromote(cmd *cobra.Command, args []string) error {
 		pterm.Warning.Printfln("You are about to promote mirror ledger %s to normal mode", name)
 		pterm.Warning.Println("This will stop mirror replication permanently.")
 
-		confirmed, err := pterm.DefaultInteractiveConfirm.
+		confirmed, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
 			WithDefaultText(fmt.Sprintf("Promote ledger '%s'?", name)).
-			WithDefaultValue(false).
-			Show()
+			WithDefaultValue(false))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}

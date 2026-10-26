@@ -49,6 +49,47 @@ Ledger process restart and cluster-level availability from recovery of the
 intended PVC/node. Record inspected areas and untested boundaries in residual
 risk rather than claiming exhaustive coverage.
 
+## Annotated drain and release boundary
+
+`ledger.formance.com/drain` is an intent on the Cluster CR. The persisted
+`status.drain` epoch and phase, not an in-memory reconcile invocation, identify
+the transition across retries and controller replacement. `Preflighting` can be
+cancelled before a marker is proposed. Once a marker may have been committed,
+removing the annotation requires release of the same epoch; `Releasing` must be
+persisted before the release call. A re-added annotation after release needs a
+new epoch. `Drained=True` requires a matching current membership and a durable
+cutoff acknowledgement from every captured member. A missing or syncing member
+keeps the phase incomplete and the Pods running.
+
+Trace the actual status-write, Ledger-RPC and annotation-observation order,
+including a lost RPC response and restart after each durable prefix. During a
+transition, the live owned StatefulSet supplies replica count, gRPC port and
+TLS mode. A simultaneous desired storage-backend edit remains a separate
+operator transition risk tracked in EN-3230; do not assume the live transport
+snapshot makes the StatefulSet recreation safe. Use the annotated-drain
+Chainsaw test for the admission/release path, and a fresh reconciler after
+interrupted phase writes for recovery evidence. The Ledger consensus audit owns
+the marker and member durability semantics; this domain owns the controller's
+decision and truthful status.
+
+## Derived object ownership boundary
+
+Cluster-derived object names are not unique by construction (see
+[derived object ownership](../architecture/subsystems/operator/derived-object-ownership.md)).
+A name match is never proof of ownership. A finding here must show a reachable
+path that adopts, mutates, deletes, reports or execs into an object under a
+derived name without first establishing that the Cluster's UID controls it
+(for a pod: that the Cluster's StatefulSet UID controls it), or that deletes it
+by name without pinning the delete to the inspected UID. A refused orphan or a
+same-name object awaiting garbage collection is the documented
+`ResourceNamesAvailable=False` behaviour, not a defect by itself.
+
+The UID delete precondition guarantees identity only: an ownerReference change
+on the same object between the read and the delete is an accepted race, and so
+is a pod replaced between its ownership read and the exec stream, or a Service
+replaced between its check and a backup Job dialing it. A finding about one of
+these must show more than that window.
+
 ## Ledger target admission boundary
 
 Ledger `spec.name` and `spec.clusterRef` are immutable from CR creation through
@@ -113,7 +154,32 @@ as the availability/data oracle in the TLS-disable Chainsaw fixture. Fake
 clients establish API-write ordering, not StatefulSet adoption, admission,
 rolling-update behavior or real peer/CLI connectivity; disclose those limits.
 
+## Scale-down PVC cleanup boundary
+
+The StatefulSet annotation recording the previous replica count is written
+before Raft membership removal. A failed membership step leaves the old
+StatefulSet replica count intact. After the lower replica count is persisted,
+the annotation and the StatefulSet claim templates identify removed-ordinal
+PVCs on a fresh reconcile. Cleanup must run before a later scale-up can reuse
+them. A failed deletion or marker-clear write leaves retryable state; a
+successful deletion of an already-absent PVC is idempotent. Verify the marker
+survives a failed DELETE after the replica write and disappears only after all
+removed PVC deletions are accepted. Distinguish API acceptance from eventual
+Kubernetes garbage collection and check the actual PVC identities after retry.
+
 ## Sequential RC and storage transition boundary
+
+For a hardcoded mandatory stop, prove that the operator persists source, target,
+StatefulSet UID and PVC UIDs, persists a drain epoch, preflights member support,
+and verifies every member has durably applied the Raft admission cutoff before deletion. Then
+prove that it observes Retain on the source
+StatefulSet, removes claim owner references, and verifies that every original
+claim remains bound. After deleting the StatefulSet, it must wait for both its
+absence and every old ordinal Pod's absence before creating the target. Trace
+API errors, target edits, missing claims and a fresh reconciler at each phase.
+Fake clients establish ordering only; Kubernetes GC, retention-controller
+observation, Pod termination, volume reattachment and non-empty WAL replay need
+separate integration evidence.
 
 For an RC target, trace the running image rather than assuming the desired CR
 is the predecessor. Reject a skipped RC or an unfinished source rollout before

@@ -2287,6 +2287,319 @@ func NewDropIndexRequestListReader(s []*DropIndexRequest) DropIndexRequestListRe
 	return dropIndexRequestListReadonly(s)
 }
 
+// AnalyzeNumscriptRequestReader provides read-only access to AnalyzeNumscriptRequest.
+// Call Mutate() to obtain a mutable clone.
+type AnalyzeNumscriptRequestReader interface {
+	GetSource() string
+	GetVersion() string
+	Mutate() *AnalyzeNumscriptRequest
+}
+
+type analyzeNumscriptRequestReadonly AnalyzeNumscriptRequest
+
+func (r *analyzeNumscriptRequestReadonly) GetSource() string {
+	return (*AnalyzeNumscriptRequest)(r).GetSource()
+}
+
+func (r *analyzeNumscriptRequestReadonly) GetVersion() string {
+	return (*AnalyzeNumscriptRequest)(r).GetVersion()
+}
+
+func (r *analyzeNumscriptRequestReadonly) Mutate() *AnalyzeNumscriptRequest {
+	return (*AnalyzeNumscriptRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AnalyzeNumscriptRequest.
+func (m *AnalyzeNumscriptRequest) AsReader() AnalyzeNumscriptRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*analyzeNumscriptRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AnalyzeNumscriptRequest.
+func (m *AnalyzeNumscriptRequest) Mutate() *AnalyzeNumscriptRequest {
+	return m.CloneVT()
+}
+
+// AnalyzeNumscriptRequestListReader provides read-only iteration over []*AnalyzeNumscriptRequest.
+type AnalyzeNumscriptRequestListReader interface {
+	Len() int
+	Get(i int) AnalyzeNumscriptRequestReader
+	Range(yield func(int, AnalyzeNumscriptRequestReader) bool)
+}
+
+type analyzeNumscriptRequestListReadonly []*AnalyzeNumscriptRequest
+
+func (l analyzeNumscriptRequestListReadonly) Len() int { return len(l) }
+
+func (l analyzeNumscriptRequestListReadonly) Get(i int) AnalyzeNumscriptRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l analyzeNumscriptRequestListReadonly) Range(yield func(int, AnalyzeNumscriptRequestReader) bool) {
+	for i, v := range l {
+		var r AnalyzeNumscriptRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAnalyzeNumscriptRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAnalyzeNumscriptRequestListReader(s []*AnalyzeNumscriptRequest) AnalyzeNumscriptRequestListReader {
+	return analyzeNumscriptRequestListReadonly(s)
+}
+
+// NumscriptInputReader provides read-only access to NumscriptInput.
+// Call Mutate() to obtain a mutable clone.
+type NumscriptInputReader interface {
+	GetName() string
+	GetType() string
+	Mutate() *NumscriptInput
+}
+
+type numscriptInputReadonly NumscriptInput
+
+func (r *numscriptInputReadonly) GetName() string {
+	return (*NumscriptInput)(r).GetName()
+}
+
+func (r *numscriptInputReadonly) GetType() string {
+	return (*NumscriptInput)(r).GetType()
+}
+
+func (r *numscriptInputReadonly) Mutate() *NumscriptInput {
+	return (*NumscriptInput)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this NumscriptInput.
+func (m *NumscriptInput) AsReader() NumscriptInputReader {
+	if m == nil {
+		return nil
+	}
+	return (*numscriptInputReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this NumscriptInput.
+func (m *NumscriptInput) Mutate() *NumscriptInput {
+	return m.CloneVT()
+}
+
+// NumscriptInputListReader provides read-only iteration over []*NumscriptInput.
+type NumscriptInputListReader interface {
+	Len() int
+	Get(i int) NumscriptInputReader
+	Range(yield func(int, NumscriptInputReader) bool)
+}
+
+type numscriptInputListReadonly []*NumscriptInput
+
+func (l numscriptInputListReadonly) Len() int { return len(l) }
+
+func (l numscriptInputListReadonly) Get(i int) NumscriptInputReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l numscriptInputListReadonly) Range(yield func(int, NumscriptInputReader) bool) {
+	for i, v := range l {
+		var r NumscriptInputReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNumscriptInputListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNumscriptInputListReader(s []*NumscriptInput) NumscriptInputListReader {
+	return numscriptInputListReadonly(s)
+}
+
+// NumscriptDiagnosticReader provides read-only access to NumscriptDiagnostic.
+// Call Mutate() to obtain a mutable clone.
+type NumscriptDiagnosticReader interface {
+	GetKind() NumscriptDiagnosticKind
+	GetCode() string
+	GetMessage() string
+	GetStartLine() uint32
+	GetStartColumn() uint32
+	GetEndLine() uint32
+	GetEndColumn() uint32
+	Mutate() *NumscriptDiagnostic
+}
+
+type numscriptDiagnosticReadonly NumscriptDiagnostic
+
+func (r *numscriptDiagnosticReadonly) GetKind() NumscriptDiagnosticKind {
+	return (*NumscriptDiagnostic)(r).GetKind()
+}
+
+func (r *numscriptDiagnosticReadonly) GetCode() string {
+	return (*NumscriptDiagnostic)(r).GetCode()
+}
+
+func (r *numscriptDiagnosticReadonly) GetMessage() string {
+	return (*NumscriptDiagnostic)(r).GetMessage()
+}
+
+func (r *numscriptDiagnosticReadonly) GetStartLine() uint32 {
+	return (*NumscriptDiagnostic)(r).GetStartLine()
+}
+
+func (r *numscriptDiagnosticReadonly) GetStartColumn() uint32 {
+	return (*NumscriptDiagnostic)(r).GetStartColumn()
+}
+
+func (r *numscriptDiagnosticReadonly) GetEndLine() uint32 {
+	return (*NumscriptDiagnostic)(r).GetEndLine()
+}
+
+func (r *numscriptDiagnosticReadonly) GetEndColumn() uint32 {
+	return (*NumscriptDiagnostic)(r).GetEndColumn()
+}
+
+func (r *numscriptDiagnosticReadonly) Mutate() *NumscriptDiagnostic {
+	return (*NumscriptDiagnostic)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this NumscriptDiagnostic.
+func (m *NumscriptDiagnostic) AsReader() NumscriptDiagnosticReader {
+	if m == nil {
+		return nil
+	}
+	return (*numscriptDiagnosticReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this NumscriptDiagnostic.
+func (m *NumscriptDiagnostic) Mutate() *NumscriptDiagnostic {
+	return m.CloneVT()
+}
+
+// NumscriptDiagnosticListReader provides read-only iteration over []*NumscriptDiagnostic.
+type NumscriptDiagnosticListReader interface {
+	Len() int
+	Get(i int) NumscriptDiagnosticReader
+	Range(yield func(int, NumscriptDiagnosticReader) bool)
+}
+
+type numscriptDiagnosticListReadonly []*NumscriptDiagnostic
+
+func (l numscriptDiagnosticListReadonly) Len() int { return len(l) }
+
+func (l numscriptDiagnosticListReadonly) Get(i int) NumscriptDiagnosticReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l numscriptDiagnosticListReadonly) Range(yield func(int, NumscriptDiagnosticReader) bool) {
+	for i, v := range l {
+		var r NumscriptDiagnosticReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNumscriptDiagnosticListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNumscriptDiagnosticListReader(s []*NumscriptDiagnostic) NumscriptDiagnosticListReader {
+	return numscriptDiagnosticListReadonly(s)
+}
+
+// AnalyzeNumscriptResponseReader provides read-only access to AnalyzeNumscriptResponse.
+// Call Mutate() to obtain a mutable clone.
+type AnalyzeNumscriptResponseReader interface {
+	GetInputs() NumscriptInputListReader
+	GetDiagnostics() NumscriptDiagnosticListReader
+	Mutate() *AnalyzeNumscriptResponse
+}
+
+type analyzeNumscriptResponseReadonly AnalyzeNumscriptResponse
+
+func (r *analyzeNumscriptResponseReadonly) GetInputs() NumscriptInputListReader {
+	return NewNumscriptInputListReader((*AnalyzeNumscriptResponse)(r).GetInputs())
+}
+
+func (r *analyzeNumscriptResponseReadonly) GetDiagnostics() NumscriptDiagnosticListReader {
+	return NewNumscriptDiagnosticListReader((*AnalyzeNumscriptResponse)(r).GetDiagnostics())
+}
+
+func (r *analyzeNumscriptResponseReadonly) Mutate() *AnalyzeNumscriptResponse {
+	return (*AnalyzeNumscriptResponse)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AnalyzeNumscriptResponse.
+func (m *AnalyzeNumscriptResponse) AsReader() AnalyzeNumscriptResponseReader {
+	if m == nil {
+		return nil
+	}
+	return (*analyzeNumscriptResponseReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AnalyzeNumscriptResponse.
+func (m *AnalyzeNumscriptResponse) Mutate() *AnalyzeNumscriptResponse {
+	return m.CloneVT()
+}
+
+// AnalyzeNumscriptResponseListReader provides read-only iteration over []*AnalyzeNumscriptResponse.
+type AnalyzeNumscriptResponseListReader interface {
+	Len() int
+	Get(i int) AnalyzeNumscriptResponseReader
+	Range(yield func(int, AnalyzeNumscriptResponseReader) bool)
+}
+
+type analyzeNumscriptResponseListReadonly []*AnalyzeNumscriptResponse
+
+func (l analyzeNumscriptResponseListReadonly) Len() int { return len(l) }
+
+func (l analyzeNumscriptResponseListReadonly) Get(i int) AnalyzeNumscriptResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l analyzeNumscriptResponseListReadonly) Range(yield func(int, AnalyzeNumscriptResponseReader) bool) {
+	for i, v := range l {
+		var r AnalyzeNumscriptResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAnalyzeNumscriptResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAnalyzeNumscriptResponseListReader(s []*AnalyzeNumscriptResponse) AnalyzeNumscriptResponseListReader {
+	return analyzeNumscriptResponseListReadonly(s)
+}
+
 // SaveNumscriptRequestReader provides read-only access to SaveNumscriptRequest.
 // Call Mutate() to obtain a mutable clone.
 type SaveNumscriptRequestReader interface {

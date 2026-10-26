@@ -35,6 +35,7 @@ func TestCreatedTransaction_MarshalJSON_AllFields(t *testing.T) {
 	require.Greater(t, strings.Index(out, `"postCommitVolumes":`), strings.Index(out, `"transaction":`),
 		"postCommitVolumes must be nested under transaction, not a wrapper sibling")
 	require.False(t, strings.Contains(out, "previousAccountMetadata"), "previous_account_metadata is no longer emitted")
+	require.NotContains(t, out, `"warnings"`, "AUDIT violations are not reported in transaction responses")
 }
 
 // TestRevertedTransaction_MarshalJSON_AllFields covers the same regression on
@@ -58,6 +59,7 @@ func TestRevertedTransaction_MarshalJSON_AllFields(t *testing.T) {
 	require.Contains(t, out, `"postCommitVolumes":`)
 	require.False(t, strings.Contains(out, "revertedTransactionID"),
 		"casing must follow the Go convention (Id, not ID)")
+	require.NotContains(t, out, `"warnings"`, "AUDIT violations are not reported in revert responses")
 }
 
 // TestTransaction_MarshalJSON_PostCommitVolumes pins the post-commit volume

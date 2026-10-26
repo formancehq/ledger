@@ -43,7 +43,7 @@ func testBackupRunResultReadRecovery(t *testing.T, runType ledgerv1alpha1.Backup
 	c, run := backupRunRecoveryFixture(t)
 	run.Spec.Type = runType
 	require.NoError(t, c.Update(ctx, run))
-	r := &BackupRunReconciler{Client: c, Scheme: c.Scheme()}
+	r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
 	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
 	_, err := r.Reconcile(ctx, req)
 	require.NoError(t, err)
@@ -99,7 +99,7 @@ func testBackupRunResultReadRecovery(t *testing.T, runType ledgerv1alpha1.Backup
 		require.NoError(t, pods.Tracker().Add(pod))
 	}
 
-	r = &BackupRunReconciler{Client: c, Scheme: c.Scheme(), Clientset: pods}
+	r = &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme(), Clientset: pods}
 	_, err = r.Reconcile(ctx, req)
 	require.NoError(t, err)
 	require.NoError(t, c.Get(ctx, req.NamespacedName, run))
@@ -139,7 +139,7 @@ func TestBackupRunResultRecoveryPreservesParentAccounting(t *testing.T) {
 	backup.Spec.SuccessfulRunsHistoryLimit = new(int32)
 	require.NoError(t, c.Update(ctx, &backup))
 	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
-	r := &BackupRunReconciler{Client: c, Scheme: c.Scheme()}
+	r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
 	_, err := r.Reconcile(ctx, req)
 	require.NoError(t, err)
 	var job batchv1.Job
@@ -175,7 +175,7 @@ func TestBackupRunResultRecoveryPreservesParentAccounting(t *testing.T) {
 	require.NoError(t, c.List(ctx, &runs))
 	require.Len(t, runs.Items, 1, "no incremental run before the full result is captured")
 
-	r = &BackupRunReconciler{Client: c, Scheme: c.Scheme(), Clientset: pods}
+	r = &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme(), Clientset: pods}
 	_, err = r.Reconcile(ctx, req)
 	require.NoError(t, err)
 	require.NoError(t, c.Get(ctx, req.NamespacedName, run))
@@ -208,7 +208,7 @@ func TestBackupRunDefinitiveResultFailure(t *testing.T) {
 			ctx := t.Context()
 			c, run := backupRunRecoveryFixture(t)
 			req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
-			r := &BackupRunReconciler{Client: c, Scheme: c.Scheme()}
+			r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
 			_, err := r.Reconcile(ctx, req)
 			require.NoError(t, err)
 			var job batchv1.Job
@@ -245,7 +245,7 @@ func TestBackupRunResultDiagnosticWriteRecovery(t *testing.T) {
 	ctx := t.Context()
 	c, run := backupRunRecoveryFixture(t)
 	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
-	r := &BackupRunReconciler{Client: c, Scheme: c.Scheme()}
+	r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
 	_, err := r.Reconcile(ctx, req)
 	require.NoError(t, err)
 	var job batchv1.Job
@@ -277,7 +277,7 @@ func TestBackupRunResultDiagnosticWriteRecovery(t *testing.T) {
 			return c.SubResource(name).Update(ctx, obj, opts...)
 		},
 	})
-	r = &BackupRunReconciler{Client: wrapped, Scheme: c.Scheme(), Clientset: pods}
+	r = &BackupRunReconciler{Client: wrapped, APIReader: wrapped, Scheme: c.Scheme(), Clientset: pods}
 	_, err = r.Reconcile(ctx, req)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.ErrorIs(t, err, writeErr)
@@ -286,7 +286,7 @@ func TestBackupRunResultDiagnosticWriteRecovery(t *testing.T) {
 	require.Empty(t, run.Status.Message)
 	require.Nil(t, run.Status.CompletionTime)
 
-	r = &BackupRunReconciler{Client: wrapped, Scheme: c.Scheme(), Clientset: pods}
+	r = &BackupRunReconciler{Client: wrapped, APIReader: wrapped, Scheme: c.Scheme(), Clientset: pods}
 	_, err = r.Reconcile(ctx, req)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.NoError(t, c.Get(ctx, req.NamespacedName, run))
@@ -298,7 +298,7 @@ func TestBackupRunResultDiagnosticWriteRecovery(t *testing.T) {
 	require.Equal(t, version, run.ResourceVersion, "unchanged diagnostic must not rewrite status")
 	require.Equal(t, 2, writes)
 
-	r = &BackupRunReconciler{Client: wrapped, Scheme: c.Scheme(), Clientset: pods}
+	r = &BackupRunReconciler{Client: wrapped, APIReader: wrapped, Scheme: c.Scheme(), Clientset: pods}
 	_, err = r.Reconcile(ctx, req)
 	require.NoError(t, err)
 	require.NoError(t, c.Get(ctx, req.NamespacedName, run))

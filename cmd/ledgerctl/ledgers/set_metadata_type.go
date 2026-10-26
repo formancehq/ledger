@@ -56,10 +56,9 @@ func runSetMetadataType(cmd *cobra.Command, _ []string) error {
 
 	targetStr, _ := cmd.Flags().GetString("target")
 	if targetStr == "" {
-		result, err := pterm.DefaultInteractiveSelect.
+		result, err := cmdutil.PromptSelect(pterm.DefaultInteractiveSelect.
 			WithOptions(cmdutil.TargetTypeOptions()).
-			WithDefaultText("Select target type").
-			Show()
+			WithDefaultText("Select target type"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -74,9 +73,8 @@ func runSetMetadataType(cmd *cobra.Command, _ []string) error {
 
 	key, _ := cmd.Flags().GetString("key")
 	if key == "" {
-		result, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter metadata key name").
-			Show()
+		result, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter metadata key name"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -89,10 +87,9 @@ func runSetMetadataType(cmd *cobra.Command, _ []string) error {
 
 	typeStr, _ := cmd.Flags().GetString("type")
 	if typeStr == "" {
-		result, err := pterm.DefaultInteractiveSelect.
+		result, err := cmdutil.PromptSelect(pterm.DefaultInteractiveSelect.
 			WithOptions(cmdutil.MetadataTypeOptions()).
-			WithDefaultText("Select metadata type").
-			Show()
+			WithDefaultText("Select metadata type"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}

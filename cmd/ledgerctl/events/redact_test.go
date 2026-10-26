@@ -100,7 +100,7 @@ func TestRedactSinkConfig_Http(t *testing.T) {
 
 	redacted := redactSinkConfig(cfg)
 
-	assert.Equal(t, "https://operator:****@example.com/hook", redacted.GetHttp().GetEndpoint())
+	assert.Equal(t, "https://operator:xxxxx@example.com/hook", redacted.GetHttp().GetEndpoint())
 	assert.Equal(t, secretSet, redacted.GetHttp().GetSecret())
 }
 
@@ -113,7 +113,7 @@ func TestRedactSinkConfig_HTTPUsernameOnly(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, "https://operator@example.com/hook", redactSinkConfig(cfg).GetHttp().GetEndpoint())
+	assert.Equal(t, "https://xxxxx@example.com/hook", redactSinkConfig(cfg).GetHttp().GetEndpoint())
 }
 
 func TestRedactSinkConfig_Kafka_SASL(t *testing.T) {

@@ -4,13 +4,13 @@ import (
 	"context"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // replayEntry is a committed keyed bulk the driver can re-send to exercise the
@@ -31,9 +31,9 @@ type replayEntry struct {
 // IDEMPOTENCY_KEY_CONFLICT; otherwise, while the registry has room, it sometimes
 // mints a fresh tracked key so the bulk becomes a replayable original. Most bulks
 // stay untracked. Caller holds c.mu.
-func (c *Checker) stampIdempotency(bulk *oracle.Bulk) {
-	if len(c.replayable) > 0 && rollConflict() {
-		entry := random.RandomChoice(c.replayable)
+func (c *Checker) stampIdempotency(src *generation.Source, bulk *oracle.Bulk) {
+	if len(c.replayable) > 0 && rollConflict(src) {
+		entry := generation.Choice(src, c.replayable)
 		// A differing body is guaranteed to conflict, not replay (RequestsEqual is
 		// a faithful proxy for the server's idempotency hash). Skip the rare exact
 		// match, which would replay and misroute through the commit path.
@@ -44,7 +44,7 @@ func (c *Checker) stampIdempotency(bulk *oracle.Bulk) {
 		}
 	}
 
-	if len(c.replayable) < replayRegistryCap && rollReplayTrack() {
+	if len(c.replayable) < replayRegistryCap && rollReplayTrack(src) {
 		bulk.IdempotencyKey = idempotencyKey()
 	}
 }
@@ -71,14 +71,14 @@ func (c *Checker) rememberReplayable(bulk oracle.Bulk, logs []*commonpb.Log) {
 // sequences) and produces no fresh log, so it must NOT flow through the
 // log-sequence re-order buffer — it registers as a read and validates against
 // the candidate states, exactly like GetAccount/GetTransaction.
-func runReplay(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+func runReplay(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
 	if len(c.replayable) == 0 {
 		c.mu.Unlock()
 
 		return
 	}
-	entry := random.RandomChoice(c.replayable)
+	entry := generation.Choice(src, c.replayable)
 	readID := c.registerRead()
 	c.mu.Unlock()
 	defer c.finishRead(readID)

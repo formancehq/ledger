@@ -9,6 +9,7 @@
     "cmd/ledgerctl/cmdutil/signing.go",
     "cmd/ledgerctl/cmdutil/signing_response_test.go",
     "cmd/ledgerctl/transactions/**",
+    "cmd/ledgerctl/numscripts/**",
     "tests/e2e/cluster/response_signing_test.go",
     "cmd/ledgerctl/apply_response_signatures_test.go"
   ],
@@ -40,6 +41,7 @@
     "Use a committed non-empty log with known fields; sign it, mutate transaction identity, posting amount, sequence, and the envelope independently, and compare the actual client acceptance with the required binding.",
     "Exercise multiple returned logs and supported command paths with verification enabled and disabled, including a missing signature in the middle of a response.",
     "Compare the node's Discovery public key and key ID with an actual returned signature, then repeat across supported key configuration changes.",
-    "Use the existing response signing e2e and ledgerctl tests as leads, recording the exact assertions and any untested path rather than treating green tests as proof."
+    "Use the existing response signing e2e and ledgerctl tests as leads, recording the exact assertions and any untested path rather than treating green tests as proof.",
+    "Exercise transactions set-metadata/delete-metadata and numscripts save through Apply with missing, corrupt, wrong-key and modified visible logs. Verify rejection before success output or returned script identity is displayed; retain valid-signature and verification-disabled controls."
   ]
 }

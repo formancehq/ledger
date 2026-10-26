@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/scenario"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // Registry holds all registered block groups.
@@ -118,17 +119,26 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 
 	registerBlockProperties(allBlocks)
 
-	randFn := scenario.RandFunc(func() uint64 { return internal.Rand().Uint64() })
-
 	for {
 		if ctx.Err() != nil {
 			return
 		}
 
-		b := allBlocks[internal.Rand().Uint64()%uint64(len(allBlocks))]
-		details := internal.Details{"block": b.Name}
+		var b *scenario.Block
+		var resp *servicepb.ApplyResponse
+		var blockErr error
+		// The source is owned by this callback; block RPCs must never be replayed.
+		if err := generation.RunOnce(func(src *generation.Source) {
+			b = allBlocks[src.Intn(len(allBlocks))]
+			resp, blockErr = b.Run(ctx, client, src)
+		}); err != nil {
+			assert.Unreachable("scenario block generation failed", internal.Details{"error": err.Error()})
+			log.Printf("scenario_blocks: generation failed: %v", err)
 
-		resp, err := b.Run(ctx, client, randFn)
+			return
+		}
+		details := internal.Details{"block": b.Name}
+		err := blockErr
 		switch {
 		case err == nil:
 			emitBlockSucceeded(b.Name, wasHit, details)

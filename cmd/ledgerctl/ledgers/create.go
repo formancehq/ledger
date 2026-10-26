@@ -78,9 +78,8 @@ func runCreate(cmd *cobra.Command, args []string) error {
 			return errors.New("ledger name is required (pass it as the first argument)")
 		}
 
-		result, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter ledger name").
-			Show()
+		result, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter ledger name"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -286,10 +285,9 @@ func parseSchemaEntries(cmd *cobra.Command, entries []string) ([]*commonpb.SetMe
 }
 
 func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
-	addSchema, err := pterm.DefaultInteractiveConfirm.
+	addSchema, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
 		WithDefaultText("Add metadata schema?").
-		WithDefaultValue(false).
-		Show()
+		WithDefaultValue(false))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read input: %w", err)
 	}
@@ -301,10 +299,9 @@ func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
 	var schema []*commonpb.SetMetadataFieldTypeCommand
 
 	for {
-		targetStr, err := pterm.DefaultInteractiveSelect.
+		targetStr, err := cmdutil.PromptSelect(pterm.DefaultInteractiveSelect.
 			WithOptions(cmdutil.TargetTypeOptions()).
-			WithDefaultText("Select target type").
-			Show()
+			WithDefaultText("Select target type"))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read input: %w", err)
 		}
@@ -314,9 +311,8 @@ func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
 			return nil, err
 		}
 
-		key, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter metadata key name").
-			Show()
+		key, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter metadata key name"))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read input: %w", err)
 		}
@@ -327,10 +323,9 @@ func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
 			continue
 		}
 
-		typeStr, err := pterm.DefaultInteractiveSelect.
+		typeStr, err := cmdutil.PromptSelect(pterm.DefaultInteractiveSelect.
 			WithOptions(cmdutil.MetadataTypeOptions()).
-			WithDefaultText("Select metadata type").
-			Show()
+			WithDefaultText("Select metadata type"))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read input: %w", err)
 		}
@@ -346,10 +341,9 @@ func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
 			Type:       mdType,
 		})
 
-		another, err := pterm.DefaultInteractiveConfirm.
+		another, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
 			WithDefaultText("Add another field?").
-			WithDefaultValue(false).
-			Show()
+			WithDefaultValue(false))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read input: %w", err)
 		}

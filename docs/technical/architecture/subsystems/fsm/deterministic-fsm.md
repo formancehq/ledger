@@ -119,6 +119,12 @@ That creates a strict boundary:
 | Raft apply, after commit | No | Every replica must produce the same outcome and writes for the committed entry. |
 | Recovery or replay of committed entries | No | Replaying the log must not depend on the recovering node's flags, environment, or binary defaults. |
 
+Bloom filter dimensions and enabled types follow the last committed
+`ClusterConfig` on boot, follower synchronization, and apply. The node-local
+Bloom configuration only supplies a desired value for the leader to propose.
+This also applies to persisted Bloom blocks: two replicas applying the same
+entries must use the same filter shape when they write that projection.
+
 An admission-only policy can therefore behave differently as leadership moves between differently configured nodes. During a rolling upgrade, an old leader may accept a request that an upgraded leader would reject, or the reverse. This is an availability/admission difference, not replicated-state divergence: once the command is committed, the FSM applies it without consulting the local policy.
 
 For example, a node-local limit on live query checkpoints may reject `CreateQueryCheckpoint` before proposal. A committed `CreateQueryCheckpoint` must remain unconditional with respect to that limit in the FSM. Moving the check into apply would let the same Raft entry succeed on one node and fail on another.

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -18,6 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // LOGS is the only target whose universe comes from the read index rather than
@@ -33,21 +33,21 @@ import (
 // genLogFilter builds a filter over the conditions valid on LOGS: ledger name,
 // log id range, and the boolean combinators. Returns nil for the unfiltered
 // case, which exercises the universe scan itself.
-func genLogFilter(ledger string, dates []uint64, depth int) *commonpb.QueryFilter {
-	if depth >= 2 || oneIn(3) {
-		return genLogLeaf(ledger, dates)
+func genLogFilter(src *generation.Source, ledger string, dates []uint64, depth int) *commonpb.QueryFilter {
+	if depth >= 2 || oneIn(src, 3) {
+		return genLogLeaf(src, ledger, dates)
 	}
 
-	return genBoolean(depth, func(d int) *commonpb.QueryFilter { return genLogFilter(ledger, dates, d) })
+	return genBoolean(src, depth, func(d int) *commonpb.QueryFilter { return genLogFilter(src, ledger, dates, d) })
 }
 
 // genLogLeaf picks one LOGS-valid leaf. Bounds straddle the populated range so
 // empty, partial and total windows all occur.
-func genLogLeaf(ledger string, dates []uint64) *commonpb.QueryFilter {
-	switch random.RandomChoice([]uint8{0, 1, 2}) {
+func genLogLeaf(src *generation.Source, ledger string, dates []uint64) *commonpb.QueryFilter {
+	switch generation.Choice(src, []uint8{0, 1, 2}) {
 	case 0:
 		name := ledger
-		if oneIn(4) {
+		if oneIn(src, 4) {
 			name = "no-such-ledger"
 		}
 
@@ -58,31 +58,31 @@ func genLogLeaf(ledger string, dates []uint64) *commonpb.QueryFilter {
 		}}
 	case 1:
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
-			LogId: &commonpb.LogIdCondition{Cond: genLogUintCond()},
+			LogId: &commonpb.LogIdCondition{Cond: genLogUintCond(src)},
 		}}
 	default:
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
 			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
 				Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-				Cond:  genLogDateCond(dates),
+				Cond:  genLogDateCond(src, dates),
 			},
 		}}
 	}
 }
 
-func genLogUintCond() *commonpb.UintCondition {
+func genLogUintCond(src *generation.Source) *commonpb.UintCondition {
 	cond := &commonpb.UintCondition{}
 
-	if oneIn(2) {
-		lower := internal.Rand().Uint64() % 32
+	if oneIn(src, 2) {
+		lower := src.Uint64Range(0, 32-1)
 		cond.Min = &lower
-		cond.MinExclusive = oneIn(2)
+		cond.MinExclusive = oneIn(src, 2)
 	}
 
-	if oneIn(2) {
-		upper := 8 + internal.Rand().Uint64()%64
+	if oneIn(src, 2) {
+		upper := 8 + src.Uint64Range(0, 64-1)
 		cond.Max = &upper
-		cond.MaxExclusive = oneIn(2)
+		cond.MaxExclusive = oneIn(src, 2)
 	}
 
 	return cond
@@ -94,7 +94,7 @@ func genLogUintCond() *commonpb.UintCondition {
 // be total or empty; sampling a served date and jittering around it makes the
 // partial windows the date index is read for. With no date learned yet the
 // bounds stay unset and the leaf is the trivial match.
-func genLogDateCond(dates []uint64) *commonpb.UintCondition {
+func genLogDateCond(src *generation.Source, dates []uint64) *commonpb.UintCondition {
 	cond := &commonpb.UintCondition{}
 	if len(dates) == 0 {
 		return cond
@@ -103,8 +103,8 @@ func genLogDateCond(dates []uint64) *commonpb.UintCondition {
 	const jitterMicros = 1000
 
 	pick := func() uint64 {
-		d := dates[int(internal.Rand().Uint64()%uint64(len(dates)))]
-		offset := internal.Rand().Uint64() % (2*jitterMicros + 1)
+		d := dates[int(src.Uint64Range(0, (uint64(len(dates)))-1))]
+		offset := src.Uint64Range(0, (2*jitterMicros+1)-1)
 
 		if offset > d {
 			return 0
@@ -113,16 +113,16 @@ func genLogDateCond(dates []uint64) *commonpb.UintCondition {
 		return d + offset - jitterMicros
 	}
 
-	if oneIn(2) {
+	if oneIn(src, 2) {
 		lo := pick()
 		cond.Min = &lo
-		cond.MinExclusive = oneIn(2)
+		cond.MinExclusive = oneIn(src, 2)
 	}
 
-	if cond.Min == nil || oneIn(2) {
+	if cond.Min == nil || oneIn(src, 2) {
 		hi := pick()
 		cond.Max = &hi
-		cond.MaxExclusive = oneIn(2)
+		cond.MaxExclusive = oneIn(src, 2)
 	}
 
 	return cond
@@ -569,18 +569,18 @@ func logWindow(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilte
 }
 
 // runLogQuery drives one ListLogs page and checks it against the model.
-func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
+func runLogQuery(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	ledger, _ := pickLedgerReadTarget(src, c.liveLedgerNamesSnapshot(), 0)
 
 	var filter *commonpb.QueryFilter
-	if !oneIn(4) {
-		filter = genLogFilter(ledger, c.modelLogDateSample(ledger), 0)
+	if !oneIn(src, 4) {
+		filter = genLogFilter(src, ledger, c.modelLogDateSample(ledger), 0)
 	}
-	filter = rollFilterShape(filter)
+	filter = rollFilterShape(src, filter)
 
 	refused := classifyRejectedFilter(filter, commonpb.QueryTarget_QUERY_TARGET_LOGS)
 
-	requestedPageSize, pageSize := queryPageSize()
+	requestedPageSize, pageSize := queryPageSize(src)
 	noteClampedPageSize(requestedPageSize, pageSize)
 
 	var (
@@ -588,18 +588,18 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		afterSeq uint64
 	)
 
-	reverse := oneIn(2)
+	reverse := oneIn(src, 2)
 
-	malformed, rolled := rollMalformedCursor()
+	malformed, rolled := rollMalformedCursor(src)
 	switch {
 	case rolled:
 		cursor = malformed
-	case oneIn(2):
+	case oneIn(src, 2):
 		// A ledger-local log id, aimed at the log the ledger actually holds so
 		// the resume lands inside the range rather than always in its first
 		// page: a few below the model's head, and occasionally far past it so
 		// the empty tail is exercised too.
-		afterSeq = c.rollLogResumeID(ledger)
+		afterSeq = c.rollLogResumeID(src, ledger)
 		cursor = pageToken(strconv.FormatUint(afterSeq, 10))
 	}
 
@@ -999,7 +999,7 @@ func diagnosticDetail(value string, err error) string {
 // Mostly just inside the ledger's committed head so the skip lands in the middle
 // of the range; one roll in eight lands past everything it holds, which must
 // serve an empty page rather than wrap. Acquires c.mu.
-func (c *Checker) rollLogResumeID(ledger string) uint64 {
+func (c *Checker) rollLogResumeID(src *generation.Source, ledger string) uint64 {
 	c.mu.Lock()
 	rows := c.modelState.Ledger(ledger).LogRows()
 	c.mu.Unlock()
@@ -1009,9 +1009,9 @@ func (c *Checker) rollLogResumeID(ledger string) uint64 {
 		head = max(head, row.ID)
 	}
 
-	if head == 0 || oneIn(8) {
-		return head + 1 + internal.Rand().Uint64()%16
+	if head == 0 || oneIn(src, 8) {
+		return head + 1 + src.Uint64Range(0, 16-1)
 	}
 
-	return 1 + internal.Rand().Uint64()%head
+	return 1 + src.Uint64Range(0, head-1)
 }

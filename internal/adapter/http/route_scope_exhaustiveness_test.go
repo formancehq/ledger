@@ -137,6 +137,7 @@ func expectedRouteScopes() []routeScope {
 		{http.MethodGet, "/v3/{ledgerName}/stats", kindGuarded, internalauth.ScopeLedgersRead, false},
 		{http.MethodGet, "/v3/{ledgerName}/logs", kindGuarded, internalauth.ScopeLedgersRead, false},
 		{http.MethodGet, "/v3/{ledgerName}/numscripts", kindGuarded, internalauth.ScopeLedgersRead, false},
+		{http.MethodPost, "/v3/numscripts/analyze", kindGuarded, internalauth.ScopeQueriesRead, false},
 		{http.MethodGet, "/v3/{ledgerName}/numscripts/{name}", kindGuarded, internalauth.ScopeLedgersRead, false},
 		{http.MethodGet, "/v3/{ledgerName}/numscripts/{name}/usage", kindGuarded, internalauth.ScopeLedgersRead, false},
 		{http.MethodGet, "/v3/{ledgerName}/numscripts/{name}/versions", kindGuarded, internalauth.ScopeLedgersRead, false},

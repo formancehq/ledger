@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"hegel.dev/go/hegel"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // The admission boundary enforces ^[A-Z]*$ on a posting's color, so every name
@@ -34,15 +37,18 @@ func TestColorName(t *testing.T) {
 // this many draws cannot reach them.
 func TestRandomColor_Distribution(t *testing.T) {
 	t.Parallel()
+	hegel.Test(t, func(ht *hegel.T) {
+		src := generation.NewSource(ht)
 
-	const draws = 20000
+		const draws = 20000
 
-	counts := map[string]int{}
-	for range draws {
-		counts[randomColor()]++
-	}
+		counts := map[string]int{}
+		for range draws {
+			counts[randomColor(src)]++
+		}
 
-	require.InDelta(t, draws/2, counts[""], draws/10, `"" is half the draws`)
-	require.InDelta(t, draws/4, counts["A"], draws/10, `"A" is a quarter`)
-	require.NotZero(t, counts["C"], "the tail past the first few buckets is reachable")
+		require.InDelta(t, draws/2, counts[""], draws/10, `"" is half the draws`)
+		require.InDelta(t, draws/4, counts["A"], draws/10, `"A" is a quarter`)
+		require.NotZero(t, counts["C"], "the tail past the first few buckets is reachable")
+	}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))
 }

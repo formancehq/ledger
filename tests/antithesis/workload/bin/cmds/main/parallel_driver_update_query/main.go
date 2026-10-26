@@ -12,16 +12,22 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_update_query", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunGeneratedDriver("parallel_driver_update_query", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
 		r := internal.Rand()
 		queryName := fmt.Sprintf("upd-q-%d", r.Uint64())
+		prefixes := generation.Choice(src, [][2]string{
+			{"users:", "world"},
+			{"world", "users:"},
+			{"users:0", "users:1"},
+		})
 
 		details := internal.Details{"ledger": ledger, "queryName": queryName}
 
-		// 1. Create a prepared query filtering by "users:" prefix.
+		// 1. Create the initial prefix filter.
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_CreatePreparedQuery{
 				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
@@ -34,7 +40,7 @@ func main() {
 							Filter: &commonpb.QueryFilter_Address{
 								Address: &commonpb.AddressMatch{
 									Match: &commonpb.AddressMatch_HardcodedPrefix{
-										HardcodedPrefix: "users:",
+										HardcodedPrefix: prefixes[0],
 									},
 								},
 							},
@@ -57,7 +63,7 @@ func main() {
 			}
 		}
 
-		// 2. Update the query filter to "world" prefix.
+		// 2. Update to a distinct prefix, retaining the original users/world case.
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_UpdatePreparedQuery{
 				UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
@@ -67,7 +73,7 @@ func main() {
 						Filter: &commonpb.QueryFilter_Address{
 							Address: &commonpb.AddressMatch{
 								Match: &commonpb.AddressMatch_HardcodedPrefix{
-									HardcodedPrefix: "world",
+									HardcodedPrefix: prefixes[1],
 								},
 							},
 						},
@@ -83,7 +89,7 @@ func main() {
 			return
 		}
 
-		// 3. Execute the updated query — should only return accounts matching "world".
+		// 3. Execute the updated query.
 		execResp, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
 			Ledger:    ledger,
 			QueryName: queryName,

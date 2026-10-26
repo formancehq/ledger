@@ -2,9 +2,11 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +31,10 @@ import (
 // StatefulSet status churn.
 const volumeBindRequeueInterval = 10 * time.Second
 
+// Kept on the StatefulSet until every removed ordinal's PVC deletion succeeds.
+// The old replica count cannot be recovered from spec.replicas after scale-down.
+const annotationScaleDownPVCFrom = "ledger.formance.com/scale-down-pvc-from"
+
 func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, specHash string, credentials []credentialsKeyInfo) (ctrl.Result, error) {
 	return r.reconcileStatefulSetWithExec(ctx, ledger, specHash, credentials, podExecWithTimeout)
 }
@@ -44,6 +50,9 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	existingForTLS, err := r.fetchExistingStatefulSet(ctx, ledger)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("fetching StatefulSet for TLS state: %w", err)
+	}
+	if err := r.cleanupPendingScaleDownPVCs(ctx, ledger, existingForTLS); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	targetTLSMode := computeTargetTLSMode(
@@ -82,34 +91,14 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			// so that the image, env vars, etc. are applied. This allows
 			// pods to start (e.g. after an image change) before we attempt
 			// the Raft scale-down which requires running containers.
-			sts := &appsv1.StatefulSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: ledger.Namespace,
-				},
-			}
 			savedReplicas := effective.Spec.Replicas
 			effective.Spec.Replicas = &previousReplicas
-			_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
-				sts.Labels = commonLabels(ledger)
-				desired := buildStatefulSetSpec(effective, specHash, credentials, targetTLSMode)
-
-				if sts.CreationTimestamp.IsZero() {
-					sts.Spec = desired
-				} else {
-					if volumeClaimTemplatesChanged(sts.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
-						desired.Template = preserveExistingStorageWiring(sts.Spec.Template, desired.Template)
-					}
-					sts.Spec.Replicas = desired.Replicas
-					sts.Spec.Template = withKubectlRestartedAt(sts.Spec.Template, desired.Template)
-					sts.Spec.UpdateStrategy = desired.UpdateStrategy
-					sts.Spec.PersistentVolumeClaimRetentionPolicy = desired.PersistentVolumeClaimRetentionPolicy
-					sts.Spec.MinReadySeconds = desired.MinReadySeconds
-				}
-
-				return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
-			})
+			desired := buildStatefulSetSpec(effective, specHash, credentials, targetTLSMode)
 			effective.Spec.Replicas = savedReplicas
+			if volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
+				desired.Template = preserveExistingStorageWiring(existing.Spec.Template, desired.Template)
+			}
+			sts, err := r.upsertStatefulSet(ctx, ledger, desired, &previousReplicas)
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("updating StatefulSet spec before scale-down: %w", err)
 			}
@@ -122,17 +111,13 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			// taken before the CreateOrUpdate above): the rolling update has not yet
 			// started, so pod-0's gRPC server is still on the old TLS_MODE.
 			runningTLSMode := currentTLSModeFromStatefulSet(existingForTLS)
-			if err := raftScaleDown(ctx, r.Config, r.Clientset, ledger, previousReplicas, desiredReplicas, runningTLSMode, exec); err != nil {
+			// sts is now the live StatefulSet the Cluster controls (the mutate
+			// function refused any other): every exec into a pod first checks
+			// that this StatefulSet controls it.
+			if err := raftScaleDown(ctx, r.Config, r.Clientset, ledger, previousReplicas, desiredReplicas, runningTLSMode, ownedPodExec(sts, exec)); err != nil {
 				return ctrl.Result{}, fmt.Errorf("removing Raft nodes before scale-down: %w", err)
 			}
 		}
-	}
-
-	sts := &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: ledger.Namespace,
-		},
 	}
 
 	desired := buildStatefulSetSpec(effective, specHash, credentials, targetTLSMode)
@@ -141,16 +126,18 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	// VCTs are immutable — we must delete-recreate with orphan propagation.
 	existing := &appsv1.StatefulSet{}
 	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, existing); err == nil {
+		if notControlledBy(existing, ledger) {
+			return ctrl.Result{}, nameConflictError("StatefulSet", existing, ledger)
+		}
 		if volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
-			if deferRCVolumeClaimRecreation(ledger.Spec.Image.Tag, existing) {
+			if scalingDown || deferRCVolumeClaimRecreation(ledger.Spec.Image.Tag, existing) {
 				logger.Info("deferring StatefulSet recreation until RC rollout converges")
 				desired.Template = preserveExistingStorageWiring(existing.Spec.Template, desired.Template)
 			} else {
 				logger.Info("VolumeClaimTemplates changed, recreating StatefulSet with orphan propagation")
-				orphan := metav1.DeletePropagationOrphan
-				if err := r.Delete(ctx, existing, &client.DeleteOptions{
-					PropagationPolicy: &orphan,
-				}); err != nil {
+				// Pinned to the inspected UID: a StatefulSet replaced under the
+				// name since the ownership check above is never deleted.
+				if err := deleteInspected(ctx, r.Client, existing, client.PropagationPolicy(metav1.DeletePropagationOrphan)); err != nil {
 					return ctrl.Result{}, fmt.Errorf("deleting StatefulSet for VolumeClaimTemplate change: %w", err)
 				}
 				// Returning here requeues via the owned-StatefulSet delete event — the next
@@ -160,34 +147,16 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		}
 	}
 
-	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
-		sts.Labels = commonLabels(ledger)
-
-		if sts.CreationTimestamp.IsZero() {
-			// New StatefulSet — set the full spec.
-			sts.Spec = desired
-		} else {
-			// Existing StatefulSet — only update mutable fields.
-			// ServiceName, Selector, PodManagementPolicy and
-			// VolumeClaimTemplates are immutable after creation.
-			sts.Spec.Replicas = desired.Replicas
-			sts.Spec.Template = withKubectlRestartedAt(sts.Spec.Template, desired.Template)
-			sts.Spec.UpdateStrategy = desired.UpdateStrategy
-			sts.Spec.PersistentVolumeClaimRetentionPolicy = desired.PersistentVolumeClaimRetentionPolicy
-			sts.Spec.MinReadySeconds = desired.MinReadySeconds
-		}
-
-		return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
-	})
+	sts, err := r.upsertStatefulSet(ctx, ledger, desired, nil)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// After the StatefulSet is updated (pods terminated), delete orphaned PVCs.
+	// The old count was persisted on the StatefulSet before the replica reduction.
+	// A later reconcile can resume this step after a crash or failed DELETE.
 	if scalingDown && r.Clientset != nil {
-		volNames := pvcVolumeNames(&ledger.Spec.Persistence)
-		if err := deleteScaledDownPVCs(ctx, r.Clientset, ledger.Namespace, name, previousReplicas, desiredReplicas, volNames); err != nil {
-			return ctrl.Result{}, fmt.Errorf("deleting PVCs after scale-down: %w", err)
+		if err := r.cleanupPendingScaleDownPVCs(ctx, ledger, sts); err != nil {
+			return ctrl.Result{}, err
 		}
 	}
 
@@ -210,6 +179,99 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ClusterReconciler) cleanupPendingScaleDownPVCs(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) error {
+	if sts == nil {
+		return nil
+	}
+	from, pending := sts.Annotations[annotationScaleDownPVCFrom]
+	if !pending {
+		return nil
+	}
+	if r.Clientset == nil {
+		return errors.New("pending StatefulSet scale-down PVC cleanup requires a Kubernetes clientset")
+	}
+	if !metav1.IsControlledBy(sts, ledger) {
+		return fmt.Errorf("StatefulSet %q with pending PVC cleanup is not controlled by Cluster %q", sts.Name, ledger.Name)
+	}
+	previous, err := strconv.ParseInt(from, 10, 32)
+	if err != nil || previous < 1 || sts.Spec.Replicas == nil {
+		return fmt.Errorf("invalid StatefulSet scale-down PVC cleanup state %q", from)
+	}
+	current := *sts.Spec.Replicas
+	if int32(previous) <= current {
+		// The replica reduction has not committed yet.
+		return nil
+	}
+	volumeNames := make([]string, 0, len(sts.Spec.VolumeClaimTemplates))
+	for _, claim := range sts.Spec.VolumeClaimTemplates {
+		volumeNames = append(volumeNames, claim.Name)
+	}
+	if err := deleteScaledDownPVCs(ctx, r.Clientset, ledger.Namespace, sts.Name, int32(previous), current, volumeNames); err != nil {
+		return fmt.Errorf("deleting PVCs after scale-down: %w", err)
+	}
+	before := sts.DeepCopy()
+	delete(sts.Annotations, annotationScaleDownPVCFrom)
+	if err := r.Patch(ctx, sts, client.MergeFrom(before)); err != nil {
+		return fmt.Errorf("clearing StatefulSet scale-down PVC cleanup state: %w", err)
+	}
+
+	return nil
+}
+
+// upsertStatefulSet is the single path that creates or updates the workload.
+// The stopped-upgrade gate calls the ordinary reconciler only after every old
+// Pod has disappeared; it never constructs a second StatefulSet spec.
+func (r *ClusterReconciler) upsertStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, desired appsv1.StatefulSetSpec, scaleDownFrom *int32) (*appsv1.StatefulSet, error) {
+	sts := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: resourceName(ledger.Name), Namespace: ledger.Namespace}}
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
+		sts.Labels = commonLabels(ledger)
+		if scaleDownFrom != nil {
+			if sts.Annotations == nil {
+				sts.Annotations = make(map[string]string)
+			}
+			sts.Annotations[annotationScaleDownPVCFrom] = strconv.FormatInt(int64(*scaleDownFrom), 10)
+		}
+		if sts.CreationTimestamp.IsZero() {
+			sts.Spec = desired
+		} else {
+			// ServiceName, Selector, PodManagementPolicy and claim templates
+			// are immutable after creation.
+			applyMutableStatefulSetSpec(sts, desired)
+		}
+
+		return setOwnedControllerReference(ledger, sts, r.Scheme, "StatefulSet")
+	})
+
+	return sts, err
+}
+
+func applyMutableStatefulSetSpec(sts *appsv1.StatefulSet, desired appsv1.StatefulSetSpec) {
+	sts.Spec.Replicas = desired.Replicas
+	sts.Spec.Template = withKubectlRestartedAt(sts.Spec.Template, desired.Template)
+	sts.Spec.UpdateStrategy = desired.UpdateStrategy
+	sts.Spec.PersistentVolumeClaimRetentionPolicy = desired.PersistentVolumeClaimRetentionPolicy
+	sts.Spec.MinReadySeconds = desired.MinReadySeconds
+}
+
+// reconcileStatefulSetRetentionPolicy applies the same policy used by ordinary
+// StatefulSet creation. During a stopped upgrade buildRetentionPolicy always
+// returns Retain; callers must requeue until the StatefulSet controller has
+// observed the updated generation before detaching or reusing claims.
+func (r *ClusterReconciler) reconcileStatefulSetRetentionPolicy(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (bool, error) {
+	desired := buildRetentionPolicy(ledger)
+	if sts.Spec.PersistentVolumeClaimRetentionPolicy != nil &&
+		*sts.Spec.PersistentVolumeClaimRetentionPolicy == *desired {
+		return false, nil
+	}
+	updated := sts.DeepCopy()
+	updated.Spec.PersistentVolumeClaimRetentionPolicy = desired
+	if err := r.Update(ctx, updated); err != nil {
+		return false, fmt.Errorf("updating StatefulSet claim retention policy: %w", err)
+	}
+
+	return true, nil
 }
 
 // preserveExistingStorageWiring keeps the Pod template compatible with the
@@ -318,6 +380,12 @@ func buildStatefulSetSpec(ledger *ledgerv1alpha1.Cluster, specHash string, crede
 func buildRetentionPolicy(ledger *ledgerv1alpha1.Cluster) *appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy {
 	whenScaled := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 	whenDeleted := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
+	// The replacement StatefulSet must not acquire PVC deletion ownership while
+	// recovery may still delete and recreate it. The requested policy is restored
+	// by the ordinary reconcile after status.upgrade has been cleared.
+	if ledger.Status.Upgrade != nil {
+		return &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{WhenScaled: whenScaled, WhenDeleted: whenDeleted}
+	}
 
 	if ledger.Spec.Persistence.RetentionPolicy != nil {
 		rp := ledger.Spec.Persistence.RetentionPolicy

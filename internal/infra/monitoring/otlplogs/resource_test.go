@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -36,8 +36,8 @@ func (r *resourceLogReceiver) Export(ctx context.Context, request *collector.Exp
 
 // Logger changes the global log provider, so this collector test runs serially.
 func TestLoggerExportsSharedTraceResource(t *testing.T) {
-	previousProvider := global.GetLoggerProvider()
-	t.Cleanup(func() { global.SetLoggerProvider(previousProvider) })
+	previousProvider := otel.GetLoggerProvider()
+	t.Cleanup(func() { otel.SetLoggerProvider(previousProvider) })
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -69,7 +69,7 @@ func TestLoggerExportsSharedTraceResource(t *testing.T) {
 		Resource:   sharedResource, Output: io.Discard, Level: logging.InfoLevel,
 	})
 	require.NoError(t, err)
-	provider, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider)
+	provider, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider)
 	require.True(t, ok)
 	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.Background())) })
 

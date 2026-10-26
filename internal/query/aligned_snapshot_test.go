@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -178,25 +179,29 @@ func TestAlignedIndexSnapshot(t *testing.T) {
 func TestAlignedIndexSnapshot_WaitsOnlyAsLongAsTheCallerAllows(t *testing.T) {
 	t.Parallel()
 
-	store := newTestStore(t)
-	registerLedger(t, store, "l")
-	appendLogs(t, store, 3, createTestLogsForLedger("l", 1)...)
+	// On the bubble's fake clock the wait ends exactly at the caller's
+	// deadline, so the bound is asserted precisely and costs no real time.
+	synctest.Test(t, func(t *testing.T) {
+		store := newTestStore(t)
+		registerLedger(t, store, "l")
+		appendLogs(t, store, 3, createTestLogsForLedger("l", 1)...)
 
-	rs := newTestReadStore(t)
-	setReadStoreProgress(t, rs, 1) // permanently behind
+		rs := newTestReadStore(t)
+		setReadStoreProgress(t, rs, 1) // permanently behind
 
-	handle, err := store.NewReadHandle()
-	require.NoError(t, err)
-	defer func() { _ = handle.Close() }()
+		handle, err := store.NewReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
 
-	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+		defer cancel()
 
-	start := time.Now()
-	_, _, _, err = query.AlignedIndexSnapshot(ctx, rs, handle, "l", func() {})
+		start := time.Now()
+		_, _, _, err = query.AlignedIndexSnapshot(ctx, rs, handle, "l", func() {})
 
-	require.ErrorIs(t, err, context.DeadlineExceeded, "the caller's deadline is what ends the wait")
-	require.Less(t, time.Since(start), time.Second, "it must not outlive the caller's deadline")
+		require.ErrorIs(t, err, context.DeadlineExceeded, "the caller's deadline is what ends the wait")
+		require.Equal(t, 200*time.Millisecond, time.Since(start), "it must not outlive the caller's deadline")
+	})
 }
 
 func TestAlignedIndexSnapshotRejectsMainSnapshotBehindReadBarrier(t *testing.T) {

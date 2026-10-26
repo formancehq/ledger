@@ -107,6 +107,7 @@ func TestCacheSnapshotter_BloomBootOrdering_RestoreIsSynchronous(t *testing.T) {
 		// Persist the bloom block so the next incarnation sees
 		// hasPersistedBloomBlocks == true (the restart-path branch).
 		require.NoError(t, bloomFilters.PersistDirtyBlocks(batch))
+		require.NoError(t, bloom.SealProjectionAt(batch, 0))
 		require.NoError(t, batch.Commit())
 	}
 
@@ -221,6 +222,7 @@ func TestCacheSnapshotter_EN1527_RestoreRejectsMalformedBloomBlock(t *testing.T)
 		batch := dataStore.OpenWriteSession()
 		bloomFilters.AddCanonicalKeys(&bloom.BloomUpdates{Volumes: []attributes.U128{id}})
 		require.NoError(t, bloomFilters.PersistDirtyBlocks(batch))
+		require.NoError(t, bloom.SealProjectionAt(batch, 0))
 		require.NoError(t, batch.Commit())
 	}
 
@@ -306,6 +308,7 @@ func TestCacheSnapshotter_EN1527_RestoreToleratesConfigDrift(t *testing.T) {
 			Metadata: []attributes.U128{metaID},
 		})
 		require.NoError(t, bloomA.PersistDirtyBlocks(batch))
+		require.NoError(t, bloom.SealProjectionAt(batch, 0))
 		require.NoError(t, batch.Commit())
 	}
 

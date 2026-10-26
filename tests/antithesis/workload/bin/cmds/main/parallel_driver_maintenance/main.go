@@ -12,10 +12,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_maintenance", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunGeneratedDriver("parallel_driver_maintenance", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
 		// Create a dedicated ledger so we don't depend on a shared ledger
 		// that may be deleted by another concurrent driver.
 		ledger := internal.PrefixMaintenance.New()
@@ -45,7 +46,7 @@ func main() {
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
+								commonpb.NewPosting("world", "users:0", "USD/2", internal.GeneratedBigInt(src)),
 							},
 							Force: true,
 						},
@@ -84,7 +85,7 @@ func main() {
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
+								commonpb.NewPosting("world", "users:0", "USD/2", internal.GeneratedBigInt(src)),
 							},
 							Force: true,
 						},

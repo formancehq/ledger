@@ -94,6 +94,17 @@ func runExecute(cmd *cobra.Command, args []string) error {
 		}, showProfile)
 	}
 
+	return executeWithPager(cmd, client, &servicepb.ExecutePreparedQueryRequest{
+		Ledger:     ledgerName,
+		QueryName:  queryName,
+		Parameters: params,
+		PageSize:   pageSize,
+		Mode:       mode,
+		Reverse:    reverse,
+	}, showProfile)
+}
+
+func executeWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, req *servicepb.ExecutePreparedQueryRequest, showProfile bool) error {
 	var cursor string
 
 	pageNum := 1
@@ -106,15 +117,16 @@ func runExecute(cmd *cobra.Command, args []string) error {
 
 		var trailer metadata.MD
 
-		resp, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
-			Ledger:     ledgerName,
-			QueryName:  queryName,
-			Parameters: params,
-			PageSize:   pageSize,
+		pageReq := &servicepb.ExecutePreparedQueryRequest{
+			Ledger:     req.GetLedger(),
+			QueryName:  req.GetQueryName(),
+			Parameters: req.GetParameters(),
+			PageSize:   req.GetPageSize(),
 			Cursor:     cursor,
-			Mode:       mode,
-			Reverse:    reverse,
-		}, ggrpc.Trailer(&trailer))
+			Mode:       req.GetMode(),
+			Reverse:    req.GetReverse(),
+		}
+		resp, err := client.ExecutePreparedQuery(ctx, pageReq, ggrpc.Trailer(&trailer))
 
 		cancel()
 
@@ -138,10 +150,15 @@ func runExecute(cmd *cobra.Command, args []string) error {
 				return nil
 			}
 
-			proceed, promptErr := pterm.DefaultInteractiveConfirm.
+			if !cmdutil.CanPrompt() {
+				pterm.Info.Println("More results available; rerun with --all to fetch all pages.")
+
+				return nil
+			}
+
+			proceed, promptErr := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
 				WithDefaultText("Load next page?").
-				WithDefaultValue(true).
-				Show()
+				WithDefaultValue(true))
 			if promptErr != nil {
 				return fmt.Errorf("failed to read input: %w", promptErr)
 			}

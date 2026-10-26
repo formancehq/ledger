@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -9,6 +10,58 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
+
+// TestTransferLeaderCommandContract guards the operational command through the
+// real root, including both parent registrations and handler error propagation.
+func TestTransferLeaderCommandContract(t *testing.T) {
+	// Root execution loads connection profiles. Isolate configuration on every
+	// platform; process-wide environment changes prevent parallel execution.
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("APPDATA", tmp)
+	t.Setenv("LOCALAPPDATA", tmp)
+	t.Setenv("LEDGERCTL_PROFILE", "")
+
+	root := newRootCommand()
+	cmd, remaining, err := root.Find([]string{"cluster", "transfer-leader"})
+	require.NoError(t, err)
+	require.Empty(t, remaining)
+	require.Equal(t, "ledgerctl cluster transfer-leader", cmd.CommandPath())
+
+	alias, remaining, err := root.Find([]string{"cl", "tl"})
+	require.NoError(t, err)
+	require.Empty(t, remaining)
+	require.Same(t, cmd, alias)
+
+	require.NotNil(t, cmd.Args)
+	require.Error(t, cmd.Args(cmd, nil))
+	require.NoError(t, cmd.Args(cmd, []string{"1"}))
+	require.Error(t, cmd.Args(cmd, []string{"1", "2"}))
+	require.NotNil(t, cmd.RunE)
+
+	timeout := cmd.Flags().Lookup("timeout")
+	require.NotNil(t, timeout)
+	require.Equal(t, "duration", timeout.Value.Type())
+	require.Equal(t, "10s", timeout.DefValue)
+
+	require.NotNil(t, cmd.ValidArgsFunction)
+	suggestions, directive := cmd.ValidArgsFunction(cmd, nil, "")
+	require.Empty(t, suggestions)
+	require.Equal(t, cobra.ShellCompDirectiveNoFileComp, directive)
+
+	// A typed parsing error proves the real handler ran and its error crossed
+	// root execution, rather than an earlier configuration failure satisfying it.
+	root = newRootCommand()
+	root.SilenceErrors = true
+	root.SetArgs([]string{"cluster", "transfer-leader", "not-a-node"})
+	err = root.Execute()
+	var parseErr *strconv.NumError
+	require.ErrorAs(t, err, &parseErr)
+	require.Equal(t, "ParseUint", parseErr.Func)
+	require.Equal(t, "not-a-node", parseErr.Num)
+	require.ErrorIs(t, err, strconv.ErrSyntax)
+}
 
 // TestLedgerFlagCompletionRegistered asserts that every command exposing a
 // --ledger flag (locally or via the inherited persistent flag) has the
@@ -431,7 +484,8 @@ func TestProfileSigningKeyIDDoesNotFeedSigningCommands(t *testing.T) {
 // Mutates process-wide environment, so it cannot run in parallel.
 func TestBindEnvSkipsOwnedProfile(t *testing.T) {
 	t.Setenv("PROFILE", "bare-leak")
-	t.Setenv("PROBE_ONLY", "bound-value")
+	t.Setenv("PROBE_ONLY", "bare-leak")
+	t.Setenv("LEDGERCTL_PROBE_ONLY", "bound-value")
 
 	set := pflag.NewFlagSet("probe", pflag.ContinueOnError)
 	set.String("profile", "", "")    // owned -> must be skipped
@@ -444,12 +498,61 @@ func TestBindEnvSkipsOwnedProfile(t *testing.T) {
 	require.Empty(t, profile, "bare PROFILE must not populate the owned --profile flag")
 	require.False(t, set.Changed("profile"), "owned --profile must not be marked changed by bare PROFILE")
 
-	// Control: a non-owned flag IS bound from its bare env name, proving the
-	// binder actually ran and the skip above is specific to the owned set.
+	// Control: a non-owned flag is bound from its LEDGERCTL_-prefixed env name,
+	// proving the binder actually ran and the skip above is specific to the owned
+	// set.
 	probe, err := set.GetString("probe-only")
 	require.NoError(t, err)
 	require.Equal(t, "bound-value", probe)
-	require.True(t, set.Changed("probe-only"))
+	require.False(t, set.Changed("probe-only"), "env resolution must not look like an explicit CLI flag")
+}
+
+// TestSubcommandEnvContract prevents ambient shell variables from changing
+// command behavior. Ordinary flags use the explicit LEDGERCTL_ namespace;
+// FORCE and YES are CLI-only because they weaken safety checks.
+func TestSubcommandEnvContract(t *testing.T) {
+	t.Setenv("FORCE", "true")
+	t.Setenv("YES", "true")
+	t.Setenv("MODE", "test")
+	t.Setenv("PATH", "/ambient/path")
+	t.Setenv("LEDGERCTL_MODE", "mirror")
+	t.Setenv("LEDGERCTL_PATH", "/explicit/path")
+
+	set := pflag.NewFlagSet("probe", pflag.ContinueOnError)
+	set.Bool("force", false, "")
+	set.Bool("yes", false, "")
+	set.String("mode", "normal", "")
+	set.String("path", "", "")
+
+	bindFlagSetSkippingOwned(set)
+
+	force, err := set.GetBool("force")
+	require.NoError(t, err)
+	require.False(t, force)
+	yes, err := set.GetBool("yes")
+	require.NoError(t, err)
+	require.False(t, yes)
+	mode, err := set.GetString("mode")
+	require.NoError(t, err)
+	require.Equal(t, "mirror", mode)
+	path, err := set.GetString("path")
+	require.NoError(t, err)
+	require.Equal(t, "/explicit/path", path)
+	require.False(t, set.Changed("mode"))
+	require.False(t, set.Changed("path"))
+
+	// An explicit CLI assignment still carries Changed=true.
+	require.NoError(t, set.Set("mode", "cli"))
+	require.Equal(t, "cli", mustStringFlag(t, set, "mode"))
+	require.True(t, set.Changed("mode"))
+}
+
+func mustStringFlag(t *testing.T, set *pflag.FlagSet, name string) string {
+	t.Helper()
+	value, err := set.GetString(name)
+	require.NoError(t, err)
+
+	return value
 }
 
 // Kubernetes resolves backup Secret references into these environment variables.

@@ -997,7 +997,7 @@ type ChartEnforcementMode int32
 
 const (
 	ChartEnforcementMode_CHART_ENFORCEMENT_STRICT ChartEnforcementMode = 0 // Reject transactions with invalid addresses (default)
-	ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT  ChartEnforcementMode = 1 // Log warning but allow the transaction
+	ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT  ChartEnforcementMode = 1 // Allow unmatched accounts without reporting them
 )
 
 // Enum value maps for ChartEnforcementMode.

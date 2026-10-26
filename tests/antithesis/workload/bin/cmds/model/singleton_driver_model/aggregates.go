@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"github.com/holiman/uint256"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -19,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // runAggregateQuery issues a linearizable AggregateVolumes over an index-free
@@ -27,26 +27,26 @@ import (
 // collapse colors into the uncolored bucket and merge an asset's precisions
 // under the highest one seen, and the model folds the same way. Grouping by
 // prefix stays off.
-func runAggregateQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 2)
+func runAggregateQuery(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	ledger, absent := pickLedgerReadTarget(src, c.ledgerNamesSnapshot(), 2)
 
 	var filter *commonpb.QueryFilter
 	switch {
-	case oneIn(3):
-		filter = genAccountFilterIndexed(c.sampleAccountFieldSeeds(ledger), 0)
-	case oneIn(2):
-		filter = genAccountFilterFree(0)
+	case oneIn(src, 3):
+		filter = genAccountFilterIndexed(src, c.sampleAccountFieldSeeds(ledger), 0)
+	case oneIn(src, 2):
+		filter = genAccountFilterFree(src, 0)
 	}
-	filter = rollFilterShape(filter)
+	filter = rollFilterShape(src, filter)
 	refused := classifyRejectedFilter(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
 
 	opts := aggOptions{
-		collapseColors:  oneIn(3),
-		useMaxPrecision: oneIn(4),
-		groupByPrefixes: genGroupPrefixes(),
+		collapseColors:  oneIn(src, 3),
+		useMaxPrecision: oneIn(src, 4),
+		groupByPrefixes: genGroupPrefixes(src),
 	}
 
 	c.mu.Lock()
@@ -123,25 +123,25 @@ func runAggregateQuery(ctx context.Context, client servicepb.BucketServiceClient
 	c.validateAggregate(maxTicket, ledger, filter, opts, needed, res, nil)
 }
 
-// genGroupPrefixes rolls the account prefixes an aggregate groups by, one read
-// in four: one to three drawn from the address pool, with a prefix no account
+// genGroupPrefixes rolls the account prefixes an aggregate groups by, with
+// nominal weight 1/4: one to three drawn from the address pool, with a prefix no account
 // carries mixed in so an empty group is served too.
-func genGroupPrefixes() []string {
-	if !oneIn(4) {
+func genGroupPrefixes(src *generation.Source) []string {
+	if !oneIn(src, 4) {
 		return nil
 	}
 
-	n := int(random.RandomChoice([]uint8{1, 2, 3}))
+	n := int(generation.Choice(src, []uint8{1, 2, 3}))
 	out := make([]string, 0, n)
 
 	for range n {
-		if oneIn(4) {
+		if oneIn(src, 4) {
 			out = append(out, "no-such-prefix:")
 
 			continue
 		}
 
-		out = append(out, poolName()+":")
+		out = append(out, poolName(src)+":")
 	}
 
 	return out
@@ -172,8 +172,6 @@ func (o aggOptions) prefixOf(addr string) (string, bool) {
 // aggPair is one bucket's summed volumes.
 type aggPair struct{ in, out uint256.Int }
 
-func (p *aggPair) zero() bool { return p.in.IsZero() && p.out.IsZero() }
-
 func addAgg(sums map[assetColor]*aggPair, key assetColor, in, out *uint256.Int) {
 	p := sums[key]
 	if p == nil {
@@ -188,8 +186,9 @@ func addAgg(sums map[assetColor]*aggPair, key assetColor, in, out *uint256.Int) 
 // modelAggregate folds the volume cells of every filter-matching account into
 // per-(asset, color) sums the way the server's result stage does: precisions
 // of one base merged under the highest seen with lower amounts rescaled, then
-// colors summed into the uncolored bucket, each when asked. Fully-zero sums are
-// dropped (a purge can zero a cell the server no longer reports).
+// colors summed into the uncolored bucket, each when asked. Stored zero cells
+// contribute buckets too: zero postings create normal volume cells, while
+// oracle.purgeZeroBalance removes purged cells from Volumes entirely.
 func modelAggregate(ls oracle.LedgerState, filter *commonpb.QueryFilter, opts aggOptions) map[assetColor]*aggPair {
 	return aggregateFold(ls, filter, opts, nil)
 }
@@ -248,12 +247,6 @@ func aggregateFold(ls oracle.LedgerState, filter *commonpb.QueryFilter, opts agg
 		sums = collapsed
 	}
 
-	for key, p := range sums {
-		if p.zero() {
-			delete(sums, key)
-		}
-	}
-
 	return sums
 }
 
@@ -307,7 +300,7 @@ func formatAsset(base string, precision uint8) string {
 
 // serverAggregate decodes an AggregateResult into per-(asset, color) sums. Every
 // bucket the server sent is kept, zero totals included: a bucket it invented is
-// a divergence the model side's drop would otherwise absorb. ok is false when a
+// a divergence even when its amounts are zero. ok is false when a
 // bucket repeats, which the result's one-entry-per-bucket contract forbids.
 func serverAggregate(res *commonpb.AggregateResult) (out map[assetColor]*aggPair, ok bool) {
 	out = map[assetColor]*aggPair{}

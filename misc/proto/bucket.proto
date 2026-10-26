@@ -154,6 +154,10 @@ service BucketService {
   rpc GetNumscript(GetNumscriptRequest) returns (common.NumscriptInfo) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
   }
+  // AnalyzeNumscript validates source without reading or changing ledger state.
+  rpc AnalyzeNumscript(AnalyzeNumscriptRequest) returns (AnalyzeNumscriptResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
+  }
   // ListNumscripts streams all numscripts (latest version of each)
   rpc ListNumscripts(ListNumscriptsRequest) returns (stream common.NumscriptInfo) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
@@ -425,6 +429,43 @@ message DropIndexRequest {
 // ============================================================================
 // Numscript Library Messages
 // ============================================================================
+
+message AnalyzeNumscriptRequest {
+  string source = 1;
+  // Required language version. The current version is "v1".
+  string version = 2;
+}
+
+message NumscriptInput {
+  string name = 1;
+  string type = 2;
+}
+
+enum NumscriptDiagnosticKind {
+  NUMSCRIPT_DIAGNOSTIC_KIND_UNSPECIFIED = 0;
+  NUMSCRIPT_DIAGNOSTIC_KIND_VERSION = 1;
+  NUMSCRIPT_DIAGNOSTIC_KIND_SYNTAX = 2;
+  NUMSCRIPT_DIAGNOSTIC_KIND_FEATURE = 3;
+  NUMSCRIPT_DIAGNOSTIC_KIND_COMPILE = 4;
+}
+
+message NumscriptDiagnostic {
+  NumscriptDiagnosticKind kind = 1;
+  // Stable machine-readable diagnostic code.
+  string code = 2;
+  string message = 3;
+  // Zero-based source coordinates. Omitted when the diagnostic has no range.
+  optional uint32 start_line = 4;
+  optional uint32 start_column = 5;
+  optional uint32 end_line = 6;
+  optional uint32 end_column = 7;
+}
+
+message AnalyzeNumscriptResponse {
+  // Sorted by name; populated only when diagnostics is empty.
+  repeated NumscriptInput inputs = 1;
+  repeated NumscriptDiagnostic diagnostics = 2;
+}
 
 // SaveNumscriptRequest appends an immutable version to the library. version
 // must be an explicit full semver (e.g. "1.0.0").
@@ -980,6 +1021,10 @@ enum CheckStoreErrorType {
   // re-derived by replaying the chain-verified AuditItem orders. Logs are a
   // projection of the audit chain and never an input to expected-state replay.
   CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH = 31;
+  // A ledger projection has a different key/name, deletion state, mode or
+  // mirror source than the state replayed from verified audit orders. Applies
+  // independently to canonical FSM attributes and global ledger information.
+  CHECK_STORE_ERROR_TYPE_LEDGER_INFO_MISMATCH = 32;
 }
 
 message CheckStoreError {

@@ -329,6 +329,10 @@ const (
 	// authenticate audit history. It is part of checkpoints, unlike the
 	// operational cluster identity removed during restore preparation.
 	SubGlobAuditKey byte = 0x15
+	// SubGlobBloomProjectionSeal proves that persisted Bloom blocks were built
+	// from a complete scan. It lives outside SubGlobBloom so the prior binary's
+	// block reader ignores it during rollback.
+	SubGlobBloomProjectionSeal byte = 0x16
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).
@@ -346,6 +350,10 @@ const (
 	// index.
 	// [ZoneClusterTransient][SubTransientBackupJobHistory][completed_at_index BE 8][destination_key] → BackupJob proto.
 	SubTransientBackupJobHistory byte = 0x02
+	// SubTransientDrainState is the first Raft-ordered shutdown barrier.
+	// It survives in-cluster recovery/snapshot sync and is cleared when a
+	// backup is restored into a different cluster.
+	SubTransientDrainState byte = 0x03
 )
 
 // ---------------------------------------------------------------------------

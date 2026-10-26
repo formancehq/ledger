@@ -10,13 +10,15 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_tx_metadata", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunGeneratedDriver("parallel_driver_tx_metadata", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
+		// Keep metadata keys unique across concurrent driver invocations.
 		r := internal.Rand()
 		key := fmt.Sprintf("tx-meta-%d", r.Uint64())
-		value := fmt.Sprintf("val-%d", r.Uint64())
+		value := fmt.Sprintf("val-%d", src.Uint64())
 
 		// 1. Create a transaction to attach metadata to.
 		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
@@ -25,7 +27,7 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: internal.RandomPostings(),
+							Postings: internal.GeneratedPostings(src),
 							Force:    true,
 						},
 					}},

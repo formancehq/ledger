@@ -5,6 +5,8 @@
 - **Audience:** Ledger implementers, API consumers
 - **Scope:** Account address validation via a declarative chart of accounts. Covers the data model, validation algorithm, enforcement modes, API surface, and protobuf changes. Transaction templates, query templates, and default metadata are **out of scope** (see §4 for the rationale on default metadata).
 
+This historical draft is not the current API contract. The implemented `AUDIT` mode accepts unmatched addresses without reporting violations. See `docs/ops/cli.md` and `docs/technical/contributing/api-comparison.md` for current behavior.
+
 ---
 
 ## 0. Context and Motivation
@@ -65,7 +67,7 @@ Ledger v2 introduced a "Schema" system that bundled three concepts: a chart of a
 ### 0.3 Goals
 
 1. **Validate account addresses** against a per-ledger declarative structure
-2. **Support enforcement modes** — strict (reject) and audit (log + allow)
+2. **Support enforcement modes** — strict (reject) and audit (allow without reporting)
 3. **Per-ledger configuration** — each ledger defines its own chart (or none, for backward compatibility)
 4. **Idiomatic format** — fully typeable in protobuf and OpenAPI, with explicit fields instead of prefix conventions
 
@@ -187,7 +189,7 @@ message ChartVariable {
 // ChartEnforcementMode controls how chart violations are handled.
 enum ChartEnforcementMode {
   CHART_ENFORCEMENT_STRICT = 0;  // Reject transactions with invalid addresses (default)
-  CHART_ENFORCEMENT_AUDIT = 1;   // Log warning but allow the transaction
+  CHART_ENFORCEMENT_AUDIT = 1;   // Allow unmatched accounts without reporting them
 }
 ```
 
@@ -218,7 +220,7 @@ This ensures the chart is:
 | Mode | Value | Behavior |
 |------|-------|----------|
 | `CHART_ENFORCEMENT_STRICT` | `0` | **Default.** Reject transactions that use addresses not in the chart. Returns `ErrAccountNotInChart`. |
-| `CHART_ENFORCEMENT_AUDIT` | `1` | Log a warning with the violating address(es) but allow the transaction to proceed. |
+| `CHART_ENFORCEMENT_AUDIT` | `1` | Allow unmatched accounts without reporting them. |
 
 The default is strict (`0`) because proto3 defaults zero-value enums, and new ledgers should be strict by default when they declare a chart.
 
@@ -305,9 +307,9 @@ var ErrAccountNotInChart = errors.New("account not in chart")
 When `enforcement_mode` is `CHART_ENFORCEMENT_AUDIT`:
 
 - Every account address is validated the same way
-- If any address fails validation, a **warning is logged** with the address and ledger name
+- Unmatched addresses are accepted without a warning, response field, or metric
 - The transaction proceeds normally
-- Useful for gradual adoption: enable the chart in audit mode, monitor logs for violations, then switch to strict
+- Operators must validate account addresses separately before switching to strict
 
 ### 3.3 Validation Point
 
@@ -412,10 +414,10 @@ When a new segment is added (e.g., `users:$userId:wallets:$walletId:main`), exis
 
 ### 5.2 Audit Mode Already Covers Gradual Rollout
 
-The `CHART_ENFORCEMENT_AUDIT` mode (§3.2) provides exactly the gradual rollout mechanism that versioning aims to solve:
+The `CHART_ENFORCEMENT_AUDIT` mode (§3.2) keeps transactions available during a gradual rollout, but does not identify violations:
 
-1. Deploy the new chart in **audit mode** — all transactions proceed, violations are logged
-2. Monitor logs to identify which services still use addresses that are no longer in the chart
+1. Deploy the new chart in **audit mode** — all transactions proceed without violation reporting
+2. Check account addresses outside Ledger to identify services still using addresses that are no longer in the chart
 3. Update the offending services
 4. Switch to **strict mode** when all services comply
 
@@ -787,8 +789,8 @@ ledgerctl ledgers create --name payments \
     --chart-of-accounts chart.json \
     --enforcement-mode audit
 
-# 2. Run production traffic, monitor logs for violations
-# Look for: "chart validation warning: account not in chart: ..."
+# 2. Run production traffic and validate account addresses separately.
+# AUDIT does not emit chart violation warnings.
 
 # 3. Fix any scripts using invalid addresses
 

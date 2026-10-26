@@ -1,76 +1,58 @@
 package node
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/raft/v3"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 )
 
-func TestParseReadIndexContext_Valid(t *testing.T) {
+func TestReadIndexResolvesOnlyCompleteContext(t *testing.T) {
 	t.Parallel()
 
-	// Round-trip: make then parse
-	original := uint64(12345)
-	rctx := makeReadIndexContext(original)
+	rctx := makeReadIndexContext()
+	changedPrefix := bytes.Clone(rctx)
+	changedPrefix[0] ^= 1
+	changedSuffix := bytes.Clone(rctx)
+	changedSuffix[len(changedSuffix)-1] ^= 1
 
-	id, ok := parseReadIndexContext(rctx)
-	require.True(t, ok)
-	require.Equal(t, original, id)
-}
+	n := &Node{pendingReads: &SyncMap[string, *readIndexRequest]{}}
+	waiter := futures.New[uint64]()
+	n.pendingReads.Store(string(rctx), &readIndexRequest{future: waiter})
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
 
-func TestParseReadIndexContext_MaxValue(t *testing.T) {
-	t.Parallel()
-
-	rctx := makeReadIndexContext(^uint64(0))
-
-	id, ok := parseReadIndexContext(rctx)
-	require.True(t, ok)
-	require.Equal(t, ^uint64(0), id)
-}
-
-func TestParseReadIndexContext_Zero(t *testing.T) {
-	t.Parallel()
-
-	rctx := makeReadIndexContext(0)
-
-	id, ok := parseReadIndexContext(rctx)
-	require.True(t, ok)
-	require.Equal(t, uint64(0), id)
-}
-
-func TestParseReadIndexContext_WrongLength(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		rctx []byte
-	}{
-		{name: "nil", rctx: nil},
-		{name: "empty", rctx: []byte{}},
-		{name: "too short", rctx: []byte{1, 2, 3}},
-		{name: "too long", rctx: []byte{1, 2, 3, 4, 5, 6, 7, 8, 9}},
-		{name: "seven bytes", rctx: []byte{1, 2, 3, 4, 5, 6, 7}},
+	// Shared prefixes or suffixes, legacy counters and malformed lengths must
+	// not be accepted as a certificate for this invocation.
+	for _, other := range [][]byte{nil, {}, rctx[:8], append(bytes.Clone(rctx), 0), changedPrefix, changedSuffix} {
+		n.resolveReadyReadStates(raft.Ready{ReadStates: []raft.ReadState{{Index: 2, RequestCtx: other}}})
+		_, err := waiter.Wait(cancelled)
+		require.ErrorIs(t, err, context.Canceled)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	n.resolveReadyReadStates(raft.Ready{ReadStates: []raft.ReadState{{Index: 3, RequestCtx: rctx}}})
+	index, err := waiter.Wait(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), index)
 
-			id, ok := parseReadIndexContext(tt.rctx)
-			require.False(t, ok)
-			require.Equal(t, uint64(0), id)
-		})
-	}
+	// A duplicate response must not replace the completed result.
+	n.resolveReadyReadStates(raft.Ready{ReadStates: []raft.ReadState{{Index: 4, RequestCtx: rctx}}})
+	index, err = waiter.Wait(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), index)
 }
 
 func TestFailAllPendingReads(t *testing.T) {
 	t.Parallel()
 
 	n := &Node{
-		pendingReads: &SyncMap[uint64, *readIndexRequest]{},
+		pendingReads: &SyncMap[string, *readIndexRequest]{},
 	}
 
 	// Store some pending reads
@@ -78,9 +60,9 @@ func TestFailAllPendingReads(t *testing.T) {
 	f2 := futures.New[uint64]()
 	f3 := futures.New[uint64]()
 
-	n.pendingReads.Store(1, &readIndexRequest{future: f1})
-	n.pendingReads.Store(2, &readIndexRequest{future: f2})
-	n.pendingReads.Store(3, &readIndexRequest{future: f3})
+	n.pendingReads.Store("first", &readIndexRequest{future: f1})
+	n.pendingReads.Store("second", &readIndexRequest{future: f2})
+	n.pendingReads.Store("third", &readIndexRequest{future: f3})
 
 	testErr := errors.New("leadership lost")
 	n.failAllPendingReads(testErr)
@@ -97,7 +79,7 @@ func TestFailAllPendingReads(t *testing.T) {
 
 	// pendingReads should be empty
 	count := 0
-	n.pendingReads.Range(func(_ uint64, _ *readIndexRequest) bool {
+	n.pendingReads.Range(func(_ string, _ *readIndexRequest) bool {
 		count++
 
 		return true
@@ -110,9 +92,76 @@ func TestFailAllPendingReads_Empty(t *testing.T) {
 	t.Parallel()
 
 	n := &Node{
-		pendingReads: &SyncMap[uint64, *readIndexRequest]{},
+		pendingReads: &SyncMap[string, *readIndexRequest]{},
 	}
 
 	// Should not panic on empty map
 	n.failAllPendingReads(errors.New("no pending reads"))
+}
+
+// Drive the actual ReadIndex entry point through its orchestrator command,
+// rather than manufacturing the pending waiter or request context.
+func TestReadIndexLifecycle(t *testing.T) {
+	t.Parallel()
+
+	for _, outcome := range []string{"success", "cancel before dispatch", "cancel after dispatch", "no leader"} {
+		t.Run(outcome, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				h := newReadIndexRestartHarness(t)
+				if outcome != "no leader" {
+					require.NoError(t, h.nodes[1].Campaign())
+					h.drain(nil)
+				}
+				n := &Node{
+					rawNode:          h.nodes[1],
+					pendingReads:     &SyncMap[string, *readIndexRequest]{},
+					clusterCommandCh: make(chan *clusterCommand),
+				}
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				if outcome == "cancel before dispatch" {
+					cancel()
+				}
+				type result struct {
+					index uint64
+					err   error
+				}
+				completed := make(chan result, 1)
+				go func() {
+					index, err := n.ReadIndex(ctx)
+					completed <- result{index: index, err: err}
+				}()
+				if outcome != "cancel before dispatch" {
+					cmd := <-n.clusterCommandCh
+					cmd.errCh <- cmd.fn()
+					switch outcome {
+					case "success":
+						h.drain(nil)
+						require.Len(t, h.readStates[1], 1)
+						require.Len(t, h.readStates[1][0].RequestCtx, 16)
+						n.resolveReadyReadStates(raft.Ready{ReadStates: h.readStates[1]})
+					case "cancel after dispatch":
+						synctest.Wait()
+						cancel()
+					}
+				}
+				got := <-completed
+				switch outcome {
+				case "success":
+					require.NoError(t, got.err)
+					require.Equal(t, h.nodes[1].Status().GetCommit(), got.index)
+				case "no leader":
+					require.ErrorIs(t, got.err, ErrNotLeader)
+				default:
+					require.ErrorIs(t, got.err, context.Canceled)
+				}
+				n.pendingReads.Range(func(_ string, _ *readIndexRequest) bool {
+					t.Error("completed read retained a pending waiter")
+
+					return true
+				})
+			})
+		})
+	}
 }

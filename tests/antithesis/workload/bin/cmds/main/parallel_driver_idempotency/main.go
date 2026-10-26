@@ -9,11 +9,12 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_idempotency", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
-		postings := internal.RandomPostings()
+	internal.RunGeneratedDriver("parallel_driver_idempotency", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
+		postings := internal.GeneratedPostings(src)
 		idemKey := fmt.Sprintf("idem-%d", internal.Rand().Uint64())
 
 		req := servicepb.UnsignedApplyRequest(idemKey, &servicepb.Request{

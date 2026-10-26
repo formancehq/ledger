@@ -333,7 +333,27 @@ var _ = Describe("Simple cluster", func() {
 
 			By("Starting the follower")
 			testutil.RestartNode(ctx, servers[followerID-1])
-			Eventually(servers[followerID-1], 15*time.Second).Should(BeFollower(), "Timed out waiting for node to become follower")
+			Eventually(func(g Gomega) {
+				progressCtx, cancelProgress := context.WithTimeout(ctx, 2*time.Second)
+				defer cancelProgress()
+				state, err := servers[followerID-1].ClusterClient.GetClusterState(progressCtx, &clusterpb.GetClusterStateRequest{
+					NodeId: followerID,
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(state.GetLeader()).NotTo(BeZero())
+				// A restarted voter may win an election while its peers reconnect.
+				g.Expect(state.GetState()).To(BeElementOf("Follower", "Leader"))
+			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+
+			By("Reading the restored snapshot state through the restarted node with a quorum barrier")
+			readCtx, cancelRead := context.WithTimeout(ctx, 5*time.Second)
+			defer cancelRead()
+			account, err := servers[followerID-1].Client.GetAccount(readCtx, &servicepb.GetAccountRequest{
+				Ledger:  ledgerName,
+				Address: offlineAccountAddress,
+			})
+			Expect(err).To(Succeed())
+			Expect(account.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal(fmt.Sprintf("%d", countTransactions*100)))
 		})
 	})
 

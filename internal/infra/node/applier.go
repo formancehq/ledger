@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"runtime/pprof"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -68,6 +69,14 @@ type gatingResult struct {
 	taskFailed bool // true if the task returned an error, node should stay gated until shutdown
 }
 
+// SnapshotMembership provides the membership operations needed by Applier
+// while recovering a checkpoint. Keeping this contract narrow avoids coupling
+// Applier to the storage and transport details owned by Membership.
+type SnapshotMembership interface {
+	SnapshotDonorCandidates() []uint64
+	OnSnapshotInstalled()
+}
+
 // Applier owns all FSM application logic and gating/spool lifecycle.
 // It runs as a dedicated goroutine, decoupling WAL writes (processReadies)
 // from FSM application so they can overlap across consecutive Ready cycles.
@@ -85,6 +94,10 @@ type Applier struct {
 	replayBatchSize         int
 	snapshotFetcherProvider state.SnapshotFetcherProvider
 
+	// snapshotMembership resolves donor candidates and refreshes the membership
+	// cache after a checkpoint has been installed.
+	snapshotMembership SnapshotMembership
+
 	status           *atomic.Int32
 	gatingReason     atomic.Int32 // gatingReason* constants — for observability
 	syncProgress     atomic.Pointer[state.SyncProgress]
@@ -96,16 +109,6 @@ type Applier struct {
 	// pending holds the in-flight commit result channel, if any.
 	// At most one at a time. Drained before barriers, checkpoints, and shutdown.
 	pending *pendingCommit
-
-	// onSnapshotInstalled is invoked by the maintenance-task wrapper
-	// AFTER a leader-checkpoint sync + subsequent replaySpool have both
-	// landed on Pebble. Running it post-replay is deliberate: an
-	// earlier position would race with the still-spooled post-snapshot
-	// ConfChanges and drop those peers from the Membership cache. The
-	// hook fires inside the maintenance goroutine, synchronously with
-	// the restore, so the next Raft tick already sees the up-to-date
-	// cache + transport. (EN-1413)
-	onSnapshotInstalled func()
 
 	// responseSink receives MsgStorageApplyResp messages after the apply (or
 	// spool append) completes for a batch. Same channel instance the Node
@@ -146,6 +149,7 @@ type pendingFuture struct {
 type pendingApplyFuture struct {
 	term   uint64
 	future *futures.Future[state.ApplyResult]
+	onDrop func()
 }
 
 type commitWork struct {
@@ -182,9 +186,12 @@ func NewApplier(
 	compactionMargin uint64,
 	replayBatchSize int,
 	snapshotFetcherProvider state.SnapshotFetcherProvider,
-	onSnapshotInstalled func(),
+	snapshotMembership SnapshotMembership,
 	responseSink LocalResponses,
 ) (*Applier, error) {
+	if snapshotMembership == nil {
+		return nil, errors.New("snapshotMembership is required")
+	}
 	if responseSink == nil {
 		return nil, errors.New("responseSink is required (nil LocalResponses)")
 	}
@@ -193,7 +200,7 @@ func NewApplier(
 	initialStatus.Store(statusNormal)
 
 	a := &Applier{
-		onSnapshotInstalled:     onSnapshotInstalled,
+		snapshotMembership:      snapshotMembership,
 		fsm:                     fsm,
 		recovery:                recovery,
 		synchronizer:            synchronizer,
@@ -361,6 +368,13 @@ func (a *Applier) StoreFuture(commandID, term uint64, future *futures.Future[sta
 	a.futures.Store(commandID, &pendingApplyFuture{term: term, future: future})
 }
 
+// StoreFutureWithDrop registers a proposal whose local admission latch must
+// be released if Raft definitively drops or truncates it. The callback runs
+// once because every resolution path takes ownership with LoadAndDelete.
+func (a *Applier) StoreFutureWithDrop(commandID, term uint64, future *futures.Future[state.ApplyResult], onDrop func()) {
+	a.futures.Store(commandID, &pendingApplyFuture{term: term, future: future, onDrop: onDrop})
+}
+
 // DeleteFuture removes the future for a given command ID.
 func (a *Applier) DeleteFuture(commandID uint64) {
 	a.futures.Delete(commandID)
@@ -374,6 +388,9 @@ func (a *Applier) DeleteFuture(commandID uint64) {
 func (a *Applier) ResolveDroppedFuture(commandID uint64, err error) {
 	if paf, ok := a.futures.LoadAndDelete(commandID); ok {
 		paf.future.Resolve(state.ApplyResult{}, err)
+		if paf.onDrop != nil {
+			paf.onDrop()
+		}
 	}
 }
 
@@ -404,6 +421,9 @@ func (a *Applier) FailFuturesBelowTerm(threshold uint64, err error) {
 		}
 
 		paf.future.Resolve(state.ApplyResult{}, err)
+		if paf.onDrop != nil {
+			paf.onDrop()
+		}
 		resolved++
 
 		// Coverage anchor for the leadership-lost error taxonomy: proves the
@@ -1084,7 +1104,16 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 	a.syncProgress.Store(progress)
 
 	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (maintenanceTaskResult, error) {
-		snapshotFetcher, err := a.snapshotFetcherProvider.GetForPeer(leader)
+		candidateIDs := []uint64{leader}
+		for _, candidateID := range a.snapshotMembership.SnapshotDonorCandidates() {
+			if candidateID == 0 || candidateID == leader || slices.Contains(candidateIDs, candidateID) {
+				continue
+			}
+
+			candidateIDs = append(candidateIDs, candidateID)
+		}
+
+		snapshotFetcher, err := a.snapshotFetcherProvider.GetForPeers(candidateIDs)
 		if err != nil {
 			a.logger.WithFields(map[string]any{
 				"leader": leader,
@@ -1108,7 +1137,7 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 
 		a.syncProgress.Store(nil)
 
-		// The onSnapshotInstalled hook is deliberately NOT fired here.
+		// The snapshot membership hook is deliberately NOT fired here.
 		// The outer maintenance wrapper fires it AFTER replaySpool so
 		// any post-snapshot ConfChange sitting in the spool has landed
 		// in Pebble before Rehydrate reads it (EN-1413). See
@@ -1175,6 +1204,14 @@ func (a *Applier) WaitForCheckpointable(ctx context.Context, targetIndex uint64)
 	}
 
 	return a.fsm.WaitForApplied(ctx, targetIndex)
+}
+
+// SnapshotReadiness returns the durable cursor and whether this node is
+// currently unable to serve a checkpoint while it resynchronizes itself.
+// Callers use this cheap snapshot-sync probe before asking the node to create
+// a temporary checkpoint.
+func (a *Applier) SnapshotReadiness() (lastPersistedIndex uint64, resynchronizing bool) {
+	return a.fsm.LastPersistedIndex(), a.IsResynchronizing()
 }
 
 // GetSyncProgress returns the current sync progress, or nil if not syncing.
@@ -1827,7 +1864,7 @@ type maintenanceTaskResult struct {
 	syncFailed    bool // if true, skip spool replay and mark node out-of-sync
 	// snapshotInstalled is set by startSyncSnapshot when a leader
 	// checkpoint has just replaced our Pebble. The outer wrapper fires
-	// onSnapshotInstalled AFTER replaySpool has drained the spool onto
+	// The snapshot membership hook fires AFTER replaySpool has drained the spool onto
 	// the fresh Pebble — if the hook fired inside the sync task
 	// (i.e., BEFORE replaySpool), Rehydrate would see leader's Pebble
 	// without the post-snapshot ConfChanges still sitting in the spool
@@ -1890,7 +1927,7 @@ func (a *Applier) startMaintenanceTask(
 		// them missing), leaving the node with a stale transport view
 		// until the next rehydrate. (EN-1413)
 		if taskResult.snapshotInstalled {
-			a.onSnapshotInstalled()
+			a.snapshotMembership.OnSnapshotInstalled()
 		}
 
 		a.maintenanceReplaySpoolHistogram.Record(context.Background(), time.Since(replayStart).Seconds())

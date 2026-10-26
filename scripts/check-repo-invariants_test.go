@@ -26,6 +26,61 @@ func TestExample() {
 	require.Equal(t, 6, findings[0].line)
 }
 
+func TestCheckGoSourceAllowsSleepOnlyInsideSynctestBubble(t *testing.T) {
+	t.Parallel()
+
+	source := []byte(`package sample
+
+import (
+	"testing"
+	bubble "testing/synctest"
+	"time"
+)
+
+func sleepHelper() {
+	time.Sleep(1)
+}
+
+func register(callback func()) {}
+
+func TestExample(t *testing.T) {
+	outer := t
+	var escaped func()
+	bubble.Test(t, func(t *testing.T) {
+		time.Sleep(1)
+		go func() { time.Sleep(1) }()
+		defer func() { time.Sleep(1) }()
+		t.Cleanup(func() { time.Sleep(1) })
+		sleepHelper()
+		escaped = func() { time.Sleep(1) }
+		register(func() { time.Sleep(1) })
+		outer.Cleanup(func() { time.Sleep(1) })
+		{
+			t := outer
+			t.Cleanup(func() { time.Sleep(1) })
+		}
+	})
+	escaped()
+	time.Sleep(1)
+}
+`)
+
+	findings, err := checkGoSource("sample_test.go", source)
+	require.NoError(t, err)
+	lines := make([]int, 0, len(findings))
+	for _, finding := range findings {
+		lines = append(lines, finding.line)
+	}
+	require.Equal(t, []int{
+		10, // a helper is not provably inside a bubble
+		24, // a stored closure may run after the bubble returns
+		25, // a callee may retain its callback and run it after the bubble
+		26, // the outer t runs its cleanups after the bubble returns
+		29, // a t shadowed by the outer test is not the bubble's t
+		33, // a sleep after the bubble returns uses the real clock
+	}, lines)
+}
+
 func TestCheckGoSourceDetectsDotImportedEnvironmentReads(t *testing.T) {
 	t.Parallel()
 
@@ -200,6 +255,22 @@ func attach(ctx any, capability any) { _ = auth.WithForwardedAttribution(ctx, ca
 	require.NoError(t, err)
 	require.Len(t, findings, 1)
 	require.Contains(t, findings[0].message, "cluster-peer authentication")
+}
+
+func TestCheckGoSourceAllowsOnlyNamedDrainProducer(t *testing.T) {
+	t.Parallel()
+	source := []byte(`package sample
+import "github.com/formancehq/ledger/v3/internal/pkg/commands"
+func build() {
+    cmd := commands.NewCommand()
+    cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPeer)
+}`)
+	allowed, err := checkGoSource("internal/infra/node/drain.go", source)
+	require.NoError(t, err)
+	require.Empty(t, allowed)
+	rejected, err := checkGoSource("internal/infra/node/other.go", source)
+	require.NoError(t, err)
+	require.Len(t, rejected, 3)
 }
 
 func TestCheckGoSourceRestrictsDotImportedAttributionSites(t *testing.T) {

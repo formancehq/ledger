@@ -54,23 +54,34 @@ func formatFilter(f *commonpb.QueryFilter) (string, int) {
 		return formatBuiltinUintCondition(v.BuiltinUint)
 	case *commonpb.QueryFilter_LogBuiltinUint:
 		return formatLogBuiltinUintCondition(v.LogBuiltinUint)
+	case *commonpb.QueryFilter_LogId:
+		return formatUintRange("logId", v.LogId.GetCond(), renderRawUint)
+	case *commonpb.QueryFilter_Reference:
+		return "reference == " + formatStringCondValue(v.Reference.GetCond()), precLeaf
+	case *commonpb.QueryFilter_Reverted:
+		return fmt.Sprintf("reverted == %t", v.Reverted.GetValue()), precLeaf
 	default:
 		return "<unknown filter>", precLeaf
 	}
 }
 
 // formatBuiltinUintCondition renders a transaction builtin uint range back into
-// `timestamp OP value`, the inverse of the parser's DateCond. `timestamp` is the
-// only transaction builtin field the textual grammar (DateCond) can read back, so
-// it is the only one we emit — advertising id/insertedAt/revertedAt here would
-// produce strings Parse cannot re-read, breaking the config export/apply
-// round-trip. Its bounds render as quoted RFC3339 (EN-1544).
+// `field OP value`, the inverse of the parser's bare intrinsic fields: `id`
+// bounds render as raw uints, the date fields (`timestamp`, `insertedAt`,
+// `revertedAt`) as quoted RFC3339 (EN-1544).
 func formatBuiltinUintCondition(bc *commonpb.BuiltinUintCondition) (string, int) {
-	if bc.GetField() != commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP {
+	switch bc.GetField() {
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:
+		return formatUintRange("id", bc.GetCond(), renderRawUint)
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+		return formatUintRange("timestamp", bc.GetCond(), renderDatetimeBound)
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+		return formatUintRange("insertedAt", bc.GetCond(), renderDatetimeBound)
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+		return formatUintRange("revertedAt", bc.GetCond(), renderDatetimeBound)
+	default:
 		return "<unknown builtin field>", precLeaf
 	}
-
-	return formatDateUintCondition("timestamp", bc.GetCond())
 }
 
 // formatLogBuiltinUintCondition renders a log builtin uint range. The only field
@@ -78,53 +89,96 @@ func formatBuiltinUintCondition(bc *commonpb.BuiltinUintCondition) (string, int)
 func formatLogBuiltinUintCondition(lc *commonpb.LogBuiltinUintCondition) (string, int) {
 	switch lc.GetField() {
 	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
-		return formatDateUintCondition("date", lc.GetCond())
+		return formatUintRange("date", lc.GetCond(), renderDatetimeBound)
 	default:
 		return "<unknown log field>", precLeaf
 	}
 }
 
-// formatDateUintCondition renders a builtin date range as `field OP value` with
-// bounds as quoted RFC3339, the inverse of the parser's DateCond. Builtin ranges
-// are never parameterized in the DSL, so only hardcoded bounds are formatted.
+// formatUintRange renders a bare-field uint range (transaction/log builtins and
+// the uint/datetime audit fields) as `field OP value`, rendering each literal
+// bound with render and each parameter bound as `$name` (non-audit fields only:
+// the audit grammar rejects parameters).
 //
 // A closed range only renders as `between` when BOTH bounds are inclusive, since
 // `between` parses back inclusive on both ends. If either bound is exclusive (the
 // shape a JSON `$and` of `$gt`/`$lt` folds into) it renders as two comparison
 // clauses joined by `and` — `field > lo and field < hi` — which the parser folds
-// back into the same single condition (see foldDateRangeAnd), so the exclusivity
-// survives the round-trip instead of being silently widened. This is the
-// transaction/log counterpart of formatAuditUintCondition; both now emit bare
-// field names, disambiguated only by the re-parse target (EN-1549).
-func formatDateUintCondition(field string, uc *commonpb.UintCondition) (string, int) {
-	render := renderDatetimeBound
-
-	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
-		return fmt.Sprintf("%s == %s", field, render(uc.GetMin())), precLeaf
+// back into the same single condition (see foldClosedRangeAnd), so the
+// exclusivity survives the round-trip instead of being silently widened. The
+// field names are bare, disambiguated only by the re-parse target (EN-1549).
+func formatUintRange(field string, uc *commonpb.UintCondition, render func(uint64) string) (string, int) {
+	// A nil condition can only come from data persisted before admission
+	// refused it (domain.ValidateFilterAdmissionShape). Render the same
+	// unparseable placeholder as an unbounded range so export/apply fails
+	// loudly instead of crashing the CLI.
+	if uc == nil {
+		return field + " <uint?>", precLeaf
 	}
 
-	if uc.Min != nil && uc.Max != nil {
+	// A bound is a literal or a $param (ParamMin/ParamMax, resolved when a
+	// prepared query executes). Rendering both kinds is what keeps a
+	// parameterized range exportable: dropping the param side of a mixed range
+	// would silently widen the re-applied filter.
+	lo, hasLo := renderUintBound(uc.Min, uc.GetParamMin(), render)
+	hi, hasHi := renderUintBound(uc.Max, uc.GetParamMax(), render)
+
+	if hasLo && hasHi && lo == hi && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
+		return fmt.Sprintf("%s == %s", field, lo), precLeaf
+	}
+
+	if hasLo && hasHi {
 		if !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
-			return fmt.Sprintf("%s between %s and %s", field, render(uc.GetMin()), render(uc.GetMax())), precLeaf
+			return fmt.Sprintf("%s between %s and %s", field, lo, hi), precLeaf
 		}
 
 		// An exclusive bound folds into two comparison clauses joined by
-		// `and`; report precAnd so a wrapping `not` parenthesizes the pair
-		// (otherwise `not a and b` mis-associates as `(not a) and b`).
+		// `and`. Report precOr so every enclosing operator but `or`
+		// parenthesizes the pair: a wrapping `not` would otherwise
+		// mis-associate (`not a and b` reads as `(not a) and b`), and an
+		// enclosing `and` would splice the two clauses into its own operand
+		// list, where they no longer fold back into one condition. Under an
+		// `or` the pair binds tighter anyway and still folds.
 		return fmt.Sprintf("%s %s %s and %s %s %s",
-			field, lowerOp(uc.GetMinExclusive()), render(uc.GetMin()),
-			field, upperOp(uc.GetMaxExclusive()), render(uc.GetMax())), precAnd
+			field, lowerOp(uc.GetMinExclusive()), lo,
+			field, upperOp(uc.GetMaxExclusive()), hi), precOr
 	}
 
-	if uc.Min != nil {
-		return fmt.Sprintf("%s %s %s", field, lowerOp(uc.GetMinExclusive()), render(uc.GetMin())), precLeaf
+	if hasLo {
+		return fmt.Sprintf("%s %s %s", field, lowerOp(uc.GetMinExclusive()), lo), precLeaf
 	}
 
-	if uc.Max != nil {
-		return fmt.Sprintf("%s %s %s", field, upperOp(uc.GetMaxExclusive()), render(uc.GetMax())), precLeaf
+	if hasHi {
+		return fmt.Sprintf("%s %s %s", field, upperOp(uc.GetMaxExclusive()), hi), precLeaf
 	}
 
 	return field + " <uint?>", precLeaf
+}
+
+// renderParam renders a parameter reference as `$name`. A name the textual
+// grammar cannot read back as one Ident (admission refuses it now, older data
+// may hold it) renders as `$<invalid param "...">` instead, which the parser
+// rejects: export/apply then fails loudly rather than re-creating a filter
+// whose name was spliced into extra conditions.
+func renderParam(name string) string {
+	if commonpb.IsTextualFilterParamName(name) {
+		return "$" + name
+	}
+
+	return fmt.Sprintf("$<invalid param %q>", name)
+}
+
+// renderUintBound renders one side of a uint range: `$name` for a parameter,
+// render(literal) otherwise. ok=false when the side has no bound.
+func renderUintBound(literal *uint64, param string, render func(uint64) string) (string, bool) {
+	if param != "" {
+		return renderParam(param), true
+	}
+	if literal != nil {
+		return render(*literal), true
+	}
+
+	return "", false
 }
 
 // renderDatetimeBound renders a microsecond bound as a quoted RFC3339 string
@@ -147,6 +201,9 @@ func renderDatetimeBound(v uint64) string {
 	return strconv.FormatUint(v, 10)
 }
 
+// renderRawUint renders a plain-counter bound (ids, sequences) as a raw uint.
+func renderRawUint(v uint64) string { return strconv.FormatUint(v, 10) }
+
 // lowerOp / upperOp map a bound's exclusivity to its DSL comparison operator.
 func lowerOp(exclusive bool) string {
 	if exclusive {
@@ -164,19 +221,6 @@ func upperOp(exclusive bool) string {
 	return "<="
 }
 
-// auditFieldNames is the reverse of the parser's auditFieldKeys: enum -> DSL key.
-var auditFieldNames = map[commonpb.AuditField]string{
-	commonpb.AuditField_AUDIT_FIELD_SEQUENCE:        "seq",
-	commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID:     "proposal_id",
-	commonpb.AuditField_AUDIT_FIELD_TIMESTAMP:       "timestamp",
-	commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE:    "log_seq",
-	commonpb.AuditField_AUDIT_FIELD_OUTCOME:         "outcome",
-	commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT:  "caller_subject",
-	commonpb.AuditField_AUDIT_FIELD_LEDGER:          "ledger",
-	commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE:      "order_type",
-	commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY: "idempotency_key",
-}
-
 // formatAuditCondition renders an AuditCondition back into the bare `field OP
 // value` form, inverse of the parser's FieldCond production on the audit target
 // (EN-1549). The `audit[...]` namespace prefix is gone: the audit fields are bare
@@ -185,7 +229,7 @@ var auditFieldNames = map[commonpb.AuditField]string{
 // collide with the transaction/log arms otherwise — which is exactly the contract
 // (an audit filter is always re-parsed with QUERY_TARGET_AUDIT).
 func formatAuditCondition(ac *commonpb.AuditCondition) (string, int) {
-	key, ok := auditFieldNames[ac.GetField()]
+	key, ok := commonpb.AuditFieldName(ac.GetField())
 	if !ok {
 		return "<unknown audit field>", precLeaf
 	}
@@ -194,53 +238,19 @@ func formatAuditCondition(ac *commonpb.AuditCondition) (string, int) {
 	case *commonpb.AuditCondition_StringCond:
 		return fmt.Sprintf("%s == %s", key, formatStringCondValue(cond.StringCond)), precLeaf
 	case *commonpb.AuditCondition_UintCond:
-		// Audit ranges always render as `between`/single-bound (never an
-		// `and`-join), so they are always leaf-precedence.
-		return formatAuditUintCondition(key, ac.GetField(), cond.UintCond), precLeaf
+		// The timestamp field is a datetime: its bounds render as quoted RFC3339
+		// so the output round-trips through the datetime-aware parser.
+		render := renderRawUint
+		if ac.GetField() == commonpb.AuditField_AUDIT_FIELD_TIMESTAMP {
+			render = renderDatetimeBound
+		}
+
+		return formatUintRange(key, cond.UintCond, render)
 	case *commonpb.AuditCondition_StringPrefix:
 		return fmt.Sprintf("%s ^= %s", key, quoteIfNeeded(cond.StringPrefix)), precLeaf
 	default:
 		return key + " <unknown>", precLeaf
 	}
-}
-
-// formatAuditUintCondition renders a UintCondition on a bare audit field. The
-// audit DSL only produces hardcoded bounds (no params), so only those are
-// formatted. The timestamp field is a datetime: its bounds render as quoted
-// RFC3339 so the output round-trips through the datetime-aware parser.
-func formatAuditUintCondition(key string, field commonpb.AuditField, uc *commonpb.UintCondition) string {
-	render := func(v uint64) string { return strconv.FormatUint(v, 10) }
-	if field == commonpb.AuditField_AUDIT_FIELD_TIMESTAMP {
-		render = renderDatetimeBound
-	}
-
-	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
-		return fmt.Sprintf("%s == %s", key, render(uc.GetMin()))
-	}
-
-	if uc.Min != nil && uc.Max != nil {
-		return fmt.Sprintf("%s between %s and %s", key, render(uc.GetMin()), render(uc.GetMax()))
-	}
-
-	if uc.Min != nil {
-		op := ">="
-		if uc.GetMinExclusive() {
-			op = ">"
-		}
-
-		return fmt.Sprintf("%s %s %s", key, op, render(uc.GetMin()))
-	}
-
-	if uc.Max != nil {
-		op := "<="
-		if uc.GetMaxExclusive() {
-			op = "<"
-		}
-
-		return fmt.Sprintf("%s %s %s", key, op, render(uc.GetMax()))
-	}
-
-	return key + " <uint?>"
 }
 
 // formatLedgerCondition renders a non-audit LedgerCondition as `ledger == value`,
@@ -336,7 +346,7 @@ func formatFieldCondition(fc *commonpb.FieldCondition) string {
 func formatStringCondValue(sc *commonpb.StringCondition) string {
 	switch v := sc.GetValue().(type) {
 	case *commonpb.StringCondition_Param:
-		return "$" + v.Param
+		return renderParam(v.Param)
 	case *commonpb.StringCondition_Hardcoded:
 		return quoteIfNeeded(v.Hardcoded)
 	default:
@@ -347,7 +357,7 @@ func formatStringCondValue(sc *commonpb.StringCondition) string {
 func formatBoolCondValue(bc *commonpb.BoolCondition) string {
 	switch v := bc.GetValue().(type) {
 	case *commonpb.BoolCondition_Param:
-		return "$" + v.Param
+		return renderParam(v.Param)
 	case *commonpb.BoolCondition_Hardcoded:
 		if v.Hardcoded {
 			return "true"
@@ -395,7 +405,7 @@ func formatIntCondition(key string, ic *commonpb.IntCondition) string {
 				op = ">"
 			}
 
-			return fmt.Sprintf("metadata[%s] %s $%s", key, op, ic.GetParamMin())
+			return fmt.Sprintf("metadata[%s] %s %s", key, op, renderParam(ic.GetParamMin()))
 		}
 
 		op := ">="
@@ -412,7 +422,7 @@ func formatIntCondition(key string, ic *commonpb.IntCondition) string {
 				op = "<"
 			}
 
-			return fmt.Sprintf("metadata[%s] %s $%s", key, op, ic.GetParamMax())
+			return fmt.Sprintf("metadata[%s] %s %s", key, op, renderParam(ic.GetParamMax()))
 		}
 
 		op := "<="
@@ -431,7 +441,7 @@ func formatIntCondition(key string, ic *commonpb.IntCondition) string {
 // Caller must have verified the bound is present.
 func formatIntLowInclusive(ic *commonpb.IntCondition) string {
 	if ic.GetParamMin() != "" {
-		return "$" + ic.GetParamMin()
+		return renderParam(ic.GetParamMin())
 	}
 
 	v := ic.GetMin()
@@ -445,7 +455,7 @@ func formatIntLowInclusive(ic *commonpb.IntCondition) string {
 // formatIntHighInclusive is the symmetric helper for the upper bound.
 func formatIntHighInclusive(ic *commonpb.IntCondition) string {
 	if ic.GetParamMax() != "" {
-		return "$" + ic.GetParamMax()
+		return renderParam(ic.GetParamMax())
 	}
 
 	v := ic.GetMax()
@@ -477,7 +487,7 @@ func formatUintCondition(key string, uc *commonpb.UintCondition) string {
 				op = ">"
 			}
 
-			return fmt.Sprintf("metadata[%s] %s $%s", key, op, uc.GetParamMin())
+			return fmt.Sprintf("metadata[%s] %s %s", key, op, renderParam(uc.GetParamMin()))
 		}
 
 		op := ">="
@@ -494,7 +504,7 @@ func formatUintCondition(key string, uc *commonpb.UintCondition) string {
 				op = "<"
 			}
 
-			return fmt.Sprintf("metadata[%s] %s $%s", key, op, uc.GetParamMax())
+			return fmt.Sprintf("metadata[%s] %s %s", key, op, renderParam(uc.GetParamMax()))
 		}
 
 		op := "<="
@@ -510,7 +520,7 @@ func formatUintCondition(key string, uc *commonpb.UintCondition) string {
 
 func formatUintLowInclusive(uc *commonpb.UintCondition) string {
 	if uc.GetParamMin() != "" {
-		return "$" + uc.GetParamMin()
+		return renderParam(uc.GetParamMin())
 	}
 
 	v := uc.GetMin()
@@ -523,7 +533,7 @@ func formatUintLowInclusive(uc *commonpb.UintCondition) string {
 
 func formatUintHighInclusive(uc *commonpb.UintCondition) string {
 	if uc.GetParamMax() != "" {
-		return "$" + uc.GetParamMax()
+		return renderParam(uc.GetParamMax())
 	}
 
 	v := uc.GetMax()
@@ -549,9 +559,9 @@ func formatAddressMatch(am *commonpb.AddressMatch) string {
 	case *commonpb.AddressMatch_HardcodedPrefix:
 		return fmt.Sprintf("%s ^= %s", keyword, quoteIfNeeded(v.HardcodedPrefix))
 	case *commonpb.AddressMatch_ParamExact:
-		return fmt.Sprintf("%s == $%s", keyword, v.ParamExact)
+		return fmt.Sprintf("%s == %s", keyword, renderParam(v.ParamExact))
 	case *commonpb.AddressMatch_ParamPrefix:
-		return fmt.Sprintf("%s ^= $%s", keyword, v.ParamPrefix)
+		return fmt.Sprintf("%s ^= %s", keyword, renderParam(v.ParamPrefix))
 	default:
 		return keyword + " <unknown>"
 	}
@@ -561,12 +571,26 @@ func formatAddressMatch(am *commonpb.AddressMatch) string {
 // token that Parse reads back as the same value. Since a bare Ident is
 // plain-alphanumeric (EN-1547), anything with a special char (`-`, `:`, `.`, `/`,
 // spaces, …) must be quoted to round-trip.
+// quoteIfNeeded renders s as a bare Ident when that re-parses as s, and as a
+// quoted String otherwise. The lexer's String token has no escapes: it is
+// `"..."` or `'...'` with no inner occurrence of its own delimiter. So a value
+// containing `"` is single-quoted, and a value containing both quote kinds has
+// no textual form at all: it renders as a `<unrepresentable string ...>`
+// placeholder the parser refuses, so export/apply fails loudly instead of
+// emitting text that re-parses as a different value.
 func quoteIfNeeded(s string) string {
-	if needsQuoting(s) {
-		return `"` + s + `"`
+	if !needsQuoting(s) {
+		return s
 	}
 
-	return s
+	switch {
+	case !strings.Contains(s, `"`):
+		return `"` + s + `"`
+	case !strings.Contains(s, "'"):
+		return "'" + s + "'"
+	default:
+		return fmt.Sprintf("<unrepresentable string %q>", s)
+	}
 }
 
 var (

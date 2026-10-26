@@ -17,6 +17,9 @@ The [HTTP index inspection contract](http-api.md#inspect-a-metadata-index)
 defines accepted modes, omission defaults, and
 validation of supplied page sizes before backend invocation (EN-2905).
 
+Interrupted cluster commands on a stopped Raft run return retryable
+`Unavailable`; see [gRPC error handling](grpc-api.md#error-handling).
+
 Decoded leader errors retain their exact gRPC status through routing wrappers
 and streaming cursors. See [forwarding and cancellation](http-api.md#forwarded-writes-and-the-transport-seam)
 for the distinction between a decoded rejection and raw transport cancellation.

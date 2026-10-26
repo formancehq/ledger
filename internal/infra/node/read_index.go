@@ -2,12 +2,11 @@ package node
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"strconv"
-	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"go.etcd.io/raft/v3"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -25,33 +24,21 @@ type readIndexRequest struct {
 	future *futures.Future[uint64]
 }
 
-// nextReadIndexID is a monotonically increasing counter used to generate unique
-// 8-byte request context (rctx) values for ReadIndex requests.
-var nextReadIndexID atomic.Uint64
+// makeReadIndexContext creates an opaque identity for one read invocation.
+// It must remain unique across process restarts: an unchanged leader can retain
+// a pre-restart request and return its older commit index in the same term.
+func makeReadIndexContext() []byte {
+	id := uuid.New()
 
-// makeReadIndexContext creates a unique 8-byte context for a ReadIndex request.
-func makeReadIndexContext(id uint64) []byte {
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], id)
-
-	return buf[:]
-}
-
-// parseReadIndexContext extracts the request ID from an 8-byte ReadIndex context.
-func parseReadIndexContext(rctx []byte) (uint64, bool) {
-	if len(rctx) != 8 {
-		return 0, false
-	}
-
-	return binary.BigEndian.Uint64(rctx), true
+	return id[:]
 }
 
 // ReadIndex sends a ReadIndex request through Raft and returns the current commit index.
 // The returned index can be used with WaitForApplied to ensure the local FSM is fresh
 // enough for a linearizable read.
 func (node *Node) ReadIndex(ctx context.Context) (uint64, error) {
-	reqID := nextReadIndexID.Add(1)
-	rctx := makeReadIndexContext(reqID)
+	rctx := makeReadIndexContext()
+	reqID := string(rctx)
 
 	req := &readIndexRequest{
 		future: futures.New[uint64](),
@@ -160,7 +147,7 @@ func (node *Node) ReadIndexAndWait(ctx context.Context) (*ReadBarrierInfo, error
 // failAllPendingReads resolves all pending ReadIndex requests with the given error.
 // Called on leadership loss to unblock waiting callers.
 func (node *Node) failAllPendingReads(err error) {
-	node.pendingReads.Range(func(id uint64, req *readIndexRequest) bool {
+	node.pendingReads.Range(func(id string, req *readIndexRequest) bool {
 		req.future.Resolve(0, err)
 		node.pendingReads.Delete(id)
 

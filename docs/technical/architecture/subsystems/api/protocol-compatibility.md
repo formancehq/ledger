@@ -18,6 +18,13 @@ contract has not changed. Release SemVer does not currently encode the
 compatibility of development revisions. During the RC line, revision 40 is
 frozen and the published gRPC wire contract must remain compatible.
 
+The additive `BucketService.AnalyzeNumscript` RPC (EN-3153) uses new messages
+and field numbers and leaves all published fields and RPC behavior intact.
+Revision 40 remains unchanged. Older servers return `Unimplemented` to a new
+client during a rolling upgrade; clients must wait for the server rollout
+before calling the new RPC. The operation has no persisted, Raft, snapshot,
+backup, or audit format effect.
+
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
@@ -49,6 +56,20 @@ and HTTP `GET /_info`'s `protocolVersion` report the server revision.
 Restore mode does not register Discovery: its service gate provides the
 compatibility error without requiring a preliminary Discovery call, while
 health and reflection remain exempt.
+
+Ledger policy integrity checking retains revision 40. `CheckStore`
+can emit the additive `LEDGER_INFO_MISMATCH` error type (32)
+for ledger identity, deletion state, mode and mirror-source divergence. Existing
+field-specific errors remain available and can now identify corruption in either
+canonical or global ledger rows, including retained tombstones. Older protobuf
+clients can decode the numeric enum value but may not have its symbolic name;
+consumers must treat an unknown error type in a check error event as an integrity
+failure. `ValidateRestore` detects the same corruption through its existing
+message-only `ValidateRestoreError` events; that stream exposes no error-type
+enum. Updating generated bindings provides the new `CheckStore` error name. Request and response
+envelopes, existing enum numbers, HTTP routes and protocol metadata are unchanged.
+This checker-only change writes no persisted state and changes no Raft apply
+semantics, so it requires no data migration or mixed-version apply transition.
 
 The prepared-query `LIST` pagination correction retains revision 40 and the
 published protobuf wire contract. Every entry point now defaults zero to 100

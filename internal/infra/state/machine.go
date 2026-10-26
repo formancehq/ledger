@@ -270,6 +270,27 @@ func (fsm *Machine) LastPersistedIndex() uint64 {
 	return fsm.lastPersistedIndex.Load()
 }
 
+// Drain reports the replicated shutdown marker visible to admission.
+func (fsm *Machine) Drain() (string, uint64) {
+	return fsm.sharedState.Drain()
+}
+
+// DrainReleaseIndex reports the last applied admission reopening.
+func (fsm *Machine) DrainReleaseIndex() uint64 {
+	return fsm.sharedState.DrainReleaseIndex()
+}
+
+// DrainDecision returns a copy of the persisted first-marker decision.
+func (fsm *Machine) DrainDecision() *raftcmdpb.DrainState {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+	if fsm.State.DrainState == nil {
+		return nil
+	}
+
+	return fsm.State.DrainState.CloneVT()
+}
+
 // LastAppliedIndex returns the FSM's in-memory "currently being applied"
 // cursor. It is seeded from Pebble in RecoverState at boot and advanced by
 // `fsm.State.LastAppliedIndex++` during PrepareEntries (under fsm.mu),
@@ -493,6 +514,8 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 	}
 	sinkConfigChanged := false
 	mirrorConfigChanged := false
+	var bloomReplacementEpoch uint64
+	bloomReplacement := false
 
 	for i := range decoded {
 		entry := decoded[i].Entry
@@ -603,10 +626,23 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 			}
 
 			if fsm.BloomFilters != nil && fsm.BloomFilters.IsReady() {
-				if err := fsm.BloomFilters.PersistDirtyBlocks(batch); err != nil {
+				epoch, replace := fsm.BloomFilters.PersistedReplacement()
+				var err error
+				if replace && bloomReplacement && bloomReplacementEpoch == epoch {
+					// This batch already contains the complete projection for
+					// this epoch; later rotations need only their dirty blocks.
+					err = fsm.BloomFilters.PersistDirtyBlocksAfterReplacement(batch)
+				} else {
+					err = fsm.BloomFilters.PersistDirtyBlocks(batch)
+				}
+				if err != nil {
 					_ = batch.Cancel()
 
 					return nil, fmt.Errorf("persisting bloom dirty blocks: %w", err)
+				}
+				if replace {
+					bloomReplacementEpoch = epoch
+					bloomReplacement = true
 				}
 			}
 
@@ -731,6 +767,16 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 
 		return nil, fmt.Errorf("setting applied index: %w", err)
 	}
+	if fsm.BloomFilters != nil && fsm.BloomFilters.IsReady() {
+		epoch, replace := fsm.BloomFilters.PersistedReplacement()
+		if !replace || (bloomReplacement && bloomReplacementEpoch == epoch) {
+			if err := bloom.SealProjectionAt(batch, fsm.State.LastAppliedIndex); err != nil {
+				_ = batch.Cancel()
+
+				return nil, err
+			}
+		}
+	}
 
 	err = StoreLastAppliedTimestamp(batch, fsm.State.LastAppliedTimestamp)
 	if err != nil {
@@ -742,13 +788,15 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 	// Capture all post-commit data now, so CommitPreparedBatch does not
 	// need to read mutable fsm fields.
 	pb := &PreparedBatch{
-		batch:               batch,
-		Result:              ret,
-		lastAppliedIndex:    fsm.State.LastAppliedIndex,
-		lastSequenceID:      fsm.State.NextSequenceID - 1,
-		sinkConfigChanged:   sinkConfigChanged,
-		mirrorConfigChanged: mirrorConfigChanged,
-		entryCount:          len(decoded),
+		batch:                 batch,
+		Result:                ret,
+		lastAppliedIndex:      fsm.State.LastAppliedIndex,
+		lastSequenceID:        fsm.State.NextSequenceID - 1,
+		sinkConfigChanged:     sinkConfigChanged,
+		mirrorConfigChanged:   mirrorConfigChanged,
+		bloomReplacement:      bloomReplacement,
+		bloomReplacementEpoch: bloomReplacementEpoch,
+		entryCount:            len(decoded),
 	}
 
 	// Capture sentinel data before releasing the lock.
@@ -784,6 +832,9 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 	}
 
 	pb.batch = nil // committed, prevent double-close
+	if pb.bloomReplacement {
+		fsm.BloomFilters.ConfirmPersistedReplacement(pb.bloomReplacementEpoch)
+	}
 
 	fsm.batchCommitHistogram.Record(ctx, time.Since(commitStart).Seconds())
 
@@ -1110,6 +1161,44 @@ func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 	return true
 }
 
+func drainMarkerOnly(proposal *raftcmdpb.Proposal) bool {
+	if len(proposal.GetOrders()) != 0 || len(proposal.GetTechnicalUpdates()) != 1 {
+		return false
+	}
+	_, ok := proposal.GetTechnicalUpdates()[0].GetKind().(*raftcmdpb.TechnicalUpdate_DrainMarker)
+
+	return ok
+}
+
+func drainReleaseOnly(proposal *raftcmdpb.Proposal) bool {
+	if len(proposal.GetOrders()) != 0 || len(proposal.GetTechnicalUpdates()) != 1 {
+		return false
+	}
+	_, ok := proposal.GetTechnicalUpdates()[0].GetKind().(*raftcmdpb.TechnicalUpdate_DrainRelease)
+
+	return ok
+}
+
+func containsDrainMarker(proposal *raftcmdpb.Proposal) bool {
+	for _, update := range proposal.GetTechnicalUpdates() {
+		if _, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_DrainMarker); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+func containsDrainRelease(proposal *raftcmdpb.Proposal) bool {
+	for _, update := range proposal.GetTechnicalUpdates() {
+		if _, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_DrainRelease); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
 // checkStaleProposal rejects proposals whose predicted index or cache epoch
 // doesn't match the current state. This detects stale proposals admitted with
 // an inflated IndexTracker or before a cache reset.
@@ -1234,6 +1323,17 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// writes. For technical-only proposals the result is the only thing
 	// returned anyway.
 	result := &ApplyResult{ProposalID: proposal.GetId()}
+	if containsDrainMarker(proposal) && !drainMarkerOnly(proposal) || containsDrainRelease(proposal) && !drainReleaseOnly(proposal) {
+		result.Error = &domain.BusinessError{Err: domain.ErrMaintenanceMode}
+
+		return result, nil
+	}
+	if drain := fsm.State.DrainState; drain != nil && drain.GetReleasedIndex() == 0 && raftIndex > drain.GetIndex() &&
+		(len(proposal.GetOrders()) > 0 || len(proposal.GetTechnicalUpdates()) > 0) && !drainMarkerOnly(proposal) && !drainReleaseOnly(proposal) {
+		result.Error = &domain.BusinessError{Err: domain.ErrMaintenanceMode}
+
+		return result, nil
+	}
 
 	// checkStaleProposal is a no-op when PredictedIndex and CacheEpoch
 	// are both unset, so legacy technical-only proposals (none today
@@ -1948,11 +2048,13 @@ type PreparedBatch struct {
 	Result *ApplyEntriesResult
 
 	// State captured during prepare for post-commit use.
-	lastAppliedIndex    uint64
-	lastSequenceID      uint64
-	sinkConfigChanged   bool
-	mirrorConfigChanged bool
-	checkpointDeletes   []uint64
+	lastAppliedIndex      uint64
+	lastSequenceID        uint64
+	sinkConfigChanged     bool
+	mirrorConfigChanged   bool
+	bloomReplacement      bool
+	bloomReplacementEpoch uint64
+	checkpointDeletes     []uint64
 
 	// Sentinel data (captured during prepare, validated after commit).
 	sentinelMode               bool

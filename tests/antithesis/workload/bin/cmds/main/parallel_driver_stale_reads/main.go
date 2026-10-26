@@ -29,13 +29,13 @@ import (
 	"math/big"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 const (
@@ -44,7 +44,7 @@ const (
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_stale_reads", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunGeneratedDriver("parallel_driver_stale_reads", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -58,7 +58,7 @@ func main() {
 		staleCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "stale")
 
 		// Menu axis: number of increment+read rounds.
-		rounds := antirandom.RandomChoice([]int{5, 15})
+		rounds := generation.Choice(src, []int{5, 15})
 
 		var (
 			attempted   int

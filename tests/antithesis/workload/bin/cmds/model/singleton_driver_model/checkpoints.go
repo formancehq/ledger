@@ -1,11 +1,11 @@
 package main
 
 import (
-	"github.com/antithesishq/antithesis-sdk-go/random"
-
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // The model template owns its cluster's checkpoint timeline. This must match
@@ -27,12 +27,12 @@ type checkpointSnapshot struct {
 // generateCheckpointBulk emits singleton bulks so a checkpoint's max_sequence
 // is the predecessor of its creation log. Ordinary workers continue writing
 // while the checkpoint Apply is in flight.
-func generateCheckpointBulk(state oracle.GlobalState) oracle.Bulk {
+func generateCheckpointBulk(src *generation.Source, state oracle.GlobalState) oracle.Bulk {
 	ids := state.QueryCheckpointIDs()
 	var req *servicepb.Request
-	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) {
+	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) {
 	case 0:
-		req = &servicepb.Request{Type: &servicepb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &servicepb.SetQueryCheckpointScheduleRequest{Cron: random.RandomChoice(modelCheckpointCrons)}}}
+		req = &servicepb.Request{Type: &servicepb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &servicepb.SetQueryCheckpointScheduleRequest{Cron: generation.Choice(src, modelCheckpointCrons)}}}
 	case 1:
 		req = &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &servicepb.DeleteQueryCheckpointScheduleRequest{}}}
 	case 2:
@@ -43,7 +43,7 @@ func generateCheckpointBulk(state oracle.GlobalState) oracle.Bulk {
 		req = &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: state.NextQueryCheckpointID()}}}
 	case 5, 6:
 		if len(ids) > 0 {
-			req = &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: random.RandomChoice(ids)}}}
+			req = &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: generation.Choice(src, ids)}}}
 		}
 	}
 	if req == nil {

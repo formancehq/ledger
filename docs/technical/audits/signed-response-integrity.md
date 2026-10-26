@@ -26,6 +26,14 @@ client action after verification. Check whether a path is reachable before
 calling a missing signature a product defect. A disabled verification flag is
 an explicit trust choice.
 
+The command-level regression oracle includes transaction set-metadata and
+delete-metadata acknowledgements and numscript save's returned name/version.
+Exercise these consumers through the actual Apply RPC with a non-empty log;
+assert rejection before success output or returned script identity is printed.
+Keep valid signatures and verification-disabled responses as controls alongside
+missing, corrupt, wrong-key, and modified visible logs. A verification failure
+after Apply does not roll back a mutation.
+
 ## Ownership boundaries
 
 `authentication-authorization-boundaries` owns client request signatures and admission.

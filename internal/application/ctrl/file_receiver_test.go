@@ -41,7 +41,7 @@ func TestValidateSnapshotManifest(t *testing.T) {
 		})
 	}
 
-	require.NoError(t, validateSnapshotManifest(nil))
+	require.ErrorContains(t, validateSnapshotManifest(nil), "snapshot manifest is missing")
 }
 
 func TestValidateSnapshotManifest_RejectsCollidingEntries(t *testing.T) {

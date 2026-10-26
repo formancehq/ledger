@@ -986,12 +986,14 @@ func TestConvertToGRPCError_RaftTransientErrors(t *testing.T) {
 		err  error
 	}{
 		{"proposal dropped", raft.ErrProposalDropped},
+		{"raft stopped", raft.ErrStopped},
 		{"not leader", node.ErrNotLeader},
 		{"node syncing", node.ErrNodeSyncing},
 		{"context deadline exceeded", context.DeadlineExceeded},
 		{"context canceled", context.Canceled},
 		{"wrapped deadline exceeded", fmt.Errorf("applying raft requests: %w", context.DeadlineExceeded)},
 		{"wrapped proposal dropped", fmt.Errorf("applying raft requests: %w", raft.ErrProposalDropped)},
+		{"wrapped raft stopped", fmt.Errorf("applying raft requests: %w", raft.ErrStopped)},
 	}
 
 	for _, tt := range tests {

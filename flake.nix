@@ -2,7 +2,7 @@
   description = "A Nix-flake-based Go 1.27 development environment";
 
   inputs = {
-    # Keep application tooling pinned; update only the compiler and its linter.
+    # Keep golangci-lint 2.15.0; stable currently provides 2.12.2.
     go-tooling = {
       url = "github:NixOS/nixpkgs/8cec5ef1131078ea76689e84c362b0ed6a1fb6a1";
       flake = false;
@@ -81,18 +81,18 @@
 
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         let
-          # Import only Go recipes so unrelated tools and all four platforms stay pinned.
-          go127 = pkgs.callPackage "${go-tooling}/pkgs/development/compilers/go/1.27.nix" {
-            buildGo127Module = build127;
-          };
-          build127 = pkgs.buildGoModule.override { go = go127; };
-          go = go127;
-          golangci-lint = pkgs.callPackage "${go-tooling}/pkgs/by-name/go/golangci-lint/package.nix" {
-            buildGo127Module = build127;
-          };
+          # Use upstream Go so CI can reuse the stable nixpkgs binary cache.
+          go = pkgs.go_1_27;
+          # Preserve upstream dependencies so the public binary cache matches.
+          # The upstream package set no longer supports Intel macOS.
+          golangci-lint =
+            if system == "x86_64-darwin" then
+              pkgs.callPackage "${go-tooling}/pkgs/by-name/go/golangci-lint/package.nix" { }
+            else
+              (import go-tooling { inherit system; }).golangci-lint;
 
           # Mock generation must understand the root module Go version.
-          buildGoModule = build127;
+          buildGoModule = pkgs.buildGo127Module;
 
           # Tools invoked by CI jobs. Every CI job downloads this closure on a
           # cold Nix cache, so a tool belongs here only if a workflow step,

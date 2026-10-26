@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -125,14 +126,19 @@ func TestFuture_Wait_CancelBeforeResolve(t *testing.T) {
 func TestFuture_Wait_CancelDuringWait(t *testing.T) {
 	t.Parallel()
 
-	f := New[int]()
+	synctest.Test(t, func(t *testing.T) {
+		f := New[int]()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
 
-	val, err := f.Wait(ctx)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	require.Equal(t, 0, val)
+		start := time.Now()
+		val, err := f.Wait(ctx)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, 0, val)
+		// Wait returned at the deadline, on the bubble's fake clock.
+		require.Equal(t, 50*time.Millisecond, time.Since(start))
+	})
 }
 
 func TestFuture_Wait_ResolveDuringWait(t *testing.T) {
@@ -172,26 +178,30 @@ func TestFuture_Wait_NoLostWakeup(t *testing.T) {
 
 	const iterations = 500
 
-	for range iterations {
-		f := New[int]()
-		ctx, cancel := context.WithCancel(context.Background())
+	// A lost wakeup parks the waiter in cond.Wait for good, which lets the
+	// bubble's fake clock fire the watchdog; CI load alone cannot.
+	synctest.Test(t, func(t *testing.T) {
+		for range iterations {
+			f := New[int]()
+			ctx, cancel := context.WithCancel(context.Background())
 
-		errCh := make(chan error, 1)
+			errCh := make(chan error, 1)
 
-		go func() {
-			_, err := f.Wait(ctx)
-			errCh <- err
-		}()
+			go func() {
+				_, err := f.Wait(ctx)
+				errCh <- err
+			}()
 
-		cancel()
+			cancel()
 
-		select {
-		case err := <-errCh:
-			require.ErrorIs(t, err, context.Canceled)
-		case <-time.After(time.Second):
-			t.Fatal("Wait did not return after ctx cancellation (lost wakeup)")
+			select {
+			case err := <-errCh:
+				require.ErrorIs(t, err, context.Canceled)
+			case <-time.After(time.Second):
+				t.Fatal("Wait did not return after ctx cancellation (lost wakeup)")
+			}
 		}
-	}
+	})
 }
 
 func TestFuture_Wait_NilContext(t *testing.T) {

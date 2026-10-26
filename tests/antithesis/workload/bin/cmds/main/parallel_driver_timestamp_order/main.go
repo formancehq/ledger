@@ -35,13 +35,13 @@ import (
 	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // backdatedEpochMicros (1µs after epoch) is harmless input variety for the
@@ -52,7 +52,7 @@ import (
 const backdatedEpochMicros = 1
 
 func main() {
-	internal.RunDriver("parallel_driver_timestamp_order", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunGeneratedDriver("parallel_driver_timestamp_order", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -62,7 +62,7 @@ func main() {
 		}
 
 		// Menu axis: write-set size.
-		txCount := antirandom.RandomChoice([]int{3, 8, 20})
+		txCount := generation.Choice(src, []int{3, 8, 20})
 
 		var (
 			ackedWrites int
@@ -120,7 +120,7 @@ func main() {
 		}
 
 		// Menu axis: page size — small pages span many stream boundaries.
-		pageSize := antirandom.RandomChoice([]uint32{1, 2, 5})
+		pageSize := generation.Choice(src, []uint32{1, 2, 5})
 
 		var (
 			afterLocalID uint64

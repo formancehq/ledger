@@ -60,9 +60,8 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	} else {
-		input, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter transaction ID").
-			Show()
+		input, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter transaction ID"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -84,9 +83,8 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 		pterm.Println("Enter metadata (key=value format, empty line to finish):")
 
 		for {
-			input, err := pterm.DefaultInteractiveTextInput.
-				WithDefaultText("Metadata (or empty to finish)").
-				Show()
+			input, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+				WithDefaultText("Metadata (or empty to finish)"))
 			if err != nil {
 				return fmt.Errorf("failed to read input: %w", err)
 			}
@@ -152,11 +150,17 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 		return cmdutil.Displayed(err)
 	}
 
-	_, err = client.Apply(ctx, applyReq)
+	resp, err := client.Apply(ctx, applyReq)
 	if err != nil {
 		_ = spinner.Stop()
 
 		return cmdutil.FormatGRPCError("failed to set metadata", err)
+	}
+
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
+		spinner.Fail("Response signature verification failed")
+
+		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
 	}
 
 	spinner.Success("Metadata set")

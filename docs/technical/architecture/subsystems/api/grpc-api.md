@@ -147,6 +147,14 @@ older-than-one-minute samples.
 
 ## Read Operations
 
+### Analyze Numscript source
+
+`BucketService.AnalyzeNumscript` takes source text and the required language
+version `v1`. It returns sorted external inputs and typed diagnostics in the
+response. It needs query-read authorization and never accesses a ledger or
+changes state. See the [scripting contract](../scripting/numscript-library.md#read-only-source-analysis)
+for feature and diagnostic behavior.
+
 ### Ledger configuration confidentiality
 
 GetLedger and ListLedgers return detached credential-safe views, including
@@ -647,7 +655,15 @@ preservation of unrelated, `Unknown`, and structured statuses during closure.
 This is an interrupted outcome, not a definitive business rejection:
 `Unavailable` can arrive **after a write has committed** when its response is
 lost. A client retry must retain the original idempotency key and payload.
-Without a key, replaying the request may execute it again. The regressions in
+Without a key, replaying the request may execute it again.
+`pkg/actions/grpc_test.go` count attempts against a server that always returns
+`Unavailable`. `actions.GRPCRetryPolicy` allows five total attempts, grpc-go's
+default cap, with four exponential backoffs totaling 3.75s before jitter. This
+covers the default 1–2s leader-election window without extending every failed
+call to the former declared 50 attempts. The Antithesis per-node connections
+use their retry interceptors without a second native retry policy.
+
+The regressions in
 `tests/antithesis/workload/internal/client_transport_test.go` commit against a
 real Ledger node and close the peer connection before response delivery. They
 retain the native gRPC retry control and separately exercise the actual
@@ -668,10 +684,18 @@ The fixture also passes the actual forwarded close error to
 | `ALREADY_EXISTS` | Ledger already exists, idempotency key conflict, reference conflict |
 | `INVALID_ARGUMENT` | Invalid request parameters, Numscript parse error, validation error |
 | `FAILED_PRECONDITION` | Insufficient balance, transaction already reverted, balance not found |
-| `UNAVAILABLE` | No leader available (client should retry) |
+| `UNAVAILABLE` | No leader available or the local Raft run has stopped (client should retry) |
 | `INTERNAL` | Unrecognized business error |
 
 ### Error Reason Constants
+
+A cluster command interrupted by local Raft shutdown returns `UNAVAILABLE`,
+including when the stopped sentinel is wrapped by the caller. Unary and streaming
+RPCs share this mapping so clients can retry against a live node during a restart.
+Unclassified failures still return a sanitized `UNKNOWN` with a correlation ID.
+This status correction preserves protocol revision 40 and changes no protobuf
+fields, committed state, audit records, snapshots, or backups. During a rolling
+upgrade, older nodes can still return `UNKNOWN` for this shutdown condition.
 
 All business errors carry an `ErrorInfo` detail with a machine-readable reason. The reason constants are defined in `internal/domain/processing/errors.go` and shared between server and client.
 

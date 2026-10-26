@@ -20,6 +20,9 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	ClusterService_GetClusterState_FullMethodName            = "/cluster.ClusterService/GetClusterState"
+	ClusterService_BeginDrain_FullMethodName                 = "/cluster.ClusterService/BeginDrain"
+	ClusterService_EndDrain_FullMethodName                   = "/cluster.ClusterService/EndDrain"
+	ClusterService_GetDrainStatus_FullMethodName             = "/cluster.ClusterService/GetDrainStatus"
 	ClusterService_GetDiskUsage_FullMethodName               = "/cluster.ClusterService/GetDiskUsage"
 	ClusterService_GetNodeTime_FullMethodName                = "/cluster.ClusterService/GetNodeTime"
 	ClusterService_TransferLeadership_FullMethodName         = "/cluster.ClusterService/TransferLeadership"
@@ -44,6 +47,15 @@ const (
 type ClusterServiceClient interface {
 	// GetClusterState returns the current state of the Raft cluster
 	GetClusterState(ctx context.Context, in *GetClusterStateRequest, opts ...grpc.CallOption) (*ClusterState, error)
+	// BeginDrain closes write admission at a Raft-ordered marker. The operator
+	// waits for each reported member to persist cutoff_index before stopping Pods.
+	BeginDrain(ctx context.Context, in *BeginDrainRequest, opts ...grpc.CallOption) (*BeginDrainResponse, error)
+	// EndDrain reopens admission through a Raft-ordered release of the active epoch.
+	EndDrain(ctx context.Context, in *EndDrainRequest, opts ...grpc.CallOption) (*EndDrainResponse, error)
+	// GetDrainStatus reads only the responding node's local cursor. When its
+	// active drain index or last release index is nonzero and covered by
+	// last_persisted_index, the response follows a Pebble WAL fsync.
+	GetDrainStatus(ctx context.Context, in *GetDrainStatusRequest, opts ...grpc.CallOption) (*DrainStatus, error)
 	// GetDiskUsage returns the disk usage of the local node
 	GetDiskUsage(ctx context.Context, in *GetDiskUsageRequest, opts ...grpc.CallOption) (*DiskUsage, error)
 	// GetNodeTime returns the current physical clock time of the local node
@@ -98,6 +110,36 @@ func (c *clusterServiceClient) GetClusterState(ctx context.Context, in *GetClust
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ClusterState)
 	err := c.cc.Invoke(ctx, ClusterService_GetClusterState_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clusterServiceClient) BeginDrain(ctx context.Context, in *BeginDrainRequest, opts ...grpc.CallOption) (*BeginDrainResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BeginDrainResponse)
+	err := c.cc.Invoke(ctx, ClusterService_BeginDrain_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clusterServiceClient) EndDrain(ctx context.Context, in *EndDrainRequest, opts ...grpc.CallOption) (*EndDrainResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EndDrainResponse)
+	err := c.cc.Invoke(ctx, ClusterService_EndDrain_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clusterServiceClient) GetDrainStatus(ctx context.Context, in *GetDrainStatusRequest, opts ...grpc.CallOption) (*DrainStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DrainStatus)
+	err := c.cc.Invoke(ctx, ClusterService_GetDrainStatus_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -252,6 +294,15 @@ func (c *clusterServiceClient) GetQueryCheckpointSchedule(ctx context.Context, i
 type ClusterServiceServer interface {
 	// GetClusterState returns the current state of the Raft cluster
 	GetClusterState(context.Context, *GetClusterStateRequest) (*ClusterState, error)
+	// BeginDrain closes write admission at a Raft-ordered marker. The operator
+	// waits for each reported member to persist cutoff_index before stopping Pods.
+	BeginDrain(context.Context, *BeginDrainRequest) (*BeginDrainResponse, error)
+	// EndDrain reopens admission through a Raft-ordered release of the active epoch.
+	EndDrain(context.Context, *EndDrainRequest) (*EndDrainResponse, error)
+	// GetDrainStatus reads only the responding node's local cursor. When its
+	// active drain index or last release index is nonzero and covered by
+	// last_persisted_index, the response follows a Pebble WAL fsync.
+	GetDrainStatus(context.Context, *GetDrainStatusRequest) (*DrainStatus, error)
 	// GetDiskUsage returns the disk usage of the local node
 	GetDiskUsage(context.Context, *GetDiskUsageRequest) (*DiskUsage, error)
 	// GetNodeTime returns the current physical clock time of the local node
@@ -304,6 +355,15 @@ type UnimplementedClusterServiceServer struct{}
 
 func (UnimplementedClusterServiceServer) GetClusterState(context.Context, *GetClusterStateRequest) (*ClusterState, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetClusterState not implemented")
+}
+func (UnimplementedClusterServiceServer) BeginDrain(context.Context, *BeginDrainRequest) (*BeginDrainResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method BeginDrain not implemented")
+}
+func (UnimplementedClusterServiceServer) EndDrain(context.Context, *EndDrainRequest) (*EndDrainResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EndDrain not implemented")
+}
+func (UnimplementedClusterServiceServer) GetDrainStatus(context.Context, *GetDrainStatusRequest) (*DrainStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDrainStatus not implemented")
 }
 func (UnimplementedClusterServiceServer) GetDiskUsage(context.Context, *GetDiskUsageRequest) (*DiskUsage, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDiskUsage not implemented")
@@ -382,6 +442,60 @@ func _ClusterService_GetClusterState_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ClusterServiceServer).GetClusterState(ctx, req.(*GetClusterStateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClusterService_BeginDrain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BeginDrainRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).BeginDrain(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_BeginDrain_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).BeginDrain(ctx, req.(*BeginDrainRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClusterService_EndDrain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EndDrainRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).EndDrain(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_EndDrain_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).EndDrain(ctx, req.(*EndDrainRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClusterService_GetDrainStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDrainStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).GetDrainStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_GetDrainStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).GetDrainStatus(ctx, req.(*GetDrainStatusRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -648,6 +762,18 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetClusterState",
 			Handler:    _ClusterService_GetClusterState_Handler,
+		},
+		{
+			MethodName: "BeginDrain",
+			Handler:    _ClusterService_BeginDrain_Handler,
+		},
+		{
+			MethodName: "EndDrain",
+			Handler:    _ClusterService_EndDrain_Handler,
+		},
+		{
+			MethodName: "GetDrainStatus",
+			Handler:    _ClusterService_GetDrainStatus_Handler,
 		},
 		{
 			MethodName: "GetDiskUsage",

@@ -12,11 +12,24 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_concurrent_ledger_delete", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
-		r := internal.Rand()
+	internal.RunGeneratedDriver("parallel_driver_concurrent_ledger_delete", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
+		// Generate worker-owned inputs before launching goroutines.
+		payloads := make([]*servicepb.CreateTransactionPayload, 5)
+		for i := range payloads {
+			payloads[i] = &servicepb.CreateTransactionPayload{
+				Postings: []*commonpb.Posting{{
+					Source:      "world",
+					Destination: fmt.Sprintf("users:%d", src.Intn(int(internal.UserAccountCount))),
+					Amount:      commonpb.NewUint256FromUint64(100),
+					Asset:       "USD/2",
+				}},
+				Force: true,
+			}
+		}
 
 		// 1. Create a dedicated ephemeral ledger.
 		ledger := internal.PrefixDeltest.New()
@@ -43,7 +56,7 @@ func main() {
 		go func() {
 			defer wg.Done()
 
-			for range 5 {
+			for _, payload := range payloads {
 				writeAttempts++
 
 				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
@@ -51,15 +64,7 @@ func main() {
 						Apply: &servicepb.LedgerApplyRequest{
 							Ledger: ledger,
 							Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-								CreateTransaction: &servicepb.CreateTransactionPayload{
-									Postings: []*commonpb.Posting{{
-										Source:      "world",
-										Destination: fmt.Sprintf("users:%d", r.Uint64()%internal.UserAccountCount),
-										Amount:      commonpb.NewUint256FromUint64(100),
-										Asset:       "USD/2",
-									}},
-									Force: true,
-								},
+								CreateTransaction: payload,
 							}},
 						},
 					},

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/etcd/server/v3/storage/wal"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -138,13 +139,14 @@ func assertOldWALSegmentsPurged(t *testing.T, triggerReclamation func(*DefaultWA
 
 	w := newTestWAL(t, withPurgeInterval(100*time.Millisecond))
 
-	// Write enough data to force WAL segment rotation.
-	// etcd WAL segments are 64MB, so writing ~200MB should create at least 3 segments.
-	// ReleaseLockTo requires at least 3 segments to actually release the oldest lock,
-	// because it always keeps the segment just before the target index locked.
+	// Write enough data to force WAL segment rotation: ten half-segment entries
+	// span about five segments. ReleaseLockTo requires at least 3 segments to
+	// actually release the oldest lock, because it always keeps the segment
+	// just before the target index locked. Sizing from the live segment size
+	// keeps this valid when a benchmark run leaves the production size in place.
 	const numEntries = 10
 
-	entryData := make([]byte, 20*1024*1024)
+	entryData := make([]byte, wal.SegmentSizeBytes/2)
 	for i := uint64(1); i <= numEntries; i++ {
 		err := w.Append(
 			hs(1, 1, i),
@@ -154,7 +156,7 @@ func assertOldWALSegmentsPurged(t *testing.T, triggerReclamation func(*DefaultWA
 	}
 
 	segmentsAfterWrite := countWALFiles(t, w.etcdWalDir)
-	require.GreaterOrEqual(t, segmentsAfterWrite, 3, "writing ~200MB should create at least 3 WAL segments")
+	require.GreaterOrEqual(t, segmentsAfterWrite, 3, "writing five segments of data should create at least 3 WAL segments")
 
 	triggerReclamation(w, numEntries)
 
@@ -1583,6 +1585,60 @@ func TestWAL_Persistence(t *testing.T) {
 	lastIdx, err := w2.LastIndex()
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, lastIdx, uint64(2))
+}
+
+// requireEntriesSurviveReopen closes w, reopens the WAL in dir and checks that
+// entries 1..len(want) come back with the same payloads.
+func requireEntriesSurviveReopen(t *testing.T, dir string, w *DefaultWAL, want [][]byte) {
+	t.Helper()
+
+	require.NoError(t, w.Close())
+	reopened := newTestWALAt(t, dir)
+
+	got, err := reopened.Entries(1, uint64(len(want))+1, math.MaxUint64)
+	require.NoError(t, err)
+	require.Len(t, got, len(want))
+	for i, entry := range got {
+		require.Equal(t, uint64(i+1), entry.GetIndex())
+		require.Equal(t, want[i], entry.GetData(), "entry %d payload", i+1)
+	}
+}
+
+func TestWAL_ReopenReadsEntriesAcrossSegments(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+
+	// Quarter-segment entries cut a new segment every few appends.
+	const numEntries = 12
+	want := make([][]byte, numEntries)
+	for i := range want {
+		want[i] = make([]byte, wal.SegmentSizeBytes/4)
+		want[i][0] = byte(i + 1)
+		require.NoError(t, w.Append(hs(1, 1, uint64(i+1)), []*raftpb.Entry{ent(uint64(i+1), 1, want[i])}))
+	}
+	require.GreaterOrEqual(t, countWALFiles(t, w.etcdWalDir), 3, "the entries must span several segments")
+
+	requireEntriesSurviveReopen(t, dir, w, want)
+}
+
+func TestWAL_EntryLargerThanASegmentSurvivesReopen(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+
+	// etcd checks the segment threshold after the write, so an entry larger
+	// than a whole segment is written into one segment, followed by a cut.
+	oversized := make([]byte, wal.SegmentSizeBytes*5/2)
+	oversized[len(oversized)-1] = 0xff
+	want := [][]byte{oversized, []byte("after the oversized entry")}
+	require.NoError(t, w.Append(hs(1, 1, 1), []*raftpb.Entry{ent(1, 1, want[0])}))
+	require.NoError(t, w.Append(hs(1, 1, 2), []*raftpb.Entry{ent(2, 1, want[1])}))
+	require.GreaterOrEqual(t, countWALFiles(t, w.etcdWalDir), 2, "the oversized entry must trigger a cut")
+
+	requireEntriesSurviveReopen(t, dir, w, want)
 }
 
 // --- WAL repair tests ---
