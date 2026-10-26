@@ -423,16 +423,17 @@ full-spec hash. It does not depend on StatefulSet UID or generation and survives
 recreation. Missing or broken association uses the verified legacy migration
 below; its absence alone does not request a storage-only rollout.
 
-The operator automatically recognizes released full-spec hashes when it can
-reconstruct the installed hash from the current nonstorage configuration and
-retained claim settings. Some released workloads have a hash from an earlier
-storage declaration that no longer matches their templates. Without an explicit
-proof, the operator compares the admitted desired Pod template using the
-installed hash with the live template. If they differ, it requests the normal
-rollout with the canonical hash. Image, configuration and TLS changes can
-therefore proceed without historical proof, including an image tag supplied by
-the operator's `LEDGER_IMAGE_TAG` when `spec.image.tag` is omitted. Sequential
-RC and TLS rollout gates still apply.
+For legacy migration without explicit proof, the operator first normalizes the
+desired Pod template using the installed hash through a dry-run Update of the
+existing StatefulSet and compares it with the live template. If they differ, it
+requests the normal rollout with the canonical hash. If they are equal, it
+automatically preserves the installed hash only when exact released full-spec
+reconstruction succeeds using the current nonstorage configuration and retained
+claim settings. Some released workloads have a hash from an earlier storage
+declaration that no longer matches their templates. Image, configuration and
+TLS changes can therefore proceed without historical proof, including an image
+tag supplied by the operator's `LEDGER_IMAGE_TAG` when `spec.image.tag` is
+omitted. Sequential RC and TLS rollout gates still apply.
 
 If those templates are equal, external admission inputs such as ServiceAccount
 annotations may still have changed. An unknown source then reports
@@ -441,6 +442,10 @@ workload hash or starting storage replacement. This ambiguous case needs
 verified historical inputs. An explicitly supplied invalid proof reports
 `HashMigrationInvalid` even if the desired template differs; the no-proof
 comparison does not bypass proof validation.
+Dry-run errors report `ClaimTemplatesReady=False/AdmissionCheckFailed` before
+canonical metadata or recovery intent/journal writes. The StatefulSet Update
+preview does not execute Pod Create admission or certify actual IAM/runtime
+access; verify those effects separately.
 
 Upgrade the CRD and Operator before changing storage or ServiceAccount inputs.
 Keep the existing Cluster declaration unchanged during that upgrade and wait
@@ -591,7 +596,8 @@ then desired A must not preserve B's Pod hash by trusting A's stale marker.
 If exact reconstruction fails and the admitted templates are equal, it reports
 `HashMigrationRequired` without proof; authentic B history requests the rollout
 to A. The old binary can itself roll a storage hash. The new controller adds
-no storage-only rollout when exact reconstruction succeeds.
+no storage-only rollout when exact reconstruction succeeds and the StatefulSet
+Update preview admits an equal template.
 
 Before upgrading, disable external Jobs/controllers that mutate the same PVCs
 or StatefulSet and inventory the Cluster's configured minima/profiles against

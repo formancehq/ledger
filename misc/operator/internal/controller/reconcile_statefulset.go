@@ -407,9 +407,10 @@ func legacyStorageSpecHashMatches(ledger *ledgerv1alpha1.Cluster, existing *apps
 	return compatible
 }
 
-// resolveStorageSpecHash preserves installed hashes only with evidence about
-// every hashed runtime input. Exact legacy reconstruction is sufficient for
-// known claim-only edits. A changed admitted template already requires a rollout.
+// resolveStorageSpecHash uses a trusted canonical association or verified legacy
+// inputs. Legacy preservation also requires a matching admitted template: exact
+// reconstruction establishes hashed inputs, not StatefulSet admission output.
+// A changed admitted template already requires a rollout.
 // Equal templates still require authenticated history for opaque released hashes:
 // their equality cannot detect changed ServiceAccount annotations.
 func (r *ClusterReconciler) resolveStorageSpecHash(ctx context.Context, ledger *ledgerv1alpha1.Cluster, existing *appsv1.StatefulSet, desired corev1.PodTemplateSpec, hash string) (corev1.PodTemplateSpec, error) {
@@ -427,11 +428,6 @@ func (r *ClusterReconciler) resolveStorageSpecHash(ctx context.Context, ledger *
 		return desired, nil
 	}
 	if ledger.Annotations[annotationLegacySpecHashProof] == "" {
-		if legacyStorageSpecHashMatches(ledger, existing) {
-			desired.Annotations[annotationSpecHash] = old
-
-			return desired, nil
-		}
 		candidate := *desired.DeepCopy()
 		candidate.Annotations[annotationSpecHash] = old
 		preview, err := r.normalizeStoragePodTemplate(ctx, existing, candidate)
@@ -441,6 +437,11 @@ func (r *ClusterReconciler) resolveStorageSpecHash(ctx context.Context, ledger *
 		if !apiequality.Semantic.DeepEqual(preview, existing.Spec.Template) {
 			// The rollout also refreshes external admission inputs. No history is
 			// needed unless equal templates could hide such an input change.
+			return desired, nil
+		}
+		if legacyStorageSpecHashMatches(ledger, existing) {
+			desired.Annotations[annotationSpecHash] = old
+
 			return desired, nil
 		}
 	}
@@ -466,8 +467,9 @@ func (r *ClusterReconciler) resolveStorageSpecHash(ctx context.Context, ledger *
 	return desired, nil
 }
 
-// normalizeStoragePodTemplate uses the same API defaults and admission as a real
-// workload update, without changing its claims or persisting any mutation.
+// normalizeStoragePodTemplate uses StatefulSet UPDATE defaults and admission,
+// without changing its claims or persisting any mutation. It does not run
+// admission for a future Pod CREATE or establish effective Pod runtime inputs.
 // Partial comparisons cannot establish compatibility: omitted scalar defaults
 // (such as probe timeouts) differ from the source, while removed desired fields
 // must still count as workload changes.

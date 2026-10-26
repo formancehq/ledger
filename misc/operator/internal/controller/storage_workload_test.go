@@ -387,7 +387,11 @@ func TestStorageDeclarationDriftPreservesInstalledPodHash(t *testing.T) {
 					r := &ClusterReconciler{Client: c}
 					resolved, err := r.resolveStorageSpecHash(t.Context(), ledger, sts, desired, desiredHash)
 					require.NoError(t, err)
-					require.Equal(t, 0, previews, "exact hash reconstruction proves nonstorage inputs unchanged")
+					if modern {
+						require.Zero(t, previews, "the valid canonical association keeps its precedence")
+					} else {
+						require.Equal(t, 1, previews, "exact reconstruction still requires admitted-template equality")
+					}
 					require.Equal(t, before.Spec.Template, resolved)
 					require.Equal(t, before, sts, "hash resolution must not mutate its source")
 				})

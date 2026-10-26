@@ -390,18 +390,26 @@ and then desired A under the new Operator. Without usable history and with
 opaque equal admitted templates, assert `HashMigrationRequired`, never silent
 certification of B as A. Authentic B proof must request the actual A rollout and
 publish a valid pair. Also break the association where exact reconstruction is
-possible and prove no added storage-only rollout. An old binary can itself
+possible and prove no added storage-only rollout after a successful StatefulSet
+Update preview admits an equal template. An old binary can itself
 roll its storage hash; that is separate from the new controller's decision.
 Downgrade remains forbidden during active journal recovery. Cover missing,
 empty and broken pairs, retained historical hashes and shared trust call sites.
 
-For an unknown released hash with no proof, normalize the desired template
-with the installed hash through admission. A differing admitted template must
+For a released hash with no proof, normalize the desired template with the
+installed hash through admission dry-run StatefulSet Update before accepting
+exact reconstruction. A differing admitted template must
 request the normal canonical-hash rollout for image, configuration and TLS
 changes, including an omitted tag supplied by a changed `LEDGER_IMAGE_TAG`.
+Equal admitted templates permit automatic preservation of the installed hash
+only after exact released-hash reconstruction. A dry-run failure must publish
+`ClaimTemplatesReady=False/AdmissionCheckFailed` before canonical metadata or
+recovery intent/journal writes. This preview does not execute Pod Create
+admission or certify actual IAM/runtime access. The real StatefulSet Update
+still passes admission; the full Pod template revision determines rollout.
 Preserve sequential RC admission and TLS/storage rollout ordering. Only equal
-templates leave external admission inputs ambiguous and require explicit
-history through the Cluster annotation
+templates without exact reconstruction leave external admission inputs ambiguous
+and require explicit history through the Cluster annotation
 `ledger.formance.com/legacy-spec-hash-proof`: one JSON object with `version: 1`,
 current StatefulSet `sourceUID`, installed Pod-template `oldSpecHash` and the
 complete historical effective `ClusterSpec` in `spec`. Verify exact version,
@@ -421,8 +429,9 @@ nonstorage canonical difference must roll. Missing required history reports
 foreign, stale or inconsistent proof reports `HashMigrationInvalid`.
 Explicit invalid proof must still fail when the admitted template differs;
 the no-proof rollout branch cannot bypass supplied proof validation. Known
-exact legacy reconstruction remains automatic. Only a valid canonical/installed-
-hash association takes precedence over leftover proof and must still trigger
+exact legacy reconstruction remains automatic after a successful Update preview
+admits an equal template. Only a valid canonical/installed-hash association takes
+precedence over leftover proof and must still trigger
 later real rollouts. Equal installed/desired hash strings alone do not prove
 released reconstruction. Cover successful proof cleanup from GitOps and stale
 proof after canonical migration, UID replacement and later ServiceAccount edits. Do not
@@ -439,6 +448,20 @@ equal-template `HashMigrationRequired` counterexample and invalid-proof
 rejections. A synthetic canonical marker must not replace the released-source
 trigger. Unit and API-server/normal-manager tests establish requested writes,
 not real mixed-version Raft communication or completed rollout.
+
+Add recognized released-hash regressions with no canonical association or proof.
+Assert that an equal admitted template preserves the installed hash and records
+the valid canonical association, while a differing admitted template returns
+the desired canonical-hash template. Reject the Update preview and assert
+`AdmissionCheckFailed` on the actual Cluster, unchanged StatefulSet template and
+hash metadata, no recovery pointer/journal writes and no orphan deletion.
+Exercise the real StatefulSet reconciliation caller, including its effective
+TLS copy, so a resolver-only assertion cannot certify the error/status and
+mutation boundary. Restore admission and prove a real retry succeeds. Retain
+opaque equal-template `HashMigrationRequired`, invalid explicit proof with
+equal and differing templates, and valid-association precedence regressions.
+These checks cover StatefulSet Update admission; they do not establish changes
+to Pod Create webhooks, completed Pod rollout or actual IAM/runtime access.
 
 For a released source with valid history, combine a ServiceAccount change and
 scale-down. The preparatory StatefulSet update must resolve the hash and commit

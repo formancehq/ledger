@@ -74,7 +74,8 @@ must equal that installed Pod hash. Marker presence alone is insufficient.
 The association records the actual retained hash, including historical hashes;
 it survives recreation without depending on StatefulSet UID or generation.
 This permits automatic exact reconstruction even when a released hash includes
-an earlier declared storage size that never reached its claim templates.
+an earlier declared storage size that never reached its claim templates, subject
+to a successful StatefulSet Update preview with equal admitted templates.
 
 If combined edits already produce `HashMigrationRequired`, temporarily restore
 only those concurrent declared inputs to their authentic previous declaration,
@@ -92,18 +93,24 @@ undo those annotations or refresh existing Pods' admission inputs.
 
 Released StatefulSets can carry the full-spec Pod hash without a valid
 canonical association. Missing or broken association uses verified legacy
-migration and does not alone request a storage-only rollout. The operator first
-attempts exact reconstruction using the current nonstorage inputs and retained
-claim settings. If it cannot reconstruct the hash and no proof is supplied, it
-compares the admitted desired Pod template using the installed hash with the
-live template. A difference requests the normal rollout; upgrading to the
-adjacent RC does not require historical proof just because the explicit image
+migration and does not alone request a storage-only rollout. For this migration
+without explicit proof, the operator first normalizes the desired Pod template
+using the installed hash through a dry-run Update of the existing StatefulSet
+and compares it with the live template. Equal admitted templates preserve the
+installed hash automatically only after exact released-hash reconstruction using
+the current nonstorage inputs and retained claim settings. A difference requests
+the normal canonical-hash rollout, even for a reconstructible hash; upgrading to
+the adjacent RC does not require historical proof just because the explicit image
 tag or the operator's implicit `LEDGER_IMAGE_TAG` changed. Configuration and
 TLS changes follow the same rule. Existing RC admission, TLS sequencing and
-storage rollout gates remain in force.
+storage rollout gates remain in force. A dry-run error reports
+`ClaimTemplatesReady=False/AdmissionCheckFailed` before canonical metadata or
+recovery intent/journal writes. This StatefulSet Update preview does not execute
+Pod Create admission or certify actual IAM/runtime access.
 
-Equal templates cannot establish whether external admission inputs such as
-ServiceAccount annotations changed. Only this ambiguous no-proof case reports
+Equal templates without exact reconstruction cannot establish whether external
+admission inputs such as ServiceAccount annotations changed. Only this ambiguous
+no-proof case reports
 `ClaimTemplatesReady=False/HashMigrationRequired` without advancing workload
 hashes or starting storage replacement. If the unchanged-input procedure above
 does not establish history, follow the
@@ -148,7 +155,8 @@ released-Operator ServiceAccount B and then desired A, an opaque equal template
 without usable history must report `HashMigrationRequired`. Authentic B history
 instead establishes the required rollout to A. Stale A metadata cannot certify
 B's installed hash. The old binary can itself request a storage-hash rollout;
-the new controller adds none when exact legacy reconstruction succeeds.
+the new controller adds none when exact legacy reconstruction succeeds and the
+StatefulSet Update preview admits an equal template.
 
 Failed attempted intent/journal preparation uses memory rate control per
 Cluster namespace/name, retaining only its latest UID and full prepared payload

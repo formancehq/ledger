@@ -289,15 +289,21 @@ ServiceAccount reconciliation can already have updated that resource before a
 hash migration error blocks the Pod-template update. The error does not undo
 those annotations or refresh existing Pods' admission inputs.
 
-Released full-spec hashes migrate automatically when the installed hash can be
-reconstructed. Missing or broken association uses this same verified migration;
-it does not alone request a storage-only rollout. For an unknown source without
-proof, the operator compares the admitted desired Pod template using the
-installed hash with the live template.
+Missing or broken association uses verified legacy migration; it does not alone
+request a storage-only rollout. For this migration without explicit proof, the
+operator first normalizes the desired Pod template using the installed hash
+through a dry-run Update of the existing StatefulSet and compares it with the
+live template.
+An equal admitted template preserves the installed hash automatically only when
+exact released full-spec reconstruction succeeds.
 A difference requests the normal canonical-hash rollout for image,
 configuration or TLS changes, including an image tag inherited from the
 operator's `LEDGER_IMAGE_TAG`. Sequential RC and TLS gates still apply.
-Equal templates leave external admission inputs ambiguous and report
+Dry-run errors report `ClaimTemplatesReady=False/AdmissionCheckFailed` before
+canonical metadata or recovery intent/journal writes. This StatefulSet Update
+preview does not execute Pod Create admission or certify actual IAM/runtime
+access. Equal templates without exact reconstruction leave external admission
+inputs ambiguous and report
 `ClaimTemplatesReady=False/HashMigrationRequired` without advancing either
 workload hash or starting storage replacement. For this case, supply the Cluster
 annotation
@@ -483,7 +489,8 @@ Pod hash, breaking the association detected by the new Operator. In an
 A-to-released-B-to-A ServiceAccount transition, an opaque equal template without
 proof reports `HashMigrationRequired`; authentic B history instead requests
 the rollout to A. The old binary can itself request a storage-hash rollout;
-the new controller adds none when exact legacy reconstruction succeeds.
+the new controller adds none when exact legacy reconstruction succeeds and the
+StatefulSet Update preview admits an equal template.
 
 After authenticating active status and exact journal bytes, auth-key projection,
 required cluster-secret maintenance and volume protection use the saved
