@@ -595,10 +595,14 @@ Finalization performs these steps:
 
 1. Prepares the staged store ([Backup Preparation on Restore](#backup-preparation-on-restore): applied index preserved as the genesis boundary, persisted config/bloom/peers/cache reset).
 2. Reads back `lastAppliedIndex` and `lastAppliedTimestamp` from the prepared store.
-3. Writes the **RESTORED marker** JSON file to `{dataDir}/RESTORED`.
-4. Creates `{dataDir}/checkpoints/` directory.
-5. **Atomically** hard-links the staging directory to `{dataDir}/checkpoints/0` (using a temp directory + `os.Rename` for crash safety).
-6. Removes the staging directory.
+3. Closes the staging Pebble handle, creates `{dataDir}/checkpoints/`, and removes any existing `checkpoints/0` path.
+4. Hard-links staging into a temporary checkpoint directory, then renames it to `{dataDir}/checkpoints/0`.
+5. Writes the **RESTORED marker** JSON file to `{dataDir}/RESTORED`. The marker is the commit point and is written only after checkpoint placement.
+6. Removes the staging directory. A cleanup failure is logged after success; the published checkpoint and marker remain valid.
+
+One finalization owns the staged generation from preparation through publication and cleanup. A concurrent call fails with `FailedPrecondition` without changing the owner's staging or checkpoint. A repeated call after success also fails because the staging handle is gone; it does not return success again. Shutdown waits for an admitted finalizer before closing restore resources.
+
+If preparation fails, the staging handle remains open and the marker is absent; the staged bytes may already have changed if Pebble committed before reporting an error. If publication fails after the handle closes, staging files remain but cannot be finalized again in the same server process. A marker-write failure removes the newly placed checkpoint; if that rollback fails, remove the leftover checkpoint manually. Restart restore mode with a fresh target and repeat download and validation before retrying. Never treat a failed finalization as a committed restore.
 
 On next startup, `ScanLatestCheckpointID()` scans the `checkpoints/` directory for the highest numbered subdirectory to find the active checkpoint.
 
@@ -627,9 +631,9 @@ Client                       Restore Server                    Disk / S3
   |<-- summary -------------------|--- OpenReadOnly(staging) ---->|
   |                               |                               |
   |--- FinalizeRestore ---------->|                               |
-  |                               |--- Write RESTORED marker ---->|
   |                               |--- HardLink staging --------->|
   |                               |    -> checkpoints/0           |
+  |                               |--- Write RESTORED marker ---->|
   |                               |--- Remove staging ----------->|
   |<-- response ------------------|                               |
 
