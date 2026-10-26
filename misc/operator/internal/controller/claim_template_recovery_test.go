@@ -438,6 +438,79 @@ func TestClaimTemplateRecoveryStartPreservesResumeFailure(t *testing.T) {
 	}
 }
 
+func TestClaimTemplateRecoveryStartReportsInitialResumeReadFailure(t *testing.T) {
+	t.Parallel()
+	f := newClaimRecoveryFixture(t)
+	failure := errors.New("initial recovery Cluster read failed once")
+	journalCreated, readFailed := false, false
+	deletes, dependencyWrites := 0, 0
+	c := interceptor.NewClient(f.client, interceptor.Funcs{
+		Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+			if _, ok := obj.(*corev1.ConfigMap); ok {
+				err := c.Create(ctx, obj, opts...)
+				journalCreated = err == nil
+
+				return err
+			}
+
+			return c.Create(ctx, obj, opts...)
+		},
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, ok := obj.(*ledgerv1alpha1.Cluster); ok && journalCreated && !readFailed {
+				readFailed = true
+
+				return failure
+			}
+
+			return c.Get(ctx, key, obj, opts...)
+		},
+		Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+			dependencyWrites++
+
+			return c.Update(ctx, obj, opts...)
+		},
+		Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+			deletes++
+
+			return c.Delete(ctx, obj, opts...)
+		},
+	})
+	r := f.reconciler(c)
+	_, err := r.startClaimTemplateRecovery(t.Context(), f.ledger, f.source, f.claims)
+	require.ErrorIs(t, err, failure)
+	require.True(t, readFailed, "fail the initial resume read after journal creation, not preparation")
+	_, fenced := errors.AsType[*claimTemplateJournalWriteError](err)
+	require.True(t, fenced)
+	condition := meta.FindStatusCondition(f.ledger.Status.Conditions, "ClaimTemplatesReady")
+	require.NotNil(t, condition)
+	require.Equal(t, "RecoveryFailed", condition.Reason)
+	require.Contains(t, condition.Message, failure.Error())
+	require.Zero(t, deletes)
+	require.Zero(t, dependencyWrites)
+	journal, _ := f.journal(t)
+	preparing := f.latestLedger(t).Status.ClaimTemplateRecovery
+	require.Empty(t, preparing.ConfigMapUID, "the failed refresh must not bind or consume the journal")
+	require.Equal(t, claimTemplateRetryInitial, r.claimTemplateRetries.entries[client.ObjectKeyFromObject(f.ledger)].delay)
+	f.requireStorageUnchanged(t)
+
+	ledger := f.latestLedger(t)
+	handled, result, err := f.reconciler(c).resumeClaimTemplateRecovery(t.Context(), ledger)
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.Equal(t, claimTemplateRequeueInterval, result.RequeueAfter)
+	require.Equal(t, "Recreating", meta.FindStatusCondition(ledger.Status.Conditions, "ClaimTemplatesReady").Reason)
+	require.Equal(t, 1, deletes)
+	active := f.latestLedger(t).Status.ClaimTemplateRecovery
+	want := preparing.DeepCopy()
+	want.ConfigMapUID = string(journal.UID)
+	require.Equal(t, want, active)
+	after, _ := f.journal(t)
+	require.Equal(t, journal.UID, after.UID)
+	require.Equal(t, journal.Data, after.Data)
+	require.True(t, apierrors.IsNotFound(f.client.Get(t.Context(), client.ObjectKeyFromObject(f.source), &appsv1.StatefulSet{})))
+	f.requireStorageUnchanged(t)
+}
+
 func TestClaimTemplateRecoveryPersistsJournalAndMarkerBeforeOrphanDelete(t *testing.T) {
 	t.Parallel()
 	f := newClaimRecoveryFixture(t)
