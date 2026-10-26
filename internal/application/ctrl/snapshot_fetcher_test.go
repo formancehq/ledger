@@ -197,6 +197,40 @@ func TestGRPCSnapshotFetcher_HappyPath(t *testing.T) {
 	require.Equal(t, int32(1), csState.closeCalled.Load())
 }
 
+func TestGRPCSnapshotFetcher_RetriesTransientReadinessFailure(t *testing.T) {
+	t.Parallel()
+
+	firstClient := NewMockSnapshotServiceClient(gomock.NewController(t))
+	secondClient, _ := buildMockClient(t, map[string][]byte{"data.bin": []byte("ok")})
+	clients := &recyclingSnapshotClients{first: firstClient, second: secondClient}
+
+	firstClient.EXPECT().CheckSnapshotReadiness(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(context.Context, *snapshotpb.CheckSnapshotReadinessRequest, ...grpc.CallOption) (*snapshotpb.CheckSnapshotReadinessResponse, error) {
+			clients.retired.Store(true)
+
+			return nil, closingConnErr
+		}).Times(1)
+	secondClient.EXPECT().CheckSnapshotReadiness(gomock.Any(), gomock.Any()).
+		Return(&snapshotpb.CheckSnapshotReadinessResponse{Ready: true}, nil).
+		Times(1)
+
+	fetcher := &grpcSnapshotFetcher{
+		clientSource:   clients.source,
+		logger:         logging.Testing(),
+		parallelism:    1,
+		retryCount:     2,
+		fileRetryCount: 1,
+		checkReadiness: true,
+	}
+
+	size, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 10)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), size)
+	// The source is resolved for both readiness probes and again before the
+	// file stream, proving the retry got a fresh client before the session.
+	require.Equal(t, int32(3), clients.resolved.Load())
+}
+
 func TestGRPCSnapshotFetcher_SkipsPrepareWhenDonorIsNotReady(t *testing.T) {
 	t.Parallel()
 

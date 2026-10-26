@@ -239,6 +239,16 @@ func (f *grpcSnapshotFetcher) checkSnapshotReadiness(ctx context.Context, client
 	)
 }
 
+func isRetryableSnapshotError(ctx context.Context, err error) bool {
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		if isRetryableError(ctx, current) || isSessionExpired(current) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir string, progress *state.SyncProgress, minAppliedIndex uint64) (uint64, error) {
 	logger := f.logger.WithContext(ctx)
 	var lastErr error
@@ -259,7 +269,28 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 
 		if f.checkReadiness {
 			if err := f.checkSnapshotReadiness(ctx, client, minAppliedIndex); err != nil {
-				return 0, err
+				lastErr = err
+
+				if errors.Is(err, state.ErrSnapshotNotReady) {
+					return 0, err
+				}
+
+				if !isRetryableSnapshotError(ctx, err) {
+					return 0, err
+				}
+
+				logger.WithFields(map[string]any{
+					"attempt": attempt + 1,
+					"error":   err.Error(),
+				}).Errorf("Snapshot readiness probe failed, will retry")
+
+				if attempt < f.retryCount-1 {
+					if waitErr := sessionBackoffWait(ctx, attempt); waitErr != nil {
+						return 0, waitErr
+					}
+				}
+
+				continue
 			}
 		}
 
@@ -273,7 +304,7 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 			return 0, fmt.Errorf("snapshot fetch: %w", state.ErrNotAvailable)
 		}
 
-		if !isRetryableError(ctx, err) && !isSessionExpired(err) {
+		if !isRetryableSnapshotError(ctx, err) {
 			return 0, err
 		}
 
