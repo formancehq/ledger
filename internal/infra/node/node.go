@@ -294,7 +294,8 @@ func NewLocalResponses() LocalResponses {
 type readyResult struct {
 	rd raft.Ready
 	// snapshotApplied is true when a leader snapshot was installed; orchestrate
-	// must call rawNode.ReportSnapshot.
+	// must refresh its ConfState shadow. Only sender-local transport results
+	// report snapshot delivery to rawNode.
 	snapshotApplied bool
 	// confChanges are committed ConfChangeV2 entries extracted from rd.CommittedEntries;
 	// orchestrate must call rawNode.ApplyConfChange for each. The entry index is
@@ -1625,7 +1626,7 @@ func (node *Node) sendReadyMessages(stop chan struct{}, rd raft.Ready, result *r
 	appendResponses, applyResponses, outbound := splitReadyMessages(node.config.NodeID, rd.Messages)
 	result.applyResponses = applyResponses
 
-	node.transport.Send(outbound)
+	node.transport.Send(outbound, stop)
 
 	if len(appendResponses) > 0 {
 		select {

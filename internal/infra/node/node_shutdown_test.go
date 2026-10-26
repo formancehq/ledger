@@ -25,11 +25,17 @@ import (
 // the fixture's WAL, spool, and store, including on the unfixed failure path.
 func startShutdownNode(t *testing.T, ctx context.Context, setup *testApplierSetup) (*Node, <-chan error, func()) {
 	t.Helper()
+
+	return startShutdownNodeWithTransport(t, ctx, setup, newForceRemoveTransport(t))
+}
+
+func startShutdownNodeWithTransport(t *testing.T, ctx context.Context, setup *testApplierSetup, transport Transport) (*Node, <-chan error, func()) {
+	t.Helper()
 	n, err := NewNode(NodeConfig{
 		NodeID: 1, AdvertiseAddr: "node-1:7000", ServiceAdvertiseAddr: "node-1:8000",
 		InstanceID: []byte("0000000000000001"), TickInterval: time.Hour,
 		ProcessingTickInterval: time.Hour, MaintenanceInterval: time.Hour,
-	}, newForceRemoveTransport(t), setup.applier, logging.Testing(),
+	}, transport, setup.applier, logging.Testing(),
 		noop.NewMeterProvider().Meter("node-shutdown"), setup.wal, setup.fsm,
 		setup.applier.recovery, setup.applier.synchronizer, newTestMembership(t), setup.responseSink)
 	require.NoError(t, err)

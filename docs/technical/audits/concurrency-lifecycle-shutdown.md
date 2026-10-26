@@ -212,7 +212,11 @@ A sent snapshot result belongs to the peer connection's lifetime and is consumed
 by the node's orchestrate owner. The bounded result queue must backpressure
 instead of silently losing the only event that releases `StateSnapshot`. Peer
 removal cancels its publishers before joining the connection; transport stop
-releases dispatcher publishers as well. Delayed acknowledgement and abandoned
+releases dispatcher publishers as well. Dispatcher-queue rejection is published
+by the Ready worker and must additionally observe its task stop channel. Fill
+the status queue without a consumer, then stop and join Node.Run before
+transport shutdown while keeping the run context live; cancellation of a
+context supplied only by the test does not prove this production caller. Delayed acknowledgement and abandoned
 pending-response cleanup must produce at most one snapshot outcome per attempt.
 Exercise both connection rejection/recovery and cancellation while no result
 consumer is available; transport acceptance alone does not prove FSM readiness.

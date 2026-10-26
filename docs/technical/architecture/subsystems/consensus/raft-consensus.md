@@ -672,7 +672,12 @@ A pending response keeps only its destination and snapshot classification,
 not the snapshot payload. Abandonment clears that classification before a late
 response can report a second snapshot outcome. The bounded status channel
 backpressures publishers rather than dropping results; peer removal cancels
-peer publishers, and transport shutdown releases all remaining publishers.
+peer publishers, and transport shutdown releases dispatcher and peer publishers.
+Dispatcher-queue rejection runs synchronously in the Ready worker and also
+observes that task's stop channel through `Transport.Send`. Node shutdown closes
+the task stop channels before joining Ready; it must not wait for the later
+transport stop hook or for its still-live run context to be cancelled. During
+normal operation a full status queue continues to backpressure the publisher.
 
 This result is necessary even when the network later becomes healthy. If a
 follower's `MsgAppResp` is lost, `ReportUnreachable` and heartbeat replies alone

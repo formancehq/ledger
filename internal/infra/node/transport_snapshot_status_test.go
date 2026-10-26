@@ -12,6 +12,7 @@ import (
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -117,7 +118,7 @@ func TestTransportReportsSentSnapshotDelivery(t *testing.T) {
 			}
 			snapshot := []*raftpb.Message{{Type: new(raftpb.MsgSnap), From: proto.Uint64(3), To: proto.Uint64(1), Snapshot: &raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(36), Term: proto.Uint64(2)}}}}
 			waitStream()
-			tr.Send(snapshot)
+			tr.Send(snapshot, t.Context().Done())
 			if mode == "accepted" {
 				waitStatus(raft.SnapshotFinish)
 				require.Equal(t, int32(1), peer.attempts.Load())
@@ -128,7 +129,7 @@ func TestTransportReportsSentSnapshotDelivery(t *testing.T) {
 			if mode == "closed" {
 				waitStream()
 			}
-			tr.Send(snapshot)
+			tr.Send(snapshot, t.Context().Done())
 			waitStatus(raft.SnapshotFinish)
 			require.Equal(t, int32(2), peer.attempts.Load())
 		})
@@ -142,7 +143,7 @@ func TestTransportReportsSnapshotQueueDrops(t *testing.T) {
 		t.Parallel()
 		tr := newTestTransport(t, 0)
 		tr.snapshotStatusCh = make(chan SnapshotStatus, 1)
-		tr.Send(snapshot)
+		tr.Send(snapshot, t.Context().Done())
 		require.Equal(t, SnapshotStatus{PeerID: 2, Status: raft.SnapshotFailure}, <-tr.SnapshotStatus())
 	})
 	t.Run("peer queue", func(t *testing.T) {
@@ -150,7 +151,7 @@ func TestTransportReportsSnapshotQueueDrops(t *testing.T) {
 		results := make(chan SnapshotStatus, 1)
 		conn := newTestPeerConn(t, 2, func(uint64) bool { return true })
 		conn.stopCtx = t.Context()
-		conn.reportSnapshotStatus = func(_ context.Context, peerID uint64, status raft.SnapshotStatus) {
+		conn.reportSnapshotStatus = func(_ <-chan struct{}, peerID uint64, status raft.SnapshotStatus) {
 			results <- SnapshotStatus{PeerID: peerID, Status: status}
 		}
 		require.False(t, conn.pushMessages(2, snapshot))
@@ -165,7 +166,7 @@ func TestSnapshotStatusBackpressureEndsOnCancellation(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan struct{})
 		go func() {
-			tr.reportSnapshotStatus(ctx, 1, raft.SnapshotFailure)
+			tr.reportSnapshotStatus(ctx.Done(), 1, raft.SnapshotFailure)
 			close(done)
 		}()
 		synctest.Wait()
@@ -177,5 +178,72 @@ func TestSnapshotStatusBackpressureEndsOnCancellation(t *testing.T) {
 		cancel()
 		synctest.Wait()
 		<-done
+	})
+}
+
+func TestSnapshotQueueRejectionPreservesBackpressure(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		tr := newTestTransport(t, 0)
+		tr.snapshotStatusCh = make(chan SnapshotStatus, 1)
+		previous := SnapshotStatus{PeerID: 2, Status: raft.SnapshotFinish}
+		tr.snapshotStatusCh <- previous
+		done := make(chan struct{})
+		go func() {
+			tr.Send([]*raftpb.Message{msg(raftpb.MsgSnap, 1, 3)}, t.Context().Done())
+			close(done)
+		}()
+		synctest.Wait()
+		require.False(t, shutdownComplete(done), "queue rejection must wait for status capacity")
+		require.Equal(t, previous, <-tr.SnapshotStatus())
+		synctest.Wait()
+		require.True(t, shutdownComplete(done))
+		require.Equal(t, SnapshotStatus{PeerID: 3, Status: raft.SnapshotFailure}, <-tr.SnapshotStatus())
+	})
+}
+
+func TestReadySnapshotBackpressureEndsBeforeTransportShutdown(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		tr := newTestTransport(t, 0) // Every batch is rejected by the dispatcher queue.
+		tr.stopCh = make(chan struct{})
+		tr.snapshotStatusCh = make(chan SnapshotStatus, 100)
+		for range cap(tr.snapshotStatusCh) {
+			tr.snapshotStatusCh <- SnapshotStatus{PeerID: 2, Status: raft.SnapshotFailure}
+		}
+
+		// Keep status consumption disabled to model an orchestrator that has
+		// stopped. Send still traverses the real Ready worker and transport.
+		transport := NewMockTransport(gomock.NewController(t))
+		transport.EXPECT().Unreachable().AnyTimes().Return((<-chan uint64)(nil))
+		transport.EXPECT().SnapshotStatus().AnyTimes().Return((<-chan SnapshotStatus)(nil))
+		transport.EXPECT().RecvHighPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
+		transport.EXPECT().RecvMediumPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
+		transport.EXPECT().RecvLowPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
+		entered, sent := make(chan struct{}), make(chan struct{})
+		transport.EXPECT().Send(gomock.Any(), gomock.Any()).Do(func(msgs []*raftpb.Message, stop <-chan struct{}) {
+			close(entered)
+			tr.Send(msgs, stop)
+			close(sent)
+		})
+		n, result, resume := startShutdownNodeWithTransport(t, t.Context(), newTestApplierSetup(t), transport)
+		// Rescue the unfixed implementation before fixture cleanup joins Run.
+		t.Cleanup(func() { close(tr.stopCh) })
+		n.readies <- raft.Ready{Messages: []*raftpb.Message{msg(raftpb.MsgSnap, 1, 2)}}
+		<-entered
+		synctest.Wait()
+		require.False(t, shutdownComplete(sent), "Ready must preserve snapshot result backpressure")
+
+		stopped := make(chan error, 1)
+		go func() { stopped <- n.Stop(context.Background()) }()
+		<-n.stopChannel
+		resume()
+		synctest.Wait()
+		require.True(t, shutdownComplete(n.runDone), "Node.Run must join Ready before the transport stop hook")
+		require.True(t, shutdownComplete(sent), "Ready-owned publisher must observe task stop")
+		require.False(t, shutdownComplete(tr.stopCh), "transport must remain live throughout the node join")
+		require.NoError(t, <-stopped)
+		require.NoError(t, <-result)
+		require.Len(t, tr.snapshotStatusCh, 100, "shutdown must not depend on draining status results")
 	})
 }

@@ -293,7 +293,7 @@ func TestDefaultTransport_Send_EmitsUnreachablePerUniquePeer(t *testing.T) {
 		{To: proto.Uint64(3)},
 		{To: proto.Uint64(2)}, // duplicate — must not fire Unreachable again
 		{To: proto.Uint64(5)},
-	})
+	}, t.Context().Done())
 
 	// Drain unreachableCh.
 	got := make(map[uint64]int)
@@ -320,7 +320,7 @@ func TestDefaultTransport_Send_NoUnreachableOnHappyPath(t *testing.T) {
 
 	tr := newTestTransport(t, 4)
 
-	tr.Send([]*raftpb.Message{{To: proto.Uint64(2)}, {To: proto.Uint64(3)}})
+	tr.Send([]*raftpb.Message{{To: proto.Uint64(2)}, {To: proto.Uint64(3)}}, t.Context().Done())
 
 	require.Len(t, tr.unreachableCh, 0, "happy path must not push to unreachableCh")
 }

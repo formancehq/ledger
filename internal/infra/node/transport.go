@@ -34,7 +34,7 @@ type Transport interface {
 	RecvHighPriority() <-chan []*raftpb.Message
 	RecvMediumPriority() <-chan []*raftpb.Message
 	RecvLowPriority() <-chan []*raftpb.Message
-	Send(msg []*raftpb.Message)
+	Send(msg []*raftpb.Message, stop <-chan struct{})
 }
 
 // SnapshotStatus reports delivery of a sent Raft snapshot to its destination.
@@ -473,8 +473,9 @@ func (t *DefaultTransport) RemovePeer(ctx context.Context, id uint64) {
 	}
 }
 
-// Send sends a message to a peer.
-func (t *DefaultTransport) Send(msgs []*raftpb.Message) {
+// Send queues messages to peers. Rejected snapshot results backpressure until
+// delivered or the Ready task stops, independently of later transport shutdown.
+func (t *DefaultTransport) Send(msgs []*raftpb.Message, stop <-chan struct{}) {
 	if len(msgs) == 0 {
 		return
 	}
@@ -493,7 +494,7 @@ func (t *DefaultTransport) Send(msgs []*raftpb.Message) {
 		t.pendingSendFullCounter.Add(context.Background(), 1)
 		for _, msg := range msgs {
 			if msg.GetType() == raftpb.MsgSnap {
-				t.reportSnapshotStatus(context.Background(), msg.GetTo(), raft.SnapshotFailure)
+				t.reportSnapshotStatus(stop, msg.GetTo(), raft.SnapshotFailure)
 			}
 		}
 
@@ -567,7 +568,7 @@ func (t *DefaultTransport) Start(_ context.Context) {
 					for _, batch := range priorityMsgs {
 						for _, msg := range batch {
 							if msg.GetType() == raftpb.MsgSnap {
-								t.reportSnapshotStatus(context.Background(), peerID, raft.SnapshotFailure)
+								t.reportSnapshotStatus(t.stopCh, peerID, raft.SnapshotFailure)
 							}
 						}
 					}
@@ -601,15 +602,15 @@ func (t *DefaultTransport) SnapshotStatus() <-chan SnapshotStatus {
 }
 
 // A lost snapshot result can strand a leader in StateSnapshot permanently.
-// Backpressure instead of dropping the result; peer removal and transport
-// shutdown cancel publishers before joining their send/receive goroutines.
-func (t *DefaultTransport) reportSnapshotStatus(ctx context.Context, peerID uint64, status raft.SnapshotStatus) {
+// Backpressure instead of dropping the result; the publisher's owner must
+// cancel it before joining, even if transport shutdown has not started yet.
+func (t *DefaultTransport) reportSnapshotStatus(stop <-chan struct{}, peerID uint64, status raft.SnapshotStatus) {
 	if t.stopped.Load() {
 		return
 	}
 	select {
 	case t.snapshotStatusCh <- SnapshotStatus{PeerID: peerID, Status: status}:
-	case <-ctx.Done():
+	case <-stop:
 	case <-t.stopCh:
 	}
 }
@@ -793,7 +794,7 @@ type peerConnection struct {
 	stopCancel             context.CancelFunc // called by stop()
 	loopDone               chan struct{}      // closed when loop() exits; stop() waits on this
 	pushUnreachable        func(peerID uint64) bool
-	reportSnapshotStatus   func(context.Context, uint64, raft.SnapshotStatus)
+	reportSnapshotStatus   func(<-chan struct{}, uint64, raft.SnapshotStatus)
 	connectionPool         *transport.ConnectionPool
 	logger                 logging.Logger
 	peerID                 uint64
@@ -908,7 +909,7 @@ func (conn *peerConnection) pushMessages(priority int, msgs []*raftpb.Message) b
 func (conn *peerConnection) reportSnapshotFailures(msgs []*raftpb.Message) {
 	for _, msg := range msgs {
 		if msg.GetType() == raftpb.MsgSnap {
-			conn.reportSnapshotStatus(conn.stopCtx, msg.GetTo(), raft.SnapshotFailure)
+			conn.reportSnapshotStatus(conn.stopCtx.Done(), msg.GetTo(), raft.SnapshotFailure)
 		}
 	}
 }
@@ -1143,7 +1144,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 		for requestID, delivery := range pending {
 			conn.pushUnreachable(delivery.peerID)
 			if delivery.snapshot {
-				conn.reportSnapshotStatus(conn.stopCtx, delivery.peerID, raft.SnapshotFailure)
+				conn.reportSnapshotStatus(conn.stopCtx.Done(), delivery.peerID, raft.SnapshotFailure)
 				// A concurrent response may still arrive before the receive
 				// workers join. Retain its metric accounting, but never report
 				// a second outcome for this abandoned snapshot attempt.
@@ -1273,7 +1274,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 							if raftResp.GetSuccess() {
 								result = raft.SnapshotFinish
 							}
-							conn.reportSnapshotStatus(conn.stopCtx, delivery.peerID, result)
+							conn.reportSnapshotStatus(conn.stopCtx.Done(), delivery.peerID, result)
 						}
 					}
 					mu.Unlock()
@@ -1356,7 +1357,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 			mu.Lock()
 			for _, msgID := range messageIDs {
 				if delivery, ok := pending[msgID]; ok && delivery.snapshot {
-					conn.reportSnapshotStatus(conn.stopCtx, delivery.peerID, raft.SnapshotFailure)
+					conn.reportSnapshotStatus(conn.stopCtx.Done(), delivery.peerID, raft.SnapshotFailure)
 				}
 				delete(pending, msgID)
 			}
