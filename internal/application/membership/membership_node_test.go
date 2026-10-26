@@ -72,7 +72,7 @@ func newMembershipServiceNodeWithPool(t *testing.T) (*Service, *transport.Connec
 		}
 	})
 	m, err := inframembership.NewMembership(inframembership.NewPeerStore(store), raftTransport, pool,
-		1, "self:7777", "self:8888", []byte("self-instance-id"), logger)
+		1, "self:7777", "self:8888", []byte("self-instance-id"), logger, inframembership.NoopClusterPolicyProvider)
 	require.NoError(t, err)
 
 	c, err := cache.New(1000, nil)
@@ -80,7 +80,8 @@ func newMembershipServiceNodeWithPool(t *testing.T) (*Service, *transport.Connec
 	registry := state.NewStateRegistry(c, attributes.New())
 	fsm, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil),
 		store, dal.NewSentinelFactory(store, false), meters, nil, state.NewSharedState(),
-		signal.NewNotifications(), nil, "membership-service-test", 0, m.WriteConfChange)
+		signal.NewNotifications(), nil, "membership-service-test", 0, m.WriteConfChange,
+		state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	recovery := state.NewRecovery(fsm, store)
 	require.NoError(t, recovery.RecoverState())
