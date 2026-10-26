@@ -13,7 +13,7 @@ System attributes (`internal/infra/attributes`, `internal/infra/cache`, `interna
 |----------|-------------|
 | [attributes.md](attributes.md) | System attributes (volumes, metadata, reversions, idempotency), storage format, and the generation-based attribute cache. |
 | [key-hashing.md](key-hashing.md) | U128 hashing scheme for attribute keys and collision detection. |
-| [bloom.md](bloom.md) | Per-attribute bloom filters — preload-time cache-prediction optimisation. Lifecycle, persistence, rotation interaction, metrics. |
+| [bloom.md](bloom.md) | Per-attribute bloom filters — preload-time cache-prediction optimisation. Startup rate validation, lifecycle, persistence, rotation interaction, metrics. |
 
 ## Related
 

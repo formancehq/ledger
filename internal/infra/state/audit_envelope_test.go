@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"encoding/binary"
 	"testing"
 
@@ -14,6 +15,20 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
+
+// Historical caller scopes are audit data, not permissions to re-evaluate.
+// A scope rename must not rewrite their hashed pre-image during verification.
+func TestCallerSnapshotPayloadPreservesRC1ScopeNames(t *testing.T) {
+	t.Parallel()
+
+	snapshot := &commonpb.CallerSnapshot{Principal: &commonpb.CallerSnapshot_Anonymous{
+		Anonymous: &commonpb.AnonymousCaller{Scopes: []string{"ledger:TransactionRead"}},
+	}}
+	oldPayload := buildCallerSnapshotPayload(snapshot)
+	require.Equal(t, goldenBuildSnapshot(snapshot), oldPayload)
+	require.True(t, bytes.Contains(oldPayload, []byte("ledger:TransactionRead")))
+	require.False(t, bytes.Contains(oldPayload, []byte("ledger:ReadTransaction")))
+}
 
 // TestHashChain_Envelope_Golden pins the WHOLE chain spec — both the
 // envelope encoding rules (header + per-item) AND the keyed BLAKE3

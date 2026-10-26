@@ -65,8 +65,9 @@ This ordering protects controller-managed history deletion; it does not make
 external deletion of execution evidence transactional with reconciliation.
 
 The CRD schema and generated deepcopy code must carry both cursor fields,
-including the Helm CRD copy. This pre-release API change has no migration or
-legacy-format fallback. It changes no Ledger service RPC or protocol revision.
+including the Helm CRD copy. This API change preceded `v3.0.0-rc.1` and had no
+migration from earlier development formats. It changes no Ledger service RPC or
+protocol revision.
 
 ## Regression evidence
 
@@ -76,3 +77,31 @@ reconciler instances before and at the next deadline. Additional cases cover
 write/delete failures, active runs, independent incremental progress, disabled
 and changed schedules, older retained history, and a parent informer lagging
 behind child deletion.
+
+## Completed Job result recovery
+
+A successful Job is execution evidence; the run becomes Succeeded only after its
+summary is acquired, parsed, and persisted with the terminal status. A Pod-list
+failure, absent Pod, or fallback log open/read failure leaves the existing Running
+reservation intact. The reconciler writes a changed diagnostic and returns the
+acquisition error for controller-runtime backoff. If that write fails, the returned
+error retains both causes and the stored run remains nonterminal. Repeated unchanged
+diagnostics do not rewrite status. A fresh reconciler retries acquisition from the
+same owned Job, without rerunning the backup, and siblings remain Pending.
+
+On recovery, the result, Succeeded phase, completion timestamp and cleared diagnostic
+are persisted in one run status update. A failed update leaves the stored run
+nonterminal and retries acquisition. The parent then captures the successful summary
+and completion cursor before pruning as described above. Failed-history retention
+zero cannot prune a run awaiting acquisition; successful-history retention zero can
+prune it after the parent records the recovered result. Acquired malformed payloads
+and failed Jobs remain definitive terminal failures. There is no automatic deadline
+or resubmission for permanently unavailable result evidence, and historical Failed
+runs are not reopened.
+
+The result-recovery regressions in `backuprun_result_recovery_test.go` exercise
+full and incremental runs, one-time Pod-list errors and missing Pods, fresh
+reconcilers, sibling exclusion, parent accounting, incremental eligibility and zero
+retention. `backuprun_result_logs_test.go` exercises fallback log opening and read
+failures followed by complete valid summaries. These client/HTTP fixtures prove
+controller decisions, not kubelet execution or Kubernetes garbage collection.

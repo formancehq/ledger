@@ -412,10 +412,10 @@ func TestAggregateVolumesMonetaryOptions(t *testing.T) {
 	value := &commonpb.AggregatedVolume{Asset: "USD", Color: "red", Input: commonpb.NewUint256FromUint64(9007199254740993), Output: commonpb.NewUint256FromUint64(9007199254740994)}
 	result := &commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{value}, Groups: []*commonpb.GroupedAggregateResult{{Prefix: "users:", Volumes: []*commonpb.AggregatedVolume{value}}}}
 	dto := toAggregateVolumesJSON(result)
-	numeric, err := json.MarshalWithOptions(dto, commonpb.MonetaryAmountsAsNumbers())
+	numeric, err := json.MarshalWithOptions(dto, commonpb.BigIntegersAsNumbers())
 	require.NoError(t, err)
 	require.Equal(t, `{"volumes":[{"asset":"USD","color":"red","input":9007199254740993,"output":9007199254740994,"balance":-1}],"groups":[{"prefix":"users:","volumes":[{"asset":"USD","color":"red","input":9007199254740993,"output":9007199254740994,"balance":-1}]}]}`, string(numeric))
-	quoted, err := json.MarshalWithOptions(dto, commonpb.MonetaryAmountsAsStrings())
+	quoted, err := json.MarshalWithOptions(dto, commonpb.BigIntegersAsStrings())
 	require.NoError(t, err)
 	require.Equal(t, `{"volumes":[{"asset":"USD","color":"red","input":"9007199254740993","output":"9007199254740994","balance":"-1"}],"groups":[{"prefix":"users:","volumes":[{"asset":"USD","color":"red","input":"9007199254740993","output":"9007199254740994","balance":"-1"}]}]}`, string(quoted))
 }

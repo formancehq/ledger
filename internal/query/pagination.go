@@ -10,6 +10,27 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
+const (
+	// DefaultPageSize is the user-visible page size when callers pass zero.
+	DefaultPageSize uint32 = 100
+	// MaxPageSize bounds user-visible list pages before collection and enrichment.
+	MaxPageSize uint32 = 1000
+)
+
+// ClampPageSize applies the default and upper bound to a user-visible list page.
+// Internal fetches may need an additional lookahead item; aggregate queries do
+// not use this policy.
+func ClampPageSize(pageSize uint32) uint32 {
+	if pageSize == 0 {
+		return DefaultPageSize
+	}
+	if pageSize > MaxPageSize {
+		return MaxPageSize
+	}
+
+	return pageSize
+}
+
 // ErrInvalidCursor rejects a page token that does not decode, or whose key
 // is not a valid position for the endpoint it was sent to.
 type ErrInvalidCursor struct {

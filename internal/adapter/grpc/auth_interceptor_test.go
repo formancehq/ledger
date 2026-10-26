@@ -4,12 +4,17 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	jose "github.com/go-jose/go-jose/v4"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	ggrpc "google.golang.org/grpc"
@@ -18,6 +23,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
@@ -570,4 +576,107 @@ func TestAuthScopeMapsEveryDeclaredScope(t *testing.T) {
 	require.Equal(t, internalauth.AllGranularScopes, mapped)
 	_, err := authScope(commonpb.AuthScope(999))
 	require.Equal(t, codes.Internal, status.Code(err))
+}
+
+type authInterceptorClusterServer struct {
+	clusterpb.UnimplementedClusterServiceServer
+
+	transferLeadershipCalls atomic.Int32
+}
+
+func (s *authInterceptorClusterServer) TransferLeadership(context.Context, *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
+	s.transferLeadershipCalls.Add(1)
+
+	return &clusterpb.TransferLeadershipResponse{}, nil
+}
+
+func TestAuthInterceptorLoadedEd25519Privileges(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	privateKeys := make(map[string]ed25519.PrivateKey)
+	entries := make([]internalauth.Ed25519KeyEntry, 0, 2)
+	for _, id := range []string{"restricted", "privileged"} {
+		publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+		require.NoError(t, err)
+		privateKeys[id] = privateKey
+		path := filepath.Join(dir, id+".hex")
+		require.NoError(t, os.WriteFile(path, []byte(hex.EncodeToString(publicKey)), 0600))
+		entry := internalauth.Ed25519KeyEntry{KeyID: id, PublicKeyFile: path, Scopes: []string{"ledger:read"}}
+		if id == "privileged" {
+			entry.Scopes = []string{"ledger:admin"}
+			entry.Superuser = true
+		}
+		entries = append(entries, entry)
+	}
+	data, err := json.Marshal(internalauth.Ed25519KeysConfig{Keys: entries})
+	require.NoError(t, err)
+	path := filepath.Join(dir, "keys.json")
+	require.NoError(t, os.WriteFile(path, data, 0600))
+	loaded, err := internalauth.LoadEd25519KeySet(path)
+	require.NoError(t, err)
+	cfg := internalauth.AuthConfig{
+		Enabled: true, KeySet: loaded.KeySet, Service: "ledger", ScopeMapping: internalauth.DefaultMapping("ledger"),
+		Ed25519AllowedScopes: loaded.AllowedScopes, Ed25519SuperuserKeys: loaded.SuperuserKeys,
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+	server, err := NewServiceServer(ServiceAuthPolicyPublic, cfg, "", 0, noopLogger{}, false, time.Second, nil, true, WithListener(listener))
+	require.NoError(t, err)
+	implementation := &authInterceptorClusterServer{}
+	servicepb.RegisterBucketServiceServer(server.GetServer(), &servicepb.UnimplementedBucketServiceServer{})
+	clusterpb.RegisterClusterServiceServer(server.GetServer(), implementation)
+	require.NoError(t, server.Listen())
+	go func() {
+		// Stop closes the listener; shutdown errors are covered by the cleanup below.
+		_ = server.Serve()
+	}()
+	t.Cleanup(func() { require.NoError(t, server.Stop()) })
+	conn, err := ggrpc.NewClient(listener.Addr().String(), ggrpc.WithTransportCredentials(insecure.NewCredentials()), grpcprotocol.ClientOption())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	client := clusterpb.NewClusterServiceClient(conn)
+
+	for _, test := range []struct {
+		name      string
+		keyID     string
+		scopes    []string
+		superuser bool
+		code      codes.Code
+	}{
+		{name: "restricted superuser", keyID: "restricted", superuser: true, code: codes.Unauthenticated},
+		{name: "restricted excessive scope", keyID: "restricted", scopes: []string{"ledger:admin"}, code: codes.Unauthenticated},
+		{name: "restricted valid read", keyID: "restricted", scopes: []string{"ledger:read"}, code: codes.PermissionDenied},
+		{name: "privileged admin scope", keyID: "privileged", scopes: []string{"ledger:admin"}},
+		{name: "privileged superuser", keyID: "privileged", superuser: true},
+	} {
+		// Cases share a backend counter so each RPC can prove its exact entry count.
+		t.Run(test.name, func(t *testing.T) {
+			claims := &oidc.AccessTokenClaims{}
+			claims.Subject = test.keyID
+			claims.Expiration = oidc.Time(time.Now().Add(time.Hour).Unix())
+			claims.Scopes = oidc.SpaceDelimitedArray(test.scopes)
+			claims.Claims = map[string]any{"superuser": test.superuser}
+			payload, err := json.Marshal(claims)
+			require.NoError(t, err)
+			signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.EdDSA, Key: &jose.JSONWebKey{Key: privateKeys[test.keyID], KeyID: test.keyID}}, nil)
+			require.NoError(t, err)
+			signed, err := signer.Sign(payload)
+			require.NoError(t, err)
+			token, err := signed.CompactSerialize()
+			require.NoError(t, err)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+			before := implementation.transferLeadershipCalls.Load()
+			_, err = client.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{})
+			require.Equal(t, test.code, status.Code(err))
+			expected := before
+			if test.code == codes.OK {
+				expected++
+			}
+			require.Equal(t, expected, implementation.transferLeadershipCalls.Load(), "authorization must precede backend entry")
+		})
+	}
+	require.EqualValues(t, 2, implementation.transferLeadershipCalls.Load())
 }

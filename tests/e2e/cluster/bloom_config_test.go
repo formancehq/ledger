@@ -64,10 +64,10 @@ func rollingUpdateBloomConfig(
 	}
 
 	resp, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-		Transferee: uint32(targetID),
+		Transferee: targetID,
 	})
 	Expect(err).To(Succeed())
-	Expect(resp.NewLeader).To(Equal(uint32(targetID)))
+	Expect(resp.NewLeader).To(Equal(targetID))
 	*leaderID = targetID
 
 	// Wait for all nodes to see the new leader.
@@ -79,7 +79,7 @@ func rollingUpdateBloomConfig(
 			)
 			g.Expect(err).To(Succeed())
 
-			return uint64(state.Leader)
+			return state.Leader
 		}).Should(Equal(targetID))
 	}
 

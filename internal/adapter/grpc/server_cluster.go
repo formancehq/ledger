@@ -169,7 +169,7 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 	localNodeID := impl.node.GetNodeID()
 
 	for _, nodeInfo := range clusterState.GetNodes() {
-		nodeID := uint64(nodeInfo.GetId())
+		nodeID := nodeInfo.GetId()
 		if nodeID == localNodeID {
 			nodeInfo.RaftAddress = impl.localRaftAddr
 			nodeInfo.ServiceAddress = impl.localServiceAddr
@@ -208,7 +208,7 @@ func (impl *ClusterServiceServerImpl) fetchPeerState(ctx context.Context, nodeID
 	client := clusterpb.NewClusterServiceClient(conn)
 
 	peerState, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-		NodeId: uint32(nodeID),
+		NodeId: nodeID,
 	})
 	if err != nil {
 		return nil
@@ -238,7 +238,7 @@ func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, re
 		return nil, errors.New("transferee node ID must be non-zero")
 	}
 
-	transferee := uint64(req.GetTransferee())
+	transferee := req.GetTransferee()
 
 	// If this node is not the leader, forward to the leader
 	if !impl.node.IsLeader() {

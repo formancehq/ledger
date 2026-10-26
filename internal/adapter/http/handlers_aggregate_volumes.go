@@ -117,5 +117,5 @@ func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) 
 	}
 
 	finishProfile(w, r, profile)
-	writeMonetaryOK(w, r, toAggregateVolumesJSON(result))
+	writeOK(w, r, toAggregateVolumesJSON(result))
 }

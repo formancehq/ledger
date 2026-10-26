@@ -9,29 +9,15 @@ Usage:
 """
 
 import argparse
-import copy
+import json
 import os
 import re
+import subprocess
 import sys
-from datetime import timedelta
+import tempfile
 from pathlib import Path
 
-from hypothesis import HealthCheck, Phase, settings as hypothesis_settings
-from hypothesis import strategies as st
 import schemathesis
-from schemathesis import GenerationConfig
-from schemathesis.checks import (
-    not_a_server_error,
-    response_schema_conformance,
-    status_code_conformance,
-)
-# Note: content_type_conformance is excluded because Schemathesis produces
-# false positives when resolving $ref responses. The server correctly returns
-# application/json on all non-204 responses (verified manually).
-from schemathesis.runner import from_schema
-from schemathesis.runner.events import AfterExecution, Finished
-from schemathesis.models import Status
-from schemathesis.stateful import Stateful
 
 OPENAPI_PATH = Path(
     os.environ.get(
@@ -62,17 +48,28 @@ _numscript_idx = 0
 _GO_INVALID_HEADER_VALUE_RE = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
 
 
-def load_schema(base_url: str):
-    """Load OpenAPI schema from the local file."""
-    return schemathesis.from_path(
-        str(OPENAPI_PATH),
-        base_url=base_url,
+# --- Link validation + domain hooks (applied to actual test cases) ---
+@schemathesis.hook
+def before_generate_headers(context, strategy):
+    """Generate HTTP field values that reach the application handlers.
+
+    String strategies can admit control bytes that requests can
+    send but Go's HTTP parser rejects before routing. Closing that connection
+    with an unread body can reset it before the client receives the 400.
+    Apply the same transport filter to inline and constrained shared header
+    parameters. Keep HTAB, visible ASCII and obs-text (RFC 9110 field-vchar).
+    """
+    return strategy.filter(
+        lambda headers: all(
+            c == "\t" or 0x20 <= ord(c) <= 0xFF and c != "\x7f"
+            for value in (headers or {}).values()
+            for c in value
+        )
     )
 
 
-# --- Link validation + domain hooks (applied to actual test cases) ---
 @schemathesis.hook
-def before_call(context, case):
+def before_call(context, case, kwargs):
     """Validate link resolution and adjust domain-specific constraints."""
     global _numscript_idx
 
@@ -165,83 +162,6 @@ def after_call(context, case, response):
         )
 
 
-# --- Prepared-query body generation override -------------------------------
-# The prepared-query create/update bodies embed QueryFilter, a *recursive* JSON
-# DSL ($and/$or/$not -> QueryFilter, each operator object with
-# additionalProperties: true). Hypothesis spends ~26s per draw trying to build
-# arbitrarily deep trees for that schema and eventually trips the `too_slow`
-# health check — this single schema was ~5min of the ~6min CI run and the only
-# source of errors. Exploring the recursion adds nothing to a *conformance*
-# gate, so for just these two write operations we replace the body strategy with
-# a curated set of valid, well-typed filter payloads. Every other operation
-# keeps its original schema-derived strategy. Filters respect each target's
-# field rules (log-only fields only on LOGS, etc.).
-_FILTERS_BY_TARGET = {
-    "TRANSACTIONS": [
-        {"$match": {"reference": "ref-1"}},
-        {"$and": [{"$match": {"reverted": False}}, {"$exists": {"metadata": "status"}}]},
-        'reference == "ref-2"',
-    ],
-    "ACCOUNTS": [
-        {"$match": {"address": "users:001"}},
-        {"$or": [{"$match": {"address": "users:"}}, {"$exists": {"metadata": "kyc"}}]},
-        'address == "world"',
-    ],
-    "LOGS": [
-        {"$gte": {"date": "2023-11-14T22:13:20Z"}},
-        {"$match": {"ledger": "test-ledger"}},
-    ],
-}
-_ALL_FILTERS = [f for filters in _FILTERS_BY_TARGET.values() for f in filters]
-
-
-def _create_prepared_query_body():
-    # `name` must be unique or the server returns 409, so vary it across
-    # examples. `target` dictates which filter fields are legal, so the filter is
-    # drawn from the pool matching the chosen target.
-    def _for_target(target):
-        return st.fixed_dictionaries(
-            {
-                "name": st.integers(min_value=0, max_value=1_000_000_000).map(
-                    lambda i: f"pq-{i}"
-                ),
-                "target": st.just(target),
-                "filter": st.sampled_from([None, *_FILTERS_BY_TARGET[target]]),
-            }
-        )
-
-    return (
-        st.sampled_from(list(_FILTERS_BY_TARGET))
-        .flatmap(_for_target)
-        .map(copy.deepcopy)
-    )
-
-
-def _update_prepared_query_body():
-    # Update targets an existing query by (fuzzed) name; any well-formed filter
-    # is fine for conformance.
-    return st.fixed_dictionaries({"filter": st.sampled_from([None, *_ALL_FILTERS])}).map(
-        copy.deepcopy
-    )
-
-
-@schemathesis.hook
-def before_generate_body(context, strategy):
-    """Bypass the recursive QueryFilter body generation for prepared queries.
-
-    Returns a fast fixed-payload strategy for the two prepared-query write
-    operations; all other operations keep their original strategy.
-    """
-    op = context.operation
-    path = getattr(op, "path", "")
-    method = (getattr(op, "method", "") or "").lower()
-    if path == "/v3/{ledgerName}/prepared-queries" and method == "post":
-        return _create_prepared_query_body()
-    if path == "/v3/{ledgerName}/prepared-queries/{queryName}" and method == "put":
-        return _update_prepared_query_body()
-    return strategy
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="Schemathesis API conformity and fuzzing tests for Ledger V3"
@@ -264,7 +184,7 @@ def main():
         help=(
             "Number of concurrent workers (default: 1). Keep at 1 for the CI "
             "gate: >1 reintroduces nondeterminism (thread interleaving over the "
-            "stateful-link sequences) that defeats the `derandomize` "
+            "stateful-link sequences) that defeats deterministic "
             "reproducibility below. The suite is fast at 1 worker since the "
             "cost was generation, not request throughput; raise this only for "
             "ad-hoc exploratory fuzzing, not the reproducible gate."
@@ -288,140 +208,102 @@ def main():
     print(f"Workers: {args.workers}")
     print("=" * 60)
 
-    schema = load_schema(args.base_url)
-
-    # Hypothesis phases. Shrinking is disabled by default: on a conformance
-    # gate it does not change which failures are found (that happens in the
-    # `generate` phase) — it only minimizes an already-found failing example,
-    # at the cost of a ~7x blowup in request volume when endpoints fail.
-    # Derive from the Hypothesis defaults and remove *only* `shrink`, so every
-    # other default phase (`explain`, etc.) stays enabled and `--shrink`
-    # faithfully restores the stock behavior.
-    if args.shrink:
-        phases = list(hypothesis_settings.default.phases)
-    else:
-        phases = [p for p in hypothesis_settings.default.phases if p is not Phase.shrink]
-
-    runner = from_schema(
-        schema,
-        checks=[
-            not_a_server_error,
-            status_code_conformance,
-            response_schema_conformance,
-        ],
-        workers_num=args.workers,
-        # The harness starts the server with authentication DISABLED (see
-        # run.sh), but openapi.yml declares a global BearerAuth scheme. Without
-        # this, Schemathesis synthesizes an `Authorization` header from that
-        # scheme; a fuzzed value (e.g. `Bearer \b`) is rejected by Go's net/http
-        # as a plain-text 400 before routing, which is a transport artifact, not
-        # an application response. Disabling security-parameter generation keeps
-        # the fuzzer on real endpoint behavior for the auth-disabled harness.
-        generation_config=GenerationConfig(with_security_parameters=False),
-        stateful=Stateful.links,
-        hypothesis_settings=hypothesis_settings(
-            max_examples=args.max_examples,
-            suppress_health_check=[HealthCheck.filter_too_much],
-            deadline=timedelta(seconds=30),
-            phases=phases,
-            # Deterministic generation: a blocking CI gate must be reproducible,
-            # not a randomized fuzzer that flakes red on a different latent bug
-            # every run. `derandomize` seeds Hypothesis from a fixed internal
-            # value (stable across machines for a given hypothesis version), and
-            # `database=None` ignores the local `.hypothesis` replay cache, so a
-            # local run reproduces CI exactly. Bump `max_examples` (or a future
-            # explicit seed) to widen coverage when hunting new conformance bugs.
-            derandomize=True,
-            database=None,
-        ),
-    )
-    sys.exit(_report_events(runner.execute()))
+    sys.exit(run_suite(args))
 
 
-def _report_events(events):
-    """Report runner events and require proof that checks actually succeeded.
+def run_suite(args):
+    """Use the public v4 CLI and require evidence of completed checks.
 
-    Every execution error fails the run. A later successful execution does not
-    prove that the failed request and its conformance checks were retried.
+    The NDJSON report replaces the removed v3 Python runner API. Keep the
+    subprocess status authoritative as well as our stricter accounting guard.
     """
-    has_failures = False
-    has_errors = False
-    tested_count = 0
-    successful_execution_count = 0
-    finished = False
-
-    for event in events:
-        if isinstance(event, AfterExecution):
-            tested_count += 1
-            method = event.method.upper()
-            path = event.path
-            status = event.status
-            print(f"  {method} {path} ... {status}")
-
-            if event.result.has_failures:
-                has_failures = True
-                for check_result in event.result.checks:
-                    if hasattr(check_result, "message") and check_result.message:
-                        detail = ""
-                        try:
-                            resp = getattr(check_result, "response", None)
-                            if resp is None:
-                                example = getattr(check_result, "example", None)
-                                if example is not None:
-                                    resp = getattr(example, "response", None)
-                            if resp is not None:
-                                status = getattr(resp, "status_code", "?")
-                                body = getattr(resp, "text", None) or getattr(resp, "body", "")
-                                if isinstance(body, bytes):
-                                    body = body.decode("utf-8", errors="replace")
-                                detail = f" [HTTP {status}: {str(body)[:200]}]"
-                        except Exception:
-                            pass
-                        print(f"    FAIL: {check_result.name}: {check_result.message}{detail}")
-
-            if event.result.has_errors:
-                has_errors = True
-                for error in event.result.errors:
-                    print(f"    ERROR: {method} {path}: {error}", file=sys.stderr)
-
-            if (
-                not event.result.has_failures
-                and not event.result.has_errors
-                and any(check.value is Status.success for check in event.result.checks)
-            ):
-                successful_execution_count += 1
-
-        elif isinstance(event, Finished):
-            finished = True
-            if event.has_errors or event.errored_count:
-                has_errors = True
-            for error in event.generic_errors:
-                print(f"    ERROR: {error}", file=sys.stderr)
-            print("=" * 60)
-            passed = event.passed_count
-            errored = event.errored_count
-            print(
-                f"Tested {tested_count} endpoint(s) | "
-                f"Passed: {passed} | "
-                f"Failed: {event.failed_count} | "
-                f"Errored: {errored} | "
-                f"Skipped: {event.skipped_count}"
-            )
-            if successful_execution_count == 0:
-                has_errors = True
-                print(
-                    "  ERROR: no successful check execution was observed",
-                    file=sys.stderr,
+    with tempfile.TemporaryDirectory(prefix="ledger-schemathesis-") as directory:
+        report = Path(directory) / "events.ndjson"
+        # An explicit empty config prevents a contributor's discovered config
+        # from changing this gate's checks, filters, phases, or failure policy.
+        config = Path(directory) / "schemathesis.toml"
+        config.write_text("")
+        command = [
+            sys.executable, "-m", "schemathesis.cli",
+            "--config-file", str(config), "--no-color", "run", str(OPENAPI_PATH.resolve()),
+            "--url", args.base_url,
+            "--max-examples", str(args.max_examples),
+            "--workers", str(args.workers),
+            "--checks", "not_a_server_error,status_code_conformance,response_schema_conformance",
+            "--phases", "examples,fuzzing,stateful",
+            "--mode", "positive",
+            # Deterministic mode also disables the Hypothesis database.
+            "--generation-deterministic",
+            # The disposable server has auth disabled. Fuzzed Bearer headers
+            # otherwise exercise net/http rejection rather than the API.
+            "--generation-with-security-parameters", "false",
+            "--suppress-health-check", "filter_too_much",
+            "--report", "ndjson", "--report-ndjson-path", str(report),
+        ]
+        if not args.shrink:
+            command.append("--no-shrink")
+        env = dict(os.environ, SCHEMATHESIS_HOOKS="test_api", PYTHONDONTWRITEBYTECODE="1")
+        # Resolve this module even when called from another working directory.
+        env["PYTHONPATH"] = os.pathsep.join(
+            [str(Path(__file__).resolve().parent), env.get("PYTHONPATH", "")]
+        )
+        result = subprocess.run(command, env=env, cwd=directory, check=False)
+        try:
+            with report.open() as stream:
+                report_status = _report_events(
+                    (json.loads(line) for line in stream), cli_status=result.returncode
                 )
-            if has_failures or has_errors:
-                print("RESULT: FAILURES DETECTED")
-            else:
-                print("RESULT: ALL CHECKS PASSED")
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+            print(f"ERROR: invalid or missing Schemathesis report: {error}", file=sys.stderr)
+            report_status = 1
+        return result.returncode or report_status
 
+
+def _report_events(events, *, cli_status=0):
+    """Account for the pinned CLI's NDJSON events without importing its engine.
+
+    Errors remain fatal even if a later scenario for the same operation passes.
+    A successful scenario alone is insufficient: a check must actually pass.
+    """
+    failed = cli_status != 0
+    if failed:
+        print(f"ERROR: Schemathesis CLI exited with status {cli_status}", file=sys.stderr)
+    finished = False
+    successful_checks = 0
+    errored_count = 0
+    for event in events:
+        if finished:
+            raise ValueError("events after EngineFinished")
+        if not isinstance(event, dict) or len(event) != 1:
+            raise ValueError("expected one NDJSON event")
+        name, data = next(iter(event.items()))
+        if name in ("NonFatalError", "FatalError", "Interrupted"):
+            failed = True
+            errored_count += 1
+            print(f"ERROR: {data.get('label', name)}: {data}", file=sys.stderr)
+        if data.get("status") in ("error", "failure", "interrupted"):
+            failed = True
+        if name == "ScenarioFinished":
+            recorder = data["recorder"]
+            for checks in recorder.get("checks", {}).values():
+                for check in checks:
+                    if check["status"] == "success":
+                        successful_checks += 1
+                    elif check["status"] in ("failure", "error"):
+                        failed = True
+        elif name == "EngineFinished":
+            finished = True
+            if data["stop_reason"] != "completed" or data.get("failures"):
+                failed = True
     if not finished:
-        print("ERROR: Schemathesis runner ended without a Finished event", file=sys.stderr)
-        return 1
-    return 1 if has_failures or has_errors else 0
+        print("ERROR: Schemathesis runner ended without an EngineFinished event", file=sys.stderr)
+        failed = True
+    if successful_checks == 0:
+        print("ERROR: no successful check execution was observed", file=sys.stderr)
+        failed = True
+    print(f"Successful checks: {successful_checks} | Execution errors: {errored_count}")
+    print("RESULT: FAILURES DETECTED" if failed else "RESULT: ALL CHECKS PASSED")
+    return int(failed)
 
 
 if __name__ == "__main__":

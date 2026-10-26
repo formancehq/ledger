@@ -194,7 +194,7 @@ Startup status proposals have a bounded wait and are canceled when the captured
 leadership generation ends. The Manager holds a newly started emitter before
 delivery until any prior startup error has been cleared.
 
-The `GetEventsSinks` gRPC endpoint returns all sink configs and their statuses, allowing operators to monitor sink health cluster-wide. A configured sink with cursor zero and no error is pending delivery; an error takes precedence over that pending state. A nonzero cursor with no error indicates log-processing progress without a recorded failure. It does not establish external delivery: internal or filtered logs can advance the cursor without a `Publish` call.
+The `GetEventsSinks` gRPC endpoint returns all sink configs and exactly one status per configured sink, allowing operators to monitor sink health cluster-wide. Removing a sink deletes only its config: its per-name cursor and error status keys remain in `ZoneGlobal`, and the read view omits them while no sink of that name is configured. A sink added again under the same name resumes from the retained cursor and reports the retained error status until a successful publication clears it; a successful start also clears a retained startup error. A configured sink with cursor zero and no error is pending delivery; an error takes precedence over that pending state. A nonzero cursor with no error indicates log-processing progress without a recorded failure. It does not establish external delivery: internal or filtered logs can advance the cursor without a `Publish` call.
 
 ```protobuf
 message SinkStatus {
@@ -243,7 +243,7 @@ If no notification arrives (e.g., after restart), the emitter polls at a configu
 
 The event system is gated by both the node's leader status and the presence of sink configs:
 
-- **On becoming leader**: The Raft observer records `Manager.OnLeadershipChange(true)` synchronously. The Manager's lifecycle-owned loop reconciles the latest recorded generation and starts one Emitter per configured sink.
+- **On leader readiness**: The Raft observer records `Manager.OnLeadershipChange(true)` synchronously on `LeaderReadyEvent`, once the FSM has applied the new leader's no-op entry. A leader elected while its store is behind its Raft log reaches that point only after fetching a checkpoint and replaying its spool, so the sink configs the Manager reads are current. The Manager's lifecycle-owned loop reconciles the latest recorded generation and starts one Emitter per configured sink.
 - **On losing leadership**: The Raft observer records `Manager.OnLeadershipChange(false)` synchronously. The same loop tears down all Emitters and Sinks; reconciliation from a superseded generation is discarded.
 - **On config change (while leader)**: The FSM signals the Manager via a `Signal` notification. The Manager reconciles by diffing the desired sink configs against the currently running emitters — only sinks that were added, removed, or changed are affected; unchanged sinks keep running.
 - **Followers**: Never emit events, regardless of config.
@@ -302,6 +302,35 @@ buffered notification coalesces both transitions. `Stop` closes the leadership
 gate before draining the loop so a late transition cannot recreate emitters
 during Fx teardown.
 
+### Sink initialization and cancellation (EN-2921)
+
+Sink construction belongs to the captured leadership generation. Before calling
+a factory, the Manager obtains that generation's context and passes it through
+the optional sink registry. ClickHouse and Databricks forward it to their
+existing Ping and table-creation operations. Leadership loss cancels the old
+context synchronously; `Stop` publishes its terminal generation and cancels the
+context before joining the reconciliation worker. Construction stays on that
+worker, so joining also waits for construction and its cleanup to finish.
+
+A failed constructor owns cleanup of resources it acquired. If construction
+returns after its generation has ended, the Manager discards the error without
+reporting startup status or scheduling a retry; a successful obsolete result is
+closed before an emitter starts. Later generation checks still fence emitter
+installation and startup status. Initialization cancellation is separate from
+the emitter runtime and does not shorten successful delivery/cursor drain.
+Cancellation does not roll back external table creation that already completed.
+
+This is cooperative cancellation, not a universal shutdown deadline. Kafka and
+NATS keep their existing context-free constructors. The pinned ClickHouse native
+driver uses timeout-based dialing/handshake and native Ping socket reads that
+may not observe cancellation promptly (default dial/read timeouts are 30/300
+seconds). Databricks polling uses detached status/cancel requests, and operation
+and session cleanup can use background contexts; those driver-owned calls can
+delay return even after the generation context is canceled. Constructor cleanup
+ownership therefore does not prove cleanup responsiveness. Native transport and
+driver cancellation improvements require separate work; no detached constructor
+goroutine or early-returning Stop bypasses the existing synchronous join.
+
 ## Sink Interface
 
 The sink is the pluggable transport layer for event delivery:
@@ -348,11 +377,14 @@ The HTTP sink acknowledges an event only after an event-bearing POST receives
 2xx. This is a transport acknowledgement; it does not prove that the receiver
 completed downstream business processing.
 
-Redirects that change POST to a bodyless GET (301, 302, and 303) are rejected
-before following the redirect. Their status is reported as a publication error,
-so a login page returning 200 cannot advance the sink cursor. Redirects that
-preserve POST and its replayable body (307 and 308) remain supported, with a
-maximum of ten requests in a redirect chain.
+The sink never follows redirects. Any 3xx response, including the
+method-preserving 307 and 308, is a delivery failure: configure the final URL as
+the endpoint. Only the configured endpoint can acknowledge an event, so a login
+page or another host cannot advance the sink cursor. The event body, its
+`X-Webhook-Signature`, and the endpoint URL (through `Referer`) never reach a
+redirect target, and a redirect cannot downgrade HTTPS to HTTP. The publication
+error names the redirect status and the `Location` scheme, host, and path; it
+omits the `Location` userinfo, query, and fragment.
 
 If any event in a batch fails, publication stops and the batch cursor remains
 unchanged. The emitter reports the error and retries the batch from that cursor,
@@ -404,7 +436,7 @@ dotted names. Existing filters using dotted names
 as a hierarchy must be updated: `events.a.*.created_ledger` does not select the
 ledger `a.b`; use `events.a%2Eb.created_ledger`. `events.*.created_ledger` now
 matches exactly one ledger token, and `events.>` continues to capture all events.
-This is the unreleased v3 routing contract; no old-subject dual publication or
+This routing contract was set before `v3.0.0-rc.1`; no old-subject dual publication or
 fallback is provided. The configured topic remains the operator's subject prefix.
 
 Publication still waits for each JetStream acknowledgement. On failure, the
@@ -536,7 +568,7 @@ Use `ledgerctl events list` to read all sink configurations and per-sink statuse
 ledgerctl events list
 ```
 
-The response includes a list of `SinkConfig` entries (including `controller_id`) and a list of `SinkStatus` entries showing each sink's cursor position and any active error. `add-sink` rejects an existing name. A guarded `remove-sink` compares the requested identity with the current config during FSM apply; a mismatch rejects the removal and leaves the sink intact. Without an identity the command retains unconditional removal semantics.
+The response includes a list of `SinkConfig` entries (including `controller_id`) and a list of `SinkStatus` entries, one per configured sink, showing its cursor position and any active error. Statuses retained for removed sink names are not listed. `add-sink` rejects an existing name. A guarded `remove-sink` compares the requested identity with the current config during FSM apply; a mismatch rejects the removal and leaves the sink intact. Without an identity the command retains unconditional removal semantics.
 
 #### Kubernetes Operator Configuration
 
@@ -793,6 +825,26 @@ The HTTP sink sends each event as an individual HTTP POST request with the follo
 ### ClickHouse Sink Details
 
 The ClickHouse sink auto-creates the target table using the experimental JSON type with Variant support (ClickHouse 24.x-25.x compatibility). The `format` setting is ignored — events are always inserted as ClickHouse-native JSON for optimal query performance.
+
+Committed transactions preserve account metadata as account address → metadata
+key → string value. The typed JSON hint is
+`accountMetadata Map(String, Map(String, String))`, so queries such as
+`data.accountMetadata['users:001']['name']` return the metadata value directly.
+This matches the shared analytical projection; encoding each account's map as
+a JSON string would lose its queryable structure. Ordinary transaction metadata
+and metadata-update events retain their separate `Map(String, String)` fields.
+
+Existing tables are unchanged by `CREATE TABLE IF NOT EXISTS`. Tables created
+with the former flat account-metadata hint require the explicit, non-destructive
+[ClickHouse table migration](../../../../ops/clickhouse-account-metadata.md)
+before delivery resumes. The sink does not automatically alter customer-owned
+tables. The migration exports rows, converts metadata with the raw-token Go
+converter, and imports only after conversion succeeds. Typed UInt256 posting
+amounts travel as quoted decimal strings to bypass ClickHouse 24.x's generic
+JSON number parser, then recover their numeric types through the destination
+hints. No generic JSON extraction runs on the full event. This changes the
+external analytical schema only; Ledger persisted
+business data, audit history, Raft entries, and protocol revision are unchanged.
 
 NATS diagnostic credential extraction follows the driver's whitespace and
 implicit-scheme handling. ClickHouse diagnostics also register decoded

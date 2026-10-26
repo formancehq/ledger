@@ -38,9 +38,9 @@ func backupRunRecoveryFixture(t *testing.T) (client.WithWatch, *ledgerv1alpha1.B
 		ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: run.Namespace},
 		Spec:       ledgerv1alpha1.BackupSpec{ClusterRef: "cluster", Destination: ledgerv1alpha1.BackupDestination{Driver: "s3", S3: &ledgerv1alpha1.S3Config{Bucket: "bucket"}}},
 	}
-	cluster := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "cluster", Namespace: run.Namespace}}
+	cluster := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "cluster", Namespace: run.Namespace, UID: "cluster-uid"}}
 
-	return fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(run, &batchv1.Job{}).WithObjects(run, backup, cluster).Build(), run
+	return fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(run, &batchv1.Job{}, &ledgerv1alpha1.Backup{}).WithObjects(run, backup, cluster, backupTLSWorkload(cluster, tlsModeDisabled)).Build(), run
 }
 
 func TestBackupRunCommittedCreateLostResponse(t *testing.T) {

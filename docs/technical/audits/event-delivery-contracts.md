@@ -54,7 +54,7 @@ file contains other subsystems; only the event handoff belongs here.
 
 | Sink | Publication path and evidence required | Limits |
 | --- | --- | --- |
-| HTTP (default build) | `HTTPSink.Publish` serializes and POSTs each event; `post` accepts 2xx. Inspect every response and the matching body, event headers and configured endpoint. | An earlier POST may succeed before a later one fails; 2xx does not prove receiver business processing. Optional HMAC binds the transmitted body; credential storage, redaction and trust policy are excluded. |
+| HTTP (default build) | `HTTPSink.Publish` serializes and POSTs each event; `post` accepts 2xx from the configured endpoint only; the client follows no redirect and reports every 3xx as a failure. Inspect every response and the matching body, event headers and configured endpoint. | An earlier POST may succeed before a later one fails; 2xx does not prove receiver business processing. Optional HMAC binds the transmitted body; credential storage, redaction and trust policy are excluded. |
 | NATS (`nats`) | `NATSSink.Publish` waits on JetStream `Publish` for each serialized event. Inspect the pinned client acknowledgement contract and `subject` routing. | A broker acknowledgement is not consumer acknowledgement. Do not require dedup headers or exactly-once delivery without a repository contract. |
 | Kafka (`kafka`) | `KafkaSink.Publish` submits through an async producer, then awaits each per-message delivery channel; `dispatchDeliveries` correlates Successes/Errors through message metadata. Inspect effective Sarama acknowledgement settings. | Input-channel acceptance alone is not success. A nil result does not promise downstream consumption or all-replica durability. Ledger keys do not impose global consumer order across partitions. |
 | ClickHouse (`clickhouse`) | `PrepareBatch`, per-event projection/`Append`, then `Send`. Inspect the pinned driver and effective settings before deciding what successful Send acknowledges. | Prepared/appended rows are not completion. `ReplacingMergeTree` deduplicates `(ledger, log_sequence)` eventually; use `FINAL` or grouping for exact counts. |
@@ -119,6 +119,21 @@ new event types solely because an internal payload exists. For an alleged
 representation loss, name the specific supported field/value and contract.
 
 ## Ownership and deduplication
+
+For ClickHouse, account metadata is account address → metadata key → string,
+with the hint `Map(String, Map(String, String))`; only the leaf values are
+strings. Inspect both the typed subcolumn and `toJSONString(data)` through the
+real sink. The explicit [existing-table migration](../../ops/clickhouse-account-metadata.md)
+and its [SQL](../../ops/clickhouse-account-metadata.sql) and
+`scripts/clickhouse-account-metadata` converter must preserve source
+rows and untouched values, refuse unrepresentable legacy strings before copy,
+and retain exact `UInt256` amounts. Its integration regression executes the
+documented statements and converter. Inspect raw-number preservation separately
+from typed UInt256 transport quoting, for both transaction and revert postings;
+unknown numeric fields must not change type. A failed conversion can leave a
+partial local output file, which must never be imported. Do not infer successful
+migration or round-trip delivery
+from the DDL assertion alone; Docker-backed execution remains a CI obligation.
 
 Attribute a symptom to the mechanism and required correction, not every domain
 whose files it touches. Keep one logical root cause across formats, sinks and

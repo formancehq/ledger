@@ -141,16 +141,31 @@ func TestRunnerComparesRootAfterCancellation(t *testing.T) {
 		_ = outputWriter.Close()
 		done <- err
 	}()
+	// Closing stdin makes the child's read fail, so rootguard exits with
+	// exitError. Cleanup may instead terminate rootguard with TERM or KILL.
+	checkCleanupExit := func(err error) {
+		var exitErr *exec.ExitError
+		require.ErrorAs(t, err, &exitErr)
+		status, ok := exitErr.Sys().(syscall.WaitStatus)
+		require.True(t, ok)
+		if status.Signaled() {
+			require.Contains(t, []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL}, status.Signal())
+
+			return
+		}
+		require.Equal(t, exitError, exitErr.ExitCode())
+	}
 	exited := false
 	defer func() {
 		_ = writer.Close() // Release the child even when startup or cancellation assertions fail.
 		if !exited {
 			_ = command.Process.Signal(syscall.SIGTERM)
 			select {
-			case <-done:
+			case err := <-done:
+				checkCleanupExit(err)
 			case <-time.After(5 * time.Second):
 				_ = command.Process.Kill()
-				<-done
+				checkCleanupExit(<-done)
 			}
 		}
 	}()

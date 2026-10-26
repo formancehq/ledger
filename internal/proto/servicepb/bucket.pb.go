@@ -4046,7 +4046,7 @@ func (x *RemoveAccountTypeLedgerRequest) GetName() string {
 type GetPrimaryMetricsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// node_id indicates which node to query (0 = local node)
-	NodeId        uint32 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	NodeId        uint64 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4081,7 +4081,7 @@ func (*GetPrimaryMetricsRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{53}
 }
 
-func (x *GetPrimaryMetricsRequest) GetNodeId() uint32 {
+func (x *GetPrimaryMetricsRequest) GetNodeId() uint64 {
 	if x != nil {
 		return x.NodeId
 	}
@@ -4145,7 +4145,7 @@ func (x *GetPrimaryMetricsResponse) GetMetrics() *PebbleMetrics {
 type GetSecondaryMetricsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// node_id indicates which node to query (0 = local node)
-	NodeId        uint32 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	NodeId        uint64 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4180,7 +4180,7 @@ func (*GetSecondaryMetricsRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{55}
 }
 
-func (x *GetSecondaryMetricsRequest) GetNodeId() uint32 {
+func (x *GetSecondaryMetricsRequest) GetNodeId() uint64 {
 	if x != nil {
 		return x.NodeId
 	}
@@ -7134,9 +7134,12 @@ type ExecutePreparedQueryRequest struct {
 	Ledger     string                              `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	QueryName  string                              `protobuf:"bytes,2,opt,name=query_name,json=queryName,proto3" json:"query_name,omitempty"`
 	Parameters map[string]*commonpb.ParameterValue `protobuf:"bytes,3,rep,name=parameters,proto3" json:"parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	PageSize   uint32                              `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	Cursor     string                              `protobuf:"bytes,5,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	Mode       commonpb.QueryMode                  `protobuf:"varint,6,opt,name=mode,proto3,enum=common.QueryMode" json:"mode,omitempty"`
+	// LIST defaults zero to 100 and clamps values above 1000 to 1000 before
+	// collecting or enriching results. The cursor reports the effective size.
+	// AGGREGATE_VOLUMES ignores page_size and aggregates all matching accounts.
+	PageSize uint32             `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Cursor   string             `protobuf:"bytes,5,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	Mode     commonpb.QueryMode `protobuf:"varint,6,opt,name=mode,proto3,enum=common.QueryMode" json:"mode,omitempty"`
 	// reverse pages LIST results in descending entity order. A page token is
 	// relative to the requested order, so every page of a descending walk must
 	// repeat reverse=true. AGGREGATE_VOLUMES rejects it with InvalidArgument.
@@ -7360,10 +7363,12 @@ type GetIndexStatusResponse struct {
 	LastIndexedSequence uint64                 `protobuf:"fixed64,1,opt,name=last_indexed_sequence,json=lastIndexedSequence,proto3" json:"last_indexed_sequence,omitempty"`
 	LastLogSequence     uint64                 `protobuf:"fixed64,2,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`
 	Lag                 uint64                 `protobuf:"fixed64,3,opt,name=lag,proto3" json:"lag,omitempty"`
-	IndexFileSize       uint64                 `protobuf:"fixed64,4,opt,name=index_file_size,json=indexFileSize,proto3" json:"index_file_size,omitempty"`
-	Indexes             []*IndexEntry          `protobuf:"bytes,5,rep,name=indexes,proto3" json:"indexes,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// Bytes the answering node's read index occupies on disk, live and obsolete
+	// files included, from Pebble's disk-usage metrics.
+	IndexFileSize uint64        `protobuf:"fixed64,4,opt,name=index_file_size,json=indexFileSize,proto3" json:"index_file_size,omitempty"`
+	Indexes       []*IndexEntry `protobuf:"bytes,5,rep,name=indexes,proto3" json:"indexes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetIndexStatusResponse) Reset() {
@@ -8214,14 +8219,16 @@ func (x *IteratorProfile) GetItemsSkipped() int64 {
 }
 
 type InspectIndexRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	TargetType    commonpb.TargetType    `protobuf:"varint,2,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
-	MetadataKey   string                 `protobuf:"bytes,3,opt,name=metadata_key,json=metadataKey,proto3" json:"metadata_key,omitempty"`
-	Mode          InspectIndexMode       `protobuf:"varint,4,opt,name=mode,proto3,enum=ledger.InspectIndexMode" json:"mode,omitempty"`
-	PageSize      uint32                 `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	Cursor        string                 `protobuf:"bytes,6,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	CheckpointId  uint64                 `protobuf:"fixed64,7,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Ledger      string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	TargetType  commonpb.TargetType    `protobuf:"varint,2,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
+	MetadataKey string                 `protobuf:"bytes,3,opt,name=metadata_key,json=metadataKey,proto3" json:"metadata_key,omitempty"`
+	Mode        InspectIndexMode       `protobuf:"varint,4,opt,name=mode,proto3,enum=ledger.InspectIndexMode" json:"mode,omitempty"`
+	// Values or facets per page. 0 selects 100; values above 10000 are capped
+	// at 10000 and the response carries a next cursor.
+	PageSize      uint32 `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Cursor        string `protobuf:"bytes,6,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	CheckpointId  uint64 `protobuf:"fixed64,7,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9010,12 +9017,12 @@ const file_bucket_proto_rawDesc = "" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"3\n" +
 	"\x18GetPrimaryMetricsRequest\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\rR\x06nodeId\"j\n" +
+	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\"j\n" +
 	"\x19GetPrimaryMetricsResponse\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12/\n" +
 	"\ametrics\x18\x02 \x01(\v2\x15.ledger.PebbleMetricsR\ametrics\"5\n" +
 	"\x1aGetSecondaryMetricsRequest\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\rR\x06nodeId\"l\n" +
+	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\"l\n" +
 	"\x1bGetSecondaryMetricsResponse\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12/\n" +
 	"\ametrics\x18\x02 \x01(\v2\x15.ledger.PebbleMetricsR\ametrics\"\xa6\x04\n" +

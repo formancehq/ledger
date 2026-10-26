@@ -109,7 +109,7 @@ func (r *ClusterReconciler) reconcileClusterSecretForTLSState(ctx context.Contex
 	}
 	targetTLS := computeTargetTLSMode(
 		desiredTLSMode(ledger),
-		currentTLSModeFromStatefulSet(existingSTS),
+		observedTLSMode(ledger, existingSTS),
 		rolloutConverged(existingSTS),
 	)
 

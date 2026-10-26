@@ -2,18 +2,39 @@
 
 This file is the always-loaded entry point for AI agents working on Ledger v3. Keep it short. Detailed technical knowledge belongs in `docs/`; load only the documentation relevant to the task.
 
-## Release status — v3 is unreleased
+## Release status — v3 release candidate
 
-**CRITICAL:** Ledger v3 has not been released and state is wiped on pushes to `release/v3.0`. There is no backward-compatibility burden between v3 development revisions.
+**CRITICAL:** `v3.0.0-rc.1` is the first supported v3 persisted-state baseline.
+Every later v3 release must preserve committed business data, audit history,
+and cluster state from the preceding released version. Ship and test a migration
+when a format changes; a wipe or external reconstruction is not an upgrade.
+Changes to behavior or configuration can ship when client impact and upgrade
+steps are documented. Follow [the upgrade policy](docs/ops/upgrades.md#release-requirement-from-v300-rc1).
 
-- Do not add migrations, compatibility shims, version guards, or fallback paths for old v3 wire/storage formats.
-- When removing protobuf fields, delete them and realign field numbers sequentially. The EN-1551 cleanup removed every existing `reserved` declaration from `misc/proto/`; do not reintroduce any.
+Each RC update is upgraded sequentially from the immediately preceding RC in
+the same release line. The operator rejects skipped RCs by comparing the
+current StatefulSet image tag with the requested Cluster image tag. Old and new
+voters must communicate and apply the same committed entries identically while
+they coexist.
+
+- Classify persisted, Raft, snapshot, backup, and audit changes against the RC
+  baseline. Include a tested migration or prove existing data remains valid.
+- Compatibility with beta or development revisions before `v3.0.0-rc.1` is
+  not required.
+- Preserve published gRPC services, methods, request and response types, field
+  numbers, wire types, field identity, and enum numbers during the RC.
+- Preserve field and enum numbers stored in released Raft, snapshots, backups,
+  and audit records. Internal-only format changes require a safe migration and
+  a mixed-version rollout design. Reserve removed numbers and names when they
+  must not be reused; a reservation does not migrate data.
 - Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
 
-### Service protocol revision — required during pre-release
+### Service protocol revision — frozen during the release-candidate phase
 
-Every incompatible service gRPC contract change must increment
-`pkg/grpcprotocol.Version` in the same PR, including during pre-release. Read the
+Do not increment `pkg/grpcprotocol.Version`; it stays at `"40"` during the v3
+release-candidate phase. Assess and document the effect of behavior or
+configuration changes on existing clients. Escalate a wire change that cannot
+preserve client decoding instead of bumping the revision. Read the
 [protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
 before modifying this contract.
 

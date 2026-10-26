@@ -67,9 +67,10 @@ alongside these sources. At preparation time, several passages need qualificatio
   default first HTTP page as newest-first. Neither that pair of comments nor
   ordered HTTP test fixtures proves actual v2 pagination. Establish the supported
   upstream contract before treating a first-page mismatch as a product finding.
-- The mirror doc's protobuf example still contains a removed `reserved` slot
-  and an old rewrite field number. Read `misc/proto/common.proto`; historical v3
-  wire compatibility is not an audit requirement during pre-release.
+- The mirror doc's protobuf example contains an old rewrite field number. Read
+  `misc/proto/common.proto`; compatibility with development formats before
+  `v3.0.0-rc.1` is outside scope. Published field numbers from the RC onward
+  must remain stable or have a tested migration for stored data.
 - CEL prose saying actions never evaluate CEL predates `value_expr`. The current
   implementation in `value_expr.go` and its tests establishes expression
   evaluation during leader-side translation, before proposal, not follower apply.
@@ -91,6 +92,56 @@ These qualifications record evidence limits, not confirmed product defects or
 authorization to fix adjacent documentation in this manifest PR.
 
 ## Translation, progression and cutover
+
+### PostgreSQL source visibility
+
+The PostgreSQL source must not turn an uncommitted lower source row into an
+irreversible synthetic gap. Its live source contract requires a writable
+primary, effective relation-lock privileges and the upstream increment-one,
+noncycling `CACHE 1` per-ledger log sequence. Concurrent explicit-ID imports,
+historical backfills, sequence reseeding and changes to those sequence settings
+are excluded. Source construction checks the database/session, privileges and
+sequence before ingestion starts; these checks do not establish that an
+operator will refrain from an unsupported concurrent import.
+
+For PostgreSQL 16, changing the cache through a committed `ALTER SEQUENCE`
+before ingestion replaces the sequence storage transactionally. Existing
+backends discard unissued reservations when they next access that sequence.
+`TestPostgresSourceCacheChangeInvalidatesReservations` keeps the original
+allocating session alive across the cache change and a locked gap read, then
+checks that its next inserted row has ID 6 after fetching ID 5. A second fetch
+with the manually supplied `afterID=5` returns ID 6. This proves source-adapter
+and sequence-allocation behavior, not worker/FSM application or a durable
+applied boundary. This is distinct from application-held IDs already returned
+by `nextval`: those must not be retained for later insertion across source
+preparation.
+See the [source prerequisite evidence](../architecture/subsystems/events-mirror/mirror.md#postgresql-visibility-and-permanent-gaps).
+
+Contiguous pages use one bounded query. A page with a hole is discarded and
+reread from the applied boundary under a bucket-wide `SHARE` lock in an explicit
+`READ COMMITTED` transaction. `NOWAIT` conflicts fail immediately and cause no
+data proposal or boundary advance. Successful locked reads end the transaction
+before returning rows, so no source lock survives into translation or Raft.
+The resulting holes may represent rolled-back sequence allocations. A
+transaction-snapshot-only test is insufficient: sequence allocation can precede
+transaction-ID assignment, so absence from an active-XID list is not proof that
+a source writer cannot later insert a lower ID.
+
+`TestWorker_PostgresGapCommitAndRollback` holds the lower source transaction
+open, commits the higher one, exercises real fetching and the production
+worker/FSM path, then commits or rolls back the lower row and recreates the
+source/worker from durable progress. Check both account metadata and source
+entry identity; a final cursor alone could conceal a lost row. Source cases
+also cover rejected prerequisites, transaction cleanup after a lock conflict,
+and the contiguous fast path while a later writer remains active. The CI Tests
+job selects PostgreSQL integration tests with race detection. Native execution
+uses a supplied disposable administrator URI; Docker-backed execution remains
+subject to the caller's explicit local restrictions.
+
+The fix is prospective. Old leaders retain the source-read defect until
+upgraded, while interpretation of already committed orders is unchanged.
+Previously consumed gaps cannot be repaired by rewinding an audited ledger.
+The public HTTP source has no equivalent synchronization proof in this change.
 
 `TranslateBatch` converts `NEW_TRANSACTION`, `SET_METADATA`,
 `REVERTED_TRANSACTION` and `DELETE_METADATA`. Missing source log IDs are explicit

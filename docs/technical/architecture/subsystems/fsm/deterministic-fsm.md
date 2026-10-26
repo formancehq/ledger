@@ -101,7 +101,7 @@ Preload provides **base values** (volumes and optionally metadata) aligned to a 
 Every replicated write proposal carries a `CallerSnapshot`. Before cache
 rotation, HLC advancement, audit construction, or business-state writes, each
 replica validates the snapshot using only replicated bytes. Invalid attribution
-produces the same internal business rejection on every replica. The FSM advances
+produces the same internal trust-boundary rejection on every replica. The FSM advances
 the applied Raft index past that already-committed entry but performs no other
 state transition. Empty Raft entries and explicit orderless barriers are
 consensus progress records rather than writes and are the sole unattributed
@@ -125,7 +125,7 @@ For example, a node-local limit on live query checkpoints may reject `CreateQuer
 
 Admission-side count checks are soft unless the admission path also serializes or reserves the constrained resource. Two concurrent requests can both observe `count = limit - 1`, both be proposed, and leave the live count above the configured limit until an item is deleted. If that overshoot is operationally acceptable, document it as a deliberate consequence of the design. If the limit must be strict, use an explicit leader-side serialization/reservation design or a replicated protocol whose rollout semantics have been reviewed; do not quietly turn a local setting into an FSM input.
 
-Replicating a setting is not, by itself, proof that a change is safe across mixed binaries: every binary participating in a supported rolling-upgrade window must understand the resulting command semantics identically. Ledger v3 is currently unreleased, so the repository-wide rule against compatibility shims and version guards still applies to development revisions. After release, any change to apply semantics that must support mixed binaries requires an explicit upgrade design rather than an implicit version-dependent default.
+Replicating a setting is not, by itself, proof that a change is safe across mixed binaries: every binary participating in a rolling-upgrade window must understand the resulting command semantics identically. Since `v3.0.0-rc.1`, each RC update must support that window and preserve or migrate existing data. A change to apply semantics needs an explicit staged rollout design that keeps old and new voters deterministic together; an implicit version-dependent default is not sufficient.
 
 Before allowing configuration to influence a write path, answer:
 
@@ -511,28 +511,29 @@ Restore:
 
 ---
 
-## 11. persistedIndex + Backpressure (rare)
+## 11. Commit barrier at cache rotation
 
 ### 11.1 persistedIndex definition
 
 `persistedIndex` is the last Raft index whose effects are visible in Pebble after successful `Batch.Commit()`.
 
-Used for:
+It is useful for observing persistence lag and diagnosing restarts. Raft indexes
+still determine when the cache rotates. Before preparing an entry that crosses
+a generation boundary, the applier waits for the previous Pebble commit. Thus,
+when rotation evicts the old Gen1, every write from the preceding generation
+is already visible in Pebble. Admission can safely load a key that is no longer
+in Gen0 for a proposal in the next generation (`CheckCache` case 1).
 
-- observability: persistence lag
-- admission guardrail: ensure the store is up-to-date enough for reading values at boundary `B`
-- restart diagnostics
+### 11.2 Threshold changes
 
-It must never drive rotation/eviction.
+A cluster configuration entry that changes the rotation threshold resets the
+cache. The applier waits for the previous commit before preparing that entry,
+then uses the new threshold for subsequent entries. A configuration update
+that keeps the threshold follows the normal pipelined path.
 
-### 11.2 Backpressure condition
-
-If the store is too far behind to provide coherent values for accounts not in the cache:
-
-- condition: `storeIndex < baseIndex(gen1)` (equivalently: cannot read values at `B(i)`)
-- Admission must apply backpressure (queue/retry) until catch-up
-
-In practice: expected negligible with continuous Pebble flush (batch + no sync).
+Admission separately rejects a proposal predicted to land two or more
+generations ahead of the applied cache; such a proposal must be rebuilt after
+the FSM catches up. This horizon guard does not depend on `persistedIndex`.
 
 ---
 
@@ -643,13 +644,24 @@ we enforce:
 3. **Applier pre-split.** Before passing a `[]raftpb.Entry` slice to
    `PrepareEntries`, the applier scans for checkpoint triggers and splits
    the slice so any trigger entry is always the LAST in its sub-batch
-   (`findCheckpointBoundary`). Entries past the trigger go to the spool
+   (`findApplyBoundaryDecoded`). Entries past the trigger go to the spool
    and are replayed once the maintenance window clears.
 
 Result: every `PrepareEntries` → `CommitPreparedBatch` pair commits exactly
 one Pebble batch, and the post-commit sentinel reads a snapshot pinned to
 that commit. There is no concurrent commit path on the main store; any
 unexpected cache/pebble divergence remains fatal.
+
+The applier also splits an apply slice before an entry whose Raft index moves
+the cache to a new generation. It waits for the preceding Pebble commit before
+preparing that entry. Preparation can mutate the cache, so waiting only when
+submitting the new commit would be too late: rotation could evict a Gen1 value
+that admission still needs from Pebble. Replay uses the same split, with each
+sub-batch committed synchronously. A cluster configuration entry that changes
+the rotation threshold is isolated and waits for the preceding commit before
+preparation because that change resets the cache. The next sub-batch then uses
+the new threshold. A configuration update that retains the threshold keeps
+the normal pipelined path.
 
 The sentinel's expected-volume reduction follows the durable batch's lifecycle
 order: a successful `WriteSet` deletion cascade invalidates that ledger's
@@ -715,6 +727,6 @@ satisfy it.
 - Preload may include an "older" volume at `B(i)`; subsequent applies update absolute volumes in place, ensuring correctness.
 - Snapshots are not aligned across nodes → snapshot must embed `gen0 + gen1`.
 - Pebble stores one entry per canonical key (last-write-wins, overwritten in place).
-- `persistedIndex` is an operational guardrail and backpressure signal (rare), not a rotation input.
+- The applier waits for the preceding Pebble commit before a cache rotation or threshold-changing reset, so evicted values are durable when admission reads them.
 - Checkpoint-triggering orders are always the last in their proposal AND the last in their PrepareEntries slice, keeping `runCommitter` the sole writer to the main store.
 - `AttributeLoader` coordinates concurrent attribute loads to prevent duplicate store reads.

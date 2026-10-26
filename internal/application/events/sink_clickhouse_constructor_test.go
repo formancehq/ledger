@@ -5,30 +5,44 @@ package events
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
 type clickHouseConstructorConn struct {
 	driver.Conn
 
+	ping       func(context.Context) error
+	exec       func(context.Context) error
 	pingErr    error
 	execErr    error
 	execCalls  int
 	closeCalls int
 }
 
-func (c *clickHouseConstructorConn) Ping(context.Context) error {
+func (c *clickHouseConstructorConn) Ping(ctx context.Context) error {
+	if c.ping != nil {
+		return c.ping(ctx)
+	}
+
 	return c.pingErr
 }
 
-func (c *clickHouseConstructorConn) Exec(context.Context, string, ...any) error {
+func (c *clickHouseConstructorConn) Exec(ctx context.Context, _ string, _ ...any) error {
 	c.execCalls++
+	if c.exec != nil {
+		return c.exec(ctx)
+	}
 
 	return c.execErr
 }
@@ -128,4 +142,96 @@ func TestClickHouseConstructorSanitizesNestedProxy(t *testing.T) {
 	require.ErrorContains(t, err, "http_proxy")
 	require.ErrorContains(t, err, "invalid port")
 	require.NotContains(t, err.Error(), "proxy-password")
+}
+
+func TestInitializeClickHouseSink_CancellationClosesConnection(t *testing.T) {
+	t.Parallel()
+	for _, stage := range []string{"ping", "create table"} {
+		t.Run(stage, func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			entered := make(chan struct{})
+			block := func(callCtx context.Context) error {
+				close(entered)
+				<-callCtx.Done()
+
+				return callCtx.Err()
+			}
+			conn := &clickHouseConstructorConn{}
+			if stage == "ping" {
+				conn.ping = block
+			} else {
+				conn.exec = block
+			}
+			result := make(chan error, 1)
+			go func() {
+				sink, err := initializeClickHouseSink(ctx, conn, "events")
+				if sink != nil {
+					_ = sink.Close() // Avoid leaking an unexpected successful construction.
+				}
+				result <- err
+			}()
+			select {
+			case <-entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("initialization did not reach blocking operation")
+			}
+			cancel()
+			select {
+			case err := <-result:
+				require.ErrorIs(t, err, context.Canceled)
+				require.Equal(t, 1, conn.closeCalls)
+				if stage == "ping" {
+					require.Zero(t, conn.execCalls)
+				} else {
+					require.Equal(t, 1, conn.execCalls)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("initialization ignored cancellation")
+			}
+		})
+	}
+}
+
+// The HTTP driver uses the supplied context for its initialization request.
+// This exercises the registered factory and real transport without ClickHouse.
+func TestClickHouseFactory_CancelsInitialization(t *testing.T) {
+	t.Parallel()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body) // Consume the request before observing client disconnect.
+		close(entered)
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	defer server.Close()
+	defer close(release)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		sink, err := sinkFactories["clickhouse"](ctx, &commonpb.SinkConfig{Type: &commonpb.SinkConfig_Clickhouse{
+			Clickhouse: &commonpb.ClickHouseSinkConfig{Dsn: server.URL + "/default?dial_timeout=1s&read_timeout=30s"},
+		}}, FormatJSON)
+		if err == nil && sink != nil {
+			_ = sink.Close() // Avoid leaking an unexpected successful construction.
+		}
+		result <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("factory did not start its initialization request")
+	}
+	cancel()
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(5 * time.Second):
+		t.Fatal("factory initialization ignored cancellation")
+	}
 }

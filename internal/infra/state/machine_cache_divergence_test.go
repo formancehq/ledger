@@ -308,7 +308,7 @@ func TestCacheDivergenceBatchReplay(t *testing.T) {
 		// Check each result for divergence
 		for j, r := range result.Results {
 			if r.Error != nil {
-				t.Logf("Follower REJECTED entry %d: %v", batch[j].Index, r.Error)
+				t.Logf("Follower REJECTED entry %d: %v", batch[j].GetIndex(), r.Error)
 			}
 		}
 	}
@@ -424,7 +424,7 @@ func TestCacheDivergencePipelinedAdmission(t *testing.T) {
 			if r.Error != nil {
 				followerRejects++
 				t.Logf("Follower REJECTED entry %d: %v",
-					admittedEntries[i].Index, r.Error)
+					admittedEntries[i].GetIndex(), r.Error)
 			}
 		}
 
@@ -527,7 +527,7 @@ func runCacheDivergenceScenario(t *testing.T, threshold uint64, crashAfterN, pip
 		for i, r := range result.Results {
 			if r.Error != nil && r.AppliedIndex > 0 {
 				// Entry was applied on leader but might not match follower
-				t.Logf("Follower rejected entry %d: %v", entries[i].Index, r.Error)
+				t.Logf("Follower rejected entry %d: %v", entries[i].GetIndex(), r.Error)
 			}
 		}
 

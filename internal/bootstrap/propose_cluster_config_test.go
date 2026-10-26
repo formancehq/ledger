@@ -1,14 +1,23 @@
 package bootstrap
 
 import (
+	"context"
 	"sync"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -47,7 +56,7 @@ func TestProposeClusterConfigIfNeeded_DoesNotMutateSharedConfig(t *testing.T) {
 
 	// The persisted state matches, so the call returns before touching the
 	// node or the plan builder; nil is safe for both here.
-	proposeClusterConfigIfNeeded(nil, nil, store, cfg, logging.Testing())
+	proposeClusterConfigIfNeeded(t.Context(), nil, nil, store, cfg, logging.Testing())
 
 	require.Zero(t, shared.GetRotationThreshold(),
 		"proposeClusterConfigIfNeeded must not write RotationThreshold through the shared cfg.BloomConfig pointer")
@@ -80,7 +89,7 @@ func TestProposeClusterConfigIfNeeded_ConcurrentCallsDoNotRace(t *testing.T) {
 	for range concurrency {
 		go func() {
 			defer wg.Done()
-			proposeClusterConfigIfNeeded(nil, nil, store, cfg, logger)
+			proposeClusterConfigIfNeeded(t.Context(), nil, nil, store, cfg, logger)
 		}()
 	}
 
@@ -88,4 +97,51 @@ func TestProposeClusterConfigIfNeeded_ConcurrentCallsDoNotRace(t *testing.T) {
 
 	require.Zero(t, shared.GetRotationThreshold(),
 		"concurrent LeaderReadyEvent deliveries must not mutate the shared cfg.BloomConfig")
+}
+
+// Hold FSM application after Raft acceptance, as can happen when HTTP failure
+// stops the node while the production leader-ready observer is proposing config.
+type pendingClusterConfigProposer struct {
+	accepted chan context.Context
+}
+
+func (p pendingClusterConfigProposer) Propose(ctx context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
+	proposal.Resolve(nil, nil)
+	p.accepted <- ctx
+
+	return futures.New[state.ApplyResult](), nil
+}
+
+func TestProposeClusterConfigIfNeeded_CancelledGenerationJoinsObserver(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	c, err := cache.New(1000, noop.Meter{})
+	require.NoError(t, err)
+	logger := logging.Testing()
+	builder := plan.NewBuilder(node.NewIndexTracker(1), c, attributes.New(), store, nil, logger, 0)
+
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		proposer := pendingClusterConfigProposer{accepted: make(chan context.Context, 1)}
+		observer := node.NewObserver(func(event any) {
+			e := event.(node.LeaderReadyEvent)
+			proposeClusterConfigIfNeeded(e.Context, proposer, builder, store,
+				Config{BloomConfig: &commonpb.ClusterConfig{}}, logger)
+		})
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			observer.Emit(node.LeaderReadyEvent{Context: ctx})
+		}()
+		proposalCtx := <-proposer.accepted
+		synctest.Wait()
+		require.NoError(t, proposalCtx.Err(), "proposal must be pending at cancellation")
+		started := time.Now()
+		cancel()
+		<-done
+		require.ErrorIs(t, proposalCtx.Err(), context.Canceled)
+		require.Equal(t, time.Duration(0), time.Since(started),
+			"joining the observer must not wait for the independent 30-second proposal timeout")
+	})
 }

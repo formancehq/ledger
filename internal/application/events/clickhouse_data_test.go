@@ -750,6 +750,9 @@ func TestClickHouseCreateTableDDL(t *testing.T) {
 	require.Contains(t, ddl, "CREATE TABLE IF NOT EXISTS test_events")
 	require.Contains(t, ddl, "log_sequence UInt64")
 	require.Contains(t, ddl, "ReplacingMergeTree()")
+	//nolint:dupword // The nested map type must be asserted literally, without prose auto-correction.
+	require.Contains(t, ddl, "accountMetadata Map(String, Map(String, String))",
+		"account metadata must retain the account-to-metadata-map shape emitted by committed transactions")
 	// color is part of the posting sub-schema so warehouse queries can
 	// reconstruct the segregated buckets — see sinkPosting.MarshalJSON.
 	require.Contains(t, ddl, "color String",

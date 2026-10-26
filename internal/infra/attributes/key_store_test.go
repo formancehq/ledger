@@ -25,6 +25,88 @@ func newTestKeyStore() *KeyStore[testKey, string] {
 	return NewKeyStore[testKey, string](newTestKV[Entry[string]]())
 }
 
+func BenchmarkKeyStorePutExisting(b *testing.B) {
+	store := newTestKeyStore()
+	canonical := []byte("benchmark-key")
+	if _, _, err := store.Put(canonical, "value"); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, _, err := store.Put(canonical, "value"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+type publishBarrierKV struct {
+	kv.KV[U128, Entry[string]]
+
+	candidateTag uint64
+	published    chan struct{}
+	release      chan struct{}
+}
+
+func (m *publishBarrierKV) Put(id U128, entry Entry[string]) {
+	m.KV.Put(id, entry)
+	m.pauseAfterCandidate(entry)
+}
+
+// GetAndPut also traps the original publish-before-validation path. It is
+// deliberately present even though the current KV interface no longer uses it.
+func (m *publishBarrierKV) GetAndPut(id U128, entry Entry[string]) (Entry[string], bool) {
+	old, existed := m.Get(id)
+	m.KV.Put(id, entry)
+	m.pauseAfterCandidate(entry)
+
+	return old, existed
+}
+
+func (m *publishBarrierKV) pauseAfterCandidate(entry Entry[string]) {
+	if entry.Tag != m.candidateTag {
+		return
+	}
+	close(m.published)
+	<-m.release
+}
+
+func TestKeyStorePutRejectsBeforePublication(t *testing.T) {
+	t.Parallel()
+	canonical := []byte("publication-window")
+	id, tag := MakeKey(canonical)
+	raw := newTestKV[Entry[string]]()
+	raw.Put(id, Entry[string]{Tag: tag + 1, Data: "original"})
+	barrier := &publishBarrierKV{
+		KV:           raw,
+		candidateTag: tag,
+		published:    make(chan struct{}),
+		release:      make(chan struct{}),
+	}
+	store := NewKeyStore[testKey, string](barrier)
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := store.Put(canonical, "candidate")
+		done <- err
+	}()
+
+	var observedCandidate bool
+	var err error
+	select {
+	case <-barrier.published:
+		entry, _ := raw.Get(id)
+		observedCandidate = entry.Tag == tag
+		close(barrier.release)
+		err = <-done
+	case err = <-done:
+	}
+	var collision *ErrCollisionDetected
+	require.ErrorAs(t, err, &collision)
+	require.False(t, observedCandidate, "a rejected value was visible before rollback")
+	entry, ok := raw.Get(id)
+	require.True(t, ok)
+	require.Equal(t, tag+1, entry.Tag)
+}
+
 func TestKeyStorePut(t *testing.T) {
 	t.Parallel()
 

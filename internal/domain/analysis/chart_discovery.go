@@ -80,18 +80,61 @@ func isAlphanumeric(s string) bool {
 // trieNode represents a single node in the address trie.
 type trieNode struct {
 	children       map[string]*trieNode
-	terminating    int       // number of accounts that terminate at this node
-	assets         []string  // distinct assets for accounts terminating here
-	metadataKeys   []string  // distinct metadata keys for accounts terminating here
-	mergedChild    *trieNode // overflow subtree (chart) or merged variable node (flow normalization)
-	overflowCount  int       // number of distinct children routed to mergedChild overflow
-	varPlaceholder string    // e.g. "{id}" — set by precomputeNormalization for flow discovery
+	terminating    int                 // number of accounts that terminate at this node
+	assets         []string            // distinct assets for accounts terminating here
+	metadataKeys   []string            // distinct metadata keys for accounts terminating here
+	mergedChild    *trieNode           // overflow subtree (chart) or merged variable node (flow normalization)
+	overflowValues map[uint64]struct{} // hashes of the distinct segment values routed to mergedChild overflow
+	varPlaceholder string              // e.g. "{id}" — set by precomputeNormalization for flow discovery
 }
 
 func newTrieNode() *trieNode {
 	return &trieNode{
 		children: make(map[string]*trieNode),
 	}
+}
+
+// addOverflowValue records seg as a distinct value routed to mergedChild.
+func (n *trieNode) addOverflowValue(seg string) {
+	if n.overflowValues == nil {
+		n.overflowValues = make(map[uint64]struct{})
+	}
+
+	n.overflowValues[hashSegment(seg)] = struct{}{}
+}
+
+// distinctChildren returns the number of distinct segment values seen below n:
+// the stored children plus the overflowed values that are not also stored
+// children. A merge can store a value that a sibling overflowed.
+func (n *trieNode) distinctChildren() int {
+	count := len(n.children) + len(n.overflowValues)
+	if len(n.overflowValues) == 0 {
+		return count
+	}
+
+	for key := range n.children {
+		if _, ok := n.overflowValues[hashSegment(key)]; ok {
+			count--
+		}
+	}
+
+	return count
+}
+
+// hashSegment returns the 64-bit FNV-1a hash of seg.
+func hashSegment(seg string) uint64 {
+	const (
+		offset64 = 14695981039346656037
+		prime64  = 1099511628211
+	)
+
+	h := uint64(offset64)
+	for i := range len(seg) {
+		h ^= uint64(seg[i])
+		h *= prime64
+	}
+
+	return h
 }
 
 // progressReportInterval is the number of items between progress callbacks.
@@ -146,7 +189,7 @@ func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold 
 					node.mergedChild = newTrieNode()
 				}
 
-				node.overflowCount++
+				node.addOverflowValue(seg)
 				node = node.mergedChild
 
 				continue
@@ -181,7 +224,14 @@ func mergeTrieNodes(dst, src *trieNode) {
 	dst.terminating += src.terminating
 	dst.assets = mergeDistinct(dst.assets, src.assets)
 	dst.metadataKeys = mergeDistinct(dst.metadataKeys, src.metadataKeys)
-	dst.overflowCount += src.overflowCount
+
+	for h := range src.overflowValues {
+		if dst.overflowValues == nil {
+			dst.overflowValues = make(map[uint64]struct{}, len(src.overflowValues))
+		}
+
+		dst.overflowValues[h] = struct{}{}
+	}
 
 	for key, srcChild := range src.children {
 		if dstChild, ok := dst.children[key]; ok {
@@ -219,8 +269,8 @@ func extractPatterns(node *trieNode, pathParts []string, pathSegments []*service
 
 	position := uint32(len(pathParts))
 
-	// Effective distinct children = stored + overflow.
-	effectiveCount := uint32(len(node.children)) + uint32(node.overflowCount)
+	// Effective distinct children = stored + overflowed distinct values.
+	effectiveCount := uint32(node.distinctChildren())
 
 	if effectiveCount <= threshold {
 		// All children are fixed

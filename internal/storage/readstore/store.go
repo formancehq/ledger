@@ -142,14 +142,8 @@ func New(dir string, logger logging.Logger, cfg Config, options ...Option) (*Sto
 
 	dbPath := filepath.Join(dir, "readindex")
 
-	var fileSize int64
-	if info, _ := os.Stat(dbPath); info != nil {
-		fileSize = info.Size()
-	}
-
 	logger.WithFields(map[string]any{
-		"path":     dbPath,
-		"fileSize": fileSize,
+		"path": dbPath,
 	}).Infof("Opening Pebble read index")
 
 	openStart := time.Now()
@@ -159,6 +153,7 @@ func New(dir string, logger logging.Logger, cfg Config, options ...Option) (*Sto
 
 	opts := &pebble.Options{
 		Logger:             dal.NewPebbleLogger(logger),
+		EventListener:      dal.NewPebbleEventLogger(logger, "read-index"),
 		FormatMajorVersion: pebble.FormatNewest,
 		// Custom comparer: splits keys at [prefix][ledger\x00] boundary
 		// so bloom filters are built on ledger-scoped prefixes, enabling
@@ -290,6 +285,13 @@ func (s *Store) NewSnapshot() *pebble.Snapshot {
 // Path returns the directory of the read index.
 func (s *Store) Path() string {
 	return s.dir
+}
+
+// DiskSpaceUsage returns the bytes the read index occupies on disk, live and
+// obsolete files included. Stat on Path only measures the directory entry, not
+// the files inside it.
+func (s *Store) DiskSpaceUsage() uint64 {
+	return s.db.Metrics().DiskSpaceUsage()
 }
 
 // ReadProgress returns the last indexed log sequence from the progress key.

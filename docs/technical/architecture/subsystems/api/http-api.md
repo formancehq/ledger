@@ -57,6 +57,18 @@ the SDK encode the path segment. Passing a pre-encoded key to an SDK produces
 double encoding and is rejected. Direct HTTP clients encode the raw key as one
 path segment themselves.
 
+### Encoded path identifiers
+
+The single-decoding rule also applies to every free-form identifier carried in
+a path segment: account addresses (`GET /accounts/{address}` and the account
+metadata POST/DELETE routes), numscript names, prepared-query names,
+account-type names and events sink names. The adapter extracts them with
+`requirePathParameter`, never with a raw `chi.URLParam`. For example,
+`users%3Aa` and `%75sers:a` both select the account `users:a`. Without this
+decoding, an encoded address would read an empty account with HTTP 200, or be
+rejected by admission on metadata writes. A double-encoded `users%253Aa`
+selects the literal `users%3Aa`, which is not a valid account address.
+
 ### Ledger information
 
 See [LedgerInfo read contract](ledger-info.md) for camelCase properties, explicit
@@ -66,7 +78,7 @@ schemas and credential-safe responses.
 ### Authentication
 
 Saving or deleting ledger, account or transaction metadata, and setting or
-removing metadata field types, requires the granular `ledger:MetadataWrite`
+removing metadata field types, requires the granular `ledger:WriteMetadata`
 scope. The aggregate `ledger:write` grants it under the default mapping;
 custom mappings can differ.
 
@@ -76,8 +88,8 @@ without a token use configured anonymous scopes and can succeed when those scope
 permit the operation. Authentication-disabled mode bypasses credential and scope
 checks. See [Authentication Guide](../../../../ops/authentication.md) for configuration details.
 
-Numscript library reads require `ledger:LedgerRead`; saving a version requires
-`ledger:LedgerWrite`. All five operations declare optional `BearerAuth` and their
+Numscript library reads require `ledger:ReadLedger`; saving a version requires
+`ledger:WriteLedger`. All five operations declare optional `BearerAuth` and their
 401/403 responses. Missing credentials with insufficient anonymous scopes and
 invalid tokens return 401; a valid token lacking the required scope returns 403.
 These middleware failures use `text/plain; charset=utf-8`. The response wrapper
@@ -98,7 +110,7 @@ scope each one requires, and it enforces the table two ways:
 
 - **Reconciliation** against `chi.Walk`, in both directions — a route with no table row fails ("no
   scope decision"), and a table row matching no route fails ("stale row"). This is what stops a new
-  route under the `/v3/_/…` subtree from silently inheriting `ledger:OpsRead`.
+  route under the `/v3/_/…` subtree from silently inheriting `ledger:ReadOps`.
 - **End-to-end probes** — for each guarded route, a token carrying the declared scope must be
   admitted, and a token carrying **every** other granular scope must be refused with 403. That proves
   exactly one scope opens each route.
@@ -113,7 +125,7 @@ Two properties of this test are load-bearing and easy to break by "simplifying" 
   tokenless request. All `RequireScope` closures also share one code pointer, so reflection cannot
   tell them apart. Only a real request through `ServeHTTP` reveals the scope.
 - **Probes use granular scopes only, never the aggregate `ledger:read`.** The aggregate expands to
-  both `ledger:LedgerRead` and `ledger:OpsRead`, which is precisely what hid the EN-1508 drift from
+  both `ledger:ReadLedger` and `ledger:ReadOps`, which is precisely what hid the EN-1508 drift from
   every caller not using granular scopes.
 
 The same asymmetry noted above has a second consequence worth knowing: because a `Route` sub-mux
@@ -166,12 +178,13 @@ it returns `413 BODY_TOO_LARGE`, including when only the suffix is oversized.
 
 ### Response Format
 
-#### Monetary amounts and the string opt-in
+#### Large integers and the string opt-in
 
-EN-2779 aligns the HTTP monetary encoding with Ledger v2. Posting amounts,
-volume input/output and signed balances are decimal JSON number tokens by
-default. JSON has no separate bigint scalar type. Clients needing exact values
-above JavaScript's safe-integer range should send:
+Every HTTP response value represented by `commonpb.Uint256`, `commonpb.BigUint`
+or `commonpb.SignedBigInt` uses decimal JSON number tokens by default, regardless
+of its business meaning. This includes posting amounts, volume input/output and
+signed balances and preserves their Ledger v2 defaults. JSON has no separate
+bigint scalar type. Clients needing exact values above JavaScript's safe-integer range should send:
 
 ```http
 Formance-Bigint-As-String: true
@@ -185,8 +198,11 @@ get/list, aggregate volumes (including groups), transaction-analysis volume
 statistics (total, integer average, minimum and maximum), bulk results (including successful
 entries beside failures), ledger-log lists, system-log get, and prepared-query
 account/transaction/log cursors and aggregate results. Nested post-commit volumes
-follow the same choice. IDs, typed metadata, timestamps and unrelated integer
-projections are not stringified by this header.
+follow the same choice. The contract is type-based: future nonmonetary fields
+using these three types inherit it, including inside structs, maps, slices and
+custom public projections. Ordinary integer IDs/counts, typed metadata and
+timestamps retain their existing representation. Explicit string projections,
+such as mirror counters, also keep their existing representation.
 
 Posting request amounts accept integer tokens and canonical unsigned decimal
 strings independently of the response header. Both forms are bounded by
@@ -195,16 +211,19 @@ noncanonical quoted forms (including leading zeros) are rejected. Volume
 input/output use arbitrary-precision non-negative integers; balances may be
 negative. The opt-in does not narrow these existing volume bounds.
 
-The implementation uses a scoped `encoding/json/v2` path with type-specific
-marshalers for Posting, BigUint and SignedBigInt. Option-aware nested codecs
-share the existing public projections with legacy MarshalJSON callers.
-Ordinary response encoding and input decoding retain Sonic. CLI/event JSON,
+Shared HTTP response writers select scoped `encoding/json/v2` marshalers for
+Uint256, BigUint and SignedBigInt from the request. Handler authors do not select
+a monetary writer. Option-aware nested codecs share existing public projections
+with legacy MarshalJSON callers and forward the options to nested values; opaque
+custom serializers must not hide negotiated values behind pre-encoded JSON.
+Dedicated protojson projections retain protobuf JSON conventions and must not
+contain these three types. Input decoding retains Sonic. CLI/event JSON,
 protobuf wire/storage formats, signatures and audit/idempotency semantics are
 unchanged. Checked responses still buffer before success headers; streaming
 responses retain their trailing newline and existing failure boundary.
 
 The generated TypeScript SDK exposes the header as `formanceBigintAsString`
-on every affected operation and monetary fields as number-or-string unions:
+on every affected operation and large-integer fields as number-or-string unions:
 
 ```typescript
 const response = await sdk.transactions.createTransaction({
@@ -339,6 +358,12 @@ Three paths need correlated server-side diagnostics because the raw value can co
 2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Classifiable` or a known sentinel.
 3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply generic public messages (`index is inconsistent` and `preload coverage miss`). Other recognized errors render from stable facts; diagnostic text and outer prefixes are omitted.
 
+The caller-attribution trust-boundary guard is the exception within
+`KindInternal`: it has no public reason or facts. Admission rejects it before a
+proposal, and the FSM rejects malformed committed entries before audit or
+business-state mutation. Both adapters therefore return only the generic
+internal error while retaining the detail in server diagnostics.
+
 Type-owned public details are selected through `domain.PublicErrorDetails` at the response boundary. The authoritative audit chain records a structured failure reason, code and source-validated facts for freezable business failures. Diagnostic `Error()` text is used for server logs and is not hashed into that outcome.
 
 Every path logs the raw cause **server-side** with a `correlation_id` field. When the request span is recording, the log also carries `trace_id` and `span_id`, and the span records both the correlation ID and the error. Panic spans additionally carry the panic value and stack. Unmapped errors and panics remain sanitized identically to the gRPC adapter, so the client receives only a generic body:
@@ -447,7 +472,7 @@ so a layer commits only to what it can actually honour (EN-2081):
 
 | Interface | Adds | Who implements it | What an adapter does with it |
 |---|---|---|---|
-| `Classifiable` | `Kind() ErrorKind` | anything that names no business outcome — the gRPC envelope guard, the admission idempotency-key and checkpoint-order guards, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one |
+| `Classifiable` | `Kind() ErrorKind` | anything that names no business outcome — the gRPC envelope guard, the admission idempotency-key and checkpoint-order guards, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one (a bulk element answers the generic `ERROR`) |
 | `Describable` | `Reason() string` | every domain business error | adds the `ErrorInfo` / `errorCode` clients pattern-match on |
 | `SerializableError` | `FailureDetails()` | FSM-returned errors, including uncommitted technical failures | supplies typed details for audited outcomes; uncommitted failures have no audited details |
 
@@ -459,8 +484,9 @@ its error returns as `SerializableError`. `UncommittedFailure` returns before
 public code and facts without admitting the error to the audit chain. This is
 used for admission and read failures such as plan-size and aggregate overflow.
 The FSM can also reject a committed proposal before audit capture for
-maintenance mode or malformed caller attribution; those errors remain public
-but do not implement `SerializableError`. The write gate's
+maintenance mode or malformed caller attribution. Maintenance mode remains a
+public operational error; malformed caller attribution is internal-only and
+has no public reason. Neither implements `SerializableError`. The write gate's
 `WRITES_BLOCKED_*` sentinels and `AUDIT_DISABLED` likewise have no audited
 details.
 
@@ -498,7 +524,9 @@ A failure that is only `Classifiable` has no `Reason` for `Describe` to
 normalise, so `handleError` answers it from its kind directly, with the coarse
 error code it already uses for a reason-less classified status
 (`INVALID_REQUEST`, `UNAVAILABLE`, …). `KindInternal` still goes to the
-sanitizer.
+sanitizer. A bulk element takes its status and message from the same
+`classifyError` dispatch, but its `errorCode` is the generic `ERROR` for every
+failure without a reason.
 
 `Message` and `Metadata` are the client-safe presentation, not the diagnostic
 identity. A locally raised serializable failure renders them from its stable
@@ -963,7 +991,7 @@ Audit reads expose the tamper-evident audit trail over HTTP (mirroring the gRPC
 `BucketService.ListAuditEntries` / `GetAuditEntry`). Audit reads are
 **bucket-wide, not ledger-scoped** — a single proposal can touch several ledgers
 — so these routes sit at the top level (no `{ledgerName}`) and ledger scope is
-expressed as a filter condition. Both require the `ledger:AuditRead` scope.
+expressed as a filter condition. Both require the `ledger:ReadAudit` scope.
 
 #### List Audit Entries
 
@@ -1058,7 +1086,22 @@ Returns the `IndexEntry` — the registry entry joined with the backfill cursor 
 GET /v3/{ledgerName}/indexes/{canonicalId}/inspect?mode=summary
 ```
 
-Scans the index and returns distinct values, facets, or a summary (`mode=distinctValues|facets|summary`). Only metadata indexes are inspectable; builtin canonicals return `400`. The `distinctValues` and `facets` modes page in ascending value order with `pageSize` and `cursor`, and return `nextCursor` / `previousCursor` page tokens whose key is the base64url of the encoded value (see [Paged list](#paged-list)).
+Scans the index and returns distinct values, facets, or a summary (`mode=distinctValues|distinct-values|facets|summary`). Only metadata indexes are inspectable; builtin canonicals return `400`. The `distinctValues` and `facets` modes page in ascending value order with `pageSize` and `cursor`, and return `nextCursor` / `previousCursor` page tokens whose key is the base64url of the encoded value (see [Paged list](#paged-list)).
+
+The deprecated `distinct-values` alias remains accepted, but OpenAPI lists only
+the canonical `distinctValues` spelling in its enum to avoid generated SDK enum
+collisions.
+
+Omitting `mode` selects `summary`. An explicitly empty or unsupported mode returns
+`400` with `errorCode: INVALID_REQUEST`. Omitting `pageSize` preserves the
+backend default of 100 for paginated modes. Every supplied `pageSize` must be
+an integer in 1..10000, including for summary, which ignores pagination;
+empty, malformed, zero, overflowed, and oversized values return `400` with
+`errorCode: INVALID_PAGE_SIZE`. These checks happen before backend invocation
+so malformed queries cannot silently change meaning or exceed the HTTP page
+bound (EN-2905). This HTTP bound does not define a service gRPC inspection
+limit; its proto3 page size zero remains unspecified and its omitted enum
+selects distinct values.
 
 #### Drop an index
 
@@ -1066,7 +1109,10 @@ Scans the index and returns distinct values, facets, or a summary (`mode=distinc
 DELETE /v3/{ledgerName}/indexes/{canonicalId}
 ```
 
-Returns `204 No Content` once the FSM has committed the drop.
+Returns `204 No Content` once the FSM has committed the drop. The drop is
+idempotent: an index id with no registry entry on the ledger (never created,
+or already dropped) also returns `204` and appends a `DROP_INDEX` log entry.
+Only an unknown ledger returns `404`.
 
 #### Bucket-wide index reads
 
@@ -1089,11 +1135,11 @@ there is no HTTP-specific storage or controller path.
 
 | Method and path | Scope | Success |
 |---|---|---|
-| `GET /v3/_/events-sinks` | `ledger:OpsRead` | `200`, existing `{data: {sinks, sinkStatuses}}` envelope |
-| `POST /v3/_/events-sinks` | `ledger:OpsWrite` | `201`, `{data: {name}}` |
-| `DELETE /v3/_/events-sinks/{sinkName}` | `ledger:OpsWrite` | `204`, no body |
+| `GET /v3/_/events-sinks` | `ledger:ReadOps` | `200`, existing `{data: {sinks, sinkStatuses}}` envelope |
+| `POST /v3/_/events-sinks` | `ledger:WriteOps` | `201`, `{data: {name}}` |
+| `DELETE /v3/_/events-sinks/{sinkName}` | `ledger:WriteOps` | `204`, no body |
 
-Under the default scope mapping, `ledger:write` grants `ledger:OpsWrite`.
+Under the default scope mapping, `ledger:write` grants `ledger:WriteOps`.
 Custom mappings can differ. Route guards apply before request decoding or
 backend execution. Authentication failures use the standard `401`/`403` errors.
 
@@ -1341,16 +1387,19 @@ The response writer selects the encoder from its payload contract:
 
 | Writer | Encoder | Use for |
 |---|---|---|
-| `writeOK` / `writeOKChecked` | sonic (`internal/adapter/json`) | Anything whose type has a custom `MarshalJSON`, and all hand-written DTOs |
-| `writeMonetaryOK` / `writeMonetaryCreated` / `writeMonetaryOKChecked` | scoped `encoding/json/v2` | Posting, volume and balance responses requiring request-scoped negotiation |
-| `writeProtoOK` / `writeProtoListOK` | `protojson` | Proto messages with **no** custom `MarshalJSON` |
+| `writeOK` / `writeCreated` / `writeOKChecked` / `writePageOK` | request-scoped `encoding/json/v2` (`internal/adapter/json`) | Public custom JSON projections and hand-written DTOs, including nested large integers |
+| `writeProtoOK` / `writeProtoListOK` | `protojson` | Proto messages with **no** custom JSON projection or nested Uint256, BigUint or SignedBigInt |
 
-**The rule: custom JSON projections define the public shape.** Use the monetary
-writers for negotiated monetary responses, and `writeOKChecked` for other
-fallible custom projections. `protojson` ignores both `MarshalJSON` and
-`MarshalJSONTo`, so it must not bypass a type's custom representation.
+**The rule: custom JSON projections define the public shape.** Shared writers
+receive the request and apply large-integer negotiation automatically. Use
+`writeOKChecked` for fallible custom projections. `protojson` ignores both
+`MarshalJSON` and `MarshalJSONTo`, so it must not bypass a type's custom
+representation or render the internal structure of a nested large integer.
 
-The camelCase convention cannot arbitrate between the two — both encoders satisfy it. The deciding fact is whether a marshaller exists. `internal/adapter/http/encoder_contract_test.go` enforces this in both directions.
+The camelCase convention cannot arbitrate between the two — both encoders
+satisfy it. Custom projections and nested negotiated types determine which
+encoder preserves the public contract.
+`internal/adapter/http/encoder_contract_test.go` enforces the split.
 
 Prefer `writeOKChecked` over `writeOK` when the marshaller can fail (e.g. it marshals a metadata map): `writeOK` streams, so a mid-encode failure appends an error object to an already-committed 200.
 

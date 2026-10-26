@@ -3,6 +3,7 @@ package bytesize
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -55,7 +56,8 @@ var decimalSuffixes = []struct {
 	{"k", K},
 }
 
-// Parse parses a Kubernetes-style byte size string.
+// Parse parses a non-negative Kubernetes-style byte size string.
+// The resulting byte count must fit in an int64; overflow is rejected.
 //
 // Accepted formats:
 //   - Plain integer: "1048576" (bytes)
@@ -69,36 +71,31 @@ func Parse(s string) (ByteSize, error) {
 
 	for _, entry := range binarySuffixes {
 		if before, ok := strings.CutSuffix(s, entry.suffix); ok {
-			num := before
-
-			v, err := strconv.ParseInt(num, 10, 64)
-			if err != nil {
-				return 0, fmt.Errorf("invalid byte size %q: %w", s, err)
-			}
-
-			return ByteSize(v) * entry.mult, nil
+			return parseWithMultiplier(s, before, entry.mult)
 		}
 	}
-
 	for _, entry := range decimalSuffixes {
 		if before, ok := strings.CutSuffix(s, entry.suffix); ok {
-			num := before
-
-			v, err := strconv.ParseInt(num, 10, 64)
-			if err != nil {
-				return 0, fmt.Errorf("invalid byte size %q: %w", s, err)
-			}
-
-			return ByteSize(v) * entry.mult, nil
+			return parseWithMultiplier(s, before, entry.mult)
 		}
 	}
 
-	v, err := strconv.ParseInt(s, 10, 64)
+	return parseWithMultiplier(s, s, 1)
+}
+
+func parseWithMultiplier(input, number string, multiplier ByteSize) (ByteSize, error) {
+	v, err := strconv.ParseInt(number, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("invalid byte size %q: must be a number with optional suffix (Ki, Mi, Gi, Ti, Pi, Ei, k, M, G, T, P, E)", s)
+		return 0, fmt.Errorf("invalid byte size %q: %w", input, err)
+	}
+	if v < 0 {
+		return 0, fmt.Errorf("invalid byte size %q: must be non-negative", input)
+	}
+	if v > math.MaxInt64/int64(multiplier) {
+		return 0, fmt.Errorf("invalid byte size %q: out of range", input)
 	}
 
-	return ByteSize(v), nil
+	return ByteSize(v) * multiplier, nil
 }
 
 // String returns the most human-readable representation of the byte size,

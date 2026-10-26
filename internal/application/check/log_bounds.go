@@ -73,10 +73,10 @@ import (
 // are computed over FRESHLY CREATED logs only; what could point back at an
 // older log was a legacy pre-f9ee1e829 per-order REFERENCE item, never the
 // entry's success range — see the signing-fold comment in checker.go, which
-// filters those items out through this very [min, max] window. v3 is
-// unreleased and carries no compatibility burden with pre-release formats
-// (AGENTS.md, "Release status"), so no store this pass runs against holds such
-// an entry. The tracker's tolerance is legacy defensiveness on the ITEM side,
+// filters those items out through this very [min, max] window. The
+// v3.0.0-rc.1 baseline contains no such entry; later releases must preserve
+// or migrate its audit history. The tracker's tolerance is defensiveness on
+// the ITEM side,
 // not a statement that a success range can reach backwards.
 //
 // The expectation is never seeded from the log stream under test — that is the

@@ -264,7 +264,7 @@ func TestHandleErrorForwardedBareAuthStatusStaysInternal(t *testing.T) {
 // boundary contract. The bulk per-element mapper is a separate dispatch site
 // from handleError, and it was broken by the same cause and repaired by the
 // same change; a forwarded element rejection must roll up under its own status
-// and code rather than the generic 500 / "ERROR" fallback.
+// and code rather than the generic 500 fallback.
 func TestBulkPerElementForwardedFromLeader(t *testing.T) {
 	t.Parallel()
 
@@ -303,10 +303,9 @@ func TestBulkPerElementForwardedFromLeader(t *testing.T) {
 
 			forwarded := grpcerr.FromStatusError(tc.leaderErr)
 
-			require.Equal(t, tc.expectStatus, perElementStatus(forwarded))
-			require.Equal(t, tc.expectCode, bulkErrorCode(forwarded))
-			require.NotEqual(t, "ERROR", bulkErrorCode(forwarded),
-				"a forwarded element rejection must not fall back to the generic code")
+			status, code, _ := bulkElementError(testBulkRequest(), forwarded)
+			require.Equal(t, tc.expectStatus, status)
+			require.Equal(t, tc.expectCode, code)
 		})
 	}
 }
@@ -315,12 +314,10 @@ func TestBulkPerElementForwardedFromLeader(t *testing.T) {
 // sanitization contract TestHandleErrorForwardedInvalidWirePairIsSanitized pins
 // on the unitary path.
 //
-// perElementStatus and bulkErrorCode already withhold the claimed reason, but
-// they are not what the client reads: the description is, and rendering
-// result.err.Error() there put the received reason and code into the response
-// body. The two consumers of the boundary contract must answer an invalid pair
-// identically, so this asserts the client-visible element body directly rather
-// than the two mapping helpers.
+// The two consumers of the boundary contract must answer an invalid pair
+// identically, so this asserts the client-visible element body directly: a
+// description rendering the element error would put the received reason and
+// code into the response body.
 func TestBulkPerElementForwardedInvalidWirePairIsSanitized(t *testing.T) {
 	t.Parallel()
 

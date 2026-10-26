@@ -2,6 +2,8 @@ module github.com/formancehq/ledger/v3/tests/antithesis/workload
 
 go 1.27.0
 
+toolchain go1.27.3
+
 // replace github.com/formancehq/ledger/v3/pkg/client => ../../pkg/client
 replace github.com/formancehq/ledger/v3 => ../../../
 
@@ -10,6 +12,7 @@ replace github.com/formancehq/ledger/v3 => ../../../
 require (
 	github.com/antithesishq/antithesis-sdk-go v0.8.0-default-no-op
 	github.com/formancehq/go-libs/v5 v5.10.0
+	github.com/formancehq/invariants v0.11.0
 	github.com/formancehq/ledger/v3 v3.0.0-00010101000000-000000000000
 	github.com/holiman/uint256 v1.3.2
 	github.com/stretchr/testify v1.11.1
@@ -103,8 +106,7 @@ require (
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/formancehq/invariants v0.11.0 // indirect
-	github.com/formancehq/numscript v0.2.0 // indirect
+	github.com/formancehq/numscript v0.1.2 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/getkin/kin-openapi v0.144.0 // indirect

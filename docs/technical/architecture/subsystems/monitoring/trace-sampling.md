@@ -64,7 +64,7 @@ Remove the former Ledger sampling flags, custom environment variables, and
 `monitoring.traces.sampling` objects from deployment configuration. Install the
 matching Operator/CRDs. The standard SDK variable is now the only sampling
 control needed inside Ledger for the collector path; no replacement custom flag
-or compatibility layer is provided for unreleased v3 configuration.
+or compatibility layer is provided for configuration predating `v3.0.0-rc.1`.
 
 When the main Formance Operator bumps its dependency on this module, its tests
 that construct/assert the removed `TracesConfig.Sampling` field must be updated.

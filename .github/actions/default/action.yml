@@ -12,20 +12,27 @@ runs:
     # Nix, so `nix develop .#ci` reuses the CI dev-shell closure instead of re-fetching
     # it from cache.nixos.org on every run. Must run before Install Nix.
     - name: Set up Nix store cache
-      uses: namespacelabs/nscloud-cache-action@58bf6e08898e88803c098e2b522668541cd3b2e3 # v1.6.0
+      uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
       with:
         path: /nix
     - name: Install Nix
-      uses: cachix/install-nix-action@a49548c11d9846ad46ecc0115273879b045f001c # v31.10.7
+      uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # 31.11.3
     - name: go env
       id: go-env
       shell: bash
       run: |
         nix develop .#ci --command bash -c "go env | sed -E \"s/^([^=]+)='(.*)'\$/\1=\2/\"" >> "$GITHUB_OUTPUT"
     # Dirty uses the linter's default cache directory; keep it aligned with this path.
-    - uses: namespacelabs/nscloud-cache-action@58bf6e08898e88803c098e2b522668541cd3b2e3 # v1.6.0
+    - uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
       with:
         path: |
           ${{ steps.go-env.outputs.GOCACHE }}
           ${{ steps.go-env.outputs.GOMODCACHE }}
           ~/.cache/golangci-lint
+    # Namespace keeps the last commit per node and never merges commits, so a
+    # job that only needs a few modules would drop the modules other jobs need.
+    # Downloading every module here makes each commit carry the full set; on a
+    # warm cache this is a no-op. Must run after the cache mount above.
+    - name: Download Go modules
+      shell: bash
+      run: nix develop .#ci --command just go-mod-download

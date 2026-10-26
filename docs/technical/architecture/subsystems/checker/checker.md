@@ -6,6 +6,8 @@ The checker (`internal/application/check`) verifies that the data persisted in P
 
 Its job is to enforce the system-wide invariant that the audit log is the only source of truth and every other persisted dataset is a re-derivable projection. Anything the checker doesn't verify is, by definition, an unmonitored tampering vector.
 
+`Checker.Check` runs four ordered phases: `pinCheckSnapshots` pins the peer read-index snapshot before the primary snapshot and reads the log head from the primary Log key; `verifyCheckAudit` verifies the audit chain and builds the business oracle even when there are no logs; `replayLogs` scans logs once, emits replay findings and progress, and derives expected state; `compareProjections` checks stored rows against that state. The replay store and both snapshots stay open through the projection phase. This ordering is part of the streamed event contract: audit findings precede replay progress, and projection findings follow it.
+
 ## Surface
 
 `misc/proto/bucket.proto`:
@@ -48,6 +50,8 @@ Each pass takes a persisted projection, re-derives the expected value by replayi
 | 15 | `logBoundsVerifier.compare` | The stored `Log` KEY sequences agree with the range the audit chain accounts for, in **both** directions and **independently**: a deleted log **tail**, which the interior gap scan of pass 1 cannot see, and rows above everything the audit produced. Bounds the audited interval from **above only** — its lower end is pinned in the log loop, which reports a row at reserved key sequence 0 (a position `NextSequenceID` never allocates, and one no other pass can see) | Union of the chain-verified `AuditSuccess` `[min_log_sequence, max_log_sequence]` ranges, each validated against its own entry's chain-verified `AuditItem` sequences | `SEQUENCE_GAP` (tail), `LOG_UNAUDITED`, `LOG_VERIFICATION_INCOMPLETE` |
 
 Notes:
+
+- **Account metadata and transaction projection keys must decode.** A surplus row with a valid protobuf value but a malformed canonical key emits `METADATA_MISMATCH` or `TRANSACTION_UPDATE_MISMATCH`, respectively. The event includes the raw key and decoding error; identity fields remain unset because partial decoding is not authoritative. Each malformed key counts as an error, and checking continues over the remaining rows.
 
 - **`compareIndexes` covers presence + identity** (`IndexID` match), **not `IndexVersionState`** — that state is by design local and may legitimately differ across nodes mid-rewrite (see [indexer / indexes.md](../indexer/indexes.md)).
 - **`compareIndexes` has no unmatched-row tolerance.** Expected = the replayed registry state, and an unmatched stored entry is a hard mismatch. A tolerated stale or tampered registry row is what makes `compareReverseMapOrphans`' registry term treat orphaned reverse-map rows as legitimate — two corrupted projections could mask each other and leave `Check()` clean; do not introduce a tolerance without replacing that coverage.

@@ -11,9 +11,9 @@ spec:
         - script:
             content: |
               kubectl run mc-ri --rm -i --restart=Never \
-                --image=minio/mc --image-pull-policy=IfNotPresent \
+                --image=ghcr.io/formancehq/minio:RELEASE.2025-10-15T17-29-55Z --image-pull-policy=IfNotPresent --command \
                 --env=MC_HOST_minio=http://minioadmin:minioadmin@minio.minio.svc.cluster.local:9000 \
-                -- mb --ignore-existing minio/e2e-restore-incr
+                -- mc mb --ignore-existing minio/e2e-restore-incr
             timeout: 60s
 
     - name: Deploy Cluster

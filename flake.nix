@@ -2,6 +2,11 @@
   description = "A Nix-flake-based Go 1.27 development environment";
 
   inputs = {
+    # Keep application tooling pinned; update only the compiler and its linter.
+    go-tooling = {
+      url = "github:NixOS/nixpkgs/8cec5ef1131078ea76689e84c362b0ed6a1fb6a1";
+      flake = false;
+    };
     nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2605";
     nixpkgs-unstable.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1";
 
@@ -11,7 +16,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, nur }:
+  outputs = { self, go-tooling, nixpkgs, nixpkgs-unstable, nur }:
     let
       supportedSystems = [
         "x86_64-linux"
@@ -76,28 +81,40 @@
 
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         let
+          # Import only Go recipes so unrelated tools and all four platforms stay pinned.
+          go127 = pkgs.callPackage "${go-tooling}/pkgs/development/compilers/go/1.27.nix" {
+            buildGo127Module = build127;
+          };
+          build127 = pkgs.buildGoModule.override { go = go127; };
+          go = go127;
+          golangci-lint = pkgs.callPackage "${go-tooling}/pkgs/by-name/go/golangci-lint/package.nix" {
+            buildGo127Module = build127;
+          };
+
           # Mock generation must understand the root module Go version.
-          buildGoModule = pkgs.buildGoModule.override { go = pkgs.go_1_27; };
+          buildGoModule = build127;
 
           # Tools invoked by CI jobs. Every CI job downloads this closure on a
           # cold Nix cache, so a tool belongs here only if a workflow step,
           # or a recipe/script a workflow step runs, executes it.
           ciPackages = (with pkgs; [
-            go_1_27
+            go
             go-jsonnet
             jsonnet-bundler
             jq
             kubernetes-helm
             python314
           ]) ++ (with pkgs-unstable; [
+            # scripts/checkprotocolversion classifies service contract breaks.
+            buf
             protobuf_34
             (mockgen.override { inherit buildGoModule; })
             protoc-gen-go
             protoc-gen-go-grpc
             protoc-gen-go-vtproto
-            golangci-lint
             just
           ]) ++ [
+            golangci-lint
             pkgs.nur.repos.goreleaser.goreleaser-pro
           ];
 
@@ -118,11 +135,13 @@
           # CI shells do not download them on every cold start.
           mkTaskShell = packages: pkgs.mkShell {
             packages = ciPackages ++ packages;
+            GOTOOLCHAIN = "local";
           };
         in
         {
           ci = pkgs.mkShell {
             packages = ciPackages;
+            GOTOOLCHAIN = "local";
           };
 
           # `just generate-demo`: vhs wraps ffmpeg, ttyd and, on Linux, chromium.
@@ -137,8 +156,12 @@
           # tests/perf k6 load tests and benchstat comparisons.
           perf = mkTaskShell [ pkgs.k6 pkgs-unstable.goperf ];
 
+          # API-server admission regressions for the operator, without Docker.
+          operator-tests = mkTaskShell [ pkgs-unstable.setup-envtest ];
+
           default = pkgs.mkShell {
             packages = ciPackages ++ localPackages;
+            GOTOOLCHAIN = "local";
 
             shellHook = ''
               # Auto-configure envtest assets for operator integration tests.

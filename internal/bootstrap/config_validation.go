@@ -14,9 +14,10 @@ import (
 )
 
 // CurrentStorageSchemaVersion is the storage schema version that this binary
-// expects. Ledger v3 is unreleased; incompatible development stores must be
-// wiped rather than migrated. Schema 1 introduced the cluster-local zone;
-// schema 2 requires the once-committed audit key for history verification.
+// expects. Version 2 is the v3.0.0-rc.1 baseline. Future schema changes must
+// ship a tested migration from the preceding release. Schema 1 introduced the
+// cluster-local zone; schema 2 requires the once-committed audit key for
+// history verification.
 // The old ZoneGlobal boot anchor is rejected before the current layout is read.
 const CurrentStorageSchemaVersion uint32 = 2
 
@@ -38,7 +39,7 @@ func (e *SchemaVersionError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"storage schema version %d is too old: this binary requires version %d (wipe incompatible pre-release data or use the matching binary version)",
+		"storage schema version %d is too old: this binary requires version %d (run a supported migration or use the matching binary version)",
 		e.Persisted, e.Current,
 	)
 }

@@ -8,8 +8,7 @@ import (
 	"math"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
+	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -27,10 +26,8 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	queryName := chi.URLParam(r, "queryName")
-	if queryName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("query name is required"))
-
+	queryName, ok := requirePathParameter(w, r, "queryName", "query name")
+	if !ok {
 		return
 	}
 
@@ -79,6 +76,10 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("unknown mode %q", body.Mode))
 
 		return
+	}
+
+	if mode == commonpb.QueryMode_QUERY_MODE_LIST {
+		body.PageSize = ctrl.ClampPageSize(body.PageSize)
 	}
 
 	params, err := convertJSONParameters(body.Parameters)
@@ -130,7 +131,7 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 	}
 
 	finishProfile(w, r, profile)
-	writeMonetaryJSONResponse(w, r, http.StatusOK, envelope)
+	writeJSONResponse(w, r, http.StatusOK, envelope)
 }
 
 // executePreparedQueryResponseJSON is the clean camelCase envelope for the

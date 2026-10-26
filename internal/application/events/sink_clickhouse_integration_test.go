@@ -129,6 +129,11 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 									Transaction: commonpb.NewTransaction().
 										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(1000))).
 										WithID(1).WithTimestamp(now),
+									AccountMetadata: map[string]*commonpb.MetadataMap{
+										"users:001": {Values: map[string]*commonpb.MetadataValue{
+											"name": commonpb.NewStringValue("Alice"),
+										}},
+									},
 								},
 							},
 						}).WithID(1).WithDate(now),
@@ -150,6 +155,7 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 	cfg.BatchSize = 10
 	emitter := events.NewEmitter(store, sink, "ch-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
+	defer emitter.Stop()
 
 	require.Eventually(t, func() bool {
 		cursor, err := query.ReadSinkCursor(store, "ch-sink")
@@ -158,6 +164,14 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond, "emitter should process all logs")
 
 	emitter.Stop()
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, handle.Close()) })
+	statuses, err := query.BuildSinkStatuses(handle, []*commonpb.SinkConfig{{Name: "ch-sink"}})
+	require.NoError(t, err)
+	require.Len(t, statuses, 1)
+	require.Equal(t, uint64(2), statuses[0].GetCursor())
+	require.Nil(t, statuses[0].GetError(), "successful delivery must clear any publish error")
 
 	// Query ClickHouse and verify rows
 	rows := queryClickHouseEvents(t, dsn, table)
@@ -180,6 +194,9 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 
 	var evt2 map[string]any
 	require.NoError(t, json.Unmarshal([]byte(rows[1].Data), &evt2))
+	require.Equal(t, map[string]any{
+		"users:001": map[string]any{"name": "Alice"},
+	}, evt2["accountMetadata"], "account metadata objects must not be flattened or JSON-encoded strings")
 	tx, ok := evt2["transaction"].(map[string]any)
 	require.True(t, ok, "data should contain transaction object")
 	require.EqualValues(t, 1, tx["id"])
@@ -192,6 +209,15 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 	require.Equal(t, "world", posting["source"])
 	require.Equal(t, "bank", posting["destination"])
 	require.Equal(t, "USD", posting["asset"])
+
+	conn := openTestClickHouseConn(t, dsn)
+	var metadataType, name string
+	require.NoError(t, conn.QueryRow(t.Context(), fmt.Sprintf(
+		"SELECT toTypeName(data.accountMetadata), data.accountMetadata['users:001']['name'] FROM %s WHERE log_sequence = 2", table)).
+		Scan(&metadataType, &name))
+	//nolint:dupword // Nested map syntax is the expected ClickHouse type, not repeated prose.
+	require.Equal(t, "Map(String, Map(String, String))", metadataType)
+	require.Equal(t, "Alice", name)
 }
 
 func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {

@@ -627,7 +627,7 @@ message RemoveAccountTypeLedgerRequest {
 
 message GetPrimaryMetricsRequest {
   // node_id indicates which node to query (0 = local node)
-  uint32 node_id = 1;
+  uint64 node_id = 1;
 }
 
 message GetPrimaryMetricsResponse {
@@ -639,7 +639,7 @@ message GetPrimaryMetricsResponse {
 
 message GetSecondaryMetricsRequest {
   // node_id indicates which node to query (0 = local node)
-  uint32 node_id = 1;
+  uint64 node_id = 1;
 }
 
 message GetSecondaryMetricsResponse {
@@ -1226,6 +1226,9 @@ message ExecutePreparedQueryRequest {
   string ledger = 1;
   string query_name = 2;
   map<string, common.ParameterValue> parameters = 3;
+  // LIST defaults zero to 100 and clamps values above 1000 to 1000 before
+  // collecting or enriching results. The cursor reports the effective size.
+  // AGGREGATE_VOLUMES ignores page_size and aggregates all matching accounts.
   uint32 page_size = 4;
   string cursor = 5;
   common.QueryMode mode = 6;
@@ -1259,6 +1262,8 @@ message GetIndexStatusResponse {
   fixed64 last_indexed_sequence = 1;
   fixed64 last_log_sequence = 2;
   fixed64 lag = 3;
+  // Bytes the answering node's read index occupies on disk, live and obsolete
+  // files included, from Pebble's disk-usage metrics.
   fixed64 index_file_size = 4;
   repeated IndexEntry indexes = 5;
 }
@@ -1510,6 +1515,8 @@ message InspectIndexRequest {
   common.TargetType target_type = 2;
   string metadata_key = 3;
   InspectIndexMode mode = 4;
+  // Values or facets per page. 0 selects 100; values above 10000 are capped
+  // at 10000 and the response carries a next cursor.
   uint32 page_size = 5;
   string cursor = 6;
   fixed64 checkpoint_id = 7;

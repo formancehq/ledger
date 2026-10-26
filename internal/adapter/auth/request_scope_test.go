@@ -31,11 +31,11 @@ func TestRequiredScopeForRequest_PromoteLedger(t *testing.T) {
 }
 
 // TestRequiredScopeForRequest_IndexManagement pins index create/drop to
-// ledger:LedgerWrite. This is the cross-transport parity guard: the HTTP routes
+// ledger:WriteLedger. This is the cross-transport parity guard: the HTTP routes
 // POST/DELETE /v3/{ledgerName}/indexes[/{canonicalId}] are mounted under the
-// ledger:LedgerWrite group (see internal/adapter/http/handler.go), so the gRPC
+// ledger:WriteLedger group (see internal/adapter/http/handler.go), so the gRPC
 // Apply path must resolve to the same scope. Without the explicit cases these
-// requests fell through to the ledger:OpsWrite default, letting an OpsWrite-only
+// requests fell through to the ledger:WriteOps default, letting an OpsWrite-only
 // token manage indexes over gRPC while HTTP required LedgerWrite.
 func TestRequiredScopeForRequest_IndexManagement(t *testing.T) {
 	t.Parallel()
@@ -186,15 +186,15 @@ func TestRequiredScopeForLedgerApply_NilApply(t *testing.T) {
 			Apply: nil,
 		},
 	}
-	// Nil apply defaults to ledger:OpsWrite (most restrictive)
+	// Nil apply defaults to ledger:WriteOps (most restrictive)
 	assert.Equal(t, ScopeOpsWrite, RequiredScopeForRequest(req))
 }
 
 // TestRequiredScopeForRequest_BusinessVariantsDoNotRequireOpsWrite is the
 // EN-1506 regression guard. Each of these operations has a dedicated HTTP
 // route under a business scope; before the fix they fell through to
-// ledger:OpsWrite over gRPC Apply, so an operator scope was needed to perform
-// a business action — and ledger:OpsWrite also grants maintenance mode,
+// ledger:WriteOps over gRPC Apply, so an operator scope was needed to perform
+// a business action — and ledger:WriteOps also grants maintenance mode,
 // signing-key control.
 func TestRequiredScopeForRequest_BusinessVariantsDoNotRequireOpsWrite(t *testing.T) {
 	t.Parallel()
@@ -225,8 +225,8 @@ func TestRequiredScopeForRequest_BusinessVariantsDoNotRequireOpsWrite(t *testing
 
 // TestRequiredScopeForRequest_QueryCheckpointsRequireClusterWrite guards the
 // privilege-escalation half of EN-1506. ClusterService gates these operations
-// on ledger:ClusterWrite (server_cluster.go:442, 481), which DefaultMapping
-// grants only via ledger:admin. While Apply accepted ledger:OpsWrite, any
+// on ledger:WriteCluster (server_cluster.go:442, 481), which DefaultMapping
+// grants only via ledger:admin. While Apply accepted ledger:WriteOps, any
 // ledger:write token could perform them.
 func TestRequiredScopeForRequest_QueryCheckpointsRequireClusterWrite(t *testing.T) {
 	t.Parallel()
@@ -248,7 +248,7 @@ func TestRequiredScopeForRequest_QueryCheckpointsRequireClusterWrite(t *testing.
 			got := RequiredScopeForRequest(tc.req)
 			assert.Equal(t, ScopeClusterWrite, got)
 			assert.NotEqual(t, ScopeOpsWrite, got,
-				"an admin-only cluster operation must not be reachable with ledger:OpsWrite")
+				"an admin-only cluster operation must not be reachable with ledger:WriteOps")
 		})
 	}
 }

@@ -77,6 +77,7 @@ needs_e2e=false
 needs_scenarios=false
 needs_schemathesis=false
 needs_operator=false
+needs_protocol=false
 has_change=false
 changed_packages=()
 
@@ -93,6 +94,12 @@ classify_path() {
     local status=$1
     local path=$2
     has_change=true
+
+    # Service contract or revision edits are classified against the base by
+    # scripts/checkprotocolversion, independently of the gates below.
+    case "$path" in
+        misc/proto/*|pkg/grpcprotocol/*) needs_protocol=true ;;
+    esac
 
     case "$status" in
         A|D|M) ;;
@@ -216,6 +223,9 @@ fi
 if [[ "$needs_operator" == true ]]; then
     gates+=(test-operator)
 fi
+if [[ "$needs_protocol" == true ]]; then
+    gates+=(protocol-revision)
+fi
 
 if [[ "$mode" == list ]]; then
     printf '%s\n' "${gates[@]}"
@@ -279,6 +289,10 @@ if [[ "$mode" == normalize ]]; then
 fi
 
 echo "==> agent-check-pr: selected local gates: ${gates[*]}"
+if [[ "$needs_protocol" == true ]]; then
+    # Cheap and decisive: run before the long suites.
+    PROTOCOL_BASE_SHA="$base_sha" just check-protocol-version
+fi
 if [[ "$needs_full" == true ]]; then
     bash "$SCRIPT_DIR/agent-check-full"
 else

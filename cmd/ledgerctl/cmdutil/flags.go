@@ -100,19 +100,39 @@ func DrainAllPages[T any](
 	initialCursor string,
 	fetchPage FetchPager[T],
 ) ([]T, error) {
+	return DrainPages(initialCursor, func(cursor string) ([]T, string, error) {
+		items, trailer, err := fetchPage(cursor)
+		if err != nil {
+			return nil, "", err
+		}
+
+		return items, NextCursorFromTrailer(trailer), nil
+	})
+}
+
+// NextPager is the signature accepted by DrainPages: it fetches one page and
+// returns its items plus the next-page cursor, or "" on the last page.
+type NextPager[T any] func(cursor string) (items []T, next string, err error)
+
+// DrainPages follows a next-cursor chain from initialCursor and returns every
+// item. Use it for RPCs that carry the cursor in the response body (e.g.
+// ExecutePreparedQuery); streaming list RPCs use DrainAllPages.
+func DrainPages[T any](
+	initialCursor string,
+	fetchPage NextPager[T],
+) ([]T, error) {
 	var all []T
 
 	cursor := initialCursor
 
 	for {
-		items, trailer, err := fetchPage(cursor)
+		items, next, err := fetchPage(cursor)
 		if err != nil {
 			return nil, err
 		}
 
 		all = append(all, items...)
 
-		next := NextCursorFromTrailer(trailer)
 		if next == "" {
 			return all, nil
 		}

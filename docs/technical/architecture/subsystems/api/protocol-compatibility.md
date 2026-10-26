@@ -3,11 +3,11 @@
 ## Requirement and decision (EN-1851)
 
 [EN-1851](https://formance-team.atlassian.net/browse/EN-1851) requires detecting
-an incompatible `ledgerctl` before it executes a business operation. Ledger v3
-is unreleased: its protobuf fields may be renumbered between development
-revisions, and a mismatched request can decode with a different meaning rather
-than fail to decode. Build versions and commit IDs do not establish protocol
-compatibility.
+an incompatible `ledgerctl` before it executes a business operation. Before
+`v3.0.0-rc.1`, protobuf fields could be renumbered between development
+revisions, and a mismatched request could decode with a different meaning
+rather than fail to decode. Build versions and commit IDs do not establish
+protocol compatibility.
 
 The approved decision is to **block requests with a different or missing
 protocol revision**, using a revision independent of the software release.
@@ -15,7 +15,8 @@ Each server supports exactly one revision. There is no negotiation, historical
 format support, or bypass flag. An advisory warning would not enforce the
 requirement; exact commit matching would also reject builds whose service
 contract has not changed. Release SemVer does not currently encode the
-compatibility of development revisions.
+compatibility of development revisions. During the RC line, revision 40 is
+frozen and the published gRPC wire contract must remain compatible.
 
 ## Wire contract and failure behavior
 
@@ -48,6 +49,17 @@ and HTTP `GET /_info`'s `protocolVersion` report the server revision.
 Restore mode does not register Discovery: its service gate provides the
 compatibility error without requiring a preliminary Discovery call, while
 health and reflection remain exempt.
+
+The prepared-query `LIST` pagination correction retains revision 40 and the
+published protobuf wire contract. Every entry point now defaults zero to 100
+and clamps values above 1,000 before pagination and enrichment. Existing clients
+that requested oversized pages receive at most 1,000 items and the effective
+size in the cursor; they must follow continuation tokens to retrieve remaining
+results. No client rebuild or protocol metadata change is required. During a
+rolling upgrade, an older server can still return oversized pages until all
+servers are upgraded; clients must tolerate either page length. This read-only
+correction changes no committed entries, persisted data or Raft apply semantics.
+`AGGREGATE_VOLUMES` remains independent of the `LIST` page-size limit.
 
 Revision 6 (EN-2009) makes fresh `CreateIndex` requests strict: an existing
 ledger/canonical index identity returns `INDEX_ALREADY_EXISTS` (`AlreadyExists`)
@@ -98,9 +110,10 @@ server-specific compatibility repair.
 HTTP consumers do not send this gRPC metadata. Internal forwarding from HTTP
 uses the server's service client and is subject to the same gate at the peer.
 Nodes with different service revisions can therefore fail forwarded requests;
-this mechanism does not establish support for mixed-version clusters or rolling
-wire-format upgrades. The separate Raft transport and snapshot server retain
-their own contracts.
+the revision-40 wire contract alone does not prove a rolling upgrade safe. RC
+updates must also preserve peer communication, Raft apply, and persisted-state
+compatibility while old and new servers coexist. The separate Raft transport and
+snapshot server retain their own contracts. See [server upgrades](../../../../ops/upgrades.md).
 
 ## Apply execution provenance (revision 7)
 
@@ -347,31 +360,59 @@ must implement the same revision; there is no compatibility fallback.
 
 ## Maintaining the revision
 
-The author of a service contract change must determine whether an existing
-client or server would interpret requests, responses, or operations differently.
-Increment the decimal counter `pkg/grpcprotocol.Version` by one in the same PR
-for an incompatible wire or semantic change (for example, `"1"` to `"2"`), and
-rebuild every service client and server that will communicate. This includes
-renumbering or changing the interpretation of exposed
-protobuf fields, and incompatible semantics even when the `.proto` text stays
-unchanged. Reviewers must check this classification; the revision is not inferred
-from a release tag or automatically negotiated from a schema hash.
+Ledger v3 is in its release-candidate phase. The revision is frozen at `"40"`:
+do not increment `pkg/grpcprotocol.Version`. Preserve published gRPC service
+and method names, request and response types, protobuf field numbers, wire
+types, field identity, and enum numbers so existing clients can call and decode
+the service. The revision identifies this wire contract; it does not freeze
+every behavior or configuration setting for the release-candidate phase.
 
-This obligation applies to AI agents throughout pre-release development, even
-though older Ledger versions and storage formats are not supported. Before
-publication, and again after a rebase or target-branch update, compare the
-revision with the target branch. If another PR has already consumed the planned
-number, increment from the target branch's current value so a newly incompatible
-contract does not reuse that number. Keep examples of the current revision in
-sync. State the compatibility assessment and the old/new revision in the PR;
-when no increment is needed, explain why. Documentation-only changes do not
-increment the counter.
+The author of a service change must identify its effect on published clients.
+Removing or renaming a published RPC, changing its request or response type,
+or removing, renumbering, or repurposing a published field or enum value is not
+allowed during the RC. Behavior and configuration changes can ship when their
+effect and upgrade steps are documented in the PR and user guidance. Reviewers
+must check whether a client can still decode the response and how it must
+handle any changed result. Do not bump the revision to avoid this assessment.
+Documentation-only changes need no client assessment.
 
-Compatible additions need not bump the revision only when both directions remain
-compatible under the declared service contract. A change confined to a persisted
-or Raft message does not automatically change the service protocol; inspect any
-shared types exposed through the service API. See
+The service wire contract is separate from the
+[persisted-data upgrade guarantee](../../../../ops/upgrades.md#release-requirement-from-v300-rc1).
+
+An additive service field must preserve decoding in both directions. A change
+confined to a persisted or Raft message does not automatically change the service
+protocol; inspect any shared types exposed through the service API. Existing
+persisted and audited data must remain readable, or have a safe migration. See
 [protobuf contributor rules](../../../contributing/protobuf.md).
+
+### Automated enforcement
+
+`PROTOCOL_BASE_SHA=<commit> just check-protocol-version` enforces the wire part
+of the freeze.
+The required `Dirty` check and the `invariants` check run it on pull requests
+and merge-queue entries against the target tip, including after a PR changes
+base. `agent-check-pr` runs it when `misc/proto/**` or
+`pkg/grpcprotocol/**` changes.
+
+1. The check reads `Version` at the base and in the worktree. Any change fails.
+2. The check runs `buf breaking` between the base and the worktree with the
+   rules in `misc/proto/buf.yaml` (`WIRE`, `SERVICE_NO_DELETE`,
+   `RPC_NO_DELETE`). Deleting, renumbering, or retyping a field is reported;
+   adding a field or a wire-compatible widening such as `int32` to `int64` is
+   not. `buf` is used only for this classification; code generation stays on
+   `protoc`.
+3. The check keeps a finding only when its innermost enclosing declaration is
+   a gated service (`BucketService`, `ClusterService`, `RestoreService`) or a
+   message or enum transitively reachable from one of their RPCs. It uses source
+   line and column to distinguish nested declarations on the same line. A
+   finding it cannot attribute to a declaration counts when its file declares a
+   gated type. Raft-only and persisted-only messages are not counted.
+4. Any kept finding fails the check. A revision bump does not excuse it.
+
+The check does not detect semantic changes that keep the `.proto` text
+unchanged; those remain the author's and reviewer's classification. When a
+gated service is added or renamed, update `gatedServices()` in the same PR: the
+check fails if a listed service no longer exists.
 
 The gate is a transport admission check. Its metadata and revision are not
 persisted, included in audited business intent, or consulted during Raft apply.
@@ -429,9 +470,10 @@ would publish or look for a manifest the other never reads, so an incremental
 backup fails for want of a checkpoint, a restore 404s, or — if both layouts are
 present in one bucket — either side silently selects the wrong chain.
 
-Ledger v3 is unreleased and no backup written under the old layout is
-supported, so there is no migration: operators re-run a full backup under the
-new layout.
+This change preceded `v3.0.0-rc.1`. Backups written under the old development
+layout were unsupported, so operators had to run a full backup under the new
+layout. Releases from the RC onward follow the
+[data migration requirement](../../../../ops/upgrades.md#release-requirement-from-v300-rc1).
 
 ## Structured audited failures (revision 30)
 
@@ -471,8 +513,8 @@ boundaries.
 
 The audit hash pre-image now binds the selected arm number alongside the
 sorted rendered fact keys and values. Persisted failures from revision 31
-cannot be read or verified under revision 32. Ledger v3 is unreleased, so
-deployments must start with fresh state; mixed revisions cannot share a
+cannot be read or verified under revision 32. This change preceded the first RC,
+so deployments had to start with fresh state; mixed revisions could not share a
 cluster or service connection.
 
 ## Contextual metadata validation failures (revision 33)
@@ -518,16 +560,18 @@ Revision 35 removes detail variants for failures that cannot be written to an
 audited order outcome. Read aggregation overflow, admission dependency discovery,
 execution-plan size, idempotency lookup, write health gates, and audit availability
 remain public errors with their existing reason, code, status and fact presentation.
-A malformed caller attribution and a maintenance gate can also reject a committed
+Malformed caller attribution and a maintenance gate can also reject a committed
 proposal in the FSM, but both return before the order-audit path; they are not
-`AuditFailure` records. `PRELOAD_UNAVAILABLE` also returns before order
+`AuditFailure` records. Maintenance mode remains a public operational error;
+malformed caller attribution is an internal trust-boundary failure with no
+public `ErrorReason`. `PRELOAD_UNAVAILABLE` also returns before order
 processing when no earlier idempotency outcome exists: it is a retryable
 preparation interruption with no audit entry or frozen result.
 `STALE_PROPOSAL` and `INVALID_EXECUTION_PLAN` remain typed audited outcomes.
 
 The `FailureDetails` oneof now contains only variants eligible for the audited
-projection. Removed arms are renumbered sequentially because Ledger v3 is
-unreleased. This also removes the unreachable bare `validation` arm: it had no
+projection. Removed arms were renumbered sequentially before the first RC.
+This also removes the unreachable bare `validation` arm: it had no
 allowed failure reason or producer; concrete validation failures retain their
 own typed arms. The service revision changes to 35 because this shared protobuf type
 is exposed by gRPC. Existing revision-34 state must be discarded; clients and
@@ -543,8 +587,8 @@ proposal or an admission coverage contract violation. An affected proposal
 returns its typed error without an `AuditFailure` entry or frozen idempotency
 result; staged order writes are discarded. A corrected proposal can be retried.
 Successful cluster-policy updates still produce audited orders and the policy
-projection remains checker-verified. The removed arms are renumbered because
-v3 is unreleased. This shared gRPC change requires revision 36 on both sides.
+projection remains checker-verified. The removed arms were renumbered before
+the first RC. This shared gRPC change requires revision 36 on both sides.
 
 ## Technical failures outside the audited outcome (revision 37)
 
@@ -574,7 +618,7 @@ arm number, the explicit facts, and unknown field bytes; checker validation
 rejects missing or invalid arms. Public HTTP, bulk skip, audit JSON, and event
 responses still render the same `code` from the arm. gRPC `ErrorInfo` continues
 to expose the coarse reason and the facts as metadata.
-The fields are removed and renumbered because v3 is unreleased. This shared
+The fields were removed and renumbered before the first RC. This shared
 protobuf change requires fresh v3 state and revision 38 clients and servers.
 
 ## Derive stored failure reasons from typed details (revision 39)
@@ -593,8 +637,8 @@ validates that it matches the typed details before emitting an `OrderSkippedLog`
 Public HTTP and JSON responses continue to render the same reason, code, and
 facts; gRPC clients reading `OrderSkippedLog` derive its reason from `details`.
 The removed and renumbered protobuf fields change the service wire format.
-Ledger v3 is unreleased, so deployments start with fresh state and use revision
-39 clients and servers together.
+This change preceded the first RC, so deployments started with fresh state and
+used revision 39 clients and servers together.
 
 ## Retry writes while the health verdict is unknown (revision 40)
 
@@ -606,3 +650,47 @@ policy retry the request. A measured disk block still returns
 block retains its existing response. Admission checks the gate before proposing
 an order, so a retry after `Unavailable` cannot duplicate a committed write.
 This status change requires revision 40 clients and servers together.
+
+## Capped index inspection page size
+
+EN-2946 caps `InspectIndexRequest.page_size` at 10000 in the read store, which
+HTTP and gRPC share. A request for more than 10000 values or facets returns
+10000, `has_more`, and a next cursor. Earlier builds returned the full requested
+page. The protobuf text changes only by a comment. Clients that previously
+treated the requested page as complete must now follow the cursor to read all
+results. This response behavior changes under revision 40 by the RC policy;
+the revision is frozen, and the client impact must be documented.
+
+## Cluster node ID width
+
+Cluster status, leadership-transfer identities and both store-metrics request
+targets widen their existing fields from `uint32` to `uint64`, retaining names,
+field numbers and unsigned-varint wire encoding. Revision 40 remains unchanged. Values through `4294967295`
+have the same representation and interpretation in old and new readers.
+Older generated readers truncate larger values to 32 bits: IDs `1` and
+`4294967297` can appear identical, and an old server can route a high-ID
+request to the wrong member. Old CLI builds also reject high transfer and
+store-metrics targets.
+ProtoJSON renders these widened fields as decimal strings rather than the
+previous uint32 JSON numbers, including structured CLI status output; JSON/YAML
+consumers must accept that representation. Regenerate clients from the updated
+schema and update the CLI and every server
+participating in status forwarding, leadership transfer or store-metrics routing
+before using these operations with IDs above `4294967295`. During rolling
+upgrades, those high-ID operations remain unreliable through older servers; complete the rollout first.
+This change does not alter persisted member identities, Raft transport,
+committed entry application, audit history, snapshots or backups, and requires
+no persisted-state migration. Existing configured high IDs remain intact.
+
+## Granular scope naming during the RC line
+
+The 14 Ledger granular authorization labels change from
+`ledger:<Resource><Action>` to `ledger:<Action><Resource>`. Clients that send
+granular labels in JWTs must request and receive the new labels. The aggregate
+`ledger:read`, `ledger:write`, and `ledger:admin` labels retain their meaning,
+and the gRPC wire contract remains at revision 40. This authentication behavior
+change requires updated token mappings but no client protocol revision change.
+Custom and anonymous scope mappings must use the new granular values; see the
+[authentication migration](../../../../ops/authentication.md#migration-from-rc1-granular-labels).
+Persisted audit snapshots retain the exact effective scope strings captured at
+admission, so historical hashes remain verifiable without a storage migration.

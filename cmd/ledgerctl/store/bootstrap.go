@@ -134,61 +134,20 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	spinner.Success(fmt.Sprintf("Manifest loaded: %d checkpoint files, %d export segments",
 		checkpointFiles, len(manifest.Exports)))
 
-	// Create staging directory
 	stagingDir := filepath.Join(dataDir, "restore-staging")
-	if err := os.MkdirAll(stagingDir, 0o755); err != nil {
-		return fmt.Errorf("creating staging directory: %w", err)
+	var files map[string]backup.CheckpointFile
+	if manifest.Checkpoint != nil {
+		files = manifest.Checkpoint.Files
 	}
 
-	// Download checkpoint files (if any)
-	if manifest.Checkpoint != nil && len(manifest.Checkpoint.Files) > 0 {
-		dlSpinner := cmdutil.StartSpinner("Downloading checkpoint files...")
+	dlSpinner := cmdutil.StartSpinner("Downloading checkpoint files...")
+	totalBytes, err := downloadBootstrapCheckpoint(cmd.Context(), storage, dataDir, files)
+	if err != nil {
+		dlSpinner.Fail("Failed to download checkpoint files")
 
-		var totalBytes uint64
-
-		for filename, cf := range manifest.Checkpoint.Files {
-			// Resolve by the content-addressed key recorded in the manifest,
-			// never by reconstructing prefix+filename: the manifest is the
-			// authoritative pointer to the exact object bytes it committed.
-			key := cf.Key
-			destPath := filepath.Join(stagingDir, filepath.FromSlash(filename))
-
-			if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-				dlSpinner.Fail("Failed to create directory")
-
-				return cmdutil.Displayed(fmt.Errorf("creating directory for %s: %w", filename, err))
-			}
-
-			reader, err := storage.GetFile(cmd.Context(), key)
-			if err != nil {
-				dlSpinner.Fail("Failed to download file")
-
-				return cmdutil.Displayed(fmt.Errorf("downloading %s: %w", filename, err))
-			}
-
-			outFile, err := os.Create(destPath)
-			if err != nil {
-				_ = reader.Close()
-				dlSpinner.Fail("Failed to create file")
-
-				return cmdutil.Displayed(fmt.Errorf("creating file %s: %w", filename, err))
-			}
-
-			n, err := io.Copy(outFile, reader)
-			_ = reader.Close()
-			_ = outFile.Close()
-
-			if err != nil {
-				dlSpinner.Fail("Failed to write file")
-
-				return cmdutil.Displayed(fmt.Errorf("writing file %s: %w", filename, err))
-			}
-
-			totalBytes += uint64(n)
-		}
-
-		dlSpinner.Success(fmt.Sprintf("Downloaded %d checkpoint files (%s)", len(manifest.Checkpoint.Files), cmdutil.FormatBytes(totalBytes)))
+		return cmdutil.Displayed(err)
 	}
+	dlSpinner.Success(fmt.Sprintf("Downloaded %d checkpoint files (%s)", len(files), cmdutil.FormatBytes(totalBytes)))
 
 	logger := logging.NopZap()
 
@@ -470,4 +429,72 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 	pterm.Success.Println("Backup is valid - no integrity errors found")
 
 	return nil
+}
+
+// downloadBootstrapCheckpoint stages untrusted manifest filenames through a root
+// capability. Staging must be a real directory because later Pebble/finalization
+// operations use its pathname. Failed downloads may leave partial staging files.
+func downloadBootstrapCheckpoint(ctx context.Context, storage backup.Storage, dataDir string, files map[string]backup.CheckpointFile) (_ uint64, retErr error) {
+	// dataDir is selected by the local operator, not by the backup manifest.
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return 0, fmt.Errorf("creating data directory: %w", err)
+	}
+	dataRoot, err := os.OpenRoot(dataDir)
+	if err != nil {
+		return 0, fmt.Errorf("opening data directory: %w", err)
+	}
+	defer func() { retErr = errors.Join(retErr, dataRoot.Close()) }()
+
+	if err := dataRoot.Mkdir("restore-staging", 0o755); err != nil && !errors.Is(err, os.ErrExist) {
+		return 0, fmt.Errorf("creating staging directory: %w", err)
+	}
+	info, err := dataRoot.Lstat("restore-staging")
+	if err != nil {
+		return 0, fmt.Errorf("checking staging directory: %w", err)
+	}
+	if !info.IsDir() {
+		return 0, errors.New("staging must be a real directory")
+	}
+	stagingRoot, err := dataRoot.OpenRoot("restore-staging")
+	if err != nil {
+		return 0, fmt.Errorf("opening staging directory: %w", err)
+	}
+	defer func() { retErr = errors.Join(retErr, stagingRoot.Close()) }()
+
+	var totalBytes uint64
+	for filename, cf := range files {
+		localName := filepath.FromSlash(filename)
+		if !filepath.IsLocal(localName) {
+			return 0, fmt.Errorf("non-local checkpoint filename %q", filename)
+		}
+		if err := stagingRoot.MkdirAll(filepath.Dir(localName), 0o755); err != nil {
+			return 0, fmt.Errorf("creating directory for %s: %w", filename, err)
+		}
+
+		// Resolve the exact content-addressed object selected by the manifest.
+		// CopyVerified checks its bytes, but does not authenticate the manifest
+		// or constrain destination paths; the root capability does the latter.
+		reader, err := storage.GetFile(ctx, cf.Key)
+		if err != nil {
+			return 0, fmt.Errorf("downloading %s: %w", filename, err)
+		}
+		outFile, err := stagingRoot.Create(localName)
+		if err != nil {
+			_ = reader.Close() // Best-effort cleanup after destination creation failed.
+
+			return 0, fmt.Errorf("creating file %s: %w", filename, err)
+		}
+
+		n, err := cf.CopyVerified(outFile, reader)
+		_ = reader.Close() // Read-only object cleanup; copy reports read failures.
+		if closeErr := outFile.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
+		if err != nil {
+			return 0, fmt.Errorf("writing file %s: %w", filename, err)
+		}
+		totalBytes += uint64(n)
+	}
+
+	return totalBytes, nil
 }

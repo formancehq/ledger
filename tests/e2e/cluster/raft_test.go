@@ -155,7 +155,7 @@ var _ = Describe("Simple cluster", func() {
 				for i, server := range servers {
 					diagnosticCtx, cancel := context.WithTimeout(ctx, time.Second)
 					state, err := server.ClusterClient.GetClusterState(diagnosticCtx, &clusterpb.GetClusterStateRequest{
-						NodeId: uint32(i + 1),
+						NodeId: uint64(i + 1),
 					})
 					cancel()
 					AddReportEntry(fmt.Sprintf("follower catch-up: node %d", i+1),
@@ -168,12 +168,33 @@ var _ = Describe("Simple cluster", func() {
 			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
+			progressCtx, cancelProgress := context.WithTimeout(ctx, 2*time.Second)
+			leaderState, err := servers[lid-1].ClusterClient.GetClusterState(progressCtx, &clusterpb.GetClusterStateRequest{
+				NodeId: lid,
+			})
+			cancelProgress()
+			Expect(err).To(Succeed())
+			targetIndex := leaderState.GetRaftStatus().GetLastIndex()
+
 			testutil.RestartNode(ctx, servers[followerID-1])
 
 			Eventually(servers[followerID-1]).
 				WithTimeout(30*time.Second).
 				WithPolling(500*time.Millisecond).
 				Should(BeFollower(), "Timed out waiting for node to become follower")
+			// Knowing the leader does not mean the follower has restored its
+			// state. Allow snapshot transfer and replay to finish before reads.
+			Eventually(func(g Gomega) {
+				progressCtx, cancelProgress := context.WithTimeout(ctx, 2*time.Second)
+				defer cancelProgress()
+				followerState, err := servers[followerID-1].ClusterClient.GetClusterState(progressCtx, &clusterpb.GetClusterStateRequest{
+					NodeId: followerID,
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(followerState.GetRaftStatus().GetApplied()).To(BeNumerically(">=", targetIndex))
+				g.Expect(followerState.GetRaftStatus().GetLastPersistedIndex()).To(BeNumerically(">=", targetIndex))
+			}).Within(30 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+
 			// Eventually cannot interrupt a blocked streaming RPC. Bound the
 			// whole polling window so a stalled read barrier fails this spec
 			// and captures Raft/Pebble progress instead of timing out the suite.
@@ -200,12 +221,12 @@ var _ = Describe("Simple cluster", func() {
 			var followerLastIndex uint64
 			Eventually(func(g Gomega) {
 				leaderState, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-					NodeId: uint32(lid),
+					NodeId: lid,
 				})
 				g.Expect(err).To(Succeed())
 
 				followerState, err := servers[followerID-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-					NodeId: uint32(followerID),
+					NodeId: followerID,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(followerState.GetState()).To(Equal("Follower"))
@@ -230,7 +251,7 @@ var _ = Describe("Simple cluster", func() {
 			var targetIndex uint64
 			Eventually(func(g Gomega) {
 				leaderState, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-					NodeId: uint32(lid),
+					NodeId: lid,
 				})
 				g.Expect(err).To(Succeed())
 
@@ -288,7 +309,7 @@ var _ = Describe("Simple cluster", func() {
 			By("Waiting for the follower's applied and durable indexes to pass the installed snapshot")
 			Eventually(func(g Gomega) {
 				followerState, err := servers[followerID-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-					NodeId: uint32(followerID),
+					NodeId: followerID,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(followerState.GetState()).To(Equal("Follower"))
