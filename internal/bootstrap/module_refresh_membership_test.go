@@ -98,20 +98,9 @@ func TestTryRefreshMembershipStopsRetryingWhenContextIsCanceled(t *testing.T) {
 	cfg := refreshTestConfig(t, serveRefreshMembership(t, peer))
 
 	ctx, cancel := context.WithCancel(context.Background())
-	started := make(chan struct{})
-	go func() {
-		for {
-			if peer.attempts.Load() > 0 {
-				close(started)
-				return
-			}
-			time.Sleep(time.Millisecond)
-		}
-	}()
-
 	result := make(chan error, 1)
 	go func() { result <- tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logging.Testing()) }()
-	<-started
+	require.Eventually(t, func() bool { return peer.attempts.Load() > 0 }, time.Second, time.Millisecond)
 	cancel()
 	require.ErrorIs(t, <-result, context.Canceled)
 }
