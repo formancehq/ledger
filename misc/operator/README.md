@@ -651,6 +651,12 @@ For a size/profile template change, the operator uses the following sequence:
    This ordering makes a lost cleanup response recoverable.
 8. Resume deferred scale, image, TLS and other workload changes after recovery.
 
+`ClaimTemplatesReady=False/PreparationFailed` identifies a preparation error.
+After preparation hands control to recovery, failures retain
+`ClaimTemplatesReady=False/RecoveryFailed`, including a failed initial
+orphan-delete or replacement-create attempt. The journal and protected pointer
+remain available for retry.
+
 Protected Cluster status authorizes the journal. A ConfigMap ownerReference,
 name, structure or digest supplied only by the ConfigMap cannot authorize it.
 Each active resume repeats authentication before consuming its bytes or deriving

@@ -615,6 +615,20 @@ Kubernetes permits it. Immutable/identity mismatches require an operator-led
 recovery; deleting the journal/pointer or claims and forced adoption are not
 supported escape paths.
 
+The initial preparation-to-resume handoff must preserve the resume condition.
+Inject an orphan-delete or replacement-create failure during that first call,
+assert `RecoveryFailed` rather than `PreparationFailed`, retain the bound
+journal/pointer and original error through the durable-write fence, then prove
+a fresh reconciler retries the same operation successfully. Preparation errors
+before handoff still report `PreparationFailed`; retry accounting stays single.
+
+An optimistic PVC-lock regression must place a larger concurrent request after
+the authoritative read and before the patch. Observe the actual stale-patch
+conflict and subsequent reread, then assert the larger request, UID and
+annotations survive without expansion annotations from the rejected patch.
+Keep the separate case where the larger request already exists before the
+direct read. Removing the optimistic lock must fail the conflict regression.
+
 Do not equate aggregate `Pending`, `Ready=False` or `0/N` during StatefulSet
 absence with actual retained-Pod loss. Inspect the Pods and recovery condition.
 Intentional Cluster deletion during the orphan window must account for Pods

@@ -222,6 +222,11 @@ The ConfigMap cannot choose a different domain or digest authority.
 
 These phases are inferred from the pointer: Preparing has no ConfigMap UID,
 Active has a bound UID, and Completed has that UID plus `completed: true`.
+Preparation reports its own errors as `PreparationFailed`. Once it calls the
+initial recovery resume, that resume owns the condition: an orphan-delete or
+replacement-create error remains `RecoveryFailed`, even in the same reconcile
+pass. The preparation wrapper still preserves the durable-write error fence
+and records the failed attempt once.
 Every transition compares the whole expected previous pointer and uses an
 optimistic resourceVersion. A conflict returns for fresh observations; retry
 must never refresh and overwrite a newer operation or clear its pointer.
