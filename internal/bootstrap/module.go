@@ -286,8 +286,7 @@ func Module() fx.Option {
 			},
 			newCommittedBloomFilterSet,
 			func(cfg Config, n *node.Node, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, bloomFilters *bloom.FilterSet, logger logging.Logger) *plan.Builder {
-				return plan.NewBuilder(n.IndexTracker(), c, attrs, store, bloomFilters, logger, cfg.MaxExecutionPlanSize).
-					WithCapabilityMembers(n.CapabilityMembers)
+				return plan.NewBuilder(n.IndexTracker(), c, attrs, store, bloomFilters, logger, cfg.MaxExecutionPlanSize)
 			},
 			fx.Annotate(func(
 				cfg Config,
