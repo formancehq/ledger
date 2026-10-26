@@ -16,7 +16,7 @@ func TestLeaderMembershipOperationsRejectMissingRowBeforeMutation(t *testing.T) 
 
 	for name, invoke := range map[string]func(context.Context, *Node) error{
 		"add learner": func(ctx context.Context, n *Node) error {
-			return n.AddLearner(ctx, 2, "peer:7777", "peer:8888", []byte("next-instance-id"))
+			return n.AddLearner(ctx, 2, "peer:7777", "peer:8888", []byte("next-instance-id"), nil)
 		},
 		"remove node": func(ctx context.Context, n *Node) error {
 			return n.RemoveNode(ctx, 2)

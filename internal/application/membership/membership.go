@@ -90,13 +90,9 @@ func (s *Service) IsRemoved(nodeID uint64, instanceID []byte) (bool, error) {
 //
 // Returns node.ErrNodeAlreadyInCluster on idempotent retries; adapters
 // map that to their transport-specific "already-exists" status.
-func (s *Service) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	return s.AddLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, nil)
-}
-
-// AddLearnerWithCapabilities registers a learner and carries the joining
-// binary's capability evidence in the committed ConfChange.
-func (s *Service) AddLearnerWithCapabilities(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
+// AddLearner registers a learner and carries the joining binary's capability
+// evidence in the committed ConfChange.
+func (s *Service) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
 	return s.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs, false)
 }
 
@@ -149,7 +145,7 @@ func (s *Service) addLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 	if bootJoin {
 		err = s.node.JoinAsLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs)
 	} else {
-		err = s.node.AddLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs)
+		err = s.node.AddLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs)
 	}
 	if err != nil {
 		return fmt.Errorf("adding learner: %w", err)

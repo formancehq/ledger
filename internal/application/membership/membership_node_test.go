@@ -183,7 +183,7 @@ func TestService_ListPeersReturnsCompleteIndependentSnapshot(t *testing.T) {
 		s := newMembershipServiceNode(t)
 		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		defer cancel()
-		require.NoError(t, s.AddLearner(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id")))
+		require.NoError(t, s.AddLearner(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id"), nil))
 		// A cached row alone must not leak into the configured member response.
 		require.NoError(t, s.infraMembership.Set(3, "extra:7777", "extra:8888", []byte("extra-instanceid")))
 		want := []Peer{

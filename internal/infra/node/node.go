@@ -3143,14 +3143,10 @@ func classifyExistingLearner(match uint64, existingInstanceID, incomingInstanceI
 // the explicit call path selects the admission semantics.
 //
 // Must be called on the leader.
-func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	return node.AddLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, nil)
-}
-
-// AddLearnerWithCapabilities proposes a learner registration carrying the
-// caller's capability proof. The proof is persisted with the peer identity and
-// is required by the active capability policy.
-func (node *Node) AddLearnerWithCapabilities(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
+// AddLearner proposes a learner registration carrying the caller's capability
+// proof. The proof is persisted with the peer identity and is required by the
+// active capability policy.
+func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
 	return node.addLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs, false)
 }
 
