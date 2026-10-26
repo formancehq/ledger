@@ -20,29 +20,26 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// WaitForAppliedFunc blocks until the FSM has applied entries up to targetIndex.
-// It fails with state.ErrStoreResynchronizing when the local store is behind
-// its Raft log and must not serve a checkpoint.
-type WaitForAppliedFunc func(ctx context.Context, targetIndex uint64) error
-
-// SnapshotReadinessFunc returns the donor's durable FSM cursor and whether it
-// is currently resynchronizing. It must not wait or create a checkpoint.
-type SnapshotReadinessFunc func() (lastPersistedIndex uint64, resynchronizing bool)
+// SnapshotDonor exposes the applier state needed by the snapshot service.
+// SnapshotReadiness must not wait or create a checkpoint.
+type SnapshotDonor interface {
+	WaitForCheckpointable(ctx context.Context, targetIndex uint64) error
+	SnapshotReadiness() (lastPersistedIndex uint64, resynchronizing bool)
+}
 
 // SnapshotServiceServerImpl implements the SnapshotService gRPC server.
 type SnapshotServiceServerImpl struct {
 	snapshotpb.UnimplementedSnapshotServiceServer
 
-	logger         logging.Logger
-	store          *dal.Store
-	sessions       *snapshotSessionStore
-	nextSyncID     atomic.Uint64
-	waitForApplied WaitForAppliedFunc
-	readiness      SnapshotReadinessFunc
+	logger     logging.Logger
+	store      *dal.Store
+	sessions   *snapshotSessionStore
+	nextSyncID atomic.Uint64
+	donor      SnapshotDonor
 }
 
 // NewSnapshotServiceServer creates a new SnapshotServiceServer.
-func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL time.Duration, waitForApplied WaitForAppliedFunc, readiness SnapshotReadinessFunc) snapshotpb.SnapshotServiceServer {
+func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL time.Duration, donor SnapshotDonor) snapshotpb.SnapshotServiceServer {
 	l := logger.WithField("component", "snapshot-server")
 
 	if sessionTTL == 0 {
@@ -50,11 +47,10 @@ func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL ti
 	}
 
 	return &SnapshotServiceServerImpl{
-		logger:         l,
-		store:          s,
-		sessions:       newSnapshotSessionStore(s, l, sessionTTL),
-		waitForApplied: waitForApplied,
-		readiness:      readiness,
+		logger:   l,
+		store:    s,
+		sessions: newSnapshotSessionStore(s, l, sessionTTL),
+		donor:    donor,
 	}
 }
 
@@ -62,11 +58,7 @@ func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL ti
 // creating one. The result is advisory: PrepareSnapshot repeats the durable
 // readiness check because the state may change between the two calls.
 func (s *SnapshotServiceServerImpl) CheckSnapshotReadiness(_ context.Context, req *snapshotpb.CheckSnapshotReadinessRequest) (*snapshotpb.CheckSnapshotReadinessResponse, error) {
-	if s.readiness == nil {
-		return nil, status.Error(codes.Unimplemented, "snapshot readiness is not available")
-	}
-
-	lastPersistedIndex, resynchronizing := s.readiness()
+	lastPersistedIndex, resynchronizing := s.donor.SnapshotReadiness()
 
 	return &snapshotpb.CheckSnapshotReadinessResponse{
 		Ready:              !resynchronizing && lastPersistedIndex >= req.GetMinAppliedIndex(),
@@ -108,9 +100,9 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 	// that is itself resynchronizing is refused outright: the requester
 	// treats FailedPrecondition as final and moves on to another donor
 	// instead of waiting out its PrepareSnapshot budget here.
-	if minIdx := req.GetMinAppliedIndex(); s.waitForApplied != nil {
+	if minIdx := req.GetMinAppliedIndex(); minIdx > 0 {
 		waitStart := time.Now()
-		if err := s.waitForApplied(ctx, minIdx); err != nil {
+		if err := s.donor.WaitForCheckpointable(ctx, minIdx); err != nil {
 			if errors.Is(err, state.ErrStoreResynchronizing) {
 				return nil, status.Error(codes.FailedPrecondition, err.Error())
 			}
