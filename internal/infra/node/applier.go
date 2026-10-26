@@ -188,6 +188,9 @@ func NewApplier(
 	snapshotMembership SnapshotMembership,
 	responseSink LocalResponses,
 ) (*Applier, error) {
+	if snapshotMembership == nil {
+		return nil, errors.New("snapshotMembership is required")
+	}
 	if responseSink == nil {
 		return nil, errors.New("responseSink is required (nil LocalResponses)")
 	}
@@ -1088,14 +1091,12 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 
 	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (maintenanceTaskResult, error) {
 		candidateIDs := []uint64{leader}
-		if a.snapshotMembership != nil {
-			for _, candidateID := range a.snapshotMembership.SnapshotDonorCandidates() {
-				if candidateID == 0 || candidateID == leader || slices.Contains(candidateIDs, candidateID) {
-					continue
-				}
-
-				candidateIDs = append(candidateIDs, candidateID)
+		for _, candidateID := range a.snapshotMembership.SnapshotDonorCandidates() {
+			if candidateID == 0 || candidateID == leader || slices.Contains(candidateIDs, candidateID) {
+				continue
 			}
+
+			candidateIDs = append(candidateIDs, candidateID)
 		}
 
 		var snapshotFetcher state.SnapshotFetcher
@@ -1909,7 +1910,7 @@ func (a *Applier) startMaintenanceTask(
 		// cache (Rehydrate treats Pebble as authoritative and finds
 		// them missing), leaving the node with a stale transport view
 		// until the next rehydrate. (EN-1413)
-		if taskResult.snapshotInstalled && a.snapshotMembership != nil {
+		if taskResult.snapshotInstalled {
 			a.snapshotMembership.OnSnapshotInstalled()
 		}
 
