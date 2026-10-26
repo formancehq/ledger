@@ -229,6 +229,10 @@ pass. This includes failures of the initial uncached Cluster refresh or its
 identity checks, before journal authentication or UID binding. The preparation
 wrapper still preserves the durable-write error fence
 and records the failed attempt once.
+An ordinary probe without a known recovery pointer returns an initial refresh
+error without creating or relabeling `ClaimTemplatesReady`. Preparing already
+supplies that pointer after handoff; a successful refresh can also discover a
+recovery pointer absent from the cache.
 Every transition compares the whole expected previous pointer and uses an
 optimistic resourceVersion. A conflict returns for fresh observations; retry
 must never refresh and overwrite a newer operation or clear its pointer.

@@ -511,6 +511,60 @@ func TestClaimTemplateRecoveryStartReportsInitialResumeReadFailure(t *testing.T)
 	f.requireStorageUnchanged(t)
 }
 
+func TestClaimTemplateRecoveryProbeReadFailureWithoutRecoveryPreservesCondition(t *testing.T) {
+	t.Parallel()
+	for _, hadCondition := range []bool{false, true} {
+		t.Run(fmt.Sprintf("existingCondition=%t", hadCondition), func(t *testing.T) {
+			t.Parallel()
+			f := newClaimRecoveryFixture(t)
+			f.ledger.Spec.ClusterID = "ordinary-cluster"
+			f.ledger.Spec.Replicas = new(int32(2)) // A later validation gate must not leave a fabricated recovery failure.
+			require.NoError(t, f.client.Update(t.Context(), f.ledger))
+			if hadCondition {
+				setClaimTemplatesCondition(f.ledger, true, "Ready", "Claim templates already match")
+				require.NoError(t, f.client.Status().Update(t.Context(), f.ledger))
+			}
+			before := meta.FindStatusCondition(f.latestLedger(t).Status.Conditions, "ClaimTemplatesReady")
+			failure := errors.New("ordinary recovery probe Cluster read failed once")
+			reads := 0
+			reader := interceptor.NewClient(f.client, interceptor.Funcs{Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				if _, ok := obj.(*ledgerv1alpha1.Cluster); ok {
+					reads++
+					if reads == 1 {
+						return failure
+					}
+				}
+
+				return c.Get(ctx, key, obj, opts...)
+			}})
+			r := f.reconciler(f.client)
+			r.APIReader = reader
+			_, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(f.ledger)})
+			require.ErrorIs(t, err, failure)
+			require.Equal(t, 1, reads)
+			after := f.latestLedger(t)
+			require.Equal(t, before, meta.FindStatusCondition(after.Status.Conditions, "ClaimTemplatesReady"),
+				"a failed probe must not create or relabel a storage recovery condition")
+			require.Nil(t, meta.FindStatusCondition(after.Status.Conditions, "ConfigValid"), "the injected read must precede validation")
+			requireNoClaimTemplateRecovery(t, f.client, f.ledger)
+
+			// The next refresh succeeds, then ordinary spec validation stops the pass.
+			_, err = r.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(f.ledger)})
+			require.NoError(t, err)
+			require.Equal(t, 2, reads)
+			after = f.latestLedger(t)
+			require.Equal(t, before, meta.FindStatusCondition(after.Status.Conditions, "ClaimTemplatesReady"))
+			require.Equal(t, "ValidationFailed", meta.FindStatusCondition(after.Status.Conditions, "ConfigValid").Reason)
+			requireNoClaimTemplateRecovery(t, f.client, f.ledger)
+			source := &appsv1.StatefulSet{}
+			require.NoError(t, f.client.Get(t.Context(), client.ObjectKeyFromObject(f.source), source))
+			require.Equal(t, f.source.UID, source.UID)
+			require.Equal(t, f.source.Spec, source.Spec)
+			f.requireStorageUnchanged(t)
+		})
+	}
+}
+
 func TestClaimTemplateRecoveryPersistsJournalAndMarkerBeforeOrphanDelete(t *testing.T) {
 	t.Parallel()
 	f := newClaimRecoveryFixture(t)
