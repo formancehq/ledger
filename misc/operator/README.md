@@ -654,8 +654,8 @@ For a size/profile template change, the operator uses the following sequence:
 `ClaimTemplatesReady=False/PreparationFailed` identifies a preparation error.
 After preparation hands control to recovery, failures retain
 `ClaimTemplatesReady=False/RecoveryFailed`, including a failed initial
-orphan-delete or replacement-create attempt. The journal and protected pointer
-remain available for retry.
+Cluster refresh, orphan-delete or replacement-create attempt. The journal and
+protected pointer remain available for retry.
 
 Protected Cluster status authorizes the journal. A ConfigMap ownerReference,
 name, structure or digest supplied only by the ConfigMap cannot authorize it.

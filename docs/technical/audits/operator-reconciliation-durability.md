@@ -621,6 +621,12 @@ assert `RecoveryFailed` rather than `PreparationFailed`, retain the bound
 journal/pointer and original error through the durable-write fence, then prove
 a fresh reconciler retries the same operation successfully. Preparation errors
 before handoff still report `PreparationFailed`; retry accounting stays single.
+Also fail the initial uncached Cluster refresh after journal creation, before
+authentication or binding. It must report `RecoveryFailed`, retain the exact
+Preparing pointer and journal, and attempt no dependency or workload mutations.
+A fresh reconciler must then bind that journal and progress normally. Install
+error handling before the refresh and its identity checks so these early
+failures cannot retain `Recreating`.
 
 An optimistic PVC-lock regression must place a larger concurrent request after
 the authoritative read and before the patch. Observe the actual stale-patch

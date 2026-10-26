@@ -346,6 +346,13 @@ func (r *ClusterReconciler) persistClaimTemplateRecovery(ctx context.Context, le
 // deletion can have happened, even an invalid or reversed spec must not prevent
 // restoring the saved workload. New desired changes wait until adoption ends.
 func (r *ClusterReconciler) resumeClaimTemplateRecovery(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (handled bool, result ctrl.Result, reconcileErr error) {
+	// The initial uncached refresh can fail before journal authentication or
+	// binding. It is still a recovery error once preparation has handed off.
+	defer func() {
+		if reconcileErr != nil {
+			setClaimTemplatesCondition(ledger, false, "RecoveryFailed", reconcileErr.Error())
+		}
+	}()
 	reader := r.storageAPIReader()
 	if r.APIReader != nil {
 		latest := &ledgerv1alpha1.Cluster{}
@@ -365,11 +372,6 @@ func (r *ClusterReconciler) resumeClaimTemplateRecovery(ctx context.Context, led
 	}
 	handled = true
 	result.RequeueAfter = claimTemplateRequeueInterval
-	defer func() {
-		if reconcileErr != nil {
-			setClaimTemplatesCondition(ledger, false, "RecoveryFailed", reconcileErr.Error())
-		}
-	}()
 	if err := validateClaimTemplateRecoveryPointer(ledger, pointer); err != nil {
 		return handled, result, err
 	}
