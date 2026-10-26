@@ -1629,6 +1629,10 @@ func tryRefreshMembership(ctx context.Context, cfg Config, tlsCfg TLSConfig, log
 				return nil
 			}
 
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
 			if !isRetryableMembershipRefreshError(callErr) {
 				return fmt.Errorf("failed to refresh membership via peer %d (%s): %w", peer.ID, peer.Address, callErr)
 			}
