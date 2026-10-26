@@ -131,6 +131,12 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 
 	nodeID := req.GetNodeId()
 	s.prepareMu.Lock()
+	if s.prepareSlots == nil {
+		s.prepareSlots = make(chan struct{}, 1)
+	}
+	if s.preparations == nil {
+		s.preparations = make(map[string]*snapshotPreparation)
+	}
 	if existing, ok := s.preparations[nodeID]; ok {
 		s.prepareMu.Unlock()
 		select {
@@ -154,6 +160,7 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 		defer func() { <-s.prepareSlots }()
 	case <-ctx.Done():
 		prep.err = ctx.Err()
+
 		return nil, prep.err
 	}
 
@@ -163,6 +170,7 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 	checkpointPath, err := s.store.CreateTemporaryCheckpoint(syncName)
 	if err != nil {
 		prep.err = fmt.Errorf("creating temporary checkpoint: %w", err)
+
 		return nil, prep.err
 	}
 
@@ -180,6 +188,7 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 		}
 
 		prep.err = fmt.Errorf("building manifest: %w", err)
+
 		return nil, prep.err
 	}
 
@@ -190,6 +199,7 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 		}
 
 		prep.err = fmt.Errorf("creating session: %w", err)
+
 		return nil, prep.err
 	}
 
