@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,11 +32,20 @@ type SnapshotDonor interface {
 type SnapshotServiceServerImpl struct {
 	snapshotpb.UnimplementedSnapshotServiceServer
 
-	logger     logging.Logger
-	store      *dal.Store
-	sessions   *snapshotSessionStore
-	nextSyncID atomic.Uint64
-	donor      SnapshotDonor
+	logger       logging.Logger
+	store        *dal.Store
+	sessions     *snapshotSessionStore
+	nextSyncID   atomic.Uint64
+	donor        SnapshotDonor
+	prepareMu    sync.Mutex
+	prepareSlots chan struct{}
+	preparations map[string]*snapshotPreparation
+}
+
+type snapshotPreparation struct {
+	done chan struct{}
+	resp *snapshotpb.PrepareSnapshotResponse
+	err  error
 }
 
 // NewSnapshotServiceServer creates a new SnapshotServiceServer.
@@ -47,10 +57,12 @@ func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL ti
 	}
 
 	return &SnapshotServiceServerImpl{
-		logger:   l,
-		store:    s,
-		sessions: newSnapshotSessionStore(s, l, sessionTTL),
-		donor:    donor,
+		logger:       l,
+		store:        s,
+		sessions:     newSnapshotSessionStore(s, l, sessionTTL),
+		donor:        donor,
+		prepareSlots: make(chan struct{}, 1),
+		preparations: make(map[string]*snapshotPreparation),
 	}
 }
 
@@ -117,12 +129,41 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 		}).Infof("FSM caught up to minAppliedIndex for PrepareSnapshot")
 	}
 
+	nodeID := req.GetNodeId()
+	s.prepareMu.Lock()
+	if existing, ok := s.preparations[nodeID]; ok {
+		s.prepareMu.Unlock()
+		select {
+		case <-existing.done:
+			return existing.resp, existing.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	prep := &snapshotPreparation{done: make(chan struct{})}
+	s.preparations[nodeID] = prep
+	s.prepareMu.Unlock()
+	defer func() {
+		s.prepareMu.Lock()
+		delete(s.preparations, nodeID)
+		close(prep.done)
+		s.prepareMu.Unlock()
+	}()
+	select {
+	case s.prepareSlots <- struct{}{}:
+		defer func() { <-s.prepareSlots }()
+	case <-ctx.Done():
+		prep.err = ctx.Err()
+		return nil, prep.err
+	}
+
 	syncName := "follower-sync-" + strconv.FormatUint(s.nextSyncID.Add(1), 10)
 
 	checkpointStart := time.Now()
 	checkpointPath, err := s.store.CreateTemporaryCheckpoint(syncName)
 	if err != nil {
-		return nil, fmt.Errorf("creating temporary checkpoint: %w", err)
+		prep.err = fmt.Errorf("creating temporary checkpoint: %w", err)
+		return nil, prep.err
 	}
 
 	s.logger.WithFields(map[string]any{
@@ -131,14 +172,15 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 	}).Infof("Temporary checkpoint created for follower sync")
 
 	manifestStart := time.Now()
-	manifest, err := buildManifest(ctx, checkpointPath)
+	manifest, err := buildManifest(context.WithoutCancel(ctx), checkpointPath)
 	if err != nil {
 		// Clean up checkpoint on manifest build failure.
 		if rmErr := s.store.RemoveTemporaryCheckpoint(syncName); rmErr != nil {
 			s.logger.Errorf("Failed to remove checkpoint after manifest error: %v", rmErr)
 		}
 
-		return nil, fmt.Errorf("building manifest: %w", err)
+		prep.err = fmt.Errorf("building manifest: %w", err)
+		return nil, prep.err
 	}
 
 	sessionID, err := s.sessions.create(syncName, checkpointPath)
@@ -147,7 +189,8 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 			s.logger.Errorf("Failed to remove checkpoint after session creation error: %v", rmErr)
 		}
 
-		return nil, fmt.Errorf("creating session: %w", err)
+		prep.err = fmt.Errorf("creating session: %w", err)
+		return nil, prep.err
 	}
 
 	s.logger.WithFields(map[string]any{
@@ -157,10 +200,12 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 		"totalDuration":    time.Since(overallStart).String(),
 	}).Infof("Snapshot session created")
 
-	return &snapshotpb.PrepareSnapshotResponse{
+	prep.resp = &snapshotpb.PrepareSnapshotResponse{
 		SessionId: sessionID,
 		Manifest:  manifest,
-	}, nil
+	}
+
+	return prep.resp, nil
 }
 
 // FetchFile streams a single file from a prepared snapshot session.
