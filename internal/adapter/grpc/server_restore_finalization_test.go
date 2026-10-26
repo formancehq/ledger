@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -65,6 +66,8 @@ func TestFinalizeRestoreCompetingOwnerPreservesPublishedCheckpoint(t *testing.T)
 	server := stagedFinalizationServer(t)
 	beforeClose := make(chan struct{})
 	release := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
 	var entered atomic.Int32
 	server.beforeFinalizeClose = func() {
 		if entered.Add(1) == 1 {
@@ -88,8 +91,9 @@ func TestFinalizeRestoreCompetingOwnerPreservesPublishedCheckpoint(t *testing.T)
 	require.NoError(t, err)
 	require.Nil(t, marker)
 	server.mu.Lock()
-	require.NotNil(t, server.stagingStore, "the rejected call must not close the owner's handle")
+	retainedStore := server.stagingStore
 	server.mu.Unlock()
+	require.NotNil(t, retainedStore, "the rejected call must not close the owner's handle")
 
 	shutdownDone := make(chan struct{})
 	go func() {
@@ -102,7 +106,7 @@ func TestFinalizeRestoreCompetingOwnerPreservesPublishedCheckpoint(t *testing.T)
 	default:
 	}
 
-	close(release)
+	releaseOnce.Do(func() { close(release) })
 	require.NoError(t, <-firstDone)
 	<-shutdownDone
 	requirePublishedRestore(t, server)
@@ -131,6 +135,8 @@ func TestFinalizeRestoreRejectsOverlapBeforePreparation(t *testing.T) {
 	server := stagedFinalizationServer(t)
 	claimed := make(chan struct{})
 	release := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
 	server.beforeFinalizePrepare = func() {
 		close(claimed)
 		<-release
@@ -146,9 +152,10 @@ func TestFinalizeRestoreRejectsOverlapBeforePreparation(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "already running")
 	server.mu.Lock()
-	require.NotNil(t, server.stagingStore)
+	retainedStore := server.stagingStore
 	server.mu.Unlock()
-	close(release)
+	require.NotNil(t, retainedStore)
+	releaseOnce.Do(func() { close(release) })
 	require.NoError(t, <-firstDone)
 	requirePublishedRestore(t, server)
 }
@@ -165,9 +172,11 @@ func TestFinalizeRestoreMarkerFailureRollsBackCheckpoint(t *testing.T) {
 	_, err = os.Stat(server.stagingDir())
 	require.NoError(t, err, "failed publication retains staging files for diagnosis/re-download")
 	server.mu.Lock()
-	require.Nil(t, server.stagingStore, "the staging handle was closed before publication")
-	require.False(t, server.finalizing)
+	retainedStore := server.stagingStore
+	finalizing := server.finalizing
 	server.mu.Unlock()
+	require.Nil(t, retainedStore, "the staging handle was closed before publication")
+	require.False(t, finalizing)
 }
 
 func TestFinalizeRestorePublishesRebuiltPostCheckpointDelta(t *testing.T) {
