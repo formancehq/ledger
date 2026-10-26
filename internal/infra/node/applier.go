@@ -1099,13 +1099,7 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 			candidateIDs = append(candidateIDs, candidateID)
 		}
 
-		var snapshotFetcher state.SnapshotFetcher
-		var err error
-		if candidatesProvider, ok := a.snapshotFetcherProvider.(state.SnapshotFetcherCandidatesProvider); ok {
-			snapshotFetcher, err = candidatesProvider.GetForPeers(candidateIDs)
-		} else {
-			snapshotFetcher, err = a.snapshotFetcherProvider.GetForPeer(leader)
-		}
+		snapshotFetcher, err := a.snapshotFetcherProvider.GetForPeers(candidateIDs)
 		if err != nil {
 			a.logger.WithFields(map[string]any{
 				"leader": leader,
