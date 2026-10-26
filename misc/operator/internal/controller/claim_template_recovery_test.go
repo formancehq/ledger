@@ -330,6 +330,7 @@ func TestClaimTemplateRecoverySnapshotFailurePreventsDeleteAndRetries(t *testing
 	_, err := r.startClaimTemplateRecovery(t.Context(), f.ledger, f.source, f.claims)
 	require.ErrorIs(t, err, failure)
 	require.ErrorContains(t, err, "persisting storage recovery state")
+	require.Equal(t, "PreparationFailed", meta.FindStatusCondition(f.ledger.Status.Conditions, "ClaimTemplatesReady").Reason)
 	require.Zero(t, deletes)
 	preparing := f.latestLedger(t).Status.ClaimTemplateRecovery
 	require.NotNil(t, preparing)
@@ -356,6 +357,85 @@ func TestClaimTemplateRecoverySnapshotFailurePreventsDeleteAndRetries(t *testing
 	require.Equal(t, 1, deletes)
 	f.journal(t)
 	f.requireStorageUnchanged(t)
+}
+
+func TestClaimTemplateRecoveryStartPreservesResumeFailure(t *testing.T) {
+	t.Parallel()
+	for _, phase := range []string{"orphan deletion", "replacement creation"} {
+		t.Run(phase, func(t *testing.T) {
+			t.Parallel()
+			f := newClaimRecoveryFixture(t)
+			failure := errors.New("initial recovery operation failed once")
+			attempts := 0
+			c := interceptor.NewClient(f.client, interceptor.Funcs{
+				Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+					if phase == "replacement creation" {
+						switch obj.(type) {
+						case *corev1.ConfigMap:
+							// Simulate the source disappearing after preparation, before
+							// the initial resume must restore it from the bound journal.
+							if err := c.Delete(ctx, f.source); err != nil {
+								return err
+							}
+						case *appsv1.StatefulSet:
+							if len((&client.CreateOptions{}).ApplyOptions(opts).DryRun) == 0 {
+								attempts++
+								if attempts == 1 {
+									return failure
+								}
+							}
+						}
+					}
+
+					return c.Create(ctx, obj, opts...)
+				},
+				Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+					if _, ok := obj.(*appsv1.StatefulSet); ok && phase == "orphan deletion" {
+						attempts++
+						if attempts == 1 {
+							return failure
+						}
+					}
+
+					return c.Delete(ctx, obj, opts...)
+				},
+			})
+			r := f.reconciler(c)
+			_, err := r.startClaimTemplateRecovery(t.Context(), f.ledger, f.source, f.claims)
+			require.ErrorIs(t, err, failure)
+			_, fenced := errors.AsType[*claimTemplateJournalWriteError](err)
+			require.True(t, fenced, "handoff must preserve the durable-write continuation fence")
+			require.Equal(t, "RecoveryFailed", meta.FindStatusCondition(f.ledger.Status.Conditions, "ClaimTemplatesReady").Reason)
+			require.Equal(t, 1, attempts)
+			journal, snapshot := f.journal(t)
+			pointer := f.latestLedger(t).Status.ClaimTemplateRecovery
+			require.Equal(t, string(journal.UID), pointer.ConfigMapUID)
+			require.False(t, pointer.Completed)
+			require.Equal(t, claimTemplateRetryInitial, r.claimTemplateRetries.entries[client.ObjectKeyFromObject(f.ledger)].delay,
+				"the initial recovery failure must be recorded only once")
+			f.requireStorageUnchanged(t)
+
+			// A fresh reconciler resumes the same active operation and succeeds.
+			ledger := f.latestLedger(t)
+			handled, result, err := f.reconciler(c).resumeClaimTemplateRecovery(t.Context(), ledger)
+			require.NoError(t, err)
+			require.True(t, handled)
+			require.Equal(t, claimTemplateRequeueInterval, result.RequeueAfter)
+			require.Equal(t, 2, attempts)
+			after, _ := f.journal(t)
+			require.Equal(t, journal.UID, after.UID)
+			require.Equal(t, journal.Data, after.Data)
+			require.Equal(t, pointer, f.latestLedger(t).Status.ClaimTemplateRecovery)
+			if phase == "replacement creation" {
+				require.Equal(t, "AwaitingAdoption", meta.FindStatusCondition(ledger.Status.Conditions, "ClaimTemplatesReady").Reason)
+				require.Equal(t, snapshot.StatefulSet.Spec, f.replacement(t).Spec)
+			} else {
+				require.Equal(t, "Recreating", meta.FindStatusCondition(ledger.Status.Conditions, "ClaimTemplatesReady").Reason)
+				require.True(t, apierrors.IsNotFound(f.client.Get(t.Context(), client.ObjectKeyFromObject(f.source), &appsv1.StatefulSet{})))
+			}
+			f.requireStorageUnchanged(t)
+		})
+	}
 }
 
 func TestClaimTemplateRecoveryPersistsJournalAndMarkerBeforeOrphanDelete(t *testing.T) {

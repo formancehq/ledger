@@ -15,6 +15,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,6 +25,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -675,7 +677,7 @@ func TestVolumeExpansionReconcilerCollectsWALAndDataOnceInParallel(t *testing.T)
 	require.Equal(t, int(replicas), maxActive, "disk-usage calls should run concurrently across replicas")
 }
 
-func TestPatchPVCGroupUsesOptimisticLock(t *testing.T) {
+func TestPatchPVCGroupRetainsLargerRequestBeforeDirectRead(t *testing.T) {
 	t.Parallel()
 
 	ledger, sts, k8sClient := persistenceTestFixture(t, 1)
@@ -703,6 +705,56 @@ func TestPatchPVCGroupUsesOptimisticLock(t *testing.T) {
 	require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKeyFromObject(pvc), &persisted))
 	requested := persisted.Spec.Resources.Requests[corev1.ResourceStorage]
 	require.Equal(t, "180Gi", requested.String())
+}
+
+func TestPatchPVCGroupUsesOptimisticLock(t *testing.T) {
+	t.Parallel()
+	ledger, sts, k8sClient := persistenceTestFixture(t, 1)
+	pvc := readPersistencePVC(t, k8sClient, "data", 0)
+	watchClient, ok := k8sClient.(client.WithWatch)
+	require.True(t, ok)
+	reads, patches, conflicts := 0, 0, 0
+	var concurrent corev1.PersistentVolumeClaim
+	c := interceptor.NewClient(watchClient, interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, ok := obj.(*corev1.PersistentVolumeClaim); ok && key == client.ObjectKeyFromObject(pvc) {
+				reads++
+			}
+
+			return c.Get(ctx, key, obj, opts...)
+		},
+		Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			require.IsType(t, &corev1.PersistentVolumeClaim{}, obj)
+			require.Equal(t, client.ObjectKeyFromObject(pvc), client.ObjectKeyFromObject(obj))
+			patches++
+			require.Equal(t, 1, reads, "the concurrent increase must follow the direct read")
+			require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(pvc), &concurrent))
+			require.Equal(t, pvc.ResourceVersion, obj.GetResourceVersion())
+			concurrent.Spec.Resources.Requests[corev1.ResourceStorage] = resource.MustParse("180Gi")
+			concurrent.Annotations = map[string]string{"concurrent": "preserved"}
+			require.NoError(t, c.Update(ctx, &concurrent))
+
+			err := c.Patch(ctx, obj, patch, opts...)
+			require.True(t, apierrors.IsConflict(err), "a stale expansion patch must conflict instead of overwriting 180Gi: %v", err)
+			if apierrors.IsConflict(err) {
+				conflicts++
+			}
+
+			return err
+		},
+	})
+	reconciler := &VolumeExpansionReconciler{Client: c, APIReader: c}
+	storage := &persistenceStorageReconciler{client: c, reader: c, ledger: ledger, statefulSet: sts}
+	err := reconciler.patchPVCGroup(t.Context(), []*corev1.PersistentVolumeClaim{pvc}, testQuantityValue("146Gi"),
+		time.Now(), storage, persistenceVolumeDefinitions(ledger)[1])
+	require.NoError(t, err)
+	require.Equal(t, 2, reads, "the retry must reread and retain the larger live request")
+	require.Equal(t, 1, patches, "the larger request must prevent another patch")
+	require.Equal(t, 1, conflicts)
+	persisted := readPersistencePVC(t, k8sClient, "data", 0)
+	require.Equal(t, pvc.UID, persisted.UID)
+	require.Equal(t, concurrent.Spec, persisted.Spec)
+	require.Equal(t, concurrent.Annotations, persisted.Annotations, "a rejected expansion must not stamp its annotations")
 }
 
 func TestVolumeMetricCleanup(t *testing.T) {

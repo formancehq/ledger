@@ -154,6 +154,7 @@ func (e *claimTemplateJournalWriteError) Unwrap() error { return e.cause }
 
 func (r *ClusterReconciler) startClaimTemplateRecovery(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, claims []corev1.PersistentVolumeClaim) (result ctrl.Result, reconcileErr error) {
 	journalWriteAttempted := false
+	recoveryHandedOff := false
 	payloadDigest := ""
 	defer func() {
 		if reconcileErr != nil {
@@ -167,7 +168,9 @@ func (r *ClusterReconciler) startClaimTemplateRecovery(ctx context.Context, ledg
 				r.claimTemplateRetries.failed(ledger, payloadDigest, time.Now())
 				reconcileErr = &claimTemplateJournalWriteError{cause: reconcileErr}
 			}
-			setClaimTemplatesCondition(ledger, false, "PreparationFailed", reconcileErr.Error())
+			if !recoveryHandedOff {
+				setClaimTemplatesCondition(ledger, false, "PreparationFailed", reconcileErr.Error())
+			}
 		} else {
 			r.claimTemplateRetries.succeeded(ledger, payloadDigest)
 		}
@@ -270,6 +273,9 @@ func (r *ClusterReconciler) startClaimTemplateRecovery(ctx context.Context, ledg
 		return ctrl.Result{}, fmt.Errorf("persisting storage recovery state: %w", err)
 	}
 	setClaimTemplatesCondition(ledger, false, "Recreating", "Storage recovery state committed; retaining Pods and claims while replacing the StatefulSet")
+	// Resume owns the phase condition from here, including errors. Keep the
+	// durable-write fence and retry accounting without relabeling its failure.
+	recoveryHandedOff = true
 	_, result, err = r.resumeClaimTemplateRecovery(ctx, ledger)
 
 	return result, err
