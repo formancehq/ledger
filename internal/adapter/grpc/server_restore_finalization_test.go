@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -10,8 +11,11 @@ import (
 	"testing/synctest"
 
 	"github.com/stretchr/testify/require"
+	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -23,10 +27,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func stagedFinalizationServer(t *testing.T) *RestoreServiceServerImpl {
+func stagedFinalizationServer(t *testing.T, options ...RestoreServiceOption) *RestoreServiceServerImpl {
 	t.Helper()
 
-	server := NewRestoreServiceServer(t.TempDir(), "target-cluster", 1, noopLogger{})
+	server := NewRestoreServiceServer(t.TempDir(), "target-cluster", 1, noopLogger{}, options...)
 	store, err := dal.OpenDirect(server.stagingDir(), noopLogger{})
 	require.NoError(t, err)
 	batch := store.OpenWriteSession()
@@ -61,21 +65,75 @@ func requirePublishedRestore(t *testing.T, server *RestoreServiceServerImpl) {
 	require.NoError(t, store.Close())
 }
 
+func restoreClient(t *testing.T, impl *RestoreServiceServerImpl) restorepb.RestoreServiceClient {
+	t.Helper()
+
+	listener := bufconn.Listen(1 << 20)
+	grpcServer := ggrpc.NewServer()
+	RegisterRestoreService(grpcServer, impl)
+	go func() { _ = grpcServer.Serve(listener) }()
+	t.Cleanup(grpcServer.Stop)
+
+	conn, err := ggrpc.NewClient("passthrough:///restore-finalization",
+		ggrpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			return listener.DialContext(ctx)
+		}),
+		ggrpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+
+	return restorepb.NewRestoreServiceClient(conn)
+}
+
+func TestFinalizeRestoreConcurrentRPCPreservesPublishedCheckpoint(t *testing.T) {
+	t.Parallel()
+
+	beforeClose := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+	server := stagedFinalizationServer(t, WithFinalizationObserver(func(event FinalizationEvent) {
+		if event == FinalizationPrepared {
+			close(beforeClose)
+			<-release
+		}
+	}))
+	client := restoreClient(t, server)
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := client.FinalizeRestore(t.Context(), &restorepb.FinalizeRestoreRequest{})
+		firstDone <- err
+	}()
+	<-beforeClose
+
+	_, competitorErr := client.FinalizeRestore(t.Context(), &restorepb.FinalizeRestoreRequest{})
+	require.Equal(t, codes.FailedPrecondition, status.Code(competitorErr))
+	require.Contains(t, status.Convert(competitorErr).Message(), "already running")
+	marker, err := node.ReadRestoredMarker(server.dataDir)
+	require.NoError(t, err)
+	require.Nil(t, marker)
+
+	releaseOnce.Do(func() { close(release) })
+	require.NoError(t, <-firstDone)
+	requirePublishedRestore(t, server)
+}
+
 func TestFinalizeRestoreCompetingOwnerPreservesPublishedCheckpoint(t *testing.T) {
 	t.Parallel()
 
-	server := stagedFinalizationServer(t)
 	beforeClose := make(chan struct{})
 	release := make(chan struct{})
 	var releaseOnce sync.Once
 	defer releaseOnce.Do(func() { close(release) })
 	var entered atomic.Int32
-	server.beforeFinalizeClose = func() {
-		if entered.Add(1) == 1 {
+	server := stagedFinalizationServer(t, WithFinalizationObserver(func(event FinalizationEvent) {
+		if event == FinalizationPrepared && entered.Add(1) == 1 {
 			close(beforeClose)
 			<-release
 		}
-	}
+	}))
 
 	firstDone := make(chan error, 1)
 	go func() {
@@ -108,15 +166,16 @@ func TestFinalizeRestoreCompetingOwnerPreservesPublishedCheckpoint(t *testing.T)
 func TestRestoreShutdownWaitsForActiveFinalizer(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		server := stagedFinalizationServer(t)
 		beforeClose := make(chan struct{})
 		release := make(chan struct{})
 		var releaseOnce sync.Once
 		defer releaseOnce.Do(func() { close(release) })
-		server.beforeFinalizeClose = func() {
-			close(beforeClose)
-			<-release
-		}
+		server := stagedFinalizationServer(t, WithFinalizationObserver(func(event FinalizationEvent) {
+			if event == FinalizationPrepared {
+				close(beforeClose)
+				<-release
+			}
+		}))
 		finalizeDone := make(chan error, 1)
 		go func() {
 			_, err := server.FinalizeRestore(t.Context(), &restorepb.FinalizeRestoreRequest{})
@@ -159,15 +218,16 @@ func TestFinalizeRestoreSequentialRetryPreservesPublishedCheckpoint(t *testing.T
 func TestFinalizeRestoreRejectsOverlapBeforePreparation(t *testing.T) {
 	t.Parallel()
 
-	server := stagedFinalizationServer(t)
 	claimed := make(chan struct{})
 	release := make(chan struct{})
 	var releaseOnce sync.Once
 	defer releaseOnce.Do(func() { close(release) })
-	server.beforeFinalizePrepare = func() {
-		close(claimed)
-		<-release
-	}
+	server := stagedFinalizationServer(t, WithFinalizationObserver(func(event FinalizationEvent) {
+		if event == FinalizationClaimed {
+			close(claimed)
+			<-release
+		}
+	}))
 	firstDone := make(chan error, 1)
 	go func() {
 		_, err := server.FinalizeRestore(t.Context(), &restorepb.FinalizeRestoreRequest{})

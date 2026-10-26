@@ -142,12 +142,8 @@ type RestoreServiceServerImpl struct {
 	validated      bool
 	// finalizing claims the staged generation before preparation and remains set
 	// until publication and cleanup return. It is protected by mu.
-	finalizing bool
-	// beforeFinalizePrepare is a test barrier immediately after the claim.
-	beforeFinalizePrepare func()
-	// beforeFinalizeClose is a test barrier after preparation and metadata reads.
-	// It is nil in production; finalizing must remain owned while it runs.
-	beforeFinalizeClose func()
+	finalizing           bool
+	finalizationObserver FinalizationObserver
 
 	// job holds the single active download (if any). Only one job runs at a
 	// time because the staging directory is a singleton. Successive Start
@@ -175,20 +171,50 @@ type RestoreServiceServerImpl struct {
 	storageFactory storageFactory
 }
 
+// FinalizationEvent identifies a point in the finalization lifecycle.
+type FinalizationEvent uint8
+
+const (
+	FinalizationClaimed FinalizationEvent = iota
+	FinalizationPrepared
+)
+
+// FinalizationObserver receives lifecycle events synchronously. The default
+// observer does nothing; tests can use one to coordinate concurrent requests.
+type FinalizationObserver func(FinalizationEvent)
+
+// RestoreServiceOption configures a restore service at construction.
+type RestoreServiceOption func(*RestoreServiceServerImpl)
+
+// WithFinalizationObserver sets the observer for finalization lifecycle events.
+func WithFinalizationObserver(observer FinalizationObserver) RestoreServiceOption {
+	return func(server *RestoreServiceServerImpl) {
+		if observer != nil {
+			server.finalizationObserver = observer
+		}
+	}
+}
+
 // NewRestoreServiceServer creates a new RestoreServiceServerImpl. parallelism
 // caps concurrent S3 file downloads during the async download phase; 0 falls
 // back to the default and out-of-range values are clamped to [1, 64].
-func NewRestoreServiceServer(dataDir, clusterID string, parallelism int, logger logging.Logger) *RestoreServiceServerImpl {
+func NewRestoreServiceServer(dataDir, clusterID string, parallelism int, logger logging.Logger, options ...RestoreServiceOption) *RestoreServiceServerImpl {
 	lifetimeCtx, lifetimeCancel := context.WithCancel(context.Background())
 
-	return &RestoreServiceServerImpl{
-		dataDir:        dataDir,
-		clusterID:      clusterID,
-		parallelism:    clampParallelism(parallelism),
-		logger:         logger,
-		lifetimeCtx:    lifetimeCtx,
-		lifetimeCancel: lifetimeCancel,
+	server := &RestoreServiceServerImpl{
+		dataDir:              dataDir,
+		clusterID:            clusterID,
+		parallelism:          clampParallelism(parallelism),
+		logger:               logger,
+		lifetimeCtx:          lifetimeCtx,
+		lifetimeCancel:       lifetimeCancel,
+		finalizationObserver: func(FinalizationEvent) {},
 	}
+	for _, option := range options {
+		option(server)
+	}
+
+	return server
 }
 
 // beginRequest admits a restore RPC while the service is running. The
@@ -483,9 +509,7 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	}()
 
 	stagingDir := s.stagingDir()
-	if s.beforeFinalizePrepare != nil {
-		s.beforeFinalizePrepare()
-	}
+	s.finalizationObserver(FinalizationClaimed)
 
 	// Prepare Global-zone keys (applied index pinned to the restore-genesis
 	// index, cluster-local state reset) so the staged backup is restartable
@@ -509,9 +533,7 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 		return nil, fmt.Errorf("getting last applied timestamp: %w", err)
 	}
 
-	if s.beforeFinalizeClose != nil {
-		s.beforeFinalizeClose()
-	}
+	s.finalizationObserver(FinalizationPrepared)
 
 	// Close the staging Pebble before the filesystem move. The hard-link
 	// below would otherwise race with open FDs (SSTs, LOCK file) held by the
