@@ -22,7 +22,7 @@ func TestApplyExportsRejectsKeyOutsideSegmentKeyspace(t *testing.T) {
 	store := newBackupTestStore(t)
 	storage := &recordingStorage{manifestBody: stream.Bytes()}
 	err := ApplyExports(context.Background(), logging.Testing(), storage, store, []ExportSegment{
-		{Type: "log", StartSeq: 1, EndSeq: 1, Key: "invalid"},
+		{Type: "log", StartSeq: 1, EndSeq: 1, Key: "invalid", Size: int64(stream.Len())},
 	})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "invalid key")
@@ -61,11 +61,88 @@ func TestApplyExportsRejectsIncompleteSequenceCoverage(t *testing.T) {
 	store := newBackupTestStore(t)
 	storage := &recordingStorage{manifestBody: stream.Bytes()}
 	err := ApplyExports(context.Background(), logging.Testing(), storage, store, []ExportSegment{
-		{Type: "log", StartSeq: 1, EndSeq: 2, Key: "missing-start"},
+		{Type: "log", StartSeq: 1, EndSeq: 2, Key: "missing-start", Size: int64(stream.Len())},
 	})
 	require.ErrorContains(t, err, "incomplete export segment")
 	require.Zero(t, countKeysInSub(t, store, dal.SubHistoryLog),
 		"an incomplete segment must not commit its unverified batch")
+}
+
+func TestApplyExportsRejectsManifestInconsistentStream(t *testing.T) {
+	t.Parallel()
+
+	key := func(seq uint64) []byte {
+		return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(seq).Build()
+	}
+	stream := func(seqs ...uint64) []byte {
+		var body bytes.Buffer
+		writer := NewKVStreamWriter(&body)
+		require.NoError(t, writer.WriteHeader())
+		for _, seq := range seqs {
+			require.NoError(t, writer.WriteEntry(key(seq), []byte("value")))
+		}
+		require.NoError(t, writer.WriteFooter())
+
+		return body.Bytes()
+	}
+
+	for _, tc := range []struct {
+		name string
+		body []byte
+		size int64
+		want string
+	}{
+		{"early footer", stream(1, 2), int64(len(stream(1, 2, 3))), "incomplete export segment"},
+		{"trailing bytes", append(bytes.Clone(stream(1, 2, 3)), 'x'), int64(len(stream(1, 2, 3)) + 1), "trailing bytes"},
+		{"wrong manifest size", stream(1, 2, 3), int64(len(stream(1, 2, 3)) + 1), "size mismatch"},
+		{"interior gap", stream(1, 3), int64(len(stream(1, 3))), "sequence gap"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			store := newBackupTestStore(t)
+			storage := &recordingStorage{manifestBody: tc.body}
+			err := ApplyExports(t.Context(), logging.Testing(), storage, store, []ExportSegment{
+				{Type: "log", StartSeq: 1, EndSeq: 3, Key: tc.name, Size: tc.size},
+			})
+			require.ErrorContains(t, err, tc.want)
+			require.Zero(t, countKeysInSub(t, store, dal.SubHistoryLog))
+		})
+	}
+}
+
+func TestApplyExportsRejectsAuditItemIndexDisorder(t *testing.T) {
+	t.Parallel()
+
+	key := func(index uint32) []byte {
+		return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).
+			PutUint64(1).PutUint32(index).Build()
+	}
+	for _, tc := range []struct {
+		name    string
+		indexes []uint32
+	}{
+		{"missing first", []uint32{1}},
+		{"missing middle", []uint32{0, 2}},
+		{"duplicate", []uint32{0, 0}},
+		{"reversed", []uint32{1, 0}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var body bytes.Buffer
+			writer := NewKVStreamWriter(&body)
+			require.NoError(t, writer.WriteHeader())
+			for _, index := range tc.indexes {
+				require.NoError(t, writer.WriteEntry(key(index), []byte("item")))
+			}
+			require.NoError(t, writer.WriteFooter())
+
+			store := newBackupTestStore(t)
+			err := ApplyExports(t.Context(), logging.Testing(), &recordingStorage{manifestBody: body.Bytes()}, store,
+				[]ExportSegment{{Type: "auditItem", StartSeq: 1, EndSeq: 1, Key: tc.name, Size: int64(body.Len())}})
+			require.ErrorContains(t, err, "audit item index gap or disorder")
+			require.Zero(t, countKeysInSub(t, store, dal.SubHistoryAuditItem))
+		})
+	}
 }
 
 // TestValidateExportKeyRequiresExactKeyShape pins the per-type key length: a key
@@ -124,7 +201,7 @@ func TestApplyExportsRejectsKeyWithTrailingBytes(t *testing.T) {
 	store := newBackupTestStore(t)
 	storage := &recordingStorage{manifestBody: stream.Bytes()}
 	err := ApplyExports(context.Background(), logging.Testing(), storage, store, []ExportSegment{
-		{Type: "log", StartSeq: 1, EndSeq: 1, Key: "tampered"},
+		{Type: "log", StartSeq: 1, EndSeq: 1, Key: "tampered", Size: int64(stream.Len())},
 	})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "invalid key")

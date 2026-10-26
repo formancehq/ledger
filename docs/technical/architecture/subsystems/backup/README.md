@@ -206,10 +206,13 @@ export replay, preview, optional Checker validation, confirmation and
 finalization; a download failure reaches none of those steps. This change does
 not alter backup formats, replay semantics or persisted business state.
 
-Each export object must terminate with its explicit stream footer and contain
-the complete sequence range advertised by the manifest. A physical EOF, an
-empty segment, or missing range boundary fails the download before the staging
-restore can be considered successful. `ApplyExports` writes large segments in
+Each export object must terminate with its explicit stream footer at the exact
+end of the object and match the manifest byte size. Its keys must belong to
+the declared type and range, be ordered, and cover every sequence for log,
+audit, and audit-item segments. Applied-proposal sequences may be sparse because
+failed proposals have no applied-proposal row. Physical EOF, trailing bytes,
+size mismatch, empty segment, or missing sequence fails the download before
+the staging restore can be considered successful. `ApplyExports` writes large segments in
 bounded Pebble batches, so batches committed before a later read failure can
 remain until the caller discards or retries that staging directory. The gRPC
 download job wipes staging on failure and never enables finalization; an
