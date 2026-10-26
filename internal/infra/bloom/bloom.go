@@ -19,12 +19,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// The seal is written in the same batch as a complete Bloom projection.
-// Older nodes never wrote it, so their blocks cannot prove completeness.
-const verifiedProjectionAttrCode byte = 0xff
-
 func verifiedProjectionKey() []byte {
-	return []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom, verifiedProjectionAttrCode}
+	return []byte{dal.ZoneClusterPersistent, dal.SubGlobBloomProjectionSeal}
 }
 
 // HasVerifiedProjection reports whether persisted blocks were produced after
@@ -699,20 +695,6 @@ func (fs *FilterSet) ClassifyPersistedNamespace(ctx context.Context, store dal.P
 		}
 
 		key := it.Key()
-		if len(key) >= 3 && key[2] == verifiedProjectionAttrCode {
-			if len(key) != 3 {
-				return false, fmt.Errorf("invalid Bloom projection seal key %x", key)
-			}
-			value, err := it.ValueAndErr()
-			if err != nil {
-				return false, fmt.Errorf("reading Bloom projection seal: %w", err)
-			}
-			if len(value) != 1 || value[0] != 1 {
-				return false, fmt.Errorf("invalid Bloom projection seal value %x", value)
-			}
-
-			continue
-		}
 		// Key format: [ZoneClusterPersistent][SubGlobBloom][attrCode][blockIndex BE 8].
 		// The attrCode lives at offset 2; a shorter row cannot belong to any
 		// filter's sub-range and is unparseable — treat as corruption.

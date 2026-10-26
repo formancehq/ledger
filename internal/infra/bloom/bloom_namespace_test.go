@@ -5,11 +5,13 @@ import (
 	"encoding/binary"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -139,4 +141,51 @@ func TestFilterSet_EN1527_ClassifyAcceptsEnabledAttrRows(t *testing.T) {
 	require.False(t, configDrift, "an enabled-attribute row is neither corruption nor drift")
 
 	require.NoError(t, fs.RestoreFromStore(context.Background(), handle))
+}
+
+// The previous binary scans the entire Bloom block prefix and rejects any
+// unknown attribute code. A seal inside that prefix would make rollback fail
+// even though the persisted blocks themselves remain readable.
+func TestFilterSet_ProjectionSealOutsideLegacyBlockNamespace(t *testing.T) {
+	t.Parallel()
+
+	meter := noop.NewMeterProvider().Meter("test")
+	fs := NewFilterSet(bloomCfg(), meter)
+	store := newBloomTestStore(t)
+	fs.AddCanonicalKeys(&BloomUpdates{
+		Volumes: []attributes.U128{attributes.HashU128([]byte("rollback-volume"))},
+	})
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, fs.PersistDirtyBlocks(batch))
+	require.NoError(t, batch.Commit())
+	verified, err := HasVerifiedProjection(store)
+	require.NoError(t, err)
+	require.True(t, verified)
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+	it, err := handle.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom},
+		UpperBound: []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom + 1},
+	})
+	require.NoError(t, err)
+	defer func() { _ = it.Close() }()
+
+	rows := 0
+	for it.First(); it.Valid(); it.Next() {
+		// This is the key shape accepted by the previous binary's classifier.
+		require.Len(t, it.Key(), 11)
+		require.Equal(t, dal.SubAttrVolume, it.Key()[2])
+		rows++
+	}
+	require.NoError(t, it.Error())
+	require.Positive(t, rows)
+
+	restored := NewFilterSet(bloomCfg(), meter)
+	drift, err := restored.ClassifyPersistedNamespace(context.Background(), handle)
+	require.NoError(t, err)
+	require.False(t, drift)
+	require.NoError(t, restored.RestoreFromStore(context.Background(), handle))
 }

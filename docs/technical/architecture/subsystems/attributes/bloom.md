@@ -76,7 +76,7 @@ Dirty blocks are flushed to Pebble at every batch commit:
 
 - Key layout: `[ZoneClusterPersistent][SubGlobBloom][attrCode][blockIdx 8B BE]`.
 - `PersistDirtyBlocks()` (`bloom.go:113-131`) iterates dirty blocks and queues writes into the FSM batch — so the bloom flush is atomic with the rest of the batch's effects.
-- A complete projection carries a seal at `[ZoneClusterPersistent][SubGlobBloom][0xff]`. The first rotation after a full attribute scan replaces the old Bloom namespace and writes the seal in the same batch. Later rotations persist dirty blocks and keep the seal.
+- A complete projection carries a seal at `[ZoneClusterPersistent][SubGlobBloomProjectionSeal]`, outside the block namespace so an older binary can still read the blocks after rollback. The first rotation after a full attribute scan replaces the old Bloom namespace and writes the seal in the same batch. Later rotations persist dirty blocks and keep the seal. A committed Bloom configuration change deletes both the blocks and the seal.
 - On boot, sealed blocks are restored synchronously and merged via OR. A block set without a seal can be incomplete even if every row decodes correctly, so it is never published as ready.
 
 ### Boot path — populate from the attribute store

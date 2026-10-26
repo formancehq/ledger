@@ -78,7 +78,7 @@ func TestCacheSnapshotter_LegacyBlocksCannotHideColdAttribute(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, legacy.PersistDirtyBlocks(batch))
 	// Simulate blocks written before this release established their provenance.
-	require.NoError(t, batch.DeleteKey([]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom, 0xff}))
+	require.NoError(t, batch.DeleteKey([]byte{dal.ZoneClusterPersistent, dal.SubGlobBloomProjectionSeal}))
 	require.NoError(t, batch.Commit())
 
 	// The attribute is on disk but absent from both cache generations. A ready
