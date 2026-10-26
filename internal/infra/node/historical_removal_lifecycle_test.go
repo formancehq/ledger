@@ -25,7 +25,7 @@ func newHistoricalRemovalLifecycleSetup(t *testing.T) (*Node, *testApplierSetup)
 	})
 	var err error
 	m, err = membership.NewMembership(membership.NewPeerStore(setup.store), noopMemTransport{}, noopMemPool{},
-		1, "self:7777", "self:8888", []byte("self-instance-id"), logging.Testing())
+		1, "self:7777", "self:8888", []byte("self-instance-id"), logging.Testing(), membership.NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	n := &Node{fsm: setup.fsm, membership: m, logger: logging.Testing(), runDone: make(chan struct{})}
 	t.Cleanup(func() { close(n.runDone) })
