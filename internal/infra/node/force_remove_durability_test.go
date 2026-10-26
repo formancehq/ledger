@@ -131,7 +131,7 @@ func newForceRemoveTransport(t *testing.T) Transport {
 	transport.EXPECT().RecvHighPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
 	transport.EXPECT().RecvMediumPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
 	transport.EXPECT().RecvLowPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
-	transport.EXPECT().Send(gomock.Any()).AnyTimes()
+	transport.EXPECT().Send(gomock.Any(), gomock.Any()).AnyTimes()
 
 	return transport
 }

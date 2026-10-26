@@ -84,7 +84,7 @@ func TestTransportShutdown(t *testing.T) {
 					})
 				}))
 				require.NoError(t, app.Start(context.Background()))
-				tr.Send([]*raftpb.Message{{To: proto.Uint64(2), Type: raftpb.MsgHeartbeat.Enum()}})
+				tr.Send([]*raftpb.Message{{To: proto.Uint64(2), Type: raftpb.MsgHeartbeat.Enum()}}, t.Context().Done())
 				<-publication.entered
 
 				ctx, cancel := context.WithCancel(context.Background())

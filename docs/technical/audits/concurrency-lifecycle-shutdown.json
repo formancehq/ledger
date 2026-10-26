@@ -118,7 +118,7 @@
     "Can an admission request enumerate persisted state or retain a lifecycle lock while waiting for proposal or FSM completion? A retained lifecycle lock is a blocking finding. Check caller cancellation, proposal rejection, apply delay, read-handle ownership, and whether the state-dependent work has an explicit trigger and cardinality budget.",
     "Do lifecycle tests for bootstrap hooks, servers, Node/Applier, worker primitives, managers, builders, and sessions use time.Sleep to claim a specific interleaving instead of deterministic synchronization?",
     "Do optional event sinks and disabled-feature implementations obey the same Start, Stop, Close, retry, and flush ownership contract as the default build?",
-    "Can a bounded snapshot-result queue lose the only signal that releases Raft StateSnapshot, or can a blocked result publisher retain a peer or transport shutdown join? Is each pending snapshot attempt completed at most once when a late response races abandoned-delivery cleanup?"
+    "Can a bounded snapshot-result queue lose the only signal that releases Raft StateSnapshot, or can a blocked result publisher retain a Ready-task, peer or transport shutdown join? Is each pending snapshot attempt completed at most once when a late response races abandoned-delivery cleanup?"
   ],
   "dynamic_checks_to_consider": [
     "go test -race ./internal/bootstrap ./internal/adapter/grpc ./internal/application/ctrl ./internal/infra/node ./internal/infra/transport ./internal/pkg/worker ./internal/pkg/tailworker ./internal/pkg/futures ./internal/pkg/signal",
@@ -136,6 +136,6 @@
     "register/observe/unregister races for main-store, readstore, usagestore, cache, builder, tailworker, and disk-usage metrics while their stores or workers stop or a restore swaps the backing database",
     "optional-feature event sink lifecycle and repeated-construction tests under the kafka, nats, clickhouse, and databricks build tags with their required test infrastructure",
     "go test -race -tags pyroscope ./internal/infra/monitoring/pyroscope/... for the optional profiler's Fx Start/Stop hooks",
-    "fill or leave unconsumed the local snapshot-status queue, then cancel the peer or stop the transport and prove its publishers exit; race snapshot response handling with abandoned-delivery cleanup and check that an old attempt cannot publish a second outcome"
+    "fill or leave unconsumed the local snapshot-status queue, then cancel the peer or stop the transport and prove its publishers exit; reject a dispatcher batch in the real Ready worker with a full status queue and join Node.Run before transport shutdown while its run context remains live; race snapshot response handling with abandoned-delivery cleanup and check that an old attempt cannot publish a second outcome"
   ]
 }

@@ -33,7 +33,7 @@ func TestProcessReadySnapshotPreservesWALSuffix(t *testing.T) {
 			t.Parallel()
 			setup := newTestApplierSetup(t)
 			transport := NewMockTransport(gomock.NewController(t))
-			transport.EXPECT().Send(gomock.Any())
+			transport.EXPECT().Send(gomock.Any(), gomock.Any())
 			n, err := NewNode(NodeConfig{
 				NodeID: 1, AdvertiseAddr: "node-1:7000", ServiceAdvertiseAddr: "node-1:8000",
 				InstanceID: []byte("0000000000000001"), TickInterval: time.Hour,
