@@ -4167,8 +4167,9 @@ ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create -
 
 With `--response-verify-key`, prepared query create/update/delete and query
 checkpoint create/delete verify the returned Apply log signatures before
-reporting success or reading the created checkpoint ID. Missing or invalid
-signatures cause the command to fail.
+reporting success or reading the created checkpoint ID. Verification also
+checks that each visible log matches the authenticated payload. Missing or
+invalid signatures and mismatched logs cause the command to fail.
 
 Clients can also discover the server's public key via the `Discovery` RPC.
 
