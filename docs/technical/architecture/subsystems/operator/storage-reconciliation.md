@@ -63,23 +63,32 @@ must not certify the installed B hash as A. If exact reconstruction fails and
 the admitted templates are equal, missing proof reports `HashMigrationRequired`;
 authentic history for B instead establishes the required rollout to A.
 
-Released full-spec hashes can migrate automatically through exact
-reconstruction from current nonstorage inputs and retained claim settings,
-including the supported omitted-field variants. Equal installed/desired hash
-strings alone do not prove released-spec reconstruction. If reconstruction fails
-and no proof is supplied, the controller substitutes the installed hash in a
-copy of the desired Pod template and normalizes it through admission dry-run Update.
+For legacy migration without explicit proof, the controller substitutes the
+installed hash in a copy of the desired Pod template and normalizes it through
+admission dry-run Update of the existing StatefulSet, before accepting exact
+reconstruction.
 If that admitted template differs from the live template, it returns the
-desired canonical-hash template for a normal rollout. This covers image,
-configuration and TLS changes, including an omitted image tag whose effective
-`LEDGER_IMAGE_TAG` changed. Sequential RC, TLS and storage gates remain active.
+desired canonical-hash template for a normal rollout, even for a reconstructible
+hash. Equal admitted templates preserve the installed hash automatically only
+after exact released full-spec reconstruction from current nonstorage inputs
+and retained claim settings, including the supported omitted-field variants.
+Equal installed/desired hash strings alone do not prove reconstruction.
+The normal rollout covers image, configuration and TLS changes, including an
+omitted image tag whose effective `LEDGER_IMAGE_TAG` changed. Sequential RC, TLS
+and storage gates remain active.
 
-Equal admitted templates cannot establish unchanged external admission inputs:
-an earlier storage declaration may be unrecoverable and ServiceAccount
-annotations may have changed. Only this ambiguous no-proof branch reports
+Without exact reconstruction, equal admitted templates cannot establish
+unchanged external admission inputs: an earlier storage declaration may be
+unrecoverable and ServiceAccount annotations may have changed. Only this
+ambiguous no-proof branch reports
 `ClaimTemplatesReady=False/HashMigrationRequired` without advancing canonical
 metadata or starting replacement. An explicitly supplied proof must be
 validated before a rollout; differing templates do not bypass invalid proof.
+Dry-run errors report `ClaimTemplatesReady=False/AdmissionCheckFailed` on the
+actual Cluster before canonical metadata or recovery intent/journal writes.
+This preview runs StatefulSet Update admission, not Pod Create admission; it
+does not certify actual IAM/runtime access. The real StatefulSet Update still
+passes admission, and rollout depends on the full Pod template revision.
 
 Upgrade the CRD and Operator with the Cluster declaration unchanged before
 storage or ServiceAccount edits, then wait for the valid association above.
@@ -345,7 +354,8 @@ competing storage Jobs before using this behavior. Do not downgrade a controller
 with active recovery. After completion, a released Operator can retain unknown
 hash metadata but change the Pod hash, which breaks its association on return
 to the new controller. That old binary can itself request a storage-hash rollout;
-the new controller adds none when exact legacy reconstruction succeeds.
+the new controller adds none when exact legacy reconstruction succeeds and the
+StatefulSet Update preview admits an equal template.
 See the [operations contract](../../../../../misc/operator/README.md#claim-template-recovery-sequence)
 for upgrade effects, rollback and failure handling.
 
