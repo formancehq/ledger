@@ -38,6 +38,25 @@ reconnection, retained-log catch-up, and snapshot send/install. A test helper or
 admin-only RPC is evidence only if the production entry is reachable under its
 documented preconditions.
 
+### Capability evidence and rolling upgrades
+
+Capabilities are replicated membership evidence, not a continuously polled
+node-local view. A node refreshes its membership record through the committed
+membership path; bootstrap/join and promotion use the same record before the
+node becomes an eligible member. Cluster-policy activation is a separate
+replicated transition and must not admit a member or proposal until the
+committed evidence satisfies the active policy.
+
+The follower-first rolling-upgrade path has one compatibility exception: while
+older supported peers do not implement `RefreshMembership`, they may return
+`Unimplemented`. Startup must remain available with conservative capability
+evidence and keep retrying against compatible peers; a later successful refresh
+must converge the replicated membership row and the local readiness gate. The
+implementation carries a `TODO(rc.3)` to remove this fallback once every
+supported peer implements the RPC. The audit must record the policy revision,
+capability evidence, ConfChange ordering, readiness transition, and final
+admission result rather than relying on process-local polling or role labels.
+
 ## Proof and rejection standard
 
 Every finding must establish all of the following from the audited SHA:

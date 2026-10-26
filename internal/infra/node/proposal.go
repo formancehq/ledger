@@ -18,6 +18,8 @@ var predictedIndexField = func() protowire.Number {
 	return fd.Number()
 }()
 
+var predictedIndexEncodedSize = protowire.SizeTag(predictedIndexField) + protowire.SizeFixed64()
+
 type Proposal struct {
 	*futures.Future[any]
 
@@ -32,9 +34,16 @@ type Proposal struct {
 }
 
 func newProposal(commandID uint64, data []byte, required []capabilities.CapabilityID) *Proposal {
+	// Reserve the complete predicted-index suffix before the proposal enters the
+	// tracker critical section. SetPredictedIndex must stay allocation-free on
+	// the common path; otherwise a capacity-boundary append copies the complete
+	// payload while concurrent producers hold the shared tracker lock.
+	prepared := make([]byte, len(data), len(data)+predictedIndexEncodedSize)
+	copy(prepared, data)
+
 	return &Proposal{
 		commandID:            commandID,
-		data:                 append([]byte(nil), data...),
+		data:                 prepared,
 		requiredCapabilities: append([]capabilities.CapabilityID(nil), required...),
 		Future:               futures.New[any](),
 	}
