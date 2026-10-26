@@ -286,7 +286,7 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader *
 // that snapshot could have been served: NotFound is the answer every later
 // read gives, so the read stays linearizable.
 func requireLedgerLive(mainReader *dal.ReadHandle, ledgerName string) error {
-	live, err := readLedgerInfoRow(mainReader.Live(), ledgerName)
+	live, err := ReadLedgerInfoRow(mainReader.Live(), ledgerName)
 	if err != nil {
 		return fmt.Errorf("re-reading ledger %q after alignment: %w", ledgerName, err)
 	}

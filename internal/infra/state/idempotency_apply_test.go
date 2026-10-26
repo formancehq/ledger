@@ -75,6 +75,41 @@ func TestApplyProposal_PreloadUnavailableIsNotAuditedOrFrozen(t *testing.T) {
 	require.Equal(t, auditedTimestamp, machine.State.LastAppliedTimestamp)
 }
 
+func TestApplyProposal_ReplaysPromotionAndDeletionAfterLedgerIsGone(t *testing.T) {
+	t.Parallel()
+	machine, dataStore, _ := newTestMachine(t)
+	ctx := context.Background()
+	const ledgerName = "promoted-then-deleted"
+	create := createLedgerOrder(ledgerName)
+	create.GetLedgerScoped().GetCreateLedger().Mode = commonpb.LedgerMode_LEDGER_MODE_MIRROR
+	create.GetLedgerScoped().GetCreateLedger().MirrorSource = &commonpb.MirrorSourceConfig{
+		LedgerName: "source",
+		Type:       &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://source:3068"}},
+	}
+	result, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1, create)))
+	require.NoError(t, err)
+	require.NoError(t, result.Results[0].Error)
+	batch := func(id uint64) *raftcmdpb.Proposal {
+		promote := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: ledgerName, Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{PromoteLedger: &raftcmdpb.PromoteLedgerOrder{}},
+		}}}
+		proposal := makeProposal(id, promote, deleteLedgerOrder(ledgerName))
+		proposal.Idempotency = &commonpb.Idempotency{Key: "promote-delete-key"}
+
+		return proposal
+	}
+	result, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, batch(2)))
+	require.NoError(t, err)
+	require.NoError(t, result.Results[0].Error)
+	require.False(t, result.Results[0].Replayed)
+	_, err = query.GetLedgerByName(ctx, dataStore, ledgerName)
+	require.ErrorIs(t, err, domain.ErrNotFound)
+	result, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 3, batch(3)))
+	require.NoError(t, err)
+	require.NoError(t, result.Results[0].Error)
+	require.True(t, result.Results[0].Replayed)
+}
+
 // TestApplyProposal_PerProposalIdempotency exercises the per-proposal
 // idempotency the FSM applies in applyProposal: a duplicate proposal (same key,
 // same ordered orders) replays the first outcome instead of re-executing, a
