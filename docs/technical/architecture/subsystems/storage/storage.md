@@ -477,15 +477,20 @@ The system can recover completely from:
 The WAL is compacted after snapshots to prevent unbounded growth:
 
 1. When a snapshot is created at index `N`, maintenance requests compaction at
-   `C = N - CompactionMargin`. A target older than the current retained-log
-   boundary is a no-op; compaction never moves the boundary backwards.
+   `C = min(FSM.LastPersistedIndex, RawNode.Applied) - CompactionMargin`.
+   The FSM can publish a durable batch before the orchestrator steps its
+   `MsgStorageApplyResp`; the Raft cursor is therefore the safety frontier for
+   compaction. A target older than the current retained-log boundary is a
+   no-op; compaction never moves the boundary backwards.
 2. When the boundary advances to `C`, entry `C` is retained as a dummy matching
    point: `Term(C)` remains available, `FirstIndex()` becomes `C + 1`, and
    entries `[C + 1, N]` remain available through `Entries`. A follower whose
    last matching entry is `C` can therefore catch up through `MsgApp` without
    receiving a full snapshot.
 3. During the current process lifetime, snapshot publication and log compaction
-   are independent boundaries.
+   are independent boundaries. A snapshot may describe the newest durable FSM
+   state while compaction waits for RawNode's acknowledgement; a later
+   maintenance tick advances compaction after that acknowledgement.
    Advancing `Snapshot().Metadata.Index` must not make retained entries or their
    terms unavailable. This `raft.Storage` contract prevents a maintenance tick
    from turning a small follower lag into a full store synchronization (EN-1925).

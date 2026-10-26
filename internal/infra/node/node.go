@@ -360,8 +360,12 @@ type Node struct {
 	// pending FSM future, so a later term advance can fail futures whose
 	// entries were truncated by the new leader (issue #172).
 	lastObservedTerm atomic.Uint64
-	observer         *Observer
-	applier          *Applier
+	// lastRaftApplied is advanced only after the orchestrate goroutine steps
+	// MsgStorageApplyResp into RawNode. Maintenance must not compact entries
+	// that RawNode can still scan while this cursor lags the FSM.
+	lastRaftApplied atomic.Uint64
+	observer        *Observer
+	applier         *Applier
 
 	readies         chan raft.Ready
 	readyTerminated chan readyResult
@@ -958,10 +962,20 @@ func (node *Node) doMaintenance() error {
 		return nil
 	}
 
-	// Early skip: nothing new since the previous tick. Avoids paying for an
-	// fsync on idle clusters.
-	if node.fsm.LastPersistedIndex() <= lastSnap.GetMetadata().GetIndex() {
-		return nil
+	capturedIndex := node.fsm.LastPersistedIndex()
+	acknowledgedApplied := node.lastRaftApplied.Load()
+	// A previous tick may have published a WAL snapshot while RawNode was
+	// still waiting for its apply response. Keep ticking so compaction can
+	// advance once that response is stepped by the orchestrator.
+	if capturedIndex <= lastSnap.GetMetadata().GetIndex() && acknowledgedApplied <= lastSnap.GetMetadata().GetIndex() {
+		compactTarget := min(capturedIndex, acknowledgedApplied)
+		if compactTarget <= node.applier.CompactionMargin() {
+			return nil
+		}
+		firstIndex, firstErr := node.wal.FirstIndex()
+		if firstErr != nil || firstIndex > compactTarget-node.applier.CompactionMargin() {
+			return nil
+		}
 	}
 
 	// Capture lastPersistedIndex BEFORE calling SyncWAL. Reading first then
@@ -971,18 +985,20 @@ func (node *Node) doMaintenance() error {
 	// batch.Commit returns, see machine.go), so the subsequent SyncWAL makes
 	// it durable. The reverse order (sync, then read) could capture an index
 	// from a concurrent apply whose WAL record was written after our fsync.
-	capturedIndex := node.fsm.LastPersistedIndex()
-	if err := store.SyncWAL(); err != nil {
-		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to sync Pebble WAL, skipping snapshot and checkpoint")
+	if capturedIndex > lastSnap.GetMetadata().GetIndex() {
+		if err := store.SyncWAL(); err != nil {
+			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to sync Pebble WAL, skipping snapshot and checkpoint")
 
-		return nil
+			return nil
+		}
 	}
 	// Post-condition: every FSM batch with Raft index <= capturedIndex is
 	// durable on disk. It is now safe to advance the Raft WAL snapshot and
-	// to compact the Raft WAL up to capturedIndex - margin — even on power
-	// loss right after this point, Pebble can recover to >= capturedIndex.
+	// to advance the Raft WAL snapshot. Compaction below additionally waits for
+	// the Raft-layer acknowledgement of the same entries.
 
 	// 1. WAL snapshot + compact.
+	snapshotUsable := capturedIndex <= lastSnap.GetMetadata().GetIndex()
 	if err := node.wal.CreateSnapshot(capturedIndex, node.confState.Load(), nil); err != nil {
 		// The WAL directory is gone: every later acknowledgement is unrecoverable,
 		// so the next tick has nothing to retry.
@@ -992,9 +1008,20 @@ func (node *Node) doMaintenance() error {
 
 		if !errors.Is(err, raft.ErrSnapOutOfDate) {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create WAL snapshot")
+		} else {
+			snapshotUsable = true
 		}
-	} else if capturedIndex > node.applier.CompactionMargin() {
-		compactIdx := capturedIndex - node.applier.CompactionMargin()
+	} else {
+		snapshotUsable = true
+	}
+
+	// The FSM can publish an applied batch before the orchestrator steps its
+	// MsgStorageApplyResp. Compact only behind the acknowledged Raft cursor,
+	// preserving every entry RawNode may still request while scanning
+	// unapplied configuration changes during an election.
+	acknowledgedApplied = min(node.lastRaftApplied.Load(), capturedIndex)
+	if snapshotUsable && acknowledgedApplied > node.applier.CompactionMargin() {
+		compactIdx := acknowledgedApplied - node.applier.CompactionMargin()
 		if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
 		}
@@ -1174,6 +1201,11 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 	if err != nil {
 		return fmt.Errorf("creating raw rawNode: %w", err)
 	}
+	// Seed from the effective cursor passed to RawNode. This includes the
+	// durable HardState.Commit cap applied above when Pebble is ahead after a
+	// crash; seeding from the uncapped FSM cursor would make maintenance believe
+	// Raft had acknowledged entries it will replay first.
+	node.lastRaftApplied.Store(applied)
 
 	status := node.rawNode.Status()
 
@@ -1667,6 +1699,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 
 	if result.snapshotApplied {
 		node.rawNode.ReportSnapshot(rd.Snapshot.GetMetadata().GetIndex(), raft.SnapshotFinish)
+		node.recordRaftApplied(rd.Snapshot.GetMetadata().GetIndex())
 
 		// Re-sync the in-memory ConfState shadow from the just-installed
 		// snapshot. wal.ApplySnapshot already persisted the correct ConfState;
@@ -2037,6 +2070,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 		if err := stepMessages(msgs); err != nil {
 			return err
 		}
+		for _, msg := range msgs {
+			node.recordRaftApplyResponse(msg)
+		}
 
 		maybeCreateReady()
 
@@ -2188,6 +2224,31 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 				}
 			}
 		}
+	}
+}
+
+// recordRaftApplied publishes the highest apply cursor acknowledged by
+// RawNode. It is intentionally monotonic because response batches can be
+// observed together after the FSM has already advanced further.
+func (node *Node) recordRaftApplied(index uint64) {
+	for {
+		current := node.lastRaftApplied.Load()
+		if current >= index || node.lastRaftApplied.CompareAndSwap(current, index) {
+			return
+		}
+	}
+}
+
+func (node *Node) recordRaftApplyResponse(msg *raftpb.Message) {
+	if msg.GetType() != raftpb.MsgStorageApplyResp {
+		return
+	}
+	index := msg.GetIndex()
+	if index == 0 && len(msg.GetEntries()) > 0 {
+		index = msg.GetEntries()[len(msg.GetEntries())-1].GetIndex()
+	}
+	if index > 0 {
+		node.recordRaftApplied(index)
 	}
 }
 

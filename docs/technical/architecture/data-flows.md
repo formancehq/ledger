@@ -499,7 +499,8 @@ sequenceDiagram
 1. **Periodic Maintenance Timer**
    - A background goroutine runs on a configurable interval (`--maintenance-interval`, default 30s)
    - On each tick, if `lastPersistedIndex` has advanced since the last snapshot, a new snapshot is created
-   - The timer also triggers WAL compaction and Pebble checkpoint creation
+   - The timer also evaluates WAL compaction against the acknowledged Raft
+     apply frontier and creates the Pebble checkpoint independently
 
 ### Snapshot Contents
 
@@ -537,7 +538,8 @@ Compaction is triggered automatically after a snapshot is created:
 
 1. A snapshot is created at index `N`
 2. The system keeps a **compaction margin** (configurable via `CompactionMargin`)
-3. Entries before `N - CompactionMargin` are deleted from the WAL
+3. The safe frontier is `min(FSM.LastPersistedIndex, RawNode.Applied)`;
+   entries before `safe frontier - CompactionMargin` are deleted from the WAL
 4. Old WAL segment files are removed
 
 ### Compaction Margin
@@ -546,16 +548,19 @@ The compaction margin (`CompactionMargin` in configuration) determines how many 
 
 ```
 snapshotIndex = 1000
+raftApplied = 920
 compactionMargin = 100
-compactIndex = 1000 - 100 = 900
+safeFrontier = min(1000, 920) = 920
+compactIndex = 920 - 100 = 820
 
-→ Entries 1-900 are deleted
-→ Entries 901-1000 are kept (margin for safety)
+→ Entries 1-820 are deleted
+→ Entries 821-1000 are kept (margin plus the unapplied Raft interval)
 → Entries 1001+ are the new entries
 ```
 
 **Why keep a margin?**
 - Allows followers slightly behind to catch up without needing a full snapshot transfer
+- Keeps entries available while the orchestrator has not yet acknowledged FSM application
 - Provides a safety buffer in case of partial replication failures
 
 ### Implications for Recovery
@@ -571,7 +576,7 @@ Because old WAL entries are compacted:
 ```yaml
 config:
   raft:
-    maintenanceInterval: "30s"  # Periodic maintenance interval (snapshots, compaction, checkpoints)
+    maintenanceInterval: "30s"  # Periodic maintenance interval (snapshots, conditional compaction, checkpoints)
     compactionMargin: 1000      # Minimum WAL entries retained after compaction for follower catch-up
 ```
 
