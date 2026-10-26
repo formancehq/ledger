@@ -92,7 +92,7 @@ func newScriptedNode(t *testing.T, store *dal.Store) *scriptedNode {
 
 	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store,
 		dal.NewSentinelFactory(store, false), meters, keyStore, sharedState, signingParityNotifier{}, nil,
-		"", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+		"", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	require.NoError(t, state.NewRecovery(machine, store).RecoverState())
 

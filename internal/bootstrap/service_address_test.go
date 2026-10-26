@@ -69,7 +69,7 @@ func TestServiceAdvertiseAddr_IPv6RemoteRPC(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
 	peerStore := membership.NewPeerStore(newTestStore(t))
 	remote, err := membership.NewMembership(peerStore, serviceAddressRaftTransport{}, pool,
-		1, "", "", []byte("self-instance-id"), logging.Testing())
+		1, "", "", []byte("self-instance-id"), logging.Testing(), membership.NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	require.NoError(t, remote.Register(published.NodeID, published.AdvertiseAddr,
 		published.ServiceAdvertiseAddr, published.InstanceID))
