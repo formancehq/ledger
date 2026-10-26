@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -33,6 +34,54 @@ func newTestMaintenanceNode(t *testing.T) (*Node, *testApplierSetup) {
 	node.confState.Store(setup.confState)
 
 	return node, setup
+}
+
+// TestDoMaintenanceRetainsEntriesUntilRaftApplyAcked reproduces the election
+// crash reported by EN-3134: the FSM can be durable several entries ahead of
+// RawNode while the apply response is queued. Compaction must follow the
+// acknowledged Raft cursor, not the FSM cursor, or the election scan of the
+// unapplied interval returns raft.ErrCompacted.
+func TestDoMaintenanceRetainsEntriesUntilRaftApplyAcked(t *testing.T) {
+	t.Parallel()
+
+	node, setup := newTestMaintenanceNode(t)
+	setup.applier.compactionMargin = 1
+
+	entries := make([]*raftpb.Entry, 4)
+	for i := range entries {
+		entries[i], _ = makeCreateLedgerEntry(t, uint64(i+1), "maintenance-ledger-"+string(rune('a'+i)))
+	}
+	require.NoError(t, node.wal.Append(nil, entries))
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- setup.applier.Run(context.Background(), setup.stop) }()
+	setup.applier.Submit(entries, nil, nil, setup.stop)
+	setup.applier.Drain(setup.stop)
+	close(setup.stop)
+	require.NoError(t, <-runDone)
+	require.Equal(t, uint64(4), node.fsm.LastPersistedIndex())
+
+	// FSM=4, but the orchestrator has not stepped the apply response beyond 1.
+	node.lastRaftApplied.Store(1)
+	require.NoError(t, node.doMaintenance())
+	snapshot, err := node.wal.Snapshot()
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), snapshot.GetMetadata().GetIndex())
+	_, err = node.wal.Entries(2, 5, ^uint64(0))
+	require.NoError(t, err, "entries needed by the election scan must remain available")
+
+	// Once the orchestrator receives the apply response for the whole batch,
+	// the normal margin can apply. Use the index-only response shape accepted
+	// by the Raft response path; production responses may carry Entries instead.
+	// The response's index is the authoritative acknowledgement cursor.
+	responseIndex := uint64(4)
+	node.recordRaftApplyResponse(&raftpb.Message{
+		Type:  raftpb.MsgStorageApplyResp.Enum(),
+		Index: &responseIndex,
+	})
+	require.NoError(t, node.doMaintenance())
+	_, err = node.wal.Entries(2, 5, ^uint64(0))
+	require.ErrorIs(t, err, raft.ErrCompacted)
 }
 
 // applyEntry feeds a single entry through the Applier synchronously by
