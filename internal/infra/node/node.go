@@ -22,6 +22,7 @@ import (
 	"go.etcd.io/raft/v3/tracker"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -39,6 +40,13 @@ const (
 	statusOutOfSync          // node needs leader sync
 	statusInstallingSnapshot // processReadies is installing a snapshot, Run must not touch FSM
 )
+
+// maxCompactionMarginBytes bounds the retained Raft log by payload size as
+// well as entry count. A count-only margin can retain multiple GiB when one
+// proposal contains a multi-megabyte ledger batch, leaving no room for write
+// recovery on a bounded volume. The count margin remains the normal lower
+// bound for small entries; this cap only shortens the suffix for large ones.
+const maxCompactionMarginBytes uint64 = 256 << 20
 
 // gatingReason constants — stored in an atomic.Int32 for race-free observability.
 const (
@@ -849,6 +857,47 @@ func NewNode(
 	return node, nil
 }
 
+// compactionIndex returns the earliest index that may be removed while keeping
+// both the configured entry-count margin and the byte budget. It scans only
+// the retained suffix, so large logs do not require materialising the prefix.
+func compactionIndex(storage wal.WAL, capturedIndex, countMargin uint64) (uint64, error) {
+	if capturedIndex == 0 || countMargin == 0 {
+		return 0, nil
+	}
+
+	firstIndex, err := storage.FirstIndex()
+	if err != nil {
+		return 0, err
+	}
+	if firstIndex == 0 || capturedIndex < firstIndex {
+		return 0, nil
+	}
+
+	var retainedBytes, retainedCount uint64
+	for index := capturedIndex; ; index-- {
+		entries, err := storage.Entries(index, index+1, math.MaxUint64)
+		if err != nil {
+			return 0, err
+		}
+		if len(entries) != 1 {
+			return 0, fmt.Errorf("invariant: WAL returned %d entries for index %d", len(entries), index)
+		}
+
+		entryBytes := uint64(proto.Size(entries[0]))
+		if retainedCount > 0 && (retainedCount >= countMargin || retainedBytes+entryBytes > maxCompactionMarginBytes) {
+			return index, nil
+		}
+		retainedCount++
+		retainedBytes += entryBytes
+		if retainedCount >= countMargin || retainedBytes >= maxCompactionMarginBytes || index == firstIndex {
+			if index == 0 {
+				return 0, nil
+			}
+			return index - 1, nil
+		}
+	}
+}
+
 // maybeCompactAtStartup creates a snapshot and compacts the WAL if entries have
 // accumulated beyond the compaction margin. This prevents OOM during Raft
 // replication: without compaction a leader with 50K+ WAL entries would try to
@@ -864,7 +913,11 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 		return fmt.Errorf("reading WAL last index: %w", err)
 	}
 
-	if walLastIdx <= lastSnap.GetMetadata().GetIndex()+node.applier.CompactionMargin() {
+	compactIdx, err := compactionIndex(node.wal, walLastIdx, node.applier.CompactionMargin())
+	if err != nil {
+		return fmt.Errorf("calculating startup compaction index: %w", err)
+	}
+	if compactIdx <= lastSnap.GetMetadata().GetIndex() {
 		return nil
 	}
 
@@ -896,11 +949,17 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 		"appliedIndex": appliedIndex,
 	}).Infof("Saved snapshot to WAL")
 
-	if appliedIndex > node.applier.CompactionMargin() {
-		compactIdx := appliedIndex - node.applier.CompactionMargin()
+	if appliedIndex > lastSnap.GetMetadata().GetIndex() {
+		compactIdx, err := compactionIndex(node.wal, appliedIndex, node.applier.CompactionMargin())
+		if err != nil {
+			return fmt.Errorf("calculating startup compaction index: %w", err)
+		}
+		if compactIdx <= lastSnap.GetMetadata().GetIndex() {
+			return nil
+		}
 		compactStart := time.Now()
 
-		err := node.wal.Compact(compactIdx)
+		err = node.wal.Compact(compactIdx)
 		if err != nil && !errors.Is(err, raft.ErrCompacted) {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Early compaction failed")
 		} else {
@@ -986,10 +1045,16 @@ func (node *Node) doMaintenance() error {
 		if !errors.Is(err, raft.ErrSnapOutOfDate) {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create WAL snapshot")
 		}
-	} else if capturedIndex > node.applier.CompactionMargin() {
-		compactIdx := capturedIndex - node.applier.CompactionMargin()
-		if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
-			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
+	} else {
+		compactIdx, marginErr := compactionIndex(node.wal, capturedIndex, node.applier.CompactionMargin())
+		if marginErr != nil {
+			node.logger.WithFields(map[string]any{"error": marginErr}).Errorf("Background maintenance: failed to calculate compaction margin")
+			compactIdx = 0
+		}
+		if compactIdx > 0 {
+			if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
+				node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
+			}
 		}
 	}
 

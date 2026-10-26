@@ -354,7 +354,7 @@ type NodeConfig struct {
     MaxInflightMsgs      int           // Maximum number of in-flight messages (default: 256)
     TickInterval         time.Duration // Interval between ticks
     MaintenanceInterval  time.Duration // Periodic maintenance interval for snapshots, compaction, and checkpoints (default: 30s)
-    CompactionMargin     uint64        // Minimum WAL entries retained after compaction for follower catch-up (default: 1000)
+    CompactionMargin     uint64        // Minimum WAL entries retained after compaction; a 256 MiB entry-byte cap also applies (default: 1000)
     ProposeQueueCapacity int           // Capacity of the propose queue
 }
 ```

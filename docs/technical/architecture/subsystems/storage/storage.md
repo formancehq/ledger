@@ -461,7 +461,10 @@ The system can recover completely from:
 The WAL is compacted after snapshots to prevent unbounded growth:
 
 1. When a snapshot is created at index `N`, maintenance requests compaction at
-   `C = N - CompactionMargin`. A target older than the current retained-log
+   a suffix satisfying both `CompactionMargin` entries and a 256 MiB serialized
+   Raft-entry budget. The byte budget is a safety cap for large proposals: it
+   may retain fewer entries than the count margin, but never removes the
+   matching point needed by Raft. A target older than the current retained-log
    boundary is a no-op; compaction never moves the boundary backwards.
 2. When the boundary advances to `C`, entry `C` is retained as a dummy matching
    point: `Term(C)` remains available, `FirstIndex()` becomes `C + 1`, and

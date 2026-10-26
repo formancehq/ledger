@@ -537,12 +537,16 @@ Compaction is triggered automatically after a snapshot is created:
 
 1. A snapshot is created at index `N`
 2. The system keeps a **compaction margin** (configurable via `CompactionMargin`)
-3. Entries before `N - CompactionMargin` are deleted from the WAL
+   while bounding the retained serialized entry bytes to 256 MiB.
+3. Entries before the byte/count-safe retained suffix are deleted from the WAL
 4. Old WAL segment files are removed
 
 ### Compaction Margin
 
-The compaction margin (`CompactionMargin` in configuration) determines how many entries are kept before the snapshot index:
+The compaction margin (`CompactionMargin` in configuration) determines the
+minimum number of entries kept before the snapshot index. A 256 MiB serialized
+entry cap shortens that suffix for large entries, preventing a count-based
+margin from reserving multiple GiB of WAL.
 
 ```
 snapshotIndex = 1000
