@@ -1639,6 +1639,35 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /v3/numscripts/analyze:
+    post:
+      summary: Analyze Numscript source
+      description: Validates Numscript v1 and returns the external input schema without reading or changing ledger state. Syntax, version, feature and compile failures are returned as diagnostics with an empty input list.
+      operationId: analyzeNumscript
+      tags:
+        - Numscript Library
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeNumscriptRequest'
+      responses:
+        '200':
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeNumscriptResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /v3/{ledgerName}/numscripts:
     get:
       summary: List all numscripts
@@ -5853,6 +5882,60 @@ components:
       type: object
       description: Turns the entry into a fill-gap that preserves log-ID and tx-ID continuity.
 
+    AnalyzeNumscriptRequest:
+      type: object
+      required: [source, version]
+      properties:
+        source:
+          type: string
+        version:
+          type: string
+          description: Numscript language version; currently v1.
+          example: v1
+    AnalyzeNumscriptResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [inputs, diagnostics]
+          properties:
+            inputs:
+              type: array
+              items:
+                type: object
+                required: [name, type]
+                properties:
+                  name:
+                    type: string
+                  type:
+                    type: string
+                    description: Numscript type spelling.
+            diagnostics:
+              type: array
+              items:
+                type: object
+                required: [kind, code, message]
+                properties:
+                  kind:
+                    type: string
+                    enum: [version, syntax, feature, compile]
+                  code:
+                    type: string
+                  message:
+                    type: string
+                  startLine:
+                    type: integer
+                    minimum: 0
+                  startColumn:
+                    type: integer
+                    minimum: 0
+                  endLine:
+                    type: integer
+                    minimum: 0
+                  endColumn:
+                    type: integer
+                    minimum: 0
     SaveNumscriptRequest:
       type: object
       required:

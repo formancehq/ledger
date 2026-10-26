@@ -29,6 +29,12 @@ The endpoint retains its 10-second header read timeout and 120-second idle timeo
 
 ## HTTP REST API
 
+`POST /v3/numscripts/analyze` accepts JSON `{ "source": "...", "version": "v1" }`
+under query-read authorization. A valid source returns its sorted external
+inputs; invalid source or version returns typed diagnostics in a 200 response.
+The operation is independent of ledger state. See the
+[scripting contract](../scripting/numscript-library.md#read-only-source-analysis).
+
 ### Base URL
 
 By default: `http://localhost:9000`

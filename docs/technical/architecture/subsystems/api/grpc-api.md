@@ -147,6 +147,14 @@ older-than-one-minute samples.
 
 ## Read Operations
 
+### Analyze Numscript source
+
+`BucketService.AnalyzeNumscript` takes source text and the required language
+version `v1`. It returns sorted external inputs and typed diagnostics in the
+response. It needs query-read authorization and never accesses a ledger or
+changes state. See the [scripting contract](../scripting/numscript-library.md#read-only-source-analysis)
+for feature and diagnostic behavior.
+
 ### Ledger configuration confidentiality
 
 GetLedger and ListLedgers return detached credential-safe views, including
