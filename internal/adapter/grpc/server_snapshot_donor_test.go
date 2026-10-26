@@ -13,15 +13,27 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 )
 
+type testSnapshotDonor struct {
+	waitErr            error
+	lastPersistedIndex uint64
+	resynchronizing    bool
+}
+
+func (d testSnapshotDonor) WaitForCheckpointable(context.Context, uint64) error {
+	return d.waitErr
+}
+
+func (d testSnapshotDonor) SnapshotReadiness() (uint64, bool) {
+	return d.lastPersistedIndex, d.resynchronizing
+}
+
 // TestPrepareSnapshotRefusesResynchronizingDonor checks the code a requester
 // relies on to move to another donor without waiting: FailedPrecondition is
 // final for the fetcher, unlike the retried transient codes.
 func TestPrepareSnapshotRefusesResynchronizingDonor(t *testing.T) {
 	t.Parallel()
 
-	server := NewSnapshotServiceServer(noopLogger{}, nil, 0, func(context.Context, uint64) error {
-		return state.ErrStoreResynchronizing
-	}, nil)
+	server := NewSnapshotServiceServer(noopLogger{}, nil, 0, testSnapshotDonor{waitErr: state.ErrStoreResynchronizing})
 
 	_, err := server.PrepareSnapshot(context.Background(), &snapshotpb.PrepareSnapshotRequest{MinAppliedIndex: 7})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
@@ -32,9 +44,7 @@ func TestPrepareSnapshotRefusesResynchronizingDonor(t *testing.T) {
 func TestPrepareSnapshotKeepsOtherWaitErrorsOpaque(t *testing.T) {
 	t.Parallel()
 
-	server := NewSnapshotServiceServer(noopLogger{}, nil, 0, func(context.Context, uint64) error {
-		return errors.New("wait aborted")
-	}, nil)
+	server := NewSnapshotServiceServer(noopLogger{}, nil, 0, testSnapshotDonor{waitErr: errors.New("wait aborted")})
 
 	_, err := server.PrepareSnapshot(context.Background(), &snapshotpb.PrepareSnapshotRequest{MinAppliedIndex: 7})
 	require.Error(t, err)
@@ -44,9 +54,7 @@ func TestPrepareSnapshotKeepsOtherWaitErrorsOpaque(t *testing.T) {
 func TestCheckSnapshotReadinessDoesNotCreateCheckpoint(t *testing.T) {
 	t.Parallel()
 
-	server := NewSnapshotServiceServer(noopLogger{}, nil, 0, nil, func() (uint64, bool) {
-		return 42, false
-	})
+	server := NewSnapshotServiceServer(noopLogger{}, nil, 0, testSnapshotDonor{lastPersistedIndex: 42})
 
 	resp, err := server.CheckSnapshotReadiness(context.Background(), &snapshotpb.CheckSnapshotReadinessRequest{
 		MinAppliedIndex: 41,
@@ -61,9 +69,7 @@ func TestCheckSnapshotReadinessRejectsStaleOrResynchronizingDonor(t *testing.T) 
 	t.Parallel()
 
 	t.Run("stale", func(t *testing.T) {
-		server := NewSnapshotServiceServer(noopLogger{}, nil, 0, nil, func() (uint64, bool) {
-			return 40, false
-		})
+		server := NewSnapshotServiceServer(noopLogger{}, nil, 0, testSnapshotDonor{lastPersistedIndex: 40})
 
 		resp, err := server.CheckSnapshotReadiness(context.Background(), &snapshotpb.CheckSnapshotReadinessRequest{
 			MinAppliedIndex: 41,
@@ -74,9 +80,7 @@ func TestCheckSnapshotReadinessRejectsStaleOrResynchronizingDonor(t *testing.T) 
 	})
 
 	t.Run("resynchronizing", func(t *testing.T) {
-		server := NewSnapshotServiceServer(noopLogger{}, nil, 0, nil, func() (uint64, bool) {
-			return 42, true
-		})
+		server := NewSnapshotServiceServer(noopLogger{}, nil, 0, testSnapshotDonor{lastPersistedIndex: 42, resynchronizing: true})
 
 		resp, err := server.CheckSnapshotReadiness(context.Background(), &snapshotpb.CheckSnapshotReadinessRequest{
 			MinAppliedIndex: 41,
