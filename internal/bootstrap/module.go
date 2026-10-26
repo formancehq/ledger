@@ -1700,6 +1700,7 @@ func tryRefreshMembershipOnce(ctx context.Context, cfg Config, tlsCfg TLSConfig,
 		if dialErr != nil {
 			logger.WithFields(map[string]any{"peer": peer.ID, "address": peer.Address, "error": dialErr}).Infof("Failed to dial peer for membership refresh")
 			lastTransient = dialErr
+
 			continue
 		}
 
@@ -1724,7 +1725,7 @@ func tryRefreshMembershipOnce(ctx context.Context, cfg Config, tlsCfg TLSConfig,
 		return err
 	}
 	if lastTransient != nil {
-		return fmt.Errorf("%w: %v", errMembershipRefreshTransient, lastTransient)
+		return fmt.Errorf("%w: %w", errMembershipRefreshTransient, lastTransient)
 	}
 	return errMembershipRefreshTransient
 }
