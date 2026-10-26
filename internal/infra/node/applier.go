@@ -1192,6 +1192,14 @@ func (a *Applier) WaitForCheckpointable(ctx context.Context, targetIndex uint64)
 	return a.fsm.WaitForApplied(ctx, targetIndex)
 }
 
+// SnapshotReadiness returns the durable cursor and whether this node is
+// currently unable to serve a checkpoint while it resynchronizes itself.
+// Callers use this cheap snapshot-sync probe before asking the node to create
+// a temporary checkpoint.
+func (a *Applier) SnapshotReadiness() (lastPersistedIndex uint64, resynchronizing bool) {
+	return a.fsm.LastPersistedIndex(), a.IsResynchronizing()
+}
+
 // GetSyncProgress returns the current sync progress, or nil if not syncing.
 func (a *Applier) GetSyncProgress() *state.SyncProgress {
 	return a.syncProgress.Load()

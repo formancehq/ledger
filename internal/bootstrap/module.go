@@ -426,7 +426,7 @@ func Module() fx.Option {
 				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, respSigner, cfg.QueryProfileThreshold, cfg.ClusterID, meterProvider, n, servicePool, info)
 			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`, ``)),
 			func(cfg Config, logger logging.Logger, s *dal.Store, applier *node.Applier) snapshotpb.SnapshotServiceServer {
-				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, applier.WaitForCheckpointable)
+				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, applier.WaitForCheckpointable, applier.SnapshotReadiness)
 			},
 			func(cfg Config, meterProvider metric.MeterProvider) *diskusage.Collector {
 				return diskusage.NewCollector(

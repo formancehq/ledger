@@ -7,6 +7,150 @@ import (
 	bytes "bytes"
 )
 
+// CheckSnapshotReadinessRequestReader provides read-only access to CheckSnapshotReadinessRequest.
+// Call Mutate() to obtain a mutable clone.
+type CheckSnapshotReadinessRequestReader interface {
+	GetMinAppliedIndex() uint64
+	Mutate() *CheckSnapshotReadinessRequest
+}
+
+type checkSnapshotReadinessRequestReadonly CheckSnapshotReadinessRequest
+
+func (r *checkSnapshotReadinessRequestReadonly) GetMinAppliedIndex() uint64 {
+	return (*CheckSnapshotReadinessRequest)(r).GetMinAppliedIndex()
+}
+
+func (r *checkSnapshotReadinessRequestReadonly) Mutate() *CheckSnapshotReadinessRequest {
+	return (*CheckSnapshotReadinessRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this CheckSnapshotReadinessRequest.
+func (m *CheckSnapshotReadinessRequest) AsReader() CheckSnapshotReadinessRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*checkSnapshotReadinessRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this CheckSnapshotReadinessRequest.
+func (m *CheckSnapshotReadinessRequest) Mutate() *CheckSnapshotReadinessRequest {
+	return m.CloneVT()
+}
+
+// CheckSnapshotReadinessRequestListReader provides read-only iteration over []*CheckSnapshotReadinessRequest.
+type CheckSnapshotReadinessRequestListReader interface {
+	Len() int
+	Get(i int) CheckSnapshotReadinessRequestReader
+	Range(yield func(int, CheckSnapshotReadinessRequestReader) bool)
+}
+
+type checkSnapshotReadinessRequestListReadonly []*CheckSnapshotReadinessRequest
+
+func (l checkSnapshotReadinessRequestListReadonly) Len() int { return len(l) }
+
+func (l checkSnapshotReadinessRequestListReadonly) Get(i int) CheckSnapshotReadinessRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l checkSnapshotReadinessRequestListReadonly) Range(yield func(int, CheckSnapshotReadinessRequestReader) bool) {
+	for i, v := range l {
+		var r CheckSnapshotReadinessRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCheckSnapshotReadinessRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCheckSnapshotReadinessRequestListReader(s []*CheckSnapshotReadinessRequest) CheckSnapshotReadinessRequestListReader {
+	return checkSnapshotReadinessRequestListReadonly(s)
+}
+
+// CheckSnapshotReadinessResponseReader provides read-only access to CheckSnapshotReadinessResponse.
+// Call Mutate() to obtain a mutable clone.
+type CheckSnapshotReadinessResponseReader interface {
+	GetReady() bool
+	GetLastPersistedIndex() uint64
+	GetResynchronizing() bool
+	Mutate() *CheckSnapshotReadinessResponse
+}
+
+type checkSnapshotReadinessResponseReadonly CheckSnapshotReadinessResponse
+
+func (r *checkSnapshotReadinessResponseReadonly) GetReady() bool {
+	return (*CheckSnapshotReadinessResponse)(r).GetReady()
+}
+
+func (r *checkSnapshotReadinessResponseReadonly) GetLastPersistedIndex() uint64 {
+	return (*CheckSnapshotReadinessResponse)(r).GetLastPersistedIndex()
+}
+
+func (r *checkSnapshotReadinessResponseReadonly) GetResynchronizing() bool {
+	return (*CheckSnapshotReadinessResponse)(r).GetResynchronizing()
+}
+
+func (r *checkSnapshotReadinessResponseReadonly) Mutate() *CheckSnapshotReadinessResponse {
+	return (*CheckSnapshotReadinessResponse)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this CheckSnapshotReadinessResponse.
+func (m *CheckSnapshotReadinessResponse) AsReader() CheckSnapshotReadinessResponseReader {
+	if m == nil {
+		return nil
+	}
+	return (*checkSnapshotReadinessResponseReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this CheckSnapshotReadinessResponse.
+func (m *CheckSnapshotReadinessResponse) Mutate() *CheckSnapshotReadinessResponse {
+	return m.CloneVT()
+}
+
+// CheckSnapshotReadinessResponseListReader provides read-only iteration over []*CheckSnapshotReadinessResponse.
+type CheckSnapshotReadinessResponseListReader interface {
+	Len() int
+	Get(i int) CheckSnapshotReadinessResponseReader
+	Range(yield func(int, CheckSnapshotReadinessResponseReader) bool)
+}
+
+type checkSnapshotReadinessResponseListReadonly []*CheckSnapshotReadinessResponse
+
+func (l checkSnapshotReadinessResponseListReadonly) Len() int { return len(l) }
+
+func (l checkSnapshotReadinessResponseListReadonly) Get(i int) CheckSnapshotReadinessResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l checkSnapshotReadinessResponseListReadonly) Range(yield func(int, CheckSnapshotReadinessResponseReader) bool) {
+	for i, v := range l {
+		var r CheckSnapshotReadinessResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCheckSnapshotReadinessResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCheckSnapshotReadinessResponseListReader(s []*CheckSnapshotReadinessResponse) CheckSnapshotReadinessResponseListReader {
+	return checkSnapshotReadinessResponseListReadonly(s)
+}
+
 // PrepareSnapshotRequestReader provides read-only access to PrepareSnapshotRequest.
 // Call Mutate() to obtain a mutable clone.
 type PrepareSnapshotRequestReader interface {

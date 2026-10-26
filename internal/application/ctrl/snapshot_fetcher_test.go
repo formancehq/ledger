@@ -197,6 +197,70 @@ func TestGRPCSnapshotFetcher_HappyPath(t *testing.T) {
 	require.Equal(t, int32(1), csState.closeCalled.Load())
 }
 
+func TestGRPCSnapshotFetcher_SkipsPrepareWhenDonorIsNotReady(t *testing.T) {
+	t.Parallel()
+
+	client := NewMockSnapshotServiceClient(gomock.NewController(t))
+	client.EXPECT().CheckSnapshotReadiness(gomock.Any(), gomock.Any()).
+		Return(&snapshotpb.CheckSnapshotReadinessResponse{
+			LastPersistedIndex: 9,
+		}, nil).
+		Times(1)
+	client.EXPECT().PrepareSnapshot(gomock.Any(), gomock.Any()).Times(0)
+
+	fetcher := &grpcSnapshotFetcher{
+		clientSource:   fixedSnapshotClient(client),
+		logger:         logging.Testing(),
+		parallelism:    1,
+		retryCount:     1,
+		fileRetryCount: 1,
+		checkReadiness: true,
+	}
+
+	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 10)
+	require.ErrorIs(t, err, state.ErrSnapshotNotReady)
+}
+
+func TestFallbackSnapshotFetcher_SkipsNotReadyDonor(t *testing.T) {
+	t.Parallel()
+
+	firstClient := NewMockSnapshotServiceClient(gomock.NewController(t))
+	firstClient.EXPECT().CheckSnapshotReadiness(gomock.Any(), gomock.Any()).
+		Return(&snapshotpb.CheckSnapshotReadinessResponse{LastPersistedIndex: 9}, nil).
+		Times(1)
+	firstClient.EXPECT().PrepareSnapshot(gomock.Any(), gomock.Any()).Times(0)
+
+	secondClient, _ := buildMockClient(t, map[string][]byte{"data.bin": []byte("ok")})
+	fetcher := &fallbackSnapshotFetcher{
+		candidates: []snapshotDonorCandidate{
+			{id: 1, newFetch: func() (state.SnapshotFetcher, error) {
+				return &grpcSnapshotFetcher{
+					clientSource:   fixedSnapshotClient(firstClient),
+					logger:         logging.Testing(),
+					parallelism:    1,
+					retryCount:     1,
+					fileRetryCount: 1,
+					checkReadiness: true,
+				}, nil
+			}},
+			{id: 2, newFetch: func() (state.SnapshotFetcher, error) {
+				return &grpcSnapshotFetcher{
+					clientSource:   fixedSnapshotClient(secondClient),
+					logger:         logging.Testing(),
+					parallelism:    1,
+					retryCount:     1,
+					fileRetryCount: 1,
+				}, nil
+			}},
+		},
+		logger: logging.Testing(),
+	}
+
+	size, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 10)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), size)
+}
+
 func TestFallbackSnapshotFetcher_UsesNextDonorAfterUnavailable(t *testing.T) {
 	t.Parallel()
 

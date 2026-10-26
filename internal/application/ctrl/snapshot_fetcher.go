@@ -32,6 +32,10 @@ const (
 	// blocks along with it (node.Run's WaitForApplied → /readyz → pod stuck
 	// at 0/1 for the whole probe budget).
 	prepareSnapshotTimeout = 60 * time.Second
+	// snapshotReadinessTimeout bounds the cheap donor probe independently from
+	// the much longer PrepareSnapshot timeout. A stalled donor must not block
+	// trying the next candidate.
+	snapshotReadinessTimeout = 5 * time.Second
 	// prepareSnapshotHeartbeat drives the periodic "still waiting" log
 	// during PrepareSnapshot. It's short enough to be visible during a
 	// human operator's live look, long enough not to flood.
@@ -57,6 +61,7 @@ type grpcSnapshotFetcher struct {
 	parallelism    int
 	retryCount     int
 	fileRetryCount int
+	checkReadiness bool
 }
 
 type snapshotDonorCandidate struct {
@@ -116,7 +121,7 @@ func (f *fallbackSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir s
 }
 
 func isDonorFallbackError(ctx context.Context, err error) bool {
-	if errors.Is(err, state.ErrNotAvailable) || errors.Is(err, errSnapshotDonorIntegrity) {
+	if errors.Is(err, state.ErrNotAvailable) || errors.Is(err, state.ErrSnapshotNotReady) || errors.Is(err, errSnapshotDonorIntegrity) {
 		return true
 	}
 	// PrepareSnapshot reports a donor that is itself resynchronizing as a
@@ -205,6 +210,35 @@ func isSessionExpired(err error) bool {
 	return false
 }
 
+func (f *grpcSnapshotFetcher) checkSnapshotReadiness(ctx context.Context, client snapshotpb.SnapshotServiceClient, minAppliedIndex uint64) error {
+	probeCtx, cancel := context.WithTimeout(ctx, snapshotReadinessTimeout)
+	defer cancel()
+
+	resp, err := client.CheckSnapshotReadiness(probeCtx, &snapshotpb.CheckSnapshotReadinessRequest{
+		MinAppliedIndex: minAppliedIndex,
+	})
+	if err != nil {
+		// Mixed-version clusters may contain a donor that predates this probe.
+		// Keep the existing PrepareSnapshot path as the compatibility fallback;
+		// newer donors still get the cheap readiness filter.
+		if status.Code(err) == codes.Unimplemented {
+			return nil
+		}
+
+		return fmt.Errorf("checking snapshot readiness: %w", err)
+	}
+	if resp.GetReady() {
+		return nil
+	}
+
+	return fmt.Errorf("%w: last persisted index %d is below requested index %d (resynchronizing=%t)",
+		state.ErrSnapshotNotReady,
+		resp.GetLastPersistedIndex(),
+		minAppliedIndex,
+		resp.GetResynchronizing(),
+	)
+}
+
 func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir string, progress *state.SyncProgress, minAppliedIndex uint64) (uint64, error) {
 	logger := f.logger.WithContext(ctx)
 	var lastErr error
@@ -221,6 +255,12 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 		client, err := f.clientSource()
 		if err != nil {
 			return 0, fmt.Errorf("snapshot fetch: %w: %w", state.ErrNotAvailable, err)
+		}
+
+		if f.checkReadiness {
+			if err := f.checkSnapshotReadiness(ctx, client, minAppliedIndex); err != nil {
+				return 0, err
+			}
 		}
 
 		size, err := f.fetchWithSession(ctx, client, targetDir, progress, minAppliedIndex)
@@ -455,6 +495,7 @@ func (p *grpcSnapshotFetcherProvider) GetForPeer(id uint64) (state.SnapshotFetch
 		parallelism:    p.parallelism,
 		retryCount:     p.retryCount,
 		fileRetryCount: p.fileRetryCount,
+		checkReadiness: true,
 	}, nil
 }
 
