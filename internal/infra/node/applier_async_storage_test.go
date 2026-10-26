@@ -174,7 +174,7 @@ func TestApplierNewApplierRejectsNilSink(t *testing.T) {
 
 	applier, err := NewApplier(
 		fsm, recovery, synchronizer, defaultSpool, pebbleStore, w, logger, meter,
-		0, 1000, nil, nil, func() {}, nil, // ← nil LocalResponses
+		0, 1000, nil, nil, nil, // ← nil LocalResponses
 	)
 	require.Error(t, err, "NewApplier must reject a nil responseSink")
 	require.Nil(t, applier)

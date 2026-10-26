@@ -299,7 +299,7 @@ func startCheckpointFenceNode(t *testing.T, ctx context.Context, store *dal.Stor
 	member, err := membership.NewMembership(membership.NewPeerStore(store), raftTransport, pool, id, raftAddr, serviceAddr, instanceID, logger)
 	require.NoError(t, err)
 	responses := node.NewLocalResponses()
-	applier, err := node.NewApplier(machine, recovery, synchronizer, sp, store, w, logger, meter, 1000, 1000, nil, nil, member.OnSnapshotInstalled, responses)
+	applier, err := node.NewApplier(machine, recovery, synchronizer, sp, store, w, logger, meter, 1000, 1000, nil, member, responses)
 	require.NoError(t, err)
 	raftNode, err := node.NewNode(node.NodeConfig{NodeID: id, AdvertiseAddr: raftAddr, ServiceAdvertiseAddr: serviceAddr, InstanceID: instanceID, TickInterval: tickInterval, ProcessingTickInterval: time.Millisecond, MaintenanceInterval: time.Hour}, raftTransport, applier, logger, meter, w, machine, recovery, synchronizer, member, responses)
 	require.NoError(t, err)

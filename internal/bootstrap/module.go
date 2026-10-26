@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -187,19 +186,6 @@ func Module() fx.Option {
 				membership *raftmembership.Membership,
 				localResponses node.LocalResponses,
 			) (*node.Applier, error) {
-				snapshotDonorCandidates := func() []uint64 {
-					peerAddresses := membership.PeerAddresses()
-					candidateIDs := make([]uint64, 0, len(peerAddresses))
-					for nodeID := range peerAddresses {
-						if nodeID != cfg.NodeID {
-							candidateIDs = append(candidateIDs, nodeID)
-						}
-					}
-					slices.Sort(candidateIDs)
-
-					return candidateIDs
-				}
-
 				return node.NewApplier(
 					machine,
 					recovery,
@@ -212,8 +198,7 @@ func Module() fx.Option {
 					cfg.CompactionMargin,
 					cfg.ReplayBatchSize,
 					snapshotFetcherProvider,
-					snapshotDonorCandidates,
-					membership.OnSnapshotInstalled,
+					membership,
 					localResponses,
 				)
 			},
@@ -241,9 +226,8 @@ func Module() fx.Option {
 			// PeerStore persists Raft cluster membership in Pebble under
 			// [ZoneClusterPersistent][SubGlobPeers] (EN-1413). Membership wraps it
 			// with the in-memory cache, owns the transport / service-pool
-			// wiring, and exposes the OnSnapshotInstalled /
-			// WriteConfChange callbacks injected into Applier and Machine
-			// via constructor.
+			// wiring, and is injected into Applier and Machine via their
+			// constructors.
 			raftmembership.NewPeerStore,
 			fx.Annotate(func(
 				store *raftmembership.PeerStore,

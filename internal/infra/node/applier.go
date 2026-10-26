@@ -69,6 +69,14 @@ type gatingResult struct {
 	taskFailed bool // true if the task returned an error, node should stay gated until shutdown
 }
 
+// SnapshotMembership provides the membership operations needed by Applier
+// while recovering a checkpoint. Keeping this contract narrow avoids coupling
+// Applier to the storage and transport details owned by Membership.
+type SnapshotMembership interface {
+	SnapshotDonorCandidates() []uint64
+	OnSnapshotInstalled()
+}
+
 // Applier owns all FSM application logic and gating/spool lifecycle.
 // It runs as a dedicated goroutine, decoupling WAL writes (processReadies)
 // from FSM application so they can overlap across consecutive Ready cycles.
@@ -86,9 +94,9 @@ type Applier struct {
 	replayBatchSize         int
 	snapshotFetcherProvider state.SnapshotFetcherProvider
 
-	// snapshotDonorCandidates resolves the current membership for every
-	// recovery attempt, avoiding a stale peer list in the Applier.
-	snapshotDonorCandidates func() []uint64
+	// snapshotMembership resolves donor candidates and refreshes the membership
+	// cache after a checkpoint has been installed.
+	snapshotMembership SnapshotMembership
 
 	status           *atomic.Int32
 	gatingReason     atomic.Int32 // gatingReason* constants — for observability
@@ -101,16 +109,6 @@ type Applier struct {
 	// pending holds the in-flight commit result channel, if any.
 	// At most one at a time. Drained before barriers, checkpoints, and shutdown.
 	pending *pendingCommit
-
-	// onSnapshotInstalled is invoked by the maintenance-task wrapper
-	// AFTER a leader-checkpoint sync + subsequent replaySpool have both
-	// landed on Pebble. Running it post-replay is deliberate: an
-	// earlier position would race with the still-spooled post-snapshot
-	// ConfChanges and drop those peers from the Membership cache. The
-	// hook fires inside the maintenance goroutine, synchronously with
-	// the restore, so the next Raft tick already sees the up-to-date
-	// cache + transport. (EN-1413)
-	onSnapshotInstalled func()
 
 	// responseSink receives MsgStorageApplyResp messages after the apply (or
 	// spool append) completes for a batch. Same channel instance the Node
@@ -187,8 +185,7 @@ func NewApplier(
 	compactionMargin uint64,
 	replayBatchSize int,
 	snapshotFetcherProvider state.SnapshotFetcherProvider,
-	snapshotDonorCandidates func() []uint64,
-	onSnapshotInstalled func(),
+	snapshotMembership SnapshotMembership,
 	responseSink LocalResponses,
 ) (*Applier, error) {
 	if responseSink == nil {
@@ -199,7 +196,7 @@ func NewApplier(
 	initialStatus.Store(statusNormal)
 
 	a := &Applier{
-		onSnapshotInstalled:     onSnapshotInstalled,
+		snapshotMembership:      snapshotMembership,
 		fsm:                     fsm,
 		recovery:                recovery,
 		synchronizer:            synchronizer,
@@ -212,7 +209,6 @@ func NewApplier(
 		compactionMargin:        compactionMargin,
 		replayBatchSize:         replayBatchSize,
 		snapshotFetcherProvider: snapshotFetcherProvider,
-		snapshotDonorCandidates: snapshotDonorCandidates,
 		responseSink:            responseSink,
 		status:                  &initialStatus,
 		ch:                      make(chan applyWork, 1),
@@ -1092,8 +1088,8 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 
 	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (maintenanceTaskResult, error) {
 		candidateIDs := []uint64{leader}
-		if a.snapshotDonorCandidates != nil {
-			for _, candidateID := range a.snapshotDonorCandidates() {
+		if a.snapshotMembership != nil {
+			for _, candidateID := range a.snapshotMembership.SnapshotDonorCandidates() {
 				if candidateID == 0 || candidateID == leader || slices.Contains(candidateIDs, candidateID) {
 					continue
 				}
@@ -1132,7 +1128,7 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 
 		a.syncProgress.Store(nil)
 
-		// The onSnapshotInstalled hook is deliberately NOT fired here.
+		// The snapshot membership hook is deliberately NOT fired here.
 		// The outer maintenance wrapper fires it AFTER replaySpool so
 		// any post-snapshot ConfChange sitting in the spool has landed
 		// in Pebble before Rehydrate reads it (EN-1413). See
@@ -1851,7 +1847,7 @@ type maintenanceTaskResult struct {
 	syncFailed    bool // if true, skip spool replay and mark node out-of-sync
 	// snapshotInstalled is set by startSyncSnapshot when a leader
 	// checkpoint has just replaced our Pebble. The outer wrapper fires
-	// onSnapshotInstalled AFTER replaySpool has drained the spool onto
+	// The snapshot membership hook fires AFTER replaySpool has drained the spool onto
 	// the fresh Pebble — if the hook fired inside the sync task
 	// (i.e., BEFORE replaySpool), Rehydrate would see leader's Pebble
 	// without the post-snapshot ConfChanges still sitting in the spool
@@ -1913,8 +1909,8 @@ func (a *Applier) startMaintenanceTask(
 		// cache (Rehydrate treats Pebble as authoritative and finds
 		// them missing), leaving the node with a stale transport view
 		// until the next rehydrate. (EN-1413)
-		if taskResult.snapshotInstalled {
-			a.onSnapshotInstalled()
+		if taskResult.snapshotInstalled && a.snapshotMembership != nil {
+			a.snapshotMembership.OnSnapshotInstalled()
 		}
 
 		a.maintenanceReplaySpoolHistogram.Record(context.Background(), time.Since(replayStart).Seconds())
