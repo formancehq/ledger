@@ -97,6 +97,7 @@ func (f *fallbackSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir s
 		fetcher, err := candidate.newFetch()
 		if err != nil {
 			errs = append(errs, fmt.Errorf("donor %d: %w", candidate.id, err))
+
 			continue
 		}
 
@@ -148,6 +149,7 @@ func isDonorFallbackError(ctx context.Context, err error) bool {
 
 func isDonorResynchronizingError(err error) bool {
 	s, ok := status.FromError(err)
+
 	return ok && s.Code() == codes.FailedPrecondition && strings.Contains(s.Message(), state.ErrStoreResynchronizing.Error())
 }
 
@@ -403,7 +405,7 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, client snaps
 
 	manifest := resp.GetManifest()
 	if err := validateSnapshotManifest(manifest); err != nil {
-		return 0, fmt.Errorf("%w: validating snapshot manifest: %v", errSnapshotDonorIntegrity, err)
+		return 0, fmt.Errorf("%w: validating snapshot manifest: %w", errSnapshotDonorIntegrity, err)
 	}
 
 	totalSize := manifestTotalSize(manifest)
@@ -556,7 +558,7 @@ func (p *grpcSnapshotFetcherProvider) GetForPeers(ids []uint64) (state.SnapshotF
 	}
 
 	if len(candidates) == 0 {
-		return nil, fmt.Errorf("no snapshot donors available")
+		return nil, errors.New("no snapshot donors available")
 	}
 
 	return &fallbackSnapshotFetcher{
