@@ -333,6 +333,21 @@ The ingestion position is not stored here. It lives on the per-ledger `LedgerBou
 
 A mirror ledger can be promoted to a normal ledger via `PromoteLedgerOrder` (`raft_cmd.proto:246`). The FSM emits a `PromotedLedgerLog` (`common.proto:315`), the WriteSet flags `mirrorConfigChanged = true`, and `Manager.reconcile()` stops the worker on the next reconciliation tick.
 
+Before proposing a new promotion, admission reads one store snapshot and
+requires an observed source head greater than zero, a durable ingestion cursor
+at or beyond that head, and no recorded synchronization error. A mirror whose
+source was never reached therefore cannot be promoted. This is an admission
+precondition, not an FSM apply rule: already committed orders replay with the
+same result on old and new RC voters. If a batch idempotency key already has a
+committed outcome, admission forwards the retry to the FSM's replay or conflict
+check when the ledger is now normal. A ledger still in mirror mode must satisfy
+the catch-up gate even if its key remains stored past expiry. A keyed retry after
+promotion and deletion also reaches the FSM replay gate, provided the batch
+does not create the ledger again. The head is the latest **observed** count,
+not a live lease on the source; operators must stop source writes and verify
+the final source head before cutover. There is no force override in the frozen
+RC service request.
+
 After promotion, the ledger accepts normal write requests. The boundary's `last_mirror_v2_log_id` and the source-head row are kept for forensic purposes but no longer advance.
 
 ## Configuration

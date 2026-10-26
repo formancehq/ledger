@@ -666,6 +666,9 @@ func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) (
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
+	if err := a.checkMirrorPromotions(ctx, orders, admPlan.key); err != nil {
+		return orders, nil, nil, err
+	}
 
 	// Enforce the metadata size contract over the whole command. It runs here,
 	// after the orders exist, because the per-command ceiling spans every order

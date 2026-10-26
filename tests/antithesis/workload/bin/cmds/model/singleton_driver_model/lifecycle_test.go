@@ -27,6 +27,24 @@ type immediateApplyClient struct {
 	servicepb.BucketServiceClient
 }
 
+func TestIsUnobservedMirrorPromotion(t *testing.T) {
+	t.Parallel()
+	bulk := oracle.Bulk{Requests: []*servicepb.Request{{Type: &servicepb.Request_PromoteLedger{
+		PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: "sample"},
+	}}}}
+	for _, syncError := range []bool{false, true} {
+		err := status.Errorf(codes.FailedPrecondition,
+			"applying raft requests: mirror sample is not caught up: cursor=0 head=0 sync_error=%t", syncError)
+		require.True(t, isUnobservedMirrorPromotion(bulk, err))
+	}
+	require.False(t, isUnobservedMirrorPromotion(bulk,
+		status.Error(codes.FailedPrecondition, "mirror other is not caught up: cursor=0 head=0 sync_error=false")))
+	require.False(t, isUnobservedMirrorPromotion(bulk,
+		status.Error(codes.FailedPrecondition, "mirror sample is not caught up: cursor=1 head=2 sync_error=false")))
+	require.False(t, isUnobservedMirrorPromotion(bulk, status.Error(codes.Internal,
+		"mirror sample is not caught up: cursor=0 head=0 sync_error=false")))
+}
+
 func (immediateApplyClient) Apply(context.Context, *servicepb.ApplyRequest, ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
 	return &servicepb.ApplyResponse{}, nil
 }
