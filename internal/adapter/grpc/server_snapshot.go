@@ -25,6 +25,10 @@ import (
 // its Raft log and must not serve a checkpoint.
 type WaitForAppliedFunc func(ctx context.Context, targetIndex uint64) error
 
+// SnapshotReadinessFunc returns the donor's durable FSM cursor and whether it
+// is currently resynchronizing. It must not wait or create a checkpoint.
+type SnapshotReadinessFunc func() (lastPersistedIndex uint64, resynchronizing bool)
+
 // SnapshotServiceServerImpl implements the SnapshotService gRPC server.
 type SnapshotServiceServerImpl struct {
 	snapshotpb.UnimplementedSnapshotServiceServer
@@ -34,10 +38,11 @@ type SnapshotServiceServerImpl struct {
 	sessions       *snapshotSessionStore
 	nextSyncID     atomic.Uint64
 	waitForApplied WaitForAppliedFunc
+	readiness      SnapshotReadinessFunc
 }
 
 // NewSnapshotServiceServer creates a new SnapshotServiceServer.
-func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL time.Duration, waitForApplied WaitForAppliedFunc) snapshotpb.SnapshotServiceServer {
+func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL time.Duration, waitForApplied WaitForAppliedFunc, readiness SnapshotReadinessFunc) snapshotpb.SnapshotServiceServer {
 	l := logger.WithField("component", "snapshot-server")
 
 	if sessionTTL == 0 {
@@ -49,7 +54,25 @@ func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL ti
 		store:          s,
 		sessions:       newSnapshotSessionStore(s, l, sessionTTL),
 		waitForApplied: waitForApplied,
+		readiness:      readiness,
 	}
+}
+
+// CheckSnapshotReadiness reports whether a checkpoint can be served without
+// creating one. The result is advisory: PrepareSnapshot repeats the durable
+// readiness check because the state may change between the two calls.
+func (s *SnapshotServiceServerImpl) CheckSnapshotReadiness(_ context.Context, req *snapshotpb.CheckSnapshotReadinessRequest) (*snapshotpb.CheckSnapshotReadinessResponse, error) {
+	if s.readiness == nil {
+		return nil, status.Error(codes.Unimplemented, "snapshot readiness is not available")
+	}
+
+	lastPersistedIndex, resynchronizing := s.readiness()
+
+	return &snapshotpb.CheckSnapshotReadinessResponse{
+		Ready:              !resynchronizing && lastPersistedIndex >= req.GetMinAppliedIndex(),
+		LastPersistedIndex: lastPersistedIndex,
+		Resynchronizing:    resynchronizing,
+	}, nil
 }
 
 // StartSnapshotService starts the session reaper. Keeping this acquisition in
