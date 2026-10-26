@@ -593,6 +593,8 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	}
 
 	// Convert Raft transient errors to Unavailable (client should retry).
+	// ErrStopped: the local Raft run ended before a cluster command completed.
+	// A retry can route to another live node while this one restarts.
 	// ErrProposalDropped: the leader lost leadership while processing the proposal.
 	// ErrLeadershipLost: the proposal was truncated by a later term, so it did
 	// not commit — retrying re-applies it exactly once.
@@ -603,7 +605,8 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	// ErrNodeNotReachable: forwarder lost its conn-pool entry for the target
 	// peer (network partition / pod restart in flight). Recovers as soon as
 	// the pool re-converges.
-	if errors.Is(err, raft.ErrProposalDropped) ||
+	if errors.Is(err, raft.ErrStopped) ||
+		errors.Is(err, raft.ErrProposalDropped) ||
 		errors.Is(err, node.ErrLeadershipLost) ||
 		errors.Is(err, node.ErrNotLeader) ||
 		errors.Is(err, node.ErrNodeSyncing) ||

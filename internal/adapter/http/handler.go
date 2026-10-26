@@ -125,38 +125,42 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			// `r.With(guard).Get(…)` would be invisible to it.
 			r.With(withQueryProfile).Group(func(r chi.Router) {
 				r.With(requireTransactionsRead).Group(func(r chi.Router) {
-					r.Get("/{ledgerName}/transactions", server.handleListTransactions)
+					r.Get("/{ledgerName}/transactions", knownQuery(server.handleListTransactions, "pageSize", "cursor", "reverse", "startDate", "endDate", "filter"))
 				})
 
 				r.With(requireAccountsRead).Group(func(r chi.Router) {
-					r.Get("/{ledgerName}/accounts", server.handleListAccounts)
-					r.Get("/{ledgerName}/volumes", server.handleAggregateVolumes)
+					r.Get("/{ledgerName}/accounts", knownQuery(server.handleListAccounts, "pageSize", "cursor", "reverse", "filter"))
+					r.Get("/{ledgerName}/volumes", knownQuery(server.handleAggregateVolumes, "filter", "useMaxPrecision", "groupByPrefixes", "collapseColors"))
 				})
 
 				r.With(requireQueriesRead).Group(func(r chi.Router) {
-					r.Post("/{ledgerName}/prepared-queries/{queryName}/execute", server.handleExecutePreparedQuery)
+					r.Post("/{ledgerName}/prepared-queries/{queryName}/execute", knownQuery(server.handleExecutePreparedQuery, "pageSize", "cursor", "reverse"))
 				})
+			})
+
+			r.With(requireQueriesRead).Group(func(r chi.Router) {
+				r.Post("/numscripts/analyze", knownQuery(server.handleAnalyzeNumscript))
 			})
 
 			// Ledgers read scope
 			r.With(requireLedgersRead).Group(func(r chi.Router) {
-				r.Get("/", server.handleListAllLedgers)
-				r.Get("/{ledgerName}", server.handleGetLedger)
-				r.Get("/{ledgerName}/stats", server.handleGetLedgerStats)
-				r.Get("/{ledgerName}/logs", server.handleListLedgerLogs)
-				r.Get("/{ledgerName}/numscripts", server.handleListNumscripts)
-				r.Get("/{ledgerName}/numscripts/{name}", server.handleGetNumscript)
-				r.Get("/{ledgerName}/numscripts/{name}/usage", server.handleGetNumscriptUsage)
-				r.Get("/{ledgerName}/numscripts/{name}/versions", server.handleListNumscriptVersions)
-				r.Get("/{ledgerName}/indexes", server.handleListLedgerIndexes)
-				r.Get("/{ledgerName}/indexes/{canonicalId}", server.handleGetIndex)
-				r.Get("/{ledgerName}/indexes/{canonicalId}/status", server.handleGetIndexEntryStatus)
-				r.Get("/{ledgerName}/indexes/{canonicalId}/inspect", server.handleInspectIndex)
+				r.Get("/", knownQuery(server.handleListAllLedgers, "pageSize", "cursor", "reverse"))
+				r.Get("/{ledgerName}", knownQuery(server.handleGetLedger))
+				r.Get("/{ledgerName}/stats", knownQuery(server.handleGetLedgerStats))
+				r.Get("/{ledgerName}/logs", knownQuery(server.handleListLedgerLogs, "pageSize", "cursor", "reverse", "startDate", "endDate", "filter"))
+				r.Get("/{ledgerName}/numscripts", knownQuery(server.handleListNumscripts, "pageSize", "cursor", "reverse"))
+				r.Get("/{ledgerName}/numscripts/{name}", knownQuery(server.handleGetNumscript, "version"))
+				r.Get("/{ledgerName}/numscripts/{name}/usage", knownQuery(server.handleGetNumscriptUsage))
+				r.Get("/{ledgerName}/numscripts/{name}/versions", knownQuery(server.handleListNumscriptVersions))
+				r.Get("/{ledgerName}/indexes", knownQuery(server.handleListLedgerIndexes))
+				r.Get("/{ledgerName}/indexes/{canonicalId}", knownQuery(server.handleGetIndex))
+				r.Get("/{ledgerName}/indexes/{canonicalId}/status", knownQuery(server.handleGetIndexEntryStatus))
+				r.Get("/{ledgerName}/indexes/{canonicalId}/inspect", knownQuery(server.handleInspectIndex, "mode", "pageSize", "cursor"))
 			})
 
 			// Transactions read scope
 			r.With(requireTransactionsRead).Group(func(r chi.Router) {
-				r.Get("/{ledgerName}/transactions/{transactionId}", server.handleGetTransaction)
+				r.Get("/{ledgerName}/transactions/{transactionId}", knownQuery(server.handleGetTransaction))
 			})
 
 			// Audit read scope. Audit reads are cluster/bucket-wide (a proposal can
@@ -167,8 +171,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			// admission (admission.ErrLedgerNameReservedPrefix), keeping the system
 			// namespace `/v3/_/…` and the ledger namespace disjoint by construction.
 			r.With(requireAuditRead).Group(func(r chi.Router) {
-				r.Get("/_/audit-entries", server.handleListAuditEntries)
-				r.Get("/_/audit-entries/{sequence}", server.handleGetAuditEntry)
+				r.Get("/_/audit-entries", knownQuery(server.handleListAuditEntries, "pageSize", "cursor", "reverse", "filter"))
+				r.Get("/_/audit-entries/{sequence}", knownQuery(server.handleGetAuditEntry))
 			})
 
 			// Ops read scope — bucket-wide reads not tied to a single ledger.
@@ -182,75 +186,75 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			// `/_` therefore needs no extra reserved-name bookkeeping — the `_`
 			// segment is the single, permanent guard.
 			r.With(requireOpsRead).Route("/_", func(r chi.Router) {
-				r.Get("/logs/{sequence}", server.handleGetLog)
-				r.Get("/events-sinks", server.handleGetEventsSinks)
-				r.Get("/signing-keys", server.handleListSigningKeys)
-				r.Get("/indexes", server.handleListBucketIndexes)
-				r.Get("/indexes/status", server.handleGetIndexStatus)
-				r.Get("/indexes/{canonicalId}", server.handleGetBucketIndex)
-				r.Get("/indexes/{canonicalId}/status", server.handleGetBucketIndexEntryStatus)
+				r.Get("/logs/{sequence}", knownQuery(server.handleGetLog))
+				r.Get("/events-sinks", knownQuery(server.handleGetEventsSinks))
+				r.Get("/signing-keys", knownQuery(server.handleListSigningKeys, "pageSize", "cursor", "reverse"))
+				r.Get("/indexes", knownQuery(server.handleListBucketIndexes, "scope"))
+				r.Get("/indexes/status", knownQuery(server.handleGetIndexStatus, "ledger"))
+				r.Get("/indexes/{canonicalId}", knownQuery(server.handleGetBucketIndex))
+				r.Get("/indexes/{canonicalId}/status", knownQuery(server.handleGetBucketIndexEntryStatus))
 			})
 
 			// Ops mutations use the same scope as their gRPC Apply requests.
 			r.With(requireOpsWrite).Group(func(r chi.Router) {
-				r.Post("/_/events-sinks", server.handleAddEventsSink)
-				r.Delete("/_/events-sinks/{sinkName}", server.handleRemoveEventsSink)
+				r.Post("/_/events-sinks", knownQuery(server.handleAddEventsSink))
+				r.Delete("/_/events-sinks/{sinkName}", knownQuery(server.handleRemoveEventsSink, "controllerId"))
 			})
 
 			// Accounts read scope
 			r.With(requireAccountsRead).Group(func(r chi.Router) {
-				r.Get("/{ledgerName}/accounts/{address}", server.handleGetAccount)
-				r.Get("/{ledgerName}/metadata-schema", server.handleGetMetadataSchema)
-				r.Get("/{ledgerName}/analyze-accounts", server.handleAnalyzeAccounts)
-				r.Get("/{ledgerName}/analyze-transactions", server.handleAnalyzeTransactions)
-				r.Get("/{ledgerName}/account-types", server.handleListAccountTypes)
-				r.Get("/{ledgerName}/account-types/{typeName}", server.handleGetAccountType)
+				r.Get("/{ledgerName}/accounts/{address}", knownQuery(server.handleGetAccount, "collapseColors"))
+				r.Get("/{ledgerName}/metadata-schema", knownQuery(server.handleGetMetadataSchema))
+				r.Get("/{ledgerName}/analyze-accounts", knownQuery(server.handleAnalyzeAccounts, "variableThreshold"))
+				r.Get("/{ledgerName}/analyze-transactions", knownQuery(server.handleAnalyzeTransactions, "variableThreshold"))
+				r.Get("/{ledgerName}/account-types", knownQuery(server.handleListAccountTypes))
+				r.Get("/{ledgerName}/account-types/{typeName}", knownQuery(server.handleGetAccountType))
 			})
 
 			// Ledgers write scope
 			r.With(requireLedgersWrite).Group(func(r chi.Router) {
-				r.Post("/{ledgerName}", server.handleCreateLedger)
-				r.Delete("/{ledgerName}", server.handleDeleteLedger)
-				r.Post("/{ledgerName}/promote", server.handlePromoteLedger)
-				r.Put("/{ledgerName}/numscripts/{name}", server.handleSaveNumscript)
-				r.Post("/{ledgerName}/indexes", server.handleCreateIndex)
-				r.Delete("/{ledgerName}/indexes/{canonicalId}", server.handleDropIndex)
+				r.Post("/{ledgerName}", knownQuery(server.handleCreateLedger))
+				r.Delete("/{ledgerName}", knownQuery(server.handleDeleteLedger))
+				r.Post("/{ledgerName}/promote", knownQuery(server.handlePromoteLedger))
+				r.Put("/{ledgerName}/numscripts/{name}", knownQuery(server.handleSaveNumscript))
+				r.Post("/{ledgerName}/indexes", knownQuery(server.handleCreateIndex))
+				r.Delete("/{ledgerName}/indexes/{canonicalId}", knownQuery(server.handleDropIndex))
 			})
 
 			// Transactions write scope
 			r.With(requireTransactionsWrite).Group(func(r chi.Router) {
-				r.Post("/{ledgerName}/transactions", server.handleCreateTransaction)
-				r.Post("/{ledgerName}/transactions/{transactionId}/revert", server.handleRevertTransaction)
+				r.Post("/{ledgerName}/transactions", knownQuery(server.handleCreateTransaction))
+				r.Post("/{ledgerName}/transactions/{transactionId}/revert", knownQuery(server.handleRevertTransaction))
 			})
 
 			// Metadata write scope
 			r.With(requireMetadataWrite).Group(func(r chi.Router) {
-				r.Post("/{ledgerName}/transactions/{transactionId}/metadata", server.handleSaveTransactionMetadata)
-				r.Delete("/{ledgerName}/transactions/{transactionId}/metadata/{key}", server.handleDeleteTransactionMetadata)
-				r.Post("/{ledgerName}/accounts/{address}/metadata", server.handleSaveAccountMetadata)
-				r.Delete("/{ledgerName}/accounts/{address}/metadata/{key}", server.handleDeleteAccountMetadata)
-				r.Post("/{ledgerName}/metadata", server.handleSaveLedgerMetadata)
-				r.Delete("/{ledgerName}/metadata/{key}", server.handleDeleteLedgerMetadata)
-				r.Put("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleSetMetadataType)
-				r.Delete("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleRemoveMetadataType)
-				r.Post("/{ledgerName}/account-types", server.handleAddAccountType)
-				r.Delete("/{ledgerName}/account-types/{typeName}", server.handleRemoveAccountType)
-				r.Put("/{ledgerName}/account-types/default-enforcement-mode", server.handleSetDefaultEnforcementMode)
+				r.Post("/{ledgerName}/transactions/{transactionId}/metadata", knownQuery(server.handleSaveTransactionMetadata))
+				r.Delete("/{ledgerName}/transactions/{transactionId}/metadata/{key}", knownQuery(server.handleDeleteTransactionMetadata))
+				r.Post("/{ledgerName}/accounts/{address}/metadata", knownQuery(server.handleSaveAccountMetadata))
+				r.Delete("/{ledgerName}/accounts/{address}/metadata/{key}", knownQuery(server.handleDeleteAccountMetadata))
+				r.Post("/{ledgerName}/metadata", knownQuery(server.handleSaveLedgerMetadata))
+				r.Delete("/{ledgerName}/metadata/{key}", knownQuery(server.handleDeleteLedgerMetadata))
+				r.Put("/{ledgerName}/metadata-schema/{targetType}/{key}", knownQuery(server.handleSetMetadataType))
+				r.Delete("/{ledgerName}/metadata-schema/{targetType}/{key}", knownQuery(server.handleRemoveMetadataType))
+				r.Post("/{ledgerName}/account-types", knownQuery(server.handleAddAccountType))
+				r.Delete("/{ledgerName}/account-types/{typeName}", knownQuery(server.handleRemoveAccountType))
+				r.Put("/{ledgerName}/account-types/default-enforcement-mode", knownQuery(server.handleSetDefaultEnforcementMode))
 			})
 
 			// Bulk endpoint: per-element scope check handled inside the handler
-			r.Post("/{ledgerName}/bulk", server.handleBulk)
+			r.Post("/{ledgerName}/bulk", knownQuery(server.handleBulk, "continueOnFailure", "atomic"))
 
 			// Prepared queries (read)
 			r.With(requireQueriesRead).Group(func(r chi.Router) {
-				r.Get("/{ledgerName}/prepared-queries", server.handleListPreparedQueries)
+				r.Get("/{ledgerName}/prepared-queries", knownQuery(server.handleListPreparedQueries))
 			})
 
 			// Prepared queries (write)
 			r.With(requireQueriesWrite).Group(func(r chi.Router) {
-				r.Post("/{ledgerName}/prepared-queries", server.handleCreatePreparedQuery)
-				r.Put("/{ledgerName}/prepared-queries/{queryName}", server.handleUpdatePreparedQuery)
-				r.Delete("/{ledgerName}/prepared-queries/{queryName}", server.handleDeletePreparedQuery)
+				r.Post("/{ledgerName}/prepared-queries", knownQuery(server.handleCreatePreparedQuery))
+				r.Put("/{ledgerName}/prepared-queries/{queryName}", knownQuery(server.handleUpdatePreparedQuery))
+				r.Delete("/{ledgerName}/prepared-queries/{queryName}", knownQuery(server.handleDeletePreparedQuery))
 			})
 		})
 	}

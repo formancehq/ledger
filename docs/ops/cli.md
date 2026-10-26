@@ -221,6 +221,7 @@ scripting against the CLI predictable across resources.
 | Pagination | `--cursor` | string | Page token printed by a previous page (`next_cursor` or `previous_cursor`). Pass the same `--reverse` and `--filter` on every page of a walk. See [Page tokens](#page-tokens). |
 | Pagination | `--reverse` | bool | Reverse iteration order. Available on commands whose server endpoint supports it. |
 | Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts`, `transactions` and `queries execute`. |
+
 | Filter | `--filter` | string | Boolean filter expression — textual `filterexpr` grammar OR the structured JSON `QueryFilter` DSL (dual-format, EN-1511). |
 | Filter | `--prefix` | string | Account-address prefix shortcut. Only on `accounts list` (server-side `HardcodedPrefix` optimization). |
 | Consistency | `--checkpoint-id` | uint64 | Read from a named query checkpoint instead of the live store. |
@@ -230,6 +231,8 @@ scripting against the CLI predictable across resources.
 | Aliases | `list` | — | `ls`, `l` |
 | Aliases | `get` | — | `g`, `show`, `describe` |
 | Aliases | `inspect` | — | `i` |
+
+When stdin is not a terminal, commands that need an interactive value or confirmation fail immediately. Supply the required arguments and flags (including `--var` for Numscript variables and `--yes` for confirmations). Interactive pagers stop after the first page; account and transaction lists still print their cursor hints, while `queries execute` prints a reminder to use `--all`. Use `--all` to fetch all pages in scripts.
 
 Structured JSON and YAML output preserve the full precision of integer metadata,
 transaction IDs, and posting amounts, including values greater than `2^53`.
@@ -258,16 +261,16 @@ These commands still honor `--json` / `--yaml`.
 
 #### Default pagination behaviour
 
-Paginated `list` commands fall into two groups depending on what happens when
+Paginated `list` commands fall into three groups depending on what happens when
 neither `--page-size` nor `--cursor` is set:
 
 | Group | Commands | Default behaviour |
 |---|---|---|
-| Drain-by-default | `accounts list`, `transactions list`, `ledgers list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to switch back to single-page output (and print the page hints). |
+| Interactive page walk | `accounts list`, `transactions list` | Prompt between pages on terminal stdin. On non-terminal stdin, print the first page and cursor hints, then stop. Use `--all` to fetch every page in scripts. |
+| Drain-by-default | `ledgers list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to request a single page and print its cursor hints. |
 | Single-page-only | `audit list`, `logs list` | Always print one page and its page hints, even with no flags set. Resume with `--cursor <token>`. These resources commonly hold tens of thousands of rows; defaulting to a single page avoids accidentally streaming the whole history. |
 
-Both groups expose the same `--page-size` / `--cursor` semantics; only the
-flagless default differs.
+All groups expose `--page-size` and `--cursor`; the flagless behavior differs.
 
 #### Page tokens
 
@@ -1545,6 +1548,11 @@ ledgerctl transactions create [flags]
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
+Posting flag amounts must be decimal integers between `0` and `2^256 - 1`
+(inclusive). Interactive amounts must be positive and obey the same upper
+bound. Negative and overflowing amounts return a validation error before any
+Apply RPC; accepted amounts retain their exact value, including uint256 maximum.
+
 **Creating transactions with postings:**
 
 ```bash
@@ -2349,8 +2357,8 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 
 **Behavior:**
 
-1. Verifies the target data directory is fresh (no existing checkpoints via `ScanLatestCheckpointID`)
-2. Creates or opens the selected data directory and downloads checkpoint files sequentially into `restore-staging/` through rooted filesystem operations. Rejects a staging-root symlink (including one pointing inside the data directory), non-local manifest filenames and symlink escapes. Each filename is checked before its parent directories are created or its object is read; file size and sha256 verification still apply.
+1. Rejects a `RESTORED` marker, live database or incompatible checkpoint layout; reclaims a lone unmarked `checkpoints/0` left by interrupted finalization.
+2. Creates or opens the selected data directory, rejects a symlink or non-directory at `restore-staging/`, removes any old real staging directory through the data-directory root, then creates a fresh staging directory. Downloads checkpoint files sequentially through rooted filesystem operations. Rejects non-local manifest filenames and symlink escapes. Each filename is checked before its parent directories are created or its object is read; file size and sha256 verification still apply.
 3. Applies export segments and rebuilds derived state from logs (if any)
 4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
 5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
@@ -2359,10 +2367,15 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 8. Hard-links staging to `checkpoints/0`, writes `RESTORED` marker
 9. Cleans up the staging directory
 
-Staging is created even for export-only manifests. Download root handles close
-before replay and preview. A download failure stops before validation,
-confirmation and finalization, but can leave earlier or partially written files
-in staging; the command does not automatically clean up failed downloads.
+Every attempt resets staging, including export-only restores. This command
+requires exclusive offline use of the target directory. Reset failure aborts
+before replay or publication and may leave old staging partly removed or absent.
+Download root handles close before replay and preview. Download/rebuild failures
+or confirmation EOF may leave new partial or fully rebuilt staging; the next
+attempt discards it and starts from the backup again so additive projections
+are not replayed twice. A successful finalization places the checkpoint before
+writing the `RESTORED` commit marker, then removes staging. A marked restore
+cannot be overwritten by retrying this command.
 
 After bootstrap, start the server with `--bootstrap` to use the restored data.
 
@@ -2734,6 +2747,16 @@ ledgerctl cluster status --node-id 2
 - **Cluster Nodes**: List of all nodes with ID, address, suffrage, and status
 - **Replication Progress**: Replication status for each follower (only shown when querying leader)
 
+The operator uses three hidden transport commands: `cluster begin-drain <epoch>
+--json` calls the authenticated Raft cutoff RPC, `cluster end-drain <epoch>
+--json` releases the same epoch through Raft after a canceled shutdown, and
+`cluster drain-status --json` reads the current Pod's local cursor. A status
+response certifies durability only when its active drain index, or its last
+release index when there is no active drain, is nonzero and at or below the
+reported persisted index; that response includes a Pebble WAL
+fsync. These commands are not a
+user-facing shutdown workflow. See [controlled shutdown](../technical/architecture/subsystems/consensus/controlled-shutdown.md).
+
 #### cluster watch
 
 `--node-id` accepts the same unsigned 64-bit IDs as `cluster status`.
@@ -2811,76 +2834,6 @@ ledgerctl cluster transfer-leader 2
 
 # Transfer with custom timeout
 ledgerctl cluster transfer-leader 3 --timeout 5s
-```
-
-#### cluster add-learner
-
-Add a non-voting (learner) node to the Raft cluster. The request is forwarded to the current leader.
-
-```bash
-ledgerctl cluster add-learner <node-id> <raft-address> <service-address> <instance-id> [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--timeout` | `10s` | Request timeout |
-
-**Behavior:**
-- The request is forwarded to the current leader if sent to a follower
-- `instance-id` is the 32-character hexadecimal encoding of the target node's 16-byte persisted `INSTANCE_ID` file
-- An existing member with replicated progress rejects a different identity with `FailedPrecondition`; retrying the same active identity returns `AlreadyExists`. With no replicated progress, a different identity refreshes the registration.
-- For stale progress, retire the old instance, remove its membership, then retry. If quorum is unavailable, use the leader-only `cluster remove-node --force` procedure in [Cluster operations](./cluster-operations.md), ensuring the retired instance cannot rejoin.
-- The leader proposes a ConfChange to add the node as a learner (non-voting member)
-- Once committed, all nodes add the learner to their transport and service pool
-- The learner receives log entries and snapshots but cannot vote or become leader
-
-**Example:**
-
-```bash
-# Read the INSTANCE_ID from the target node's configured --wal-dir (default: ./wal).
-# When running under the Formance Operator, the mount path is /data/raft by default.
-WAL_DIR=${WAL_DIR:-./wal}
-INSTANCE_ID_HEX=$(od -An -tx1 "$WAL_DIR/INSTANCE_ID" | tr -d ' \n')
-
-# Add node 4 as a learner
-ledgerctl cluster add-learner 4 node-4:7777 node-4:8888 "$INSTANCE_ID_HEX"
-
-# Add node 5 as a learner - read its own WAL directory for its unique INSTANCE_ID.
-# Reusing node-4 identity here would register node-5 under the wrong incarnation.
-NODE5_WAL_DIR=${NODE5_WAL_DIR:-./wal}
-NODE5_INSTANCE_ID_HEX=$(od -An -tx1 "$NODE5_WAL_DIR/INSTANCE_ID" | tr -d ' \n')
-ledgerctl cluster add-learner 5 node-5:7777 node-5:8888 "$NODE5_INSTANCE_ID_HEX" --timeout 30s
-```
-
-#### cluster promote-learner
-
-Promote a learner (non-voting) node to a full voter in the Raft cluster. The request is forwarded to the leader.
-
-```bash
-ledgerctl cluster promote-learner <node-id> [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--timeout` | `30s` | Request timeout |
-
-**Behavior:**
-- The request is forwarded to the current leader if sent to a follower
-- The leader proposes a ConfChange to promote the learner to a voter
-- Once committed, the node participates in elections and can become leader
-
-**Example:**
-
-```bash
-# Promote learner node 4 to voter
-ledgerctl cluster promote-learner 4
-
-# Promote with custom timeout
-ledgerctl cluster promote-learner 5 --timeout 60s
 ```
 
 #### cluster remove-node
@@ -4165,11 +4118,17 @@ ledger run --response-signing-key ./response-keys/seed.hex [other flags...]
 ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create --ledger my-ledger --posting "world,bank,1000,USD"
 ```
 
-With `--response-verify-key`, prepared query create/update/delete and query
-checkpoint create/delete verify the returned Apply log signatures before
-reporting success or reading the created checkpoint ID. Verification also
-checks that each visible log matches the authenticated payload. Missing or
-invalid signatures and mismatched logs cause the command to fail.
+With `--response-verify-key`, `transactions set-metadata`/`delete-metadata`,
+`numscripts save`, prepared query create/update/delete, and query checkpoint
+create/delete verify the returned Apply log signatures before reporting
+success or reading returned fields such as a script name/version or checkpoint
+ID. Verification also checks that each visible log matches the authenticated
+payload. Missing or invalid signatures, signatures from another key, and
+mismatched logs cause the command to fail. Without this flag, verification is
+optional and unsigned responses remain accepted.
+
+Verification happens after the mutation RPC completes. A verification failure
+does not roll back the mutation; the client cannot authenticate its outcome.
 
 Clients can also discover the server's public key via the `Discovery` RPC.
 
@@ -4341,6 +4300,10 @@ Configure in-memory caches used by the FSM and Numscript parser.
 | `--cache-rotation-threshold` | uint64 | `1000` | Cache rotation threshold: number of Raft entries applied before rotating the FSM attribute cache generation (0 = use default 1000) |
 
 The FSM attribute cache uses a two-generation scheme. After `cache-rotation-threshold` entries are applied, the active generation is rotated. Higher values use more memory but reduce cache misses. This is a mutable cluster-wide setting: change it with the [rolling upgrade procedure](./cluster-operations.md#cluster-configuration-updates) so the leader propagates the new value deterministically through Raft.
+
+Zero resolves to 1000 before the leader compares or proposes the desired
+configuration. See the [zero-default rollout restrictions](./cluster-operations.md#zero-default-rollout-and-existing-committed-zero-entries)
+when older binaries can still become leader or a zero value was already committed.
 
 ```bash
 # Default: rotate every 1000 entries
@@ -5031,6 +4994,15 @@ export LEDGERCTL_TLS_CA_CERT=/path/to/ca.pem
 ledgerctl ledgers list
 ```
 
+Command-specific flags use the same `LEDGERCTL_` prefix with the flag name
+uppercased and hyphens replaced by underscores (for example,
+`LEDGERCTL_MODE` for `--mode`). Environment values never mark a flag as
+explicitly changed, so a command-line flag always takes precedence. Safety
+flags such as `--force` and `--yes` are intentionally CLI-only; `FORCE`, `YES`,
+and their prefixed forms are ignored. The backup commands additionally retain
+the documented `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` aliases for
+Kubernetes Secret-backed Jobs.
+
 ---
 
 ## Event Sinks
@@ -5049,8 +5021,11 @@ progress, not proof of external delivery: internal or filtered logs can advance
 the cursor without a publish. The human view also shows the error occurrence time.
 Startup errors clear after the sink starts successfully.
 Human, JSON, YAML, and JSON result-file output mask credentials embedded in
-NATS, HTTP, and ClickHouse URLs. Usernames and connection details remain
-visible, while passwords and token-only NATS userinfo display as `****`.
+NATS, HTTP, and ClickHouse URLs. Connection details and usernames paired with
+passwords remain visible. HTTP endpoints use the shared sensitive-URL policy:
+passwords, passwordless userinfo tokens, and credential query values such as
+`access_token` display as `xxxxx`; harmless query controls remain visible.
+NATS and ClickHouse credentials display as `****`.
 
 ```bash
 ledgerctl events list
@@ -5068,6 +5043,10 @@ Add a named event sink configuration. An existing name is rejected; the configur
 
 After a successful update, the displayed configuration applies the same URL
 credential masking as `events list`; the submitted configuration is unchanged.
+This applies to human, JSON, YAML, and JSON result-file output. JSON, YAML,
+and JSON result-file output represent HTTP HMAC secrets with `(set)` / `(none)`
+presence markers. Human output shows `Secret: (set)` when configured and
+omits the Secret row when no HMAC secret is set.
 
 Currently supported sink types: **NATS JetStream**, **ClickHouse**, **Kafka**, **HTTP**, **Databricks**.
 
@@ -5153,6 +5132,30 @@ The HTTP sink sends each event as an individual POST request with headers:
 - `X-Webhook-Signature`: `sha256=<hex>` HMAC signature (only when `--http-secret` is set)
 
 Only a 2xx response acknowledges an event. The sink does not follow redirects: any 3xx response is a delivery failure, so `--http-endpoint` must be the final URL.
+
+### Databricks sequence column upgrade
+
+New Databricks sink tables use `DECIMAL(20,0)` for `log_sequence`. This exact
+numeric type holds every global-log sequence Ledger admits. Existing tables
+created with `BIGINT` are not changed by sink startup's `CREATE TABLE IF NOT
+EXISTS`. Before upgrading the sink, check the column with `DESCRIBE TABLE
+catalog.schema.table` and, if it is `BIGINT`, widen it while preserving rows:
+
+```sql
+ALTER TABLE catalog.schema.table SET TBLPROPERTIES ('delta.enableTypeWidening' = 'true');
+ALTER TABLE catalog.schema.table ALTER COLUMN log_sequence TYPE DECIMAL(20,0);
+```
+
+Run this once per existing sink table during the upgrade window, then verify
+`DESCRIBE TABLE` reports `DECIMAL(20,0)` and existing sequence values still
+match. Databricks type widening requires a supported Delta table and upgrades
+its table protocol; check other readers and writers for compatibility before
+enabling it. If that feature is unavailable, create a replacement table with
+the new schema and migrate existing rows before switching the sink to it.
+Low sequence values remain numerically identical, so old and new Ledger
+writers can coexist during a rolling upgrade. Queries or clients that read
+`log_sequence` into signed 64-bit values must change to a decimal or string
+representation before values exceed `MaxInt64`.
 
 ### `events remove-sink`
 

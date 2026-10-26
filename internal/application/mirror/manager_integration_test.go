@@ -4,16 +4,12 @@ package mirror
 
 import (
 	"context"
-	"fmt"
-	"net"
 	"net/url"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -31,33 +27,7 @@ func newBlockedPostgresSource(t *testing.T) *blockedPostgresSource {
 	t.Helper()
 
 	ctx := context.Background()
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "postgres:16.4-alpine",
-			Env:          map[string]string{"POSTGRES_USER": "mirror", "POSTGRES_PASSWORD": "mirror", "POSTGRES_DB": "mirror"},
-			ExposedPorts: []string{"5432/tcp"},
-			WaitingFor:   wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithStartupTimeout(time.Minute),
-		},
-		Started: true,
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, container.Terminate(context.Background())) })
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
-	port, err := container.MappedPort(ctx, "5432/tcp")
-	require.NoError(t, err)
-	dsn := fmt.Sprintf("postgres://mirror:mirror@%s/mirror?sslmode=disable", net.JoinHostPort(host, port.Port()))
-	observer, err := pgx.Connect(ctx, dsn)
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, observer.Close(context.Background())) })
-	_, err = observer.Exec(ctx, `
- CREATE SCHEMA _system;
- CREATE TABLE _system.ledgers (name text PRIMARY KEY, bucket text NOT NULL);
- INSERT INTO _system.ledgers VALUES ('source-ledger', 'source_bucket');
- CREATE SCHEMA source_bucket;
- CREATE TABLE source_bucket.logs (id bigint NOT NULL, ledger text NOT NULL,
- type text NOT NULL, date timestamptz NOT NULL, data jsonb NOT NULL, hash bytea);`)
-	require.NoError(t, err)
+	dsn, observer := newPostgresLogFixture(t)
 	holder, err := pgx.Connect(ctx, dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, holder.Close(context.Background())) })
@@ -65,7 +35,7 @@ func newBlockedPostgresSource(t *testing.T) *blockedPostgresSource {
 	require.NoError(t, err)
 	_, err = lock.Exec(ctx, "LOCK TABLE _system.ledgers IN ACCESS EXCLUSIVE MODE")
 	require.NoError(t, err)
-	fixture := &blockedPostgresSource{observer: observer, lock: lock, applicationName: container.GetContainerID()[:16]}
+	fixture := &blockedPostgresSource{observer: observer, lock: lock, applicationName: observer.Config().Database}
 	u, err := url.Parse(dsn)
 	require.NoError(t, err)
 	q := u.Query()

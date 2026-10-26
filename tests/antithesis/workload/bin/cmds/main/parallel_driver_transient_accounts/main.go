@@ -11,19 +11,18 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_transient_accounts", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
-		r := internal.Rand()
-
+	internal.RunGeneratedDriver("parallel_driver_transient_accounts", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
 		// Use a dedicated ledger with a transient account type.
 		ledger := internal.PrefixTransientAccounts.New()
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}
 
-		typeName := fmt.Sprintf("clearing-%d", r.Uint64()%10000)
+		typeName := fmt.Sprintf("clearing-%d", src.Uint64Range(0, 9999))
 		pattern := typeName + ":{id}"
 		details := internal.Details{"ledger": ledger, "typeName": typeName, "pattern": pattern}
 
@@ -51,8 +50,8 @@ func main() {
 			return
 		}
 
-		clearingAddr := fmt.Sprintf("%s:%d", typeName, r.Uint64()%1000)
-		amount := r.Uint64()%1000 + 100
+		clearingAddr := fmt.Sprintf("%s:%d", typeName, src.Uint64Range(0, 999))
+		amount := src.Uint64Range(0, 999) + 100
 		details["clearingAddr"] = clearingAddr
 		details["amount"] = amount
 
@@ -107,7 +106,7 @@ func main() {
 
 		// 3. Unbalanced batch: fund the clearing account without draining it.
 		//    The transient account ends with non-zero balance — should fail.
-		clearingAddr2 := fmt.Sprintf("%s:%d", typeName, r.Uint64()%1000+1000)
+		clearingAddr2 := fmt.Sprintf("%s:%d", typeName, src.Uint64Range(0, 999)+1000)
 		details["clearingAddr2"] = clearingAddr2
 
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{

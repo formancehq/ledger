@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -127,7 +128,7 @@ func newForceRemoveTransport(t *testing.T) Transport {
 
 	transport := NewMockTransport(gomock.NewController(t))
 	transport.EXPECT().Unreachable().AnyTimes().Return((<-chan uint64)(nil))
-	transport.EXPECT().SnapshotStatus().AnyTimes().Return((<-chan SnapshotStatus)(nil))
+	transport.EXPECT().DeliveryResults().AnyTimes().Return((<-chan DeliveryResult)(nil))
 	transport.EXPECT().RecvHighPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
 	transport.EXPECT().RecvMediumPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
 	transport.EXPECT().RecvLowPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
@@ -395,126 +396,148 @@ func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 	t.Run("validation failure happens before live mutation", func(t *testing.T) {
 		t.Parallel()
 
-		h := newForceRemoveHarness(t, []uint64{1, 2, 3}, forceRemoveNoFailure, nil, false)
+		synctest.Test(t, func(t *testing.T) {
+			h := newForceRemoveHarness(t, []uint64{1, 2, 3}, forceRemoveNoFailure, nil, false)
 
-		err := h.n.ForceRemoveNode(context.Background(), 99)
-		require.ErrorIs(t, err, ErrNodeNotInCluster)
-		require.Zero(t, h.injectedWAL.updateCount())
-		require.Contains(t, h.rawNode.Status().Progress, uint64(3))
-		require.Equal(t, []uint64{1, 2, 3}, h.n.confState.Load().GetVoters())
-		_, voters := walState(t, h.durableWAL)
-		require.Equal(t, []uint64{1, 2, 3}, voters)
+			err := h.n.ForceRemoveNode(context.Background(), 99)
+			require.ErrorIs(t, err, ErrNodeNotInCluster)
+			require.Zero(t, h.injectedWAL.updateCount())
+			require.Contains(t, h.rawNode.Status().Progress, uint64(3))
+			require.Equal(t, []uint64{1, 2, 3}, h.n.confState.Load().GetVoters())
+			_, voters := walState(t, h.durableWAL)
+			require.Equal(t, []uint64{1, 2, 3}, voters)
 
-		_, err = h.n.GetClusterState(context.Background())
-		require.NoError(t, err, "a pre-mutation validation error must not stop the node")
+			_, err = h.n.GetClusterState(context.Background())
+			require.NoError(t, err, "a pre-mutation validation error must not stop the node")
+		})
 	})
 
 	t.Run("failure before snapshot persistence fail-stops and restarts old membership", func(t *testing.T) {
 		t.Parallel()
 
-		injected := errors.New("injected before snapshot persistence")
-		h := newForceRemoveHarness(
-			t, []uint64{1, 2, 3}, forceRemoveBeforeSnapshotPersistence, injected, false,
-		)
+		synctest.Test(t, func(t *testing.T) {
+			injected := errors.New("injected before snapshot persistence")
+			h := newForceRemoveHarness(
+				t, []uint64{1, 2, 3}, forceRemoveBeforeSnapshotPersistence, injected, false,
+			)
 
-		err := h.n.ForceRemoveNode(context.Background(), 3)
-		require.ErrorIs(t, err, injected)
-		require.ErrorContains(t, err, "creating temp snap file")
-		require.Equal(t, 1, h.injectedWAL.updateCount())
-		require.NotContains(t, h.rawNode.Status().Progress, uint64(3))
-		require.Equal(t, []uint64{1, 2}, h.n.confState.Load().GetVoters())
-		_, voters := walState(t, h.durableWAL)
-		require.Equal(t, []uint64{1, 2}, voters,
-			"the real WAL mutates its in-memory snapshot before attempting the file write")
-		require.Contains(t, h.membership.PeerAddresses(), uint64(3))
-		removed, lookupErr := h.membership.IsRemoved(3, []byte("0000000000000003"))
-		require.NoError(t, lookupErr)
-		require.False(t, removed, "peer cleanup must not write the tombstone after persistence fails")
+			err := h.n.ForceRemoveNode(context.Background(), 3)
+			require.ErrorIs(t, err, injected)
+			require.ErrorContains(t, err, "creating temp snap file")
+			require.Equal(t, 1, h.injectedWAL.updateCount())
+			require.NotContains(t, h.rawNode.Status().Progress, uint64(3))
+			require.Equal(t, []uint64{1, 2}, h.n.confState.Load().GetVoters())
+			_, voters := walState(t, h.durableWAL)
+			require.Equal(t, []uint64{1, 2}, voters,
+				"the real WAL mutates its in-memory snapshot before attempting the file write")
+			require.Contains(t, h.membership.PeerAddresses(), uint64(3))
+			removed, lookupErr := h.membership.IsRemoved(3, []byte("0000000000000003"))
+			require.NoError(t, lookupErr)
+			require.False(t, removed, "peer cleanup must not write the tombstone after persistence fails")
 
-		runErr := h.waitForTerminal(t)
-		require.ErrorIs(t, runErr, injected)
-		_, err = h.n.GetClusterState(context.Background())
-		require.ErrorIs(t, err, injected)
-		_, err = h.n.Propose(context.Background(), NewProposal(100, []byte("must not be admitted")))
-		require.ErrorIs(t, err, injected)
+			runErr := h.waitForTerminal(t)
+			require.ErrorIs(t, runErr, injected)
+			_, err = h.n.GetClusterState(context.Background())
+			require.ErrorIs(t, err, injected)
+			_, err = h.n.Propose(context.Background(), NewProposal(100, []byte("must not be admitted")))
+			require.ErrorIs(t, err, injected)
 
-		_, restartedVoters := h.restartedState(t)
-		require.Equal(t, map[uint64]struct{}{1: {}, 2: {}, 3: {}}, restartedVoters)
+			_, restartedVoters := h.restartedState(t)
+			require.Equal(t, map[uint64]struct{}{1: {}, 2: {}, 3: {}}, restartedVoters)
+		})
 	})
 
 	t.Run("failure after snapshot file persistence fail-stops and restarts new membership", func(t *testing.T) {
 		t.Parallel()
 
-		injected := errors.New("injected WAL snapshot-record failure")
-		h := newForceRemoveHarness(
-			t, []uint64{1, 2, 3}, forceRemoveAfterSnapshotFilePersistence, injected, false,
-		)
+		synctest.Test(t, func(t *testing.T) {
+			injected := errors.New("injected WAL snapshot-record failure")
+			h := newForceRemoveHarness(
+				t, []uint64{1, 2, 3}, forceRemoveAfterSnapshotFilePersistence, injected, false,
+			)
 
-		err := h.n.ForceRemoveNode(context.Background(), 3)
-		require.ErrorIs(t, err, injected)
-		require.NotContains(t, h.rawNode.Status().Progress, uint64(3))
-		require.Equal(t, []uint64{1, 2}, h.n.confState.Load().GetVoters())
-		require.Contains(t, h.membership.PeerAddresses(), uint64(3),
-			"peer cleanup must not run after a persistence error")
-		removed, lookupErr := h.membership.IsRemoved(3, []byte("0000000000000003"))
-		require.NoError(t, lookupErr)
-		require.False(t, removed, "peer cleanup must not write the tombstone after persistence fails")
-		require.ErrorIs(t, h.waitForTerminal(t), injected)
+			err := h.n.ForceRemoveNode(context.Background(), 3)
+			require.ErrorIs(t, err, injected)
+			require.NotContains(t, h.rawNode.Status().Progress, uint64(3))
+			require.Equal(t, []uint64{1, 2}, h.n.confState.Load().GetVoters())
+			require.Contains(t, h.membership.PeerAddresses(), uint64(3),
+				"peer cleanup must not run after a persistence error")
+			removed, lookupErr := h.membership.IsRemoved(3, []byte("0000000000000003"))
+			require.NoError(t, lookupErr)
+			require.False(t, removed, "peer cleanup must not write the tombstone after persistence fails")
+			require.ErrorIs(t, h.waitForTerminal(t), injected)
 
-		_, restartedVoters := h.restartedState(t)
-		require.Equal(t, map[uint64]struct{}{1: {}, 2: {}}, restartedVoters,
-			"the atomically replaced snapshot file is the restart authority for its existing term/index")
+			_, restartedVoters := h.restartedState(t)
+			require.Equal(t, map[uint64]struct{}{1: {}, 2: {}}, restartedVoters,
+				"the atomically replaced snapshot file is the restart authority for its existing term/index")
+		})
 	})
 
 	t.Run("concurrent admissions receive terminal failure", func(t *testing.T) {
 		t.Parallel()
 
-		injected := errors.New("blocked snapshot persistence failure")
-		h := newForceRemoveHarness(
-			t, []uint64{1, 2, 3}, forceRemoveBeforeSnapshotPersistence, injected, true,
-		)
+		synctest.Test(t, func(t *testing.T) {
+			injected := errors.New("blocked snapshot persistence failure")
+			h := newForceRemoveHarness(
+				t, []uint64{1, 2, 3}, forceRemoveBeforeSnapshotPersistence, injected, true,
+			)
 
-		forceCtx, cancelForce := context.WithCancel(context.Background())
-		defer cancelForce()
-		forceErr := make(chan error, 1)
-		go func() { forceErr <- h.n.ForceRemoveNode(forceCtx, 3) }()
-		h.waitForUpdate(t)
+			forceCtx, cancelForce := context.WithCancel(context.Background())
+			defer cancelForce()
+			forceErr := make(chan error, 1)
+			go func() { forceErr <- h.n.ForceRemoveNode(forceCtx, 3) }()
+			h.waitForUpdate(t)
 
-		commandErr := make(chan error, 1)
-		go func() {
-			_, err := h.n.GetClusterState(context.Background())
-			commandErr <- err
-		}()
-		require.Eventually(t, func() bool { return len(h.n.clusterCommandCh) == 1 }, time.Second, time.Millisecond)
+			commandErr := make(chan error, 1)
+			go func() {
+				_, err := h.n.GetClusterState(context.Background())
+				commandErr <- err
+			}()
+			// orchestrate is parked inside the blocked persistence write, so
+			// once the caller settles its command can only sit in the queue.
+			synctest.Wait()
+			require.Len(t, h.n.clusterCommandCh, 1)
 
-		proposal := NewProposal(101, []byte("queued before terminal publication"))
-		trackerBefore := h.n.indexTracker.Next()
-		h.n.indexTracker.Lock()
-		fsmFuture, err := h.n.Propose(context.Background(), proposal)
-		h.n.indexTracker.Unlock()
-		require.NoError(t, err)
-		require.NotNil(t, fsmFuture)
-		require.Len(t, h.n.proposeCh, 1)
+			proposal := NewProposal(101, []byte("queued before terminal publication"))
+			trackerBefore := h.n.indexTracker.Next()
+			h.n.indexTracker.Lock()
+			fsmFuture, err := h.n.Propose(context.Background(), proposal)
+			h.n.indexTracker.Unlock()
+			// The terminal drain on orchestrate needs this lock. A leak would
+			// park orchestrate on a mutex, which synctest does not treat as
+			// blocked, so no watchdog (ours or the harness cleanup's) could
+			// fire. Release whichever hold exists, the probe's or the leaked
+			// one, before asserting so a failure ends instead of hanging.
+			leaked := !h.n.proposalAdmissionMu.TryLock()
+			h.n.proposalAdmissionMu.Unlock()
+			require.False(t, leaked, "Propose must release the admission lock")
+			require.NoError(t, err)
+			require.NotNil(t, fsmFuture)
+			require.Len(t, h.n.proposeCh, 1)
 
-		cancelForce()
-		select {
-		case err := <-forceErr:
-			t.Fatalf("force-remove returned before its persistence outcome: %v", err)
-		default:
-		}
+			cancelForce()
+			// Let the caller observe its cancellation before proving it still
+			// waits for the persistence outcome.
+			synctest.Wait()
+			select {
+			case err := <-forceErr:
+				t.Fatalf("force-remove returned before its persistence outcome: %v", err)
+			default:
+			}
 
-		h.releaseUpdate()
-		require.ErrorIs(t, receiveForceRemoveError(t, forceErr), injected)
-		require.ErrorIs(t, receiveForceRemoveError(t, commandErr), injected)
-		require.ErrorIs(t, h.waitForTerminal(t), injected)
+			h.releaseUpdate()
+			require.ErrorIs(t, receiveForceRemoveError(t, forceErr), injected)
+			require.ErrorIs(t, receiveForceRemoveError(t, commandErr), injected)
+			require.ErrorIs(t, h.waitForTerminal(t), injected)
 
-		waitCtx, cancelWait := context.WithTimeout(context.Background(), time.Second)
-		defer cancelWait()
-		_, err = fsmFuture.Wait(waitCtx)
-		require.ErrorIs(t, err, injected)
-		_, err = proposal.Wait(waitCtx)
-		require.ErrorIs(t, err, injected)
-		require.Equal(t, trackerBefore, h.n.indexTracker.Next())
+			waitCtx, cancelWait := context.WithTimeout(context.Background(), time.Second)
+			defer cancelWait()
+			_, err = fsmFuture.Wait(waitCtx)
+			require.ErrorIs(t, err, injected)
+			_, err = proposal.Wait(waitCtx)
+			require.ErrorIs(t, err, injected)
+			require.Equal(t, trackerBefore, h.n.indexTracker.Next())
+		})
 	})
 
 	for _, tc := range []struct {
@@ -536,61 +559,65 @@ func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 		t.Run("reduced live quorum cannot durably commit staged work/"+tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			injected := errors.New("injected four-to-three persistence failure")
-			h := newForceRemoveHarness(
-				t, []uint64{1, 2, 3, 4}, tc.stage, injected, false,
-			)
+			synctest.Test(t, func(t *testing.T) {
+				injected := errors.New("injected four-to-three persistence failure")
+				h := newForceRemoveHarness(
+					t, []uint64{1, 2, 3, 4}, tc.stage, injected, false,
+				)
 
-			baselineHardState, _ := walState(t, h.durableWAL)
-			baselineApplied := h.n.fsm.LastAppliedIndex()
-			require.Equal(t, h.baselineCommit, baselineHardState.GetCommit())
-			require.Greater(t, h.stagedIndex, h.baselineCommit)
-			require.Equal(t, h.baselineCommit, h.rawNode.Status().GetCommit())
+				baselineHardState, _ := walState(t, h.durableWAL)
+				baselineApplied := h.n.fsm.LastAppliedIndex()
+				require.Equal(t, h.baselineCommit, baselineHardState.GetCommit())
+				require.Greater(t, h.stagedIndex, h.baselineCommit)
+				require.Equal(t, h.baselineCommit, h.rawNode.Status().GetCommit())
 
-			err := h.n.ForceRemoveNode(context.Background(), 4)
-			require.ErrorIs(t, err, injected)
-			require.Equal(t, map[uint64]struct{}{1: {}, 2: {}, 3: {}}, h.rawNode.Status().Config.Voters.IDs())
-			require.Equal(t, h.stagedIndex, h.rawNode.Status().GetCommit(),
-				"the irreversible four-to-three transition makes the staged entry live-committed")
-			require.ErrorIs(t, h.waitForTerminal(t), injected)
-			require.Equal(t, baselineApplied, h.n.fsm.LastAppliedIndex(),
-				"terminal exit must prevent business application")
+				err := h.n.ForceRemoveNode(context.Background(), 4)
+				require.ErrorIs(t, err, injected)
+				require.Equal(t, map[uint64]struct{}{1: {}, 2: {}, 3: {}}, h.rawNode.Status().Config.Voters.IDs())
+				require.Equal(t, h.stagedIndex, h.rawNode.Status().GetCommit(),
+					"the irreversible four-to-three transition makes the staged entry live-committed")
+				require.ErrorIs(t, h.waitForTerminal(t), injected)
+				require.Equal(t, baselineApplied, h.n.fsm.LastAppliedIndex(),
+					"terminal exit must prevent business application")
 
-			durableHardState, memoryVoters := walState(t, h.durableWAL)
-			require.Equal(t, baselineHardState.GetCommit(), durableHardState.GetCommit(),
-				"the live-only commit must not reach durable HardState")
-			require.Equal(t, []uint64{1, 2, 3}, memoryVoters,
-				"WAL memory advances before snapshot-file persistence; restart below proves durable membership")
+				durableHardState, memoryVoters := walState(t, h.durableWAL)
+				require.Equal(t, baselineHardState.GetCommit(), durableHardState.GetCommit(),
+					"the live-only commit must not reach durable HardState")
+				require.Equal(t, []uint64{1, 2, 3}, memoryVoters,
+					"WAL memory advances before snapshot-file persistence; restart below proves durable membership")
 
-			restartedHardState, restartedVoters := h.restartedState(t)
-			require.Equal(t, baselineHardState.GetCommit(), restartedHardState.GetCommit())
-			require.Equal(t, tc.restartedVoters, restartedVoters)
+				restartedHardState, restartedVoters := h.restartedState(t)
+				require.Equal(t, baselineHardState.GetCommit(), restartedHardState.GetCommit())
+				require.Equal(t, tc.restartedVoters, restartedVoters)
+			})
 		})
 	}
 
 	t.Run("successful persistence remains live durable and restartable", func(t *testing.T) {
 		t.Parallel()
 
-		h := newForceRemoveHarness(t, []uint64{1, 2, 3}, forceRemoveNoFailure, nil, false)
+		synctest.Test(t, func(t *testing.T) {
+			h := newForceRemoveHarness(t, []uint64{1, 2, 3}, forceRemoveNoFailure, nil, false)
 
-		require.NoError(t, h.n.ForceRemoveNode(context.Background(), 3))
-		require.Equal(t, 1, h.injectedWAL.updateCount())
-		require.NotContains(t, h.rawNode.Status().Progress, uint64(3))
-		require.Equal(t, []uint64{1, 2}, h.n.confState.Load().GetVoters())
-		_, voters := walState(t, h.durableWAL)
-		require.Equal(t, []uint64{1, 2}, voters)
-		require.NotContains(t, h.membership.PeerAddresses(), uint64(3))
-		removed, err := h.membership.IsRemoved(3, []byte("0000000000000003"))
-		require.NoError(t, err)
-		require.True(t, removed)
+			require.NoError(t, h.n.ForceRemoveNode(context.Background(), 3))
+			require.Equal(t, 1, h.injectedWAL.updateCount())
+			require.NotContains(t, h.rawNode.Status().Progress, uint64(3))
+			require.Equal(t, []uint64{1, 2}, h.n.confState.Load().GetVoters())
+			_, voters := walState(t, h.durableWAL)
+			require.Equal(t, []uint64{1, 2}, voters)
+			require.NotContains(t, h.membership.PeerAddresses(), uint64(3))
+			removed, err := h.membership.IsRemoved(3, []byte("0000000000000003"))
+			require.NoError(t, err)
+			require.True(t, removed)
 
-		err = h.n.ForceRemoveNode(context.Background(), 3)
-		require.ErrorIs(t, err, ErrNodeNotInCluster)
-		require.Equal(t, 1, h.injectedWAL.updateCount())
-		_, err = h.n.GetClusterState(context.Background())
-		require.NoError(t, err)
+			err = h.n.ForceRemoveNode(context.Background(), 3)
+			require.ErrorIs(t, err, ErrNodeNotInCluster)
+			require.Equal(t, 1, h.injectedWAL.updateCount())
+			_, err = h.n.GetClusterState(context.Background())
+			require.NoError(t, err)
 
-		_, restartedVoters := h.restartedState(t)
-		require.Equal(t, map[uint64]struct{}{1: {}, 2: {}}, restartedVoters)
+			_, restartedVoters := h.restartedState(t)
+			require.Equal(t, map[uint64]struct{}{1: {}, 2: {}}, restartedVoters)
+		})
 	})
 }

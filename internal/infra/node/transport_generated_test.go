@@ -38,6 +38,44 @@ func (m *MockTransport) EXPECT() *MockTransportMockRecorder {
 	return m.recorder
 }
 
+// DeliveryResults mocks base method.
+func (m *MockTransport) DeliveryResults() <-chan DeliveryResult {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeliveryResults")
+	ret0, _ := ret[0].(<-chan DeliveryResult)
+	return ret0
+}
+
+// DeliveryResults indicates an expected call of DeliveryResults.
+func (mr *MockTransportMockRecorder) DeliveryResults() *MockTransportDeliveryResultsCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeliveryResults", reflect.TypeOf((*MockTransport)(nil).DeliveryResults))
+	return &MockTransportDeliveryResultsCall{Call: call}
+}
+
+// MockTransportDeliveryResultsCall wrap *gomock.Call
+type MockTransportDeliveryResultsCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockTransportDeliveryResultsCall) Return(arg0 <-chan DeliveryResult) *MockTransportDeliveryResultsCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockTransportDeliveryResultsCall) Do(f func() <-chan DeliveryResult) *MockTransportDeliveryResultsCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockTransportDeliveryResultsCall) DoAndReturn(f func() <-chan DeliveryResult) *MockTransportDeliveryResultsCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // RecvHighPriority mocks base method.
 func (m *MockTransport) RecvHighPriority() <-chan []*raftpb.Message {
 	m.ctrl.T.Helper()
@@ -184,44 +222,6 @@ func (c *MockTransportSendCall) Do(f func([]*raftpb.Message, <-chan struct{})) *
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockTransportSendCall) DoAndReturn(f func([]*raftpb.Message, <-chan struct{})) *MockTransportSendCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// SnapshotStatus mocks base method.
-func (m *MockTransport) SnapshotStatus() <-chan SnapshotStatus {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SnapshotStatus")
-	ret0, _ := ret[0].(<-chan SnapshotStatus)
-	return ret0
-}
-
-// SnapshotStatus indicates an expected call of SnapshotStatus.
-func (mr *MockTransportMockRecorder) SnapshotStatus() *MockTransportSnapshotStatusCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SnapshotStatus", reflect.TypeOf((*MockTransport)(nil).SnapshotStatus))
-	return &MockTransportSnapshotStatusCall{Call: call}
-}
-
-// MockTransportSnapshotStatusCall wrap *gomock.Call
-type MockTransportSnapshotStatusCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockTransportSnapshotStatusCall) Return(arg0 <-chan SnapshotStatus) *MockTransportSnapshotStatusCall {
-	c.Call = c.Call.Return(arg0)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockTransportSnapshotStatusCall) Do(f func() <-chan SnapshotStatus) *MockTransportSnapshotStatusCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockTransportSnapshotStatusCall) DoAndReturn(f func() <-chan SnapshotStatus) *MockTransportSnapshotStatusCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

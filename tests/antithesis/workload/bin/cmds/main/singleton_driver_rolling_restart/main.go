@@ -28,6 +28,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 var rrSentinelLedger = internal.PrefixSentinel.WithSuffix("rolling-restart")
@@ -192,13 +193,22 @@ func writeBurst(ctx context.Context, client servicepb.BucketServiceClient, commi
 			return
 		case <-tick.C:
 		}
+		// One pure generation episode per witness, owned by this goroutine.
+		var posting *commonpb.Posting
+		if err := internal.RunOperationalGeneration("rolling-restart", func(src *generation.Source) {
+			posting = commonpb.NewPosting("world", "burst:rr", "COIN", internal.GeneratedBigInt(src))
+		}); err != nil {
+			log.Printf("singleton_driver_rolling_restart: generation failed: %s", err)
+
+			continue
+		}
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: rrSentinelLedger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{commonpb.NewPosting("world", "burst:rr", "COIN", internal.RandomBigInt())},
+							Postings: []*commonpb.Posting{posting},
 							Force:    true,
 						},
 					}},

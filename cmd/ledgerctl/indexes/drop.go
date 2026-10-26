@@ -58,10 +58,9 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 
 	indexType, _ := cmd.Flags().GetString("type")
 	if indexType == "" {
-		result, err := pterm.DefaultInteractiveSelect.
+		result, err := cmdutil.PromptSelect(pterm.DefaultInteractiveSelect.
 			WithOptions(indexTypeOptions).
-			WithDefaultText("Select index type to drop").
-			Show()
+			WithDefaultText("Select index type to drop"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}

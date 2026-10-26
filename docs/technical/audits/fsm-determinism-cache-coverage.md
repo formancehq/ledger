@@ -139,6 +139,32 @@ initial cache histories, but their own durability defects belong to adjacent
 domains. This audit owns the defect when the next committed apply fails to
 normalize or safely tolerate an otherwise valid local history.
 
+### Bloom projection provenance and commit boundary
+
+Treat persisted Bloom blocks as a complete projection only when the projection
+seal matches the durable applied index and the committed filter shape. A missing
+or stale seal, including after an older binary writes during rollback, requires
+a full attribute scan before Bloom becomes ready. Compare a cold persisted
+attribute with nonempty stale blocks: a ready false negative would suppress its
+preload even if hot keys continue to work. Include committed enable/disable
+transitions, follower restore, and rollback followed by re-upgrade.
+
+During preparation, one batch can cross several cache rotations. The first
+rotation for a rebuild epoch stages a complete namespace replacement; later
+rotations in that same batch stage only dirty blocks. A separate prepared batch
+must stage its own complete replacement while the first batch is uncommitted.
+Compare buffered batch growth across one and several rotations, then prepare a
+second batch before committing the first. A rebuild during preparation requires
+a new complete replacement for its epoch. The seal and replacement
+acknowledgement must correspond to the final epoch and successful durable
+commit; a failed commit or intervening rebuild cannot certify older blocks.
+
+Use `TestCacheSnapshotter_LegacyBlocksCannotHideColdAttribute` for legacy and
+rollback provenance and `TestPrepareEntries_BloomReplacementOncePerBatchAndEpoch`
+for bounded batch growth and pipelined replacement. These are focused entry
+points; compare the actual projection bytes and restore behavior when claiming
+a broader cache convergence result.
+
 ## Post-commit lifecycle expectations
 
 The volume sentinel must reduce successful effects in commit order. A ledger
@@ -281,6 +307,27 @@ The focused entry points are `TestSafeExecFromText_ColdWarmSameOutcome`,
 A finding needs a concrete pair of incidental histories with a different
 component of the transition; a slower cold path alone is not a finding.
 
+## Sentinel apply and replay evidence
+
+`TestSentinelRaftApplyLifecycle` and `TestSentinelRaftAntithesisEmission` drive
+the production applier through live commits, startup WAL replay after durable
+reopen, and spool replay. Bootstrap runs with sentinels disabled; require
+completed nonempty sentinel evidence from the reopened target path's first
+business commit and independently verify its final durable horizon and volumes.
+Setup-only success is insufficient. A valid balanced
+entry beyond `HardState.Commit` must remain unapplied on startup.
+
+`TestSentinelRaftPipelinedCommitBoundary` and
+`TestSentinelRaftCommitAntithesisEmission` prepare a later batch before committing
+the earlier one. The earlier sentinel must use its captured expectations and
+pinned committed snapshot, not the live cache. Missing or wrong balanced pairs
+must fail the exact-value check even though aggregate conservation would pass.
+The committed bytes remain durable after the check fails; successful-completion
+coverage and the published apply horizon must not advance through that failure.
+These are real local-store lifecycle fixtures, not distributed election or
+network-fault executions. Cross-replica account/audit comparison is an
+additional workload oracle; it is not a digest of the entire in-memory cache.
+
 ## Reachability, evidence, and rejection
 
 Each finding must provide:
@@ -392,3 +439,49 @@ CreateLedger stages initial metadata in the canonical ledger-metadata keyspace i
 For normal and mirror creation, do rejection, proposal rollback and idempotent replay preserve initial metadata atomically without a second save, new metadata read dependency, duplicate allocation or order mutation?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## Controlled drain apply boundary
+
+`DrainMarker` and `DrainRelease` are Raft-ordered technical updates. For the
+same prior state, proposal bytes and index, every voter must select the same
+first marker decision, captured member set, cutoff and release outcome. A
+duplicate marker cannot move the cutoff; a released epoch cannot be reused.
+After an active cutoff, applying a later business order or non-drain technical
+update must reject it deterministically, including when that proposal was
+accepted before local admission closed. The local write gate and status fsync
+are outside FSM determinism and belong to the runtime and persistence audits.
+
+Compare identical marker, duplicate, post-cutoff order and release proposals
+on equivalent FSMs with cold and recovered state. Verify decision bytes, applied
+indexes and business/audit effects, then repeat across the supported rolling
+upgrade boundary. Preflight must reject an old member that cannot decode or
+apply these entries; the Raft audit owns that cluster admission gate.
+
+## Transaction account metadata address failures
+
+Caller metadata and merged script metadata must use the same deterministic
+address selection: the lexicographically smallest invalid address determines
+the typed failure, with empty sorting first. Metadata shape/entity limits and
+command budget retain precedence in apply. Account metadata writes are staged
+only after all addresses pass; posting/transaction writes staged earlier roll
+back on rejection. The failure audit and fresh-key idempotency outcome remain
+intentional committed effects. Admission rejects malformed caller addresses
+before proposal but cannot be the sole apply protection.
+
+The evidence oracle compares independently decoded identical proposal bytes at
+the same Raft index on equivalent machines: exact expected FailureDetails,
+audit bytes/hash, frozen keyed replay and unchanged business projections and
+account metadata. Retain the individual-error and metadata-limit regressions.
+See TestValidateOrder_TransactionAccountMetadataAddresses,
+TestProcessOrder_AccountMetadataAddressFailure and
+TestAccountMetadataAddressFailureSameAuditOnReplicas.
+
+The source RC binary selects errors through unordered traversal, so a normal
+write-enabled mixed-binary rollout is unsafe. The
+[upgrade procedure](../../ops/upgrades.md#account-metadata-address-validation)
+requires maintenance committed and durably applied by every old voter before
+the first replacement, held through sequential restarts and leadership transfer.
+TestAccountMetadataMaintenanceBarrierSurvivesRecovery proves the FSM/recovery
+gate, not a real mixed-binary deployment. Release validation must prove that
+deployment separately. Historical audit failures and frozen outcomes retain
+their stored details; already-diverged audit chains are not repaired by this fix.

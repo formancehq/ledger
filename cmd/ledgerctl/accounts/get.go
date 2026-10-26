@@ -52,9 +52,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		address = args[0]
 	} else {
-		result, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter account address").
-			Show()
+		result, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter account address"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}

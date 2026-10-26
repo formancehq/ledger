@@ -23,13 +23,12 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 	logger = logger.WithFields(map[string]any{"pebbleStore": store})
 	// Some callbacks run with Pebble's DB mutex held; DiskSlow runs on its
 	// disk-health goroutine. Never wait for a logging sink in either path.
-	// An idle worker exits so reopened stores do not retain goroutines.
+	// The worker exits once its queue drains, so a closed store retains no
+	// goroutine and nothing waits on a timer.
 	var queueMu sync.Mutex
 	var eventQueue chan pebbleLogEvent
 	var dropped uint64
 	logEvents := func(queue chan pebbleLogEvent) {
-		idle := time.NewTimer(time.Minute)
-		defer idle.Stop()
 		reportDrops := func() {
 			queueMu.Lock()
 			count := uint64(0)
@@ -41,32 +40,29 @@ func NewPebbleEventLogger(logger logging.Logger, store string) *pebble.EventList
 				logger.WithFields(map[string]any{"droppedEvents": count}).Errorf("Pebble event logs dropped")
 			}
 		}
+		// enqueue starts the worker after queueing an event and only drops
+		// events while the queue is full, so the receive never waits.
 		for {
-			select {
-			case event := <-queue:
-				withFields := logger.WithFields(event.fields)
-				switch event.level {
-				case "debug":
-					withFields.Debugf("%s", event.message)
-				case "info":
-					withFields.Infof("%s", event.message)
-				case "error":
-					withFields.Errorf("%s", event.message)
-				}
-				reportDrops()
-				idle.Reset(time.Minute)
-			case <-idle.C:
-				reportDrops()
-				queueMu.Lock()
-				if len(queue) == 0 {
-					eventQueue = nil
-					queueMu.Unlock()
-
-					return
-				}
-				queueMu.Unlock()
-				idle.Reset(time.Minute)
+			event := <-queue
+			withFields := logger.WithFields(event.fields)
+			switch event.level {
+			case "debug":
+				withFields.Debugf("%s", event.message)
+			case "info":
+				withFields.Infof("%s", event.message)
+			case "error":
+				withFields.Errorf("%s", event.message)
 			}
+			reportDrops()
+			queueMu.Lock()
+			if len(queue) == 0 {
+				// The next enqueue starts a new worker on a new queue.
+				eventQueue = nil
+				queueMu.Unlock()
+
+				return
+			}
+			queueMu.Unlock()
 		}
 	}
 	enqueue := func(event pebbleLogEvent) {

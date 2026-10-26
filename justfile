@@ -1,6 +1,6 @@
 set dotenv-load
 
-pre-commit: fuzz-inventory-check generate generate-proto test-rpcauth-generator operator-generate test-dashboards tidy lint
+pre-commit: fuzz-inventory-check generate generate-proto test-rpcauth-generator test-buf-plugin lint-proto operator-generate test-dashboards tidy lint
 pc: pre-commit
 
 # Compare the service contract with the current PR or merge-queue target.
@@ -30,12 +30,15 @@ test-dashboards: generate-dashboards
 lint:
     #!/usr/bin/env bash
     set -euo pipefail
+    # golangci-lint otherwise takes a lock in $TMPDIR and fails after 5s when
+    # another run holds it. Validation shares one TMPDIR across concurrent
+    # worktrees, and the shared lint cache is safe for parallel runners.
     echo "==> golangci-lint (.)"
-    golangci-lint run --fix --build-tags it,local,enable_antithesis_sdk,{{all_tags}} --timeout 5m
+    golangci-lint run --allow-parallel-runners --fix --build-tags it,local,enable_antithesis_sdk,{{all_tags}} --timeout 5m
     echo "==> golangci-lint (operator)"
-    (cd misc/operator && golangci-lint run --fix --timeout 5m)
+    (cd misc/operator && golangci-lint run --allow-parallel-runners --fix --timeout 5m)
     echo "==> golangci-lint (model workload)"
-    (cd tests/antithesis/workload && golangci-lint run --fix --build-tags enable_antithesis_sdk --timeout 5m)
+    (cd tests/antithesis/workload && golangci-lint run --allow-parallel-runners --fix --build-tags enable_antithesis_sdk --timeout 5m)
 
 # Go modules kept tidy by `just tidy` (and checked by the Dirty CI job).
 tidy_modules := ". misc/operator tests/antithesis/workload"
@@ -245,13 +248,23 @@ test-coverage:
     echo "==> Unit tests with coverage..."
     scripts/go-test-coverage {{coverage_dir}}/unit.out -race -coverpkg={{coverage_pkgs}} -timeout 20m ./...
 
-# Execute internal assertions behind optional feature tags (requires Docker).
+# Execute internal and offline bootstrap assertions behind optional feature tags (requires Docker).
 test-internal-coverage:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     echo "==> Internal tests with optional features and coverage..."
-    scripts/go-test-coverage {{coverage_dir}}/internal.out -race -tags "{{all_tags}}" -coverpkg={{coverage_pkgs}} -timeout 20m ./internal/...
+    scripts/go-test-coverage {{coverage_dir}}/internal.out -race -tags "{{all_tags}}" -coverpkg={{coverage_pkgs}} -timeout 20m ./internal/... ./cmd/ledgerctl/store
+
+# Run PostgreSQL mirror integration regressions (requires Docker or LEDGER_TEST_POSTGRES_DSN).
+test-postgres-mirror-coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p {{coverage_dir}}
+    scripts/go-test-coverage {{coverage_dir}}/postgres-mirror.out \
+        -race -tags integration -coverpkg={{coverage_pkgs}} \
+        -run Postgres -count=1 -timeout 5m \
+        ./internal/adapter/v2 ./internal/application/mirror
 
 # Run E2E tests with coverage. The CI gates invoke this recipe once for each
 # isolated Business/Cluster job. Every invocation uses the full tag set: the
@@ -415,6 +428,14 @@ generate-proto:
 test-rpcauth-generator:
     go -C tools/protoc-gen-rpcauth test ./...
 
+# Initial-layout conventions for new protobuf types via the buf check plugin
+# in tools/buf-plugin-ledger; existing types retain their published numbers.
+lint-proto:
+    go run ./scripts/lintproto
+
+test-buf-plugin:
+    go -C tools/buf-plugin-ledger test -race ./...
+
 # --- Operator (Kubernetes) ---
 
 # controller-gen binary for CRD/RBAC generation
@@ -496,7 +517,7 @@ operator-docker-build-pr image: (_assert-pr-image image)
     # GITHUB_TOKEN is removed on purpose: a PR build must never reach the GitHub
     # releases API, even if a release step were enabled by mistake.
     env -u GITHUB_TOKEN -u GH_TOKEN \
-        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive,release
+        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive
 
 # Package and publish operator Helm charts to GHCR. Args are positional: version then suffix.
 operator-helm-publish version='' suffix='':
@@ -524,7 +545,7 @@ docker-build-pr image: (_assert-pr-image image)
     # GITHUB_TOKEN is removed on purpose: a PR build must never reach the GitHub
     # releases API, even if a release step were enabled by mistake.
     env -u GITHUB_TOKEN -u GH_TOKEN \
-        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive,release
+        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive
 
 # Refuse any PR image reference that is not `<repository>:pr-<num>-<sha7>`, so a
 # PR build cannot move `latest`, `nightly` or a release tag.

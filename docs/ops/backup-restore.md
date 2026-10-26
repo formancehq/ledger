@@ -539,13 +539,7 @@ ledgerctl restore validate
 |------|----------|-------------|
 | `--timeout` | No | Request timeout (default: 50s) |
 
-Calls `RestoreService.ValidateRestore` (server-streaming). The server opens the staging directory as a read-only Pebble database and runs the full integrity checker (`check.Checker`). The checker performs three passes:
-
-1. **Log sequence verification**: Iterates all logs from sequence 1 to the last sequence. Verifies sequence continuity (no gaps).
-
-2. **Volume verification**: For every (account, asset) pair accumulated during log replay, computes the expected input/output from the attribute storage and compares against the replayed totals.
-
-3. **Metadata verification**: For every metadata key accumulated during replay, compares the expected value from attribute storage against the replayed state.
+Calls `RestoreService.ValidateRestore` (server-streaming). The server opens the staging directory as a read-only Pebble database and runs the full integrity checker (`check.Checker`). For each projection its passes cover, the checker re-derives the expected state from the audit chain and compares it with what the staging store holds. The passes cover the audit hash chain, log sequence continuity, volumes per `(ledger, account, asset, color)` (each color bucket is checked separately), metadata, transaction state, reversions, idempotency outcomes, the index registry and signing keys; see [Checker](../technical/architecture/subsystems/checker/checker.md#the-verification-passes) for the complete list. A successful validation says nothing about the fields the checker does not verify, such as transaction `insertedAt` / `updatedAt` in ledger-log payloads, per-replica index version state and read-index contents; see [What is not verified](../technical/architecture/subsystems/checker/checker.md#what-is-not-verified).
 
 Progress events (percentage) and error events are streamed back to the client in real time.
 
@@ -595,10 +589,14 @@ Finalization performs these steps:
 
 1. Prepares the staged store ([Backup Preparation on Restore](#backup-preparation-on-restore): applied index preserved as the genesis boundary, persisted config/bloom/peers/cache reset).
 2. Reads back `lastAppliedIndex` and `lastAppliedTimestamp` from the prepared store.
-3. Writes the **RESTORED marker** JSON file to `{dataDir}/RESTORED`.
-4. Creates `{dataDir}/checkpoints/` directory.
-5. **Atomically** hard-links the staging directory to `{dataDir}/checkpoints/0` (using a temp directory + `os.Rename` for crash safety).
-6. Removes the staging directory.
+3. Closes the staging Pebble handle, creates `{dataDir}/checkpoints/`, and removes any existing `checkpoints/0` path.
+4. Hard-links staging into a temporary checkpoint directory, then renames it to `{dataDir}/checkpoints/0`.
+5. Writes the **RESTORED marker** JSON file to `{dataDir}/RESTORED`. The marker is the commit point and is written only after checkpoint placement.
+6. Removes the staging directory. A cleanup failure is logged after success; the published checkpoint and marker remain valid.
+
+One finalization owns the staged generation from preparation through publication and cleanup. A concurrent call fails with `FailedPrecondition` without changing the owner's staging or checkpoint. A repeated call after success also fails because the staging handle is gone; it does not return success again. Shutdown waits for an admitted finalizer before closing restore resources.
+
+If preparation fails, the staging handle remains open and the marker is absent; the staged bytes may already have changed if Pebble committed before reporting an error. If publication fails after the handle closes, staging files remain but cannot be finalized again in the same server process. A marker-write failure removes the newly placed checkpoint; if that rollback fails, remove the leftover checkpoint manually. Restart restore mode with a fresh target and repeat download and validation before retrying. Never treat a failed finalization as a committed restore.
 
 On next startup, `ScanLatestCheckpointID()` scans the `checkpoints/` directory for the highest numbered subdirectory to find the active checkpoint.
 
@@ -627,9 +625,9 @@ Client                       Restore Server                    Disk / S3
   |<-- summary -------------------|--- OpenReadOnly(staging) ---->|
   |                               |                               |
   |--- FinalizeRestore ---------->|                               |
-  |                               |--- Write RESTORED marker ---->|
   |                               |--- HardLink staging --------->|
   |                               |    -> checkpoints/0           |
+  |                               |--- Write RESTORED marker ---->|
   |                               |--- Remove staging ----------->|
   |<-- response ------------------|                               |
 
@@ -671,23 +669,32 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 
 ### How It Works
 
-1. **Fresh directory guard**: Scans the target data directory's `checkpoints/` subdirectory for existing checkpoints using `ScanLatestCheckpointID()`. Refuses to overwrite.
-2. **Download**: Reads the manifest from the configured backend, creates or opens the selected data directory, then creates `restore-staging/` through that directory's filesystem root. Staging must be a real directory: a staging-root symlink is rejected even when its target is inside the data directory. Downloads checkpoint files sequentially through a filesystem root opened on staging. Each manifest filename is converted from slash-separated form and must be lexically local before parent creation, object lookup or file creation for that entry. Rooted parent and file creation reject symlink escapes. Each checkpoint file is verified against its manifest size and the sha256 in its object key; a mismatch aborts bootstrap and names the file. Staging is created even for an export-only manifest.
+1. **Fresh directory guard**: Rejects a `RESTORED` marker, live database or incompatible checkpoint layout. A lone unmarked `checkpoints/0` from interrupted finalization is reclaimed before downloading.
+2. **Download**: Reads the manifest from the configured backend, creates or opens the selected data directory, then inspects `restore-staging/` with rooted `Lstat`. An existing symlink (even to a target inside the data directory) or non-directory is rejected. Any old real staging directory is removed through the data-directory root before a fresh directory is created and opened. Downloads checkpoint files sequentially through a filesystem root opened on staging. Each manifest filename is converted from slash-separated form and must be lexically local before parent creation, object lookup or file creation for that entry. Rooted parent and file creation reject symlink escapes. Each checkpoint file is verified against its manifest size and the sha256 in its object key; a mismatch aborts bootstrap and names the file. Staging is reset even for an export-only manifest.
 3. **Apply exports**: If the manifest contains incremental export segments, applies them to the staging database and rebuilds derived state.
 4. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
 5. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`. Execution failures or reported integrity errors abort bootstrap before confirmation, preparation, and finalization. Without this flag, bootstrap skips Checker entirely.
 6. **Confirm**: Unless `--yes` is set, prompts for user confirmation.
 7. **Prepare**: Prepares attributes for backup (Global-zone resets: applied index preserved as the genesis boundary — the restored genesis' WAL-snapshot index — persisted config stripped, persisted bloom blocks dropped); the attribute zone is left intact.
-8. **Finalize**: Hard-links staging to `{data-dir}/checkpoints/0`, writes the `RESTORED` marker JSON.
-9. **Cleanup**: Removes the staging directory.
+8. **Finalize**: After closing the prepared store and rereading its metadata, hard-links staging into a temporary checkpoint directory and renames it to `{data-dir}/checkpoints/0`. Only then writes the atomic `RESTORED` commit marker. A marker-write failure attempts to remove the placed checkpoint; remove it manually if rollback fails.
+9. **Cleanup**: Removes the staging directory. A cleanup error is reported as a warning after the restore has committed.
 
-The download roots are closed before export replay, preview, validation,
-confirmation and finalization. Download rejection is per entry, rather than an
-atomic check of the whole manifest: earlier files and a partially written failing
-file can remain in staging after an error. Failed downloads do not reach those
-later steps, and do not automatically remove staging. Size/hash verification
-detects object corruption; it does not authenticate manifest filenames or
-replace destination confinement.
+Use the target directory exclusively while this offline command runs. Every
+attempt discards prior staging before downloading or replaying, including for
+export-only backups. This prevents committed projection batches from an earlier
+rebuild being folded again. Reset failure aborts before replay or publication;
+old staging may be partly removed or absent. A later download or rebuild failure,
+or EOF at confirmation, can leave new partial or fully rebuilt staging. It is
+not activated and the next invocation resets it again. An explicit negative
+confirmation instead attempts to remove staging. The existing freshness and
+`RESTORED` marker guards still apply: retries do not repair an already finalized
+restore.
+
+The download roots close before export replay, preview, validation, confirmation
+and finalization. Download rejection is per entry: earlier files and partial
+bytes can remain after an error, with no immediate cleanup. A failed download
+reaches none of the later steps. Size/hash verification detects object corruption;
+it does not authenticate manifest filenames or replace destination confinement.
 
 Use `--validate` for recovery and restore drills so integrity checks succeed
 before the data is finalized. Its default of `false` makes it opt-in; successful

@@ -5,7 +5,11 @@ import (
 	"log"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // driverTimeout bounds a single parallel driver execution. Retries under fault
@@ -25,6 +29,19 @@ const driverTimeout = 10 * time.Minute
 // composer-level kill is a blunter backstop that does not propagate a
 // clean cancellation to the RPCs.
 const singletonDriverTimeout = 90 * time.Minute
+
+// RunGeneratedDriver retains Composer's one-invocation contract. Each driver
+// gets its own bounded Hegel context; it must not share src with goroutines.
+func RunGeneratedDriver(name string, fn func(context.Context, servicepb.BucketServiceClient, string, *generation.Source)) {
+	RunDriver(name, func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+		if err := generation.RunOnce(func(src *generation.Source) {
+			fn(ctx, client, ledger, src)
+		}); err != nil {
+			assert.Unreachable("Hegel driver generation failed", Details{"driver": name, "error": err.Error()})
+			log.Printf("composer: %s: Hegel generation failed: %v", name, err)
+		}
+	})
+}
 
 // SingletonContext returns a fresh context with the singleton deadline.
 // Singletons that run an explicit `main()` (instead of going through

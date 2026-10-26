@@ -77,6 +77,9 @@ jobs:
       - name: Run internal tests with optional features and coverage
         run: >
           nix develop .#ci --command just test-internal-coverage
+      - name: Run PostgreSQL mirror integration regressions
+        run: >
+          nix develop .#ci --command just test-postgres-mirror-coverage
       - name: Run Antithesis assertion-emission contract tests
         run: >
           nix develop .#ci --command just test-antithesis-assertions
@@ -89,6 +92,7 @@ jobs:
             build/coverage/unit.out
             build/coverage/internal.out
             build/coverage/antithesis.out
+            build/coverage/postgres-mirror.out
           retention-days: 7
           if-no-files-found: ignore
 
@@ -195,6 +199,12 @@ jobs:
         run: >
           nix develop .#ci --command go -C tests/antithesis/workload test -race
           -tags enable_antithesis_sdk ./...
+      - name: Verify Hegel in the Debian workload runtime
+        run: nix develop .#ci --command just --justfile tests/antithesis/Justfile hegel-smoke
+      - name: Build the complete instrumented Antithesis workload
+        run: >-
+          nix develop .#ci --command just --justfile tests/antithesis/Justfile
+          workload-build-check ledger-antithesis-workload-ci:${{ github.sha }}
 
   Tests-Model:
     runs-on: namespace-profile-linux-amd64-4vcpu
@@ -234,7 +244,7 @@ jobs:
         run: |
           nix develop .#ci --command bash -c '
             cd build/coverage
-            required_profiles=(internal.out e2e-business.out e2e-cluster.out)
+            required_profiles=(internal.out postgres-mirror.out e2e-business.out e2e-cluster.out)
             for f in "${required_profiles[@]}"; do
               if [ ! -s "$f" ]; then
                 echo "Missing required coverage profile: $f"
@@ -344,7 +354,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: namespacelabs/nscloud-setup-buildx-action@d059ed7184f0bc7c8b27e8810cea153d02bcc6dd # v0.0.23
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: NumaryBot

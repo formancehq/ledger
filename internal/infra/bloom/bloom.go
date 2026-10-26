@@ -19,6 +19,45 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+func verifiedProjectionKey() []byte {
+	return []byte{dal.ZoneClusterPersistent, dal.SubGlobBloomProjectionSeal}
+}
+
+// HasVerifiedProjection reports whether the seal still covers the durable
+// applied index. An older binary can leave the seal intact while writing
+// attributes without Bloom; its later applied index invalidates the seal.
+func HasVerifiedProjection(store dal.PebbleGetter) (bool, error) {
+	value, err := dal.GetValue(store, verifiedProjectionKey())
+	if err != nil {
+		return false, fmt.Errorf("reading Bloom projection seal: %w", err)
+	}
+	if value == nil {
+		return false, nil
+	}
+	if len(value) != 8 {
+		return false, fmt.Errorf("invalid Bloom projection seal value %x", value)
+	}
+	appliedIndex, err := dal.ReadUint64(store, []byte{dal.ZoneClusterPersistent, dal.SubGlobLastAppliedIndex}, 0)
+	if err != nil {
+		return false, fmt.Errorf("reading applied index for Bloom projection seal: %w", err)
+	}
+
+	return binary.BigEndian.Uint64(value) == appliedIndex, nil
+}
+
+// SealProjectionAt advances the projection provenance in the same batch as
+// the durable applied index. Call only while the filter is ready and its full
+// projection has already been persisted (or is being persisted in this batch).
+func SealProjectionAt(batch *dal.WriteSession, appliedIndex uint64) error {
+	value := make([]byte, 8)
+	binary.BigEndian.PutUint64(value, appliedIndex)
+	if err := batch.Set(verifiedProjectionKey(), value, pebble.NoSync); err != nil {
+		return fmt.Errorf("persisting Bloom projection seal: %w", err)
+	}
+
+	return nil
+}
+
 // BloomConfigEnabled returns true if at least one bloom filter type has a
 // non-zero expected key count in the given ClusterConfig.
 func BloomConfigEnabled(cfg *commonpb.ClusterConfig) bool {
@@ -123,6 +162,31 @@ func (f *Filter) PersistDirtyBlocks(batch *dal.WriteSession) error {
 		}
 	}
 
+	for i := range f.dirty {
+		atomic.StoreUint64(&f.dirty[i], 0)
+	}
+
+	return nil
+}
+
+// PersistAllBlocks replaces an unverified legacy projection. It writes every
+// nonzero block, including blocks whose dirty bit was cleared by an earlier
+// prepared batch that has not committed yet.
+func (f *Filter) PersistAllBlocks(batch *dal.WriteSession) error {
+	for blockIdx := range f.filter.BlockCount() {
+		blk := f.filter.GetBlock(blockIdx)
+		if blk == (block{}) {
+			continue
+		}
+		key := make([]byte, 2+1+8)
+		key[0] = dal.ZoneClusterPersistent
+		key[1] = dal.SubGlobBloom
+		key[2] = f.attrCode
+		binary.BigEndian.PutUint64(key[3:], blockIdx)
+		if err := batch.Set(key, marshalBlock(&blk), pebble.NoSync); err != nil {
+			return fmt.Errorf("persisting complete bloom block %d: %w", blockIdx, err)
+		}
+	}
 	for i := range f.dirty {
 		atomic.StoreUint64(&f.dirty[i], 0)
 	}
@@ -297,6 +361,9 @@ func (s *filterSnapshot) allFilters() []*Filter {
 // because the snapshot pointer is updated atomically and never mutated.
 type FilterSet struct {
 	filters atomic.Pointer[filterSnapshot]
+	// True until a complete projection and its seal commit together. A legacy
+	// block set is never trusted merely because its shape is decodable.
+	replacePersisted atomic.Bool
 
 	// readyMu serializes Rebuild (which publishes a not-ready snapshot and
 	// bumps epoch) with background goroutines that want to flip the current
@@ -499,9 +566,29 @@ func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
 // PersistDirtyBlocks writes all dirty blocks from all filters to the Pebble batch.
 // Called during cache rotation to flush bloom state atomically with the rotation.
 func (fs *FilterSet) PersistDirtyBlocks(batch *dal.WriteSession) error {
+	return fs.persistBlocks(batch, fs.replacePersisted.Load())
+}
+
+// PersistDirtyBlocksAfterReplacement flushes only changes made after a full
+// replacement already staged in the same prepared batch and rebuild epoch.
+// A later prepared batch must use PersistDirtyBlocks again until the first
+// replacement commits, because its predecessor may still be in flight.
+func (fs *FilterSet) PersistDirtyBlocksAfterReplacement(batch *dal.WriteSession) error {
+	return fs.persistBlocks(batch, false)
+}
+
+func (fs *FilterSet) persistBlocks(batch *dal.WriteSession, replace bool) error {
 	snap := fs.filters.Load()
 	if snap == nil {
 		return nil
+	}
+	if replace {
+		if err := batch.DeleteRangeNoSync(
+			[]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom},
+			[]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom + 1},
+		); err != nil {
+			return fmt.Errorf("replacing unverified bloom blocks: %w", err)
+		}
 	}
 
 	for _, f := range snap.allFilters() {
@@ -509,12 +596,40 @@ func (fs *FilterSet) PersistDirtyBlocks(batch *dal.WriteSession) error {
 			continue
 		}
 
-		if err := f.PersistDirtyBlocks(batch); err != nil {
+		var err error
+		if replace {
+			err = f.PersistAllBlocks(batch)
+		} else {
+			err = f.PersistDirtyBlocks(batch)
+		}
+		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// PersistedReplacement returns the epoch to acknowledge after a successful
+// batch commit. A later Rebuild invalidates that acknowledgement.
+func (fs *FilterSet) PersistedReplacement() (uint64, bool) {
+	fs.readyMu.Lock()
+	defer fs.readyMu.Unlock()
+
+	return fs.epoch, fs.replacePersisted.Load()
+}
+
+func (fs *FilterSet) ConfirmPersistedReplacement(epoch uint64) {
+	fs.readyMu.Lock()
+	defer fs.readyMu.Unlock()
+	if fs.epoch == epoch {
+		fs.replacePersisted.Store(false)
+	}
+}
+
+// MarkVerifiedRestore skips replacement only for blocks with a valid seal.
+func (fs *FilterSet) MarkVerifiedRestore(epoch uint64) {
+	fs.ConfirmPersistedReplacement(epoch)
 }
 
 // RestoreFromStore loads all persisted bloom blocks from Pebble.
@@ -696,6 +811,7 @@ func (fs *FilterSet) Rebuild(cfg *commonpb.ClusterConfig) {
 	// Bump epoch under the lock so a background SetReadyIfEpoch using the
 	// previous epoch cannot promote this fresh, still-empty snapshot.
 	fs.epoch++
+	fs.replacePersisted.Store(true)
 	fs.filters.Store(snap)
 	fs.readyMu.Unlock()
 
@@ -779,13 +895,9 @@ func newFilter(expectedKeys uint, fpRate float64, attrCode byte, meter metric.Me
 	}
 }
 
-// NewFilterSet creates a new FilterSet with per-type bloom filters from a
-// ClusterConfig. Returns nil if no bloom filter type is enabled.
+// NewFilterSet creates a stable lifecycle handle. Even a disabled committed
+// configuration needs a handle so a later committed update can enable filters.
 func NewFilterSet(cfg *commonpb.ClusterConfig, meter metric.Meter) *FilterSet {
-	if !BloomConfigEnabled(cfg) {
-		return nil
-	}
-
 	if meter == nil {
 		meter = noop.Meter{}
 	}
@@ -799,6 +911,7 @@ func NewFilterSet(cfg *commonpb.ClusterConfig, meter metric.Meter) *FilterSet {
 		meter:      meter,
 		readyGauge: readyGauge,
 	}
+	fs.replacePersisted.Store(true)
 
 	snap := &filterSnapshot{}
 	for _, bt := range bloomTypes(cfg) {
@@ -808,6 +921,21 @@ func NewFilterSet(cfg *commonpb.ClusterConfig, meter metric.Meter) *FilterSet {
 	fs.filters.Store(snap)
 
 	return fs
+}
+
+// Enabled reports whether the current committed snapshot has any filters.
+func (fs *FilterSet) Enabled() bool {
+	snap := fs.filters.Load()
+	if snap == nil {
+		return false
+	}
+	for _, filter := range snap.allFilters() {
+		if filter != nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 // attrCounter wraps a counter to always include a fixed attribute.

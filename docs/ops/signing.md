@@ -353,7 +353,9 @@ ledgerctl --response-verify-key ./response-keys/pubkey.hex \
   transactions create --ledger my-ledger --posting "world,bank,1000,USD"
 ```
 
-If the server's response signature is missing or invalid, or if the visible log differs from the authenticated payload, the command fails before consuming the log.
+If the server's response signature is missing or invalid, or if the visible log differs from the authenticated payload, the command fails before consuming the log. This includes `transactions set-metadata`, `transactions delete-metadata`, and `numscripts save`: they verify returned logs before reporting success or displaying returned script details. Verification remains optional when the flag is unset.
+
+The RPC has already completed when the response is verified. A verification failure does not roll back a mutation and leaves its outcome unauthenticated.
 
 ### Kubernetes Deployment
 

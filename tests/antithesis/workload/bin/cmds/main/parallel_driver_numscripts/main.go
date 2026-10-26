@@ -9,13 +9,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_numscripts", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunGeneratedDriver("parallel_driver_numscripts", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
 		r := internal.Rand()
 		scriptName := fmt.Sprintf("transfer-%d", r.Uint64())
-		version := fmt.Sprintf("%d.0.0", r.Uint64()%10+1)
+		version := fmt.Sprintf("%d.0.0", src.Uint64Range(0, 9)+1)
 
 		details := internal.Details{"ledger": ledger, "scriptName": scriptName, "version": version}
 
@@ -48,9 +49,9 @@ func main() {
 		assert.AlwaysOrUnreachable(info.GetName() == scriptName, "saved numscript should be readable", details)
 
 		vars := map[string]string{
-			"from":   internal.GetRandomAddress(),
-			"to":     internal.GetRandomAddress(),
-			"amount": fmt.Sprintf("COIN %v", internal.RandomBigInt().String()),
+			"from":   internal.GeneratedAddress(src),
+			"to":     internal.GeneratedAddress(src),
+			"amount": fmt.Sprintf("COIN %v", internal.GeneratedBigInt(src).String()),
 		}
 
 		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{

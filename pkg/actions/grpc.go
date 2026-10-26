@@ -1,14 +1,16 @@
 package actions
 
-// GRPCRetryPolicy defines the retry policy for gRPC clients when no leader is available.
+// GRPCRetryPolicy retries UNAVAILABLE through one leader election: five total
+// attempts with four exponential backoffs totaling 3.75s before jitter.
+// Five is grpc-go's default maximum number of attempts per call.
 var GRPCRetryPolicy = `{
 	"methodConfig": [{
 		"name": [{}],
 		"retryPolicy": {
-			"MaxAttempts": 50,
-			"InitialBackoff": "0.2s",
-			"MaxBackoff": "0.2s",
-			"BackoffMultiplier": 1.0,
+			"MaxAttempts": 5,
+			"InitialBackoff": "0.25s",
+			"MaxBackoff": "2s",
+			"BackoffMultiplier": 2.0,
 			"RetryableStatusCodes": ["UNAVAILABLE"]
 		}
 	}]

@@ -7,13 +7,15 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_reference_conflict", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunGeneratedDriver("parallel_driver_reference_conflict", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
 		ref := fmt.Sprintf("ref-%d", internal.Rand().Uint64())
 		details := internal.Details{"ledger": ledger, "reference": ref}
 
@@ -24,7 +26,7 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings:  internal.RandomPostings(),
+							Postings:  internal.GeneratedPostings(src),
 							Reference: ref,
 							Force:     true,
 						},
@@ -48,15 +50,18 @@ func main() {
 		details["firstTxId"] = createdTx.GetTransaction().GetId()
 
 		// 2. Create a different transaction with the same reference — must fail.
+		// The marker guarantees different business bytes even when the two
+		// posting draws coincide; the first request has no metadata.
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings:  internal.RandomPostings(),
+							Postings:  internal.GeneratedPostings(src),
 							Reference: ref,
 							Force:     true,
+							Metadata:  commonpb.MetadataFromGoMap(map[string]string{"referenceConflict": "second"}),
 						},
 					}},
 				},

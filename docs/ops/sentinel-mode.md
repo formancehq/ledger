@@ -70,6 +70,32 @@ and residual volumes after ledger deletion through the Antithesis SDK's
 to apply or replay. Pebble read errors return errors without asserting that
 data is missing or corrupt.
 
+## Raft coverage boundary
+
+The mode checks each node's local accounting and durable write results. It
+does not compare replicas and cannot by itself detect two internally
+consistent nodes applying different histories. The Antithesis configurations
+already enable it; `nonempty sentinel verification completed` records an
+executed, nonempty post-commit check, rather than merely the enabled flag.
+
+The complementary workload checks preserve exact acknowledged witness
+transactions through operational changes and compare all current replicas'
+account/audit state at a qualified common durable horizon. See the
+[Antithesis evidence contract](../../tests/antithesis/README.md#raft-and-sentinel-evidence).
+The `SENTINEL restore snapshot` log reports diagnostic cache counts; it is not
+an inter-replica correctness assertion.
+
+`TestSentinelRaftApplyLifecycle` exercises live apply, startup WAL replay and
+spool replay with real local storage. Bootstrap runs with sentinels disabled;
+the reopened target path must emit a completed nonempty sentinel at its first
+business commit. Final durable index and volume checks independently verify
+the remaining replay batches, so setup writes cannot satisfy the evidence.
+`TestSentinelRaftPipelinedCommitBoundary` captures expectations before a later
+batch is prepared, and verifies both correct commits and balanced but incorrect
+durable writes. A failed post-commit check leaves its writes durable and does
+not publish successful completion. These fixtures do not simulate distributed
+elections or prove a remote Antithesis campaign passed.
+
 ## Performance Impact
 
 Sentinel mode adds measurable overhead:

@@ -15,6 +15,10 @@ var ErrNotAvailable = errors.New("peer not available")
 // fetching a checkpoint itself, so the requester must try another peer.
 var ErrStoreResynchronizing = errors.New("store is resynchronizing and cannot serve a checkpoint")
 
+// ErrSnapshotNotReady is returned when a donor is reachable but cannot serve
+// a checkpoint at the requested index yet. Callers may try another donor.
+var ErrSnapshotNotReady = errors.New("snapshot donor is not ready")
+
 // SnapshotFetcher fetches a fresh checkpoint from a peer.
 type SnapshotFetcher interface {
 	// FetchSnapshot requests a fresh checkpoint from the leader and writes it
@@ -30,4 +34,5 @@ type SnapshotFetcher interface {
 // SnapshotFetcherProvider provides snapshot fetchers for peers.
 type SnapshotFetcherProvider interface {
 	GetForPeer(id uint64) (SnapshotFetcher, error)
+	GetForPeers(ids []uint64) (SnapshotFetcher, error)
 }

@@ -1349,6 +1349,11 @@ type TLSRolloutStatus struct {
 
 // ClusterStatus defines the observed state of Cluster.
 type ClusterStatus struct {
+	// Drain records the operator-owned epoch and transition across restarts.
+	// It is cleared after all members durably apply the release.
+	// +optional
+	Drain *DrainStatus `json:"drain,omitempty"`
+
 	// TLSRollout preserves certificate references and mode across operator restarts
 	// and StatefulSet recreation. Cleared after the disabled rollout converges.
 	// +optional
@@ -1381,6 +1386,12 @@ type ClusterStatus struct {
 	// exposes the intermediate "optional" mode used during a toggle.
 	// +optional
 	TLSMigrationPhase string `json:"tlsMigrationPhase,omitempty"`
+}
+
+// DrainStatus tracks an annotation-triggered drain lifecycle.
+type DrainStatus struct {
+	Epoch string `json:"epoch"`
+	Phase string `json:"phase"`
 }
 
 // EndpointsStatus contains the resolved endpoints for a Cluster.

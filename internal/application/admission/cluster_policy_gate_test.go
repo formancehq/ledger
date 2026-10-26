@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	stdtime "time"
 
 	"github.com/stretchr/testify/require"
@@ -31,15 +32,18 @@ func TestWaitClusterPolicyReady(t *testing.T) {
 	t.Run("blocks while no policy is committed", func(t *testing.T) {
 		t.Parallel()
 
-		store := createTestStoreWithoutPolicy(t)
-		a, _ := createTestAdmission(t, store)
+		synctest.Test(t, func(t *testing.T) {
+			store := createTestStoreWithoutPolicy(t)
+			a, _ := createTestAdmission(t, store)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 100*stdtime.Millisecond)
-		defer cancel()
+			// The fake clock spends the whole deadline polling at no wall-clock cost.
+			ctx, cancel := context.WithTimeout(context.Background(), 100*stdtime.Millisecond)
+			defer cancel()
 
-		err := a.waitClusterPolicyReady(ctx)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "cluster policy readiness")
+			err := a.waitClusterPolicyReady(ctx)
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.Contains(t, err.Error(), "cluster policy readiness")
+		})
 	})
 
 	t.Run("returns once a policy is committed", func(t *testing.T) {
@@ -54,20 +58,30 @@ func TestWaitClusterPolicyReady(t *testing.T) {
 	t.Run("unblocks when a policy is committed concurrently", func(t *testing.T) {
 		t.Parallel()
 
-		store := createTestStoreWithoutPolicy(t)
-		a, _ := createTestAdmission(t, store)
+		synctest.Test(t, func(t *testing.T) {
+			store := createTestStoreWithoutPolicy(t)
+			a, _ := createTestAdmission(t, store)
 
-		done := make(chan error, 1)
-		go func() { done <- a.waitClusterPolicyReady(context.Background()) }()
+			done := make(chan error, 1)
+			go func() { done <- a.waitClusterPolicyReady(context.Background()) }()
 
-		commitClusterPolicy(t, store, 1)
+			// Wait returns once the gate has read the empty policy and parked
+			// on its poll ticker, so the commit below lands after it blocked.
+			synctest.Wait()
+			select {
+			case err := <-done:
+				t.Fatalf("waitClusterPolicyReady returned before a policy was committed: %v", err)
+			default:
+			}
+			commitClusterPolicy(t, store, 1)
 
-		select {
-		case err := <-done:
-			require.NoError(t, err)
-		case <-stdtime.After(5 * stdtime.Second):
-			t.Fatal("waitClusterPolicyReady did not unblock after the policy was committed")
-		}
+			select {
+			case err := <-done:
+				require.NoError(t, err)
+			case <-stdtime.After(5 * stdtime.Second):
+				t.Fatal("waitClusterPolicyReady did not unblock after the policy was committed")
+			}
+		})
 	})
 }
 
@@ -80,15 +94,17 @@ func TestAdmit_ClusterPolicyWriteReadinessGate(t *testing.T) {
 	t.Run("business write is held before the policy is committed", func(t *testing.T) {
 		t.Parallel()
 
-		store := createTestStoreWithoutPolicy(t)
-		a, _ := createTestAdmissionWithReader(t, store, nil)
+		synctest.Test(t, func(t *testing.T) {
+			store := createTestStoreWithoutPolicy(t)
+			a, _ := createTestAdmissionWithReader(t, store, nil)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 100*stdtime.Millisecond)
-		defer cancel()
+			ctx, cancel := context.WithTimeout(context.Background(), 100*stdtime.Millisecond)
+			defer cancel()
 
-		_, err := a.Admit(attributedTestContext(ctx), businessWrite("held-ledger"))
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "cluster policy readiness")
+			_, err := a.Admit(attributedTestContext(ctx), businessWrite("held-ledger"))
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.Contains(t, err.Error(), "cluster policy readiness")
+		})
 	})
 
 	t.Run("business write proceeds once the policy is committed", func(t *testing.T) {

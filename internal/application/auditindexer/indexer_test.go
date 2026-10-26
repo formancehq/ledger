@@ -3,6 +3,7 @@ package auditindexer
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -364,43 +365,47 @@ func TestProcessOnceCertifiesAppliedEntryWithoutAuditMovement(t *testing.T) {
 func TestProcessOnceWakesAuditWaiters(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-	idx, mainStore, rs := newIndexerForTest(t)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		idx, mainStore, rs := newIndexerForTest(t)
 
-	// A waiter for an audit entry that does not exist yet must block.
-	waitErr := make(chan error, 1)
-	go func() {
-		wctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		waitErr <- rs.WaitForAuditSequence(wctx, 1)
-	}()
+		// A waiter for an audit entry that does not exist yet must block.
+		waitErr := make(chan error, 1)
+		go func() {
+			wctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			waitErr <- rs.WaitForAuditSequence(wctx, 1)
+		}()
 
-	select {
-	case err := <-waitErr:
-		t.Fatalf("WaitForAuditSequence returned before the entry was indexed: %v", err)
-	case <-time.After(50 * time.Millisecond):
-	}
+		// Wait returns only once the waiter is parked on the progress condition.
+		synctest.Wait()
+		select {
+		case err := <-waitErr:
+			t.Fatalf("WaitForAuditSequence returned before the entry was indexed: %v", err)
+		default:
+		}
 
-	// Write the audit entry and index it. processBatch commits the cursor then
-	// calls NotifyProgress, which must wake the waiter.
-	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
-		Sequence:   1,
-		ProposalId: 7,
-		Timestamp:  &commonpb.Timestamp{Data: 1_000_000},
-		Outcome:    &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
-		Ledgers:    []string{"main"},
-	})
+		// Write the audit entry and index it. processBatch commits the cursor then
+		// calls NotifyProgress, which must wake the waiter.
+		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+			Sequence:   1,
+			ProposalId: 7,
+			Timestamp:  &commonpb.Timestamp{Data: 1_000_000},
+			Outcome:    &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+			Ledgers:    []string{"main"},
+		})
 
-	processed, err := idx.ProcessOnce(ctx)
-	require.NoError(t, err)
-	require.Equal(t, uint64(1), processed)
-
-	select {
-	case err := <-waitErr:
+		processed, err := idx.ProcessOnce(ctx)
 		require.NoError(t, err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("WaitForAuditSequence did not wake after ProcessOnce committed the cursor")
-	}
+		require.Equal(t, uint64(1), processed)
+
+		select {
+		case err := <-waitErr:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("WaitForAuditSequence did not wake after ProcessOnce committed the cursor")
+		}
+	})
 }
 
 func TestStartStopIndexes(t *testing.T) {
@@ -487,26 +492,31 @@ func TestProcessOnceHonorsContextCancellation(t *testing.T) {
 
 func TestIndexerKeepsUpUnderLoad(t *testing.T) {
 	t.Parallel()
-	idx, mainStore, rs := newIndexerForTest(t)
-	idx.Start()
-	t.Cleanup(idx.Stop)
 
-	const total = 200
-	for s := uint64(1); s <= total; s++ {
-		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
-			Sequence: s, ProposalId: s, Timestamp: &commonpb.Timestamp{Data: s * 1_000_000},
-			Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
-			Ledgers: []string{"main"},
-		})
-	}
+	// The worker only picks up entries on its TickInterval; the fake clock
+	// elapses those ticks instantly.
+	synctest.Test(t, func(t *testing.T) {
+		idx, mainStore, rs := newIndexerForTest(t)
+		idx.Start()
+		t.Cleanup(idx.Stop)
 
-	require.Eventually(t, func() bool {
-		c, err := rs.ReadAuditProgress()
+		const total = 200
+		for s := uint64(1); s <= total; s++ {
+			writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+				Sequence: s, ProposalId: s, Timestamp: &commonpb.Timestamp{Data: s * 1_000_000},
+				Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+				Ledgers: []string{"main"},
+			})
+		}
 
-		return err == nil && c == total
-	}, 10*time.Second, 50*time.Millisecond)
+		require.Eventually(t, func() bool {
+			c, err := rs.ReadAuditProgress()
 
-	seqs, err := rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
-	require.NoError(t, err)
-	require.Len(t, seqs, total)
+			return err == nil && c == total
+		}, 10*time.Second, 50*time.Millisecond)
+
+		seqs, err := rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
+		require.NoError(t, err)
+		require.Len(t, seqs, total)
+	})
 }

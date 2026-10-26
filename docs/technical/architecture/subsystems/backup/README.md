@@ -172,6 +172,10 @@ changes the Pebble key layout: boot validation rejects an earlier store
 through the old boot-anchor probe. There is no in-place migration of
 pre-release stores. In-cluster snapshot installation retains the local zone.
 
+For gRPC finalization, the restore service claims the single downloaded staging generation under its mutex before `PrepareForBackup`. The claim remains held through metadata reads, staging-handle closure, checkpoint publication, marker publication, and staging cleanup. A competing finalizer fails with `FailedPrecondition` before it can read or mutate the same generation. A sequential retry after success fails because the handle was cleared. `Shutdown` joins the active request before it closes retained resources.
+
+The durable publication sequence is: prepare and read metadata from the open staging store; close its Pebble handle; create the checkpoint parent and remove an old `checkpoints/0` path; hard-link staging into a temporary directory and rename it to `checkpoints/0`; atomically write `RESTORED`; then remove staging. `RESTORED` is the commit point and always follows checkpoint placement. A preparation error leaves an open staging handle, but its Pebble writes can be indeterminate after a commit or flush error. A filesystem publication error leaves staging files with no open handle and no marker; a marker-write error additionally attempts to remove the placed checkpoint. Cleanup failure after the marker is logged and does not revoke success. Recovery from an unsuccessful finalization requires a fresh restore-mode download and validation, with any leftover checkpoint removed if rollback failed; the same in-process staging generation cannot be retried after its handle was closed.
+
 `internal/infra/backup/restore.go` is the entry point. The flow is conceptually the inverse:
 
 1. Read the manifest from the destination.
@@ -187,12 +191,17 @@ pre-release stores. In-cluster snapshot installation retains the local zone.
 
 Offline `ledgerctl store bootstrap` downloads checkpoint files through
 `downloadBootstrapCheckpoint` in `cmd/ledgerctl/store/bootstrap.go`. It creates
-or opens the operator-selected data directory, creates `restore-staging` through
-that root, then uses rooted `Lstat` to require a real staging directory before
-opening a staging root. All staging-root symlinks are rejected, including targets
+or opens the operator-selected data directory and inspects `restore-staging`
+through that root with `Lstat`. A symlink or non-directory is rejected; absence
+is allowed. Any old real staging directory is removed with rooted `RemoveAll`,
+then a strict rooted `Mkdir` creates the fresh directory before `OpenRoot`.
+All staging-root symlinks are rejected, including targets
 inside the data directory, because later finalization walks the staging path
-without following a root symlink. Staging is acquired even when the manifest
-contains exports only.
+without following a root symlink. Staging is reset even when the manifest
+contains exports only. The command assumes exclusive offline use of the target;
+resetting stale staging costs O(stale entries) before the complete download and
+replay. A reset error stops before replay or publication and can leave old staging
+partly removed or absent.
 
 For each checkpoint map key, the downloader applies `filepath.FromSlash` and
 `filepath.IsLocal` before rooted parent creation, remote lookup by the separate
@@ -203,8 +212,17 @@ This is a per-entry boundary, not a whole-manifest transaction. On failure,
 earlier files and partial file bytes can remain in staging; offline bootstrap
 does not automatically wipe failed downloads. Directory handles close before
 export replay, preview, optional Checker validation, confirmation and
-finalization; a download failure reaches none of those steps. This change does
-not alter backup formats, replay semantics or persisted business state.
+finalization; a download failure reaches none of those steps. A rebuild failure
+or confirmation EOF can leave new partial or fully rebuilt staging. Every retry
+recreates it from the backup, preventing additive projection replay on a prior
+attempt's committed batches. Negative confirmation attempts staging removal.
+Fresh-target admission still rejects a `RESTORED` marker and live database and
+reclaims a lone unmarked checkpoint 0. Finalization closes the prepared store,
+rereads metadata, places checkpoint 0 via temporary-directory hard links and
+rename, writes the atomic `RESTORED` commit marker, then removes staging. Marker
+failure attempts checkpoint rollback; cleanup failure after the marker only warns.
+This changes no persisted format or wire contract and does not repair a finalized
+corrupt restore.
 
 Each export object must terminate with its explicit stream footer at the exact
 end of the object and match the manifest byte size. Its keys must belong to
@@ -216,8 +234,8 @@ the staging restore can be considered successful. `ApplyExports` writes large se
 bounded Pebble batches, so batches committed before a later read failure can
 remain until the caller discards or retries that staging directory. The gRPC
 download job wipes staging on failure and never enables finalization; an
-offline retry with the intact immutable object safely overwrites the same raw
-history keys before rebuild.
+offline retry discards the entire prior staging directory and starts again from
+the checkpoint (or an empty store for export-only manifests) before replay.
 
 `RebuildDelta` is a second fold of committed effects: the checkpoint contains
 projection values only up to its sequence boundary, while later incremental

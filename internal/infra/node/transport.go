@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -30,18 +29,19 @@ import (
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source transport.go -destination transport_generated_test.go -typed -package node . Transport
 type Transport interface {
 	Unreachable() <-chan uint64
-	SnapshotStatus() <-chan SnapshotStatus
+	DeliveryResults() <-chan DeliveryResult
 	RecvHighPriority() <-chan []*raftpb.Message
 	RecvMediumPriority() <-chan []*raftpb.Message
 	RecvLowPriority() <-chan []*raftpb.Message
 	Send(msg []*raftpb.Message, stop <-chan struct{})
 }
 
-// SnapshotStatus reports delivery of a sent Raft snapshot to its destination.
+// DeliveryResult reports one terminal transport outcome for a sent Raft message.
 // Success means that the peer accepted the message, not that its FSM is current.
-type SnapshotStatus struct {
-	PeerID uint64
-	Status raft.SnapshotStatus
+type DeliveryResult struct {
+	PeerID  uint64
+	Type    raftpb.MessageType
+	Success bool
 }
 
 // DefaultTransport handles network communication between Raft nodes using gRPC
@@ -61,8 +61,8 @@ type DefaultTransport struct {
 	peers   map[uint64]*peerConnection
 
 	// Channel for reporting unreachable peers
-	unreachableCh    chan uint64
-	snapshotStatusCh chan SnapshotStatus
+	unreachableCh     chan uint64
+	deliveryResultsCh chan DeliveryResult
 
 	logger        logging.Logger
 	globalMeter   metric.Meter
@@ -170,7 +170,7 @@ func NewTransport(
 		lowPriorityRecvCh:    make(chan []*raftpb.Message, config.Reception[2]),
 		peers:                make(map[uint64]*peerConnection),
 		unreachableCh:        make(chan uint64, unreachableCapacity),
-		snapshotStatusCh:     make(chan SnapshotStatus, unreachableCapacity),
+		deliveryResultsCh:    make(chan DeliveryResult, unreachableCapacity),
 		globalMeter:          meter,
 		meterProvider:        meterProvider,
 		logger:               logger,
@@ -397,7 +397,7 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 		stopCancel:             stopCancel,
 		loopDone:               make(chan struct{}),
 		pushUnreachable:        t.pushUnreachable,
-		reportSnapshotStatus:   t.reportSnapshotStatus,
+		reportDelivery:         t.reportDelivery,
 		connectionPool:         t.connectionPool,
 		logger:                 logger,
 		peerID:                 id,
@@ -473,7 +473,7 @@ func (t *DefaultTransport) RemovePeer(ctx context.Context, id uint64) {
 	}
 }
 
-// Send queues messages to peers. Rejected snapshot results backpressure until
+// Send queues messages to peers. Rejected delivery results backpressure until
 // delivered or the Ready task stops, independently of later transport shutdown.
 func (t *DefaultTransport) Send(msgs []*raftpb.Message, stop <-chan struct{}) {
 	if len(msgs) == 0 {
@@ -493,9 +493,7 @@ func (t *DefaultTransport) Send(msgs []*raftpb.Message, stop <-chan struct{}) {
 		}).Errorf("Channel full")
 		t.pendingSendFullCounter.Add(context.Background(), 1)
 		for _, msg := range msgs {
-			if msg.GetType() == raftpb.MsgSnap {
-				t.reportSnapshotStatus(stop, msg.GetTo(), raft.SnapshotFailure)
-			}
+			t.reportDelivery(stop, DeliveryResult{PeerID: msg.GetTo(), Type: msg.GetType()})
 		}
 
 		// Signal Unreachable for every peer that had a message in the
@@ -567,9 +565,7 @@ func (t *DefaultTransport) Start(_ context.Context) {
 						Errorf("No send channel for peer, dropping messages")
 					for _, batch := range priorityMsgs {
 						for _, msg := range batch {
-							if msg.GetType() == raftpb.MsgSnap {
-								t.reportSnapshotStatus(t.stopCh, peerID, raft.SnapshotFailure)
-							}
+							t.reportDelivery(t.stopCh, DeliveryResult{PeerID: peerID, Type: msg.GetType()})
 						}
 					}
 
@@ -597,19 +593,19 @@ func (t *DefaultTransport) Unreachable() <-chan uint64 {
 	return t.unreachableCh
 }
 
-func (t *DefaultTransport) SnapshotStatus() <-chan SnapshotStatus {
-	return t.snapshotStatusCh
+func (t *DefaultTransport) DeliveryResults() <-chan DeliveryResult {
+	return t.deliveryResultsCh
 }
 
-// A lost snapshot result can strand a leader in StateSnapshot permanently.
+// Delivery outcomes must reach their owner even when a queue rejects a message.
 // Backpressure instead of dropping the result; the publisher's owner must
 // cancel it before joining, even if transport shutdown has not started yet.
-func (t *DefaultTransport) reportSnapshotStatus(stop <-chan struct{}, peerID uint64, status raft.SnapshotStatus) {
+func (t *DefaultTransport) reportDelivery(stop <-chan struct{}, result DeliveryResult) {
 	if t.stopped.Load() {
 		return
 	}
 	select {
-	case t.snapshotStatusCh <- SnapshotStatus{PeerID: peerID, Status: status}:
+	case t.deliveryResultsCh <- result:
 	case <-stop:
 	case <-t.stopCh:
 	}
@@ -794,7 +790,7 @@ type peerConnection struct {
 	stopCancel             context.CancelFunc // called by stop()
 	loopDone               chan struct{}      // closed when loop() exits; stop() waits on this
 	pushUnreachable        func(peerID uint64) bool
-	reportSnapshotStatus   func(<-chan struct{}, uint64, raft.SnapshotStatus)
+	reportDelivery         func(<-chan struct{}, DeliveryResult)
 	connectionPool         *transport.ConnectionPool
 	logger                 logging.Logger
 	peerID                 uint64
@@ -876,7 +872,7 @@ func (conn *peerConnection) pushMessages(priority int, msgs []*raftpb.Message) b
 
 		return true
 	default:
-		conn.reportSnapshotFailures(msgs)
+		conn.reportFailures(msgs)
 		conn.logger.WithFields(map[string]any{
 			"channel":  "raft.transport.peer.sending",
 			"priority": priority,
@@ -906,11 +902,9 @@ func (conn *peerConnection) pushMessages(priority int, msgs []*raftpb.Message) b
 	}
 }
 
-func (conn *peerConnection) reportSnapshotFailures(msgs []*raftpb.Message) {
+func (conn *peerConnection) reportFailures(msgs []*raftpb.Message) {
 	for _, msg := range msgs {
-		if msg.GetType() == raftpb.MsgSnap {
-			conn.reportSnapshotStatus(conn.stopCtx.Done(), msg.GetTo(), raft.SnapshotFailure)
-		}
+		conn.reportDelivery(conn.stopCtx.Done(), DeliveryResult{PeerID: msg.GetTo(), Type: msg.GetType()})
 	}
 }
 
@@ -971,15 +965,15 @@ func (conn *peerConnection) loop() {
 					return
 				case msgs := <-conn.highPriorityCh:
 					conn.sendQueueInflight[0].Add(-1)
-					conn.reportSnapshotFailures(msgs)
+					conn.reportFailures(msgs)
 					conn.pushUnreachable(conn.peerID)
 				case msgs := <-conn.mediumPriorityCh:
 					conn.sendQueueInflight[1].Add(-1)
-					conn.reportSnapshotFailures(msgs)
+					conn.reportFailures(msgs)
 					conn.pushUnreachable(conn.peerID)
 				case msgs := <-conn.lowPriorityCh:
 					conn.sendQueueInflight[2].Add(-1)
-					conn.reportSnapshotFailures(msgs)
+					conn.reportFailures(msgs)
 					conn.pushUnreachable(conn.peerID)
 				case <-conn.reconnected:
 					// restart connection to prevent staled dns cached ip
@@ -1130,8 +1124,8 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	conn.logger.Infof("Created 3 priority streams to peer")
 
 	type pendingDelivery struct {
-		peerID   uint64
-		snapshot bool
+		result   DeliveryResult
+		reported bool
 	}
 	pending := make(map[uint64]pendingDelivery)
 	liveness := newConnectionLiveness()
@@ -1142,13 +1136,13 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	drainPendingUnreachable := func() {
 		mu.Lock()
 		for requestID, delivery := range pending {
-			conn.pushUnreachable(delivery.peerID)
-			if delivery.snapshot {
-				conn.reportSnapshotStatus(conn.stopCtx.Done(), delivery.peerID, raft.SnapshotFailure)
+			conn.pushUnreachable(delivery.result.PeerID)
+			if !delivery.reported {
+				conn.reportDelivery(conn.stopCtx.Done(), delivery.result)
 				// A concurrent response may still arrive before the receive
 				// workers join. Retain its metric accounting, but never report
-				// a second outcome for this abandoned snapshot attempt.
-				delivery.snapshot = false
+				// a second outcome for this abandoned delivery attempt.
+				delivery.reported = true
 				pending[requestID] = delivery
 			}
 		}
@@ -1267,14 +1261,11 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 						if !raftResp.GetSuccess() && ok {
 							conn.logger.
 								Errorf("Failed to send message on %s stream, peer respond with error: %s", ps.priorityName, raftResp.GetError())
-							conn.pushUnreachable(delivery.peerID)
+							conn.pushUnreachable(delivery.result.PeerID)
 						}
-						if ok && delivery.snapshot {
-							result := raft.SnapshotFailure
-							if raftResp.GetSuccess() {
-								result = raft.SnapshotFinish
-							}
-							conn.reportSnapshotStatus(conn.stopCtx.Done(), delivery.peerID, result)
+						if ok && !delivery.reported {
+							delivery.result.Success = raftResp.GetSuccess()
+							conn.reportDelivery(conn.stopCtx.Done(), delivery.result)
 						}
 					}
 					mu.Unlock()
@@ -1307,7 +1298,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 						"error": err,
 					}).
 					Errorf("Failed to marshal message")
-				conn.reportSnapshotFailures([]*raftpb.Message{msg})
+				conn.reportFailures([]*raftpb.Message{msg})
 
 				continue
 			}
@@ -1318,7 +1309,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 			currentMessageID := conn.messageID
 			conn.messageID++
-			pending[currentMessageID] = pendingDelivery{peerID: msg.GetTo(), snapshot: msg.GetType() == raftpb.MsgSnap}
+			pending[currentMessageID] = pendingDelivery{result: DeliveryResult{PeerID: msg.GetTo(), Type: msg.GetType()}}
 			messageIDs = append(messageIDs, currentMessageID)
 
 			raftMessages = append(raftMessages, &rafttransportpb.RaftRequestMessage{
@@ -1356,8 +1347,8 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 				Errorf("Failed to send batch via stream")
 			mu.Lock()
 			for _, msgID := range messageIDs {
-				if delivery, ok := pending[msgID]; ok && delivery.snapshot {
-					conn.reportSnapshotStatus(conn.stopCtx.Done(), delivery.peerID, raft.SnapshotFailure)
+				if delivery, ok := pending[msgID]; ok && !delivery.reported {
+					conn.reportDelivery(conn.stopCtx.Done(), delivery.result)
 				}
 				delete(pending, msgID)
 			}

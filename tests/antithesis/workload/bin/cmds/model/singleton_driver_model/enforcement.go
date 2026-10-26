@@ -1,22 +1,22 @@
 package main
 
 import (
-	"github.com/antithesishq/antithesis-sdk-go/random"
-
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // generateEnforcementMode switches the persisted ledger default through both
 // supported request forms. Subsequent orders, including those in this bulk,
 // observe the selected mode; there is no transaction-local mode override.
-func generateEnforcementMode(ledger string) *servicepb.Request {
-	mode := random.RandomChoice([]commonpb.ChartEnforcementMode{
+func generateEnforcementMode(src *generation.Source, ledger string) *servicepb.Request {
+	mode := generation.Choice(src, []commonpb.ChartEnforcementMode{
 		commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
 		commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
 	})
 
-	return enforcementModeRequest(ledger, mode, random.RandomChoice([]bool{false, true}))
+	return enforcementModeRequest(ledger, mode, generation.Choice(src, []bool{false, true}))
 }
 
 func enforcementModeRequest(ledger string, mode commonpb.ChartEnforcementMode, nested bool) *servicepb.Request {

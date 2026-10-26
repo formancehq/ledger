@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -140,34 +141,38 @@ func TestWaitForCheckpointFastPath(t *testing.T) {
 func TestWaitForCheckpointBlocksUntilMarker(t *testing.T) {
 	t.Parallel()
 
-	s := newTestStore(t)
-	dir := t.TempDir()
+	synctest.Test(t, func(t *testing.T) {
+		s := newTestStore(t)
+		dir := t.TempDir()
 
-	waitErr := make(chan error, 1)
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		waitErr <- s.WaitForCheckpoint(ctx, dir, nil)
-	}()
+		waitErr := make(chan error, 1)
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			waitErr <- s.WaitForCheckpoint(ctx, dir, nil)
+		}()
 
-	// The waiter must not return yet — the marker is absent.
-	select {
-	case err := <-waitErr:
-		t.Fatalf("WaitForCheckpoint returned before marker was written: %v", err)
-	case <-time.After(50 * time.Millisecond):
-	}
+		// The waiter must not return yet — the marker is absent. Wait returns
+		// once it is parked in progressCond.
+		synctest.Wait()
+		select {
+		case err := <-waitErr:
+			t.Fatalf("WaitForCheckpoint returned before marker was written: %v", err)
+		default:
+		}
 
-	// Simulate the builder finishing the checkpoint: write the marker, then
-	// broadcast progress exactly as the inline path does after materialization.
-	require.NoError(t, dal.MarkCheckpointReady(dir))
-	s.NotifyProgress()
+		// Simulate the builder finishing the checkpoint: write the marker, then
+		// broadcast progress exactly as the inline path does after materialization.
+		require.NoError(t, dal.MarkCheckpointReady(dir))
+		s.NotifyProgress()
 
-	select {
-	case err := <-waitErr:
-		require.NoError(t, err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("WaitForCheckpoint did not return after marker was written")
-	}
+		select {
+		case err := <-waitErr:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("WaitForCheckpoint did not return after marker was written")
+		}
+	})
 }
 
 // TestWaitForCheckpointContextCancel unblocks on context cancellation and
@@ -177,71 +182,77 @@ func TestWaitForCheckpointBlocksUntilMarker(t *testing.T) {
 func TestWaitForCheckpointContextCancel(t *testing.T) {
 	t.Parallel()
 
-	s := newTestStore(t)
-	dir := t.TempDir() // never marked ready
+	synctest.Test(t, func(t *testing.T) {
+		s := newTestStore(t)
+		dir := t.TempDir() // never marked ready
 
-	ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
 
-	waitErr := make(chan error, 1)
-	go func() {
-		waitErr <- s.WaitForCheckpoint(ctx, dir, nil)
-	}()
+		waitErr := make(chan error, 1)
+		go func() {
+			waitErr <- s.WaitForCheckpoint(ctx, dir, nil)
+		}()
 
-	select {
-	case err := <-waitErr:
-		t.Fatalf("WaitForCheckpoint returned before cancel: %v", err)
-	case <-time.After(50 * time.Millisecond):
-	}
+		synctest.Wait()
+		select {
+		case err := <-waitErr:
+			t.Fatalf("WaitForCheckpoint returned before cancel: %v", err)
+		default:
+		}
 
-	cancel()
+		cancel()
 
-	select {
-	case err := <-waitErr:
-		require.ErrorIs(t, err, context.Canceled)
-	case <-time.After(5 * time.Second):
-		t.Fatal("WaitForCheckpoint did not return after context cancel")
-	}
+		select {
+		case err := <-waitErr:
+			require.ErrorIs(t, err, context.Canceled)
+		case <-time.After(5 * time.Second):
+			t.Fatal("WaitForCheckpoint did not return after context cancel")
+		}
+	})
 }
 
 // Deletion must release a waiter even when the index builder sends no progress.
 func TestWaitForCheckpointDeletedWhileWaiting(t *testing.T) {
 	t.Parallel()
-	s := newTestStore(t)
-	dir := t.TempDir()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	checked := make(chan struct{}, 1)
-	var deleted atomic.Bool
-	waitErr := make(chan error, 1)
-	go func() {
-		waitErr <- s.WaitForCheckpoint(ctx, dir, func() (bool, error) {
-			value := deleted.Load()
-			select {
-			case checked <- struct{}{}:
-			default:
-			}
+	// The 100ms lifecycle poll runs on the bubble's fake clock.
+	synctest.Test(t, func(t *testing.T) {
+		s := newTestStore(t)
+		dir := t.TempDir()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		checked := make(chan struct{}, 1)
+		var deleted atomic.Bool
+		waitErr := make(chan error, 1)
+		go func() {
+			waitErr <- s.WaitForCheckpoint(ctx, dir, func() (bool, error) {
+				value := deleted.Load()
+				select {
+				case checked <- struct{}{}:
+				default:
+				}
 
-			return value, nil
-		})
-	}()
-	select {
-	case <-checked:
-	case <-ctx.Done():
-		t.Fatal("checkpoint lifecycle was never checked")
-	}
-	select {
-	case err := <-waitErr:
-		t.Fatalf("wait returned while checkpoint was still live: %v", err)
-	default:
-	}
-	deleted.Store(true)
-	select {
-	case err := <-waitErr:
-		require.NoError(t, err)
-	case <-ctx.Done():
-		t.Fatal("deletion did not release checkpoint wait")
-	}
-	require.False(t, dal.CheckpointDirReady(dir))
+				return value, nil
+			})
+		}()
+		select {
+		case <-checked:
+		case <-ctx.Done():
+			t.Fatal("checkpoint lifecycle was never checked")
+		}
+		select {
+		case err := <-waitErr:
+			t.Fatalf("wait returned while checkpoint was still live: %v", err)
+		default:
+		}
+		deleted.Store(true)
+		select {
+		case err := <-waitErr:
+			require.NoError(t, err)
+		case <-ctx.Done():
+			t.Fatal("deletion did not release checkpoint wait")
+		}
+		require.False(t, dal.CheckpointDirReady(dir))
+	})
 }
 
 func TestWaitForCheckpointDeletionCheckError(t *testing.T) {
