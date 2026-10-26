@@ -4990,6 +4990,15 @@ export LEDGERCTL_TLS_CA_CERT=/path/to/ca.pem
 ledgerctl ledgers list
 ```
 
+Command-specific flags use the same `LEDGERCTL_` prefix with the flag name
+uppercased and hyphens replaced by underscores (for example,
+`LEDGERCTL_MODE` for `--mode`). Environment values never mark a flag as
+explicitly changed, so a command-line flag always takes precedence. Safety
+flags such as `--force` and `--yes` are intentionally CLI-only; `FORCE`, `YES`,
+and their prefixed forms are ignored. The backup commands additionally retain
+the documented `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` aliases for
+Kubernetes Secret-backed Jobs.
+
 ---
 
 ## Event Sinks

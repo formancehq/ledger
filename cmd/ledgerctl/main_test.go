@@ -431,7 +431,8 @@ func TestProfileSigningKeyIDDoesNotFeedSigningCommands(t *testing.T) {
 // Mutates process-wide environment, so it cannot run in parallel.
 func TestBindEnvSkipsOwnedProfile(t *testing.T) {
 	t.Setenv("PROFILE", "bare-leak")
-	t.Setenv("PROBE_ONLY", "bound-value")
+	t.Setenv("PROBE_ONLY", "bare-leak")
+	t.Setenv("LEDGERCTL_PROBE_ONLY", "bound-value")
 
 	set := pflag.NewFlagSet("probe", pflag.ContinueOnError)
 	set.String("profile", "", "")    // owned -> must be skipped
@@ -444,12 +445,61 @@ func TestBindEnvSkipsOwnedProfile(t *testing.T) {
 	require.Empty(t, profile, "bare PROFILE must not populate the owned --profile flag")
 	require.False(t, set.Changed("profile"), "owned --profile must not be marked changed by bare PROFILE")
 
-	// Control: a non-owned flag IS bound from its bare env name, proving the
-	// binder actually ran and the skip above is specific to the owned set.
+	// Control: a non-owned flag is bound from its LEDGERCTL_-prefixed env name,
+	// proving the binder actually ran and the skip above is specific to the owned
+	// set.
 	probe, err := set.GetString("probe-only")
 	require.NoError(t, err)
 	require.Equal(t, "bound-value", probe)
-	require.True(t, set.Changed("probe-only"))
+	require.False(t, set.Changed("probe-only"), "env resolution must not look like an explicit CLI flag")
+}
+
+// TestSubcommandEnvContract prevents ambient shell variables from changing
+// command behavior. Ordinary flags use the explicit LEDGERCTL_ namespace;
+// FORCE and YES are CLI-only because they weaken safety checks.
+func TestSubcommandEnvContract(t *testing.T) {
+	t.Setenv("FORCE", "true")
+	t.Setenv("YES", "true")
+	t.Setenv("MODE", "test")
+	t.Setenv("PATH", "/ambient/path")
+	t.Setenv("LEDGERCTL_MODE", "mirror")
+	t.Setenv("LEDGERCTL_PATH", "/explicit/path")
+
+	set := pflag.NewFlagSet("probe", pflag.ContinueOnError)
+	set.Bool("force", false, "")
+	set.Bool("yes", false, "")
+	set.String("mode", "normal", "")
+	set.String("path", "", "")
+
+	bindFlagSetSkippingOwned(set)
+
+	force, err := set.GetBool("force")
+	require.NoError(t, err)
+	require.False(t, force)
+	yes, err := set.GetBool("yes")
+	require.NoError(t, err)
+	require.False(t, yes)
+	mode, err := set.GetString("mode")
+	require.NoError(t, err)
+	require.Equal(t, "mirror", mode)
+	path, err := set.GetString("path")
+	require.NoError(t, err)
+	require.Equal(t, "/explicit/path", path)
+	require.False(t, set.Changed("mode"))
+	require.False(t, set.Changed("path"))
+
+	// An explicit CLI assignment still carries Changed=true.
+	require.NoError(t, set.Set("mode", "cli"))
+	require.Equal(t, "cli", mustStringFlag(t, set, "mode"))
+	require.True(t, set.Changed("mode"))
+}
+
+func mustStringFlag(t *testing.T, set *pflag.FlagSet, name string) string {
+	t.Helper()
+	value, err := set.GetString(name)
+	require.NoError(t, err)
+
+	return value
 }
 
 // Kubernetes resolves backup Secret references into these environment variables.
