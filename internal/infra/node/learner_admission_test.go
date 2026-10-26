@@ -88,7 +88,7 @@ func TestAddLearnerZeroProgressRefreshProposesCompleteReplacement(t *testing.T) 
 		defer cancel()
 		results := make(chan error, 1)
 		go func() {
-			results <- n.AddLearner(ctx, 2, "new:7777", "new:8888", []byte("next-instance-id"))
+			results <- n.AddLearner(ctx, 2, "new:7777", "new:8888", []byte("next-instance-id"), nil)
 		}()
 		cmd := <-n.clusterCommandCh
 		require.NoError(t, cmd.fn())
