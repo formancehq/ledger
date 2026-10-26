@@ -13,7 +13,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // Sentinel errors returned by Run to let callers distinguish which

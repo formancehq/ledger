@@ -42,6 +42,16 @@ func applyClusterPolicy(newPolicy *commonpb.ClusterPolicy, scope Scope) (*common
 	if err := validateClusterPolicyMetadataLimits(newPolicy); err != nil {
 		return nil, err
 	}
+	seenCapabilities := make(map[uint32]struct{}, len(newPolicy.GetCapabilityActivations()))
+	for _, activation := range newPolicy.GetCapabilityActivations() {
+		if activation == nil || activation.GetId() == 0 {
+			return nil, &domain.ErrClusterPolicyInvalid{Detail: "capability activation id must be non-zero"}
+		}
+		if _, exists := seenCapabilities[activation.GetId()]; exists {
+			return nil, &domain.ErrClusterPolicyInvalid{Detail: fmt.Sprintf("duplicate capability activation %d", activation.GetId())}
+		}
+		seenCapabilities[activation.GetId()] = struct{}{}
+	}
 
 	current := scope.GetClusterPolicy()
 	appliedRev := current.GetRevision()
