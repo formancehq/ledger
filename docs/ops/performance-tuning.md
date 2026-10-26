@@ -186,15 +186,15 @@ In Ledger v2, a hot account (e.g., `bank`, `fees`, `treasury`) debited by many c
 
 ### The Solution (v3)
 
-v3 uses **append-only volume entries** (last-write-wins). Each transaction appends a new absolute volume value keyed by Raft index. No read-modify-write, no locks, no contention.
+v3 keeps **one current volume pair per account, color, and asset** (last-write-wins). The FSM applies committed entries sequentially in Raft index order. For each posting, it reads the current volumes from the in-memory cache, adds the amounts, and overwrites the single entry for that key. Raft ordering serializes these updates, so v3 takes no row locks and concurrent writers never wait on each other for a hot account.
 
 ```
-Transaction A: bank/USD/log_1 = {input: 1000, output: 100}  (append)
-Transaction B: bank/USD/log_2 = {input: 1000, output: 150}  (append, parallel)
-Transaction C: bank/USD/log_3 = {input: 1000, output: 225}  (append, parallel)
+Raft index 101 (Transaction A): bank/USD = {input: 1000, output: 100}  (overwrite)
+Raft index 102 (Transaction B): bank/USD = {input: 1000, output: 150}  (overwrite)
+Raft index 103 (Transaction C): bank/USD = {input: 1000, output: 225}  (overwrite)
 ```
 
-Balance is the latest absolute value (last-write-wins).
+The balance is the current entry. See [Balance Storage Model](../technical/architecture/subsystems/storage/storage-drivers.md#balance-storage-model).
 
 ### Recommendations
 
@@ -344,7 +344,7 @@ Pebble Batch Commit (single commit per batch of entries)
 | **vtprotobuf** | ~2-3x faster serialization than standard protobuf. Registered transparently server-side. |
 | **64-shard concurrent map** | Cache-line padded shards with per-shard RWMutex. ~1.6% reader-writer collision probability. |
 | **XXH3 for cache keys** | 13ns vs 205ns (BLAKE3). 16x faster for non-cryptographic hashing. |
-| **Append-only volume entries** | No row-level locks. Hot accounts don't create contention. Last-write-wins semantics. |
+| **Single last-write-wins volume entry, sequential FSM apply** | No row-level locks. Raft ordering serializes updates, so hot accounts don't create lock contention. |
 | **Old entry cleanup at merge** | Runs in same Pebble batch as generation rotation. No background goroutine. |
 
 ---
