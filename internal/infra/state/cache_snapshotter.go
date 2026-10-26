@@ -801,6 +801,18 @@ func (s *CacheSnapshotter) restoreBloomFilters(store dal.RecoveryReader) error {
 
 		return nil
 	}
+	verified, err := bloom.HasVerifiedProjection(store)
+	if err != nil {
+		return fmt.Errorf("checking Bloom projection provenance: %w", err)
+	}
+	if !verified {
+		// Legacy nodes could leave valid-looking but incomplete blocks while
+		// local flags disabled Bloom against an enabled committed config. The
+		// full attribute scan is the only safe way to establish completeness.
+		s.StartAsyncBloomPopulate(store, "legacy bloom blocks have no completeness seal")
+
+		return nil
+	}
 
 	return s.runBloomTaskSync(store, "restore from Pebble blocks", s.bloomFilters.RestoreFromStore)
 }
@@ -840,7 +852,7 @@ func (s *CacheSnapshotter) StartAsyncBloomPopulate(store dal.RecoveryReader, rea
 // in the calling goroutine using the provided context. Shared between
 // runBloomTask (wraps it in a SingleTaskExecutor) and runBloomTaskSync
 // (drives it inline on the boot path).
-func (s *CacheSnapshotter) runBloomTaskBody(ctx context.Context, store dal.RecoveryReader, reason string, epoch uint64, loadFn func(context.Context, dal.PebbleReader) error) error {
+func (s *CacheSnapshotter) runBloomTaskBody(ctx context.Context, store dal.RecoveryReader, reason string, epoch uint64, trustedRestore bool, loadFn func(context.Context, dal.PebbleReader) error) error {
 	start := time.Now()
 
 	// Hold dbMu.RLock for the entire bloom load to prevent RestoreCheckpoint
@@ -861,6 +873,9 @@ func (s *CacheSnapshotter) runBloomTaskBody(ctx context.Context, store dal.Recov
 
 	if err := s.replayBloomFromCache(ctx); err != nil {
 		return err
+	}
+	if trustedRestore {
+		s.bloomFilters.MarkVerifiedRestore(epoch)
 	}
 
 	if !s.bloomFilters.SetReadyIfEpoch(epoch) {
@@ -902,7 +917,7 @@ func (s *CacheSnapshotter) runBloomTask(store dal.RecoveryReader, reason string,
 	epoch := s.bloomFilters.Epoch()
 
 	s.bloomExecutor.Run(context.Background(), func(ctx context.Context) error {
-		return s.runBloomTaskBody(ctx, store, reason, epoch, loadFn)
+		return s.runBloomTaskBody(ctx, store, reason, epoch, false, loadFn)
 	})
 }
 
@@ -921,7 +936,7 @@ func (s *CacheSnapshotter) runBloomTaskSync(store dal.RecoveryReader, reason str
 
 	epoch := s.bloomFilters.Epoch()
 
-	return s.runBloomTaskBody(context.Background(), store, reason, epoch, loadFn)
+	return s.runBloomTaskBody(context.Background(), store, reason, epoch, true, loadFn)
 }
 
 // hasPersistedBloomBlocks reports whether any persisted bloom block keys exist

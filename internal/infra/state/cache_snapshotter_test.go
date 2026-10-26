@@ -54,6 +54,64 @@ func TestCacheSnapshotter_DisabledBloomNeverPopulatesOnSync(t *testing.T) {
 	require.False(t, snapshotter2.bloomPopulatePending)
 }
 
+func TestCacheSnapshotter_LegacyBlocksCannotHideColdAttribute(t *testing.T) {
+	t.Parallel()
+	meter := noop.NewMeterProvider().Meter("test")
+	cfg := &commonpb.ClusterConfig{
+		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	}
+	filters := bloom.NewFilterSet(cfg, meter)
+	snapshotter, store, registry := newTestCacheSnapshotter(t, filters)
+	defer snapshotter.Stop()
+
+	coldKey := newVolumeKey(domain.AccountKey{LedgerName: "legacy", Account: "cold"}, "USD/2")
+	coldID := attributes.HashU128(coldKey.Bytes())
+	pair := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(42)}
+	legacy := bloom.NewFilterSet(cfg, meter)
+	legacy.AddCanonicalKeys(&bloom.BloomUpdates{
+		Volumes: []attributes.U128{attributes.HashU128([]byte("legacy-only-key"))},
+	})
+	require.False(t, legacy.FilterForAttrType(dal.SubAttrVolume).MayContain(coldID))
+
+	batch := store.OpenWriteSession()
+	_, err := registry.Attrs.Volume.Set(batch, coldKey.Bytes(), pair)
+	require.NoError(t, err)
+	require.NoError(t, legacy.PersistDirtyBlocks(batch))
+	// Simulate blocks written before this release established their provenance.
+	require.NoError(t, batch.DeleteKey([]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom, 0xff}))
+	require.NoError(t, batch.Commit())
+
+	// The attribute is on disk but absent from both cache generations. A ready
+	// filter restored from the legacy blocks would suppress its Pebble preload.
+	snapshotter.Pause()
+	require.NoError(t, snapshotter.RestoreFromStore(store))
+	require.False(t, filters.IsReady(), "legacy blocks must not be trusted")
+	require.True(t, snapshotter.bloomPopulatePending)
+	snapshotter.Resume(store)
+	require.Eventually(t, func() bool {
+		return filters.IsReady() && filters.FilterForAttrType(dal.SubAttrVolume).MayContain(coldID)
+	}, 5*time.Second, 10*time.Millisecond)
+
+	// The first post-scan rotation replaces legacy rows and seals the complete
+	// projection. A later restart may then use the synchronous block path.
+	epoch, replace := filters.PersistedReplacement()
+	require.True(t, replace)
+	batch = store.OpenWriteSession()
+	require.NoError(t, filters.PersistDirtyBlocks(batch))
+	require.NoError(t, batch.Commit())
+	filters.ConfirmPersistedReplacement(epoch)
+	verified, err := bloom.HasVerifiedProjection(store)
+	require.NoError(t, err)
+	require.True(t, verified)
+
+	restarted := bloom.NewFilterSet(cfg, meter)
+	restartedSnapshotter, _, _ := newTestCacheSnapshotter(t, restarted)
+	defer restartedSnapshotter.Stop()
+	require.NoError(t, restartedSnapshotter.RestoreFromStore(store))
+	require.True(t, restarted.IsReady())
+	require.True(t, restarted.FilterForAttrType(dal.SubAttrVolume).MayContain(coldID))
+}
+
 // TestCacheSnapshotter_StopPreventsBloomRestart protects the ownership
 // boundary of the background bloom executor. A dispatcher can deliver a
 // rebuild signal concurrently with shutdown; once Stop returns, that signal

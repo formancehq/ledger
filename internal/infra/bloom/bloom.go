@@ -19,6 +19,31 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+// The seal is written in the same batch as a complete Bloom projection.
+// Older nodes never wrote it, so their blocks cannot prove completeness.
+const verifiedProjectionAttrCode byte = 0xff
+
+func verifiedProjectionKey() []byte {
+	return []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom, verifiedProjectionAttrCode}
+}
+
+// HasVerifiedProjection reports whether persisted blocks were produced after
+// a full attribute scan or restored from another sealed projection.
+func HasVerifiedProjection(store dal.PebbleGetter) (bool, error) {
+	value, err := dal.GetValue(store, verifiedProjectionKey())
+	if err != nil {
+		return false, fmt.Errorf("reading Bloom projection seal: %w", err)
+	}
+	if value == nil {
+		return false, nil
+	}
+	if len(value) != 1 || value[0] != 1 {
+		return false, fmt.Errorf("invalid Bloom projection seal value %x", value)
+	}
+
+	return true, nil
+}
+
 // BloomConfigEnabled returns true if at least one bloom filter type has a
 // non-zero expected key count in the given ClusterConfig.
 func BloomConfigEnabled(cfg *commonpb.ClusterConfig) bool {
@@ -123,6 +148,31 @@ func (f *Filter) PersistDirtyBlocks(batch *dal.WriteSession) error {
 		}
 	}
 
+	for i := range f.dirty {
+		atomic.StoreUint64(&f.dirty[i], 0)
+	}
+
+	return nil
+}
+
+// PersistAllBlocks replaces an unverified legacy projection. It writes every
+// nonzero block, including blocks whose dirty bit was cleared by an earlier
+// prepared batch that has not committed yet.
+func (f *Filter) PersistAllBlocks(batch *dal.WriteSession) error {
+	for blockIdx := range f.filter.BlockCount() {
+		blk := f.filter.GetBlock(blockIdx)
+		if blk == (block{}) {
+			continue
+		}
+		key := make([]byte, 2+1+8)
+		key[0] = dal.ZoneClusterPersistent
+		key[1] = dal.SubGlobBloom
+		key[2] = f.attrCode
+		binary.BigEndian.PutUint64(key[3:], blockIdx)
+		if err := batch.Set(key, marshalBlock(&blk), pebble.NoSync); err != nil {
+			return fmt.Errorf("persisting complete bloom block %d: %w", blockIdx, err)
+		}
+	}
 	for i := range f.dirty {
 		atomic.StoreUint64(&f.dirty[i], 0)
 	}
@@ -297,6 +347,9 @@ func (s *filterSnapshot) allFilters() []*Filter {
 // because the snapshot pointer is updated atomically and never mutated.
 type FilterSet struct {
 	filters atomic.Pointer[filterSnapshot]
+	// True until a complete projection and its seal commit together. A legacy
+	// block set is never trusted merely because its shape is decodable.
+	replacePersisted atomic.Bool
 
 	// readyMu serializes Rebuild (which publishes a not-ready snapshot and
 	// bumps epoch) with background goroutines that want to flip the current
@@ -503,18 +556,58 @@ func (fs *FilterSet) PersistDirtyBlocks(batch *dal.WriteSession) error {
 	if snap == nil {
 		return nil
 	}
+	replace := fs.replacePersisted.Load()
+	if replace {
+		if err := batch.DeleteRangeNoSync(
+			[]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom},
+			[]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom + 1},
+		); err != nil {
+			return fmt.Errorf("replacing unverified bloom blocks: %w", err)
+		}
+	}
 
 	for _, f := range snap.allFilters() {
 		if f == nil {
 			continue
 		}
 
-		if err := f.PersistDirtyBlocks(batch); err != nil {
+		var err error
+		if replace {
+			err = f.PersistAllBlocks(batch)
+		} else {
+			err = f.PersistDirtyBlocks(batch)
+		}
+		if err != nil {
 			return err
 		}
 	}
+	if err := batch.Set(verifiedProjectionKey(), []byte{1}, pebble.NoSync); err != nil {
+		return fmt.Errorf("persisting Bloom projection seal: %w", err)
+	}
 
 	return nil
+}
+
+// PersistedReplacement returns the epoch to acknowledge after a successful
+// batch commit. A later Rebuild invalidates that acknowledgement.
+func (fs *FilterSet) PersistedReplacement() (uint64, bool) {
+	fs.readyMu.Lock()
+	defer fs.readyMu.Unlock()
+
+	return fs.epoch, fs.replacePersisted.Load()
+}
+
+func (fs *FilterSet) ConfirmPersistedReplacement(epoch uint64) {
+	fs.readyMu.Lock()
+	defer fs.readyMu.Unlock()
+	if fs.epoch == epoch {
+		fs.replacePersisted.Store(false)
+	}
+}
+
+// MarkVerifiedRestore skips replacement only for blocks with a valid seal.
+func (fs *FilterSet) MarkVerifiedRestore(epoch uint64) {
+	fs.ConfirmPersistedReplacement(epoch)
 }
 
 // RestoreFromStore loads all persisted bloom blocks from Pebble.
@@ -606,6 +699,20 @@ func (fs *FilterSet) ClassifyPersistedNamespace(ctx context.Context, store dal.P
 		}
 
 		key := it.Key()
+		if len(key) >= 3 && key[2] == verifiedProjectionAttrCode {
+			if len(key) != 3 {
+				return false, fmt.Errorf("invalid Bloom projection seal key %x", key)
+			}
+			value, err := it.ValueAndErr()
+			if err != nil {
+				return false, fmt.Errorf("reading Bloom projection seal: %w", err)
+			}
+			if len(value) != 1 || value[0] != 1 {
+				return false, fmt.Errorf("invalid Bloom projection seal value %x", value)
+			}
+
+			continue
+		}
 		// Key format: [ZoneClusterPersistent][SubGlobBloom][attrCode][blockIndex BE 8].
 		// The attrCode lives at offset 2; a shorter row cannot belong to any
 		// filter's sub-range and is unparseable — treat as corruption.
@@ -696,6 +803,7 @@ func (fs *FilterSet) Rebuild(cfg *commonpb.ClusterConfig) {
 	// Bump epoch under the lock so a background SetReadyIfEpoch using the
 	// previous epoch cannot promote this fresh, still-empty snapshot.
 	fs.epoch++
+	fs.replacePersisted.Store(true)
 	fs.filters.Store(snap)
 	fs.readyMu.Unlock()
 
@@ -795,6 +903,7 @@ func NewFilterSet(cfg *commonpb.ClusterConfig, meter metric.Meter) *FilterSet {
 		meter:      meter,
 		readyGauge: readyGauge,
 	}
+	fs.replacePersisted.Store(true)
 
 	snap := &filterSnapshot{}
 	for _, bt := range bloomTypes(cfg) {

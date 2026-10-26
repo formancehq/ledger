@@ -76,7 +76,8 @@ Dirty blocks are flushed to Pebble at every batch commit:
 
 - Key layout: `[ZoneClusterPersistent][SubGlobBloom][attrCode][blockIdx 8B BE]`.
 - `PersistDirtyBlocks()` (`bloom.go:113-131`) iterates dirty blocks and queues writes into the FSM batch — so the bloom flush is atomic with the rest of the batch's effects.
-- On boot, `RestoreFromStore()` (`bloom.go:165-211`) reloads the persisted blocks, merging via OR. Because OR is monotone, partial restorations are safe.
+- A complete projection carries a seal at `[ZoneClusterPersistent][SubGlobBloom][0xff]`. The first rotation after a full attribute scan replaces the old Bloom namespace and writes the seal in the same batch. Later rotations persist dirty blocks and keep the seal.
+- On boot, sealed blocks are restored synchronously and merged via OR. A block set without a seal can be incomplete even if every row decodes correctly, so it is never published as ready.
 
 ### Boot path — populate from the attribute store
 
@@ -95,6 +96,7 @@ values used by the leader's cluster-config reconciler.
 1. The node has never run before (no persisted bloom rows).
 2. A snapshot was installed — the bloom rows from the donor node may not match this node's view.
 3. Persisted rows exist for a known attribute type disabled by the committed configuration, so the enabled filters require a full rescan.
+4. Persisted blocks lack the completeness seal. Older nodes could continue writing attributes with Bloom locally disabled and leave those blocks stale while committed configuration remained enabled.
 
 The populate runs **asynchronously** after boot (`StartAsyncBloomPopulate` in `cache_snapshotter.go`). Until it completes, the bloom is in a "not-ready" state and the plan builder ignores it — meaning preload behaves as if the bloom didn't exist and every cache miss reaches Pebble. `SetReadyIfEpoch()` (`bloom.go`) closes the window via an epoch number, preventing a stale rebuild from publishing over a fresh one.
 
@@ -104,8 +106,8 @@ Follower synchronization pauses Bloom background work before replacing Pebble so
 
 `RestoreFromStore()` then chooses one of two paths while the snapshotter is paused:
 
-- persisted compatible blocks are restored synchronously and cache generations are replayed before readiness is republished;
-- missing blocks or configuration drift request a full population. The request is recorded without retaining a Pebble reader on `CacheSnapshotter`.
+- persisted compatible, sealed blocks are restored synchronously and cache generations are replayed before readiness is republished;
+- missing blocks, unsealed legacy blocks, or configuration drift request a full population. The request is recorded without retaining a Pebble reader on `CacheSnapshotter`.
 
 `Synchronizer` always resumes through `Recovery`, including on error paths. On success, `Recovery` supplies its reader and starts any deferred full population. Until that scan completes, readiness stays false and admission falls back to Pebble, preventing a ready-but-stale follower filter from producing false negatives.
 
@@ -115,7 +117,7 @@ The attribute cache rotates Gen0 → Gen1 → discard at every `--cache-rotation
 
 The mechanism:
 
-1. **Before commit**: `PersistDirtyBlocks()` runs in the same batch as the FSM writes. Any add made during this Raft index is persisted before the batch commits.
+1. **Before commit**: `PersistDirtyBlocks()` runs in the same batch as the FSM writes. Any add made during this Raft index is persisted before the batch commits. After a legacy scan, the first rotation writes all nonzero blocks and the seal together; only a committed batch allows later rotations to write dirty blocks alone.
 2. **After rotation**: `replayBloomFromCache()` (`cache_snapshotter.go:706-727`) walks Gen0 + Gen1 and re-adds every live key to the bloom. This guarantees the filter is a superset of the cache — `MayContain == false` implies the key is truly absent.
 
 The "bloom must follow rotations strictly" rule appears in [CLAUDE.md invariant #5](../../../../../AGENTS.md): never delete cache entries outside of rotations. Adding a one-off `Remove` operation to the bloom would break the prediction primitive (false negatives are not recoverable in a standard bloom).
