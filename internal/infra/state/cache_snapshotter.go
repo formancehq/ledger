@@ -815,6 +815,15 @@ func (s *CacheSnapshotter) StartAsyncBloomPopulate(store dal.RecoveryReader, rea
 	if s.bloomStopped {
 		return
 	}
+	if s.bloomFilters == nil || !s.bloomFilters.Enabled() {
+		// A committed disable invalidates any queued population. Cancel work
+		// from the previous enabled snapshot without scanning the store.
+		s.bloomPopulatePending = false
+		s.bloomPopulateReason = ""
+		s.bloomExecutor.Interrupt()
+
+		return
+	}
 	if s.bloomPaused {
 		// Do not retain store on the snapshotter: Recovery remains the sole
 		// owner of Pebble read capability. One pending full population is enough
@@ -989,7 +998,7 @@ func (s *CacheSnapshotter) replayBloomFromCache(ctx context.Context) error {
 func (s *CacheSnapshotter) Pause() {
 	s.bloomMu.Lock()
 	s.bloomPaused = true
-	if s.bloomFilters != nil && !s.bloomFilters.IsReady() {
+	if s.bloomFilters != nil && s.bloomFilters.Enabled() && !s.bloomFilters.IsReady() {
 		// A not-ready filter may have an active population that Interrupt stops.
 		// Preserve the work request so an early sync failure can resume it against
 		// the still-current store instead of leaving acceleration disabled.
@@ -1019,6 +1028,9 @@ func (s *CacheSnapshotter) Resume(store dal.RecoveryReader) {
 	reason := s.bloomPopulateReason
 	s.bloomPopulatePending = false
 	s.bloomPopulateReason = ""
+	if s.bloomFilters == nil || !s.bloomFilters.Enabled() {
+		return
+	}
 	s.runBloomTask(store, reason, s.bloomFilters.PopulateFromStore)
 }
 

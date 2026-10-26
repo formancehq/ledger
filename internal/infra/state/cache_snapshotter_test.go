@@ -22,6 +22,36 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+func TestCacheSnapshotter_DisabledBloomNeverPopulatesOnSync(t *testing.T) {
+	t.Parallel()
+	meter := noop.NewMeterProvider().Meter("test")
+	filters := bloom.NewFilterSet(nil, meter)
+	snapshotter, store, _ := newTestCacheSnapshotter(t, filters)
+	defer snapshotter.Stop()
+
+	// A disabled handle is not-ready, but it has no work to resume after a
+	// failed checkpoint fetch or after restoring another disabled checkpoint.
+	snapshotter.Pause()
+	require.False(t, snapshotter.bloomPopulatePending)
+	snapshotter.Resume(store)
+	snapshotter.StartAsyncBloomPopulate(store, "committed disable")
+	snapshotter.Stop() // drains a wrongly started task before the assertion
+	require.False(t, filters.IsReady())
+
+	// A pending scan for an older enabled config must also be discarded when
+	// the incoming checkpoint commits Bloom disabled.
+	filters.Rebuild(&commonpb.ClusterConfig{BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 100, FpRate: 0.01}})
+	snapshotter2, store2, _ := newTestCacheSnapshotter(t, filters)
+	defer snapshotter2.Stop()
+	snapshotter2.Pause()
+	require.True(t, snapshotter2.bloomPopulatePending)
+	filters.Rebuild(nil)
+	snapshotter2.Resume(store2)
+	snapshotter2.Stop()
+	require.False(t, filters.IsReady())
+	require.False(t, snapshotter2.bloomPopulatePending)
+}
+
 // TestCacheSnapshotter_StopPreventsBloomRestart protects the ownership
 // boundary of the background bloom executor. A dispatcher can deliver a
 // rebuild signal concurrently with shutdown; once Stop returns, that signal
