@@ -41,7 +41,7 @@ func TestWaitForRemovalAppliedKeepsAdmissionBarrierAfterCallerStopsWaiting(t *te
 		committedErr.Error(),
 	)
 
-	pending, ok := n.pendingRemovals.Load(3)
+	pending, ok := n.pendingRemovals.load(3, 42)
 	require.True(t, ok)
 	require.Equal(t, instanceID, pending.instanceID)
 	require.Equal(t, uint64(42), pending.committedIndex)
@@ -79,7 +79,7 @@ func TestTrackCommittedRemovalClearsBarrierAfterDurableApplyWithoutCaller(t *tes
 	setup.applyEntry(t, context.Background(), entry)
 
 	require.Eventually(t, func() bool {
-		_, pending := n.pendingRemovals.Load(3)
+		_, pending := n.pendingRemovals.load(3, 1)
 
 		return !pending
 	}, time.Second, 10*time.Millisecond,
@@ -96,7 +96,7 @@ func TestVerifyAndClearPendingRemovalRetainsBarrierWithoutTombstone(t *testing.T
 		instanceID:     []byte("0123456789abcdef"),
 		committedIndex: 1,
 	}
-	n.pendingRemovals.Store(3, pending)
+	n.pendingRemovals.loadOrStore(3, pending)
 
 	cleared, err := n.verifyAndClearPendingRemoval(3, pending)
 	require.ErrorContains(t, err, "invariant")
@@ -124,7 +124,7 @@ func TestWaitForRemovalAppliedWithoutInstanceIDFailsLoudly(t *testing.T) {
 	require.Equal(t, uint64(42), committedErr.CommittedIndex)
 	require.ErrorContains(t, committedErr.Cause, "instance_id must be 16 bytes")
 
-	_, pending := n.pendingRemovals.Load(3)
+	_, pending := n.pendingRemovals.load(3, 42)
 	require.False(t, pending, "an invalid committed removal must not install an unusable barrier")
 }
 
@@ -144,7 +144,7 @@ func TestWaitForRemovalAppliedVerifiesTombstoneAfterDurableApply(t *testing.T) {
 
 	require.NoError(t, n.waitForRemovalApplied(context.Background(), 3, instanceID, 0))
 
-	_, pending := n.pendingRemovals.Load(3)
+	_, pending := n.pendingRemovals.load(3, 0)
 	require.False(t, pending, "the admission barrier is cleared after durable tombstone verification")
 }
 
@@ -172,7 +172,7 @@ func TestWaitForRemovalAppliedRejectsMissingTombstoneAfterDurableApply(t *testin
 		"an invariant failure must retain the admission barrier")
 }
 
-func TestTrackCommittedRemovalReusesExactBarrierAndRejectsConflicts(t *testing.T) {
+func TestTrackCommittedRemovalReusesExactBarrierAndRejectsConflictingIdentity(t *testing.T) {
 	t.Parallel()
 
 	instanceID := []byte("0123456789abcdef")
@@ -181,7 +181,7 @@ func TestTrackCommittedRemovalReusesExactBarrierAndRejectsConflicts(t *testing.T
 		committedIndex: 42,
 	}
 	n := &Node{}
-	n.pendingRemovals.Store(3, pending)
+	n.pendingRemovals.loadOrStore(3, pending)
 
 	actual, err := n.trackCommittedRemoval(3, instanceID, 42)
 	require.NoError(t, err)
@@ -194,10 +194,6 @@ func TestTrackCommittedRemovalReusesExactBarrierAndRejectsConflicts(t *testing.T
 		"instance identity": {
 			instanceID:     []byte("fedcba9876543210"),
 			committedIndex: 42,
-		},
-		"committed index": {
-			instanceID:     instanceID,
-			committedIndex: 43,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
