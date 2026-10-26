@@ -127,6 +127,7 @@ func newForceRemoveTransport(t *testing.T) Transport {
 
 	transport := NewMockTransport(gomock.NewController(t))
 	transport.EXPECT().Unreachable().AnyTimes().Return((<-chan uint64)(nil))
+	transport.EXPECT().SnapshotStatus().AnyTimes().Return((<-chan SnapshotStatus)(nil))
 	transport.EXPECT().RecvHighPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
 	transport.EXPECT().RecvMediumPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
 	transport.EXPECT().RecvLowPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))

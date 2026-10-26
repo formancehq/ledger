@@ -637,92 +637,102 @@ compacted boundary; the previous process's catch-up margin is not reconstructed.
 
 #### Snapshot Transfer (MsgSnap)
 
-When a follower is too far behind for log replay, the leader sends a **MsgSnap** (InstallSnapshot) message:
+When a follower is too far behind for retained-log replay, the leader sends
+`MsgSnap`. The leader's progress for that destination enters `StateSnapshot`,
+which suppresses further appends until a snapshot result or follower append
+acknowledgement moves it back to probing.
 
 ```mermaid
 sequenceDiagram
     participant Leader
-    participant Follower as Follower (behind)
-    
-    Leader->>Leader: Check: follower.Next < compactIndex?
-    Note over Leader: Yes → WAL entries no longer available
-    
-    Leader->>Leader: Create snapshot at lastIndex
-    Leader->>Follower: MsgSnap (full snapshot data)
-    Note over Follower: Progress state → StateSnapshot
-    
-    Follower->>Follower: Apply snapshot to WAL
-    Follower->>Follower: Restore FSM state
-    Follower->>Follower: Sync business logs via gRPC
-    
-    Follower->>Leader: MsgSnapStatus (success)
-    Note over Follower: Progress state → StateReplicate
-    
-    Leader->>Follower: Resume normal AppendEntries
+    participant Transport as Leader transport
+    participant Follower
+    Leader->>Transport: MsgSnap; destination progress = StateSnapshot
+    Transport->>Follower: Queue snapshot message
+    Follower-->>Transport: Transport acknowledgement
+    Transport-->>Leader: SnapshotStatus(destination peer ID, Finish)
+    Note over Leader: ReportSnapshot returns progress to StateProbe
+    Follower->>Follower: Persist Ready, install snapshot, fetch checkpoint
+    Leader->>Follower: Resume AppendEntries after probing
+    Follower-->>Leader: MsgAppResp; progress advances normally
 ```
 
-#### Progress States
+#### Sent snapshot results
 
-The leader tracks each follower's state:
+`DefaultTransport` reports each sent snapshot's delivery result through its
+local `SnapshotStatus` channel. The orchestrate goroutine alone calls
+`RawNode.ReportSnapshot`, using the destination **peer ID**, never the snapshot
+index. A positive transport acknowledgement means the peer queued the message;
+it does not certify that the follower installed the snapshot, applied the
+suffix, or completed its independent checkpoint restore.
 
-| State | Description |
-|-------|-------------|
-| `StateProbe` | Follower's `Match` is unknown, sending one entry at a time |
-| `StateReplicate` | Normal operation, pipeline enabled |
-| `StateSnapshot` | Snapshot is being sent, waiting for confirmation |
+Queue rejection, failed delivery and abandoned pending snapshot responses
+report `SnapshotFailure`. Acknowledged acceptance reports `SnapshotFinish`.
+A pending response keeps only its destination and snapshot classification,
+not the snapshot payload. Abandonment clears that classification before a late
+response can report a second snapshot outcome. The bounded status channel
+backpressures publishers rather than dropping results; peer removal cancels
+peer publishers, and transport shutdown releases all remaining publishers.
 
-#### Code Reference
+This result is necessary even when the network later becomes healthy. If a
+follower's `MsgAppResp` is lost, `ReportUnreachable` and heartbeat replies alone
+do not move a leader out of `StateSnapshot`. The follower can therefore answer
+a quorum ReadIndex at index 40 while its independent checkpoint restored only
+index 39 and its Raft log still ends at snapshot 36. Its read correctly waits
+for local application, but that application cannot progress until the sender
+resumes appends. Reporting snapshot delivery restores progress without a
+rescue write or a weaker read barrier.
 
-In `internal/infra/node/node.go`, the follower receives and applies the snapshot through a two-phase process. The Applier is drained first to ensure no concurrent FSM access:
+#### Receiving a snapshot Ready
 
-```go
-// Phase 1: Install snapshot to FSM (in-memory state)
-if !raft.IsEmptySnap(rd.Snapshot) {
-    node.logger.Infof("Applying snapshot sent by leader")
+`Node.processReady` keeps these durability and mutation boundaries:
 
-    // Drain the Applier to ensure no concurrent FSM access
-    node.applier.Drain(stop)
+1. Persist the Ready's entries and HardState together through `WAL.Append`.
+   Persisting HardState without its entries would expose a committed-log gap
+   on a crash before snapshot installation.
+2. Ask the Applier to drain pending commits, interrupt conflicting maintenance,
+   and enter `statusInstallingSnapshot` before changing snapshot/FSM state.
+3. `WAL.ApplySnapshot` replaces its in-memory snapshot and cached entry window.
+   It saves the full snapshot file, writes a durable guard snapshot record,
+   saves HardState, then writes the snapshot record again as the sync barrier.
+   Persistence failure leaves the preceding in-memory mutations visible and
+   returns an error; the node stops instead of acknowledging the Ready.
+4. If this same Ready carries entries after the snapshot, append that suffix
+   again to restore the cached Storage window before any peer or local storage
+   acknowledgement. This repeats at most the Ready suffix's bytes once, only
+   on a snapshot Ready; ordinary Ready persistence has no additional append.
+5. `Synchronizer.InstallSnapshot` records the expected snapshot index and resets
+   caches. It does not install business data from the Raft message. Enqueue
+   checkpoint synchronization, then release the Ready's messages and local
+   storage responses.
 
-    // Write snapshot to WAL
-    node.wal.ApplySnapshot(rd.Snapshot)
+The suffix restoration uses the existing WAL format and append path. Live
+`LastIndex`, `Term` and `Entries` must expose the same suffix that a reopened
+WAL recovers. A failed suffix append stops Ready processing before storage
+acknowledgement; there is no rollback of the installed in-memory snapshot.
 
-    // Install snapshot state in FSM (fast, in-memory)
-    node.fsm.InstallSnapshot(ctx, rd.Snapshot)
+#### Checkpoint synchronization
 
-    // Report success to Raft
-    node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
+The follower selects a donor on each attempt: the leader first, then the other
+voters, never itself. A donor that is unreachable or still restoring its own
+store is skipped on the next attempt. See
+[Donor Selection](../../data-flows.md#donor-selection).
 
-    // Start async synchronization with leader
-    node.applier.SyncSnapshot(ctx, node.lastSoftState.Load().Lead)
-}
-```
+`Synchronizer.SynchronizeWithLeader` fetches and activates a fresh Pebble
+checkpoint whose applied index is at least the received Raft snapshot index,
+restores caches, and recovers FSM state from that checkpoint. Spool replay
+skips entries already covered by the checkpoint and applies the remaining
+committed suffix before normal application resumes. Checkpoint progress can
+therefore temporarily exceed the local Raft WAL horizon; it does not replace
+Raft replication of the missing entries.
 
-#### Snapshot Synchronization Flow
-
-The checkpoint is fetched from a donor the follower picks on each attempt:
-the leader first, then the other voters in turn, never itself. The leader
-can be unreachable, or resynchronizing itself after winning an election while
-out of sync; a donor in that state refuses and the follower tries the next
-one. See [Donor Selection](../../data-flows.md#donor-selection).
-
-The `SynchronizeWithLeader` method handles the complex task of bringing the store up to date:
-
-1. **Ledger reconciliation**: Compare FSM ledgers with store ledgers
-   - Delete ledgers that exist in store but not in FSM
-   - Register new ledgers that exist in FSM but not in store
-2. **Log synchronization**: For each ledger, stream missing logs from the leader
-3. **Store update**: Apply logs to bring balances and metadata up to date
-
-#### Why Two-Level Synchronization?
-
-The snapshot contains only the **FSM state** (ledger metadata, next IDs). After receiving a snapshot, the follower must also sync **business logs** from the leader's Store:
-
-1. **Snapshot** → FSM state (lightweight, ~KB)
-2. **gRPC StreamLogs** → Transaction logs per ledger (can be large, ~GB)
-
-This two-level approach avoids embedding large transaction data in Raft snapshots.
-
-See [Follower Synchronization](../../data-flows.md#follower-synchronization) for the detailed synchronization flow
+Snapshot delivery feedback is sender-local. It changes no wire fields,
+persisted formats, deterministic FSM rules or service protocol revision.
+Existing RC state remains readable and old/new voters may coexist during a
+rolling upgrade. Default reads still wait for their quorum-certified index to
+be durably applied locally. See
+[Follower Synchronization](../../data-flows.md#follower-synchronization) and the
+[follower checkpoint protocol](../storage/follower-sync.md).
 
 #### Network Partition
 

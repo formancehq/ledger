@@ -1568,12 +1568,21 @@ func (node *Node) installReadySnapshot(ctx context.Context, stop chan struct{}, 
 		if err := node.wal.ApplySnapshot(rd.Snapshot); err != nil {
 			return fmt.Errorf("applying snapshot to storage: %w", err)
 		}
+		// ApplySnapshot replaces the WAL's cached log. A Ready may also carry
+		// entries after the snapshot: restore that suffix before acknowledging
+		// storage. Keep the initial append in persistReady so HardState never
+		// becomes durable without its entries, including across a crash here.
+		if len(rd.Entries) > 0 {
+			if err := node.wal.Append(rd.HardState, rd.Entries); err != nil {
+				return fmt.Errorf("restoring entries after snapshot installation: %w", err)
+			}
+		}
 
 		if err := node.synchronizer.InstallSnapshot(ctx, rd.Snapshot); err != nil {
 			return fmt.Errorf("installing snapshot: %w", err)
 		}
 
-		// Defer ReportSnapshot to orchestrate goroutine (rawNode is not thread-safe).
+		// Defer the ConfState shadow refresh to the orchestrate goroutine.
 		result.snapshotApplied = true
 
 		node.logger.WithFields(map[string]any{
@@ -1652,8 +1661,6 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	rd := result.rd
 
 	if result.snapshotApplied {
-		node.rawNode.ReportSnapshot(rd.Snapshot.GetMetadata().GetIndex(), raft.SnapshotFinish)
-
 		// Re-sync the in-memory ConfState shadow from the just-installed
 		// snapshot. wal.ApplySnapshot already persisted the correct ConfState;
 		// without this, the reconcile block below loads the stale shadow and
@@ -1938,6 +1945,7 @@ func shouldTickRaft(status int32) bool {
 }
 
 func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
+	snapshotStatusCh := node.transport.SnapshotStatus()
 	tickInterval := node.config.TickInterval
 	if tickInterval == 0 {
 		tickInterval = 100 * time.Millisecond
@@ -2056,6 +2064,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 			if err := stepResponses(msgs); err != nil {
 				return err
 			}
+		case result := <-snapshotStatusCh:
+			node.rawNode.ReportSnapshot(result.PeerID, result.Status)
+			maybeCreateReady()
 		case <-stop:
 			node.logger.Infof("Stopping readyLoop as context was cancelled")
 			node.applier.Interrupt()
@@ -2074,6 +2085,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 				if err := stepResponses(msgs); err != nil {
 					return err
 				}
+			case result := <-snapshotStatusCh:
+				node.rawNode.ReportSnapshot(result.PeerID, result.Status)
+				maybeCreateReady()
 			case msgs := <-node.transport.RecvMediumPriority():
 				err := stepMessages(msgs)
 				if err != nil {
@@ -2138,6 +2152,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					return nil
 				case nodeID := <-node.transport.Unreachable():
 					node.rawNode.ReportUnreachable(nodeID)
+				case result := <-snapshotStatusCh:
+					node.rawNode.ReportSnapshot(result.PeerID, result.Status)
+					maybeCreateReady()
 				case msgs := <-node.transport.RecvHighPriority():
 					err := stepMessages(msgs)
 					if err != nil {

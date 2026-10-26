@@ -243,3 +243,21 @@ bash scripts/ai-audit-challenge <audit-result.json>
 Both passes require the same exact clean `HEAD`; the providers remain read-only.
 Do not launch either command while reviewing this manifest PR. Jira preview or
 publication is a separate explicitly authorized action.
+
+## Sent snapshot progress and Ready suffix evidence
+
+Trace a sent `MsgSnap` through queueing, transport acknowledgement or failure,
+the sender's local status channel and the orchestrate owner's
+`ReportSnapshot(destinationPeerID, status)`. Receiving a snapshot is a separate
+operation and must not report its index as a peer ID. Lose the follower's
+`MsgAppResp`, heal communication, and prove that a ReadIndex horizon becomes
+locally applicable without another proposal. Healthy heartbeats alone do not
+prove a leader has left `StateSnapshot`.
+
+For a Ready containing both a snapshot and subsequent entries, retain the
+original entries/HardState durability order, then verify that snapshot
+installation cannot erase the suffix from `LastIndex`, `Term`, `Entries` or
+a reopened WAL before storage acknowledgement. Identify the residual
+in-memory snapshot/cache and durable WAL prefix on any failure. The focused
+regressions are `snapshot_status_test.go`, `transport_snapshot_status_test.go`
+and `process_ready_snapshot_test.go` under `internal/infra/node/`.
