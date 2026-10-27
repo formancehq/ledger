@@ -418,3 +418,32 @@ CreateLedger stages initial metadata in the canonical ledger-metadata keyspace i
 For normal and mirror creation, do rejection, proposal rollback and idempotent replay preserve initial metadata atomically without a second save, new metadata read dependency, duplicate allocation or order mutation?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## Transaction account metadata address failures
+
+Caller metadata and merged script metadata must use the same deterministic
+address selection: the lexicographically smallest invalid address determines
+the typed failure, with empty sorting first. Metadata shape/entity limits and
+command budget retain precedence in apply. Account metadata writes are staged
+only after all addresses pass; posting/transaction writes staged earlier roll
+back on rejection. The failure audit and fresh-key idempotency outcome remain
+intentional committed effects. Admission rejects malformed caller addresses
+before proposal but cannot be the sole apply protection.
+
+The evidence oracle compares independently decoded identical proposal bytes at
+the same Raft index on equivalent machines: exact expected FailureDetails,
+audit bytes/hash, frozen keyed replay and unchanged business projections and
+account metadata. Retain the individual-error and metadata-limit regressions.
+See TestValidateOrder_TransactionAccountMetadataAddresses,
+TestProcessOrder_AccountMetadataAddressFailure and
+TestAccountMetadataAddressFailureSameAuditOnReplicas.
+
+The source RC binary selects errors through unordered traversal, so a normal
+write-enabled mixed-binary rollout is unsafe. The
+[upgrade procedure](../../ops/upgrades.md#account-metadata-address-validation)
+requires maintenance committed and durably applied by every old voter before
+the first replacement, held through sequential restarts and leadership transfer.
+TestAccountMetadataMaintenanceBarrierSurvivesRecovery proves the FSM/recovery
+gate, not a real mixed-binary deployment. Release validation must prove that
+deployment separately. Historical audit failures and frozen outcomes retain
+their stored details; already-diverged audit chains are not repaired by this fix.
