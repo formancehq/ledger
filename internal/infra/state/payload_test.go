@@ -7,7 +7,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -24,7 +23,6 @@ func payloadProposal(t *testing.T, p *raftcmdpb.Proposal) *raftcmdpb.Proposal {
 	}
 	wire.Orders = nil
 	wire.TechnicalUpdates = nil
-	require.NoError(t, proposals.ValidateShape(wire))
 
 	return wire
 }
@@ -127,19 +125,19 @@ func TestPayloadHistoryHasIdenticalAuditAndRecovery(t *testing.T) {
 	require.Equal(t, modern.State.LastAppliedTimestamp, recovered.State.LastAppliedTimestamp)
 }
 
-func TestMalformedPayloadRejectedBeforeStateMutation(t *testing.T) {
+func TestMixedProposalEncodingRejectedBeforeStateMutation(t *testing.T) {
 	t.Parallel()
-	for _, emptyBatch := range []bool{false, true} {
+	for _, legacyUpdates := range []bool{false, true} {
 		machine, store, _ := newTestMachine(t)
 		wire := payloadProposal(t, makeProposal(2, createLedgerOrder("rejected")))
-		if emptyBatch {
-			wire.Payload = &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{}}
+		if legacyUpdates {
+			wire.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_AuditKey{AuditKey: make([]byte, 32)}}}
 		} else {
 			wire.Orders = []*raftcmdpb.Order{createLedgerOrder("legacy")}
 		}
 		valid := payloadProposal(t, makeProposal(1, createLedgerOrder("must-not-apply")))
 		_, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, valid), makeEntry(t, 2, wire))
-		require.Error(t, err)
+		require.ErrorContains(t, err, "proposal mixes legacy fields and payload")
 		require.Zero(t, machine.State.LastAppliedIndex)
 		require.Equal(t, uint64(1), machine.State.NextAuditSequenceID)
 	}

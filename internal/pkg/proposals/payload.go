@@ -5,9 +5,7 @@ package proposals
 
 import (
 	"errors"
-	"fmt"
 
-	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -30,69 +28,12 @@ func TechnicalUpdates(p *raftcmdpb.Proposal) []*raftcmdpb.TechnicalUpdate {
 	return p.GetTechnicalUpdates()
 }
 
-// ValidateShape constrains new producers without narrowing historical replay.
-// It does not consult membership, the active policy, or any local setting.
-func ValidateShape(p *raftcmdpb.Proposal) error {
-	if p == nil {
-		return errors.New("nil proposal")
-	}
-	if p.GetPayload() == nil {
-		return nil
-	}
-	if len(p.GetOrders()) != 0 || len(p.GetTechnicalUpdates()) != 0 {
+// CheckLegacyFields rejects ambiguous proposals before adaptation can discard
+// legacy fields. Payload construction belongs to the internal producers.
+// TODO: Remove this compatibility check after the next RC.
+func CheckLegacyFields(p *raftcmdpb.Proposal) error {
+	if p.GetPayload() != nil && (len(p.GetOrders()) != 0 || len(p.GetTechnicalUpdates()) != 0) {
 		return errors.New("proposal mixes legacy fields and payload")
-	}
-	switch payload := p.GetPayload().(type) {
-	case *raftcmdpb.Proposal_Batch:
-		orders, updates := payload.Batch.GetOrders(), payload.Batch.GetTechnicalUpdates()
-		if len(orders)+len(updates) == 0 {
-			return errors.New("empty execution batch")
-		}
-		var mirrorLedger string
-		for i, order := range orders {
-			if order == nil {
-				return errors.New("nil batch order")
-			}
-			if _, policy := order.GetSystemScoped().GetPayload().(*raftcmdpb.SystemScopedOrder_SetClusterPolicy); policy {
-				return errors.New("cluster policy must use the proposal control")
-			}
-			if len(updates) != 0 {
-				ledger := order.GetLedgerScoped()
-				if i == 0 {
-					mirrorLedger = ledger.GetLedger()
-				}
-				if ledger.GetMirrorIngest() == nil || ledger.GetLedger() != mirrorLedger {
-					return errors.New("technical updates may only accompany mirror ingestion of the same ledger")
-				}
-			}
-		}
-		for _, update := range updates {
-			if update == nil || update.GetKind() == nil {
-				return errors.New("missing technical update kind")
-			}
-			if len(orders) == 0 {
-				continue
-			}
-			mirror := update.GetMirrorSync()
-			if mirror == nil {
-				return errors.New("only mirror sync may accompany orders")
-			}
-			if mirror.GetLedgerName() != mirrorLedger {
-				return errors.New("mirror sync must accompany ingestion of the same ledger")
-			}
-		}
-	case *raftcmdpb.Proposal_SetClusterPolicy:
-		if payload.SetClusterPolicy == nil {
-			return errors.New("missing policy control")
-		}
-		if p.GetIdempotency() != nil || p.GetSignature() != nil {
-			return errors.New("policy control cannot carry client idempotency or signature")
-		}
-		if p.GetCallerSnapshot().GetSystem().GetComponent() != string(attribution.ComponentClusterPolicy) {
-			return errors.New("policy control requires cluster-policy caller")
-		}
-	default:
-		return fmt.Errorf("unsupported proposal payload %T", payload)
 	}
 
 	return nil
@@ -119,8 +60,8 @@ func PolicyOrder(policy *commonpb.ClusterPolicy) *raftcmdpb.Order {
 	}}
 }
 
-// ExecutionView adapts an already validated envelope to the existing audited
-// execution pipeline. Legacy input is returned unchanged. New input borrows
+// ExecutionView adapts an envelope checked by CheckLegacyFields to the existing
+// audited execution pipeline. Legacy input is returned unchanged. New input borrows
 // the payload and header and must not be returned to a protobuf pool.
 func ExecutionView(p *raftcmdpb.Proposal) *raftcmdpb.Proposal {
 	if p.GetPayload() == nil {
@@ -137,12 +78,12 @@ func ExecutionView(p *raftcmdpb.Proposal) *raftcmdpb.Proposal {
 	return view
 }
 
-// LegacyWire validates a logical proposal and lowers it to the released wire
+// LegacyWire rejects mixed encodings and lowers a proposal to the released wire
 // representation. No producer emits payload-only entries during this expansion
 // stage: old and new replicas must execute the same committed bytes. The view
 // borrows payload objects so coverage targets survive plan rebuilds.
 func LegacyWire(p *raftcmdpb.Proposal) (*raftcmdpb.Proposal, error) {
-	if err := ValidateShape(p); err != nil {
+	if err := CheckLegacyFields(p); err != nil {
 		return nil, err
 	}
 

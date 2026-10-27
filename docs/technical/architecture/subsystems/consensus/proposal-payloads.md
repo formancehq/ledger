@@ -13,11 +13,11 @@ Proposal
 
 Policy controls are audited. They are not technical updates. Technical updates
 remain inside an execution batch with their own coverage bits. Empty legacy
-proposals remain consensus barriers; an empty new batch is invalid.
+proposals remain consensus barriers.
 
 ## Need and migration decision
 
-Separating policy controls makes their admission and shape constraints explicit
+Separating policy controls makes their admission explicit
 without changing business execution or audit evidence. The supported RC baseline
 must still execute every committed entry identically during a rolling upgrade.
 An old protobuf decoder silently skips unknown payload fields; accepting those
@@ -31,8 +31,11 @@ lowered to the historical singleton `SystemScopedOrder.set_cluster_policy`
 order (11). Header values and borrowed payload objects remain unchanged.
 
 The new FSM understands both forms. Historical inputs retain their historical
-semantics. New envelopes are validated before any entry in a decoded batch
-mutates state, then adapted to the canonical execution and audit pipeline.
+semantics. Proposals mixing legacy fields with a payload are rejected before
+any entry in a decoded batch mutates state, so adaptation cannot silently discard
+intent. The adapter then maps the proposal to the canonical execution and audit
+pipeline. It does not revalidate payload composition or caller metadata: internal
+producers own construction, and admission and processors own business validation.
 The decoded message retains ownership of its pooled buffers and is never
 mutated by this adaptation.
 
@@ -46,14 +49,14 @@ Raft. New decoder support alone does not authorize that cutover.
 
 ## Execution and technical updates
 
-A policy control requires the `cluster-policy` system caller and cannot carry
-client idempotency or signature data. The existing policy processor continues
+Admission constructs policy controls with the `cluster-policy` system caller
+and no client idempotency or signature data. The existing policy processor continues
 to decide revision, no-op, conflict, stale-policy, maintenance, and failure
 outcomes. Its canonical historical audit order and hashes do not change.
 
 A technical-only batch creates no audit entry and does not advance business
-HLC, including audit-key initialization. The only permitted new mixed batch
-contains mirror-ingestion orders and `MirrorSync` updates for the same ledger.
+HLC, including audit-key initialization. The mirror producer constructs mixed
+batches containing ingestion orders and `MirrorSync` updates for the same ledger.
 Those status changes are staged with the business write set and discarded on
 business rejection. Other technical updates must be separate, because their
 handlers can write directly to the apply batch. Historical mixed proposals
@@ -61,23 +64,11 @@ retain their existing replay rules.
 
 Checkpoint and rotation boundaries inspect batch contents before apply
 splitting. The adapter borrows order and technical-update objects, preserving
-coverage targets when the runner rebuilds its plan. Validation costs O(orders +
-updates), with constant auxiliary space; the borrowed header adds constant
-allocation overhead. Wire and WAL size are unchanged: only one representation
+coverage targets when the runner rebuilds its plan. The mixed-encoding check
+and adaptation take constant time and auxiliary space; the borrowed header adds
+constant allocation overhead. Wire and WAL size are unchanged: only one representation
 is serialized. `TestLegacyWireMatchesReleasedEncoding` pins exact byte parity;
 `BenchmarkLegacyWire` measures representative batch cardinalities.
-
-A local run on Apple M5 Pro with the pinned Nix toolchain measured the adapter
-plus VT serialization below. These are microbenchmark observations, not a
-production latency budget. Allocated bytes include the serialized command;
-the allocation count stays constant as batch size grows.
-
-| Orders | Time/op | Bytes/op | Allocations/op |
-|---|---:|---:|---:|
-| 1 | 70 ns | 176 | 2 |
-| 100 | 1.34 us | 928 | 2 |
-| 1000 | 13.0 us | 8352 | 2 |
-
 
 ## Persistence, restore, and rollback
 
@@ -96,8 +87,8 @@ exercise decoder readiness, not a format emitted by this release.
 ## Validation
 
 Unit tests cover exact legacy wire bytes, borrowed payload immutability,
-coverage targets, failed-then-successful retries, shape rejection before batch
-mutation, old/new audit and recovery parity, technical-only HLC behavior,
+coverage targets, failed-then-successful retries, mixed-encoding rejection before
+batch mutation, old/new audit and recovery parity, technical-only HLC behavior,
 mirror success/failure, checkpoint boundaries, and incremental restore.
 
 The three-node e2e test intercepts actual Raft traffic, verifies that no

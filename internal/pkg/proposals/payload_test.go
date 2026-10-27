@@ -39,43 +39,31 @@ func TestPolicyEncodingKeepsAuditIntent(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, legacy.GetPayload())
 	require.True(t, proto.Equal(PolicyOrder(policy), legacy.GetOrders()[0]))
-	control.Idempotency = &commonpb.Idempotency{Key: "client-key"}
-	require.ErrorContains(t, ValidateShape(control), "idempotency or signature")
-	control.Idempotency = nil
-	control.Signature = &signaturepb.SignedApplyBatch{}
-	require.ErrorContains(t, ValidateShape(control), "idempotency or signature")
 }
 
-func TestValidateShapeRejectsAmbiguousAndMixedPayloads(t *testing.T) {
+func TestLegacyWireRejectsMixedEncodings(t *testing.T) {
 	t.Parallel()
-	for name, proposal := range map[string]*raftcmdpb.Proposal{
-		"nil":                         nil,
-		"empty batch":                 {Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{}}},
-		"legacy plus payload":         {Orders: []*raftcmdpb.Order{{}}, Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{{}}}}},
-		"policy in batch":             {Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{PolicyOrder(nil)}}}},
-		"nil order":                   {Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{nil}}}},
-		"nil update":                  {Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{nil}}}},
-		"unattributed policy":         {Payload: &raftcmdpb.Proposal_SetClusterPolicy{SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{}}},
-		"unrelated update with order": {Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{{}}, TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_AuditKey{AuditKey: make([]byte, 32)}}}}}},
-	} {
-		t.Run(name, func(t *testing.T) { require.Error(t, ValidateShape(proposal)) })
+	for _, policy := range []bool{false, true} {
+		for _, legacyUpdates := range []bool{false, true} {
+			t.Run(fmt.Sprintf("policy=%t/legacyUpdates=%t", policy, legacyUpdates), func(t *testing.T) {
+				t.Parallel()
+				proposal := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{{}}}}}
+				if policy {
+					proposal.Payload = &raftcmdpb.Proposal_SetClusterPolicy{SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: &commonpb.ClusterPolicy{Revision: 2}}}
+				}
+				if legacyUpdates {
+					proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{}}
+				} else {
+					proposal.Orders = []*raftcmdpb.Order{{}}
+				}
+				before := proposal.CloneVT()
+				wire, err := LegacyWire(proposal)
+				require.ErrorContains(t, err, "proposal mixes legacy fields and payload")
+				require.Nil(t, wire)
+				require.True(t, proto.Equal(before, proposal))
+			})
+		}
 	}
-	// A historical composition must remain readable even when new writers
-	// cannot emit it. Never apply new shape restrictions to the old format.
-	require.NoError(t, ValidateShape(&raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{PolicyOrder(nil)}, TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{}}}))
-	require.NoError(t, ValidateShape(&raftcmdpb.Proposal{}))
-}
-
-func TestMixedMirrorBatchIsLimitedToItsLedger(t *testing.T) {
-	t.Parallel()
-	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-		Ledger: "mirror", Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{}},
-	}}}
-	update := &raftcmdpb.TechnicalUpdate{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "mirror"}}}
-	p := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{order}, TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{update}}}}
-	require.NoError(t, ValidateShape(p))
-	update.GetMirrorSync().LedgerName = "other"
-	require.ErrorContains(t, ValidateShape(p), "same ledger")
 }
 
 // Compare exact bytes, not only decoded fields: the expansion phase must not
