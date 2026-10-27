@@ -67,7 +67,7 @@ func TestService_AddLearner_RejectionPreservesServiceRouting(t *testing.T) {
 func TestService_JoinAsLearner_RejectsMissingInstanceID(t *testing.T) {
 	t.Parallel()
 
-	err := (&Service{}).JoinAsLearner(context.Background(), 1, "r:1", "s:1", nil)
+	err := (&Service{}).JoinAsLearner(context.Background(), 1, "r:1", "s:1", nil, nil)
 	require.ErrorContains(t, err, "instance_id")
 }
 
