@@ -606,7 +606,15 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 
 			if fsm.BloomFilters != nil && fsm.BloomFilters.IsReady() {
 				epoch, replace := fsm.BloomFilters.PersistedReplacement()
-				if err := fsm.BloomFilters.PersistDirtyBlocks(batch); err != nil {
+				var err error
+				if replace && bloomReplacement && bloomReplacementEpoch == epoch {
+					// This batch already contains the complete projection for
+					// this epoch; later rotations need only their dirty blocks.
+					err = fsm.BloomFilters.PersistDirtyBlocksAfterReplacement(batch)
+				} else {
+					err = fsm.BloomFilters.PersistDirtyBlocks(batch)
+				}
+				if err != nil {
 					_ = batch.Cancel()
 
 					return nil, fmt.Errorf("persisting bloom dirty blocks: %w", err)
@@ -739,8 +747,8 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		return nil, fmt.Errorf("setting applied index: %w", err)
 	}
 	if fsm.BloomFilters != nil && fsm.BloomFilters.IsReady() {
-		_, replace := fsm.BloomFilters.PersistedReplacement()
-		if !replace || bloomReplacement {
+		epoch, replace := fsm.BloomFilters.PersistedReplacement()
+		if !replace || (bloomReplacement && bloomReplacementEpoch == epoch) {
 			if err := bloom.SealProjectionAt(batch, fsm.State.LastAppliedIndex); err != nil {
 				_ = batch.Cancel()
 

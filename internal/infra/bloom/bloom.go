@@ -566,11 +566,22 @@ func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
 // PersistDirtyBlocks writes all dirty blocks from all filters to the Pebble batch.
 // Called during cache rotation to flush bloom state atomically with the rotation.
 func (fs *FilterSet) PersistDirtyBlocks(batch *dal.WriteSession) error {
+	return fs.persistBlocks(batch, fs.replacePersisted.Load())
+}
+
+// PersistDirtyBlocksAfterReplacement flushes only changes made after a full
+// replacement already staged in the same prepared batch and rebuild epoch.
+// A later prepared batch must use PersistDirtyBlocks again until the first
+// replacement commits, because its predecessor may still be in flight.
+func (fs *FilterSet) PersistDirtyBlocksAfterReplacement(batch *dal.WriteSession) error {
+	return fs.persistBlocks(batch, false)
+}
+
+func (fs *FilterSet) persistBlocks(batch *dal.WriteSession, replace bool) error {
 	snap := fs.filters.Load()
 	if snap == nil {
 		return nil
 	}
-	replace := fs.replacePersisted.Load()
 	if replace {
 		if err := batch.DeleteRangeNoSync(
 			[]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom},
