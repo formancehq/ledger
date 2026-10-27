@@ -67,7 +67,7 @@ func TestCommittedPeerRefreshUpdatesRaftTransport(t *testing.T) {
 	m.Start()
 
 	oldInstanceID := []byte("old-instance-id-")
-	require.NoError(t, m.Register(2, "old:7000", "old:8000", oldInstanceID))
+	require.NoError(t, m.Register(2, "old:7000", "old:8000", oldInstanceID, nil))
 	require.Equal(t, "old:7000", raftPool.GetPeerAddress(2))
 
 	newInstanceID := []byte("new-instance-id-")

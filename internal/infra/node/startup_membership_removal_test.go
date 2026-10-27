@@ -29,7 +29,7 @@ func TestNewNodeAcceptsReplayedRemovalBeforeConfStatePersistence(t *testing.T) {
 		1, "self:7777", "self:8888", []byte("self-instance-id"), logging.Testing(), membership.NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	identity := []byte("peer-instance-id")
-	require.NoError(t, m.Register(2, "peer:7777", "peer:8888", identity))
+	require.NoError(t, m.Register(2, "peer:7777", "peer:8888", identity, nil))
 	require.NoError(t, setup.wal.UpdateSnapshotConfState(&raftpb.ConfState{Voters: []uint64{1, 2}}))
 	context, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{InstanceID: identity})
 	require.NoError(t, err)

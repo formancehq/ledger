@@ -695,7 +695,7 @@ func NewNode(
 	// writes self for Bootstrap/Restore, but the restart branch never
 	// did — that's the gap the previous bootstrap hook used to cover
 	// before transport wiring moved into Membership.
-	if err := membership.RegisterWithEvidence(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
+	if err := membership.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
 		return nil, fmt.Errorf("refreshing self in peer store: %w", err)
 	}
 
@@ -3976,7 +3976,7 @@ func initialJoinVoters(peers []Peer, selfID uint64) []uint64 {
 // through WriteConfChange).
 func registerInitialPeers(m *membership.Membership, cfg NodeConfig, includeSelf bool) error {
 	if includeSelf {
-		if err := m.RegisterWithEvidence(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
+		if err := m.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
 			return fmt.Errorf("persisting self in peer store: %w", err)
 		}
 	}
@@ -3984,7 +3984,7 @@ func registerInitialPeers(m *membership.Membership, cfg NodeConfig, includeSelf 
 	// Peer discovery carries the durable identity of every configured member;
 	// never create an address-only membership row.
 	for _, p := range cfg.Peers {
-		if err := m.RegisterWithEvidence(p.ID, p.Address, p.ServiceAddress, p.InstanceID, p.Capabilities); err != nil {
+		if err := m.Register(p.ID, p.Address, p.ServiceAddress, p.InstanceID, p.Capabilities); err != nil {
 			return fmt.Errorf("persisting initial peer %d: %w", p.ID, err)
 		}
 	}

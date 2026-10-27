@@ -388,17 +388,11 @@ func (m *Membership) Remove(nodeID uint64) {
 
 // Register writes a peer through Pebble (own session) AND the cache, in
 // lockstep. Used by lifecycle paths that bypass the FSM: bootstrap
-// initial-peer persistence and ForceRemoveNode (dual: Unregister).
-// instanceID is always the peer's 16-byte WAL/PVC identity. Identity-less
-// membership rows are rejected rather than persisted as a partial member.
-func (m *Membership) Register(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	return m.RegisterWithEvidence(nodeID, raftAddr, serviceAddr, instanceID, nil)
-}
-
-// RegisterWithEvidence is the durable/cache-atomic lifecycle variant of
-// Register. It is used for self refresh and bootstrap rows that already carry
-// a capability proof.
-func (m *Membership) RegisterWithEvidence(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
+// initial-peer persistence, self refresh, and ForceRemoveNode's dual
+// Unregister operation. instanceID is always the peer's 16-byte WAL/PVC
+// identity. Identity-less membership rows are rejected rather than persisted
+// as a partial member. capabilityIDs carries the peer's capability evidence.
+func (m *Membership) Register(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
 	// A restart refreshes the local addresses. Preserve evidence for the same
 	// concrete instance when the caller has no new proof; a changed instance
 	// must never inherit the previous pod's capabilities.

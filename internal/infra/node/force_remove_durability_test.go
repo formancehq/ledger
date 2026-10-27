@@ -216,6 +216,7 @@ func newForceRemoveHarness(
 			fmt.Sprintf("node-%d:7000", id),
 			fmt.Sprintf("node-%d:8000", id),
 			fmt.Appendf(nil, "%016d", id),
+			nil,
 		))
 	}
 

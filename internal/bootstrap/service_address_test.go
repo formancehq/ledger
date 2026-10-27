@@ -72,7 +72,7 @@ func TestServiceAdvertiseAddr_IPv6RemoteRPC(t *testing.T) {
 		1, "", "", []byte("self-instance-id"), logging.Testing(), membership.NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	require.NoError(t, remote.Register(published.NodeID, published.AdvertiseAddr,
-		published.ServiceAdvertiseAddr, published.InstanceID))
+		published.ServiceAdvertiseAddr, published.InstanceID, nil))
 	remote.Start()
 	conn := pool.GetConnection(published.NodeID)
 	require.NotNil(t, conn)

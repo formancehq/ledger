@@ -108,7 +108,7 @@ func TestCheckAndPromoteLearnersMissingRowStopsRun(t *testing.T) {
 			Voters: []uint64{1}, Learners: []uint64{2},
 		}))
 		m := newTestMembership(t)
-		require.NoError(t, m.Register(2, "node-2:7000", "node-2:8000", []byte("0000000000000002")))
+		require.NoError(t, m.Register(2, "node-2:7000", "node-2:8000", []byte("0000000000000002"), nil))
 		n, err := NewNode(
 			NodeConfig{
 				NodeID:                 1,
