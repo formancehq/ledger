@@ -8,8 +8,6 @@ import (
 	"time"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-
-	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 const (
@@ -31,7 +29,7 @@ type snapshotSession struct {
 type snapshotSessionStore struct {
 	mu        sync.Mutex
 	sessions  map[string]*snapshotSession
-	store     *dal.Store
+	store     snapshotCheckpointStore
 	logger    logging.Logger
 	ttl       time.Duration
 	stopCh    chan struct{}
@@ -41,7 +39,7 @@ type snapshotSessionStore struct {
 	stopped   bool
 }
 
-func newSnapshotSessionStore(store *dal.Store, logger logging.Logger, ttl time.Duration) *snapshotSessionStore {
+func newSnapshotSessionStore(store snapshotCheckpointStore, logger logging.Logger, ttl time.Duration) *snapshotSessionStore {
 	ss := &snapshotSessionStore{
 		sessions: make(map[string]*snapshotSession),
 		store:    store,
