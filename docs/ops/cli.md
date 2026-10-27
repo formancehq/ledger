@@ -1545,6 +1545,11 @@ ledgerctl transactions create [flags]
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
+Posting flag amounts must be decimal integers between `0` and `2^256 - 1`
+(inclusive). Interactive amounts must be positive and obey the same upper
+bound. Negative and overflowing amounts return a validation error before any
+Apply RPC; accepted amounts retain their exact value, including uint256 maximum.
+
 **Creating transactions with postings:**
 
 ```bash

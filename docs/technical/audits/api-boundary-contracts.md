@@ -335,3 +335,18 @@ This domain owns projection, parsing and routing fidelity; election correctness
 and member persistence remain in raft-membership-leadership. Varint decoding
 alone does not establish full-range support in old uint32 readers. Require the
 client/server rollout limitation documented in the service protocol contract.
+
+## CLI posting amount boundaries
+
+`TestTransactionsCreatePostingAmounts` exercises the registered transaction
+creation command against a local gRPC Apply fixture. Cover colored and uncolored
+postings with negative one, zero, a positive control, uint256 maximum and 2^256.
+Invalid amounts must return ordinary errors without constructor panic or Apply,
+even after an earlier valid posting; accepted amounts must reach Apply exactly.
+The zero flag value remains accepted by the CLI parser.
+
+On Linux and macOS, `TestTransactionsCreateInteractiveAmount` drives the actual
+command through a pseudoterminal and checks overflowing input is rejected before
+Apply, alongside the existing negative and zero rejection. Terminal readiness
+is observed rather than inferred from a delay. These are CLI input-contract
+oracles; they do not claim server accounting or committed-state coverage.
