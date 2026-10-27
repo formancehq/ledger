@@ -7,6 +7,8 @@ observed source head, and replicated synchronization error before proposal.
 This guard is local to admission so rolling RC voters apply the same committed
 order identically. An unknown source head is rejected; an observed head alone
 does not prove that the external source has stopped advancing.
+The batch scan and per-promotion snapshot budget are documented in the
+[pipeline cost boundary](pipeline.md#mirror-promotion-admission-budget).
 
 ## Documents
 

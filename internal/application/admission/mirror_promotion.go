@@ -32,11 +32,12 @@ func (*ErrMirrorNotCaughtUp) Kind() domain.ErrorKind { return domain.KindPrecond
 // the source. Apply remains unchanged so old and new voters replay committed
 // PromoteLedger entries identically during an RC rolling upgrade.
 func (a *Admission) checkMirrorPromotions(ctx context.Context, orders []*raftcmdpb.Order, idempotencyKey string) error {
-	for _, order := range orders {
-		ledgerOrder := order.GetLedgerScoped()
-		if ledgerOrder == nil || ledgerOrder.GetPromoteLedger() == nil {
-			continue
+	promotions, createdLedgers := mirrorPromotionBatch(orders)
+	for _, ledgerOrder := range promotions {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
+		_, createdInBatch := createdLedgers[ledgerOrder.GetLedger()]
 
 		handle, err := a.store.NewReadHandle()
 		if err != nil {
@@ -48,7 +49,7 @@ func (a *Admission) checkMirrorPromotions(ctx context.Context, orders []*raftcmd
 
 			return fmt.Errorf("reading ledger for mirror promotion: %w", infoErr)
 		}
-		if info == nil || (createsLedgerInBatch(orders, ledgerOrder.GetLedger()) && info.GetDeletedAt() != nil) {
+		if info == nil || (createdInBatch && info.GetDeletedAt() != nil) {
 			// An absent ledger might be created as a mirror before proposal;
 			// never let an unobserved head bypass the eligibility gate. A
 			// create-then-promote batch has the same problem, even if a
@@ -109,13 +110,31 @@ func (a *Admission) checkMirrorPromotions(ctx context.Context, orders []*raftcmd
 	return nil
 }
 
-func createsLedgerInBatch(orders []*raftcmdpb.Order, name string) bool {
+// mirrorPromotionBatch finds promotions before any read handle holds the store
+// lifecycle lock. Only batches with a promotion need the second pass that
+// records creates, including those after a promotion in the same batch.
+func mirrorPromotionBatch(orders []*raftcmdpb.Order) ([]*raftcmdpb.LedgerScopedOrder, map[string]struct{}) {
+	var promotions []*raftcmdpb.LedgerScopedOrder
 	for _, order := range orders {
 		ledgerOrder := order.GetLedgerScoped()
-		if ledgerOrder != nil && ledgerOrder.GetLedger() == name && ledgerOrder.GetCreateLedger() != nil {
-			return true
+		if ledgerOrder != nil && ledgerOrder.GetPromoteLedger() != nil {
+			promotions = append(promotions, ledgerOrder)
+		}
+	}
+	if len(promotions) == 0 {
+		return nil, nil
+	}
+
+	var createdLedgers map[string]struct{}
+	for _, order := range orders {
+		ledgerOrder := order.GetLedgerScoped()
+		if ledgerOrder != nil && ledgerOrder.GetCreateLedger() != nil {
+			if createdLedgers == nil {
+				createdLedgers = make(map[string]struct{})
+			}
+			createdLedgers[ledgerOrder.GetLedger()] = struct{}{}
 		}
 	}
 
-	return false
+	return promotions, createdLedgers
 }

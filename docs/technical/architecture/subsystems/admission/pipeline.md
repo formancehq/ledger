@@ -163,6 +163,41 @@ If a proposal needs a lifecycle lock while it is pending, raise an architecture
 decision before implementation. Do not introduce that lock through an ordinary
 PR.
 
+### Mirror promotion admission budget
+
+`PromoteLedger` must be refused before proposal when the mirror has not caught
+up to the observed source head. For a batch of `N` orders with `P` promotions
+and `C` distinct ledger creations, admission scans for promotion candidates
+and, only when one exists, scans once more to collect created names. This uses
+`O(N)` CPU and `O(C + P)` temporary memory before opening any store read
+handle. Each promotion opens and closes its own snapshot, reads one ledger row,
+and, for a live mirror,
+performs three point reads for cursor, source head, and sync error. A keyed
+retry of an already-normal ledger adds one idempotency-key point read. There
+are no range scans or per-promotion batch scans. Batches without promotion do
+only the first in-memory pass, allocate no map, and open no snapshot.
+
+The public gRPC service caps an encoded request at 64 MiB; there is no separate
+promotion-count limit. The supported work budget is therefore linear in the
+accepted request size and promotion count, with one bounded snapshot lifetime
+per promotion. Admission checks cancellation before each snapshot. Pebble
+point reads do not take a context, so cancellation during one read takes effect
+before the next promotion. Each snapshot holds the store lifecycle read lock
+only through its own point reads and is closed before the proposal guard or
+future wait. This gate adds no coverage keys, proposal bytes, WAL writes, or
+cache mutations.
+
+`TestMirrorPromotionBatchPlanCardinality` covers a mixed 1,033-order batch,
+including a create after its promotion. On an Apple M5 Pro, the
+`BenchmarkCheckMirrorPromotionsBatchSize` command with `-benchtime=1s` measured
+1.98 µs for one promotion, 51.1 µs for one promotion plus 1,000 unrelated
+creates, and 129 µs for 32 promotions plus 1,000 creates (about 506,000,
+19,600, and 7,750 checks/s respectively). These are local comparison
+measurements, not latency guarantees. Precomputing created names removes the
+former `O(P × N)` scan. A single shared snapshot would reduce
+snapshot creation but hold the lifecycle lock across all promotions; an
+asynchronous check would not prevent an unsafe proposal, so neither is used.
+
 ## Idempotency
 
 Two-stage check:
