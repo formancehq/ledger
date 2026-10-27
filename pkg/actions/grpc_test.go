@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -56,5 +57,50 @@ func TestGRPCRetryPolicyAttempts(t *testing.T) {
 	}
 	if got := health.attempts.Load(); got != 5 {
 		t.Fatalf("server saw %d attempts, policy declares 5", got)
+	}
+}
+
+func TestGRPCRetryPolicyCoversLeaderElection(t *testing.T) {
+	t.Parallel()
+
+	var config struct {
+		MethodConfig []struct {
+			RetryPolicy struct {
+				MaxAttempts       int     `json:"MaxAttempts"`
+				InitialBackoff    string  `json:"InitialBackoff"`
+				MaxBackoff        string  `json:"MaxBackoff"`
+				BackoffMultiplier float64 `json:"BackoffMultiplier"`
+			} `json:"retryPolicy"`
+		} `json:"methodConfig"`
+	}
+	if err := json.Unmarshal([]byte(GRPCRetryPolicy), &config); err != nil {
+		t.Fatal(err)
+	}
+	if len(config.MethodConfig) != 1 {
+		t.Fatalf("method configs = %d, want 1", len(config.MethodConfig))
+	}
+	policy := config.MethodConfig[0].RetryPolicy
+	initial, err := time.ParseDuration(policy.InitialBackoff)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maximum, err := time.ParseDuration(policy.MaxBackoff)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy.MaxAttempts != 5 || initial <= 0 || maximum < initial || policy.BackoffMultiplier < 1 {
+		t.Fatalf("invalid retry budget: %+v", policy)
+	}
+
+	var budget time.Duration
+	backoff := initial
+	for range policy.MaxAttempts - 1 {
+		budget += min(backoff, maximum)
+		backoff = time.Duration(float64(backoff) * policy.BackoffMultiplier)
+	}
+	// grpc-go adds up to 20% jitter. Even at the low end, the policy must
+	// outlast a two-second election at the default Raft settings.
+	if minimum := budget * 8 / 10; minimum < 2*time.Second {
+		t.Fatalf("minimum backoff budget = %s, want at least 2s", minimum)
 	}
 }
