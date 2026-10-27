@@ -60,6 +60,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/network"
+	"github.com/formancehq/ledger/v3/internal/pkg/reconciler"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
@@ -693,8 +694,8 @@ func Module() fx.Option {
 
 				return clusterhealth.NewGRPCHealthUpdater(n, hs, clusterPolicyReady, rs.ReadProjectionHealthy)
 			},
-			func(admission ctrl.Admission, store *dal.Store, builder *plan.Builder, cfg Config, raftNode *node.Node, logger logging.Logger) *ClusterPolicyReconciler {
-				return NewClusterPolicyReconciler(func(ctx context.Context) {
+			func(admission ctrl.Admission, store *dal.Store, builder *plan.Builder, cfg Config, raftNode *node.Node, logger logging.Logger) *reconciler.Reconciler {
+				return reconciler.New(func(ctx context.Context) {
 					if !raftNode.IsLeader() {
 						return
 					}
@@ -711,7 +712,7 @@ func Module() fx.Option {
 						return
 					}
 					reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger, raftNode.CapabilityMembers)
-				})
+				}, clusterPolicyReconcileInterval)
 			},
 		),
 		fx.Decorate(func(
@@ -944,7 +945,7 @@ func Module() fx.Option {
 				mirrorManager *mirror.Manager,
 				backupOrchestrator *backupapp.Orchestrator,
 				healthChecker *clusterhealth.HealthChecker,
-				reconciler *ClusterPolicyReconciler,
+				reconciler *reconciler.Reconciler,
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
@@ -1039,7 +1040,7 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, manager *mirror.Manager) {
 				lc.Append(worker.FxHook(manager))
 			},
-			func(lc fx.Lifecycle, reconciler *ClusterPolicyReconciler) {
+			func(lc fx.Lifecycle, reconciler *reconciler.Reconciler) {
 				lc.Append(worker.FxHook(reconciler))
 			},
 			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node, store *dal.Store, machine *state.Machine, builder *plan.Builder) {
@@ -1479,7 +1480,7 @@ func tryRefreshMembershipForStartupWithTimeout(ctx context.Context, cfg Config, 
 
 	// Preserve cancellation of the lifecycle itself as a hard error. Only the
 	// timeout introduced for this bounded attempt is transient.
-	if ctx.Err() == nil && errors.Is(attemptCtx.Err(), context.DeadlineExceeded) {
+	if ctx.Err() == nil && (errors.Is(attemptCtx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded)) {
 		return fmt.Errorf("%w: synchronous refresh attempt exceeded %s: %w", errMembershipRefreshTransient, timeout, err)
 	}
 
@@ -1883,9 +1884,14 @@ func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, build
 	}
 }
 
+// clusterPolicyReconcileInterval is how often the leader re-checks the applied
+// cluster policy against the desired one. Short so a fresh leader commits the
+// policy — and thereby opens write readiness — promptly.
+const clusterPolicyReconcileInterval = time.Second
+
 // reconcileClusterPolicy drives the replicated cluster policy toward the desired
 // revision. It gates on leadership itself and is safe to call repeatedly: the
-// ClusterPolicyReconciler invokes it on a ticker so a transient proposal failure
+// generic reconciler invokes it on a ticker so a transient proposal failure
 // self-heals on the next tick. Unlike the cluster config, the policy flows
 // through AdmitClusterPolicy as an internal audited SetClusterPolicy order so
 // the checker can re-derive it; the write-readiness gate exempts this
