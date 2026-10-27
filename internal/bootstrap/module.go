@@ -1911,13 +1911,15 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		}
 	}
 
-	// The operator-controlled revision is an independent monotonic guard.  A
+	// The operator-controlled revision is an independent monotonic guard. A
 	// capability-only reconciliation may advance a policy revision, but it must
 	// never make a stale leader's ordinary configuration look newer than the
-	// revision it was configured to own.  Check this before deriving capability
-	// activations; otherwise a stale leader can manufacture appliedRev+1.
+	// revision it was configured to own. A higher applied revision is therefore
+	// acceptable only when the operator-controlled fields still match; this lets
+	// later capability-only reconciliations continue without requiring another
+	// flag bump.
 	appliedRev := applied.GetRevision()
-	if applied != nil && appliedRev > cfg.ClusterPolicyRevision {
+	if applied != nil && appliedRev > cfg.ClusterPolicyRevision && !sameClusterPolicyConfiguration(applied, desired) {
 		return
 	}
 	if applied != nil && appliedRev == cfg.ClusterPolicyRevision && !sameClusterPolicyConfiguration(applied, desired) {
@@ -1955,7 +1957,7 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 			}
 			desired.CapabilityActivations = append(desired.CapabilityActivations, &commonpb.CapabilityActivation{Id: uint32(id), Active: true})
 		}
-		if applied != nil && !applied.EqualVT(desired) && desired.GetRevision() <= applied.GetRevision() {
+		if applied != nil && !sameClusterPolicyPayload(applied, desired) && desired.GetRevision() <= applied.GetRevision() {
 			desired.Revision = applied.GetRevision() + 1
 		}
 	}
@@ -2002,6 +2004,22 @@ func sameClusterPolicyConfiguration(a, b *commonpb.ClusterPolicy) bool {
 	right.Revision = 0
 	left.CapabilityActivations = nil
 	right.CapabilityActivations = nil
+
+	return left.EqualVT(right)
+}
+
+// sameClusterPolicyPayload compares the complete policy while deliberately
+// ignoring only the revision. A revision-only difference is not a reason to
+// manufacture another revision during capability reconciliation.
+func sameClusterPolicyPayload(a, b *commonpb.ClusterPolicy) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	left := a.CloneVT()
+	right := b.CloneVT()
+	left.Revision = 0
+	right.Revision = 0
 
 	return left.EqualVT(right)
 }
