@@ -359,7 +359,9 @@ Raft writer lowers logical execution and policy payloads to the released wire
 fields; inspect the shared runner and all producers for bypasses. Decoder
 support must not silently enable payload-only writes. Historical and payload
 replay must preserve audit bytes, declared coverage, technical-only HLC behavior,
-and checkpoint boundaries. Validate every envelope before any entry in a decoded
-batch mutates state. Policy restore evidence must include a non-empty delta and
-the next policy outcome, not only a checkpoint round trip. See
+and checkpoint boundaries. Reject proposals mixing legacy fields with a payload
+before any entry in a decoded batch mutates state. The compatibility adapter
+does not revalidate payload composition or caller metadata. Policy restore
+evidence must include a non-empty delta and the next policy outcome, not only
+a checkpoint round trip. See
 [proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md).
