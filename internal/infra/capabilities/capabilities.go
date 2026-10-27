@@ -108,16 +108,6 @@ func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) 
 	return nil, nil
 }
 
-// StampProposal replaces required_capabilities with the deterministic result
-// of RequiredCapabilities. Producers call this after rebuilding the final
-// execution plan and immediately before marshaling; repeated calls are safe on
-// retry and rebuild paths.
-func StampProposal(proposal *raftcmdpb.Proposal) error {
-	_, err := PrepareProposal(proposal)
-
-	return err
-}
-
 // PrepareProposal derives and stamps the semantic capability declaration and
 // returns the typed result for the caller to pass alongside the serialized
 // proposal. Keeping the result avoids decoding the same proposal again during

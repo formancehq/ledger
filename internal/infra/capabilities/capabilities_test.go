@@ -69,9 +69,11 @@ func TestEvaluateAllowsActiveCapabilityWhenAllMembersAdvertiseAndReachIt(t *test
 	require.Empty(t, decision.Blockers)
 }
 
-func TestStampProposalClearsFutureDeclarations(t *testing.T) {
+func TestPrepareProposalClearsFutureDeclarations(t *testing.T) {
 	proposal := &raftcmdpb.Proposal{RequiredCapabilities: []uint32{99}}
-	require.NoError(t, StampProposal(proposal))
+	prepared, err := PrepareProposal(proposal)
+	require.NoError(t, err)
+	require.Empty(t, prepared.RequiredCapabilities())
 	require.Empty(t, proposal.GetRequiredCapabilities())
 }
 
