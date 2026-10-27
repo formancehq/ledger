@@ -97,16 +97,11 @@ func (s *Service) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 }
 
 // JoinAsLearner registers a node that is booting with an empty WAL and no
-// CLUSTER_JOINED marker. Keeping this entry point distinct from the admin
-// AddLearner operation preserves EN-1436's stale-progress fail-fast without
-// inferring caller intent from a missing instanceID sentinel.
-func (s *Service) JoinAsLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	return s.JoinAsLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, nil)
-}
-
-// JoinAsLearnerWithCapabilities is the bootstrap path carrying the joining
-// binary's capability evidence through the committed ConfChange.
-func (s *Service) JoinAsLearnerWithCapabilities(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
+// CLUSTER_JOINED marker, carrying the joining binary's capability evidence
+// through the committed ConfChange. Keeping this entry point distinct from the
+// admin AddLearner operation preserves EN-1436's stale-progress fail-fast
+// without inferring caller intent from a missing instanceID sentinel.
+func (s *Service) JoinAsLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
 	return s.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs, true)
 }
 
