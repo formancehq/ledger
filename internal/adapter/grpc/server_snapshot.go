@@ -28,6 +28,11 @@ type SnapshotDonor interface {
 	SnapshotReadiness() (lastPersistedIndex uint64, resynchronizing bool)
 }
 
+type snapshotCheckpointStore interface {
+	CreateTemporaryCheckpoint(name string) (string, error)
+	RemoveTemporaryCheckpoint(name string) error
+}
+
 // SnapshotServiceServerImpl implements the SnapshotService gRPC server.
 type SnapshotServiceServerImpl struct {
 	snapshotpb.UnimplementedSnapshotServiceServer
@@ -43,9 +48,11 @@ type SnapshotServiceServerImpl struct {
 }
 
 type snapshotPreparation struct {
-	done chan struct{}
-	resp *snapshotpb.PrepareSnapshotResponse
-	err  error
+	done            chan struct{}
+	minAppliedIndex uint64
+	resp            *snapshotpb.PrepareSnapshotResponse
+	err             error
+	waiters         atomic.Int32
 }
 
 // NewSnapshotServiceServer creates a new SnapshotServiceServer.
@@ -142,15 +149,19 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 		if nodeID != "" {
 			if existing, ok := s.preparations[nodeID]; ok {
 				if existing.minAppliedIndex >= minAppliedIndex {
+					existing.waiters.Add(1)
 					s.prepareMu.Unlock()
+					defer existing.waiters.Add(-1)
 					select {
 					case <-existing.done:
 						if errors.Is(existing.err, context.Canceled) || errors.Is(existing.err, context.DeadlineExceeded) {
-							if ctx.Err() != nil {
-								return nil, ctx.Err()
+							if err := ctx.Err(); err != nil {
+								return nil, err
 							}
+
 							continue
 						}
+
 						return existing.resp, existing.err
 					case <-ctx.Done():
 						return nil, ctx.Err()
@@ -184,8 +195,15 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 			defer func() { <-s.prepareSlots }()
 		case <-ctx.Done():
 			prep.err = ctx.Err()
+
 			return nil, prep.err
 		}
+		if err := ctx.Err(); err != nil {
+			prep.err = err
+
+			return nil, prep.err
+		}
+
 		break
 	}
 
