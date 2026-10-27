@@ -1385,13 +1385,13 @@ func membershipRefreshHook(cfg Config, logger logging.Logger) fx.Hook {
 				"serviceAddress": cfg.ServiceAdvertiseAddr(),
 			}).Infof("Restart mode: refreshing membership capabilities")
 
-			// Perform one synchronous attempt before the node starts serving. A
+			// Perform one bounded synchronous attempt before the node starts serving. A
 			// permanent rejection (for example a removed incarnation or invalid
 			// identity) must abort startup rather than letting stale WAL membership
 			// evidence escape into the cluster. Only the rolling-upgrade cases that
 			// are explicitly classified as transient are handed to the background
 			// retry loop.
-			err := tryRefreshMembershipOnce(ctx, cfg, cfg.TLSConfig, logger)
+			err := tryRefreshMembershipForStartup(ctx, cfg, cfg.TLSConfig, logger)
 			if err == nil {
 				return nil
 			}
@@ -1420,6 +1420,36 @@ func membershipRefreshHook(cfg Config, logger logging.Logger) fx.Hook {
 			return nil
 		},
 	}
+}
+
+const membershipRefreshStartupTimeout = 5 * time.Second
+
+// tryRefreshMembershipForStartup gives the synchronous startup attempt a
+// bounded context. A leader can accept a RefreshMembership RPC while a Raft
+// proposal is waiting for a quorum; that proposal must not hold the lifecycle
+// start hook until the process-wide startup deadline. Once this attempt times
+// out, the caller can continue with conservative evidence and the lifecycle-
+// owned retry loop can converge when quorum returns.
+func tryRefreshMembershipForStartup(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger) error {
+	return tryRefreshMembershipForStartupWithTimeout(ctx, cfg, tlsCfg, logger, membershipRefreshStartupTimeout)
+}
+
+func tryRefreshMembershipForStartupWithTimeout(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger, timeout time.Duration) error {
+	attemptCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	err := tryRefreshMembershipOnce(attemptCtx, cfg, tlsCfg, logger)
+	if err == nil {
+		return nil
+	}
+
+	// Preserve cancellation of the lifecycle itself as a hard error. Only the
+	// timeout introduced for this bounded attempt is transient.
+	if ctx.Err() == nil && errors.Is(attemptCtx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("%w: synchronous refresh attempt exceeded %s: %v", errMembershipRefreshTransient, timeout, err)
+	}
+
+	return err
 }
 
 // tryAddLearner attempts to register this node as a learner on an existing
