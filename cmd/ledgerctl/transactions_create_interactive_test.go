@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/pterm/pterm"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/term"
 	"google.golang.org/grpc"
@@ -28,6 +30,8 @@ import (
 // terminal state and opens /dev/tty rather than Cobra's input reader.
 func TestTransactionsCreateInteractiveAmount(t *testing.T) {
 	if serverAddress := os.Getenv("LEDGER_TEST_POSTING_SERVER"); serverAddress != "" {
+		// Exercise colored prompts even when the parent test runs without a TTY.
+		pterm.EnableColor()
 		root := newRootCommand()
 		root.SetArgs([]string{
 			"transactions", "create", "--ledger", "fresh",
@@ -115,11 +119,19 @@ func TestTransactionsCreateInteractiveAmount(t *testing.T) {
 				}
 			}()
 			var transcript strings.Builder
+			colorCodes := regexp.MustCompile(`\x1b\[[0-9;]*m`)
 			matchedUntil := 0
 			expect := func(text string) {
 				t.Helper()
-				for !strings.Contains(transcript.String()[matchedUntil:], text) {
-					if text == "posting input rejected" && strings.Contains(transcript.String()[matchedUntil:], "Asset (e.g.") {
+				for {
+					// Terminal colors may split the prompt from its typed value.
+					plain := colorCodes.ReplaceAllString(transcript.String(), "")
+					if offset := strings.Index(plain[matchedUntil:], text); offset >= 0 {
+						matchedUntil += offset + len(text)
+
+						return
+					}
+					if text == "posting input rejected" && strings.Contains(plain[matchedUntil:], "Asset (e.g.") {
 						t.Fatalf("invalid amount reached the asset prompt instead of returning a validation error:\n%s", transcript.String())
 					}
 					select {
@@ -130,7 +142,6 @@ func TestTransactionsCreateInteractiveAmount(t *testing.T) {
 						t.Fatalf("waiting for %q: %v\n%s", text, ctx.Err(), transcript.String())
 					}
 				}
-				matchedUntil += strings.Index(transcript.String()[matchedUntil:], text) + len(text)
 			}
 			send := func(text string) {
 				t.Helper()
