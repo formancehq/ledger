@@ -8,6 +8,12 @@ This document compares the POC's API with the original Formance ledger API and d
 > intentionally unversioned. The original ledger's `/v2` is **not** preserved
 > by this POC — there is no compatibility shim.
 
+Every `/v3` operation rejects unknown query parameter names with HTTP 400
+`INVALID_REQUEST` before execution. The removed account `prefix` and transaction
+`reference` selectors use `filter`; HTTP does not support `checkpointId` for
+pinned reads, which remain available through gRPC. The unversioned ops routes
+retain their existing query handling. See [query parameter validation](../architecture/subsystems/api/http-api.md#query-parameter-validation).
+
 For the per-operation Ledger v2 → v3 path mapping, see
 [`v2-to-v3-endpoint-map.json`](v2-to-v3-endpoint-map.json). Update it in the same
 change when a route it names is renamed or removed.

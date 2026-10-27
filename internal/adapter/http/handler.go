@@ -100,10 +100,10 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 		})
 
 		r.With(contentTypeMiddleware, utf8PathParamValidator).Group(func(r chi.Router) {
-			r.Get("/health", knownQuery(server.handleHealth))
-			r.Get("/livez", knownQuery(server.handleLivez))
-			r.Get("/readyz", knownQuery(server.handleReadyz))
-			r.Get("/clusterz", knownQuery(server.handleClusterz))
+			r.Get("/health", server.handleHealth)
+			r.Get("/livez", server.handleLivez)
+			r.Get("/readyz", server.handleReadyz)
+			r.Get("/clusterz", server.handleClusterz)
 			r.Get("/_info", infoHandler(info))
 		})
 	}

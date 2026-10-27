@@ -49,7 +49,8 @@ Each `/v3` route accepts only the query parameter names declared for that
 operation in `openapi.yml`. An unknown name, including a misspelling or a
 retired option, returns HTTP 400 with `errorCode: "INVALID_REQUEST"` before
 the operation executes. The error names the rejected parameter. Malformed
-query encoding also returns 400.
+query encoding also returns 400. Unversioned ops routes retain their existing
+query handling; this validation applies to business routes under `/v3`.
 
 For migration from older APIs, use `filter` instead of the removed `prefix`
 parameter on account lists or `reference` parameter on transaction lists.

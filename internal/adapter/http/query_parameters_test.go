@@ -67,6 +67,15 @@ func TestKnownQuery_AllowsDeclaredParameters(t *testing.T) {
 	require.True(t, called)
 }
 
+func TestQueryParameters_LeaveOpsProbesUnchanged(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), internalauth.AuthConfig{}, version.Info{})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/livez?unexpected=1", nil))
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+}
+
 // The OpenAPI operation declarations are the source of truth for existing
 // names. Probe every documented parameter through the real router so a route
 // allow-list cannot accidentally remove a supported option.
