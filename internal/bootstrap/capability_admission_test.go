@@ -11,10 +11,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func TestValidateCapabilityActivationEvidenceRejectsIncompleteMembership(t *testing.T) {
+func TestValidateActiveRejectsIncompleteMembership(t *testing.T) {
 	t.Parallel()
 
-	err := validateCapabilityActivationEvidence(
+	err := capabilities.ValidateActive(
 		[]capabilities.CapabilityID{7},
 		[]capabilities.CapabilityID{7},
 		[]capabilities.Member{{NodeID: 1, Role: capabilities.Voter}},
@@ -23,16 +23,16 @@ func TestValidateCapabilityActivationEvidenceRejectsIncompleteMembership(t *test
 	require.ErrorIs(t, err, capabilities.ErrCapabilityUnsupported)
 }
 
-func TestValidateCapabilityActivationEvidenceAcceptsNoActivation(t *testing.T) {
+func TestValidateActiveAcceptsNoActivation(t *testing.T) {
 	t.Parallel()
 
-	require.NoError(t, validateCapabilityActivationEvidence(nil, nil, nil))
+	require.NoError(t, capabilities.ValidateActive(nil, nil, nil))
 }
 
-func TestValidateCapabilityActivationEvidenceAcceptsConvergedMembership(t *testing.T) {
+func TestValidateActiveAcceptsConvergedMembership(t *testing.T) {
 	t.Parallel()
 
-	require.NoError(t, validateCapabilityActivationEvidence(
+	require.NoError(t, capabilities.ValidateActive(
 		[]capabilities.CapabilityID{7},
 		[]capabilities.CapabilityID{7},
 		[]capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Capabilities: []capabilities.CapabilityID{7}}},

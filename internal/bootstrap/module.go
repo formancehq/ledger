@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -82,24 +81,8 @@ import (
 // It is used to decide whether a joining node needs to register as a learner.
 type walFreshStart bool
 
-func activeCapabilityIDs(policy *commonpb.ClusterPolicy) []uint32 {
-	if policy == nil {
-		return nil
-	}
-
-	required := make([]uint32, 0, len(policy.GetCapabilityActivations()))
-	for _, activation := range policy.GetCapabilityActivations() {
-		if activation != nil && activation.GetActive() {
-			required = append(required, activation.GetId())
-		}
-	}
-	slices.Sort(required)
-
-	return required
-}
-
 func publishCapabilityGate(membership *raftmembership.Membership, policy *commonpb.ClusterPolicy) error {
-	return membership.SetCapabilityGate(activeCapabilityIDs(policy))
+	return membership.SetCapabilityGate(capabilities.ActiveIDs(policy))
 }
 
 // nodeProvideResult groups the outputs of the Node provider so we can also
@@ -132,7 +115,7 @@ func newClusterPolicyReconciler(admission ctrl.Admission, store *dal.Store, buil
 			return
 		}
 		if policy, err := query.ReadClusterPolicy(store); err == nil {
-			if err := raftNode.SetCapabilityGate(activeCapabilityIDs(policy)); err != nil {
+			if err := raftNode.SetCapabilityGate(capabilities.ActiveIDs(policy)); err != nil {
 				logger.WithFields(map[string]any{"error": err}).Errorf("Invalid capability gate in committed cluster policy")
 
 				return
@@ -1150,24 +1133,6 @@ func Module() fx.Option {
 	)
 }
 
-func validateCapabilityActivationEvidence(supported, active []capabilities.CapabilityID, members []capabilities.Member) error {
-	if len(active) == 0 {
-		return nil
-	}
-
-	ready, err := capabilities.Ready(supported, members)
-	if err != nil {
-		return fmt.Errorf("validating capability activation evidence: %w", err)
-	}
-	for _, required := range active {
-		if !slices.Contains(ready, required) {
-			return fmt.Errorf("%w: capability %d is not acknowledged by every current member", capabilities.ErrCapabilityUnsupported, required)
-		}
-	}
-
-	return nil
-}
-
 // validateProposalCapabilityAdmission is the production proposal gate shared
 // by every Node.Propose caller. The proposal carries typed declarations derived
 // from the final command, while policy and membership are the committed
@@ -1177,7 +1142,7 @@ func validateProposalCapabilityAdmission(policy *commonpb.ClusterPolicy, proposa
 		return errors.New("raft proposal gate received a nil proposal")
 	}
 
-	if err := validateCapabilityActivationEvidence(
+	if err := capabilities.ValidateActive(
 		capabilities.SupportedIDs(),
 		proposal.ActivePolicyCapabilities(),
 		members,
@@ -1519,7 +1484,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
 		ServiceAddress: cfg.ServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
-		Capabilities:   capabilityIDsAsUint32(capabilities.SupportedIDs()),
+		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 	}
 
 	dialPeer, err := newMembershipPeerDialer(cfg, tlsCfg)
@@ -1701,7 +1666,7 @@ func tryRefreshMembershipOnce(ctx context.Context, cfg Config, tlsCfg TLSConfig,
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
 		ServiceAddress: cfg.ServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
-		Capabilities:   capabilityIDsAsUint32(capabilities.SupportedIDs()),
+		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 	}
 
 	dialPeer, err := newMembershipPeerDialer(cfg, tlsCfg)
@@ -1764,15 +1729,6 @@ func isRetryableMembershipRefreshError(err error) bool {
 	// introduced RPC; treating it as transient lets the node keep trying newer
 	// peers without making the startup hook fail immediately.
 	return st.Code() == codes.Unimplemented
-}
-
-func capabilityIDsAsUint32(ids []capabilities.CapabilityID) []uint32 {
-	result := make([]uint32, len(ids))
-	for i, id := range ids {
-		result[i] = uint32(id)
-	}
-
-	return result
 }
 
 // isStaleRaftProgress reports whether a FailedPrecondition status carries the

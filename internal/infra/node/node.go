@@ -98,15 +98,6 @@ var (
 	ErrNodeSyncing = errors.New("node is syncing")
 )
 
-func capabilityIDsAsUint32(ids []capabilities.CapabilityID) []uint32 {
-	result := make([]uint32, len(ids))
-	for i, id := range ids {
-		result[i] = uint32(id)
-	}
-
-	return result
-}
-
 // StaleRaftProgressReason is the machine-readable ErrorInfo reason attached to
 // the FailedPrecondition status a leader returns when a JoinAsLearner call hits
 // ErrNodeStaleProgress (EN-1436). The joining node matches on it to tell the
@@ -704,7 +695,7 @@ func NewNode(
 	// writes self for Bootstrap/Restore, but the restart branch never
 	// did — that's the gap the previous bootstrap hook used to cover
 	// before transport wiring moved into Membership.
-	if err := membership.RegisterWithEvidence(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilityIDsAsUint32(capabilities.SupportedIDs())); err != nil {
+	if err := membership.RegisterWithEvidence(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
 		return nil, fmt.Errorf("refreshing self in peer store: %w", err)
 	}
 
@@ -3985,7 +3976,7 @@ func initialJoinVoters(peers []Peer, selfID uint64) []uint64 {
 // through WriteConfChange).
 func registerInitialPeers(m *membership.Membership, cfg NodeConfig, includeSelf bool) error {
 	if includeSelf {
-		if err := m.RegisterWithEvidence(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilityIDsAsUint32(capabilities.SupportedIDs())); err != nil {
+		if err := m.RegisterWithEvidence(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
 			return fmt.Errorf("persisting self in peer store: %w", err)
 		}
 	}
