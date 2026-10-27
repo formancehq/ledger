@@ -83,6 +83,22 @@ func TestFromPolicyRoundTrip(t *testing.T) {
 	require.NoError(t, state.Validate())
 }
 
+func TestActiveIDsReturnsSortedActiveIDs(t *testing.T) {
+	t.Parallel()
+
+	policy := &commonpb.ClusterPolicy{
+		CapabilityActivations: []*commonpb.CapabilityActivation{
+			{Id: 9, Active: true},
+			nil,
+			{Id: 3, Active: false},
+			{Id: 4, Active: true},
+		},
+	}
+
+	require.Equal(t, []uint32{4, 9}, ActiveIDs(policy))
+	require.Nil(t, ActiveIDs(nil))
+}
+
 func TestReadyReturnsIntersectionAcrossMembers(t *testing.T) {
 	members := []Member{
 		{NodeID: 1, Role: Voter, Capabilities: []CapabilityID{1, 2}},

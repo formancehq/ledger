@@ -153,6 +153,36 @@ func FromPolicy(policy *commonpb.ClusterPolicy) State {
 	return s
 }
 
+// ActiveIDs returns the active capability IDs from a committed policy in
+// deterministic order. Nil activations and inactive entries are ignored so
+// callers can pass the result directly to membership admission gates.
+func ActiveIDs(policy *commonpb.ClusterPolicy) []uint32 {
+	if policy == nil {
+		return nil
+	}
+
+	active := make([]uint32, 0, len(policy.GetCapabilityActivations()))
+	for _, activation := range policy.GetCapabilityActivations() {
+		if activation != nil && activation.GetActive() {
+			active = append(active, activation.GetId())
+		}
+	}
+	slices.Sort(active)
+
+	return active
+}
+
+// IDsAsUint32 converts the typed capability identifiers to their protobuf wire
+// representation at an API boundary.
+func IDsAsUint32(ids []CapabilityID) []uint32 {
+	result := make([]uint32, len(ids))
+	for i, id := range ids {
+		result[i] = uint32(id)
+	}
+
+	return result
+}
+
 func Normalize(ids []CapabilityID) ([]CapabilityID, error) {
 	result := slices.Clone(ids)
 	slices.Sort(result)
@@ -196,6 +226,26 @@ func Ready(supported []CapabilityID, members []Member) ([]CapabilityID, error) {
 	}
 
 	return ready, nil
+}
+
+// ValidateActive verifies that every active capability is acknowledged by
+// every current member and is implemented by this binary.
+func ValidateActive(supported, active []CapabilityID, members []Member) error {
+	if len(active) == 0 {
+		return nil
+	}
+
+	ready, err := Ready(supported, members)
+	if err != nil {
+		return fmt.Errorf("validating capability activation evidence: %w", err)
+	}
+	for _, required := range active {
+		if !slices.Contains(ready, required) {
+			return fmt.Errorf("%w: capability %d is not acknowledged by every current member", ErrCapabilityUnsupported, required)
+		}
+	}
+
+	return nil
 }
 
 // Evaluate is pure. Reachability is reported separately from support: a
