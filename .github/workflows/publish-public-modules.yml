@@ -66,5 +66,5 @@ jobs:
 
           # Publish the dependency first so the client is resolvable as soon
           # as its tag becomes visible to the Go module proxy.
-          publish_module_tag "pkg/proto/${version}"
-          publish_module_tag "pkg/client/${version}"
+          publish_module_tag "pkg/proto/v3/${version}"
+          publish_module_tag "pkg/client/v3/${version}"

@@ -65,8 +65,8 @@ jobs:
           base_branch="release/public-modules-base-${version}"
           branch="release/public-modules-${version}"
 
-          proto_tag_exists="$(git ls-remote --tags origin "refs/tags/pkg/proto/${version}" | awk 'END { print $1 }')"
-          client_tag_exists="$(git ls-remote --tags origin "refs/tags/pkg/client/${version}" | awk 'END { print $1 }')"
+          proto_tag_exists="$(git ls-remote --tags origin "refs/tags/pkg/proto/v3/${version}" | awk 'END { print $1 }')"
+          client_tag_exists="$(git ls-remote --tags origin "refs/tags/pkg/client/v3/${version}" | awk 'END { print $1 }')"
           if [[ -n "$proto_tag_exists" && -n "$client_tag_exists" ]]; then
             echo "Public modules ${version} are already published"
             exit 0
