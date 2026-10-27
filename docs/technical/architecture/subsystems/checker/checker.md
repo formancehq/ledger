@@ -174,6 +174,11 @@ Three building blocks under `internal/domain/replay/`:
 
 Replay reads from a Pebble-backed `replayStore` with merge operators so a multi-million-row accumulation stays `O(1)` per write rather than `O(log n)`.
 
+The chain-verified FSM pass also uses an isolated `AuditReplayer` store. That
+directory is process-local and disposable: it is never reopened after a crash
+and is removed when the check finishes. It therefore disables Pebble's WAL;
+the live primary store keeps its normal WAL and recovery guarantees.
+
 The transaction merge operator is associative. On a partial merge — Pebble compacting operands without the base value, `includesBase=false` — it defers the ordered ops as a `txOpBatch` instead of collapsing them into a finalized snapshot: a metadata delete has no snapshot representation, so collapsing would silently drop it and a later fold with the base could not undo it. Only a base-inclusive fold (at read, or the LSM bottom) resolves to a finalized `TransactionState`.
 
 ## Pass-by-pass derivation flow

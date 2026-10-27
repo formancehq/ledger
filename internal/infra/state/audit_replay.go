@@ -61,7 +61,13 @@ func NewAuditReplayer(logger logging.Logger, auditKey string) (*AuditReplayer, e
 
 	meterProvider := noop.NewMeterProvider()
 	meter := meterProvider.Meter("checker.audit_replay")
-	store, err := dal.NewStore(dir, logger, meter, dal.DefaultConfig())
+	storeConfig := dal.DefaultConfig()
+	// The audit replayer is disposable: it is never reopened or used as a
+	// recovery source after a process restart. Avoiding a WAL prevents a failed
+	// WAL rotation from taking down CheckStore while preserving same-process
+	// read-after-write semantics for the replay.
+	storeConfig.DisableWAL = true
+	store, err := dal.NewStore(dir, logger, meter, storeConfig)
 	if err != nil {
 		_ = os.RemoveAll(dir)
 
