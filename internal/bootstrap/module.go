@@ -395,31 +395,11 @@ func Module() fx.Option {
 					if raftNode == nil {
 						return errors.New("raft proposal gate is not initialized")
 					}
-					// A policy activation is itself a consensus-sensitive write.  Do
-					// not rely solely on the periodic reconciler: callers that submit a
-					// SetClusterPolicy command must carry the same all-member evidence
-					// before the command can enter Raft.  NewProposal derives this
-					// typed candidate from the final command, so this check does not
-					// decode the serialized proposal or trust caller-supplied metadata.
-					activePolicyCapabilities := proposal.ActivePolicyCapabilities()
 					// Take one immutable membership snapshot for both policy checks.  The
 					// gate runs under the serialized proposal/index boundary; taking two
 					// snapshots here needlessly doubles lock, map-copy and allocation cost.
 					members := raftNode.CapabilityMembers()
-					if err := validateCapabilityActivationEvidence(capabilities.SupportedIDs(), activePolicyCapabilities, members); err != nil {
-						return err
-					}
-
-					state := capabilities.FromPolicy(policy)
-					if err := state.Validate(); err != nil {
-						return err
-					}
-					decision := capabilities.Evaluate(state, proposal.RequiredCapabilities(), false, members)
-					if !decision.Allowed {
-						return fmt.Errorf("%w: %s", capabilities.ErrCapabilityUnsupported, decision.Reason)
-					}
-
-					return nil
+					return validateProposalCapabilityAdmission(policy, proposal, members)
 				}
 
 				n, err := node.NewNode(
@@ -1182,6 +1162,35 @@ func validateCapabilityActivationEvidence(supported, active []capabilities.Capab
 	return nil
 }
 
+// validateProposalCapabilityAdmission is the production proposal gate shared
+// by every Node.Propose caller. The proposal carries typed declarations derived
+// from the final command, while policy and membership are the committed
+// snapshots captured at the serialized admission boundary.
+func validateProposalCapabilityAdmission(policy *commonpb.ClusterPolicy, proposal *node.Proposal, members []capabilities.Member) error {
+	if proposal == nil {
+		return errors.New("raft proposal gate received a nil proposal")
+	}
+
+	if err := validateCapabilityActivationEvidence(
+		capabilities.SupportedIDs(),
+		proposal.ActivePolicyCapabilities(),
+		members,
+	); err != nil {
+		return err
+	}
+
+	state := capabilities.FromPolicy(policy)
+	if err := state.Validate(); err != nil {
+		return err
+	}
+	decision := capabilities.Evaluate(state, proposal.RequiredCapabilities(), false, members)
+	if !decision.Allowed {
+		return fmt.Errorf("%w: %s", capabilities.ErrCapabilityUnsupported, decision.Reason)
+	}
+
+	return nil
+}
+
 // JoinAuthError is returned when a joining node is rejected by the target
 // cluster's inter-node RaftServer with codes.Unauthenticated. This is always
 // a cluster-secret misconfiguration (EN-1080): the join flow carries no user
@@ -1901,6 +1910,22 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 			}
 		}
 	}
+
+	// The operator-controlled revision is an independent monotonic guard.  A
+	// capability-only reconciliation may advance a policy revision, but it must
+	// never make a stale leader's ordinary configuration look newer than the
+	// revision it was configured to own.  Check this before deriving capability
+	// activations; otherwise a stale leader can manufacture appliedRev+1.
+	appliedRev := applied.GetRevision()
+	if applied != nil && appliedRev > cfg.ClusterPolicyRevision {
+		return
+	}
+	if applied != nil && appliedRev == cfg.ClusterPolicyRevision && !sameClusterPolicyConfiguration(applied, desired) {
+		logger.Errorf("cluster policy revision %d conflicts with the configured policy; refusing to overwrite it", appliedRev)
+
+		return
+	}
+
 	if len(memberReaders) > 0 {
 		ready, readyErr := capabilities.Ready(capabilities.SupportedIDs(), memberReaders[0]())
 		if readyErr != nil {
@@ -1935,8 +1960,6 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		}
 	}
 
-	appliedRev := applied.GetRevision()
-
 	switch {
 	case appliedRev > desired.GetRevision():
 		// A newer policy is already applied; the FSM would reject this as stale.
@@ -1962,6 +1985,25 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		// the next tick retries while this node stays leader.
 		logger.WithFields(map[string]any{"error": err}).Errorf("Cluster policy proposal failed; will retry")
 	}
+}
+
+// sameClusterPolicyConfiguration compares the operator-controlled fields while
+// deliberately ignoring capability activations. Capabilities are reconciled
+// from membership evidence and may legitimately require a revision bump; all
+// other fields must remain protected by the configured revision.
+func sameClusterPolicyConfiguration(a, b *commonpb.ClusterPolicy) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	left := a.CloneVT()
+	right := b.CloneVT()
+	left.Revision = 0
+	right.Revision = 0
+	left.CapabilityActivations = nil
+	right.CapabilityActivations = nil
+
+	return left.EqualVT(right)
 }
 
 // buildResponseSigner returns the Ed25519 response signer for the gRPC
