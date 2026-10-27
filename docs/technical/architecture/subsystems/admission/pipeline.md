@@ -171,11 +171,16 @@ and `C` distinct ledger creations, admission scans for promotion candidates
 and, only when one exists, scans once more to collect created names. This uses
 `O(N)` CPU and `O(C + P)` temporary memory before opening any store read
 handle. Each promotion opens and closes its own snapshot, reads one ledger row,
-and, for a live mirror,
-performs three point reads for cursor, source head, and sync error. A keyed
-retry of an already-normal ledger adds one idempotency-key point read. There
-are no range scans or per-promotion batch scans. Batches without promotion do
-only the first in-memory pass, allocate no map, and open no snapshot.
+and, for a live mirror, performs three point reads for cursor, source head, and
+sync error. A keyed retry adds one idempotency-key point read. If that key holds a frozen failure
+for the same batch while the ledger remains a mirror, admission reconstructs
+the recorded error instead of allowing current sync progress to replace it.
+This path also reads the last applied HLC to check the frozen expiry. The batch
+hash is computed once on this uncommon path, keeping the scan bound
+at `O(N + P)`. Expired keys and keys for different batches still face the
+catch-up gate. There are no range scans or per-promotion batch scans. Batches
+without promotion do only the first in-memory pass, allocate no map, and open
+no snapshot.
 
 The public gRPC service caps an encoded request at 64 MiB; there is no separate
 promotion-count limit. The supported work budget is therefore linear in the
@@ -202,10 +207,10 @@ asynchronous check would not prevent an unsafe proposal, so neither is used.
 
 Two-stage check:
 
-- **Admission**: the idempotency key's *shape* is validated (UTF-8, length ≤ 256). The key becomes part of the proposal's `plan.Coverage` — on its separate `IdempotencyKeys` channel, not as a cache attribute — so the FSM can look it up.
+- **Admission**: the idempotency key's *shape* is validated (UTF-8, length ≤ 256). The key becomes part of the proposal's `plan.Coverage` — on its separate `IdempotencyKeys` channel, not as a cache attribute — so the FSM can look it up. The mirror-promotion guard also reads a matching frozen failure to return that prior error if the ledger remains a mirror; this is an early replay, with no new proposal or audit entry.
 - **FSM**: `processProposal` consults the replay cache (`SubIdempKeys` in Pebble). A hit returns the stored outcome reference (sequence + outcome) without re-executing the orders. A miss falls through to normal processing, and the outcome gets recorded under the same key on the way out.
 
-This split exists because the *uniqueness* check requires committed state — admission can only validate that the key is well-formed.
+The usual uniqueness check requires committed state and remains in the FSM.
 
 ## Validation: structural vs behavioural
 
