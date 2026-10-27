@@ -2,7 +2,7 @@
   description = "A Nix-flake-based Go 1.27 development environment";
 
   inputs = {
-    # Keep golangci-lint 2.15.0; stable currently provides 2.13.2.
+    # Keep golangci-lint 2.15.0; stable currently provides 2.12.2.
     go-tooling = {
       url = "github:NixOS/nixpkgs/8cec5ef1131078ea76689e84c362b0ed6a1fb6a1";
       flake = false;

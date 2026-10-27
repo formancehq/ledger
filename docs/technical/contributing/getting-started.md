@@ -41,7 +41,7 @@ Go uses the upstream `go_1_27` package from the locked stable `nixpkgs` input,
 so CI can reuse its binary cache instead of rebuilding an imported compiler
 recipe. Mockgen uses the same Go 1.27 builder so it can load the root module.
 The `go-tooling` input remains only to preserve golangci-lint 2.15.0; the locked
-stable input provides 2.13.2. The stable Go package also preserves Intel macOS
+stable input provides 2.12.2. The stable Go package also preserves Intel macOS
 support, which newer unstable revisions have dropped. Updating stable
 updates the other tools selected from that input; check generated outputs with
 `just pre-commit`. The unstable and NUR inputs remain independently pinned.
