@@ -5003,8 +5003,11 @@ progress, not proof of external delivery: internal or filtered logs can advance
 the cursor without a publish. The human view also shows the error occurrence time.
 Startup errors clear after the sink starts successfully.
 Human, JSON, YAML, and JSON result-file output mask credentials embedded in
-NATS, HTTP, and ClickHouse URLs. Usernames and connection details remain
-visible, while passwords and token-only NATS userinfo display as `****`.
+NATS, HTTP, and ClickHouse URLs. Connection details and usernames paired with
+passwords remain visible. HTTP endpoints use the shared sensitive-URL policy:
+passwords, passwordless userinfo tokens, and credential query values such as
+`access_token` display as `xxxxx`; harmless query controls remain visible.
+NATS and ClickHouse credentials display as `****`.
 
 ```bash
 ledgerctl events list
@@ -5022,6 +5025,8 @@ Add a named event sink configuration. An existing name is rejected; the configur
 
 After a successful update, the displayed configuration applies the same URL
 credential masking as `events list`; the submitted configuration is unchanged.
+This applies to human, JSON, YAML, and JSON result-file output. HTTP HMAC
+secrets retain the `(set)` / `(none)` presence markers.
 
 Currently supported sink types: **NATS JetStream**, **ClickHouse**, **Kafka**, **HTTP**, **Databricks**.
 

@@ -79,18 +79,21 @@ builder to prove the credential reaches its intended RPC input. Omitted referenc
 must preserve the server's default AWS credential chain. Fake clients prove the
 rendered Pod template, not kubelet resolution or actual Pod propagation.
 
-### CLI sink URL credential projection (EN-2062)
+### CLI sink URL credential projection
 
 `ledgerctl events list` and the successful local `events add-sink` summary are
 independent credential-emitting boundaries: a server-side projection does not
 protect the configuration that add-sink renders after submission. Exercise the
 registered commands against a local service fixture with separate canaries for
-NATS password and token userinfo, HTTP password userinfo, and the ClickHouse
-driver's `password` query parameter. Capture human, JSON, YAML, and JSON
-result-file bytes. Require every canary to be absent while retaining sink names,
+NATS password and token userinfo, HTTP password and passwordless token userinfo,
+HTTP credential query parameters, and the ClickHouse driver's `password` query
+parameter. Capture human, JSON, YAML, and JSON result-file bytes. Require every
+raw and URL-encoded canary to be absent while retaining sink names,
 usernames paired with passwords, hosts, topics, and unrelated query controls.
 The add-sink oracle must also prove that the original credential-bearing
-configuration reached `Apply`; output redaction must not mutate business input.
+configuration reached `Apply`, including the exact HTTP endpoint and HMAC
+secret; output redaction must not mutate business input. The registered-command
+oracle lives in `cmd/ledgerctl/events_url_redaction_output_test.go`.
 
 ## Surface inventory required at execution
 

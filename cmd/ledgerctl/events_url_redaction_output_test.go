@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,6 +44,9 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 		natsNoSchemePass   = "nats-schemeless-password"
 		natsNoSchemeToken  = "nats-schemeless-token"
 		httpPassword       = "http-output-password"
+		httpQueryToken     = "http-query-token@private/value"
+		httpUserinfoToken  = "http-userinfo-token@private/value"
+		httpHMACSecret     = "http-output-hmac-secret"
 		clickHousePassword = "clickhouse-output-prefix@clickhouse-output-secret"
 	)
 
@@ -161,10 +165,12 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 	}
 
 	addCases := []struct {
-		name        string
-		flags       []string
-		credentials []string
-		controls    []string
+		name         string
+		flags        []string
+		credentials  []string
+		controls     []string
+		httpEndpoint string
+		httpSecret   string
 	}{
 		{
 			name: "NATS password",
@@ -206,9 +212,30 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 			name: "HTTP password",
 			flags: []string{
 				"--http-endpoint", "https://operator:" + httpPassword + "@hooks.example/events",
+				"--http-secret", httpHMACSecret,
 			},
-			credentials: []string{httpPassword},
-			controls:    []string{"stream", "operator", "hooks.example"},
+			credentials:  []string{httpPassword, httpHMACSecret},
+			controls:     []string{"stream", "operator", "hooks.example"},
+			httpEndpoint: "https://operator:" + httpPassword + "@hooks.example/events",
+			httpSecret:   httpHMACSecret,
+		},
+		{
+			name: "HTTP query token",
+			flags: []string{
+				"--http-endpoint", "https://hooks.example/events?access_token=" + url.QueryEscape(httpQueryToken) + "&mode=live",
+			},
+			credentials:  []string{httpQueryToken, url.QueryEscape(httpQueryToken)},
+			controls:     []string{"stream", "hooks.example/events", "mode=live"},
+			httpEndpoint: "https://hooks.example/events?access_token=" + url.QueryEscape(httpQueryToken) + "&mode=live",
+		},
+		{
+			name: "HTTP passwordless userinfo",
+			flags: []string{
+				"--http-endpoint", "https://" + url.User(httpUserinfoToken).String() + "@hooks.example/events?mode=live",
+			},
+			credentials:  []string{httpUserinfoToken, url.User(httpUserinfoToken).String()},
+			controls:     []string{"stream", "hooks.example/events", "mode=live"},
+			httpEndpoint: "https://" + url.User(httpUserinfoToken).String() + "@hooks.example/events?mode=live",
 		},
 		{
 			name: "ClickHouse query password",
@@ -259,8 +286,16 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 
 				select {
 				case request := <-fixture.applyRequests:
-					for _, credential := range addCase.credentials {
-						assert.Contains(t, request.String(), credential, "Apply must receive the original credential")
+					if addCase.httpEndpoint != "" {
+						require.Len(t, request.GetUnsigned().GetRequests(), 1)
+						httpConfig := request.GetUnsigned().GetRequests()[0].GetAddEventsSink().GetConfig().GetHttp()
+						require.NotNil(t, httpConfig)
+						assert.Equal(t, addCase.httpEndpoint, httpConfig.GetEndpoint(), "Apply must receive the exact original endpoint")
+						assert.Equal(t, addCase.httpSecret, httpConfig.GetSecret(), "Apply must receive the exact original HMAC secret")
+					} else {
+						for _, credential := range addCase.credentials {
+							assert.Contains(t, request.String(), credential, "Apply must receive the original credential")
+						}
 					}
 				default:
 					t.Fatal("events add-sink did not call Apply")
