@@ -70,13 +70,19 @@ func Analyze(source, version string) (result Result, internalErr error) {
 		if !errors.As(err, &ranged) {
 			return Result{}, errors.New("numscript compilation failed internally")
 		}
+		// CompilerError also includes defensive backstops for bugs in
+		// Numscript. Only known source errors may become diagnostics.
+		code := compilerCode(err)
+		if code == "" {
+			return Result{}, errors.New("numscript compilation failed internally")
+		}
 		kind := "compile"
 		var invalidFeature numscript.CompilerInvalidFeature
 		var experimentalFeature numscript.CompilerExperimentalFeature
 		if errors.As(err, &invalidFeature) || errors.As(err, &experimentalFeature) {
 			kind = "feature"
 		}
-		d := Diagnostic{Kind: kind, Code: compilerCode(err), Message: err.Error()}
+		d := Diagnostic{Kind: kind, Code: code, Message: err.Error()}
 		r := ranged.GetRange()
 		d.StartLine, d.StartColumn = coordinate(r.Start.Line), coordinate(r.Start.Character)
 		d.EndLine, d.EndColumn = coordinate(r.End.Line), coordinate(r.End.Character)
@@ -167,7 +173,7 @@ func compilerCode(err error) string {
 		case errors.As(err, &e7):
 			return "INVALID_FEATURE"
 		default:
-			return "COMPILE_ERROR"
+			return ""
 		}
 	}
 }

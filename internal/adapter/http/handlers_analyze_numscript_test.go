@@ -26,6 +26,15 @@ func TestHandleAnalyzeNumscript(t *testing.T) {
 	}
 }
 
+func TestHandleAnalyzeNumscriptInternalCompilerError(t *testing.T) {
+	t.Parallel()
+	request := httptest.NewRequest(http.MethodPost, "/v3/numscripts/analyze", strings.NewReader(`{"source":"balance(@alice, USD)","version":"v1"}`))
+	response := httptest.NewRecorder()
+	(&Server{}).handleAnalyzeNumscript(response, request)
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+	require.NotContains(t, response.Body.String(), "unsupported node")
+}
+
 func TestHandleAnalyzeNumscriptRejectsTrailingAndOversizedBodies(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

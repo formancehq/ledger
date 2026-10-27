@@ -53,6 +53,14 @@ send [USD/2 1] (source = @world destination = @alice)`, "v1", "feature", "INVALI
 	}
 }
 
+func TestAnalyzeInternalCompilerError(t *testing.T) {
+	t.Parallel()
+	result, err := Analyze("balance(@alice, USD)", "v1")
+	require.EqualError(t, err, "numscript compilation failed internally")
+	require.Empty(t, result.Inputs)
+	require.Empty(t, result.Diagnostics)
+}
+
 func TestAnalyzeRejectsUnsafeSourceBeforeParsing(t *testing.T) {
 	t.Parallel()
 

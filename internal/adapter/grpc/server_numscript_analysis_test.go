@@ -23,6 +23,13 @@ func TestAnalyzeNumscriptReadOnlyRPC(t *testing.T) {
 	}
 }
 
+func TestAnalyzeNumscriptInternalCompilerError(t *testing.T) {
+	t.Parallel()
+	response, err := (&BucketServiceServerImpl{}).AnalyzeNumscript(t.Context(), &servicepb.AnalyzeNumscriptRequest{Source: "balance(@alice, USD)", Version: "v1"})
+	require.Nil(t, response)
+	require.EqualError(t, err, "numscript compilation failed internally")
+}
+
 func TestAnalyzeNumscriptConvertsDiagnostics(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
