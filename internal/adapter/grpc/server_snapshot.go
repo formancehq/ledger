@@ -145,6 +145,12 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 					s.prepareMu.Unlock()
 					select {
 					case <-existing.done:
+						if errors.Is(existing.err, context.Canceled) || errors.Is(existing.err, context.DeadlineExceeded) {
+							if ctx.Err() != nil {
+								return nil, ctx.Err()
+							}
+							continue
+						}
 						return existing.resp, existing.err
 					case <-ctx.Done():
 						return nil, ctx.Err()
