@@ -28,6 +28,20 @@ integer schema spans `-9223372036854775808` through `18446744073709551615`,
 matching signed negative and unsigned nonnegative metadata values. See
 [Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
 
+## Transaction metadata address validation
+
+Transaction creation (including bulk) rejects malformed `accountMetadata`
+addresses at admission using the existing `VALIDATION` error contract. When
+several addresses are invalid, the lexicographically smallest invalid address
+selects the typed failure. These structural rejections no longer create an audit
+entry or freeze an idempotency outcome. Valid requests, routes, fields, response
+envelopes and protocol revision 40 are unchanged. Committed entries retain
+processor validation. In v2.4.16, `TransactionRequest.ToCore` in
+`internal/api/bulking/elements.go` forwards account metadata unchanged. The
+stricter v3 address constraint already existed in its processor; this change
+makes the rejection earlier and deterministic to protect replicated audit
+history. See the [rollout restriction](../../ops/upgrades.md#account-metadata-address-validation).
+
 ## Ledger integrity checking
 
 The v3 gRPC `CheckStore` and `ValidateRestore` streams verify canonical and global

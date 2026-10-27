@@ -4248,7 +4248,11 @@ components:
               $ref: '#/components/schemas/MetadataValue'
           description: >-
             Metadata for accounts involved in the transaction (supports typed
-            values). Each account's map is bounded independently. Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
+            values). Account addresses must be nonempty and contain only letters,
+            digits, colons, underscores and hyphens, without empty segments.
+            Malformed addresses are rejected before submission; competing invalid
+            addresses select the lexicographically smallest address.
+            Each account's map is bounded independently. Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
         timestamp:
           type: string
           format: date-time

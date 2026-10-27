@@ -424,6 +424,21 @@ func ValidateAccountAddress(address string) SerializableError {
 	return wrapValidationErr(invariants.ValidateLedgerAccountAddress(address))
 }
 
+// ValidateAccountMetadataAddresses selects the lexicographically smallest
+// invalid address. The selected typed failure is audit-bound during apply and
+// must be independent of Go map iteration, including when the address is empty.
+func ValidateAccountMetadataAddresses(metadata map[string]*commonpb.MetadataMap) SerializableError {
+	var selected string
+	var selectedErr SerializableError
+	for address := range metadata {
+		if err := ValidateAccountAddress(address); err != nil && (selectedErr == nil || address < selected) {
+			selected, selectedErr = address, err
+		}
+	}
+
+	return selectedErr
+}
+
 // metadataFactFailure carries the offending key for errors where its value
 // identifies the invalid entry. The primitive cause retains errors.Is
 // compatibility without being independently serializable.
