@@ -85,6 +85,7 @@
     "A combined snapshot/entry Ready must preserve its entry suffix in live Storage and after WAL reopen before any peer or local storage acknowledgement, retaining the original entries/HardState durability order."
   ],
   "adversarial_questions": [
+    "Does an interrupted cluster command return retryable Unavailable when its Raft run has stopped, including wrapped raft.ErrStopped, while unrelated failures retain their sanitized error classification?",
     "Can one follower Ready contain several removals at a reused ordinal before async FSM submission? Do all identity guards survive canceled foreground waits, delayed cleanup, duplicate observations and restart while fresh identities remain eligible? Does cleanup delete only the original node/index/pointer after durable tombstone verification, and is lookup confined to that ordinal's pending history?",
     "At each transition from follower or candidate to leader, what exact index is drained/applied before leader-only admission, learner promotion, forwarding ownership, and leadership notifications become effective, and can a concurrent step-down reopen a stale path?",
     "What happens when leadership changes after request admission, proposal enqueue, Raft acceptance, quorum commit, ConfChange observation, local durable apply, or immediately before response delivery? Which identity correlates the response or committed-unknown error to the original operation?",

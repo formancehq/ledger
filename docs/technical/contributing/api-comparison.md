@@ -64,6 +64,11 @@ stream requiring endpoint parity.
 
 ## Summary
 
+Cluster commands interrupted by local Raft shutdown now return gRPC
+`Unavailable` rather than a sanitized `Unknown`, allowing retry against a live
+node. This changes no HTTP route, request/response schema, or protocol revision.
+The v2 API has no equivalent Raft cluster-command lifecycle.
+
 ### LedgerInfo reads (EN-2780 / EN-1635)
 
 Get/list use camelCase LedgerInfo properties and typed metadata; mode, enforcement

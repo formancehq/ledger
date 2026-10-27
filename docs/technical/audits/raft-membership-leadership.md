@@ -142,6 +142,11 @@ exceeds its stated operator-owned risk or fails to converge on retry/snapshot.
 
 ### Transport, forwarding, and ReadIndex
 
+An interrupted cluster command on a stopped Raft run must surface as retryable
+gRPC `Unavailable`, including a wrapped `raft.ErrStopped`. Verify the shared
+unary/streaming conversion without classifying unrelated failures as transient;
+those failures retain their sanitized error behavior.
+
 Separate Raft message redelivery from logical request retry. etcd/raft may safely
 receive duplicate or delayed protocol messages; that fact does not make an API
 mutation idempotent. Trace stream authentication, peer/connection replacement,

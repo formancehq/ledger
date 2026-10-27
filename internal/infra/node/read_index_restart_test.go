@@ -41,7 +41,7 @@ func TestReadIndexRestartRejectsOldCertificate(t *testing.T) {
 	h.nodes[2].ReadIndex(oldContext)
 	var oldAcknowledgement *raftpb.Message
 	h.drain(func(m *raftpb.Message) bool {
-		if m.GetType() == raftpb.MsgHeartbeatResp && len(m.Context) != 0 {
+		if m.GetType() == raftpb.MsgHeartbeatResp && len(m.GetContext()) != 0 {
 			if m.GetFrom() == 2 {
 				oldAcknowledgement = m
 			}
@@ -60,14 +60,14 @@ func TestReadIndexRestartRejectsOldCertificate(t *testing.T) {
 	// acknowledging the old read. The new caller therefore has a known leader.
 	h.nodes[1].Tick()
 	h.drain(func(m *raftpb.Message) bool {
-		return m.GetType() != raftpb.MsgHeartbeatResp || len(m.Context) == 0
+		return m.GetType() != raftpb.MsgHeartbeatResp || len(m.GetContext()) == 0
 	})
 	require.Equal(t, uint64(1), h.nodes[2].Status().Lead)
 	require.Equal(t, term, h.nodes[2].Status().GetTerm())
 	require.Equal(t, oldIndex, h.applied[2])
 	require.NoError(t, h.nodes[1].Propose([]byte("write D completed before new read")))
 	deliverWrite := func(m *raftpb.Message) bool {
-		return m.GetFrom() != 2 && m.GetTo() != 2 && (m.GetType() != raftpb.MsgHeartbeatResp || len(m.Context) == 0)
+		return m.GetFrom() != 2 && m.GetTo() != 2 && (m.GetType() != raftpb.MsgHeartbeatResp || len(m.GetContext()) == 0)
 	}
 	h.drain(deliverWrite)
 	h.nodes[1].Tick()
@@ -188,8 +188,8 @@ func (h *readIndexRestartHarness) drain(deliver func(*raftpb.Message) bool) {
 			}
 			for _, e := range rd.CommittedEntries {
 				h.applied[id] = e.GetIndex()
-				if len(e.Data) != 0 {
-					h.values[id] = bytes.Clone(e.Data)
+				if len(e.GetData()) != 0 {
+					h.values[id] = bytes.Clone(e.GetData())
 				}
 			}
 			h.readStates[id] = append(h.readStates[id], rd.ReadStates...)
