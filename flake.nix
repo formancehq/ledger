@@ -69,13 +69,30 @@
               sha256 = speakeasyHashes.${system};
             };
 
-            nativeBuildInputs = [ pkgs.unzip ];
+            nativeBuildInputs = [ pkgs.unzip pkgs.python3 ]
+              ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
+                pkgs.darwin.autoSignDarwinBinariesHook
+              ];
             dontUnpack = true;
 
             installPhase = ''
               mkdir -p $out/bin
               unzip $src
-              ls -al
+              # The pinned generator embeds templates/go/config.ts. Update only
+              # its Go SDK lint tool: Staticcheck 0.6.1 cannot read Go 1.27 exports.
+              # Keep the generator, SDK templates, lint checks and release hashes.
+              python3 - <<'PYTHON'
+              from pathlib import Path
+
+              binary = Path("speakeasy")
+              data = binary.read_bytes()
+              old = b'"honnef.co/go/tools/cmd/staticcheck@v0.6.1",\n            "-checks=inherit,-SA1019",'
+              new = old.replace(b"@v0.6.1", b"@v0.8.2")
+              # Equal length preserves embedded-file offsets on every platform.
+              if len(old) != len(new) or data.count(old) != 1:
+                  raise SystemExit("unexpected Speakeasy Go SDK lint template")
+              binary.write_bytes(data.replace(old, new))
+              PYTHON
               install -m755 speakeasy $out/bin/
             '';
 
