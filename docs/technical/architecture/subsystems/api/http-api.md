@@ -569,9 +569,9 @@ preserves the received status verbatim instead of rebuilding it from the kind.
 newer build carries a kind this enum cannot derive at all. The axes may also
 disagree deliberately: the removed `READ_INDEX_NOT_CAUGHT_UP` was semantically
 `KindUnavailable` but travelled as `codes.FailedPrecondition`, because
-`actions.GRPCRetryPolicy` retries `codes.Unavailable` fifty times at 0.2s and
-the semantic code would have turned a read-index lag into a ten-second
-client-side hang. No reason needs that treatment today.
+`actions.GRPCRetryPolicy` makes five total attempts on `codes.Unavailable`
+with four exponential backoffs totaling 3.75s before jitter. The semantic
+code would have turned a read-index lag into a multi-second client-side delay. No reason needs that treatment today.
 
 **Kind derivation is reason-first.** `grpcerr` derives the `ErrorKind` from the
 reason when this build's `ErrorReason` enum knows it, and falls back to the
