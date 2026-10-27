@@ -123,6 +123,30 @@ func provideWAL(cfg node.NodeConfig, logger logging.Logger, meterProvider metric
 	return wal.New(cfg.WalDir, logger, meterProvider.Meter("wal"))
 }
 
+// newClusterPolicyReconciler wires the leader-only policy maintenance into the
+// generic periodic reconciler. Keeping this assembly in a named provider keeps
+// the Fx graph readable while leaving the policy logic in dedicated helpers.
+func newClusterPolicyReconciler(admission ctrl.Admission, store *dal.Store, builder *plan.Builder, cfg Config, raftNode *node.Node, logger logging.Logger) *reconciler.Reconciler {
+	return reconciler.New(func(ctx context.Context) {
+		if !raftNode.IsLeader() {
+			return
+		}
+		if policy, err := query.ReadClusterPolicy(store); err == nil {
+			if err := raftNode.SetCapabilityGate(activeCapabilityIDs(policy)); err != nil {
+				logger.WithFields(map[string]any{"error": err}).Errorf("Invalid capability gate in committed cluster policy")
+
+				return
+			}
+		}
+		if err := proposeAuditKeyIfNeeded(ctx, raftNode, builder, store); err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Audit key initialization failed; will retry")
+
+			return
+		}
+		reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger, raftNode.CapabilityMembers)
+	}, clusterPolicyReconcileInterval)
+}
+
 func Module() fx.Option {
 	return fx.Options(
 		transport.Module(),
@@ -694,26 +718,7 @@ func Module() fx.Option {
 
 				return clusterhealth.NewGRPCHealthUpdater(n, hs, clusterPolicyReady, rs.ReadProjectionHealthy)
 			},
-			func(admission ctrl.Admission, store *dal.Store, builder *plan.Builder, cfg Config, raftNode *node.Node, logger logging.Logger) *reconciler.Reconciler {
-				return reconciler.New(func(ctx context.Context) {
-					if !raftNode.IsLeader() {
-						return
-					}
-					if policy, err := query.ReadClusterPolicy(store); err == nil {
-						if err := raftNode.SetCapabilityGate(activeCapabilityIDs(policy)); err != nil {
-							logger.WithFields(map[string]any{"error": err}).Errorf("Invalid capability gate in committed cluster policy")
-
-							return
-						}
-					}
-					if err := proposeAuditKeyIfNeeded(ctx, raftNode, builder, store); err != nil {
-						logger.WithFields(map[string]any{"error": err}).Errorf("Audit key initialization failed; will retry")
-
-						return
-					}
-					reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger, raftNode.CapabilityMembers)
-				}, clusterPolicyReconcileInterval)
-			},
+			newClusterPolicyReconciler,
 		),
 		fx.Decorate(func(
 			params struct {
