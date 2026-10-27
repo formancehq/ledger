@@ -364,19 +364,13 @@ When eligible, the leader proposes a `ConfChangeV2` with `ConfChangeAddNode`, wh
 # Auto-promote learners within 100 entries of the commit index (default)
 --learner-promotion-threshold 100
 
-# Disable auto-promotion (manual promotion only)
+# Disable auto-promotion
 --learner-promotion-threshold 0
 ```
 
-### Manual Promotion
-
-Learners can also be promoted manually via the CLI:
-
-```bash
-ledgerctl cluster promote-learner <node-id>
-```
-
-Or via the `PromoteLearner` gRPC RPC. The request is forwarded to the leader if it reaches a follower.
+The `PromoteLearner` gRPC RPC remains available for existing clients. It is
+forwarded to the leader when called on a follower. The operator CLI does not
+expose manual promotion.
 
 ## Kubernetes (Operator)
 
@@ -656,6 +650,6 @@ After the reset, the preloader falls back to Pebble reads (0xF1 zone) for all ca
 - [Data Flows](../technical/architecture/data-flows.md) - Spool mechanics, entry processing
 - [Spool](../technical/architecture/subsystems/storage/spool.md) - Spool technical implementation
 - [Deployment](./deployment.md) - Helm chart configuration, CLI flags
-- [CLI Reference](./cli.md) - `cluster promote-learner` and other cluster commands
+- [CLI Reference](./cli.md) - cluster commands
 - [Memory Management](./memory.md) - Cache rotation threshold memory impact
 - [Availability and Disaster Recovery](./availability-and-recovery.md) - Failure-domain placement and quorum-loss recovery
