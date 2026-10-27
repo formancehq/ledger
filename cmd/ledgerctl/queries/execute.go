@@ -138,10 +138,13 @@ func runExecute(cmd *cobra.Command, args []string) error {
 				return nil
 			}
 
-			proceed, promptErr := pterm.DefaultInteractiveConfirm.
+			if !cmdutil.CanPrompt() {
+				return nil
+			}
+
+			proceed, promptErr := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
 				WithDefaultText("Load next page?").
-				WithDefaultValue(true).
-				Show()
+				WithDefaultValue(true))
 			if promptErr != nil {
 				return fmt.Errorf("failed to read input: %w", promptErr)
 			}

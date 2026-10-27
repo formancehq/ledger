@@ -60,9 +60,8 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	} else {
-		input, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter transaction ID").
-			Show()
+		input, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter transaction ID"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -82,9 +81,8 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 	} else {
 		var err error
 
-		key, err = pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter metadata key to delete").
-			Show()
+		key, err = cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter metadata key to delete"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -102,9 +100,8 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 		pterm.Println()
 		pterm.Warning.Printfln("You are about to delete metadata key %q from transaction #%d", key, txID)
 
-		confirmed, err := pterm.DefaultInteractiveConfirm.
-			WithDefaultText("Are you sure?").
-			Show()
+		confirmed, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
+			WithDefaultText("Are you sure?"))
 		if err != nil {
 			return fmt.Errorf("failed to read confirmation: %w", err)
 		}

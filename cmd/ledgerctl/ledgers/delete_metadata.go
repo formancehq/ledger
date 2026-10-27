@@ -49,9 +49,8 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		key = args[0]
 	} else {
-		key, err = pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter metadata key to delete").
-			Show()
+		key, err = cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter metadata key to delete"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -68,9 +67,8 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 		pterm.Println()
 		pterm.Warning.Printfln("You are about to delete metadata key %q from ledger %q", key, ledgerName)
 
-		confirmed, err := pterm.DefaultInteractiveConfirm.
-			WithDefaultText("Are you sure?").
-			Show()
+		confirmed, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
+			WithDefaultText("Are you sure?"))
 		if err != nil {
 			return fmt.Errorf("failed to read confirmation: %w", err)
 		}

@@ -221,6 +221,7 @@ scripting against the CLI predictable across resources.
 | Pagination | `--cursor` | string | Page token printed by a previous page (`next_cursor` or `previous_cursor`). Pass the same `--reverse` and `--filter` on every page of a walk. See [Page tokens](#page-tokens). |
 | Pagination | `--reverse` | bool | Reverse iteration order. Available on commands whose server endpoint supports it. |
 | Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts`, `transactions` and `queries execute`. |
+
 | Filter | `--filter` | string | Boolean filter expression — textual `filterexpr` grammar OR the structured JSON `QueryFilter` DSL (dual-format, EN-1511). |
 | Filter | `--prefix` | string | Account-address prefix shortcut. Only on `accounts list` (server-side `HardcodedPrefix` optimization). |
 | Consistency | `--checkpoint-id` | uint64 | Read from a named query checkpoint instead of the live store. |
@@ -230,6 +231,8 @@ scripting against the CLI predictable across resources.
 | Aliases | `list` | — | `ls`, `l` |
 | Aliases | `get` | — | `g`, `show`, `describe` |
 | Aliases | `inspect` | — | `i` |
+
+When stdin is not a terminal, commands that need an interactive value or confirmation fail immediately. Supply the required arguments and flags (including `--var` for Numscript variables and `--yes` for confirmations). Interactive pagers stop after the first page; account and transaction lists still print their cursor hints. Use `--all` to fetch all pages in scripts.
 
 Structured JSON and YAML output preserve the full precision of integer metadata,
 transaction IDs, and posting amounts, including values greater than `2^53`.

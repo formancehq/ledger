@@ -232,15 +232,17 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		// Interactive mode: ask user to choose between Numscript and simple postings
 		options := []string{"Simple postings", "Numscript file"}
 
-		selectedOption, err := pterm.DefaultInteractiveSelect.
+		selectedOption, err := cmdutil.PromptSelect(pterm.DefaultInteractiveSelect.
 			WithDefaultText("How do you want to create this transaction?").
-			WithOptions(options).
-			Show()
+			WithOptions(options))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
 
 		if selectedOption == "Numscript file" {
+			if !cmdutil.CanPrompt() {
+				return cmdutil.ErrNonInteractiveInput
+			}
 			// Prompt for script file path with autocompletion
 			var scriptPath string
 
@@ -318,10 +320,9 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 				postings = append(postings, posting)
 
-				addAnother, err := pterm.DefaultInteractiveConfirm.
+				addAnother, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
 					WithDefaultText("Add another posting?").
-					WithDefaultValue(false).
-					Show()
+					WithDefaultValue(false))
 				if err != nil {
 					return fmt.Errorf("failed to read input: %w", err)
 				}
@@ -589,10 +590,13 @@ func promptVariable(name, varType string) (string, error) {
 		pterm.FgGray.Printfln("  %s", hint)
 	}
 
-	value, err := pterm.DefaultInteractiveTextInput.
-		WithDefaultText(promptText).
-		Show()
+	value, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+		WithDefaultText(promptText))
 	if err != nil {
+		if errors.Is(err, cmdutil.ErrNonInteractiveInput) {
+			return "", fmt.Errorf("missing --var for $%s: %w", name, err)
+		}
+
 		return "", fmt.Errorf("failed to read variable %s: %w", name, err)
 	}
 
@@ -611,9 +615,8 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 	pterm.FgLightCyan.Printfln("Posting #%d", index)
 
 	// Source
-	source, err := pterm.DefaultInteractiveTextInput.
-		WithDefaultText("Source account").
-		Show()
+	source, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+		WithDefaultText("Source account"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read source: %w", err)
 	}
@@ -625,9 +628,8 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 	}
 
 	// Destination
-	destination, err := pterm.DefaultInteractiveTextInput.
-		WithDefaultText("Destination account").
-		Show()
+	destination, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+		WithDefaultText("Destination account"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read destination: %w", err)
 	}
@@ -639,9 +641,8 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 	}
 
 	// Amount
-	amountStr, err := pterm.DefaultInteractiveTextInput.
-		WithDefaultText("Amount").
-		Show()
+	amountStr, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+		WithDefaultText("Amount"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read amount: %w", err)
 	}
@@ -659,9 +660,8 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 	}
 
 	// Asset
-	asset, err := pterm.DefaultInteractiveTextInput.
-		WithDefaultText("Asset (e.g., USD, EUR)").
-		Show()
+	asset, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+		WithDefaultText("Asset (e.g., USD, EUR)"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read asset: %w", err)
 	}
