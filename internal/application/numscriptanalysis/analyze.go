@@ -94,32 +94,28 @@ func Analyze(source, version string) (result Result, internalErr error) {
 
 const (
 	maxAnalyzedSourceBytes = 64 << 10
-	maxBlockCommentDepth   = 32
+	maxBlockCommentOpeners = 32
 )
 
 // sourceLimitation bounds work before the upstream Numscript lexer sees the
-// source. Its MULTILINE_COMMENT rule is recursive, so a small input with deep
-// block comments can exhaust process memory before a panic can be recovered.
+// source. Its MULTILINE_COMMENT rule is recursive and can retain alternatives
+// even when nested comments are balanced, so a small input with many comment
+// openers can exhaust process memory before a panic can be recovered.
 // The source-size budget also bounds other parser work on this read-only API.
 func sourceLimitation(source string) string {
 	if len(source) > maxAnalyzedSourceBytes {
 		return "SOURCE_TOO_LONG"
 	}
 
-	depth := 0
+	openers := 0
 	for i := 0; i+1 < len(source); i++ {
-		switch source[i : i+2] {
-		case "/*":
-			// Count markers even in malformed strings or line comments. This
-			// conservative scan cannot be bypassed by a lexer recovery path.
-			depth++
-			if depth > maxBlockCommentDepth {
+		if source[i] == '/' && source[i+1] == '*' {
+			// Count every opener, including balanced pairs and markers in
+			// malformed strings or line comments. Lexer recovery cannot bypass
+			// this conservative bound.
+			openers++
+			if openers > maxBlockCommentOpeners {
 				return "SOURCE_TOO_COMPLEX"
-			}
-			i++
-		case "*/":
-			if depth > 0 {
-				depth--
 			}
 			i++
 		}

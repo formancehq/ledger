@@ -50,8 +50,9 @@ origins. Recognized source failures return no inputs and one or more diagnostics
 `version`, `syntax`, `feature`, or `compile` kind, a machine-readable code,
 message, and zero-based source coordinates where available. Empty source and
 unsupported versions are diagnostics. Sources longer than 64 KiB receive
-`SOURCE_TOO_LONG`; sources with more than 32 unmatched `/*` markers receive
-`SOURCE_TOO_COMPLEX`. The marker scan is conservative and also counts markers
+`SOURCE_TOO_LONG`; sources with more than 32 `/*` markers receive
+`SOURCE_TOO_COMPLEX`, including when comments are balanced. The marker scan is
+conservative and also counts markers
 inside string literals. These limits are checked before invoking the parser
 because the upstream lexer uses a recursive rule for block comments. An
 internal parser or compiler failure returns a server error without an analysis

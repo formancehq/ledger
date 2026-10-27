@@ -59,7 +59,8 @@ func TestAnalyzeRejectsUnsafeSourceBeforeParsing(t *testing.T) {
 	for _, tc := range []struct {
 		name, source, code string
 	}{
-		{"deep block comments", strings.Repeat("/*", maxBlockCommentDepth+1) + strings.Repeat("*/", maxBlockCommentDepth+1), "SOURCE_TOO_COMPLEX"},
+		{"deep block comments", strings.Repeat("/*", maxBlockCommentOpeners+1) + strings.Repeat("*/", maxBlockCommentOpeners+1), "SOURCE_TOO_COMPLEX"},
+		{"balanced comments within outer comment", "/*" + strings.Repeat("/* */", maxBlockCommentOpeners) + "*/", "SOURCE_TOO_COMPLEX"},
 		{"large source", strings.Repeat(" ", maxAnalyzedSourceBytes+1), "SOURCE_TOO_LONG"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -74,9 +75,15 @@ func TestAnalyzeRejectsUnsafeSourceBeforeParsing(t *testing.T) {
 
 func TestSourceLimitationConservativelyCountsMarkersInStrings(t *testing.T) {
 	t.Parallel()
-	source := `set_tx_meta("example", "` + strings.Repeat("/*", maxBlockCommentDepth+1) + `")`
+	source := `set_tx_meta("example", "` + strings.Repeat("/*", maxBlockCommentOpeners+1) + `")`
 	require.Equal(t, "SOURCE_TOO_COMPLEX", sourceLimitation(source))
 	result, err := Analyze(source, "v1")
 	require.NoError(t, err)
 	require.Equal(t, "SOURCE_TOO_COMPLEX", result.Diagnostics[0].Code)
+}
+
+func TestSourceLimitationAcceptsExactBudgets(t *testing.T) {
+	t.Parallel()
+	require.Empty(t, sourceLimitation(strings.Repeat("/* */", maxBlockCommentOpeners)))
+	require.Empty(t, sourceLimitation(strings.Repeat(" ", maxAnalyzedSourceBytes)))
 }

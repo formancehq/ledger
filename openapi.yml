@@ -1642,7 +1642,7 @@ paths:
   /v3/numscripts/analyze:
     post:
       summary: Analyze Numscript source
-      description: Validates Numscript v1 and returns the external input schema without reading or changing ledger state. Recognized source failures are returned as diagnostics with an empty input list. Sources over 64 KiB or with more than 32 unmatched block-comment open markers receive a syntax diagnostic; internal failures return a server error.
+      description: Validates Numscript v1 and returns the external input schema without reading or changing ledger state. Recognized source failures are returned as diagnostics with an empty input list. Sources over 64 KiB or with more than 32 block-comment open markers receive a syntax diagnostic; internal failures return a server error.
       operationId: analyzeNumscript
       tags:
         - Numscript Library
