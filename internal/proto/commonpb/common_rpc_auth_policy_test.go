@@ -88,6 +88,7 @@ func expectedFixedRPCAuthPolicies() map[string]commonpb.AuthScope {
 		"/cluster.ClusterService/TransferLeadership":         commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
 		"/ledger.BucketService/AggregateVolumes":             commonpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ,
 		"/ledger.BucketService/AnalyzeAccounts":              commonpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ,
+		"/ledger.BucketService/AnalyzeNumscript":             commonpb.AuthScope_AUTH_SCOPE_QUERY_READ,
 		"/ledger.BucketService/AnalyzeTransactions":          commonpb.AuthScope_AUTH_SCOPE_TRANSACTION_READ,
 		"/ledger.BucketService/Barrier":                      commonpb.AuthScope_AUTH_SCOPE_OPS_READ,
 		"/ledger.BucketService/CheckStore":                   commonpb.AuthScope_AUTH_SCOPE_OPS_READ,

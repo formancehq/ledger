@@ -1240,6 +1240,7 @@ Read endpoints comparison with the original ledger:
 | `DELETE /v3/{ledgerName}/prepared-queries/{queryName}` | ✅ | ❌ | Delete a prepared query |
 | `GET /v3/{ledgerName}/prepared-queries` | ✅ | ❌ | List prepared queries |
 | `POST /v3/{ledgerName}/prepared-queries/{queryName}/execute` | ✅ | ❌ | Execute a prepared query |
+| `POST /v3/numscripts/analyze` | ✅ | ❌ | Validate Numscript v1 source and return external inputs or typed diagnostics; requires `ledger:ReadQuery` when authentication is enabled (also granted by aggregate `ledger:read`) |
 | `GET /v3/{ledgerName}/numscripts` | ✅ | ❌ | List numscripts (greatest version of each), paged by name ([pagination](#pagination)) |
 | `GET /v3/{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (version selector, empty/latest = greatest semver) |
 | `GET /v3/{ledgerName}/numscripts/{name}/usage` | ✅ | ❌ | Get invocation count + last-used timestamp. A missing or deleted ledger returns `404 LEDGER_NOT_FOUND`; a never-invoked template returns a zero-valued `200` response |
@@ -1400,6 +1401,7 @@ Paged list RPCs follow the shared `ListOptions` contract and publish the
 | `Apply(PromoteLedger)` | Promote mirror ledger to normal mode | ✅ |
 | `Apply(SaveNumscript)` | Save an immutable numscript version (explicit full semver). Requires `ledger:WriteLedger`, matching `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ |
 | `GetNumscript` | Get a numscript by name and version selector | ✅ |
+| `AnalyzeNumscript` | Validate v1 source and return external inputs and typed diagnostics without ledger state access; HTTP parity is `POST /v3/numscripts/analyze` | ✅ |
 | `ListNumscripts` | List the greatest version of each saved numscript | ✅ |
 | `ListNumscriptVersions` | List the latest pointer and every stored version | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure). Request is `{ options }` only — no dedicated filter fields. Follows the shared `ListOptions` contract: cursor/page_size/reverse/checkpoint_id plus a bare-audit-field `QueryFilter` (outcome, ledger, caller_subject, order_type, idempotency_key, seq, proposal_id, timestamp, log_seq — bare fields resolved against the audit query target, EN-1549 replacing the old `audit[...]` syntax) resolved through the audit secondary index. `idempotency_key` supports equality and prefix matching and may return several historical entries after key reuse. Ledger scope and outcome selection are expressed as filter conditions | ✅ |
