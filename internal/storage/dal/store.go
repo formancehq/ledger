@@ -329,6 +329,10 @@ const (
 	// authenticate audit history. It is part of checkpoints, unlike the
 	// operational cluster identity removed during restore preparation.
 	SubGlobAuditKey byte = 0x15
+	// SubGlobBloomProjectionSeal proves that persisted Bloom blocks were built
+	// from a complete scan. It lives outside SubGlobBloom so the prior binary's
+	// block reader ignores it during rollback.
+	SubGlobBloomProjectionSeal byte = 0x16
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).

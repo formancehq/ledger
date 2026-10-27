@@ -556,7 +556,7 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 	// rebuild synchronously and returns once IsReady() is true -- closes
 	// the EN-1410 window where replayWAL would race the rebuild and drive
 	// rotations while !IsReady.
-	if s.bloomFilters != nil {
+	if s.bloomFilters != nil && s.bloomFilters.Enabled() {
 		if err := s.restoreBloomFilters(store); err != nil {
 			return fmt.Errorf("restoring bloom filters: %w", err)
 		}
@@ -744,13 +744,14 @@ func (s *CacheSnapshotter) validateCacheNamespace(reader dal.PebbleReader, gen0B
 }
 
 // restoreBloomFilters publishes a ready bloom on top of Pebble's
-// persisted state. On a simple restart (persisted bloom blocks exist),
-// the rebuild runs SYNCHRONOUSLY before this function returns: the cost
+// persisted state. On a simple restart with a current projection seal,
+// block restoration runs synchronously before this function returns: the cost
 // is bounded (O(blocks) + O(cache gen0+gen1)) and running it inline
 // closes the EN-1410 window where the replayWAL goroutine would
 // otherwise race the background rebuild and drive cache rotations
-// while !IsReady. On cold start / post-Rebuild (no persisted blocks),
-// the rebuild stays async because the full attribute scan via
+// while !IsReady. With missing blocks, unsealed legacy blocks, or a seal
+// stale against the durable applied index, the rebuild stays async because
+// the full attribute scan via
 // PopulateFromStore can take minutes on a large database -- blocking
 // boot is unacceptable. The cold-start path's correctness is guarded
 // separately at the cache-rotation site, which inhibits rotation while
@@ -791,13 +792,25 @@ func (s *CacheSnapshotter) restoreBloomFilters(store dal.RecoveryReader) error {
 	}
 
 	if configDrift {
-		// The node booted with CLI bloom settings that disable an attribute the
-		// persisted config had enabled. Those old-but-valid blocks belong to no
-		// enabled filter, so the persisted set is stale for the current config.
+		// The incoming checkpoint can contain blocks for an attribute disabled
+		// by its committed config. Those old-but-valid blocks belong to no
+		// enabled filter, so the persisted set is stale for that config.
 		// Take the full-rebuild path (async attribute scan) instead of trusting
 		// the persisted blocks; do NOT abort, or the node could never boot far
 		// enough to propose the config update that purges and rebuilds them.
 		s.StartAsyncBloomPopulate(store, "bloom config drift on boot: persisted blocks stale for current config")
+
+		return nil
+	}
+	verified, err := bloom.HasVerifiedProjection(store)
+	if err != nil {
+		return fmt.Errorf("checking Bloom projection provenance: %w", err)
+	}
+	if !verified {
+		// Legacy nodes could leave valid-looking but incomplete blocks while
+		// local flags disabled Bloom against an enabled committed config. The
+		// full attribute scan is the only safe way to establish completeness.
+		s.StartAsyncBloomPopulate(store, "Bloom projection seal absent or stale against applied index")
 
 		return nil
 	}
@@ -813,6 +826,15 @@ func (s *CacheSnapshotter) StartAsyncBloomPopulate(store dal.RecoveryReader, rea
 	s.bloomMu.Lock()
 	defer s.bloomMu.Unlock()
 	if s.bloomStopped {
+		return
+	}
+	if s.bloomFilters == nil || !s.bloomFilters.Enabled() {
+		// A committed disable invalidates any queued population. Cancel work
+		// from the previous enabled snapshot without scanning the store.
+		s.bloomPopulatePending = false
+		s.bloomPopulateReason = ""
+		s.bloomExecutor.Interrupt()
+
 		return
 	}
 	if s.bloomPaused {
@@ -831,7 +853,7 @@ func (s *CacheSnapshotter) StartAsyncBloomPopulate(store dal.RecoveryReader, rea
 // in the calling goroutine using the provided context. Shared between
 // runBloomTask (wraps it in a SingleTaskExecutor) and runBloomTaskSync
 // (drives it inline on the boot path).
-func (s *CacheSnapshotter) runBloomTaskBody(ctx context.Context, store dal.RecoveryReader, reason string, epoch uint64, loadFn func(context.Context, dal.PebbleReader) error) error {
+func (s *CacheSnapshotter) runBloomTaskBody(ctx context.Context, store dal.RecoveryReader, reason string, epoch uint64, trustedRestore bool, loadFn func(context.Context, dal.PebbleReader) error) error {
 	start := time.Now()
 
 	// Hold dbMu.RLock for the entire bloom load to prevent RestoreCheckpoint
@@ -852,6 +874,9 @@ func (s *CacheSnapshotter) runBloomTaskBody(ctx context.Context, store dal.Recov
 
 	if err := s.replayBloomFromCache(ctx); err != nil {
 		return err
+	}
+	if trustedRestore {
+		s.bloomFilters.MarkVerifiedRestore(epoch)
 	}
 
 	if !s.bloomFilters.SetReadyIfEpoch(epoch) {
@@ -893,7 +918,7 @@ func (s *CacheSnapshotter) runBloomTask(store dal.RecoveryReader, reason string,
 	epoch := s.bloomFilters.Epoch()
 
 	s.bloomExecutor.Run(context.Background(), func(ctx context.Context) error {
-		return s.runBloomTaskBody(ctx, store, reason, epoch, loadFn)
+		return s.runBloomTaskBody(ctx, store, reason, epoch, false, loadFn)
 	})
 }
 
@@ -912,7 +937,7 @@ func (s *CacheSnapshotter) runBloomTaskSync(store dal.RecoveryReader, reason str
 
 	epoch := s.bloomFilters.Epoch()
 
-	return s.runBloomTaskBody(context.Background(), store, reason, epoch, loadFn)
+	return s.runBloomTaskBody(context.Background(), store, reason, epoch, true, loadFn)
 }
 
 // hasPersistedBloomBlocks reports whether any persisted bloom block keys exist
@@ -989,7 +1014,7 @@ func (s *CacheSnapshotter) replayBloomFromCache(ctx context.Context) error {
 func (s *CacheSnapshotter) Pause() {
 	s.bloomMu.Lock()
 	s.bloomPaused = true
-	if s.bloomFilters != nil && !s.bloomFilters.IsReady() {
+	if s.bloomFilters != nil && s.bloomFilters.Enabled() && !s.bloomFilters.IsReady() {
 		// A not-ready filter may have an active population that Interrupt stops.
 		// Preserve the work request so an early sync failure can resume it against
 		// the still-current store instead of leaving acceleration disabled.
@@ -1019,6 +1044,9 @@ func (s *CacheSnapshotter) Resume(store dal.RecoveryReader) {
 	reason := s.bloomPopulateReason
 	s.bloomPopulatePending = false
 	s.bloomPopulateReason = ""
+	if s.bloomFilters == nil || !s.bloomFilters.Enabled() {
+		return
+	}
 	s.runBloomTask(store, reason, s.bloomFilters.PopulateFromStore)
 }
 

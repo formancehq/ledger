@@ -139,6 +139,32 @@ initial cache histories, but their own durability defects belong to adjacent
 domains. This audit owns the defect when the next committed apply fails to
 normalize or safely tolerate an otherwise valid local history.
 
+### Bloom projection provenance and commit boundary
+
+Treat persisted Bloom blocks as a complete projection only when the projection
+seal matches the durable applied index and the committed filter shape. A missing
+or stale seal, including after an older binary writes during rollback, requires
+a full attribute scan before Bloom becomes ready. Compare a cold persisted
+attribute with nonempty stale blocks: a ready false negative would suppress its
+preload even if hot keys continue to work. Include committed enable/disable
+transitions, follower restore, and rollback followed by re-upgrade.
+
+During preparation, one batch can cross several cache rotations. The first
+rotation for a rebuild epoch stages a complete namespace replacement; later
+rotations in that same batch stage only dirty blocks. A separate prepared batch
+must stage its own complete replacement while the first batch is uncommitted.
+Compare buffered batch growth across one and several rotations, then prepare a
+second batch before committing the first. A rebuild during preparation requires
+a new complete replacement for its epoch. The seal and replacement
+acknowledgement must correspond to the final epoch and successful durable
+commit; a failed commit or intervening rebuild cannot certify older blocks.
+
+Use `TestCacheSnapshotter_LegacyBlocksCannotHideColdAttribute` for legacy and
+rollback provenance and `TestPrepareEntries_BloomReplacementOncePerBatchAndEpoch`
+for bounded batch growth and pipelined replacement. These are focused entry
+points; compare the actual projection bytes and restore behavior when claiming
+a broader cache convergence result.
+
 ## Post-commit lifecycle expectations
 
 The volume sentinel must reduce successful effects in commit order. A ledger

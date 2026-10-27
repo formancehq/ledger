@@ -22,6 +22,123 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+func TestCacheSnapshotter_DisabledBloomNeverPopulatesOnSync(t *testing.T) {
+	t.Parallel()
+	meter := noop.NewMeterProvider().Meter("test")
+	filters := bloom.NewFilterSet(nil, meter)
+	snapshotter, store, _ := newTestCacheSnapshotter(t, filters)
+	defer snapshotter.Stop()
+
+	// A disabled handle is not-ready, but it has no work to resume after a
+	// failed checkpoint fetch or after restoring another disabled checkpoint.
+	snapshotter.Pause()
+	require.False(t, snapshotter.bloomPopulatePending)
+	snapshotter.Resume(store)
+	snapshotter.StartAsyncBloomPopulate(store, "committed disable")
+	snapshotter.Stop() // drains a wrongly started task before the assertion
+	require.False(t, filters.IsReady())
+
+	// A pending scan for an older enabled config must also be discarded when
+	// the incoming checkpoint commits Bloom disabled.
+	filters.Rebuild(&commonpb.ClusterConfig{BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 100, FpRate: 0.01}})
+	snapshotter2, store2, _ := newTestCacheSnapshotter(t, filters)
+	defer snapshotter2.Stop()
+	snapshotter2.Pause()
+	require.True(t, snapshotter2.bloomPopulatePending)
+	filters.Rebuild(nil)
+	snapshotter2.StartAsyncBloomPopulate(store2, "committed disable")
+	require.False(t, snapshotter2.bloomPopulatePending, "disable must cancel queued work before Resume")
+	snapshotter2.Resume(store2)
+	snapshotter2.Stop()
+	require.False(t, filters.IsReady())
+	require.False(t, snapshotter2.bloomPopulatePending)
+}
+
+func TestCacheSnapshotter_LegacyBlocksCannotHideColdAttribute(t *testing.T) {
+	t.Parallel()
+	meter := noop.NewMeterProvider().Meter("test")
+	cfg := &commonpb.ClusterConfig{
+		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	}
+	filters := bloom.NewFilterSet(cfg, meter)
+	snapshotter, store, registry := newTestCacheSnapshotter(t, filters)
+	defer snapshotter.Stop()
+
+	coldKey := newVolumeKey(domain.AccountKey{LedgerName: "legacy", Account: "cold"}, "USD/2")
+	coldID := attributes.HashU128(coldKey.Bytes())
+	pair := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(42)}
+	legacy := bloom.NewFilterSet(cfg, meter)
+	legacy.AddCanonicalKeys(&bloom.BloomUpdates{
+		Volumes: []attributes.U128{attributes.HashU128([]byte("legacy-only-key"))},
+	})
+	require.False(t, legacy.FilterForAttrType(dal.SubAttrVolume).MayContain(coldID))
+
+	batch := store.OpenWriteSession()
+	_, err := registry.Attrs.Volume.Set(batch, coldKey.Bytes(), pair)
+	require.NoError(t, err)
+	require.NoError(t, legacy.PersistDirtyBlocks(batch))
+	// Simulate blocks written before this release established their provenance.
+	require.NoError(t, batch.DeleteKey([]byte{dal.ZoneClusterPersistent, dal.SubGlobBloomProjectionSeal}))
+	require.NoError(t, batch.Commit())
+
+	// The attribute is on disk but absent from both cache generations. A ready
+	// filter restored from the legacy blocks would suppress its Pebble preload.
+	snapshotter.Pause()
+	require.NoError(t, snapshotter.RestoreFromStore(store))
+	require.False(t, filters.IsReady(), "legacy blocks must not be trusted")
+	require.True(t, snapshotter.bloomPopulatePending)
+	snapshotter.Resume(store)
+	require.Eventually(t, func() bool {
+		return filters.IsReady() && filters.FilterForAttrType(dal.SubAttrVolume).MayContain(coldID)
+	}, 5*time.Second, 10*time.Millisecond)
+
+	// The first post-scan rotation replaces legacy rows and seals the complete
+	// projection. A later restart may then use the synchronous block path.
+	epoch, replace := filters.PersistedReplacement()
+	require.True(t, replace)
+	batch = store.OpenWriteSession()
+	require.NoError(t, filters.PersistDirtyBlocks(batch))
+	require.NoError(t, bloom.SealProjectionAt(batch, 0))
+	require.NoError(t, batch.Commit())
+	filters.ConfirmPersistedReplacement(epoch)
+	verified, err := bloom.HasVerifiedProjection(store)
+	require.NoError(t, err)
+	require.True(t, verified)
+
+	restarted := bloom.NewFilterSet(cfg, meter)
+	restartedSnapshotter, _, _ := newTestCacheSnapshotter(t, restarted)
+	defer restartedSnapshotter.Stop()
+	require.NoError(t, restartedSnapshotter.RestoreFromStore(store))
+	require.True(t, restarted.IsReady())
+	require.True(t, restarted.FilterForAttrType(dal.SubAttrVolume).MayContain(coldID))
+
+	// Roll back to a binary that does not maintain the seal and starts with
+	// Bloom locally disabled. Its committed attribute write advances the Raft
+	// index but leaves both the blocks and the seal unchanged.
+	rollbackKey := newVolumeKey(domain.AccountKey{LedgerName: "legacy", Account: "rollback"}, "USD/2")
+	rollbackID := attributes.HashU128(rollbackKey.Bytes())
+	batch = store.OpenWriteSession()
+	_, err = registry.Attrs.Volume.Set(batch, rollbackKey.Bytes(), pair)
+	require.NoError(t, err)
+	require.NoError(t, SetAppliedIndex(batch, 1))
+	require.NoError(t, batch.Commit())
+	verified, err = bloom.HasVerifiedProjection(store)
+	require.NoError(t, err)
+	require.False(t, verified, "rollback-era writes must invalidate the old seal")
+
+	reupgraded := bloom.NewFilterSet(cfg, meter)
+	reupgradedSnapshotter, _, _ := newTestCacheSnapshotter(t, reupgraded)
+	defer reupgradedSnapshotter.Stop()
+	reupgradedSnapshotter.Pause()
+	require.NoError(t, reupgradedSnapshotter.RestoreFromStore(store))
+	require.False(t, reupgraded.IsReady())
+	require.True(t, reupgradedSnapshotter.bloomPopulatePending)
+	reupgradedSnapshotter.Resume(store)
+	require.Eventually(t, func() bool {
+		return reupgraded.IsReady() && reupgraded.FilterForAttrType(dal.SubAttrVolume).MayContain(rollbackID)
+	}, 5*time.Second, 10*time.Millisecond)
+}
+
 // TestCacheSnapshotter_StopPreventsBloomRestart protects the ownership
 // boundary of the background bloom executor. A dispatcher can deliver a
 // rebuild signal concurrently with shutdown; once Stop returns, that signal

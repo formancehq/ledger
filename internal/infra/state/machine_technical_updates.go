@@ -179,6 +179,9 @@ func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64
 		); err != nil {
 			return fmt.Errorf("purging bloom blocks: %w", err)
 		}
+		if err := batch.DeleteKey([]byte{dal.ZoneClusterPersistent, dal.SubGlobBloomProjectionSeal}); err != nil {
+			return fmt.Errorf("purging Bloom projection seal: %w", err)
+		}
 
 		// Rebuild filters with new dimensions (sets IsReady=false).
 		fsm.BloomFilters.Rebuild(cfg)
