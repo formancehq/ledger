@@ -39,7 +39,7 @@ func newBackupProposer(builder *plan.Builder, proposer plan.Proposer) *backupPro
 // the coverage_bits stay empty and the scope passed to the handler
 // admits nothing.
 func (b *backupProposer) Propose(ctx context.Context, cmd *raftcmdpb.Proposal) error {
-	tus := cmd.GetTechnicalUpdates()
+	tus := cmd.GetBatch().GetTechnicalUpdates()
 	operations := make([]plan.WriteOperation, 0, len(tus))
 
 	for i := range tus {

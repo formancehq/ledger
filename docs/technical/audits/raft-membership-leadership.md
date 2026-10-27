@@ -351,3 +351,15 @@ in-memory snapshot/cache and durable WAL prefix on any failure. The focused
 regression is `process_ready_snapshot_test.go` under `internal/infra/node/`.
 Snapshot-only processing retains its existing append count; a combined Ready
 reappends only the suffix once, with no retained-log scan.
+
+## Proposal payload expansion
+
+The proposal codec is part of this contract. During expansion, every production
+Raft writer lowers logical execution and policy payloads to the released wire
+fields; inspect the shared runner and all producers for bypasses. Decoder
+support must not silently enable payload-only writes. Historical and payload
+replay must preserve audit bytes, declared coverage, technical-only HLC behavior,
+and checkpoint boundaries. Validate every envelope before any entry in a decoded
+batch mutates state. Policy restore evidence must include a non-empty delta and
+the next policy outcome, not only a checkpoint round trip. See
+[proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md).

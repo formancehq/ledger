@@ -25,8 +25,10 @@
     "tests/oracle/**",
     "tests/e2e/cluster/restore*_test.go",
     "internal/infra/node/drain.go",
-    "internal/infra/state/drain_test.go"
-  ],
+    "internal/infra/state/drain_test.go",
+    "internal/pkg/proposals/**",
+    "internal/pkg/commands/**",
+    "internal/infra/plan/runner.go"  ],
   "related_docs": [
     "AGENTS.md",
     "docs/technical/agent-context.md",
@@ -41,8 +43,8 @@
     "docs/ops/backup-restore.md",
     "docs/technical/contributing/testing.md",
     "docs/technical/architecture/subsystems/api/atomic-ledger-creation.md",
-    "docs/technical/architecture/subsystems/consensus/controlled-shutdown.md"
-  ],
+    "docs/technical/architecture/subsystems/consensus/controlled-shutdown.md",
+    "docs/technical/architecture/subsystems/consensus/proposal-payloads.md"  ],
   "invariants": [
     "An UncommittedFailure after a checkpoint produces no audit/item/log or frozen idempotency delta and does not advance the last applied HLC; restore parity must preserve this absence and the next retry behavior without inventing an export segment.",
     "For every committed effect intended to survive cross-cluster restore, live(prefix + delta) and restore(checkpoint(prefix), delta) must produce the same logical persisted state and the same next admission/apply behavior. The delta must be non-empty and contain the operation under examination; byte equality is required only where the storage contract requires it.",
@@ -61,8 +63,8 @@
     "Caches, preload state, peer read stores, usage stores, and other rebuildable local projections must not become authoritative over restored primary state. Their discard or reconstruction must converge from the complete restored history without overwriting newer post-checkpoint primary values.",
     "The once-committed audit key is preserved checkpoint state: a full checkpoint must contain it before any incremental audit delta, restore must keep it while discarding source cluster identity, and post-restore writes and backups must continue under the restored key.",
     "CreatedLedgerLog carries initial metadata so post-checkpoint creation reconstructs canonical metadata during ApplyExportsAndRebuild. Persisted LedgerInfo does not duplicate the canonical metadata projection.",
-    "Raft-applied drain marker and release state advance with the applied index in the same Pebble batch, and qualifying member status fsyncs the WAL before certifying that index. Restart and in-cluster snapshot sync restore an active cutoff before admission; cross-cluster restore deliberately discards the cluster-transient drain state."
-  ],
+    "Raft-applied drain marker and release state advance with the applied index in the same Pebble batch, and qualifying member status fsyncs the WAL before certifying that index. Restart and in-cluster snapshot sync restore an active cutoff before admission; cross-cluster restore deliberately discards the cluster-transient drain state.",
+    "During proposal payload expansion, every production Raft writer must lower logical ExecutionBatch and SetClusterPolicyProposal envelopes to the released wire fields. Both replay forms must preserve canonical audit bytes, coverage targets, checkpoint boundaries, technical-only HLC behavior, and post-checkpoint policy restore; malformed envelopes must fail before any entry in the decoded batch mutates state. Decoder support alone must not enable payload-only writes."  ],
   "adversarial_questions": [
     "Does a post-checkpoint technical interruption spuriously advance the exported audit bound or restored HLC, create a frozen result, or hide a later definitive outcome from the delta?",
     "For every current FSM/live-apply write into the primary store, can its value change after a full checkpoint? Which preserved/rebuilt/discarded class owns it, which exported record supplies the facts, and which independent comparison proves the restored value and next consuming decision?",

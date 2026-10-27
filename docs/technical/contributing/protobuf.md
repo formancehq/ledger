@@ -244,7 +244,7 @@ Mirror mode introduces several protobuf types across multiple files:
 
 ### Technical Update Fields (Non-Order Pattern)
 
-Not all FSM operations are modeled as orders. Internal operations that do not produce user-visible log entries are wrapped in `TechnicalUpdate` entries under `Proposal.technical_updates`. Each update has its own coverage bitset and one payload selected by the `TechnicalUpdate.kind` oneof. This avoids polluting the `Order`/`LedgerApplyOrder` oneofs while preserving the same preload-coverage isolation.
+Not all FSM operations are modeled as orders. Internal operations that do not produce user-visible log entries are wrapped in `TechnicalUpdate` entries under `Proposal.batch.technical_updates` in logical proposals. During the expansion phase, the shared runner lowers them to the historical `Proposal.technical_updates` field before Raft serialization; see [proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md). Each update has its own coverage bitset and one payload selected by the `TechnicalUpdate.kind` oneof. This avoids polluting the `Order`/`LedgerApplyOrder` oneofs while preserving the same preload-coverage isolation.
 
 Examples of this pattern:
 - `MirrorSyncUpdate`

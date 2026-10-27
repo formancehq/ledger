@@ -230,3 +230,15 @@ CreatedLedgerLog carries initial metadata so post-checkpoint creation reconstruc
 Does a restore with nonempty checkpoint files and a nonempty post-checkpoint creation delta reproduce typed initial metadata for normal and mirror ledgers, including explicit protobuf null and a schema type mismatch?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## Proposal payload expansion
+
+The proposal codec is part of this contract. During expansion, every production
+Raft writer lowers logical execution and policy payloads to the released wire
+fields; inspect the shared runner and all producers for bypasses. Decoder
+support must not silently enable payload-only writes. Historical and payload
+replay must preserve audit bytes, declared coverage, technical-only HLC behavior,
+and checkpoint boundaries. Validate every envelope before any entry in a decoded
+batch mutates state. Policy restore evidence must include a non-empty delta and
+the next policy outcome, not only a checkpoint round trip. See
+[proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md).

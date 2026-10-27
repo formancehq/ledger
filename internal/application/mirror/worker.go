@@ -407,7 +407,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	// proposal (machine.go). The applied position is NOT carried here — the
 	// FSM derives it from the ingest orders themselves (EN-1513).
 	lastV2LogID := v2Logs[len(v2Logs)-1].ID
-	cmd.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+	cmd.GetBatch().TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 		Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{
 			MirrorSync: &raftcmdpb.MirrorSyncUpdate{
 				LedgerName:     w.ledgerName,
@@ -427,7 +427,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	aggregate.Merge(tuNeeds)
 
 	operations := make([]plan.WriteOperation, 0, len(orders)+1)
-	cmdOrders := cmd.GetOrders()
+	cmdOrders := cmd.GetBatch().GetOrders()
 	for i := range orders {
 		// coverage_bits moved to OrderTechnical; init nil-safely before Build
 		// fills it through the pointer.
@@ -442,7 +442,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 
 	operations = append(operations, plan.WriteOperation{
 		Coverage: tuNeeds,
-		Target:   &cmd.GetTechnicalUpdates()[0].CoverageBits,
+		Target:   &cmd.GetBatch().GetTechnicalUpdates()[0].CoverageBits,
 	})
 
 	build, err := w.builder.Build(aggregate, operations)
@@ -644,9 +644,9 @@ func (w *Worker) proposeMirrorSync(ctx context.Context, update *raftcmdpb.Mirror
 	cmd := &raftcmdpb.Proposal{
 		Date:           &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
 		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentMirror),
-		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
+		Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
 			Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: update},
-		}},
+		}}}},
 	}
 
 	// applyMirrorSyncUpdate reads Registry.Ledgers through the FSM-side Plan,
@@ -658,7 +658,7 @@ func (w *Worker) proposeMirrorSync(ctx context.Context, update *raftcmdpb.Mirror
 
 	operations := []plan.WriteOperation{{
 		Coverage: needs,
-		Target:   &cmd.GetTechnicalUpdates()[0].CoverageBits,
+		Target:   &cmd.GetBatch().GetTechnicalUpdates()[0].CoverageBits,
 	}}
 
 	logFailure := func(reason string, err error) {
@@ -726,7 +726,7 @@ func marshalMirrorCommand(cmd *raftcmdpb.Proposal) ([]byte, error) {
 // account metadata.
 func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Coverage, []*plan.Coverage) {
 	aggregate := plan.NewCoverage()
-	perOrder := make([]*plan.Coverage, len(cmd.GetOrders()))
+	perOrder := make([]*plan.Coverage, len(cmd.GetBatch().GetOrders()))
 
 	ledgerBytes := domain.LedgerKey{Name: w.ledgerName}.Bytes()
 
@@ -740,7 +740,7 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Coverage, []
 		p.Add(dal.SubAttrTransaction, domain.TransactionKey{LedgerName: w.ledgerName, ID: txID}.Bytes())
 	}
 
-	for orderIdx, order := range cmd.GetOrders() {
+	for orderIdx, order := range cmd.GetBatch().GetOrders() {
 		p := plan.NewCoverage()
 		p.Add(dal.SubAttrLedger, ledgerBytes)
 		p.Add(dal.SubAttrBoundary, ledgerBytes)

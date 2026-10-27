@@ -248,3 +248,17 @@ When persisted storage is compatible but mixed binaries are not:
 `ledgerctl upgrade` upgrades the `ledgerctl` client binary only. It does not
 upgrade Ledger servers or decide whether a server revision is storage- or
 wire-compatible.
+
+## Proposal payload expansion
+
+The proposal oneof is introduced in an expansion phase. Producers use
+`ExecutionBatch` or `SetClusterPolicyProposal` internally, but the shared runner
+serializes the historical proposal fields before replication. Old and new
+replicas therefore receive the same command representation. Existing WAL,
+snapshots, backups, and audit history need no rewrite or operator migration.
+No capability activation or additional deployment flag is introduced.
+
+This phase adds no new rollback restriction. Emitting payload-only Raft entries
+is a separate, future cutover requiring cluster-wide decoder readiness and its
+own rollback boundary. Do not infer permission to emit them merely because the
+new binary can decode them. See the [proposal migration contract](../technical/architecture/subsystems/consensus/proposal-payloads.md).
