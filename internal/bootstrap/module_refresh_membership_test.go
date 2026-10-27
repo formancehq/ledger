@@ -44,6 +44,15 @@ type retryingRefreshServer struct {
 	firstErr error
 }
 
+type blockingRefreshServer struct {
+	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
+}
+
+func (blockingRefreshServer) RefreshMembership(ctx context.Context, _ *clusterbootstrappb.RefreshMembershipRequest) (*clusterbootstrappb.RefreshMembershipResponse, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
 func (s *retryingRefreshServer) RefreshMembership(context.Context, *clusterbootstrappb.RefreshMembershipRequest) (*clusterbootstrappb.RefreshMembershipResponse, error) {
 	if s.attempts.Add(1) == 1 {
 		return nil, s.firstErr
@@ -117,4 +126,20 @@ func TestTryRefreshMembershipPropagatesPermanentRejection(t *testing.T) {
 	err := tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logging.Testing())
 	require.ErrorContains(t, err, "removed incarnation")
 	require.Equal(t, int32(1), peer.attempts.Load(), "permanent rejection must not be retried")
+}
+
+func TestTryRefreshMembershipForStartupTreatsBoundedAttemptAsTransient(t *testing.T) {
+	t.Parallel()
+
+	cfg := refreshTestConfig(t, serveRefreshMembership(t, blockingRefreshServer{}))
+	err := tryRefreshMembershipForStartupWithTimeout(
+		context.Background(),
+		cfg,
+		cfg.TLSConfig,
+		logging.Testing(),
+		10*time.Millisecond,
+	)
+
+	require.ErrorIs(t, err, errMembershipRefreshTransient)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
