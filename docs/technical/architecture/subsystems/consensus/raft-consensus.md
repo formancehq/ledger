@@ -478,6 +478,23 @@ the request context is cancelled after commit but before local durable apply,
 the call returns an error even though the committed change may still apply;
 only a nil response establishes the full local durability postcondition.
 
+The internal retry timer detects configuration proposals that Raft may have
+dropped while another change was pending; it is not a durability deadline.
+One logical operation retains the same proposal ID and waiter across attempts.
+Once `finishReady` consumes that waiter for a correlated committed entry, a
+queued retry must skip admission and proposal on the orchestrator, even if WAL
+ConfState persistence has not yet resolved the future. Otherwise an already
+committed promotion or removal can be reported as an admission error, or a
+retry can wait on a replacement future that no entry will resolve. The original
+future completes only after the existing WAL update, followed by the unchanged
+durable FSM barrier. Caller cancellation still bounds the wait; a distinct API
+invocation retains its own identity and admission checks.
+
+This adds a constant-time waiter lookup per retry and retains one waiter per
+serialized membership operation, rather than allocating one per attempt. It
+changes no Raft entry, persisted format, quorum, or apply behavior, so mixed
+release-candidate versions continue to apply identical committed entries.
+
 ### Why a Partition Cannot Commit Two Histories
 
 A voter grants at most one vote per term, a candidate needs a majority to

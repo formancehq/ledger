@@ -2785,28 +2785,32 @@ func (node *Node) SetObserver(obs *Observer) {
 }
 
 // proposeConfChangeAndWait proposes a ConfChange via the orchestrate loop and
-// waits for it to be committed. Returns (index, true, nil) on commit,
-// (0, false, nil) if the proposal was likely dropped (timeout), or
+// waits for its durable commit notification. The caller owns one pending waiter
+// for the entire logical operation. Returns (index, true, nil) on notification,
+// (0, false, nil) when the retry timer expires before notification, or
 // (0, false, err) on error.
 // The proposeFn is dispatched via execClusterCommand (rawNode is not thread-safe).
 func (node *Node) proposeConfChangeAndWait(
 	ctx context.Context,
 	proposalID string,
-	nodeID uint64,
-	expectedTypes []raftpb.ConfChangeType,
+	pending *pendingConfChange,
 	proposeFn func() error,
 	timeout time.Duration,
 ) (uint64, bool, error) {
-	pending := &pendingConfChange{
-		nodeID:        nodeID,
-		expectedTypes: append([]raftpb.ConfChangeType(nil), expectedTypes...),
-		future:        futures.New[uint64](),
-	}
+	err := node.execClusterCommand(ctx, false, func() error {
+		current, ok := node.pendingConfChanges.Load(proposalID)
+		if !ok {
+			// finishReady consumed this operation's waiter at commit. A retry
+			// queued during WAL persistence must await that same future rather
+			// than revalidate or propose the already-committed change.
+			return nil
+		}
+		if current != pending {
+			return fmt.Errorf("invariant: ConfChange proposal %q has a different waiter", proposalID)
+		}
 
-	node.pendingConfChanges.Store(proposalID, pending)
-	defer node.pendingConfChanges.CompareAndDelete(proposalID, pending)
-
-	err := node.execClusterCommand(ctx, false, proposeFn)
+		return proposeFn()
+	})
 	if err != nil {
 		return 0, false, err
 	}
@@ -2816,7 +2820,8 @@ func (node *Node) proposeConfChangeAndWait(
 
 	committedIndex, err := pending.future.Wait(timeoutCtx)
 	if err != nil {
-		// Timeout (deadline exceeded) means the proposal was likely dropped — not an error.
+		// A timeout permits another attempt, which rechecks on the orchestrator
+		// whether this operation already committed before proposing again.
 		if timeoutCtx.Err() != nil && ctx.Err() == nil {
 			return 0, false, nil
 		}
@@ -2862,14 +2867,24 @@ func (node *Node) retryConfChange(
 	node.confChangeMu.Lock()
 	defer node.confChangeMu.Unlock()
 
+	// The timer retries proposals that Raft may have dropped, not the logical
+	// operation. Keep its waiter even after finishReady consumes the map entry
+	// and while WAL persistence still delays resolution of the original future.
+	pending := &pendingConfChange{
+		nodeID:        nodeID,
+		expectedTypes: append([]raftpb.ConfChangeType(nil), expectedTypes...),
+		future:        futures.New[uint64](),
+	}
+	node.pendingConfChanges.Store(proposalID, pending)
+	defer node.pendingConfChanges.CompareAndDelete(proposalID, pending)
+
 	retryInterval := max(node.config.TickInterval*time.Duration(node.config.HeartbeatTick)*3, 500*time.Millisecond)
 
 	for {
 		committedIndex, committed, err := node.proposeConfChangeAndWait(
 			ctx,
 			proposalID,
-			nodeID,
-			expectedTypes,
+			pending,
 			proposeFn,
 			retryInterval,
 		)
