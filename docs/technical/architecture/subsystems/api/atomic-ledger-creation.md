@@ -12,10 +12,10 @@ creation fields. The service `CreateLedgerRequest.metadata` carries the same
 typed values. The Go `actions.CreateLedgerAction` helper also forwards its
 existing string metadata argument. Initial account-type map keys and patterns
 obey the same 256-byte name and 4096-byte pattern bounds as later account-type
-operations, both at admission and during FSM replay. `ledger:LedgerWrite`
+operations, both at admission and during FSM replay. `ledger:WriteLedger`
 authorizes the complete creation operation,
 including initial metadata, schema and account types. Subsequent metadata saves
-still require `ledger:MetadataWrite`. HTTP, gRPC and unsigned bulk use the same
+still require `ledger:WriteMetadata`. HTTP, gRPC and unsigned bulk use the same
 creation scope decision.
 
 Normal and mirror ledgers both accept initial ledger metadata. This is a

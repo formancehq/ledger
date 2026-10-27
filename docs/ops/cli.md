@@ -2440,6 +2440,10 @@ ledgerctl audit list [flags]
 |------|---------|-------------|
 | `--expand` | `false` | Expand orders within each audit entry |
 
+Each entry's header line ends with its batch signing key (`signature=<keyId>`)
+or `unsigned`. With `--expand`, that marker moves to a line above the orders,
+together with the batch `idempotency=<key>` when one is set.
+
 Audit has **no dedicated filter flags** — there is no `--failures-only` and no
 `--ledger`. Selecting failures or scoping to a ledger is done through the generic
 `--filter` (e.g. `--filter 'outcome == failure'`,
@@ -2495,7 +2499,6 @@ full-chain scan.
 - By default, shows the order count summary; use `--expand` to show full order details
 - Below each entry, all orders are listed in a tree structure with:
   - Order type and details (ledger name, reference, etc.)
-  - Signing key ID used (`key=<id>`) or `unsigned` if the order was not signed
   - Consecutive identical orders are grouped compactly (e.g. `MirrorIngest x500`)
 - If audit is disabled on the server, a warning message is displayed instead of an error
 - After the page, the command prints the [page hints](#page-tokens): `Previous page — go back with --cursor <token>` when an earlier page exists and `More results available — resume with --cursor <token>` when a later one does
@@ -2543,12 +2546,20 @@ ledgerctl audit list --json
 **Sample output:**
 
 ```
-  #1      2025-01-01T00:00:00Z  proposal=1    OK  logs=[1]
-    └─ CreateLedger name=default  key=unsigned
+  #1      2025-01-01T00:00:00Z  proposal=1    OK  logs=[1]  unsigned
+    └─ 1 orders
+  #2      2025-01-01T00:00:01Z  proposal=2    OK  logs=[2]  signature=admin-key
+    └─ 1 orders
+  #3      2025-01-01T00:00:02Z  proposal=3    FAIL  [INSUFFICIENT_FUNDS] ...  signature=admin-key
+    └─ 1 orders
+```
+
+With `--expand`:
+
+```
   #2      2025-01-01T00:00:01Z  proposal=2    OK  logs=[2]
-    └─ CreateTransaction ledger=default ref=tx-001  key=admin-key
-  #3      2025-01-01T00:00:02Z  proposal=3    FAIL  [INSUFFICIENT_FUNDS] ...
-    └─ CreateTransaction ledger=default  key=admin-key
+    signature=admin-key  idempotency=ik-1
+    └─ CreateTransaction ledger=default ref=tx-001
 ```
 
 #### audit get
@@ -2568,7 +2579,7 @@ ledgerctl audit get <sequence> [flags]
 
 **Behavior:**
 - Retrieves a single audit entry by sequence number
-- Displays the same tree format as `audit list` for the single entry
+- Displays the same tree format as `audit list --expand` for the single entry, including the batch `signature=<keyId>` / `unsigned` line and the `idempotency=<key>` when set
 - Returns an error if the entry does not exist
 
 **Example:**
@@ -2800,47 +2811,6 @@ ledgerctl cluster transfer-leader 2
 
 # Transfer with custom timeout
 ledgerctl cluster transfer-leader 3 --timeout 5s
-```
-
-#### cluster add-learner
-
-Add a non-voting (learner) node to the Raft cluster. The request is forwarded to the current leader.
-
-```bash
-ledgerctl cluster add-learner <node-id> <raft-address> <service-address> <instance-id> [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--timeout` | `10s` | Request timeout |
-
-**Behavior:**
-- The request is forwarded to the current leader if sent to a follower
-- `instance-id` is the 32-character hexadecimal encoding of the target node's 16-byte persisted `INSTANCE_ID` file
-- An existing member with replicated progress rejects a different identity with `FailedPrecondition`; retrying the same active identity returns `AlreadyExists`. With no replicated progress, a different identity refreshes the registration.
-- For stale progress, retire the old instance, remove its membership, then retry. If quorum is unavailable, use the leader-only `cluster remove-node --force` procedure in [Cluster operations](./cluster-operations.md), ensuring the retired instance cannot rejoin.
-- The leader proposes a ConfChange to add the node as a learner (non-voting member)
-- Once committed, all nodes add the learner to their transport and service pool
-- The learner receives log entries and snapshots but cannot vote or become leader
-
-**Example:**
-
-```bash
-# Read the INSTANCE_ID from the target node's configured --wal-dir (default: ./wal).
-# When running under the Formance Operator, the mount path is /data/raft by default.
-WAL_DIR=${WAL_DIR:-./wal}
-INSTANCE_ID_HEX=$(od -An -tx1 "$WAL_DIR/INSTANCE_ID" | tr -d ' \n')
-
-# Add node 4 as a learner
-ledgerctl cluster add-learner 4 node-4:7777 node-4:8888 "$INSTANCE_ID_HEX"
-
-# Add node 5 as a learner - read its own WAL directory for its unique INSTANCE_ID.
-# Reusing node-4 identity here would register node-5 under the wrong incarnation.
-NODE5_WAL_DIR=${NODE5_WAL_DIR:-./wal}
-NODE5_INSTANCE_ID_HEX=$(od -An -tx1 "$NODE5_WAL_DIR/INSTANCE_ID" | tr -d ' \n')
-ledgerctl cluster add-learner 5 node-5:7777 node-5:8888 "$NODE5_INSTANCE_ID_HEX" --timeout 30s
 ```
 
 #### cluster promote-learner
@@ -4156,8 +4126,9 @@ ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create -
 
 With `--response-verify-key`, prepared query create/update/delete and query
 checkpoint create/delete verify the returned Apply log signatures before
-reporting success or reading the created checkpoint ID. Missing or invalid
-signatures cause the command to fail.
+reporting success or reading the created checkpoint ID. Verification also
+checks that each visible log matches the authenticated payload. Missing or
+invalid signatures and mismatched logs cause the command to fail.
 
 Clients can also discover the server's public key via the `Discovery` RPC.
 
@@ -4604,6 +4575,9 @@ into every pod whenever TLS is active (`optional` or `required`), whether
 authentication is enabled or not. Manual deployments must set the flag
 themselves.
 
+When client authentication is disabled, caller attribution is derived
+independently on each node; followers do not forward an auth-disabled snapshot.
+
 **TLS is required when `--cluster-secret` is set.** The server refuses to start
 if a cluster secret is configured without TLS (`--tls-cert-file` and
 `--tls-key-file`), because the secret would be sent in plaintext otherwise.
@@ -4701,7 +4675,7 @@ on/off TLS toggle workflow.
 | `--auth-anonymous-scopes` | string | `""` | Comma-separated granular scopes (or `*:read` / `*:write` wildcards) granted to requests that arrive without a bearer token |
 | `--auth-discovery-timeout` | duration | `10s` | Bound the HTTP calls used for OIDC discovery and JWKS fetches (`0` = unbounded). Applies one operator-controlled timeout to both the discovery call and later JWKS key fetches. |
 
-Allows expanding virtual scopes into granular Ledger scopes. For example, mapping `ledger:read` to scopes such as `ledger:LedgerRead` and `ledger:TransactionRead`. Granular Ledger scopes use the `ledger:<Resource><Action>` shape. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
+Allows expanding virtual scopes into granular Ledger scopes. For example, mapping `ledger:read` to scopes such as `ledger:ReadLedger` and `ledger:ReadTransaction`. Granular Ledger scopes use the `ledger:<Action><Resource>` shape. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
 
 ```bash
 ledger run --auth-scope-mapping-file /etc/ledger/scope-mapping.json [other flags...]
@@ -4863,7 +4837,7 @@ ledger run \
   [other flags...]
 ```
 
-When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. By default, tokens may use the virtual scopes `ledger:read`, `ledger:write`, and `ledger:admin`, which expand to granular `ledger:<Resource><Action>` scopes.
+When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. By default, tokens may use the virtual scopes `ledger:read`, `ledger:write`, and `ledger:admin`, which expand to granular `ledger:<Action><Resource>` scopes.
 
 When `--auth-ed25519-keys` is set, both OIDC and Ed25519 authentication can coexist. See [Authentication Guide](authentication.md) for full Ed25519 setup instructions.
 
@@ -5015,6 +4989,15 @@ export LEDGERCTL_INSECURE=false
 export LEDGERCTL_TLS_CA_CERT=/path/to/ca.pem
 ledgerctl ledgers list
 ```
+
+Command-specific flags use the same `LEDGERCTL_` prefix with the flag name
+uppercased and hyphens replaced by underscores (for example,
+`LEDGERCTL_MODE` for `--mode`). Environment values never mark a flag as
+explicitly changed, so a command-line flag always takes precedence. Safety
+flags such as `--force` and `--yes` are intentionally CLI-only; `FORCE`, `YES`,
+and their prefixed forms are ignored. The backup commands additionally retain
+the documented `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` aliases for
+Kubernetes Secret-backed Jobs.
 
 ---
 
@@ -5404,3 +5387,13 @@ ledgerctl query-checkpoint get-schedule
 # Output (no schedule):
 #  SUCCESS  No query checkpoint schedule configured (automatic creation disabled)
 ```
+
+## ClickHouse legacy account metadata conversion
+
+The standalone `scripts/clickhouse-account-metadata` utility reads the migration's
+JSONEachRow export from stdin and writes converted rows to stdout. Run it with
+`nix develop --command go run ./scripts/clickhouse-account-metadata` from the
+repository root. It exits nonzero on invalid input or an output error; discard
+partial output after any failure. It does not connect to ClickHouse.
+Follow the complete [migration procedure](clickhouse-account-metadata.md),
+including preflights, backup, source preservation, import and verification.

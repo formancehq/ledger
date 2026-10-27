@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/cockroachdb/pebble/v2/wal"
+	"github.com/dustin/go-humanize"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 
@@ -328,6 +329,10 @@ const (
 	// authenticate audit history. It is part of checkpoints, unlike the
 	// operational cluster identity removed during restore preparation.
 	SubGlobAuditKey byte = 0x15
+	// SubGlobBloomProjectionSeal proves that persisted Bloom blocks were built
+	// from a complete scan. It lives outside SubGlobBloom so the prior binary's
+	// block reader ignores it during rollback.
+	SubGlobBloomProjectionSeal byte = 0x16
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).
@@ -423,11 +428,12 @@ func NewStore(
 	cfg Config,
 ) (*Store, error) {
 	stallState := NewWriteStallState()
+	pebbleLogger := NewPebbleLogger(logger)
 
 	opts := &pebble.Options{
-		Logger:             NewPebbleLogger(logger),
+		Logger:             pebbleLogger,
 		FormatMajorVersion: pebble.FormatNewest,
-		EventListener:      NewMetricsListener(meter, stallState),
+		EventListener:      newStoreEventListener(logger, pebbleLogger, meter, stallState),
 		// 1) Absorb more writes before flush => fewer SST files, fewer compactions.
 		MemTableSize:                cfg.MemTableSize,
 		MemTableStopWritesThreshold: cfg.MemTableStopWritesThreshold,
@@ -559,19 +565,26 @@ func NewStore(
 
 	m := db.Metrics()
 	logger.WithFields(map[string]any{
-		"duration":          time.Since(openStart).String(),
-		"l0FileCount":       m.Levels[0].TablesCount,
-		"l0Size":            m.Levels[0].TablesSize,
-		"l1FileCount":       m.Levels[1].TablesCount,
-		"l1Size":            m.Levels[1].TablesSize,
-		"memTableCount":     m.MemTable.Count,
-		"memTableSize":      m.MemTable.Size,
-		"compactionCount":   m.Compact.Count,
-		"compactionDebt":    m.Compact.InProgressBytes,
-		"compactionEstDebt": m.Compact.EstimatedDebt,
-		"walFilesCount":     m.WAL.Files,
-		"walSize":           m.WAL.Size,
-		"totalLevelsSize":   m.DiskSpaceUsage(),
+		"duration":               time.Since(openStart).String(),
+		"l0FileCount":            m.Levels[0].TablesCount,
+		"l0Size":                 m.Levels[0].TablesSize,
+		"l0SizeHuman":            humanize.IBytes(uint64(m.Levels[0].TablesSize)),
+		"l1FileCount":            m.Levels[1].TablesCount,
+		"l1Size":                 m.Levels[1].TablesSize,
+		"l1SizeHuman":            humanize.IBytes(uint64(m.Levels[1].TablesSize)),
+		"memTableCount":          m.MemTable.Count,
+		"memTableSize":           m.MemTable.Size,
+		"memTableSizeHuman":      humanize.IBytes(m.MemTable.Size),
+		"compactionCount":        m.Compact.Count,
+		"compactionDebt":         m.Compact.InProgressBytes,
+		"compactionDebtHuman":    humanize.IBytes(uint64(m.Compact.InProgressBytes)),
+		"compactionEstDebt":      m.Compact.EstimatedDebt,
+		"compactionEstDebtHuman": humanize.IBytes(m.Compact.EstimatedDebt),
+		"walFilesCount":          m.WAL.Files,
+		"walSize":                m.WAL.Size,
+		"walSizeHuman":           humanize.IBytes(m.WAL.Size),
+		"totalLevelsSize":        m.DiskSpaceUsage(),
+		"totalLevelsSizeHuman":   humanize.IBytes(m.DiskSpaceUsage()),
 	}).Infof("Pebble database opened — LSM state")
 
 	// Calculate the oldest checkpoint that should exist
@@ -608,6 +621,16 @@ func NewStore(
 	store.cleanupIncomingRestore()
 
 	return store, nil
+}
+
+func newStoreEventListener(logger logging.Logger, pebbleLogger pebble.Logger, meter metric.Meter, stallState *WriteStallState) *pebble.EventListener {
+	events := NewPebbleEventLogger(logger, "live")
+	// TeeEventListener fills nil callbacks with no-ops. Install Pebble's fatal
+	// corruption handler first so composing metrics and logs cannot silence it.
+	events.EnsureDefaults(pebbleLogger)
+	listener := pebble.TeeEventListener(*NewMetricsListener(meter, stallState), *events)
+
+	return &listener
 }
 
 // DataDir returns the base data directory path for this store.

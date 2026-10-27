@@ -158,6 +158,16 @@ func (b *WriteSession) Commit() error {
 	return nil
 }
 
+// BufferedBytes reports the size of operations staged in this write session.
+// It observes only the in-memory batch and never reads the store.
+func (b *WriteSession) BufferedBytes() int {
+	if b.batch == nil {
+		return 0
+	}
+
+	return b.batch.Len()
+}
+
 // Set writes a key-value pair.
 // Returns an error if the session has reached a terminal state.
 func (b *WriteSession) Set(key, value []byte, options *pebble.WriteOptions) error {

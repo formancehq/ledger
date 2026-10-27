@@ -108,6 +108,24 @@ layer and does not perform active fuzzing.
 
 Store integration tests cover both runtime state and log persistence now that log storage is part of the store.
 
+PostgreSQL mirror integration tests use isolated disposable databases and two
+independent source transactions to distinguish late commits from permanent
+sequence gaps. CI runs the `Postgres` selection in `internal/adapter/v2` and
+`internal/application/mirror` with `-tags integration` and the race detector
+through the same recipe available locally:
+
+```bash
+nix develop .#ci --command just test-postgres-mirror-coverage
+```
+
+The recipe writes `build/coverage/postgres-mirror.out`, which CI uploads and
+requires when merging coverage profiles.
+By default these tests start
+PostgreSQL through Testcontainers. To use an existing disposable PostgreSQL
+service, set `LEDGER_TEST_POSTGRES_DSN` to its administrator URI; each case
+creates and drops its own database. The source-privilege test also creates and
+drops a temporary role. Never point this override at a production service.
+
 **Example**:
 ```go
 //go:build integration
@@ -448,6 +466,20 @@ driver's template decides who it shares the timeline with:
 | `model` | `bin/cmds/model/` | A single driver (`singleton_driver_model`) **owns the whole timeline** — no other driver runs alongside it — because it drives the system itself and checks global consensus conformance. |
 
 The split is wired in `tests/antithesis/workload/Dockerfile`.
+
+#### Scenario randomness and reusable driver episodes
+
+Scenario blocks receive `scenario.Random`, which exposes `Intn`, `Int63n`
+and `Uint64`. Existing `scenario.RandFunc` callers retain the same one-draw
+modulo mapping for positive bounds; a raw `func() uint64` must be explicitly
+wrapped with `scenario.RandFunc`. Custom `Block.Run` callbacks must accept
+`scenario.Random`. The interface adds no generator dependency to the root
+module and leaves the choice of random source to the caller.
+
+The Numscript lifecycle and projection-alignment drivers expose reusable
+execution functions with explicit business inputs. Their Composer entry points
+retain the existing fixed version pair (`1.0.0`, `2.0.0`) and asset (`USD/2`),
+SDK entropy for technical identities, RPC sequence and assertion names.
 
 #### Dedicated-ledger query oracles
 
@@ -894,7 +926,11 @@ export DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock
 
 ### Operator Integration Tests
 
-The default Nix shell provides `setup-envtest`, and its shell hook exports `KUBEBUILDER_ASSETS`. The first shell start downloads the etcd and kube-apiserver binaries. The `ci` shell does not include envtest because no CI job runs the `integration` tag.
+The default Nix shell provides `setup-envtest`, and its shell hook exports `KUBEBUILDER_ASSETS`. The first shell start downloads the etcd and kube-apiserver binaries. The lean `ci` shell does not include envtest. The `Tests-Operator` CI job uses the dedicated `operator-tests` shell for the focused Ledger target admission regressions, selecting Kubernetes 1.32.x assets:
+
+```bash
+nix develop .#operator-tests --command just operator-test-admission
+```
 
 ```bash
 # Run from misc/operator/ inside the default shell
@@ -922,6 +958,7 @@ go tool cover -html=coverage.out
 ```
 
 The `just` coverage recipes (`test-coverage`, `test-internal-coverage`,
+`test-postgres-mirror-coverage`,
 `test-antithesis-assertions`, `test-e2e-coverage`, `test-scenarios-coverage`,
 `fuzz-check-coverage`) run through `scripts/go-test-coverage` rather than
 `-coverprofile`. With `-coverpkg=github.com/formancehq/ledger/v3/internal/...`,

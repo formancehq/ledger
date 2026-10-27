@@ -38,7 +38,7 @@ func TestAddLearnerRejectsRemovedAndActiveIncarnations(t *testing.T) {
 				identity = []byte("next-instance-id")
 			}
 			if tc.pending {
-				n.pendingRemovals.Store(2, &pendingRemoval{instanceID: identity, committedIndex: 42})
+				n.pendingRemovals.loadOrStore(2, &pendingRemoval{instanceID: identity, committedIndex: 42})
 				removed, err := n.membership.IsRemoved(2, identity)
 				require.NoError(t, err)
 				require.False(t, removed, "pending admission must reject before a tombstone exists")

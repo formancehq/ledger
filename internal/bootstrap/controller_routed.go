@@ -27,9 +27,8 @@ var routerTracer = otel.Tracer("router")
 type RoutedController struct {
 	*node.Node
 
-	servicePool           *transport.ConnectionPool
-	localController       ctrl.Controller
-	trustedPeerForwarding bool
+	servicePool     *transport.ConnectionPool
+	localController ctrl.Controller
 	// readIndexAndWait is the node barrier dependency. NewRoutedController
 	// binds the real Raft implementation; the field keeps production method
 	// tests deterministic without constructing a running Raft node.
@@ -66,7 +65,7 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 	// so it is the only place that needs the wrapper.
 	conn := grpcerr.NewConn(grpcConn)
 
-	return grpcadp.NewLedgerGrpcClient(servicepb.NewBucketServiceClient(conn), b.trustedPeerForwarding), nil
+	return grpcadp.NewLedgerGrpcClient(servicepb.NewBucketServiceClient(conn)), nil
 }
 
 // readCtrl returns the controller to use for a read operation, along with
@@ -490,13 +489,11 @@ func (b *RoutedController) ListIndexes(ctx context.Context, req *servicepb.ListI
 
 var _ ctrl.Controller = (*RoutedController)(nil)
 
-func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool, trustedPeerForwarding ...bool) *RoutedController {
-	trusted := len(trustedPeerForwarding) > 0 && trustedPeerForwarding[0]
+func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool) *RoutedController {
 	routed := &RoutedController{
-		Node:                  node,
-		servicePool:           servicePool,
-		localController:       localController,
-		trustedPeerForwarding: trusted,
+		Node:            node,
+		servicePool:     servicePool,
+		localController: localController,
 	}
 	if node != nil {
 		routed.readIndexAndWait = node.ReadIndexAndWait

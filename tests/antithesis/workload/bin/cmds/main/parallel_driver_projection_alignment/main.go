@@ -18,6 +18,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
+	"github.com/formancehq/invariants"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -39,143 +40,147 @@ func isInconclusiveProjectionRead(err error) bool {
 
 func main() {
 	internal.RunDriver("parallel_driver_projection_alignment", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
-		r := internal.Rand()
+		runProjectionAlignment(ctx, client, "USD", 2)
+	})
+}
 
-		run := r.Uint64()
-		ledger := internal.PrefixProjectionAlign.WithSeed(run)
-		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
-			return
+func runProjectionAlignment(ctx context.Context, client servicepb.BucketServiceClient, assetBase string, precision uint32) {
+	r := internal.Rand()
+
+	run := r.Uint64()
+	ledger := internal.PrefixProjectionAlign.WithSeed(run)
+	if err := internal.CreateLedger(ctx, client, ledger); err != nil {
+		return
+	}
+
+	queryName := fmt.Sprintf("projection-q-%d", run)
+	indexIdempotencyKey := fmt.Sprintf("projection-index-%d", run)
+	queryIdempotencyKey := fmt.Sprintf("projection-query-%d", run)
+	probeIdempotencyKey := fmt.Sprintf("projection-probe-%d", run)
+	details := internal.Details{"ledger": ledger, "queryName": queryName}
+
+	// AccountHasAsset requires the account asset-presence index. Create it
+	// with a stable idempotency key so a timed-out setup call can be retried
+	// safely by a later driver run, then wait for this replica to switch the
+	// freshly built keyspace before exercising projection alignment.
+	if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(
+		indexIdempotencyKey,
+		actions.CreateAccountAssetIndexAction(ledger),
+	)); err != nil {
+		if !internal.IsTolerated(err) {
+			assert.Unreachable("projection asset-index creation returned unexpected error",
+				details.With(internal.Details{"error": err}))
 		}
 
-		queryName := fmt.Sprintf("projection-q-%d", run)
-		indexIdempotencyKey := fmt.Sprintf("projection-index-%d", run)
-		queryIdempotencyKey := fmt.Sprintf("projection-query-%d", run)
-		probeIdempotencyKey := fmt.Sprintf("projection-probe-%d", run)
-		details := internal.Details{"ledger": ledger, "queryName": queryName}
-
-		// AccountHasAsset requires the account asset-presence index. Create it
-		// with a stable idempotency key so a timed-out setup call can be retried
-		// safely by a later driver run, then wait for this replica to switch the
-		// freshly built keyspace before exercising projection alignment.
-		if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(
-			indexIdempotencyKey,
-			actions.CreateAccountAssetIndexAction(ledger),
-		)); err != nil {
-			if !internal.IsTolerated(err) {
-				assert.Unreachable("projection asset-index creation returned unexpected error",
-					details.With(internal.Details{"error": err}))
-			}
-
-			return
-		}
-		if err := actions.WaitForAccountAssetIndexReady(ctx, client, ledger); err != nil {
-			if !internal.IsTolerated(err) {
-				assert.Unreachable("projection asset index did not become ready",
-					details.With(internal.Details{"error": err}))
-			}
-
-			return
+		return
+	}
+	if err := actions.WaitForAccountAssetIndexReady(ctx, client, ledger); err != nil {
+		if !internal.IsTolerated(err) {
+			assert.Unreachable("projection asset index did not become ready",
+				details.With(internal.Details{"error": err}))
 		}
 
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(queryIdempotencyKey, &servicepb.Request{
-			Type: &servicepb.Request_CreatePreparedQuery{
-				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
-					Ledger: ledger,
-					Query: &commonpb.PreparedQuery{
-						Name:   queryName,
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-						Filter: &commonpb.QueryFilter{
-							// AccountHasAsset is served by the asynchronous read
-							// projection. The acknowledged transaction below creates
-							// exactly this USD/2 membership, so a successful query can
-							// only include the probe after projection certification.
-							Filter: &commonpb.QueryFilter_AccountHasAsset{
-								AccountHasAsset: &commonpb.AccountHasAssetCondition{
-									AssetBase: "USD",
-									Precision: 2,
-								},
+		return
+	}
+
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(queryIdempotencyKey, &servicepb.Request{
+		Type: &servicepb.Request_CreatePreparedQuery{
+			CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledger,
+				Query: &commonpb.PreparedQuery{
+					Name:   queryName,
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+					Filter: &commonpb.QueryFilter{
+						// AccountHasAsset is served by the asynchronous read
+						// projection. The acknowledged transaction below creates
+						// exactly this asset membership, so a successful query can
+						// only include the probe after projection certification.
+						Filter: &commonpb.QueryFilter_AccountHasAsset{
+							AccountHasAsset: &commonpb.AccountHasAssetCondition{
+								AssetBase: assetBase,
+								Precision: precision,
 							},
 						},
 					},
 				},
 			},
-		}))
-		if err != nil {
-			if !internal.IsTolerated(err) {
-				assert.Unreachable("projection prepared-query creation returned unexpected error",
-					details.With(internal.Details{"error": err}))
-			}
-
-			return
+		},
+	}))
+	if err != nil {
+		if !internal.IsTolerated(err) {
+			assert.Unreachable("projection prepared-query creation returned unexpected error",
+				details.With(internal.Details{"error": err}))
 		}
 
-		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(probeIdempotencyKey, &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
-					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
-								Source:      "world",
-								Destination: probeAccount,
-								Amount:      commonpb.NewUint256FromUint64(1),
-								Asset:       "USD/2",
-							}},
-							Reference: fmt.Sprintf("projection-%d", run),
-							Force:     true,
-						},
-					}},
-				},
+		return
+	}
+
+	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(probeIdempotencyKey, &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledger,
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Postings: []*commonpb.Posting{{
+							Source:      "world",
+							Destination: probeAccount,
+							Amount:      commonpb.NewUint256FromUint64(1),
+							Asset:       invariants.FormatAsset(assetBase, uint8(precision)),
+						}},
+						Reference: fmt.Sprintf("projection-%d", run),
+						Force:     true,
+					},
+				}},
 			},
-		}))
-		if err != nil {
-			if !internal.IsTolerated(err) {
-				assert.Unreachable("projection probe apply returned unexpected error",
-					details.With(internal.Details{"error": err}))
-			}
-
-			return
-		}
-		if len(resp.GetLogs()) == 0 {
-			assert.Unreachable("projection probe apply succeeded without an audit log", details)
-
-			return
-		}
-		details = details.With(internal.Details{"ackedSeq": resp.GetLogs()[len(resp.GetLogs())-1].GetSequence()})
-
-		execResp, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
-			Ledger:    ledger,
-			QueryName: queryName,
-			PageSize:  100,
-		})
-		if err != nil {
-			if !isInconclusiveProjectionRead(err) {
-				assert.Unreachable("projection-aligned prepared query returned unexpected error",
-					details.With(internal.Details{"error": err}))
-			}
-
-			return
-		}
-		assert.Reachable("projection-aligned prepared query succeeded", details)
-
-		cursor := execResp.GetCursor()
-		if cursor == nil {
-			assert.Unreachable("projection-aligned prepared query returned no cursor result", details)
-
-			return
+		},
+	}))
+	if err != nil {
+		if !internal.IsTolerated(err) {
+			assert.Unreachable("projection probe apply returned unexpected error",
+				details.With(internal.Details{"error": err}))
 		}
 
-		found := false
-		for _, account := range cursor.GetAccountData() {
-			if account.GetAddress() == probeAccount {
-				found = true
+		return
+	}
+	if len(resp.GetLogs()) == 0 {
+		assert.Unreachable("projection probe apply succeeded without an audit log", details)
 
-				break
-			}
-		}
+		return
+	}
+	details = details.With(internal.Details{"ackedSeq": resp.GetLogs()[len(resp.GetLogs())-1].GetSequence()})
 
-		assert.Always(found,
-			"projection-aligned read includes the acknowledged write",
-			details.With(internal.Details{"returned": len(cursor.GetAccountData())}))
+	execResp, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+		Ledger:    ledger,
+		QueryName: queryName,
+		PageSize:  100,
 	})
+	if err != nil {
+		if !isInconclusiveProjectionRead(err) {
+			assert.Unreachable("projection-aligned prepared query returned unexpected error",
+				details.With(internal.Details{"error": err}))
+		}
+
+		return
+	}
+	assert.Reachable("projection-aligned prepared query succeeded", details)
+
+	cursor := execResp.GetCursor()
+	if cursor == nil {
+		assert.Unreachable("projection-aligned prepared query returned no cursor result", details)
+
+		return
+	}
+
+	found := false
+	for _, account := range cursor.GetAccountData() {
+		if account.GetAddress() == probeAccount {
+			found = true
+
+			break
+		}
+	}
+
+	assert.Always(found,
+		"projection-aligned read includes the acknowledged write",
+		details.With(internal.Details{"returned": len(cursor.GetAccountData())}))
 }

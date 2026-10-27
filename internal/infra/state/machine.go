@@ -493,6 +493,8 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 	}
 	sinkConfigChanged := false
 	mirrorConfigChanged := false
+	var bloomReplacementEpoch uint64
+	bloomReplacement := false
 
 	for i := range decoded {
 		entry := decoded[i].Entry
@@ -603,10 +605,23 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 			}
 
 			if fsm.BloomFilters != nil && fsm.BloomFilters.IsReady() {
-				if err := fsm.BloomFilters.PersistDirtyBlocks(batch); err != nil {
+				epoch, replace := fsm.BloomFilters.PersistedReplacement()
+				var err error
+				if replace && bloomReplacement && bloomReplacementEpoch == epoch {
+					// This batch already contains the complete projection for
+					// this epoch; later rotations need only their dirty blocks.
+					err = fsm.BloomFilters.PersistDirtyBlocksAfterReplacement(batch)
+				} else {
+					err = fsm.BloomFilters.PersistDirtyBlocks(batch)
+				}
+				if err != nil {
 					_ = batch.Cancel()
 
 					return nil, fmt.Errorf("persisting bloom dirty blocks: %w", err)
+				}
+				if replace {
+					bloomReplacementEpoch = epoch
+					bloomReplacement = true
 				}
 			}
 
@@ -731,6 +746,16 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 
 		return nil, fmt.Errorf("setting applied index: %w", err)
 	}
+	if fsm.BloomFilters != nil && fsm.BloomFilters.IsReady() {
+		epoch, replace := fsm.BloomFilters.PersistedReplacement()
+		if !replace || (bloomReplacement && bloomReplacementEpoch == epoch) {
+			if err := bloom.SealProjectionAt(batch, fsm.State.LastAppliedIndex); err != nil {
+				_ = batch.Cancel()
+
+				return nil, err
+			}
+		}
+	}
 
 	err = StoreLastAppliedTimestamp(batch, fsm.State.LastAppliedTimestamp)
 	if err != nil {
@@ -742,13 +767,15 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 	// Capture all post-commit data now, so CommitPreparedBatch does not
 	// need to read mutable fsm fields.
 	pb := &PreparedBatch{
-		batch:               batch,
-		Result:              ret,
-		lastAppliedIndex:    fsm.State.LastAppliedIndex,
-		lastSequenceID:      fsm.State.NextSequenceID - 1,
-		sinkConfigChanged:   sinkConfigChanged,
-		mirrorConfigChanged: mirrorConfigChanged,
-		entryCount:          len(decoded),
+		batch:                 batch,
+		Result:                ret,
+		lastAppliedIndex:      fsm.State.LastAppliedIndex,
+		lastSequenceID:        fsm.State.NextSequenceID - 1,
+		sinkConfigChanged:     sinkConfigChanged,
+		mirrorConfigChanged:   mirrorConfigChanged,
+		bloomReplacement:      bloomReplacement,
+		bloomReplacementEpoch: bloomReplacementEpoch,
+		entryCount:            len(decoded),
 	}
 
 	// Capture sentinel data before releasing the lock.
@@ -784,6 +811,9 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 	}
 
 	pb.batch = nil // committed, prevent double-close
+	if pb.bloomReplacement {
+		fsm.BloomFilters.ConfirmPersistedReplacement(pb.bloomReplacementEpoch)
+	}
 
 	fsm.batchCommitHistogram.Record(ctx, time.Since(commitStart).Seconds())
 
@@ -1948,11 +1978,13 @@ type PreparedBatch struct {
 	Result *ApplyEntriesResult
 
 	// State captured during prepare for post-commit use.
-	lastAppliedIndex    uint64
-	lastSequenceID      uint64
-	sinkConfigChanged   bool
-	mirrorConfigChanged bool
-	checkpointDeletes   []uint64
+	lastAppliedIndex      uint64
+	lastSequenceID        uint64
+	sinkConfigChanged     bool
+	mirrorConfigChanged   bool
+	bloomReplacement      bool
+	bloomReplacementEpoch uint64
+	checkpointDeletes     []uint64
 
 	// Sentinel data (captured during prepare, validated after commit).
 	sentinelMode               bool

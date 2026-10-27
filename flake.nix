@@ -156,6 +156,9 @@
           # tests/perf k6 load tests and benchstat comparisons.
           perf = mkTaskShell [ pkgs.k6 pkgs-unstable.goperf ];
 
+          # API-server admission regressions for the operator, without Docker.
+          operator-tests = mkTaskShell [ pkgs-unstable.setup-envtest ];
+
           default = pkgs.mkShell {
             packages = ciPackages ++ localPackages;
             GOTOOLCHAIN = "local";

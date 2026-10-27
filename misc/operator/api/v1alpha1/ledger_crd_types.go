@@ -16,13 +16,15 @@ const (
 
 // LedgerCRDSpec defines the desired state of a Ledger.
 type LedgerCRDSpec struct {
-	// Name is the ledger name to create/delete via gRPC.
+	// Name is the ledger name to create/delete via gRPC, immutable from CR creation.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="name is immutable"
 	Name string `json:"name"`
 
 	// ClusterRef is the name of the Cluster in the same namespace
-	// that provides the gRPC endpoint.
+	// that provides the gRPC endpoint. It is immutable from CR creation.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="clusterRef is immutable"
 	ClusterRef string `json:"clusterRef"`
 
 	// Mode is the ledger mode: "normal" or "mirror".

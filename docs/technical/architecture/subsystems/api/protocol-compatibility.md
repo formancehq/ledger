@@ -50,6 +50,20 @@ Restore mode does not register Discovery: its service gate provides the
 compatibility error without requiring a preliminary Discovery call, while
 health and reflection remain exempt.
 
+Ledger policy integrity checking retains revision 40. `CheckStore`
+can emit the additive `LEDGER_INFO_MISMATCH` error type (32)
+for ledger identity, deletion state, mode and mirror-source divergence. Existing
+field-specific errors remain available and can now identify corruption in either
+canonical or global ledger rows, including retained tombstones. Older protobuf
+clients can decode the numeric enum value but may not have its symbolic name;
+consumers must treat an unknown error type in a check error event as an integrity
+failure. `ValidateRestore` detects the same corruption through its existing
+message-only `ValidateRestoreError` events; that stream exposes no error-type
+enum. Updating generated bindings provides the new `CheckStore` error name. Request and response
+envelopes, existing enum numbers, HTTP routes and protocol metadata are unchanged.
+This checker-only change writes no persisted state and changes no Raft apply
+semantics, so it requires no data migration or mixed-version apply transition.
+
 The prepared-query `LIST` pagination correction retains revision 40 and the
 published protobuf wire contract. Every entry point now defaults zero to 100
 and clamps values above 1,000 before pagination and enrichment. Existing clients
@@ -681,3 +695,16 @@ upgrades, those high-ID operations remain unreliable through older servers; comp
 This change does not alter persisted member identities, Raft transport,
 committed entry application, audit history, snapshots or backups, and requires
 no persisted-state migration. Existing configured high IDs remain intact.
+
+## Granular scope naming during the RC line
+
+The 14 Ledger granular authorization labels change from
+`ledger:<Resource><Action>` to `ledger:<Action><Resource>`. Clients that send
+granular labels in JWTs must request and receive the new labels. The aggregate
+`ledger:read`, `ledger:write`, and `ledger:admin` labels retain their meaning,
+and the gRPC wire contract remains at revision 40. This authentication behavior
+change requires updated token mappings but no client protocol revision change.
+Custom and anonymous scope mappings must use the new granular values; see the
+[authentication migration](../../../../ops/authentication.md#migration-from-rc1-granular-labels).
+Persisted audit snapshots retain the exact effective scope strings captured at
+admission, so historical hashes remain verifiable without a storage migration.

@@ -65,7 +65,7 @@ func VerifyResponseSignatures(cmd *cobra.Command, logs []*commonpb.Log) error {
 			return fmt.Errorf("log %d: missing response signature (server may not have response signing enabled)", log.GetSequence())
 		}
 
-		err := signing.VerifyResponseSignature(log.GetResponseSignature(), pubKey)
+		err := signing.VerifyResponseLog(log, pubKey)
 		if err != nil {
 			return fmt.Errorf("log %d: %w", log.GetSequence(), err)
 		}
