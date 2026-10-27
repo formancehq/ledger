@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	"go.etcd.io/raft/v3/raftpb"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
@@ -15,9 +17,6 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Proposal payload legacy wire migration", func() {
@@ -27,6 +26,11 @@ var _ = Describe("Proposal payload legacy wire migration", func() {
 		var batches, policies atomic.Uint64
 		var invalid atomic.Bool
 		gateway.SetInterceptor(testserver.MessageInterceptorFunc(func(message *raftpb.Message) bool {
+			// ReadIndex messages also use Entry.Data, but carry opaque request
+			// contexts rather than proposals. Inspect actual log replication.
+			if message.GetType() != raftpb.MsgApp {
+				return true
+			}
 			for _, entry := range message.GetEntries() {
 				if entry.GetType() != raftpb.EntryNormal || len(entry.GetData()) == 0 {
 					continue
@@ -34,6 +38,7 @@ var _ = Describe("Proposal payload legacy wire migration", func() {
 				p := &raftcmdpb.Proposal{}
 				if p.UnmarshalVT(entry.GetData()) != nil {
 					invalid.Store(true)
+
 					continue
 				}
 				if p.GetPayload() != nil {
@@ -48,6 +53,7 @@ var _ = Describe("Proposal payload legacy wire migration", func() {
 					}
 				}
 			}
+
 			return true
 		}))
 		DeferCleanup(gateway.RemoveInterceptor)
