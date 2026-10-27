@@ -1240,6 +1240,7 @@ Read endpoints comparison with the original ledger:
 | `DELETE /v3/{ledgerName}/prepared-queries/{queryName}` | ✅ | ❌ | Delete a prepared query |
 | `GET /v3/{ledgerName}/prepared-queries` | ✅ | ❌ | List prepared queries |
 | `POST /v3/{ledgerName}/prepared-queries/{queryName}/execute` | ✅ | ❌ | Execute a prepared query |
+| `POST /v3/numscripts/analyze` | ✅ | ❌ | Validate Numscript v1 source and return external inputs or typed diagnostics; requires `query:read` when authentication is enabled |
 | `GET /v3/{ledgerName}/numscripts` | ✅ | ❌ | List numscripts (greatest version of each), paged by name ([pagination](#pagination)) |
 | `GET /v3/{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (version selector, empty/latest = greatest semver) |
 | `GET /v3/{ledgerName}/numscripts/{name}/usage` | ✅ | ❌ | Get invocation count + last-used timestamp. A missing or deleted ledger returns `404 LEDGER_NOT_FOUND`; a never-invoked template returns a zero-valued `200` response |

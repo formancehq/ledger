@@ -25,3 +25,24 @@ func TestHandleAnalyzeNumscript(t *testing.T) {
 		require.Empty(t, result.Data.Diagnostics)
 	}
 }
+
+func TestHandleAnalyzeNumscriptRejectsTrailingAndOversizedBodies(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, body string
+		status     int
+	}{
+		{"second value", `{"source":"send [USD/2 1] (source = @world destination = @alice)","version":"v1"}{}`, http.StatusBadRequest},
+		{"trailing junk", `{"source":"send [USD/2 1] (source = @world destination = @alice)","version":"v1"}junk`, http.StatusBadRequest},
+		{"oversized suffix", `{"source":"send [USD/2 1] (source = @world destination = @alice)","version":"v1"}` + strings.Repeat(" ", int(defaultMaxBodySize)), http.StatusRequestEntityTooLarge},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			request := httptest.NewRequest(http.MethodPost, "/v3/numscripts/analyze", strings.NewReader(tc.body))
+			response := httptest.NewRecorder()
+			request.Body = http.MaxBytesReader(response, request.Body, defaultMaxBodySize)
+			(&Server{}).handleAnalyzeNumscript(response, request)
+			require.Equal(t, tc.status, response.Code)
+		})
+	}
+}

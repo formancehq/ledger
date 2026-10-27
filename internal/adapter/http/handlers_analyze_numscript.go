@@ -1,6 +1,7 @@
 package http
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
@@ -13,7 +14,16 @@ func (s *Server) handleAnalyzeNumscript(w http.ResponseWriter, r *http.Request) 
 		Source  string `json:"source"`
 		Version string `json:"version"`
 	}
-	if err := json.UnmarshalRead(r.Body, &body); err != nil {
+	// Consume the entire request through MaxBytesReader. A streaming decoder
+	// could accept the first JSON value and ignore a trailing value or an
+	// oversized suffix.
+	encoded, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", err)
+
+		return
+	}
+	if err := json.Unmarshal(encoded, &body); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 
 		return

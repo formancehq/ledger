@@ -46,10 +46,17 @@ Scripts are parsed and validated **at save time**, not at transaction-creation t
 the semver attached to a saved library entry. Analysis parses and compiles the
 source with the Numscript library used for execution. It returns input names and
 Numscript type spellings in name order, excluding variables with in-script
-origins. A failed analysis returns no inputs and one or more diagnostics with
+origins. Recognized source failures return no inputs and one or more diagnostics with
 `version`, `syntax`, `feature`, or `compile` kind, a machine-readable code,
 message, and zero-based source coordinates where available. Empty source and
-unsupported versions are diagnostics. Malformed HTTP JSON is a transport 400.
+unsupported versions are diagnostics. Sources longer than 64 KiB receive
+`SOURCE_TOO_LONG`; sources with more than 32 unmatched `/*` markers receive
+`SOURCE_TOO_COMPLEX`. The marker scan is conservative and also counts markers
+inside string literals. These limits are checked before invoking the parser
+because the upstream lexer uses a recursive rule for block comments. An
+internal parser or compiler failure returns a server error without an analysis
+payload. Malformed HTTP JSON is a transport 400; HTTP request bodies over
+4 MiB return `413 BODY_TOO_LARGE`.
 
 Scripts opt into experimental features with `#![feature("...")]`; the host
 permits the same feature set as transaction execution. Unknown flags and gated

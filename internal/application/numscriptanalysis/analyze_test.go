@@ -1,6 +1,7 @@
 package numscriptanalysis
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -50,4 +51,32 @@ send [USD/2 1] (source = @world destination = @alice)`, "v1", "feature", "INVALI
 			require.NotEmpty(t, result.Diagnostics[0].Message)
 		})
 	}
+}
+
+func TestAnalyzeRejectsUnsafeSourceBeforeParsing(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, source, code string
+	}{
+		{"deep block comments", strings.Repeat("/*", maxBlockCommentDepth+1) + strings.Repeat("*/", maxBlockCommentDepth+1), "SOURCE_TOO_COMPLEX"},
+		{"large source", strings.Repeat(" ", maxAnalyzedSourceBytes+1), "SOURCE_TOO_LONG"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := Analyze(tc.source, "v1")
+			require.NoError(t, err)
+			require.Empty(t, result.Inputs)
+			require.Equal(t, []Diagnostic{{Kind: "syntax", Code: tc.code, Message: "Numscript source exceeds the analysis complexity limit"}}, result.Diagnostics)
+		})
+	}
+}
+
+func TestSourceLimitationConservativelyCountsMarkersInStrings(t *testing.T) {
+	t.Parallel()
+	source := `set_tx_meta("example", "` + strings.Repeat("/*", maxBlockCommentDepth+1) + `")`
+	require.Equal(t, "SOURCE_TOO_COMPLEX", sourceLimitation(source))
+	result, err := Analyze(source, "v1")
+	require.NoError(t, err)
+	require.Equal(t, "SOURCE_TOO_COMPLEX", result.Diagnostics[0].Code)
 }

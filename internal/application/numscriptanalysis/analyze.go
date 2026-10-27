@@ -50,6 +50,11 @@ func Analyze(source, version string) (result Result, internalErr error) {
 
 		return result, nil
 	}
+	if code := sourceLimitation(source); code != "" {
+		result.Diagnostics = append(result.Diagnostics, Diagnostic{Kind: "syntax", Code: code, Message: "Numscript source exceeds the analysis complexity limit"})
+
+		return result, nil
+	}
 	parsed := numscript.Parse(source)
 	for _, parseErr := range parsed.GetParsingErrors() {
 		result.Diagnostics = append(result.Diagnostics, Diagnostic{Kind: "syntax", Code: "SYNTAX_ERROR", Message: parseErr.Msg,
@@ -85,6 +90,42 @@ func Analyze(source, version string) (result Result, internalErr error) {
 	slices.SortFunc(result.Inputs, func(a, b Input) int { return cmp.Compare(a.Name, b.Name) })
 
 	return result, nil
+}
+
+const (
+	maxAnalyzedSourceBytes = 64 << 10
+	maxBlockCommentDepth   = 32
+)
+
+// sourceLimitation bounds work before the upstream Numscript lexer sees the
+// source. Its MULTILINE_COMMENT rule is recursive, so a small input with deep
+// block comments can exhaust process memory before a panic can be recovered.
+// The source-size budget also bounds other parser work on this read-only API.
+func sourceLimitation(source string) string {
+	if len(source) > maxAnalyzedSourceBytes {
+		return "SOURCE_TOO_LONG"
+	}
+
+	depth := 0
+	for i := 0; i+1 < len(source); i++ {
+		switch source[i : i+2] {
+		case "/*":
+			// Count markers even in malformed strings or line comments. This
+			// conservative scan cannot be bypassed by a lexer recovery path.
+			depth++
+			if depth > maxBlockCommentDepth {
+				return "SOURCE_TOO_COMPLEX"
+			}
+			i++
+		case "*/":
+			if depth > 0 {
+				depth--
+			}
+			i++
+		}
+	}
+
+	return ""
 }
 
 func compilerCode(err error) string {
