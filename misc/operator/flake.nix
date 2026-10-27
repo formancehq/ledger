@@ -36,11 +36,15 @@
     {
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         let
-          # Use upstream Go and its matching builder to reuse the binary cache.
+          # Use upstream Go to reuse the binary cache.
           go = pkgs.go_1_27;
-          golangci-lint = pkgs.callPackage "${go-tooling}/pkgs/by-name/go/golangci-lint/package.nix" {
-            buildGo127Module = pkgs.buildGo127Module;
-          };
+          # Preserve upstream dependencies so the public binary cache matches.
+          # The upstream package set no longer supports Intel macOS.
+          golangci-lint =
+            if system == "x86_64-darwin" then
+              pkgs.callPackage "${go-tooling}/pkgs/by-name/go/golangci-lint/package.nix" { }
+            else
+              (import go-tooling { inherit system; }).golangci-lint;
 
           stablePackages = with pkgs; [
             go

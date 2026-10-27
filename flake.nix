@@ -83,7 +83,13 @@
         let
           # Use upstream Go so CI can reuse the stable nixpkgs binary cache.
           go = pkgs.go_1_27;
-          golangci-lint = pkgs.callPackage "${go-tooling}/pkgs/by-name/go/golangci-lint/package.nix" { };
+          # Preserve upstream dependencies so the public binary cache matches.
+          # The upstream package set no longer supports Intel macOS.
+          golangci-lint =
+            if system == "x86_64-darwin" then
+              pkgs.callPackage "${go-tooling}/pkgs/by-name/go/golangci-lint/package.nix" { }
+            else
+              (import go-tooling { inherit system; }).golangci-lint;
 
           # Mock generation must understand the root module Go version.
           buildGoModule = pkgs.buildGo127Module;
