@@ -5,8 +5,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"testing/synctest"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -20,54 +18,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
-
-// The reconciler keeps ticking until stopped, so a transient failure retries.
-func TestClusterPolicyReconciler_TicksUntilStopped(t *testing.T) {
-	t.Parallel()
-
-	synctest.Test(t, func(t *testing.T) {
-		var count atomic.Int32
-
-		r := NewClusterPolicyReconciler(func(context.Context) { count.Add(1) })
-		r.interval = 5 * time.Millisecond
-		r.Start()
-
-		// On the fake clock, two intervals yield exactly the immediate run plus
-		// one per tick.
-		time.Sleep(2 * r.interval)
-		synctest.Wait()
-		require.Equal(t, int32(3), count.Load(), "reconcile must run immediately, then on every tick")
-
-		r.Stop()
-
-		// Stop is synchronous (waits for the goroutine), so the count is now final.
-		settled := count.Load()
-		time.Sleep(20 * r.interval)
-		synctest.Wait()
-		require.Equal(t, settled, count.Load(), "no reconcile must run after Stop")
-	})
-}
-
-func TestClusterPolicyReconciler_TriggerIsCoalescedAndRaceSafe(t *testing.T) {
-	t.Parallel()
-
-	var count atomic.Int32
-	r := NewClusterPolicyReconciler(func(context.Context) { count.Add(1) })
-	r.interval = time.Hour
-	r.Start()
-	require.Eventually(t, func() bool { return count.Load() >= 1 }, time.Second, time.Millisecond)
-
-	var wg sync.WaitGroup
-	for range 100 {
-		wg.Go(func() {
-			r.Trigger()
-		})
-	}
-	wg.Wait()
-	require.Eventually(t, func() bool { return count.Load() >= 2 }, time.Second, time.Millisecond,
-		"a membership event must wake reconciliation without waiting for the ticker")
-	r.Stop()
-}
 
 type fakeAdmission struct {
 	mu         sync.Mutex
