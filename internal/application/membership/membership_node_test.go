@@ -148,7 +148,7 @@ func TestService_LearnerRegistrationCommitsAndPreservesCallerIntent(t *testing.T
 			defer cancel()
 			register := func(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilities []uint32) error {
 				if bootJoin {
-					return s.JoinAsLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilities)
+					return s.JoinAsLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilities)
 				}
 
 				return s.AddLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilities)
@@ -202,14 +202,14 @@ func TestService_ListPeersReturnsCompleteIndependentSnapshot(t *testing.T) {
 	})
 }
 
-func TestService_JoinAsLearnerWithCapabilitiesPersistsEvidence(t *testing.T) {
+func TestService_JoinAsLearnerPersistsEvidence(t *testing.T) {
 	t.Parallel()
 
 	s := newMembershipServiceNode(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	require.NoError(t, s.JoinAsLearnerWithCapabilities(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id"), []uint32{7, 9}))
+	require.NoError(t, s.JoinAsLearner(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id"), []uint32{7, 9}))
 
 	peer := s.infraMembership.PeerAddresses()[2]
 	require.Equal(t, []uint32{7, 9}, peer.Capabilities)
