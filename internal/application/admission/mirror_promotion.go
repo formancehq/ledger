@@ -1,10 +1,13 @@
 package admission
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -33,6 +36,7 @@ func (*ErrMirrorNotCaughtUp) Kind() domain.ErrorKind { return domain.KindPrecond
 // PromoteLedger entries identically during an RC rolling upgrade.
 func (a *Admission) checkMirrorPromotions(ctx context.Context, orders []*raftcmdpb.Order, idempotencyKey string) error {
 	promotions, createdLedgers := mirrorPromotionBatch(orders)
+	var orderHash []byte
 	for _, ledgerOrder := range promotions {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -90,6 +94,53 @@ func (a *Admission) checkMirrorPromotions(ctx context.Context, orders []*raftcmd
 			_ = handle.Close()
 
 			return &domain.BusinessError{Err: &domain.ErrLedgerNotInMirrorMode{Name: ledgerOrder.GetLedger()}}
+		}
+		if idempotencyKey != "" {
+			stored, readErr := state.LoadIdempotencyKey(handle, idempotencyKey)
+			if readErr != nil {
+				_ = handle.Close()
+
+				return fmt.Errorf("reading mirror promotion idempotency key: %w", readErr)
+			}
+			if stored.GetFailure() != nil {
+				if orderHash == nil {
+					orderHash = processing.HashOrders(orders)
+				}
+			}
+			if stored.GetFailure() != nil && bytes.Equal(stored.GetHash(), orderHash) {
+				// A committed business failure can leave the ledger in MIRROR.
+				// Reconstruct that exact outcome before the current sync state can
+				// hide it. Never propose on this path: an expired key could otherwise
+				// execute a fresh promotion after the admission check.
+				now := uint64(time.Now().UnixMicro())
+				lastApplied, timestampErr := query.ReadLastAppliedTimestamp(handle)
+				if timestampErr != nil {
+					_ = handle.Close()
+
+					return fmt.Errorf("reading timestamp for mirror promotion replay: %w", timestampErr)
+				}
+				if lastApplied > now {
+					now = lastApplied
+				}
+				if !state.IdempotencyExpired(stored.GetExpiresAt(), now) {
+					failure := stored.GetFailure()
+					facts, factsErr := domain.FailureFactsFromDetails(failure.GetDetails())
+					if factsErr != nil {
+						_ = handle.Close()
+
+						return fmt.Errorf("invalid stored mirror promotion failure: %w", factsErr)
+					}
+					message, _ := domain.RenderFailureFacts(facts)
+					if err := handle.Close(); err != nil {
+						return fmt.Errorf("closing mirror promotion read handle: %w", err)
+					}
+
+					return &domain.BusinessError{Err: &domain.ReplayedFailure{
+						ErrReason: domain.ReasonString(failure.GetReason()), Msg: message,
+						Details: failure.GetDetails(),
+					}}
+				}
+			}
 		}
 		progress, readErr := query.ReadMirrorSyncProgress(ctx, handle, a.attrs.Boundary, ledgerOrder.GetLedger())
 		closeErr := handle.Close()

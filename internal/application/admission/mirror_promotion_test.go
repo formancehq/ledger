@@ -3,10 +3,12 @@ package admission
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -199,6 +201,77 @@ func TestCheckMirrorPromotionsDoesNotBypassUnreadyMirrorWithStoredKey(t *testing
 			require.ErrorAs(t, err, &notCaughtUp, "stored keys cannot permit a fresh unsafe promotion")
 		})
 	}
+}
+
+func TestCheckMirrorPromotionsReplaysFrozenBatchFailureOnUnreadyMirror(t *testing.T) {
+	t.Parallel()
+	store := createTestStore(t)
+	a, _ := createTestAdmission(t, store)
+	orders := []*raftcmdpb.Order{
+		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger:  testLedgerName,
+			Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{PromoteLedger: &raftcmdpb.PromoteLedgerOrder{}},
+		}}},
+		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger:  "missing-ledger",
+			Payload: &raftcmdpb.LedgerScopedOrder_DeleteLedger{DeleteLedger: &raftcmdpb.DeleteLedgerOrder{}},
+		}}},
+	}
+	failure := &domain.ErrLedgerNotFound{Name: "missing-ledger"}
+	now := uint64(time.Now().UnixMicro())
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveLedger(batch, testLedgerName,
+		&commonpb.LedgerInfo{Name: testLedgerName, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}))
+	for key, value := range map[string]*commonpb.IdempotencyKeyValue{
+		"frozen-failure": {
+			Hash: processing.HashOrders(orders), ExpiresAt: now + uint64(time.Hour/time.Microsecond),
+			Failure: &commonpb.IdempotencyFailure{Details: domain.TypedFailureOf(failure)},
+		},
+		"expired-failure": {
+			Hash: processing.HashOrders(orders), ExpiresAt: now - 1,
+			Failure: &commonpb.IdempotencyFailure{Details: domain.TypedFailureOf(failure)},
+		},
+		"different-batch": {
+			Hash: processing.HashOrders(orders[:1]), ExpiresAt: now + uint64(time.Hour/time.Microsecond),
+			Failure: &commonpb.IdempotencyFailure{Details: domain.TypedFailureOf(failure)},
+		},
+	} {
+		require.NoError(t, state.SaveIdempotencyKey(batch, key, value))
+	}
+	require.NoError(t, batch.Commit())
+
+	for _, tc := range []struct {
+		key        string
+		wantReplay bool
+	}{
+		{key: "frozen-failure", wantReplay: true},
+		{key: "expired-failure"},
+		{key: "different-batch"},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			_, _, _, err := a.prepareOrders(t.Context(), &admissionPlan{
+				key: tc.key,
+				buildOrders: func(context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error) {
+					return orders, newBulkOverlay(), nil
+				},
+			})
+			if tc.wantReplay {
+				var replay *domain.ReplayedFailure
+				require.ErrorAs(t, err, &replay)
+				require.Equal(t, domain.ErrReasonLedgerNotFound, replay.Reason())
+				require.Equal(t, "ledger not found: name=\"missing-ledger\"", replay.Error())
+			} else {
+				var notCaughtUp *ErrMirrorNotCaughtUp
+				require.ErrorAs(t, err, &notCaughtUp)
+			}
+		})
+	}
+	batch = store.OpenWriteSession()
+	require.NoError(t, state.StoreLastAppliedTimestamp(batch, now+uint64(2*time.Hour/time.Microsecond)))
+	require.NoError(t, batch.Commit())
+	var notCaughtUp *ErrMirrorNotCaughtUp
+	require.ErrorAs(t, a.checkMirrorPromotions(t.Context(), orders, "frozen-failure"), &notCaughtUp,
+		"an expired failure must not authorize a fresh promotion when the HLC is ahead of wall time")
 }
 
 func TestPrepareOrdersRejectsCreateThenPromoteMirror(t *testing.T) {
