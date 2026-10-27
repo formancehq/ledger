@@ -308,7 +308,7 @@ A short list, because it matters for the threat model:
   ledger log. This is an existing primary-store projection gap; EN-1854 changes
   the authoritative source value without claiming to close that checker gap.
 - **`IndexVersionState`** (per-replica): legitimately diverges during a rewrite — see [indexer / indexes.md](../indexer/indexes.md).
-- **Bloom filters**: a probabilistic cache; correctness is a function of the underlying attribute store, which the checker *does* verify.
+- **Bloom filters**: a probabilistic cache; the checker verifies the underlying attribute store, not the persisted Bloom blocks. Recovery scans that store when blocks are missing, unsealed, carry a seal stale against the durable applied index, or are incompatible with the committed Bloom configuration. Only compatible blocks with a current seal are restored directly. The remaining checker gap for trusted blocks is described in [audit vs. technical state](../../audit-vs-technical-state.md).
 - **Read store index *contents* (inverted index for queries)**: rebuildable from scratch by the [indexer](../indexer/), so a divergence is recoverable without an audit — but the *source* attributes the indexer projects from are checked. Whether any index row holds the right *value* is unverified, tracked under `EN-1514` / `EN-1323`. **Not** in this list: reverse-map (`0x03`) row *presence*, which `compareReverseMapOrphans` detects against the index registry — see pass 12 above.
 - **Snapshot files and the spool**: transient transport artefacts, not persisted projections.
 

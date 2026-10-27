@@ -61,12 +61,13 @@ attribute scan, and on a bloom-config change applied through cluster config,
 where `applyClusterConfigUpdate` (`internal/infra/state/machine_technical_updates.go`)
 purges the `SubGlobBloom` blocks, calls `BloomFilters.Rebuild`, and signals
 `StartAsyncBloomPopulate` to repopulate from a full attribute scan. On the
-normal restart / follower-sync path bloom blocks are
-**not** discarded — `CacheSnapshotter.RestoreFromStore`
-(`internal/infra/state/cache_snapshotter.go`) loads the persisted bloom blocks
-from Pebble via `restoreBloomFilters`, and the full attribute scan
-(`StartAsyncBloomPopulate`) runs only on first boot when no persisted blocks
-exist. So the persisted bloom blocks are a durably trusted projection between
+normal restart / follower-sync path, blocks with a projection seal matching the
+durable applied index are **not** discarded — `CacheSnapshotter.RestoreFromStore`
+(`internal/infra/state/cache_snapshotter.go`) loads them from Pebble via
+`restoreBloomFilters`. Missing blocks, unsealed blocks, a stale seal after
+rollback-era writes, or configuration drift instead trigger a full asynchronous
+attribute scan (`StartAsyncBloomPopulate`). So sealed persisted bloom blocks are
+a durably trusted projection between
 backups, and the discard-and-rebuild control does not cover a block corrupted or
 tampered while it sits on disk. Raft replication is **not** a substitute for
 checker coverage: it only guarantees that every replica applies the *same logical

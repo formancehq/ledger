@@ -600,7 +600,7 @@ The attribute cache stores computed attribute values (volumes, metadata) in memo
 
 ### Bloom Filter Metrics
 
-Bloom filters provide probabilistic key existence checks to avoid unnecessary Pebble Gets during preloading. They are configured per attribute type via `--bloom-*` flags.
+Bloom filters provide probabilistic key existence checks to avoid unnecessary Pebble Gets during preloading. The `--bloom-*` flags supply the leader's desired configuration; active filters follow the committed cluster configuration.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
@@ -608,7 +608,7 @@ Bloom filters provide probabilistic key existence checks to avoid unnecessary Pe
 | `bloom.negatives` | Counter | `{lookup}` | Checks that returned definitely-not-present (Pebble Get avoided) |
 | `bloom.false_positives` | Counter | `{lookup}` | Checks that returned maybe-present but Pebble Get found nothing |
 | `bloom.adds` | Counter | `{key}` | Keys added to the bloom filter |
-| `bloom.ready` | Gauge | - | Readiness when reported (1 = ready, 0 = rebuilding after a configuration change); it may be absent when filters are disabled or before first population completes |
+| `bloom.ready` | Gauge | - | Readiness when reported (1 = ready, 0 = disabled or awaiting population/restoration); it may be absent before the first lifecycle recording |
 
 **Attributes**:
 - `type` on the counters: attribute type (`volumes`, `metadata`, `references`,
@@ -627,9 +627,11 @@ generations to cover recent writes. First boot, missing or stale persisted
 blocks, and configuration changes trigger a full asynchronous attribute scan.
 During a full rebuild, preloads bypass the filter and read Pebble directly, so
 the optimization is unavailable but false negatives are not introduced.
-`bloom.ready` is `0` during a configuration-change rebuild but may be absent
-until an initial population completes; an enabled filter set is usable only
-after the gauge reports `1`.
+`bloom.ready` is `0` after recovery installs a disabled configuration and
+while an enabled filter set is awaiting population or restoration. It may be
+absent before the first lifecycle recording. A value of `1` means the active
+committed filter set is ready; when Bloom is disabled, the gauge alone does
+not distinguish that state from an incomplete rebuild.
 
 ## Background Indexer Metrics
 
