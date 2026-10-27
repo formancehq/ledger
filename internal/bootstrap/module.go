@@ -1388,9 +1388,10 @@ func membershipRefreshHook(cfg Config, logger logging.Logger) fx.Hook {
 			// Perform one bounded synchronous attempt before the node starts serving. A
 			// permanent rejection (for example a removed incarnation or invalid
 			// identity) must abort startup rather than letting stale WAL membership
-			// evidence escape into the cluster. Only the rolling-upgrade cases that
-			// are explicitly classified as transient are handed to the background
-			// retry loop.
+			// evidence escape into the cluster. Transient connectivity failures
+			// (including Unavailable) and rolling-upgrade compatibility responses
+			// are handed to the background retry loop; permanent rejections remain
+			// startup failures.
 			err := tryRefreshMembershipForStartup(ctx, cfg, cfg.TLSConfig, logger)
 			if err == nil {
 				return nil
