@@ -14,6 +14,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -194,6 +195,46 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
 
 		require.Zero(t, admission.callCount(), "a newer applied revision must not be overwritten")
+	})
+
+	t.Run("does not manufacture a revision when a member reader is present", func(t *testing.T) {
+		t.Parallel()
+
+		store := newReconcilerTestStore(t)
+		cfg := validBaseConfig()
+		batch := store.OpenWriteSession()
+		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+			Revision:             cfg.ClusterPolicyRevision + 1,
+			QueryCheckpointLimit: cfg.QueryCheckpointLimit,
+		}))
+		require.NoError(t, batch.Commit())
+
+		admission := &fakeAdmission{}
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing(), func() []capabilities.Member {
+			return []capabilities.Member{{NodeID: 1, Role: capabilities.Voter}}
+		})
+
+		require.Zero(t, admission.callCount(), "member evidence must not bypass the stale revision guard")
+	})
+
+	t.Run("does not replace a same-revision configuration conflict with a capability bump", func(t *testing.T) {
+		t.Parallel()
+
+		store := newReconcilerTestStore(t)
+		cfg := validBaseConfig()
+		batch := store.OpenWriteSession()
+		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+			Revision:             cfg.ClusterPolicyRevision,
+			QueryCheckpointLimit: cfg.QueryCheckpointLimit + 1,
+		}))
+		require.NoError(t, batch.Commit())
+
+		admission := &fakeAdmission{}
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing(), func() []capabilities.Member {
+			return []capabilities.Member{{NodeID: 1, Role: capabilities.Voter}}
+		})
+
+		require.Zero(t, admission.callCount(), "same-revision configuration conflicts must remain rejected")
 	})
 
 	t.Run("preserves committed capability activations on a revision bump", func(t *testing.T) {
