@@ -241,6 +241,28 @@ func build(cmd struct{ CallerSnapshot any }) {
 	require.Len(t, findings, 3)
 }
 
+func TestProposalCodecMayOnlyCopyExistingAttribution(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		value   string
+		allowed bool
+	}{
+		{"p.GetCallerSnapshot()", true},
+		{"nil", false},
+		{"other.GetCallerSnapshot()", false},
+		{"newCaller()", false},
+	} {
+		source := []byte("package sample\nimport \"github.com/formancehq/ledger/v3/internal/proto/commonpb\"\nfunc header(p any) any { return &Proposal{CallerSnapshot: " + test.value + "} }")
+		findings, err := checkGoSource("internal/pkg/proposals/payload.go", source)
+		require.NoError(t, err)
+		if test.allowed {
+			require.Empty(t, findings)
+		} else {
+			require.Len(t, findings, 1)
+		}
+	}
+}
+
 func TestCheckGoSourceRestrictsForwardedAttributionSetter(t *testing.T) {
 	t.Parallel()
 

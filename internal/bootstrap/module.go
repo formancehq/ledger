@@ -971,9 +971,9 @@ func Module() fx.Option {
 						logger,
 						raftNode.IsLeader,
 						func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) {
-							proposal := commands.NewCommand()
+							proposal := commands.NewTechnicalCommand()
 							proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentIdempotencyEvict)
-							proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+							proposal.GetBatch().TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 								Kind: &raftcmdpb.TechnicalUpdate_IdempotencyEviction{
 									IdempotencyEviction: &raftcmdpb.IdempotencyEviction{
 										CutoffMicros:            cutoffMicros,
@@ -997,7 +997,7 @@ func Module() fx.Option {
 							// WriteOperation with nil Coverage so the runner
 							// takes the fast path.
 							operations := []plan.WriteOperation{{
-								Target: &proposal.GetTechnicalUpdates()[0].CoverageBits,
+								Target: &proposal.GetBatch().GetTechnicalUpdates()[0].CoverageBits,
 							}}
 
 							if err := proposeTechnical(ctx, builder, raftNode, proposal, operations); err != nil {
@@ -1458,12 +1458,12 @@ func proposeAuditKeyIfNeeded(ctx context.Context, n *node.Node, builder *plan.Bu
 	if err != nil {
 		return err
 	}
-	proposal := commands.NewCommand()
+	proposal := commands.NewTechnicalCommand()
 	proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterConfig)
-	proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+	proposal.GetBatch().TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 		Kind: &raftcmdpb.TechnicalUpdate_AuditKey{AuditKey: key},
 	}}
-	if err := proposeTechnical(ctx, builder, n, proposal, []plan.WriteOperation{{Target: &proposal.TechnicalUpdates[0].CoverageBits}}); err != nil {
+	if err := proposeTechnical(ctx, builder, n, proposal, []plan.WriteOperation{{Target: &proposal.GetBatch().TechnicalUpdates[0].CoverageBits}}); err != nil {
 		return fmt.Errorf("proposing audit key: %w", err)
 	}
 	committed, err := query.ReadAuditKey(store)
@@ -1516,9 +1516,9 @@ func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, build
 
 	logger.Infof("Proposing cluster config update on leadership acquisition")
 
-	proposal := commands.NewCommand()
+	proposal := commands.NewTechnicalCommand()
 	proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterConfig)
-	proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+	proposal.GetBatch().TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 		Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{ClusterConfig: desiredCfg},
 	}}
 
@@ -1531,7 +1531,7 @@ func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, build
 	// applyClusterConfig reads cache-level configuration (Cache.GenerationThreshold,
 	// Cache.Epoch) but no keyed Registry.X.Get; no preload needed.
 	operations := []plan.WriteOperation{{
-		Target: &proposal.GetTechnicalUpdates()[0].CoverageBits,
+		Target: &proposal.GetBatch().GetTechnicalUpdates()[0].CoverageBits,
 	}}
 
 	if err := proposeTechnical(ctx, builder, n, proposal, operations); err != nil {

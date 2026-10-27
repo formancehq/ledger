@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run under the repository's pinned environment. The baseline is extracted into
+# build/; neither the original checkout nor the current index is changed.
+if [[ "${IN_NIX_SHELL:-}" == "" ]]; then
+    exec env -u GOROOT nix develop --command bash "$0" "$@"
+fi
+
+baseline=${1:-v3.0.0-rc.1}
+repo=$(git rev-parse --show-toplevel)
+mkdir -p "$repo/build"
+probe_dir=$(mktemp -d "$repo/build/proposal-compat.XXXXXX")
+trap 'rm -rf "$probe_dir"' EXIT
+mkdir "$probe_dir/baseline"
+git archive "$baseline" | tar -x -C "$probe_dir/baseline"
+cp "$repo/internal/infra/state/payload_compat_probe_test.go" "$probe_dir/baseline/internal/infra/state/"
+(
+    cd "$probe_dir/baseline"
+    go test -c -o "$probe_dir/old.test" ./internal/infra/state
+)
+go test -c -o "$probe_dir/new.test" ./internal/infra/state
+LEDGER_PROPOSAL_PROBE_OUTPUT="$probe_dir/old.json" \
+    "$probe_dir/old.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
+LEDGER_PROPOSAL_PROBE_OUTPUT="$probe_dir/new-legacy.json" \
+    "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
+LEDGER_PROPOSAL_PROBE_OUTPUT="$probe_dir/new-payload.json" LEDGER_PROPOSAL_PROBE_ENCODING=payload \
+    "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
+cmp "$probe_dir/old.json" "$probe_dir/new-legacy.json"
+cmp "$probe_dir/old.json" "$probe_dir/new-payload.json"
+echo "PROPOSAL_PAYLOAD_COMPAT=PASS baseline=$baseline (two binaries, legacy and payload audit/state parity)"

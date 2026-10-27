@@ -19,6 +19,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -95,7 +96,7 @@ func erroringProposer(t *testing.T, err error) *MockProposer {
 // full-backup order in a TechnicalUpdate, so tests must traverse the
 // envelope rather than read a top-level field.
 func extractFullOrder(p *raftcmdpb.Proposal) *raftcmdpb.BackupOrder {
-	for _, tu := range p.GetTechnicalUpdates() {
+	for _, tu := range p.GetBatch().GetTechnicalUpdates() {
 		if k, ok := tu.GetKind().(*raftcmdpb.TechnicalUpdate_BackupOrder); ok {
 			return k.BackupOrder
 		}
@@ -107,7 +108,7 @@ func extractFullOrder(p *raftcmdpb.Proposal) *raftcmdpb.BackupOrder {
 // extractIncrementalOrder mirrors extractFullOrder for the incremental
 // pipeline's TechnicalUpdate envelope.
 func extractIncrementalOrder(p *raftcmdpb.Proposal) *raftcmdpb.IncrementalBackupOrder {
-	for _, tu := range p.GetTechnicalUpdates() {
+	for _, tu := range p.GetBatch().GetTechnicalUpdates() {
 		if k, ok := tu.GetKind().(*raftcmdpb.TechnicalUpdate_IncrementalBackupOrder); ok {
 			return k.IncrementalBackupOrder
 		}
@@ -132,7 +133,7 @@ func TestProposalBuilders_Full(t *testing.T) {
 
 	dst := testDestination()
 
-	p := &raftcmdpb.Proposal{}
+	p := commands.NewTechnicalCommand()
 	fullStart(7, dst, 42)(p)
 	require.NotNil(t, extractFullOrder(p))
 	start := extractFullOrder(p).GetStart()
@@ -141,7 +142,7 @@ func TestProposalBuilders_Full(t *testing.T) {
 	require.Equal(t, uint64(42), start.GetExecutorNodeId())
 	require.Equal(t, dst.GetBucketId(), start.GetDestination().GetBucketId())
 
-	p = &raftcmdpb.Proposal{}
+	p = commands.NewTechnicalCommand()
 	fullComplete(7, &backup.Result{
 		LastLogSequence:   1_000,
 		LastAuditSequence: 500,
@@ -156,7 +157,7 @@ func TestProposalBuilders_Full(t *testing.T) {
 	require.Equal(t, uint64(7_500), complete.GetLastAppliedIndex())
 	require.Equal(t, uint64(12), complete.GetFilesUploaded())
 
-	p = &raftcmdpb.Proposal{}
+	p = commands.NewTechnicalCommand()
 	fullFail(7, "boom")(p)
 	fail := extractFullOrder(p).GetFail()
 	require.NotNil(t, fail)
@@ -169,13 +170,13 @@ func TestProposalBuilders_Incremental(t *testing.T) {
 
 	dst := testDestination()
 
-	p := &raftcmdpb.Proposal{}
+	p := commands.NewTechnicalCommand()
 	incrementalStart(11, dst, 3)(p)
 	require.NotNil(t, extractIncrementalOrder(p))
 	require.Equal(t, uint64(11), extractIncrementalOrder(p).GetStart().GetJobId())
 	require.Equal(t, uint64(3), extractIncrementalOrder(p).GetStart().GetExecutorNodeId())
 
-	p = &raftcmdpb.Proposal{}
+	p = commands.NewTechnicalCommand()
 	incrementalComplete(11, &backup.IncrementalBackupResult{
 		LastLogSequence:   2_222,
 		LastAuditSequence: 1_111,
@@ -186,7 +187,7 @@ func TestProposalBuilders_Incremental(t *testing.T) {
 	require.Equal(t, uint64(1_111), extractIncrementalOrder(p).GetComplete().GetLastAuditSequence())
 	require.Equal(t, uint64(4), extractIncrementalOrder(p).GetComplete().GetSegmentsUploaded())
 
-	p = &raftcmdpb.Proposal{}
+	p = commands.NewTechnicalCommand()
 	incrementalFail(11, "kaboom")(p)
 	require.Equal(t, "kaboom", extractIncrementalOrder(p).GetFail().GetMessage())
 }

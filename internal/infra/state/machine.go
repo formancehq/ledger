@@ -22,6 +22,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
+	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -465,6 +466,14 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 	if err := ValidateCheckpointEntryPositionsDecoded(decoded); err != nil {
 		return nil, err
 	}
+	// Validate every envelope before advancing any in-memory state.
+	for _, item := range decoded {
+		if item.Proposal != nil {
+			if err := proposals.ValidateShape(item.Proposal); err != nil {
+				return nil, fmt.Errorf("invalid proposal at raft index %d: %w", item.Entry.GetIndex(), err)
+			}
+		}
+	}
 
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
@@ -520,6 +529,11 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 	for i := range decoded {
 		entry := decoded[i].Entry
 		cmd := decoded[i].Proposal
+		if cmd != nil {
+			// Borrow the canonical execution/audit view without mutating the
+			// decoded message, which retains ownership of its pooled buffers.
+			cmd = proposals.ExecutionView(cmd)
+		}
 
 		entryIndex := entry.GetIndex()
 

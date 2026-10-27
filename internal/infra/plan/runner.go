@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
+	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -137,6 +138,18 @@ func (p *Builder) Run(
 		build.ReleaseLoaders()
 
 		return nil, ErrUnsupportedTechnicalComposition
+	}
+
+	// Keep the Raft wire format readable by released replicas. Rebuilds call
+	// this adapter again after refreshing the header and coverage bits.
+	marshalLogical := marshalFn
+	marshalFn = func(proposal *raftcmdpb.Proposal) ([]byte, error) {
+		wire, err := proposals.LegacyWire(proposal)
+		if err != nil {
+			return nil, err
+		}
+
+		return marshalLogical(wire)
 	}
 
 	// Guarantee a unique command ID. The applier keys FSM futures by

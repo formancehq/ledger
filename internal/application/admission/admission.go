@@ -504,6 +504,7 @@ func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.Clu
 }
 
 type admissionPlan struct {
+	policy                *commonpb.ClusterPolicy
 	key                   string
 	sig                   *signaturepb.SignedApplyBatch
 	allowInMaintenance    bool
@@ -539,15 +540,9 @@ func (a *Admission) buildApplyAdmissionPlan(ctx context.Context, req *servicepb.
 
 func (a *Admission) buildClusterPolicyAdmissionPlan(policy *commonpb.ClusterPolicy) *admissionPlan {
 	return &admissionPlan{
+		policy: policy,
 		buildOrders: func(context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error) {
-			order := &raftcmdpb.Order{}
-			wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-				Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
-					SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: policy},
-				},
-			})
-
-			return []*raftcmdpb.Order{order}, newBulkOverlay(), nil
+			return nil, newBulkOverlay(), nil
 		},
 	}
 }
@@ -728,6 +723,11 @@ func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.
 	// Step 3-5: Build preloads via shared Builder (no lock)
 	cmd := commands.NewCommand(orders...)
 	cmd.CallerSnapshot = caller
+	if admPlan.policy != nil {
+		cmd.Payload = &raftcmdpb.Proposal_SetClusterPolicy{
+			SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: admPlan.policy},
+		}
+	}
 	if admPlan.key != "" {
 		cmd.Idempotency = &commonpb.Idempotency{Key: admPlan.key}
 	}
@@ -745,7 +745,7 @@ func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.
 	// pointer over closure avoids one heap alloc per order (the
 	// captured index).
 	operations := make([]plan.WriteOperation, len(orders))
-	cmdOrders := cmd.GetOrders()
+	cmdOrders := cmd.GetBatch().GetOrders()
 	for i := range orders {
 		// coverage_bits lives on OrderTechnical, which may already exist from the
 		// inputs-resolution-hash pass above; orderTechnical is nil-safe either

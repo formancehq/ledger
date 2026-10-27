@@ -22,6 +22,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
+	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -1742,7 +1743,7 @@ func changesRotationThreshold(decoded state.DecodedEntry, threshold uint64) bool
 	if decoded.Proposal == nil {
 		return false
 	}
-	for _, update := range decoded.Proposal.GetTechnicalUpdates() {
+	for _, update := range proposals.TechnicalUpdates(decoded.Proposal) {
 		if config, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_ClusterConfig); ok && config.ClusterConfig.GetRotationThreshold() != threshold {
 			return true
 		}
