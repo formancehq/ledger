@@ -20,6 +20,7 @@ ignore:
   - "**/*_generated_test.go"
   - "tests/**"
   - "pkg/testserver/**"
+  - "internal/pkg/testpostgres/**"
   - "misc/**"
   - "cmd/**"
 

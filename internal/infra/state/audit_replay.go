@@ -61,7 +61,13 @@ func NewAuditReplayer(logger logging.Logger, auditKey string) (*AuditReplayer, e
 
 	meterProvider := noop.NewMeterProvider()
 	meter := meterProvider.Meter("checker.audit_replay")
-	store, err := dal.NewStore(dir, logger, meter, dal.DefaultConfig())
+	storeConfig := dal.DefaultConfig()
+	// The audit replayer is disposable: it is never reopened or used as a
+	// recovery source after a process restart. Avoiding a WAL prevents a failed
+	// WAL rotation from taking down CheckStore while preserving same-process
+	// read-after-write semantics for the replay.
+	storeConfig.DisableWAL = true
+	store, err := dal.NewStore(dir, logger, meter, storeConfig)
 	if err != nil {
 		_ = os.RemoveAll(dir)
 
@@ -116,6 +122,27 @@ func (r *AuditReplayer) Close() error {
 	_ = os.RemoveAll(r.dir)
 
 	return err
+}
+
+// LedgerInfos returns the persisted ledger policies produced solely by the
+// verified orders replayed so far, including retained deletion tombstones.
+// Read-time metadata and mirror progress are not populated here.
+func (r *AuditReplayer) LedgerInfos() (map[string]*commonpb.LedgerInfo, error) {
+	reader, err := r.store.NewReadHandle()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = reader.Close() }()
+	rows, err := r.machine.Registry.Attrs.Ledger.ComputeAllForPrefix(reader, nil)
+	if err != nil {
+		return nil, err
+	}
+	infos := make(map[string]*commonpb.LedgerInfo, len(rows))
+	for _, row := range rows {
+		infos[string(row.CanonicalKey)] = row.Value
+	}
+
+	return infos, nil
 }
 
 // Replay applies one successful audited proposal and returns the exact logs

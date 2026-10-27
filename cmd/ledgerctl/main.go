@@ -221,20 +221,37 @@ var ledgerctlOwnedFlagNames = map[string]struct{}{
 	"key-id": {},
 }
 
-// bindSubcommandEnv binds bare-name environment variables (the go-libs
-// convention, e.g. KEY_ID -> --key-id) to every subcommand flag EXCEPT the
-// ledgerctl-owned connection/security flags. The root command itself is never
-// bound: its persistent flags are owned and resolved with the LEDGERCTL_ prefix
-// in PersistentPreRunE. main() and TestServerFlagEnvResolution share this
-// helper so the test exercises the production wiring rather than re-implementing it.
+// ledgerctlSafetyFlagNames are intentionally CLI-only.  In particular, a
+// shell-wide FORCE or YES must never turn an overdraft or a confirmation
+// bypass on without the operator spelling the intent in the command line.
+var ledgerctlSafetyFlagNames = map[string]struct{}{
+	"force": {},
+	"yes":   {},
+}
+
+// These aliases predate the LEDGERCTL_ namespace and are part of the
+// documented Kubernetes backup-job contract.  Keep them as a narrow,
+// explicit compatibility exception instead of exposing every flag to ambient
+// shell variables.
+var ledgerctlLegacyEnvNames = map[string]string{
+	"s3-access-key-id":     "S3_ACCESS_KEY_ID",
+	"s3-secret-access-key": "S3_SECRET_ACCESS_KEY",
+}
+
+// bindSubcommandEnv binds LEDGERCTL_<FLAG> environment variables to every
+// subcommand flag EXCEPT ledgerctl-owned connection/security flags and
+// CLI-only safety flags. The root command itself is never bound: its
+// persistent flags are owned and resolved with the same LEDGERCTL_ prefix in
+// PersistentPreRunE. A small, documented S3 credential alias remains
+// supported for Kubernetes backup Jobs.
 func bindSubcommandEnv(rootCmd *cobra.Command) {
 	for _, sub := range rootCmd.Commands() {
 		bindEnvSkippingOwned(sub)
 	}
 }
 
-// bindEnvSkippingOwned mirrors service.BindEnvToCommand's recursion but skips
-// the ledgerctl-owned flag names so their bare env aliases are never honored.
+// bindEnvSkippingOwned mirrors service.BindEnvToCommand's recursion while
+// applying ledgerctl's prefixed environment contract.
 func bindEnvSkippingOwned(cmd *cobra.Command) {
 	bindFlagSetSkippingOwned(cmd.Flags())
 	bindFlagSetSkippingOwned(cmd.PersistentFlags())
@@ -244,20 +261,28 @@ func bindEnvSkippingOwned(cmd *cobra.Command) {
 	}
 }
 
-// bindFlagSetSkippingOwned binds each non-owned flag in set to its bare
-// uppercased env name (matching service.BindEnvToFlagSet, including the
-// stringSlice space-to-comma handling used by flags such as --scopes).
+// bindFlagSetSkippingOwned binds each non-owned, non-safety flag in set to its
+// LEDGERCTL_-prefixed environment name. Values are applied through the
+// pflag.Value directly so environment resolution never marks a flag Changed;
+// Changed remains a reliable signal that the operator typed the CLI flag.
 func bindFlagSetSkippingOwned(set *pflag.FlagSet) {
 	set.VisitAll(func(flag *pflag.Flag) {
 		if _, owned := ledgerctlOwnedFlagNames[flag.Name]; owned {
 			return
 		}
+		if _, safety := ledgerctlSafetyFlagNames[flag.Name]; safety {
+			return
+		}
 
-		envVar := strings.ReplaceAll(strings.ToUpper(flag.Name), "-", "_")
+		envSuffix := strings.ReplaceAll(strings.ToUpper(flag.Name), "-", "_")
+		envVar := "LEDGERCTL_" + envSuffix
 
 		value := os.Getenv(envVar)
 		if value == "" {
-			return
+			value = os.Getenv(ledgerctlLegacyEnvNames[flag.Name])
+			if value == "" {
+				return
+			}
 		}
 
 		value = strings.TrimSpace(value)
@@ -266,8 +291,9 @@ func bindFlagSetSkippingOwned(set *pflag.FlagSet) {
 		}
 
 		// Ignore the error: an invalid env value leaves the cobra default in
-		// place, matching resolveFlag's best-effort env handling.
-		_ = set.Set(flag.Name, value)
+		// place, matching resolveFlag's best-effort env handling. Calling the
+		// underlying value avoids pflag.Set's Changed side effect.
+		_ = flag.Value.Set(value)
 	})
 }
 

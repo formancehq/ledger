@@ -1189,7 +1189,7 @@ func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *serv
 func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
 	// Barrier proposes a no-op through Raft and waits for it to apply, so it
 	// consumes consensus capacity like a write. Require an authenticated scope
-	// (ledger:OpsRead) so it can't be used anonymously as a DoS amplifier or a
+	// (ledger:ReadOps) so it can't be used anonymously as a DoS amplifier or a
 	// commit-index timing side channel. Leader-forwarded calls carry the
 	// cluster secret, which grants all scopes.
 	commitIndex, err := impl.ctrl.Barrier(ctx)

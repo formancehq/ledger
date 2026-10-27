@@ -95,7 +95,8 @@ func TestSIGTERMShutdownDeadline(t *testing.T) {
 				cancel()
 				// Wait completes before reading diagnostics or removing node files.
 				if !waited {
-					<-done
+					// Cancellation may kill the process; its exit cannot prove graceful shutdown.
+					t.Errorf("process exited before shutdown assertions completed: %v", <-done)
 				}
 				if t.Failed() {
 					logs, readErr := os.ReadFile(output.Name())

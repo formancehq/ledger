@@ -17,10 +17,6 @@ func (*ErrIdempotencyCheckFailed) PublicFailureFacts() FailureFacts {
 	return NewFailureFacts(ErrReasonIdempotencyCheckFailed, ErrReasonIdempotencyCheckFailed, nil)
 }
 
-func (*ErrInvalidCallerAttribution) PublicFailureFacts() FailureFacts {
-	return NewFailureFacts(ErrReasonInvalidCallerAttribution, ErrReasonInvalidCallerAttribution, nil)
-}
-
 func (*ErrClusterPolicyInvalid) PublicFailureFacts() FailureFacts {
 	return NewFailureFacts(ErrReasonClusterPolicyInvalid, ErrReasonClusterPolicyInvalid, nil)
 }

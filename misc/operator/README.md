@@ -43,6 +43,36 @@ although the template update and earlier membership removals may already have
 succeeded. A later reconciliation checks membership again and skips ordinals
 already removed.
 
+## Ledger target identity
+
+A `Ledger` CR's `spec.name` and `spec.clusterRef` are immutable from creation,
+including while Pending. Kubernetes rejects changes to either field before the
+controller can create, promote, reconcile indexes, or delete against a different
+target. Correct a target by deleting and recreating the CR. Index updates and
+mirror-to-normal promotion remain supported without changing the target.
+The generated CRDs, including the Helm CRD chart, enforce these CEL transition
+rules in the API server; exported JSON schemas alone do not enforce transitions.
+
+Before installing these rules on an existing deployment, stop all operator
+reconcilers and inventory existing Ledger CRs. Verify each stored name and
+cluster reference against the intended external ledger before resuming the
+operator. Recover any drifted target **before** installing the new CRDs: the
+rules freeze the currently stored values and will reject corrections afterward.
+Include Pending CRs in this inventory: a timed-out creation or failed status
+write may have left an external ledger even when the CR never became Ready.
+`status.appliedSpecHash` cannot reconstruct the original target; if that target
+is unknown, keep reconciliation stopped until external records establish it.
+Do not delete a drifted CR as a recovery step with the old controller, because
+deletion uses its currently stored target.
+
+Admission immutability fixes the target name and Cluster reference, not the
+incarnation of a Cluster recreated under the same name or ownership of an
+already-existing external ledger. Ledger deletion retains its best-effort
+behavior: it attempts external deletion and then removes the finalizer even
+when endpoint resolution or execution fails; the external ledger may remain.
+This change does not add controller binding state or alter Ledger storage,
+audit records, backup formats, or service APIs.
+
 ## Declarative ledger indexes
 
 For a Ledger with `spec.indexes`, reconciliation creates missing indexes in
@@ -456,7 +486,7 @@ The `kubectl-ledger` plugin provides a CLI for managing Cluster resources.
 
 ### Installation
 
-**From source (requires Go 1.26+):**
+**From source (use Go 1.27.3; module language minimum Go 1.26.0):**
 
 ```bash
 go build -o $(go env GOPATH)/bin/kubectl-ledger ./cmd/kubectl-ledger

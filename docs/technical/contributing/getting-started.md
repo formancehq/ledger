@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **Nix with Flakes enabled** (required) - provides Go 1.27+, Just, golangci-lint, protoc, Atlassian CLI (`acli`), and all other repository CLI dependencies
+- **Nix with Flakes enabled** (required) - provides Go 1.27.3, Just, golangci-lint, protoc, Atlassian CLI (`acli`), and all other repository CLI dependencies
 - **direnv** - [Installation](https://direnv.net/) and [shell hook](https://direnv.net/docs/hook.html)
 
 ## Setup
@@ -33,6 +33,7 @@ Repository scripts and contributor workflows must not rely on host-installed CLI
 | `demo` | `nix develop .#demo --command just generate-demo` | `ci` plus `vhs` (which wraps ffmpeg, ttyd and, on Linux, chromium) and `grpcurl`. |
 | `sdk` | `nix develop .#sdk --command just test-sdk-bigint` | `ci` plus Speakeasy and Node.js. |
 | `perf` | `nix develop .#perf` | `ci` plus `k6` and `benchstat` (goperf). |
+| `operator-tests` | `nix develop .#operator-tests` | `ci` plus pinned `setup-envtest` for Docker-free operator admission tests; select Kubernetes 1.32.x with `setup-envtest use 1.32.x -p path`. |
 
 Add a tool to `ci` only when a workflow step, or a recipe or script that a workflow step runs, executes it. Every CI job downloads the `ci` closure when its Nix cache is cold. A tool needed only by one local workflow goes in a task shell, not in `default`. To reproduce a CI step with exactly CI's tools, run it with `nix develop .#ci --command …`.
 

@@ -2,6 +2,8 @@ module github.com/formancehq/ledger/v3
 
 go 1.27.0
 
+toolchain go1.27.3
+
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.1
@@ -27,7 +29,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/formancehq/go-libs/v5 v5.10.0
 	github.com/formancehq/invariants v0.11.0
-	github.com/formancehq/numscript v0.2.0 // #199 compiler+VM, #211 Exec releases the store on return, #215/#216 typed errors
+	github.com/formancehq/numscript v0.1.2 // #199 compiler+VM, #211 Exec releases the store on return, #215/#216 typed errors
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/getkin/kin-openapi v0.144.0
 	github.com/go-chi/chi/v5 v5.3.0

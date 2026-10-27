@@ -246,7 +246,7 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 				"cursor":    cursor,
 				"from":      startCursor,
 				"processed": cursor - startCursor,
-			}).Infof("processAuditEntries progress")
+			}).Infof("Usage builder audit processing progress")
 
 			lastProgressLog = now
 		}

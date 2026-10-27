@@ -78,7 +78,7 @@ schemas and credential-safe responses.
 ### Authentication
 
 Saving or deleting ledger, account or transaction metadata, and setting or
-removing metadata field types, requires the granular `ledger:MetadataWrite`
+removing metadata field types, requires the granular `ledger:WriteMetadata`
 scope. The aggregate `ledger:write` grants it under the default mapping;
 custom mappings can differ.
 
@@ -88,8 +88,8 @@ without a token use configured anonymous scopes and can succeed when those scope
 permit the operation. Authentication-disabled mode bypasses credential and scope
 checks. See [Authentication Guide](../../../../ops/authentication.md) for configuration details.
 
-Numscript library reads require `ledger:LedgerRead`; saving a version requires
-`ledger:LedgerWrite`. All five operations declare optional `BearerAuth` and their
+Numscript library reads require `ledger:ReadLedger`; saving a version requires
+`ledger:WriteLedger`. All five operations declare optional `BearerAuth` and their
 401/403 responses. Missing credentials with insufficient anonymous scopes and
 invalid tokens return 401; a valid token lacking the required scope returns 403.
 These middleware failures use `text/plain; charset=utf-8`. The response wrapper
@@ -110,7 +110,7 @@ scope each one requires, and it enforces the table two ways:
 
 - **Reconciliation** against `chi.Walk`, in both directions — a route with no table row fails ("no
   scope decision"), and a table row matching no route fails ("stale row"). This is what stops a new
-  route under the `/v3/_/…` subtree from silently inheriting `ledger:OpsRead`.
+  route under the `/v3/_/…` subtree from silently inheriting `ledger:ReadOps`.
 - **End-to-end probes** — for each guarded route, a token carrying the declared scope must be
   admitted, and a token carrying **every** other granular scope must be refused with 403. That proves
   exactly one scope opens each route.
@@ -125,7 +125,7 @@ Two properties of this test are load-bearing and easy to break by "simplifying" 
   tokenless request. All `RequireScope` closures also share one code pointer, so reflection cannot
   tell them apart. Only a real request through `ServeHTTP` reveals the scope.
 - **Probes use granular scopes only, never the aggregate `ledger:read`.** The aggregate expands to
-  both `ledger:LedgerRead` and `ledger:OpsRead`, which is precisely what hid the EN-1508 drift from
+  both `ledger:ReadLedger` and `ledger:ReadOps`, which is precisely what hid the EN-1508 drift from
   every caller not using granular scopes.
 
 The same asymmetry noted above has a second consequence worth knowing: because a `Route` sub-mux
@@ -358,6 +358,12 @@ Three paths need correlated server-side diagnostics because the raw value can co
 2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Classifiable` or a known sentinel.
 3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply generic public messages (`index is inconsistent` and `preload coverage miss`). Other recognized errors render from stable facts; diagnostic text and outer prefixes are omitted.
 
+The caller-attribution trust-boundary guard is the exception within
+`KindInternal`: it has no public reason or facts. Admission rejects it before a
+proposal, and the FSM rejects malformed committed entries before audit or
+business-state mutation. Both adapters therefore return only the generic
+internal error while retaining the detail in server diagnostics.
+
 Type-owned public details are selected through `domain.PublicErrorDetails` at the response boundary. The authoritative audit chain records a structured failure reason, code and source-validated facts for freezable business failures. Diagnostic `Error()` text is used for server logs and is not hashed into that outcome.
 
 Every path logs the raw cause **server-side** with a `correlation_id` field. When the request span is recording, the log also carries `trace_id` and `span_id`, and the span records both the correlation ID and the error. Panic spans additionally carry the panic value and stack. Unmapped errors and panics remain sanitized identically to the gRPC adapter, so the client receives only a generic body:
@@ -466,7 +472,7 @@ so a layer commits only to what it can actually honour (EN-2081):
 
 | Interface | Adds | Who implements it | What an adapter does with it |
 |---|---|---|---|
-| `Classifiable` | `Kind() ErrorKind` | anything that names no business outcome — the gRPC envelope guard, the admission idempotency-key and checkpoint-order guards, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one |
+| `Classifiable` | `Kind() ErrorKind` | anything that names no business outcome — the gRPC envelope guard, the admission idempotency-key and checkpoint-order guards, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one (a bulk element answers the generic `ERROR`) |
 | `Describable` | `Reason() string` | every domain business error | adds the `ErrorInfo` / `errorCode` clients pattern-match on |
 | `SerializableError` | `FailureDetails()` | FSM-returned errors, including uncommitted technical failures | supplies typed details for audited outcomes; uncommitted failures have no audited details |
 
@@ -478,8 +484,9 @@ its error returns as `SerializableError`. `UncommittedFailure` returns before
 public code and facts without admitting the error to the audit chain. This is
 used for admission and read failures such as plan-size and aggregate overflow.
 The FSM can also reject a committed proposal before audit capture for
-maintenance mode or malformed caller attribution; those errors remain public
-but do not implement `SerializableError`. The write gate's
+maintenance mode or malformed caller attribution. Maintenance mode remains a
+public operational error; malformed caller attribution is internal-only and
+has no public reason. Neither implements `SerializableError`. The write gate's
 `WRITES_BLOCKED_*` sentinels and `AUDIT_DISABLED` likewise have no audited
 details.
 
@@ -517,7 +524,9 @@ A failure that is only `Classifiable` has no `Reason` for `Describe` to
 normalise, so `handleError` answers it from its kind directly, with the coarse
 error code it already uses for a reason-less classified status
 (`INVALID_REQUEST`, `UNAVAILABLE`, …). `KindInternal` still goes to the
-sanitizer.
+sanitizer. A bulk element takes its status and message from the same
+`classifyError` dispatch, but its `errorCode` is the generic `ERROR` for every
+failure without a reason.
 
 `Message` and `Metadata` are the client-safe presentation, not the diagnostic
 identity. A locally raised serializable failure renders them from its stable
@@ -982,7 +991,7 @@ Audit reads expose the tamper-evident audit trail over HTTP (mirroring the gRPC
 `BucketService.ListAuditEntries` / `GetAuditEntry`). Audit reads are
 **bucket-wide, not ledger-scoped** — a single proposal can touch several ledgers
 — so these routes sit at the top level (no `{ledgerName}`) and ledger scope is
-expressed as a filter condition. Both require the `ledger:AuditRead` scope.
+expressed as a filter condition. Both require the `ledger:ReadAudit` scope.
 
 #### List Audit Entries
 
@@ -1126,11 +1135,11 @@ there is no HTTP-specific storage or controller path.
 
 | Method and path | Scope | Success |
 |---|---|---|
-| `GET /v3/_/events-sinks` | `ledger:OpsRead` | `200`, existing `{data: {sinks, sinkStatuses}}` envelope |
-| `POST /v3/_/events-sinks` | `ledger:OpsWrite` | `201`, `{data: {name}}` |
-| `DELETE /v3/_/events-sinks/{sinkName}` | `ledger:OpsWrite` | `204`, no body |
+| `GET /v3/_/events-sinks` | `ledger:ReadOps` | `200`, existing `{data: {sinks, sinkStatuses}}` envelope |
+| `POST /v3/_/events-sinks` | `ledger:WriteOps` | `201`, `{data: {name}}` |
+| `DELETE /v3/_/events-sinks/{sinkName}` | `ledger:WriteOps` | `204`, no body |
 
-Under the default scope mapping, `ledger:write` grants `ledger:OpsWrite`.
+Under the default scope mapping, `ledger:write` grants `ledger:WriteOps`.
 Custom mappings can differ. Route guards apply before request decoding or
 backend execution. Authentication failures use the standard `401`/`403` errors.
 

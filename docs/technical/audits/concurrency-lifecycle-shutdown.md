@@ -128,6 +128,23 @@ resource-close count as evidence of a whole-constructor shutdown bound. See the
 
 ## Concurrent transition scenarios
 
+PostgreSQL mirror gap reads add a source-session lifetime beneath the worker.
+A gap read owns one pooled `READ COMMITTED` transaction and a bucket-wide
+`SHARE` lock until commit or rollback. `NOWAIT` conflicts return immediately;
+the failed transaction must still be rolled back. When the fetch context is
+cancelled after lock acquisition, rollback uses a detached context with a
+five-second timeout. A failed pgx rollback closes the connection. No live
+transaction may return to the pool, and no source lock may survive into
+translation, preload or Raft application.
+
+The adapter's integration regression cancels from a real pgx query tracer
+immediately after successful lock acquisition. Its oracle includes no returned
+rows, retry through a single-connection pool, and an independent source INSERT
+afterward to detect leaked locks. Keep the manager's existing independent
+initialization/leadership-loss cancellation tests: cancelling a gap fetch does
+not prove cancellation of source construction, or vice versa. Applied source
+ordering and permanent-gap semantics belong to `mirror-ingestion-contracts`.
+
 At minimum, attempt to falsify these sequences with deterministic barriers:
 
 1. Start blocks after acquiring a listener, store, registration or source; Stop

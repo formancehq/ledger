@@ -67,6 +67,11 @@ func (r *Recovery) RecoverState() error {
 
 	// Phase 2: atomic swap.
 	r.apply.RestoreState(newState)
+	// The checkpoint may come from a node with different local flags or Bloom
+	// dimensions. Install the committed shape before cache restore and WAL replay.
+	if r.apply.BloomFilters != nil {
+		r.apply.BloomFilters.Rebuild(newState.LastClusterConfig)
+	}
 
 	// Route through publishApplied rather than a bare Store: RecoverState also
 	// runs at runtime (SynchronizeWithLeader), where a silent advance of

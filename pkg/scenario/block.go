@@ -12,22 +12,44 @@ import (
 // ErrSkip is returned by a block's Run function when its precondition is not met.
 var ErrSkip = errors.New("precondition not met")
 
-// RandFunc returns a uniformly distributed random uint64.
-// It abstracts the randomness source so callers can substitute
-// math/rand/v2 (default) or antithesis-sdk-go/random.GetRandom.
+// Random supplies typed draws for a block. Implementations may record each bounded
+// decision separately. A source must remain local to the block invocation.
+type Random interface {
+	Intn(n int) int
+	Int63n(n int64) int64
+	Uint64() uint64
+}
+
+// RandFunc adapts an existing uint64 function to the typed Random interface.
 type RandFunc func() uint64
 
-// Rand helpers — derive typed random values from a RandFunc.
+// Uint64 returns the next raw value from the legacy source.
+func (r RandFunc) Uint64() uint64 { return r() }
 
-// RandIntN returns a random int in [0, n).
-func RandIntN(r RandFunc, n int) int {
+// Intn preserves the legacy one-draw modulo mapping. Typed callers implement
+// Random directly, so their bounded choices do not pass through this adapter.
+func (r RandFunc) Intn(n int) int {
+	if n <= 0 {
+		panic("non-positive bound")
+	}
+
 	return int(r() % uint64(n))
 }
 
-// RandInt64N returns a random int64 in [0, n).
-func RandInt64N(r RandFunc, n int64) int64 {
+// Int63n preserves the legacy one-draw modulo mapping, including fixed sources.
+func (r RandFunc) Int63n(n int64) int64 {
+	if n <= 0 {
+		panic("non-positive bound")
+	}
+
 	return int64(r() % uint64(n))
 }
+
+// RandIntN preserves the helper API while forwarding the bounded decision.
+func RandIntN(r Random, n int) int { return r.Intn(n) }
+
+// RandInt64N preserves the helper API while forwarding the bounded decision.
+func RandInt64N(r Random, n int64) int64 { return r.Int63n(n) }
 
 // Block is an atomic, self-contained business operation.
 // It reads its preconditions from the ledger (no local state tracking).
@@ -37,7 +59,7 @@ type Block struct {
 	Name string
 	// Run executes the block. Returns the Apply response (for invariant checks)
 	// and ErrSkip if the precondition is not met.
-	Run func(ctx context.Context, client servicepb.BucketServiceClient, rand RandFunc) (*servicepb.ApplyResponse, error)
+	Run func(ctx context.Context, client servicepb.BucketServiceClient, rand Random) (*servicepb.ApplyResponse, error)
 }
 
 // BlockGroup groups blocks that share the same setup actions.
@@ -97,7 +119,7 @@ func GetColoredAccountBalance(ctx context.Context, client servicepb.BucketServic
 }
 
 // GetNonRevertedTransaction finds a random non-reverted transaction in a ledger.
-func GetNonRevertedTransaction(ctx context.Context, client servicepb.BucketServiceClient, ledger string, randFn RandFunc) (*commonpb.Transaction, bool) {
+func GetNonRevertedTransaction(ctx context.Context, client servicepb.BucketServiceClient, ledger string, randFn Random) (*commonpb.Transaction, bool) {
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger:  ledger,
 		Options: &commonpb.ListOptions{PageSize: 100},

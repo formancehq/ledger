@@ -205,11 +205,9 @@ type checkReplayState struct {
 	excluded                 excludedVolumesSet
 	knownLedgers             map[string]struct{}
 	ledgerRevertedTxIDs      map[string]*bitset.Bitset
-	rawLedgerTypes           map[string]map[string]*commonpb.AccountType
 	expectedIndexes          map[domain.IndexKey]*commonpb.Index
 	deletedInReplay          map[string]struct{}
 	expectedSchemas          map[string]*commonpb.MetadataSchema
-	expectedEnforcementModes map[string]commonpb.ChartEnforcementMode
 	expectedBoundaries       map[string]*raftcmdpb.LedgerBoundaries
 	expectedNumscriptContent map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo
 	expectedNumscriptLatest  map[domain.NumscriptVersionKey]string
@@ -364,12 +362,8 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 		// Expected metadata schema per ledger, derived from
 		// CreateLedger.initial_schema + SetMetadataFieldType /
 		// RemovedMetadataFieldType logs. Compared against the stored
-		// LedgerInfo.MetadataSchema in compareSchema.
+		// schema-dependent reverse-map diagnostics.
 		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
-		// Expected default account-type enforcement per ledger, derived from
-		// CreateLedger.default_enforcement_mode and later audited updates.
-		// Compared against LedgerInfo.DefaultEnforcementMode.
-		expectedEnforcementModes = make(map[string]commonpb.ChartEnforcementMode)
 		// Expected LedgerBoundaries per ledger: id fields and replay-derivable
 		// counters, advanced per replayed log, then topped up with the
 		// chain-bound audit-order effects (mirror fill-gap advances, numscript
@@ -636,7 +630,6 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 					name := payload.CreateLedger.GetName()
 					knownLedgers[name] = struct{}{}
 					expectedSchemas[name] = payload.CreateLedger.GetMetadataSchema().CloneVT()
-					expectedEnforcementModes[name] = payload.CreateLedger.GetDefaultEnforcementMode()
 					expectedBoundaries[name] = &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 					seedAccountTypes(rawLedgerTypes, ledgerAccountTypes, name, payload.CreateLedger.GetAccountTypes())
 				}
@@ -645,7 +638,6 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 					name := payload.DeleteLedger.GetName()
 					delete(knownLedgers, name)
 					delete(expectedSchemas, name)
-					delete(expectedEnforcementModes, name)
 					delete(rawLedgerTypes, name)
 					delete(ledgerAccountTypes, name)
 
@@ -797,10 +789,6 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 								}
 								delete(expectedIndexes, key)
 							}
-						case *commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode:
-							if update := d.UpdatedDefaultEnforcementMode; update != nil {
-								expectedEnforcementModes[ledgerName] = update.GetEnforcementMode()
-							}
 						}
 
 						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
@@ -905,9 +893,8 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 	return &checkReplayState{
 		replay: replay, observed: observed, excluded: excluded,
 		knownLedgers: knownLedgers, ledgerRevertedTxIDs: ledgerRevertedTxIDs,
-		rawLedgerTypes: rawLedgerTypes, expectedIndexes: expectedIndexes,
+		expectedIndexes: expectedIndexes,
 		deletedInReplay: deletedInReplay, expectedSchemas: expectedSchemas,
-		expectedEnforcementModes: expectedEnforcementModes,
 		expectedBoundaries:       expectedBoundaries,
 		expectedNumscriptContent: expectedNumscriptContent,
 		expectedNumscriptLatest:  expectedNumscriptLatest,
@@ -923,11 +910,9 @@ func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader,
 	excluded := state.excluded
 	knownLedgers := state.knownLedgers
 	ledgerRevertedTxIDs := state.ledgerRevertedTxIDs
-	rawLedgerTypes := state.rawLedgerTypes
 	expectedIndexes := state.expectedIndexes
 	deletedInReplay := state.deletedInReplay
 	expectedSchemas := state.expectedSchemas
-	expectedEnforcementModes := state.expectedEnforcementModes
 	expectedBoundaries := state.expectedBoundaries
 	expectedNumscriptContent := state.expectedNumscriptContent
 	expectedNumscriptLatest := state.expectedNumscriptLatest
@@ -969,19 +954,7 @@ func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader,
 	// projection rebuilt from the surviving prefix is self-consistent.
 	bounds.compare(observed, callback)
 
-	if err := c.compareSchema(ctx, snap, expectedSchemas, callback); err != nil {
-		return err
-	}
-
-	if err := c.compareLedgerPresence(ctx, snap, knownLedgers, callback); err != nil {
-		return err
-	}
-
-	if err := c.compareAccountTypes(ctx, snap, rawLedgerTypes, callback); err != nil {
-		return err
-	}
-
-	if err := c.compareDefaultEnforcementModes(ctx, snap, expectedEnforcementModes, callback); err != nil {
+	if err := folds.ledgerPolicy.compare(snap, c.attrs, callback); err != nil {
 		return err
 	}
 
@@ -2325,6 +2298,7 @@ type chainVerifierFolds struct {
 	// orders.
 	policy         *clusterPolicyVerifier
 	ledgerMetadata *ledgerMetadataVerifier
+	ledgerPolicy   *ledgerPolicyVerifier
 	// bounds re-derives the highest log sequence the chain accounts for, from
 	// the chain-verified AuditSuccess ranges. Compared against the stored Log
 	// keys after the log loop — see logBoundsVerifier for the premise and for
@@ -2337,6 +2311,7 @@ func newChainVerifierFolds() chainVerifierFolds {
 		signing:        newSigningVerifier(),
 		policy:         newClusterPolicyVerifier(),
 		ledgerMetadata: newLedgerMetadataVerifier(),
+		ledgerPolicy:   &ledgerPolicyVerifier{},
 		bounds:         newLogBoundsVerifier(),
 	}
 }
@@ -2348,6 +2323,7 @@ func (f chainVerifierFolds) markLiveTruncated() {
 	f.signing.markLiveTruncated()
 	f.policy.markLiveTruncated()
 	f.ledgerMetadata.liveTruncated = true
+	f.ledgerPolicy.liveTruncated = true
 	f.bounds.markLiveTruncated()
 }
 
@@ -2608,6 +2584,9 @@ func (c *Checker) verifyAuditHashChain(
 					}
 					expectedLogs[log.GetSequence()] = log
 				}
+			} else {
+				// An incomplete replay cannot substantiate final ledger policy.
+				folds.ledgerPolicy.liveTruncated = true
 			}
 
 			// Fold signing orders from this successful entry, over the SAME fresh-log
@@ -2664,6 +2643,14 @@ func (c *Checker) verifyAuditHashChain(
 
 	if checked > 0 {
 		c.logger.Infof("Audit hash chain verified: %d entries checked", checked)
+	}
+
+	if !folds.ledgerPolicy.liveTruncated {
+		infos, err := replayer.LedgerInfos()
+		if err != nil {
+			return nil, fmt.Errorf("reading audit-derived ledger policies: %w", err)
+		}
+		folds.ledgerPolicy.expected = infos
 	}
 
 	if err := c.compareIdempotencyOutcomes(reader, expectedIdem, hasVerifiedRange, callback); err != nil {
@@ -4636,38 +4623,6 @@ func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleRead
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
 				fmt.Sprintf("ledger %q account types diverge from the audit-derived declarations", name),
-				0, name, "", "",
-			))
-		}
-	}
-
-	return nil
-}
-
-// compareDefaultEnforcementModes verifies the persisted policy that controls
-// whether unmatched accounts are rejected. The expectation is reconstructed
-// from the ledger's creation log and subsequent audited mode-update logs.
-func (c *Checker) compareDefaultEnforcementModes(ctx context.Context, reader dal.PebbleReader, expected map[string]commonpb.ChartEnforcementMode, callback func(*servicepb.CheckStoreEvent)) error {
-	ledgerCursor, err := query.ReadLedgers(ctx, reader)
-	if err != nil {
-		return fmt.Errorf("reading ledgers for default enforcement mode verification: %w", err)
-	}
-
-	ledgers, err := cursor.Collect(ledgerCursor)
-	if err != nil {
-		return fmt.Errorf("collecting ledgers for default enforcement mode verification: %w", err)
-	}
-
-	for _, info := range ledgers {
-		if info.GetDeletedAt() != nil {
-			continue
-		}
-
-		name := info.GetName()
-		if mode, ok := expected[name]; ok && mode != info.GetDefaultEnforcementMode() {
-			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH,
-				fmt.Sprintf("ledger %q default enforcement mode diverges from the audit-derived policy", name),
 				0, name, "", "",
 			))
 		}
