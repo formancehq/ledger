@@ -96,8 +96,8 @@ cache cleanup.
 
 ### golangci-lint cross-worktree safety
 
-The development shell provides upstream golangci-lint v2.13.2 through
-`flake.lock`, without a package override or source patch. Identical packages
+The development shell provides upstream golangci-lint v2.15.0 through
+`flake.lock`, without a source patch. Identical packages
 share cache entries across worktrees; current-module issue positions are stored
 relative to the module and rebased to the consuming checkout on load. A
 payload-format salt excludes the unsafe v2.12.2 entries, which stored absolute
@@ -128,7 +128,7 @@ while another validation is using it.
 | --- | --- | --- | --- |
 | Stable cache directory per canonical worktree | Safe across worktrees, including symlink aliases after canonicalization | Warm only within one physical path; duplicates entries and leaves namespaces after removed worktrees | Not selected once the upstream value fix became available |
 | Absolute worktree path in the cache key | Safe because different paths cannot hit the same entry | Same hit topology as per-worktree directories, with no cross-worktree reuse | Upstream temporarily used this fallback in #6697 |
-| Relative positions rebased on load | Safe when every path-bearing cached value is normalized and old payloads are salted out | Preserves global cross-worktree hits | Provided by the pinned upstream v2.13.2 package |
+| Relative positions rebased on load | Safe when every path-bearing cached value is normalized and old payloads are salted out | Preserves global cross-worktree hits | Provided by the pinned upstream package (since v2.13.2) |
 | Per-execution lint cache | Safe | No lint-cache warm path; repeats analysis on every validation | Rejected on performance grounds |
 | v2.12.2 global cache plus routine cleaning | Unsafe between cleans | Fast only until another checkout supplies a location-bound value | Rejected; cleaning is recovery, not isolation |
 
