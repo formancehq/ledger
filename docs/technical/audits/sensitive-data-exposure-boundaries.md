@@ -93,7 +93,10 @@ usernames paired with passwords, hosts, topics, and unrelated query controls.
 The add-sink oracle must also prove that the original credential-bearing
 configuration reached `Apply`, including the exact HTTP endpoint and HMAC
 secret; output redaction must not mutate business input. The registered-command
-oracle lives in `cmd/ledgerctl/events_url_redaction_output_test.go`.
+oracle lives in `cmd/ledgerctl/events_url_redaction_output_test.go`. Include
+uppercase and mixed-case HTTP(S) schemes. Human add-sink output omits the
+Secret row when no HMAC secret is configured; structured output reports
+`(none)`. Configured HMAC secrets display as `(set)`.
 
 ## Surface inventory required at execution
 

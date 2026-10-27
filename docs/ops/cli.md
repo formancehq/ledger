@@ -5025,8 +5025,10 @@ Add a named event sink configuration. An existing name is rejected; the configur
 
 After a successful update, the displayed configuration applies the same URL
 credential masking as `events list`; the submitted configuration is unchanged.
-This applies to human, JSON, YAML, and JSON result-file output. HTTP HMAC
-secrets retain the `(set)` / `(none)` presence markers.
+This applies to human, JSON, YAML, and JSON result-file output. JSON, YAML,
+and JSON result-file output represent HTTP HMAC secrets with `(set)` / `(none)`
+presence markers. Human output shows `Secret: (set)` when configured and
+omits the Secret row when no HMAC secret is set.
 
 Currently supported sink types: **NATS JetStream**, **ClickHouse**, **Kafka**, **HTTP**, **Databricks**.
 

@@ -164,14 +164,15 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 		})
 	}
 
-	addCases := []struct {
+	type addSinkCase struct {
 		name         string
 		flags        []string
 		credentials  []string
 		controls     []string
 		httpEndpoint string
 		httpSecret   string
-	}{
+	}
+	addCases := []addSinkCase{
 		{
 			name: "NATS password",
 			flags: []string{
@@ -246,6 +247,16 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 			controls:    []string{"stream", "db.example", "secure=true"},
 		},
 	}
+	for _, scheme := range []string{"HTTP", "HTTPS", "hTtPs"} {
+		endpoint := scheme + "://" + url.User(httpUserinfoToken).String() + "@hooks.example/events?mode=live"
+		addCases = append(addCases, addSinkCase{
+			name:         scheme + " passwordless userinfo",
+			flags:        []string{"--http-endpoint", endpoint},
+			credentials:  []string{httpUserinfoToken, url.User(httpUserinfoToken).String()},
+			controls:     []string{"stream", "hooks.example/events", "mode=live"},
+			httpEndpoint: endpoint,
+		})
+	}
 	for _, format := range []string{"table", "json", "yaml"} {
 		for _, addCase := range addCases {
 			t.Run("add-sink "+format+" "+addCase.name, func(t *testing.T) {
@@ -272,6 +283,16 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				}
 				for _, control := range addCase.controls {
 					assert.Contains(t, output, control)
+				}
+				if addCase.httpEndpoint != "" {
+					switch {
+					case addCase.httpSecret != "":
+						assert.Contains(t, output, "(set)")
+					case format == "table":
+						assert.NotContains(t, output, "Secret:")
+					default:
+						assert.Contains(t, output, "(none)")
+					}
 				}
 				if resultPath != "" {
 					result, err := os.ReadFile(resultPath)
