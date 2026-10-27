@@ -46,6 +46,11 @@ support, which newer unstable revisions have dropped. Updating stable
 updates the other tools selected from that input; check generated outputs with
 `just pre-commit`. The unstable and NUR inputs remain independently pinned.
 
+The standalone `misc/operator` flake uses the same stable Go 1.27.3 package
+and matching `buildGo127Module` builder for golangci-lint 2.15.0. Its unstable
+input remains independently pinned, and its module language minimum remains
+Go 1.26.0. Both flakes set `GOTOOLCHAIN=local` to use the selected compiler.
+
 ## Project Structure
 
 ```
