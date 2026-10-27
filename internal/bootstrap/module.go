@@ -1387,6 +1387,26 @@ func joinPreflightHook(cfg Config, logger logging.Logger) fx.Hook {
 	}
 }
 
+// newMembershipPeerDialer builds the common outbound gRPC dialer used by the
+// learner bootstrap and membership-refresh paths. Keeping credential and
+// option construction in one place prevents those two startup paths from
+// drifting while still allowing each call site to control connection lifetime.
+func newMembershipPeerDialer(cfg Config, tlsCfg TLSConfig) (func(string) (*ggrpc.ClientConn, error), error) {
+	creds, _, err := ClientTransportCredentials(tlsCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	dialOpts := []ggrpc.DialOption{ggrpc.WithTransportCredentials(creds)}
+	if cfg.ClusterSecret != "" {
+		dialOpts = append(dialOpts, transport.BearerTokenDialOption(cfg.ClusterSecret))
+	}
+
+	return func(address string) (*ggrpc.ClientConn, error) {
+		return ggrpc.NewClient(address, dialOpts...)
+	}, nil
+}
+
 func membershipRefreshHook(cfg Config, logger logging.Logger) fx.Hook {
 	var cancel context.CancelFunc
 
@@ -1496,14 +1516,9 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 		Capabilities:   capabilityIDsAsUint32(capabilities.SupportedIDs()),
 	}
 
-	creds, _, err := ClientTransportCredentials(tlsCfg)
+	dialPeer, err := newMembershipPeerDialer(cfg, tlsCfg)
 	if err != nil {
 		return fmt.Errorf("loading TLS credentials for learner registration: %w", err)
-	}
-
-	dialOpts := []ggrpc.DialOption{ggrpc.WithTransportCredentials(creds)}
-	if cfg.ClusterSecret != "" {
-		dialOpts = append(dialOpts, transport.BearerTokenDialOption(cfg.ClusterSecret))
 	}
 
 	backoff := 500 * time.Millisecond
@@ -1516,7 +1531,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 	for {
 		// Try each peer in order until one succeeds.
 		for _, peer := range peers {
-			conn, err := ggrpc.NewClient(peer.Address, dialOpts...)
+			conn, err := dialPeer(peer.Address)
 			if err != nil {
 				logger.WithFields(map[string]any{
 					"peer":    peer.ID,
@@ -1683,14 +1698,9 @@ func tryRefreshMembershipOnce(ctx context.Context, cfg Config, tlsCfg TLSConfig,
 		Capabilities:   capabilityIDsAsUint32(capabilities.SupportedIDs()),
 	}
 
-	creds, _, err := ClientTransportCredentials(tlsCfg)
+	dialPeer, err := newMembershipPeerDialer(cfg, tlsCfg)
 	if err != nil {
 		return fmt.Errorf("loading TLS credentials for membership refresh: %w", err)
-	}
-
-	dialOpts := []ggrpc.DialOption{ggrpc.WithTransportCredentials(creds)}
-	if cfg.ClusterSecret != "" {
-		dialOpts = append(dialOpts, transport.BearerTokenDialOption(cfg.ClusterSecret))
 	}
 	if cfg.ClusterID != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, node.MetadataKeyClusterID, cfg.ClusterID)
@@ -1698,7 +1708,7 @@ func tryRefreshMembershipOnce(ctx context.Context, cfg Config, tlsCfg TLSConfig,
 
 	var lastTransient error
 	for _, peer := range cfg.RaftConfig.Peers {
-		conn, dialErr := ggrpc.NewClient(peer.Address, dialOpts...)
+		conn, dialErr := dialPeer(peer.Address)
 		if dialErr != nil {
 			logger.WithFields(map[string]any{"peer": peer.ID, "address": peer.Address, "error": dialErr}).Infof("Failed to dial peer for membership refresh")
 			lastTransient = dialErr
