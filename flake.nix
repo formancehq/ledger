@@ -83,9 +83,7 @@
         let
           # Use upstream Go so CI can reuse the stable nixpkgs binary cache.
           go = pkgs.go_1_27;
-          golangci-lint = pkgs.callPackage "${go-tooling}/pkgs/by-name/go/golangci-lint/package.nix" {
-            buildGo127Module = buildGoModule;
-          };
+          golangci-lint = pkgs.callPackage "${go-tooling}/pkgs/by-name/go/golangci-lint/package.nix" { };
 
           # Mock generation must understand the root module Go version.
           buildGoModule = pkgs.buildGo127Module;
