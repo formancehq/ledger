@@ -739,6 +739,13 @@ teardown (CR + PVCs), restore-mode round-trip (`ledgerctl restore download` /
 `singleton_driver_model: restore cycle completed` Sometimes assertion in the
 report is the proof the path actually ran.
 
+The sidecar does not infer finalization from a CLI error string. A lost
+`restore finalize` response is accepted only when the restore-mode pod still
+exposes both `checkpoints/0` and a valid `RESTORED` marker. The marker is the
+server's durable commit point and is written after checkpoint publication; when
+the marker is absent, including after a restart that forgot in-memory staging
+state, the sidecar tears the attempt down and retries the complete restore.
+
 #### Maintaining the model
 
 The model in `tests/oracle/model.go` is a hand-written mirror of the server's
