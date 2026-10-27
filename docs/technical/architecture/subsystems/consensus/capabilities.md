@@ -120,6 +120,34 @@ runner does not duplicate this check. Callers must still stamp their proposal
 before use. Membership `ConfChange` operations carry and validate their
 capability evidence separately.
 
+## Admission cost budget and evidence
+
+The proposal gate has a deliberately bounded cost shape. For a proposal that
+declares `r` capabilities and a current membership of `m` voters and learners,
+the pure decision is `O(r + m*r)` and allocates only its normalized input and
+blocker report. The membership snapshot is copied once per gate evaluation;
+the gate must not perform network calls, wait for Raft, or hold a storage
+transaction while evaluating the result. Policy decoding and the snapshot
+copy remain serialized by the proposal admission boundary, so they are part
+of the write-path budget rather than background work.
+
+The deterministic behavior matrix is covered by
+`internal/infra/capabilities/capabilities_test.go`: empty declarations,
+inactive policy, active policy with converged voters and learners, missing
+evidence, and unreachable members. The representative cost shape is measured
+by:
+
+```text
+go test ./internal/infra/capabilities -run '^$' -bench BenchmarkEvaluate -benchmem -count=5
+```
+
+The benchmark uses three and seven members with zero, one, and four required
+capabilities. Any future capability registry or policy-provider change must
+rerun it and include the result in the change review. A regression must be
+explained against the `m*r` bound; if the bound no longer fits the admission
+budget, move decoding/snapshot preparation outside the serialized section and
+pass an immutable admission snapshot instead of widening the lock.
+
 ## Restart refresh
 
 A normal restart does not run `JoinAsLearner`: the node restores its existing

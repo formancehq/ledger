@@ -402,7 +402,11 @@ func Module() fx.Option {
 					// typed candidate from the final command, so this check does not
 					// decode the serialized proposal or trust caller-supplied metadata.
 					activePolicyCapabilities := proposal.ActivePolicyCapabilities()
-					if err := validateCapabilityActivationEvidence(capabilities.SupportedIDs(), activePolicyCapabilities, raftNode.CapabilityMembers()); err != nil {
+					// Take one immutable membership snapshot for both policy checks.  The
+					// gate runs under the serialized proposal/index boundary; taking two
+					// snapshots here needlessly doubles lock, map-copy and allocation cost.
+					members := raftNode.CapabilityMembers()
+					if err := validateCapabilityActivationEvidence(capabilities.SupportedIDs(), activePolicyCapabilities, members); err != nil {
 						return err
 					}
 
@@ -410,7 +414,7 @@ func Module() fx.Option {
 					if err := state.Validate(); err != nil {
 						return err
 					}
-					decision := capabilities.Evaluate(state, proposal.RequiredCapabilities(), false, raftNode.CapabilityMembers())
+					decision := capabilities.Evaluate(state, proposal.RequiredCapabilities(), false, members)
 					if !decision.Allowed {
 						return fmt.Errorf("%w: %s", capabilities.ErrCapabilityUnsupported, decision.Reason)
 					}
@@ -1447,7 +1451,7 @@ func tryRefreshMembershipForStartupWithTimeout(ctx context.Context, cfg Config, 
 	// Preserve cancellation of the lifecycle itself as a hard error. Only the
 	// timeout introduced for this bounded attempt is transient.
 	if ctx.Err() == nil && errors.Is(attemptCtx.Err(), context.DeadlineExceeded) {
-		return fmt.Errorf("%w: synchronous refresh attempt exceeded %s: %v", errMembershipRefreshTransient, timeout, err)
+		return fmt.Errorf("%w: synchronous refresh attempt exceeded %s: %w", errMembershipRefreshTransient, timeout, err)
 	}
 
 	return err

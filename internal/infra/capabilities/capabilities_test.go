@@ -29,6 +29,46 @@ func TestEvaluateAllowsUnrelatedWriteWhenNoFeatureIsDeclared(t *testing.T) {
 	require.True(t, decision.Allowed)
 }
 
+func TestEvaluateRejectsInactiveCapabilityBeforeInspectingMembers(t *testing.T) {
+	decision := Evaluate(capabilityState(), []CapabilityID{7}, true, []Member{{
+		NodeID:       1,
+		Role:         Voter,
+		Reachable:    true,
+		Capabilities: []CapabilityID{7},
+	}})
+
+	require.False(t, decision.Allowed)
+	require.Contains(t, decision.Reason, "unsupported")
+	require.Empty(t, decision.Blockers[0].NodeID, "policy blockers do not identify a member")
+}
+
+func TestEvaluateRejectsUnreachableMemberEvenWhenCapabilityIsAdvertised(t *testing.T) {
+	state := capabilityState()
+	state.Activations[7] = true
+	decision := Evaluate(state, []CapabilityID{7}, true, []Member{{
+		NodeID:       1,
+		Role:         Voter,
+		Reachable:    false,
+		Capabilities: []CapabilityID{7},
+	}})
+
+	require.False(t, decision.Allowed)
+	require.Len(t, decision.Blockers, 1)
+	require.Equal(t, uint64(1), decision.Blockers[0].NodeID)
+}
+
+func TestEvaluateAllowsActiveCapabilityWhenAllMembersAdvertiseAndReachIt(t *testing.T) {
+	state := capabilityState()
+	state.Activations[7] = true
+	decision := Evaluate(state, []CapabilityID{7}, true, []Member{
+		{NodeID: 1, Role: Voter, Reachable: true, Capabilities: []CapabilityID{7}},
+		{NodeID: 2, Role: Learner, Reachable: true, Capabilities: []CapabilityID{7}},
+	})
+
+	require.True(t, decision.Allowed)
+	require.Empty(t, decision.Blockers)
+}
+
 func TestStampProposalClearsFutureDeclarations(t *testing.T) {
 	proposal := &raftcmdpb.Proposal{RequiredCapabilities: []uint32{99}}
 	require.NoError(t, StampProposal(proposal))
