@@ -1570,6 +1570,16 @@ func (node *Node) installReadySnapshot(ctx context.Context, stop chan struct{}, 
 			return fmt.Errorf("applying snapshot to storage: %w", err)
 		}
 
+		// ApplySnapshot replaces the WAL's cached log. A Ready may also carry
+		// entries after the snapshot: restore that suffix before acknowledging
+		// storage. Keep the initial append in persistReady so HardState never
+		// becomes durable without its entries, including across a crash here.
+		if len(rd.Entries) > 0 {
+			if err := node.wal.Append(rd.HardState, rd.Entries); err != nil {
+				return fmt.Errorf("restoring entries after snapshot installation: %w", err)
+			}
+		}
+
 		if err := node.synchronizer.InstallSnapshot(ctx, rd.Snapshot); err != nil {
 			return fmt.Errorf("installing snapshot: %w", err)
 		}
