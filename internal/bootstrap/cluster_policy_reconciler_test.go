@@ -186,8 +186,14 @@ func TestReconcileClusterPolicy(t *testing.T) {
 
 		batch := store.OpenWriteSession()
 		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
-			Revision:             cfg.ClusterPolicyRevision + 1,
-			QueryCheckpointLimit: cfg.QueryCheckpointLimit,
+			Revision:                    cfg.ClusterPolicyRevision + 1,
+			IdempotencyTtlMicros:        uint64(cfg.IdempotencyTTL.Microseconds()),
+			QueryCheckpointLimit:        cfg.QueryCheckpointLimit,
+			MetadataMaxEntriesPerEntity: cfg.MetadataMaxEntriesPerEntity,
+			MetadataMaxKeyBytes:         cfg.MetadataMaxKeyBytes,
+			MetadataMaxValueBytes:       cfg.MetadataMaxValueBytes,
+			MetadataMaxEntityBytes:      cfg.MetadataMaxEntityBytes,
+			MetadataMaxCommandBytes:     cfg.MetadataMaxCommandBytes,
 		}))
 		require.NoError(t, batch.Commit())
 
@@ -204,17 +210,49 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		cfg := validBaseConfig()
 		batch := store.OpenWriteSession()
 		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
-			Revision:             cfg.ClusterPolicyRevision + 1,
-			QueryCheckpointLimit: cfg.QueryCheckpointLimit,
+			Revision:                    cfg.ClusterPolicyRevision + 1,
+			IdempotencyTtlMicros:        uint64(cfg.IdempotencyTTL.Microseconds()),
+			QueryCheckpointLimit:        cfg.QueryCheckpointLimit,
+			MetadataMaxEntriesPerEntity: cfg.MetadataMaxEntriesPerEntity,
+			MetadataMaxKeyBytes:         cfg.MetadataMaxKeyBytes,
+			MetadataMaxValueBytes:       cfg.MetadataMaxValueBytes,
+			MetadataMaxEntityBytes:      cfg.MetadataMaxEntityBytes,
+			MetadataMaxCommandBytes:     cfg.MetadataMaxCommandBytes,
 		}))
 		require.NoError(t, batch.Commit())
 
 		admission := &fakeAdmission{}
+		var memberReads atomic.Int32
 		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing(), func() []capabilities.Member {
+			memberReads.Add(1)
 			return []capabilities.Member{{NodeID: 1, Role: capabilities.Voter}}
 		})
 
 		require.Zero(t, admission.callCount(), "member evidence must not bypass the stale revision guard")
+		require.EqualValues(t, 1, memberReads.Load(), "matching operator configuration must still allow capability reconciliation")
+	})
+
+	t.Run("rejects a newer revision with a configuration conflict", func(t *testing.T) {
+		t.Parallel()
+
+		store := newReconcilerTestStore(t)
+		cfg := validBaseConfig()
+		batch := store.OpenWriteSession()
+		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+			Revision:             cfg.ClusterPolicyRevision + 1,
+			QueryCheckpointLimit: cfg.QueryCheckpointLimit + 1,
+		}))
+		require.NoError(t, batch.Commit())
+
+		admission := &fakeAdmission{}
+		var memberReads atomic.Int32
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing(), func() []capabilities.Member {
+			memberReads.Add(1)
+			return []capabilities.Member{{NodeID: 1, Role: capabilities.Voter}}
+		})
+
+		require.Zero(t, admission.callCount(), "a newer conflicting configuration must not be re-proposed")
+		require.Zero(t, memberReads.Load(), "configuration conflicts must stop before capability reconciliation")
 	})
 
 	t.Run("does not replace a same-revision configuration conflict with a capability bump", func(t *testing.T) {
