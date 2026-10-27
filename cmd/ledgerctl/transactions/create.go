@@ -240,9 +240,6 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		}
 
 		if selectedOption == "Numscript file" {
-			if !cmdutil.CanPrompt() {
-				return cmdutil.ErrNonInteractiveInput
-			}
 			// Prompt for script file path with autocompletion
 			var scriptPath string
 

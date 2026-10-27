@@ -232,7 +232,7 @@ scripting against the CLI predictable across resources.
 | Aliases | `get` | — | `g`, `show`, `describe` |
 | Aliases | `inspect` | — | `i` |
 
-When stdin is not a terminal, commands that need an interactive value or confirmation fail immediately. Supply the required arguments and flags (including `--var` for Numscript variables and `--yes` for confirmations). Interactive pagers stop after the first page; account and transaction lists still print their cursor hints. Use `--all` to fetch all pages in scripts.
+When stdin is not a terminal, commands that need an interactive value or confirmation fail immediately. Supply the required arguments and flags (including `--var` for Numscript variables and `--yes` for confirmations). Interactive pagers stop after the first page; account and transaction lists still print their cursor hints, while `queries execute` prints a reminder to use `--all`. Use `--all` to fetch all pages in scripts.
 
 Structured JSON and YAML output preserve the full precision of integer metadata,
 transaction IDs, and posting amounts, including values greater than `2^53`.
@@ -261,16 +261,16 @@ These commands still honor `--json` / `--yaml`.
 
 #### Default pagination behaviour
 
-Paginated `list` commands fall into two groups depending on what happens when
+Paginated `list` commands fall into three groups depending on what happens when
 neither `--page-size` nor `--cursor` is set:
 
 | Group | Commands | Default behaviour |
 |---|---|---|
-| Drain-by-default | `accounts list`, `transactions list`, `ledgers list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to switch back to single-page output (and print the page hints). |
+| Interactive page walk | `accounts list`, `transactions list` | Prompt between pages on terminal stdin. On non-terminal stdin, print the first page and cursor hints, then stop. Use `--all` to fetch every page in scripts. |
+| Drain-by-default | `ledgers list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to request a single page and print its cursor hints. |
 | Single-page-only | `audit list`, `logs list` | Always print one page and its page hints, even with no flags set. Resume with `--cursor <token>`. These resources commonly hold tens of thousands of rows; defaulting to a single page avoids accidentally streaming the whole history. |
 
-Both groups expose the same `--page-size` / `--cursor` semantics; only the
-flagless default differs.
+All groups expose `--page-size` and `--cursor`; the flagless behavior differs.
 
 #### Page tokens
 
