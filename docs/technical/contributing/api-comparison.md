@@ -28,6 +28,20 @@ integer schema spans `-9223372036854775808` through `18446744073709551615`,
 matching signed negative and unsigned nonnegative metadata values. See
 [Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
 
+## Ledger integrity checking
+
+The v3 gRPC `CheckStore` and `ValidateRestore` streams verify canonical and global
+ledger policy rows independently against audited FSM replay, including retained
+tombstones. `CheckStore`'s additive `LEDGER_INFO_MISMATCH` enum value (32) reports identity,
+deletion-state, mode and mirror-source mismatches; existing field-specific error
+types remain. Protocol revision stays 40. Clients must retain failure semantics
+for unknown numeric error types; refreshed bindings expose the new symbolic name.
+`ValidateRestore` reports the same corruptions through its existing message-only
+`ValidateRestoreError` events, without an error-type enum.
+See [protocol compatibility](../architecture/subsystems/api/protocol-compatibility.md).
+There is no HTTP endpoint or envelope change, and v2 has no equivalent integrity
+stream requiring endpoint parity.
+
 ## Summary
 
 ### LedgerInfo reads (EN-2780 / EN-1635)
