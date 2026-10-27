@@ -108,6 +108,24 @@ layer and does not perform active fuzzing.
 
 Store integration tests cover both runtime state and log persistence now that log storage is part of the store.
 
+PostgreSQL mirror integration tests use isolated disposable databases and two
+independent source transactions to distinguish late commits from permanent
+sequence gaps. CI runs the `Postgres` selection in `internal/adapter/v2` and
+`internal/application/mirror` with `-tags integration` and the race detector
+through the same recipe available locally:
+
+```bash
+nix develop .#ci --command just test-postgres-mirror-coverage
+```
+
+The recipe writes `build/coverage/postgres-mirror.out`, which CI uploads and
+requires when merging coverage profiles.
+By default these tests start
+PostgreSQL through Testcontainers. To use an existing disposable PostgreSQL
+service, set `LEDGER_TEST_POSTGRES_DSN` to its administrator URI; each case
+creates and drops its own database. The source-privilege test also creates and
+drops a temporary role. Never point this override at a production service.
+
 **Example**:
 ```go
 //go:build integration
@@ -940,6 +958,7 @@ go tool cover -html=coverage.out
 ```
 
 The `just` coverage recipes (`test-coverage`, `test-internal-coverage`,
+`test-postgres-mirror-coverage`,
 `test-antithesis-assertions`, `test-e2e-coverage`, `test-scenarios-coverage`,
 `fuzz-check-coverage`) run through `scripts/go-test-coverage` rather than
 `-coverprofile`. With `-coverpkg=github.com/formancehq/ledger/v3/internal/...`,

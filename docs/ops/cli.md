@@ -2813,47 +2813,6 @@ ledgerctl cluster transfer-leader 2
 ledgerctl cluster transfer-leader 3 --timeout 5s
 ```
 
-#### cluster add-learner
-
-Add a non-voting (learner) node to the Raft cluster. The request is forwarded to the current leader.
-
-```bash
-ledgerctl cluster add-learner <node-id> <raft-address> <service-address> <instance-id> [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--timeout` | `10s` | Request timeout |
-
-**Behavior:**
-- The request is forwarded to the current leader if sent to a follower
-- `instance-id` is the 32-character hexadecimal encoding of the target node's 16-byte persisted `INSTANCE_ID` file
-- An existing member with replicated progress rejects a different identity with `FailedPrecondition`; retrying the same active identity returns `AlreadyExists`. With no replicated progress, a different identity refreshes the registration.
-- For stale progress, retire the old instance, remove its membership, then retry. If quorum is unavailable, use the leader-only `cluster remove-node --force` procedure in [Cluster operations](./cluster-operations.md), ensuring the retired instance cannot rejoin.
-- The leader proposes a ConfChange to add the node as a learner (non-voting member)
-- Once committed, all nodes add the learner to their transport and service pool
-- The learner receives log entries and snapshots but cannot vote or become leader
-
-**Example:**
-
-```bash
-# Read the INSTANCE_ID from the target node's configured --wal-dir (default: ./wal).
-# When running under the Formance Operator, the mount path is /data/raft by default.
-WAL_DIR=${WAL_DIR:-./wal}
-INSTANCE_ID_HEX=$(od -An -tx1 "$WAL_DIR/INSTANCE_ID" | tr -d ' \n')
-
-# Add node 4 as a learner
-ledgerctl cluster add-learner 4 node-4:7777 node-4:8888 "$INSTANCE_ID_HEX"
-
-# Add node 5 as a learner - read its own WAL directory for its unique INSTANCE_ID.
-# Reusing node-4 identity here would register node-5 under the wrong incarnation.
-NODE5_WAL_DIR=${NODE5_WAL_DIR:-./wal}
-NODE5_INSTANCE_ID_HEX=$(od -An -tx1 "$NODE5_WAL_DIR/INSTANCE_ID" | tr -d ' \n')
-ledgerctl cluster add-learner 5 node-5:7777 node-5:8888 "$NODE5_INSTANCE_ID_HEX" --timeout 30s
-```
-
 #### cluster promote-learner
 
 Promote a learner (non-voting) node to a full voter in the Raft cluster. The request is forwarded to the leader.
@@ -4167,8 +4126,9 @@ ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create -
 
 With `--response-verify-key`, prepared query create/update/delete and query
 checkpoint create/delete verify the returned Apply log signatures before
-reporting success or reading the created checkpoint ID. Missing or invalid
-signatures cause the command to fail.
+reporting success or reading the created checkpoint ID. Verification also
+checks that each visible log matches the authenticated payload. Missing or
+invalid signatures and mismatched logs cause the command to fail.
 
 Clients can also discover the server's public key via the `Discovery` RPC.
 
@@ -5029,6 +4989,15 @@ export LEDGERCTL_INSECURE=false
 export LEDGERCTL_TLS_CA_CERT=/path/to/ca.pem
 ledgerctl ledgers list
 ```
+
+Command-specific flags use the same `LEDGERCTL_` prefix with the flag name
+uppercased and hyphens replaced by underscores (for example,
+`LEDGERCTL_MODE` for `--mode`). Environment values never mark a flag as
+explicitly changed, so a command-line flag always takes precedence. Safety
+flags such as `--force` and `--yes` are intentionally CLI-only; `FORCE`, `YES`,
+and their prefixed forms are ignored. The backup commands additionally retain
+the documented `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` aliases for
+Kubernetes Secret-backed Jobs.
 
 ---
 

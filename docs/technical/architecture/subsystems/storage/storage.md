@@ -128,6 +128,22 @@ restart. A compaction margin retained by the previous process is not
 reconstructed; the margin is a running leader's catch-up optimization, matching
 the etcd storage model.
 
+### Received snapshots with an entry suffix
+
+A Raft Ready may carry a snapshot and subsequent entries together. The node
+first appends the Ready entries and HardState durably, then installs the
+snapshot. `ApplySnapshot` clears the cached log window, so the node reappends
+the same Ready suffix before releasing storage or peer acknowledgements.
+Reordering the initial append after snapshot installation would change the
+crash prefix in which HardState and snapshot metadata become durable.
+
+The reappend adds one write proportional to the suffix bytes only for combined
+snapshot/entry Ready values. It adds no storage scan and no write to ordinary
+snapshot-free Ready processing. Tests verify the live Storage interface and a
+reopened WAL retain the suffix, term, HardState and ConfState. Snapshot receipt
+and sender delivery feedback are separate lifecycle boundaries; see the
+[consensus snapshot contract](../consensus/raft-consensus.md#receiving-a-snapshot-ready).
+
 ### WAL Management
 
 The WAL grows indefinitely until a snapshot is created. After a snapshot:

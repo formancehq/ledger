@@ -11,11 +11,12 @@ Trace `server_bucket.go` response decoration, `ResponseSigner.SignLog`, the
 `SignedLog` envelope, Discovery's response key, and the actual `ledgerctl`
 verification call sites. Identify the committed log, the bytes in the envelope,
 the visible log, and the trusted public key separately. `SignLog` clones a log,
-clears `response_signature`, then marshals and signs the clone. The current
-`VerifyResponseSignature` verifies the envelope payload with Ed25519; inspect
-the consumer before claiming that this also authenticates the visible log.
-The architecture page describes reserialization by clients; reconcile that
-description with current client code before treating it as implemented behavior.
+clears `response_signature`, then marshals and signs the clone.
+`VerifyResponseSignature` authenticates only the envelope payload bytes.
+`VerifyResponseLog` then decodes those authenticated bytes and compares the
+result with the visible log after clearing its envelope. Inspect each consumer
+to confirm it invokes that binding check before using visible fields. Do not
+substitute client reserialization for the decode-and-compare contract.
 
 Use a non-empty committed log and independently mutate visible fields, payload,
 signature, key and presence. A verifier accepting signed bytes says nothing by

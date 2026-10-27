@@ -309,7 +309,9 @@ Response signing allows clients to verify that response logs returned by the ser
                     │  1. Get public key via Discovery RPC         │
                     │     (or --response-verify-key flag)          │
                     │  2. Ed25519.Verify(pubkey, payload)          │
-                    │  3. Trust the Log if verification passes     │
+                    │  3. Decode signed payload and compare it      │
+                    │     with the visible Log (without envelope)  │
+                    │  4. Consume the Log only if both checks pass │
                     └──────────────────────────────────────────────┘
 ```
 
@@ -351,7 +353,7 @@ ledgerctl --response-verify-key ./response-keys/pubkey.hex \
   transactions create --ledger my-ledger --posting "world,bank,1000,USD"
 ```
 
-If the server's response signature is missing or invalid, the command fails with an error.
+If the server's response signature is missing or invalid, or if the visible log differs from the authenticated payload, the command fails before consuming the log.
 
 ### Kubernetes Deployment
 

@@ -980,6 +980,10 @@ enum CheckStoreErrorType {
   // re-derived by replaying the chain-verified AuditItem orders. Logs are a
   // projection of the audit chain and never an input to expected-state replay.
   CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH = 31;
+  // A ledger projection has a different key/name, deletion state, mode or
+  // mirror source than the state replayed from verified audit orders. Applies
+  // independently to canonical FSM attributes and global ledger information.
+  CHECK_STORE_ERROR_TYPE_LEDGER_INFO_MISMATCH = 32;
 }
 
 message CheckStoreError {

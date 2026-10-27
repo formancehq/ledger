@@ -12,6 +12,14 @@ For the per-operation Ledger v2 → v3 path mapping, see
 [`v2-to-v3-endpoint-map.json`](v2-to-v3-endpoint-map.json). Update it in the same
 change when a route it names is renamed or removed.
 
+Cluster membership changes are exposed through the v3 `ClusterService`; the v2
+business endpoint map has no corresponding operation. Internal retries of one
+add, promote or remove call retain the original committed outcome through slow
+WAL persistence, rather than reporting a second admission error after the
+membership already changed. Success still requires local durable FSM apply;
+distinct calls keep their existing admission and cancellation semantics. This
+correction changes no route, message, field, status schema or protocol revision.
+
 HTTP typed metadata preserves exact integer values, including signed 64-bit
 bounds and values above 2^53, for metadata writes, transaction creation and
 reversal (unitary and bulk). Integral decimal/exponent spellings are accepted;
@@ -19,6 +27,20 @@ fractions and out-of-range values are rejected before submission. The OpenAPI
 integer schema spans `-9223372036854775808` through `18446744073709551615`,
 matching signed negative and unsigned nonnegative metadata values. See
 [Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
+
+## Ledger integrity checking
+
+The v3 gRPC `CheckStore` and `ValidateRestore` streams verify canonical and global
+ledger policy rows independently against audited FSM replay, including retained
+tombstones. `CheckStore`'s additive `LEDGER_INFO_MISMATCH` enum value (32) reports identity,
+deletion-state, mode and mirror-source mismatches; existing field-specific error
+types remain. Protocol revision stays 40. Clients must retain failure semantics
+for unknown numeric error types; refreshed bindings expose the new symbolic name.
+`ValidateRestore` reports the same corruptions through its existing message-only
+`ValidateRestoreError` events, without an error-type enum.
+See [protocol compatibility](../architecture/subsystems/api/protocol-compatibility.md).
+There is no HTTP endpoint or envelope change, and v2 has no equivalent integrity
+stream requiring endpoint parity.
 
 ## Summary
 

@@ -255,9 +255,7 @@ func Module() fx.Option {
 
 				return cache.New(threshold, meterProvider.Meter("cache"))
 			},
-			func(cfg Config, meterProvider metric.MeterProvider) *bloom.FilterSet {
-				return bloom.NewFilterSet(cfg.BloomConfig, meterProvider.Meter("bloom"))
-			},
+			newCommittedBloomFilterSet,
 			func(cfg Config, n *node.Node, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, bloomFilters *bloom.FilterSet, logger logging.Logger) *plan.Builder {
 				return plan.NewBuilder(n.IndexTracker(), c, attrs, store, bloomFilters, logger, cfg.MaxExecutionPlanSize)
 			},

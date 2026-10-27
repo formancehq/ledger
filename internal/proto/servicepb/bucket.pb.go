@@ -242,6 +242,10 @@ const (
 	// re-derived by replaying the chain-verified AuditItem orders. Logs are a
 	// projection of the audit chain and never an input to expected-state replay.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH CheckStoreErrorType = 31
+	// A ledger projection has a different key/name, deletion state, mode or
+	// mirror source than the state replayed from verified audit orders. Applies
+	// independently to canonical FSM attributes and global ledger information.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LEDGER_INFO_MISMATCH CheckStoreErrorType = 32
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -279,6 +283,7 @@ var (
 		29: "CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE",
 		30: "CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED",
 		31: "CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH",
+		32: "CHECK_STORE_ERROR_TYPE_LEDGER_INFO_MISMATCH",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                            0,
@@ -313,6 +318,7 @@ var (
 		"CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE":            29,
 		"CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED":                          30,
 		"CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH":                   31,
+		"CHECK_STORE_ERROR_TYPE_LEDGER_INFO_MISMATCH":                   32,
 	}
 )
 
@@ -9381,7 +9387,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xac\f\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xdd\f\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9415,7 +9421,8 @@ const file_bucket_proto_rawDesc = "" +
 	",CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH\x10\x1c\x126\n" +
 	"2CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE\x10\x1d\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED\x10\x1e\x12/\n" +
-	"+CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH\x10\x1f*W\n" +
+	"+CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH\x10\x1f\x12/\n" +
+	"+CHECK_STORE_ERROR_TYPE_LEDGER_INFO_MISMATCH\x10 *W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +

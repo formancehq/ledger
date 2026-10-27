@@ -253,6 +253,16 @@ test-internal-coverage:
     echo "==> Internal tests with optional features and coverage..."
     scripts/go-test-coverage {{coverage_dir}}/internal.out -race -tags "{{all_tags}}" -coverpkg={{coverage_pkgs}} -timeout 20m ./internal/...
 
+# Run PostgreSQL mirror integration regressions (requires Docker or LEDGER_TEST_POSTGRES_DSN).
+test-postgres-mirror-coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p {{coverage_dir}}
+    scripts/go-test-coverage {{coverage_dir}}/postgres-mirror.out \
+        -race -tags integration -coverpkg={{coverage_pkgs}} \
+        -run Postgres -count=1 -timeout 5m \
+        ./internal/adapter/v2 ./internal/application/mirror
+
 # Run E2E tests with coverage. The CI gates invoke this recipe once for each
 # isolated Business/Cluster job. Every invocation uses the full tag set: the
 # feature-gated suites (s3, azure, clickhouse, nats, ...) are only compiled
