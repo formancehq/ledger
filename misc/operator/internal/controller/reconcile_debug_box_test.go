@@ -31,6 +31,7 @@ func TestReconcileDebugBoxCreatesSuperuserCredentialAndPod(t *testing.T) {
 	require.NoError(t, r.Get(context.Background(), types.NamespacedName{Name: debugBoxCredentialsName(cluster)}, credentials))
 	require.True(t, credentials.Spec.Superuser)
 	require.Empty(t, credentials.Spec.Scopes)
+	require.Empty(t, credentials.Spec.AdditionalNamespaces)
 	require.Equal(t, debugBoxCredentialsSelectorValue(cluster), cluster.Labels[labelDebugBoxCredential])
 
 	credentials.Status.Phase = "Ready"
