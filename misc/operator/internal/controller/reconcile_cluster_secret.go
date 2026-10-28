@@ -50,6 +50,7 @@ func (r *ClusterReconciler) reconcileClusterSecret(ctx context.Context, ledger *
 			}
 			secret.Data[clusterSecretKey] = []byte(token)
 		}
+
 		return controllerutil.SetControllerReference(ledger, secret, r.Scheme)
 	})
 

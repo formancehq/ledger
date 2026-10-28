@@ -261,10 +261,8 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 	envs = append(envs, strEnv("LEDGERCTL_SERVER", ledgerctlServer))
 	if targetTLSMode == tlsModeDisabled {
 		envs = append(envs, boolEnv("LEDGERCTL_INSECURE", true))
-	} else {
-		if spec.TLS != nil && spec.TLS.CASecretKey != "" {
-			envs = append(envs, strEnv("LEDGERCTL_TLS_CA_CERT", "/tls/"+spec.TLS.CASecretKey))
-		}
+	} else if spec.TLS != nil && spec.TLS.CASecretKey != "" {
+		envs = append(envs, strEnv("LEDGERCTL_TLS_CA_CERT", "/tls/"+spec.TLS.CASecretKey))
 	}
 
 	// GOMEMLIMIT: set to a percentage of memory limit if available.
