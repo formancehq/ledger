@@ -116,6 +116,18 @@ overwrites it. Restore resolves objects by the recorded key.
 
 The work is split between **Raft-coordinated lifecycle orders** (`BackupOrder`, `CompleteBackupOrder`, `FailBackupOrder` at `raft_cmd.proto:431-593`) and **executor work on the leader** (`internal/infra/backup/manager.go:40-180`). The FSM never blocks on the upload — it only records start, success, and failure.
 
+### Proposal publication boundary
+
+True-marked `Proposal.atomic_technical_updates` reduces backup lifecycle updates
+against private proposal state. Later updates see earlier prepared transitions,
+but a rejected update or subsequent failed order publishes no backup job or
+counter change. Successful proposals publish non-configuration technical effects
+before `WriteSet.Merge`; durable state changes only when the enclosing batch
+commits. Publication or Merge failure is fatal and may already have changed
+memory. Proposals without backup updates do not clone backup state. Bridge
+producers continue emitting false and preserve legacy immediate dispatch.
+See [technical-update atomicity](../fsm/technical-update-atomicity.md).
+
 ### Per-destination mutual exclusion
 
 Two simultaneous backups to the same destination are rejected at FSM apply time. The mutex is keyed by `CanonicalDestinationKey` — a hash of the namespace-determining fields of the `BackupDestination` (driver kind, canonicalised endpoint, bucket/container, bucket ID; region, `base_path`, and credentials are deliberately excluded, see `internal/infra/state/backup_jobs.go`). Full (`BackupOrder`) and incremental (`IncrementalBackupOrder`) backups **share the same slot**: both are routed through the leader and propose a `Start` order that lands on the same key, so a full backup and an incremental backup against the same bucket cannot run concurrently — the second gets `ErrBackupInProgress`. Two backups against genuinely distinct destinations (different bucket/endpoint) run in parallel.

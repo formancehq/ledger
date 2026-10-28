@@ -33,6 +33,7 @@ when upgrading affected releases. Existing stored audit failures are preserved.
 | Document | Description |
 |----------|-------------|
 | [deterministic-fsm.md](deterministic-fsm.md) | Deterministic FSM with generation-based caching, the applier's pre-eviction commit barrier, preloading, authoritative sequence-exhaustion rules, and deletion-aware post-commit accounting sentinels. |
+| [technical-update-atomicity.md](technical-update-atomicity.md) | Command-selected whole-proposal technical-update preparation, publication, rejection, and bridge rollout. |
 | [cache-layers.md](cache-layers.md) | FSM-side read/write layering and ledger configuration reader/clone ownership: gatedScope → WriteSet → DerivedKeyStore → KeyStore → AttributeCache. |
 | [preload.md](preload.md) | Preload contract: `plan.Coverage` declaration, `MirrorPreload`, `PredictedIndex` stale-detection, and the producer-owns-its-declaration rule. |
 | [coverage-gate.md](coverage-gate.md) | The per-order coverage bits the FSM uses to gate every cache read against admission's declared `plan.Coverage`. |

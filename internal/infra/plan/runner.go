@@ -126,6 +126,12 @@ func (p *Builder) Run(
 	marshalFn func(*raftcmdpb.Proposal) ([]byte, error),
 	proposer Proposer,
 ) (*RunResult, error) {
+	// Bridge release: every producer keeps legacy apply semantics. A subsequent
+	// adjacent RC may enable this only after all voters and learners understand
+	// both marker values. Stamp before either serialization path, even when a
+	// caller reuses a command with a previously set marker.
+	cmd.AtomicTechnicalUpdates = false
+
 	// Guarantee a unique command ID. The applier keys FSM futures by
 	// `cmd.Id` (`node.NewProposal(cmd.GetId(), data)` below); two in-flight
 	// proposals sharing Id=0 would overwrite each other in

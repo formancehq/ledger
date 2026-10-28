@@ -28,7 +28,7 @@ import (
 )
 
 // newTestMachineWithThreshold creates a Machine with a configurable generation threshold.
-func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Machine, *dal.Store, *attributes.Attributes) {
+func newTestMachineWithThreshold(t testing.TB, generationThreshold uint64) (*Machine, *dal.Store, *attributes.Attributes) {
 	t.Helper()
 
 	ctx := logging.TestingContext()
@@ -59,7 +59,7 @@ func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Mac
 	return machine, dataStore, attrs
 }
 
-func installTestAuditKey(t *testing.T, store *dal.Store) {
+func installTestAuditKey(t testing.TB, store *dal.Store) {
 	t.Helper()
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, []byte("0123456789abcdef0123456789abcdef")))
@@ -88,7 +88,7 @@ func installTestClusterPolicy(machine *Machine) {
 
 // newTestMachine creates a Machine backed by a real Pebble store for testing,
 // carrying the committed cluster policy a business apply requires.
-func newTestMachine(t *testing.T) (*Machine, *dal.Store, *attributes.Attributes) {
+func newTestMachine(t testing.TB) (*Machine, *dal.Store, *attributes.Attributes) {
 	t.Helper()
 
 	machine, store, attrs := newTestMachineWithThreshold(t, 1000)

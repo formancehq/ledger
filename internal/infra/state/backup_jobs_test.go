@@ -1,6 +1,7 @@
 package state
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -553,4 +554,114 @@ func newTempDalStore(t *testing.T) *dal.Store {
 	t.Cleanup(func() { _ = store.Close() })
 
 	return store
+}
+
+func TestBackupJobsState_PrepareDiscardsLifecycleChanges(t *testing.T) {
+	t.Parallel()
+
+	store := newTempDalStore(t)
+	s := NewBackupJobsState()
+	batch := store.OpenWriteSession()
+	t.Cleanup(func() { _ = batch.Cancel() })
+	_, _, err := s.Start(batch, 1, raftcmdpb.BackupKind_BACKUP_KIND_FULL, &raftcmdpb.BackupOrderStart{
+		JobId: 1, Destination: destA(), ExecutorNodeId: 7,
+	})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+	before := s.Snapshot()
+
+	prepared := s.Prepare()
+	completed, err := prepared.Complete(2, &raftcmdpb.BackupOrderComplete{
+		JobId: 1, LastLogSequence: 11, LastAuditSequence: 12, LastAppliedIndex: 13,
+		FilesUploaded: 14, SegmentsUploaded: 15,
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(14), completed.GetFilesUploaded())
+	start := &raftcmdpb.BackupOrderStart{JobId: 2, Destination: destA(), ExecutorNodeId: 8}
+	_, started, err := prepared.Start(2, raftcmdpb.BackupKind_BACKUP_KIND_INCREMENTAL, start)
+	require.NoError(t, err)
+	require.True(t, started, "prepared completion must release the shared destination")
+	start.Destination.BucketId = "pooled proposal reused"
+	_, _, err = prepared.Start(2, raftcmdpb.BackupKind_BACKUP_KIND_FULL, &raftcmdpb.BackupOrderStart{
+		JobId: 3, Destination: destA(),
+	})
+	require.ErrorIs(t, err, ErrBackupInProgress, "full and incremental preparations share one slot")
+	_, _, err = prepared.Start(2, raftcmdpb.BackupKind_BACKUP_KIND_FULL, &raftcmdpb.BackupOrderStart{
+		JobId: 2, Destination: destB(),
+	})
+	require.ErrorIs(t, err, ErrBackupJobIDCollision)
+	failed, err := prepared.Fail(2, &raftcmdpb.BackupOrderFail{JobId: 2, Message: "upload failed"})
+	require.NoError(t, err)
+	require.Equal(t, "ledger-a", failed.GetDestination().GetBucketId(), "preparation must own its destination")
+	require.Equal(t, "upload failed", failed.GetFailureMessage())
+	_, err = prepared.Complete(2, &raftcmdpb.BackupOrderComplete{JobId: 2})
+	require.ErrorIs(t, err, ErrBackupJobNotFound)
+
+	require.Equal(t, before, s.Snapshot(), "discarded preparation must preserve live jobs")
+	recovered := NewBackupJobsState()
+	reader, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+	require.NoError(t, recovered.RestoreFromStore(reader))
+	require.Equal(t, before, recovered.Snapshot(), "preparation must never write durable state")
+}
+
+func TestBackupJobsState_PrepareMatchesPublishedLifecycle(t *testing.T) {
+	t.Parallel()
+
+	for _, kind := range []raftcmdpb.BackupKind{raftcmdpb.BackupKind_BACKUP_KIND_FULL, raftcmdpb.BackupKind_BACKUP_KIND_INCREMENTAL} {
+		t.Run(kind.String(), func(t *testing.T) {
+			t.Parallel()
+
+			s := NewBackupJobsState()
+			prepared := s.Prepare()
+			start := &raftcmdpb.BackupOrderStart{JobId: 42, Destination: destA(), ExecutorNodeId: 7}
+			staged, stagedOK, stagedErr := prepared.Start(10, kind, start)
+			published, publishedOK, publishedErr := s.Start(nil, 10, kind, start)
+			require.Equal(t, publishedErr, stagedErr)
+			require.Equal(t, publishedOK, stagedOK)
+			require.Equal(t, published, staged)
+
+			complete := &raftcmdpb.BackupOrderComplete{JobId: 42, LastLogSequence: 1, LastAuditSequence: 2,
+				LastAppliedIndex: 3, FilesUploaded: 4, SegmentsUploaded: 5}
+			staged, stagedErr = prepared.Complete(20, complete)
+			published, publishedErr = s.Complete(nil, 20, complete)
+			require.Equal(t, publishedErr, stagedErr)
+			require.Equal(t, published, staged)
+
+			_, _, err := prepared.Start(30, kind, start)
+			require.NoError(t, err)
+			_, _, err = s.Start(nil, 30, kind, start)
+			require.NoError(t, err)
+			fail := &raftcmdpb.BackupOrderFail{JobId: 42, Message: "failed"}
+			staged, stagedErr = prepared.Fail(40, fail)
+			published, publishedErr = s.Fail(nil, 40, fail)
+			require.Equal(t, publishedErr, stagedErr)
+			require.Equal(t, published, staged)
+		})
+	}
+}
+
+func BenchmarkBackupJobsStatePrepare(b *testing.B) {
+	for _, destinations := range []int{0, 1, 100} {
+		b.Run(strconv.Itoa(destinations), func(b *testing.B) {
+			s := NewBackupJobsState()
+			for i := range destinations {
+				destination := destA()
+				destination.BucketId = strconv.Itoa(i)
+				_, _, err := s.Start(nil, 1, raftcmdpb.BackupKind_BACKUP_KIND_FULL, &raftcmdpb.BackupOrderStart{
+					JobId: uint64(i), Destination: destination,
+				})
+				require.NoError(b, err)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				prepared := s.Prepare()
+				if len(prepared.active) != destinations {
+					b.Fatal("preparation lost active destinations")
+				}
+			}
+		})
+	}
 }
