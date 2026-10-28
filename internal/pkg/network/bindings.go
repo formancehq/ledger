@@ -35,6 +35,8 @@ type Bindings struct {
 	HTTP net.Listener
 	// Service serves the external client-facing gRPC API.
 	Service net.Listener
+	// Peer serves the authenticated inter-node service API.
+	Peer net.Listener
 	// Raft serves the internal inter-node gRPC transport. Restore mode never
 	// consumes it.
 	Raft net.Listener

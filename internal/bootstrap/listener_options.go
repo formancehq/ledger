@@ -44,7 +44,7 @@ func releaseBindingsHook(bindings network.Bindings) fx.Hook {
 		OnStop: func(_ context.Context) error {
 			var errs []error
 
-			for _, listener := range []net.Listener{bindings.HTTP, bindings.Service, bindings.Raft} {
+			for _, listener := range []net.Listener{bindings.HTTP, bindings.Service, bindings.Peer, bindings.Raft} {
 				if listener == nil {
 					continue
 				}
