@@ -289,6 +289,13 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if sts == nil {
 			return r.resumeMissingUpgradeReplacement(ctx, ledger)
 		}
+		tag, err := ledgerImageTag(sts)
+		if err != nil {
+			return false, ctrl.Result{}, fmt.Errorf("reading replacement StatefulSet image before maintenance release: %w", err)
+		}
+		if tag != state.Target || string(sts.UID) == state.StatefulSetUID {
+			return false, ctrl.Result{}, fmt.Errorf("replacement StatefulSet identity changed before maintenance release: expected target %s with a new UID, got tag %s and UID %s", state.Target, tag, sts.UID)
+		}
 		if err := verifyReplacementReplicaCount(sts, state); err != nil {
 			return false, ctrl.Result{}, err
 		}
@@ -297,10 +304,6 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		}
 		if !replacementConverged(sts, state) {
 			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
-		}
-		tag, err := ledgerImageTag(sts)
-		if err != nil || tag != state.Target || string(sts.UID) == state.StatefulSetUID {
-			return false, ctrl.Result{}, fmt.Errorf("replacement StatefulSet changed before maintenance release: %w (%s)", err, tag)
 		}
 		if err := r.execUpgradeCommand(ctx, ledger, sts, exec, "cluster", "maintenance", "disable"); err != nil {
 			return false, ctrl.Result{}, fmt.Errorf("disabling maintenance: %w", err)

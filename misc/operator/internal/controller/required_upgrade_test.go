@@ -199,6 +199,17 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, proceed)
 	require.Equal(t, "Unblocking", cluster.Status.Upgrade.Phase)
+	replacement.Spec.Template.Spec.Containers[0].Image = "ledger:unexpected"
+	replacement.Status.ReadyReplicas = 0
+	meta.SetStatusCondition(&cluster.Status.Conditions, metav1.Condition{Type: "Upgrade", Status: metav1.ConditionFalse, Reason: "Blocked", Message: "replacement image changed"})
+	require.NoError(t, c.Status().Update(ctx, cluster))
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
+	require.False(t, proceed)
+	require.ErrorContains(t, err, "replacement StatefulSet identity changed")
+	require.Equal(t, metav1.ConditionFalse, meta.FindStatusCondition(cluster.Status.Conditions, "Upgrade").Status)
+	require.True(t, maintenance)
+	replacement.Spec.Template.Spec.Containers[0].Image = "ledger:v3.0.0-rc.2"
+	replacement.Status.ReadyReplicas = 1
 	// A replacement can itself disappear. Wait for its old Pods, then recreate
 	// while keeping the maintenance fence and original volume identities.
 	require.NoError(t, c.Delete(ctx, replacement))
