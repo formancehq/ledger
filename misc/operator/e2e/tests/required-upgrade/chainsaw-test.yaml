@@ -25,6 +25,13 @@ spec:
               set -eu
               kubectl exec ledger-required-upgrade-0 -n "$NAMESPACE" -c ledger -- \
                 /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+              transactions=$(kubectl exec ledger-required-upgrade-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl transactions list --ledger marketplace --all --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
+              printf '%s\n' "$transactions" | jq -e 'length > 0' >/dev/null
+              data_file=$(mktemp)
+              trap 'rm -f "$data_file"' EXIT
+              printf '%s\n' "$transactions" > "$data_file"
+              kubectl create configmap required-upgrade-expected-data -n "$NAMESPACE" --from-file=transactions="$data_file"
               kubectl get statefulset ledger-required-upgrade -n "$NAMESPACE" -o jsonpath='{.metadata.uid}' > /tmp/required-upgrade-sts-"$NAMESPACE"
               for ordinal in 0 1 2; do
                 kubectl get pod ledger-required-upgrade-"$ordinal" -n "$NAMESPACE" -o jsonpath='{.metadata.uid}' > /tmp/required-upgrade-pod-"$NAMESPACE"-"$ordinal"
@@ -91,6 +98,10 @@ spec:
               done
               kubectl exec ledger-required-upgrade-0 -n "$NAMESPACE" -c ledger -- \
                 /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' | grep marketplace
+              expected=$(kubectl get configmap required-upgrade-expected-data -n "$NAMESPACE" -o jsonpath='{.data.transactions}' | jq -cS .)
+              actual=$(kubectl exec ledger-required-upgrade-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl transactions list --ledger marketplace --all --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' | jq -cS .)
+              [ "$actual" = "$expected" ] || { echo 'Marketplace transactions changed during upgrade'; exit 1; }
               # The stopped upgrade retains PVCs. Permit Chainsaw's namespace
               # cleanup only after all preservation assertions have passed.
               for ordinal in 0 1 2; do
