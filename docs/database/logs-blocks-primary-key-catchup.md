@@ -86,14 +86,18 @@ the old or the new primary key.
 - `column "ledger" of relation "logs_blocks" contains null values`: a block row
   has no ledger. `create_blocks` always sets it, so this means manual changes.
   Escalate; do not delete rows without review.
-- Rollback: no database rollback is needed. A previous v2.4 binary works with
-  the composite key. Do not restore the single-column key: it brings back the
-  collision.
+- Rollback: no database rollback is needed. Replicas already running a previous
+  v2.4 binary keep working with the composite key, but a previous binary cannot
+  start once the bucket is above its own migration count: driver initialization
+  rejects it as a downgrade. Do not restore the single-column key: it brings
+  back the collision.
 
 ## Success criteria
 
-The bucket is at version 55, and the `logs_blocks` primary key is
-`(ledger, previous)`:
+The bucket is at version 55 or later, and the `logs_blocks` primary key is
+`(ledger, previous)`. Version 55 means this migration has run; a full upgrade
+of this release line ends at version 56, after
+[`54-fix-log-hash-lookup`](log-hash-lookup.md):
 
 ```sql
 select a.attname
@@ -116,7 +120,9 @@ order by k.ord;
 - Manual upgrade check with the migrator of the v2.4.10 and v2.4.11 tags on
   Postgres 16: v2.4.10 → v2.4.11 leaves version 54 with `[previous]`; this
   release then sets `[ledger previous]` at version 55. The direct v2.4.10, the
-  v2.4.11 and the fresh paths end at version 55 with `[ledger previous]`.
+  v2.4.11 and the fresh paths end at version 55 with `[ledger previous]`. This
+  check predates `54-fix-log-hash-lookup`; with it, a full upgrade continues to
+  version 56 and the primary key result is the same.
 - Not measured: lock duration on production-size buckets.
 
 Run the storage integration tests with:
