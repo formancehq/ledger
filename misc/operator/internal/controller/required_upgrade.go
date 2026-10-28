@@ -54,6 +54,35 @@ func requiresStoppedUpgrade(source, target string) bool {
 	return false
 }
 
+// A moving or non-canonical target cannot establish whether a mandatory
+// boundary will be crossed, so an older published source must stay pinned.
+func requiresPinnedUpgradeTarget(source, target string) bool {
+	if source == target || !strings.HasPrefix(source, "v") {
+		return false
+	}
+	from, err := semver.StrictNewVersion(strings.TrimPrefix(source, "v"))
+	if err != nil || "v"+from.String() != source {
+		return false
+	}
+	if after, ok := strings.CutPrefix(target, "v"); ok {
+		to, err := semver.StrictNewVersion(after)
+		if err == nil && "v"+to.String() == target {
+			return false
+		}
+	}
+	for _, boundary := range mandatoryStopVersions {
+		version, err := semver.StrictNewVersion(strings.TrimPrefix(boundary, "v"))
+		if err != nil {
+			panic("invalid mandatory stop version: " + boundary)
+		}
+		if from.LessThan(version) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // reconcileRequiredUpgrade returns proceed=true only when ordinary StatefulSet
 // reconciliation may safely run. A persisted intent also owns the missing-STS
 // case, so the generic create path cannot start a new pod before the old pods
@@ -69,7 +98,13 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 	}
 	if state == nil {
 		source, err := ledgerImageTag(sts)
-		if err != nil || !requiresStoppedUpgrade(source, ledger.Spec.Image.Tag) {
+		if err != nil {
+			return true, ctrl.Result{}, nil
+		}
+		if requiresPinnedUpgradeTarget(source, ledger.Spec.Image.Tag) {
+			return false, ctrl.Result{}, fmt.Errorf("cannot verify mandatory stopped upgrade from %s to image tag %q; pin a canonical version tag", source, ledger.Spec.Image.Tag)
+		}
+		if !requiresStoppedUpgrade(source, ledger.Spec.Image.Tag) {
 			return true, ctrl.Result{}, nil
 		}
 		if !metav1.IsControlledBy(sts, ledger) {
@@ -227,7 +262,7 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 	case "Verifying":
 		if sts == nil {
-			return false, ctrl.Result{}, errors.New("replacement StatefulSet disappeared during upgrade")
+			return r.resumeMissingUpgradeReplacement(ctx, ledger)
 		}
 		if string(sts.UID) == state.StatefulSetUID {
 			return false, ctrl.Result{}, errors.New("source StatefulSet still exists during target verification")
@@ -236,7 +271,7 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if err != nil || tag != state.Target {
 			return false, ctrl.Result{}, fmt.Errorf("replacement StatefulSet has unexpected image: %w (%s)", err, tag)
 		}
-		if !rolloutConverged(sts) {
+		if !replacementConverged(sts, state) {
 			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 		}
 		if err := r.advanceUpgrade(ctx, ledger, "Unblocking"); err != nil {
@@ -245,7 +280,10 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 
 		return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 	case "Unblocking":
-		if sts == nil || !rolloutConverged(sts) {
+		if sts == nil {
+			return r.resumeMissingUpgradeReplacement(ctx, ledger)
+		}
+		if !replacementConverged(sts, state) {
 			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 		}
 		tag, err := ledgerImageTag(sts)
@@ -263,6 +301,27 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 	default:
 		return false, ctrl.Result{}, fmt.Errorf("unknown stopped upgrade phase %q", state.Phase)
 	}
+}
+
+func replacementConverged(sts *appsv1.StatefulSet, state *ledgerv1alpha1.ClusterUpgradeStatus) bool {
+	return sts != nil && sts.Spec.Replicas != nil && *sts.Spec.Replicas == state.ExpectedReplicas && rolloutConverged(sts)
+}
+
+func (r *ClusterReconciler) resumeMissingUpgradeReplacement(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (bool, ctrl.Result, error) {
+	pods := &corev1.PodList{}
+	if err := r.List(ctx, pods, client.InNamespace(ledger.Namespace)); err != nil {
+		return false, ctrl.Result{}, fmt.Errorf("listing Pods after replacement StatefulSet disappeared: %w", err)
+	}
+	for _, pod := range pods.Items {
+		if hasStatefulSetOrdinal(pod.Name, resourceName(ledger.Name)) {
+			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
+		}
+	}
+	if err := r.advanceUpgrade(ctx, ledger, "Recreating"); err != nil {
+		return false, ctrl.Result{}, err
+	}
+
+	return true, ctrl.Result{}, nil
 }
 
 func (r *ClusterReconciler) persistUpgrade(ctx context.Context, ledger *ledgerv1alpha1.Cluster, state *ledgerv1alpha1.ClusterUpgradeStatus) error {
@@ -313,7 +372,23 @@ func (r *ClusterReconciler) execUpgrade(ctx context.Context, ledger *ledgerv1alp
 	if r.Config == nil || r.Clientset == nil {
 		return nil, errors.New("kubernetes exec client is unavailable for stopped upgrade")
 	}
-	serverAddr := podSelfServerAddr(headlessServiceName(ledger.Name), ledger.Spec.GrpcPort)
+	grpcPort := int32(0)
+	for _, container := range sts.Spec.Template.Spec.Containers {
+		if container.Name != "ledger" {
+			continue
+		}
+		for _, port := range container.Ports {
+			if port.Name == "grpc" {
+				grpcPort = port.ContainerPort
+
+				break
+			}
+		}
+	}
+	if grpcPort <= 0 {
+		return nil, errors.New("live StatefulSet has no ledger gRPC port")
+	}
+	serverAddr := podSelfServerAddr(headlessServiceName(ledger.Name), grpcPort)
 	result, err := exec(ctx, r.Config, r.Clientset, ledger.Namespace, podName(ledger.Name, 0), "ledger", ledgerctlCommand(serverAddr, currentTLSModeFromStatefulSet(sts), args...))
 	if err != nil {
 		return nil, err

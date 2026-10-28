@@ -32,6 +32,9 @@ at a hardcoded release boundary. The first such boundary is `v3.0.0-rc.2`:
 the operator requires a stopped upgrade from `v3.0.0-rc.1` to `rc.2`.
 RC adjacency remains mandatory. Later RCs use the normal rolling path unless
 another boundary is explicitly added to the operator.
+When the running version precedes a mandatory boundary, pin the target to a
+canonical version tag. Moving or non-canonical tags such as `latest` cannot
+prove whether the boundary is crossed, so the operator blocks the change.
 
 Before tagging a new release, verify the upgrade with state created by the
 supported source releases. Cover affected Pebble records, Raft log and snapshot
@@ -79,6 +82,9 @@ reuse the same PVC names. After all target replicas are ready, it disables
 maintenance. `status.upgrade` and the `Upgrade` condition show the
 phase or blocking error. The operator retries after API failures; do not remove
 the status record or create a replacement workload by hand while it is active.
+If the replacement StatefulSet disappears before maintenance is released, the
+operator waits for its Pods to terminate, verifies the original PVC/PV identities,
+and recreates it while keeping maintenance active.
 
 Keep the requested target tag, workload spec and replica count fixed until
 `status.upgrade` clears. An edit during the operation is rejected. If a Pod will not terminate, diagnose its

@@ -157,6 +157,12 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 			Message:            rcUpgradeError.Error(),
 			ObservedGeneration: ledger.Generation,
 		})
+		if ledger.Status.Upgrade != nil {
+			meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+				Type: "Upgrade", Status: metav1.ConditionFalse, Reason: "Blocked",
+				Message: rcUpgradeError.Error(), ObservedGeneration: ledger.Generation,
+			})
+		}
 		ledger.Status.Phase = "Error"
 
 		return ctrl.Result{}, nil
