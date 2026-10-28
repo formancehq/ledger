@@ -1880,7 +1880,9 @@ func handleLeaderReadyEvent(
 
 func buildNodeConfig(cfg Config) (node.NodeConfig, error) {
 	cfg.RaftConfig.DataDir = cfg.DataDir
-	cfg.RaftConfig.ServiceAdvertiseAddr = cfg.ServiceAdvertiseAddr()
+	// Membership service addresses are used for inter-node forwarding and must
+	// point at the authenticated peer listener, never the public API listener.
+	cfg.RaftConfig.ServiceAdvertiseAddr = cfg.PeerServiceAdvertiseAddr()
 	cfg.RaftConfig.SetDefaults()
 
 	// EN-1045: establish this peer's identity UUID before any
