@@ -38,9 +38,16 @@ func TestBuildNetworkPolicySpec_DefaultCIDR(t *testing.T) {
 	assert.Equal(t, "ledger", spec.PodSelector.MatchLabels[labelName])
 	assert.Equal(t, "test", spec.PodSelector.MatchLabels[labelInstance])
 
-	// Egress-only policy.
-	require.Len(t, spec.PolicyTypes, 1)
-	assert.Equal(t, networkingv1.PolicyTypeEgress, spec.PolicyTypes[0])
+	// Public ports remain reachable, while private peer ports are restricted to
+	// Pods belonging to this Ledger cluster.
+	require.Equal(t, []networkingv1.PolicyType{networkingv1.PolicyTypeIngress, networkingv1.PolicyTypeEgress}, spec.PolicyTypes)
+	require.Len(t, spec.Ingress, 2)
+	assert.Empty(t, spec.Ingress[0].From)
+	assert.Equal(t, int32(8888), spec.Ingress[0].Ports[0].Port.IntVal)
+	assert.Equal(t, int32(9000), spec.Ingress[0].Ports[1].Port.IntVal)
+	require.Len(t, spec.Ingress[1].From, 1)
+	assert.Equal(t, "test", spec.Ingress[1].From[0].PodSelector.MatchLabels[labelInstance])
+	assert.Equal(t, int32(8889), spec.Ingress[1].Ports[1].Port.IntVal)
 
 	// 3 egress rules.
 	require.Len(t, spec.Egress, 3)
