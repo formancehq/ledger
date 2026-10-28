@@ -120,7 +120,9 @@ order by k.ord;
 - Manual upgrade check with the migrator of the v2.4.10 and v2.4.11 tags on
   Postgres 16: v2.4.10 → v2.4.11 leaves version 54 with `[previous]`; this
   release then sets `[ledger previous]` at version 55. The direct v2.4.10, the
-  v2.4.11 and the fresh paths end at version 55 with `[ledger previous]`.
+  v2.4.11 and the fresh paths end at version 55 with `[ledger previous]`. This
+  check predates `54-fix-log-hash-lookup`; with it, a full upgrade continues to
+  version 56 and the primary key result is the same.
 - Not measured: lock duration on production-size buckets.
 
 Run the storage integration tests with:
