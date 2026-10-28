@@ -89,6 +89,24 @@ func operatorCredentialsSelectorValue(ledger *ledgerv1alpha1.Cluster) string {
 	return hex.EncodeToString(sum[:])[:16]
 }
 
+// debugBoxCredentialsName returns the cluster-scoped Credentials name for the
+// optional interactive debug pod.
+func debugBoxCredentialsName(ledger *ledgerv1alpha1.Cluster) string {
+	sum := sha256.Sum256([]byte(ledger.Namespace + "/" + ledger.Name))
+
+	return prefixedName("debug-box-" + hex.EncodeToString(sum[:])[:16])
+}
+
+func debugBoxCredentialsSelectorValue(ledger *ledgerv1alpha1.Cluster) string {
+	sum := sha256.Sum256([]byte(ledger.Namespace + "/" + ledger.Name))
+
+	return hex.EncodeToString(sum[:])[:16]
+}
+
+func debugBoxPodName(ledger *ledgerv1alpha1.Cluster) string {
+	return resourceName(ledger.Name) + "-debug-box"
+}
+
 // credentialsCanonicalSecretName returns the name of the canonical seed Secret for a
 // Credentials. This Secret lives in the operator's own namespace and
 // holds the sole source of truth for the credentials's Ed25519 keypair; the
