@@ -34,6 +34,18 @@ func TestServiceAdvertiseAddr_WithoutPort(t *testing.T) {
 	require.Equal(t, "myhost:8080", cfg.ServiceAdvertiseAddr())
 }
 
+func TestPeerServiceAdvertiseAddr_UsesPeerPort(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{
+		RaftConfig:   node.NodeConfig{AdvertiseAddr: "myhost:7777"},
+		GRPCPort:     8888,
+		GRPCPeerPort: 9999,
+	}
+
+	require.Equal(t, "myhost:9999", cfg.PeerServiceAdvertiseAddr())
+}
+
 func TestServiceAdvertiseAddr_RoundTrip(t *testing.T) {
 	t.Parallel()
 
