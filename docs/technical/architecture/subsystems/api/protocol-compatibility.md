@@ -348,10 +348,11 @@ must use the matching revision.
 ## Private cluster policy command (revision 26)
 
 Revision 26 removes `Request.set_cluster_policy` from the public
-`BucketService.Apply` envelope. Cluster policy reconciliation is now admitted
-only through the server-internal `Admission.AdmitClusterPolicy` entry point,
-which commits the internal Raft `SetClusterPolicyProposal` and audited
-`SetClusterPolicy` log payload. Historical policy orders remain readable.
+`BucketService.Apply` envelope. At that revision, reconciliation moved to the
+server-internal `Admission.AdmitClusterPolicy` entry point and committed an
+audited `SetClusterPolicyOrder`. Those historical orders remain readable. RC.2
+uses an unaudited native `SetClusterPolicyProposal`; see the operational-policy
+section below.
 
 A revision-25 client can still encode field 28 in `Request.type`, but a
 revision-26 server no longer interprets that field as a valid Apply request.

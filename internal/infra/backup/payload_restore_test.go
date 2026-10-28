@@ -114,6 +114,7 @@ func TestPolicyOnlyBackupPublicationAndRetry(t *testing.T) {
 	gomock.InOrder(
 		mock.EXPECT().PutFile(gomock.Any(), ManifestKey("policy"), gomock.Any(), gomock.Any()).Return(errors.New("manifest unavailable")),
 		mock.EXPECT().PutFile(gomock.Any(), ManifestKey("policy"), gomock.Any(), gomock.Any()).DoAndReturn(storage.PutFile),
+		mock.EXPECT().PutFile(gomock.Any(), ManifestKey("policy"), gomock.Any(), gomock.Any()).DoAndReturn(storage.PutFile),
 	)
 	_, err = RunIncrementalBackup(t.Context(), testLogger(), store, mock, "policy", 0)
 	require.ErrorContains(t, err, "manifest unavailable")
@@ -128,6 +129,19 @@ func TestPolicyOnlyBackupPublicationAndRetry(t *testing.T) {
 	require.Equal(t, policy.MarshalDeterministicVT(nil), published.ClusterPolicy.Data)
 	require.Equal(t, uint64(10), published.ClusterPolicy.AppliedIndex)
 	require.Empty(t, published.Exports)
+
+	// A newer observed snapshot advances the publication watermark even if
+	// no-op policy controls or unrelated technical work leave policy identical.
+	batch = store.OpenWriteSession()
+	require.NoError(t, state.SetAppliedIndex(batch, 20))
+	require.NoError(t, batch.Commit())
+	_, err = RunIncrementalBackup(t.Context(), testLogger(), store, mock, "policy", 0)
+	require.NoError(t, err)
+	latest, err := ReadManifest(t.Context(), storage, ManifestKey("policy"))
+	require.NoError(t, err)
+	require.Equal(t, published.ClusterPolicy.Data, latest.ClusterPolicy.Data)
+	require.Equal(t, uint64(20), latest.ClusterPolicy.AppliedIndex)
+	published = latest
 
 	// A snapshot rollback must not overwrite the newer published policy.
 	batch = store.OpenWriteSession()

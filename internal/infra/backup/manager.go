@@ -528,7 +528,7 @@ func RunIncrementalBackup(
 	}
 	if policy != nil && appliedIndex >= policyFloor && currentLogSeq >= afterLogSeq && currentAuditSeq >= afterAuditSeq {
 		data := policy.MarshalDeterministicVT(nil)
-		if manifest.ClusterPolicy == nil || !bytes.Equal(manifest.ClusterPolicy.Data, data) {
+		if manifest.ClusterPolicy == nil || appliedIndex > manifest.ClusterPolicy.AppliedIndex || !bytes.Equal(manifest.ClusterPolicy.Data, data) {
 			manifest.ClusterPolicy = &ClusterPolicySnapshot{AppliedIndex: appliedIndex, Data: data}
 			policyChanged = true
 		}
