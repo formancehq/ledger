@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -342,24 +343,27 @@ func TestIdentityOracleRejectsIncompleteEvidence(t *testing.T) {
 	for _, scenario := range []string{"unavailable_member", "wrong_status_identity", "stale_replica", "syncing_replica", "partial_accounts", "partial_audit", "repeated_cursor", "barrier_deadline"} {
 		t.Run(scenario, func(t *testing.T) {
 			t.Parallel()
-			_, conns := newIdentityCluster(t, scenario)
-			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-			defer cancel()
-			config := identityConfig()
-			config.Attempts = 1
-			if scenario == "barrier_deadline" {
-				config.CallTimeout = 50 * time.Millisecond
-			}
-			reports := runOracle(ctx, conns, config)
-			require.Len(t, reports, 1)
-			require.False(t, reports[0].Qualified)
-			require.NotEmpty(t, reports[0].Error)
-			if scenario == "repeated_cursor" {
-				require.Contains(t, reports[0].Error, "invalid or repeated cursor")
-			}
-			if scenario == "unavailable_member" || scenario == "wrong_status_identity" || scenario == "stale_replica" || scenario == "syncing_replica" {
-				require.Contains(t, reports[0].Error, "member 3 did not reach exact durable horizon")
-			}
+			synctest.Test(t, func(t *testing.T) {
+				_, conns := newIdentityCluster(t, scenario)
+				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+				defer cancel()
+				config := identityConfig()
+				config.Attempts = 1
+				config.Wait = pollDelay
+				if scenario == "barrier_deadline" {
+					config.CallTimeout = 50 * time.Millisecond
+				}
+				reports := runOracle(ctx, conns, config)
+				require.Len(t, reports, 1)
+				require.False(t, reports[0].Qualified)
+				require.NotEmpty(t, reports[0].Error)
+				if scenario == "repeated_cursor" {
+					require.Contains(t, reports[0].Error, "invalid or repeated cursor")
+				}
+				if scenario == "unavailable_member" || scenario == "wrong_status_identity" || scenario == "stale_replica" || scenario == "syncing_replica" {
+					require.Contains(t, reports[0].Error, "member 3 did not reach exact durable horizon")
+				}
+			})
 		})
 	}
 }
