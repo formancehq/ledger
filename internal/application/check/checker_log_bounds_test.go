@@ -531,7 +531,8 @@ func TestCheck_LogBounds_DeletedTailReportsOneGap(t *testing.T) {
 // surviving prefix, so volumes, transaction states and boundaries all agree
 // with the logs that are left. The audit chain still accounts for the lost
 // range, and it is the ONLY thing that does: the assertion below is that the
-// tail gap is the single finding of the whole run.
+// tail gap is the only remaining finding after the synthetic malformed-order
+// findings are asserted and removed by requireIncompleteAuditOrders.
 func TestCheck_LogBounds_RestoreLostTailIsOtherwiseInvisible(t *testing.T) {
 	t.Parallel()
 
