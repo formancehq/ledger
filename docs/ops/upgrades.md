@@ -151,7 +151,9 @@ Before any server upgrade:
 
 ## Rolling Procedure
 
-Use this for RC updates after the mixed-version validation above passes:
+Use this only when the target release permits rolling upgrades and mixed-version
+validation passes. For RC.1 to RC.2, use the [coordinated restart](#coordinated-restart)
+and install the [required-downtime operator](#proposal-payload-cutover) first.
 
 1. Record the current leader and voter set with `ledgerctl cluster status`.
 2. Restart one follower on the target binary.
@@ -171,6 +173,9 @@ the separate
 procedure.
 
 ## Account metadata address validation
+
+If the target release requires a full stop, including RC.2, follow the coordinated
+restart procedure instead. The procedure below applies when rolling is permitted.
 
 Upgrading from a binary with unordered transaction account-metadata address
 validation (including `v3.0.0-rc.1`) to deterministic smallest-address selection
