@@ -549,6 +549,9 @@ func parsePosting(s string) (*commonpb.Posting, error) {
 	if !ok {
 		return nil, fmt.Errorf("invalid amount: %s", amountStr)
 	}
+	if amount.Sign() < 0 || amount.BitLen() > 256 {
+		return nil, errors.New("amount must be between 0 and 2^256 - 1")
+	}
 
 	return commonpb.NewColoredPosting(source, destination, asset, color, amount), nil
 }
@@ -648,6 +651,11 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 		pterm.Error.Println("Invalid amount: must be a positive integer")
 
 		return nil, cmdutil.Displayed(errors.New("invalid amount: must be a positive integer"))
+	}
+	if amount.BitLen() > 256 {
+		pterm.Error.Println("Invalid amount: amount must not exceed 2^256 - 1")
+
+		return nil, cmdutil.Displayed(errors.New("invalid amount: amount must not exceed 2^256 - 1"))
 	}
 
 	// Asset

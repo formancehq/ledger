@@ -18,6 +18,13 @@ contract has not changed. Release SemVer does not currently encode the
 compatibility of development revisions. During the RC line, revision 40 is
 frozen and the published gRPC wire contract must remain compatible.
 
+The additive `BucketService.AnalyzeNumscript` RPC (EN-3153) uses new messages
+and field numbers and leaves all published fields and RPC behavior intact.
+Revision 40 remains unchanged. Older servers return `Unimplemented` to a new
+client during a rolling upgrade; clients must wait for the server rollout
+before calling the new RPC. The operation has no persisted, Raft, snapshot,
+backup, or audit format effect.
+
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently

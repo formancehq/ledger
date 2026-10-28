@@ -11,7 +11,6 @@ The Ledger Operator manages `Cluster` and `EventSink` custom resources to automa
 - **Observability** with OpenTelemetry traces, Prometheus metrics, and Pyroscope profiling
 - **Security** with TLS, OIDC authentication, and Ed25519 response signing
 - **Backups** to S3-compatible backends, with [recoverable Job provisioning](../../docs/ops/backup-restore.md#scheduling-with-the-kubernetes-operator) and sibling-run exclusion
-- **Cold storage** archival to S3-compatible backends
 - **Event sinks** reconciled into Ledger's Raft-replicated runtime configuration
 - **Credentials** for application-level access control
 

@@ -97,6 +97,55 @@ the separate
 [Cluster Configuration Updates](./cluster-operations.md#cluster-configuration-updates)
 procedure.
 
+## Account metadata address validation
+
+Upgrading from a binary with unordered transaction account-metadata address
+validation (including `v3.0.0-rc.1`) to deterministic smallest-address selection
+requires a **maintenance-gated rolling upgrade**. An ordinary rolling upgrade
+with writes enabled is unsafe: an old voter may select a different typed
+failure, forking the authoritative audit hash. Admission on a new leader alone
+cannot protect an old leader or previously committed proposals.
+
+1. With every voter still on the source binary, establish a healthy, consistent
+   audit history and take a backup. Existing divergent history is an incident;
+   this fix does not reconcile or rewrite it.
+2. Enable maintenance, record leader commit index `C` after maintenance becomes
+   visible, and require **every voter** to be normal with
+   `raftStatus.lastPersistedIndex >= C`. Drain cluster-internal work before
+   recording the final barrier. Do not upgrade an offline or lagging voter from
+   pre-barrier state.
+3. Keep maintenance enabled while following the rolling procedure: replace
+   followers one at a time, transfer leadership, then replace the former leader.
+   Preserve quorum. Do not disable maintenance or permit an administrative batch
+   to disable it while any old voter remains.
+4. Confirm that every current voter uses the target binary, has recovered the
+   persisted maintenance state and has caught up. Only then disable maintenance
+   and verify representative writes and integrity checks.
+
+Both binaries enforce the existing replicated maintenance gate before business
+order processing. In-flight business proposals after `C` therefore reject with
+`MAINTENANCE_MODE` without reaching address validation or creating audit/frozen
+failure records. Technical-only proposals do not execute the transaction
+processor. This is a staged rolling deployment with a write pause; nodes are
+never stopped together. Release validation must exercise source/target voters,
+leadership transfer, rejected writes throughout coexistence, restart and writes
+before and after the maintenance window. The focused FSM/recovery regression
+alone does not establish that mixed-binary release validation.
+
+A restart resumes after its durable applied cursor; it must not start from a
+pre-barrier checkpoint that reexecutes ambiguous old proposals under the new
+binary. A replacement voter must synchronize from a healthy post-barrier voter.
+Persisted audit bytes, hashes and failure details remain unchanged. The checker
+verifies stored failures and reexecutes successful proposals only. Incremental
+restore copies audit evidence and reconstructs keyed failures from those stored
+failure details, preserving whichever error the old cluster committed rather
+than applying the new address selection to historical failures. No protobuf,
+storage-format or service-protocol revision changes are required.
+
+Rollback while maintenance is active must retain the same barrier discipline.
+After reopening writes on the fixed binary, do not reintroduce an affected old
+voter or downgrade without a separately validated procedure.
+
 ## Coordinated Restart
 
 When persisted storage is compatible but mixed binaries are not:

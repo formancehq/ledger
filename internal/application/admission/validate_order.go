@@ -243,9 +243,9 @@ func validateOrderMetadata(order *raftcmdpb.Order) domain.Describable {
 	return domain.ValidateOrderMetadataShape(order)
 }
 
-// validateOrderAccountAddresses validates account addresses in non-transaction orders
-// (metadata targets). Transaction postings are validated in the processor after
-// Numscript resolution.
+// validateOrderAccountAddresses validates metadata targets, including caller
+// transaction account metadata. Resolved transaction postings and merged account
+// metadata are also validated by the processor after Numscript resolution.
 func validateOrderAccountAddresses(order *raftcmdpb.Order) domain.Describable {
 	apply, ok := order.GetLedgerScoped().GetPayload().(*raftcmdpb.LedgerScopedOrder_Apply)
 	if !ok {
@@ -253,6 +253,8 @@ func validateOrderAccountAddresses(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	switch d := apply.Apply.GetData().(type) {
+	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
+		return domain.ValidateAccountMetadataAddresses(d.CreateTransaction.GetAccountMetadata())
 	case *raftcmdpb.LedgerApplyOrder_AddMetadata:
 		if t := d.AddMetadata.GetTarget().GetAccount(); t != nil {
 			return domain.ValidateAccountAddress(t.GetAddr())

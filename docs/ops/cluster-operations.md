@@ -364,19 +364,13 @@ When eligible, the leader proposes a `ConfChangeV2` with `ConfChangeAddNode`, wh
 # Auto-promote learners within 100 entries of the commit index (default)
 --learner-promotion-threshold 100
 
-# Disable auto-promotion (manual promotion only)
+# Disable auto-promotion
 --learner-promotion-threshold 0
 ```
 
-### Manual Promotion
-
-Learners can also be promoted manually via the CLI:
-
-```bash
-ledgerctl cluster promote-learner <node-id>
-```
-
-Or via the `PromoteLearner` gRPC RPC. The request is forwarded to the leader if it reaches a follower.
+The `PromoteLearner` gRPC RPC remains available for existing clients. It is
+forwarded to the leader when called on a follower. The operator CLI does not
+expose manual promotion.
 
 ## Kubernetes (Operator)
 
@@ -595,6 +589,35 @@ Mutable config parameters are propagated through the Raft log to ensure all node
 3. All nodes apply the config change at the same Raft index (deterministic).
 4. The change takes effect immediately -- no restart required for the nodes that already received the Raft entry.
 
+The leader resolves the local zero sentinel to the effective default of 1000
+before comparing or serializing the desired cache rotation threshold. Omitted
+and explicit-zero settings therefore produce the same positive committed
+threshold; positive custom settings retain their value. This normalization
+uses the same defaults as initial cache construction and does not mutate the
+shared Bloom configuration. It performs constant work per readiness callback.
+
+### Zero-default rollout and existing committed zero entries
+
+Older binaries can propose literal zero when elected with
+`--cache-rotation-threshold=0`. During a mixed-version rollout, configure every
+potentially elected older leader with an explicit positive threshold, such as
+1000. Use zero only after all potential leaders include proposal-side
+normalization. Positive committed entries retain their existing apply semantics.
+
+This prevention change does not recover an already committed zero entry.
+Applying that entry panics at the positive-threshold guard before resetting the
+cache or saving the new cluster configuration. The previous Pebble configuration
+remains, while the committed zero payload remains in the Raft WAL. Correcting
+startup flags or proposing a later positive value cannot bypass that earlier
+entry during replay.
+
+Historical recovery remains blocked pending a separately approved and tested
+compatibility design under the [RC upgrade contract](./upgrades.md#release-requirement-from-v300-rc1).
+Do not wipe state, rewrite or skip committed entries, or substitute node-local
+defaults during apply/replay. A recovery design must preserve committed business
+data, audit history and cluster state, and establish mixed-version behavior and
+rollback boundaries before it is used.
+
 ### Rolling Upgrade Procedure
 
 To change `--cache-rotation-threshold` from 1000 to 500 on a 3-node cluster:
@@ -656,6 +679,6 @@ After the reset, the preloader falls back to Pebble reads (0xF1 zone) for all ca
 - [Data Flows](../technical/architecture/data-flows.md) - Spool mechanics, entry processing
 - [Spool](../technical/architecture/subsystems/storage/spool.md) - Spool technical implementation
 - [Deployment](./deployment.md) - Helm chart configuration, CLI flags
-- [CLI Reference](./cli.md) - `cluster promote-learner` and other cluster commands
+- [CLI Reference](./cli.md) - cluster commands
 - [Memory Management](./memory.md) - Cache rotation threshold memory impact
 - [Availability and Disaster Recovery](./availability-and-recovery.md) - Failure-domain placement and quorum-loss recovery
