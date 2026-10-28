@@ -4544,6 +4544,11 @@ snapshot transfer, cluster bootstrap, and follower-to-leader forwarding on the
 service API) carries this shared secret as a bearer token. The value must be
 the same on all nodes in the cluster.
 
+`--cluster-secret` is not a `ledgerctl` credential. Direct service-API calls
+with it are rejected; only the follower-to-leader write-forwarding hop may use
+it. Operator automation uses the separate `--operator-secret` credential,
+which also requires TLS and is never treated as a cluster peer.
+
 The cluster secret and `--auth-enabled` are separate mechanisms:
 
 - `--auth-enabled` authenticates external clients on the service API with

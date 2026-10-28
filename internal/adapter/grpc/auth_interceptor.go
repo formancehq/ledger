@@ -2,10 +2,13 @@ package grpc
 
 import (
 	"context"
+	"crypto/subtle"
+	"strings"
 	"time"
 
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -64,6 +67,10 @@ func queryProfileClockStreamInterceptor(logger logging.Logger, slowThreshold tim
 
 func authUnaryInterceptor(cfg internalauth.AuthConfig) ggrpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
+		ctx = peerForwardContext(ctx, info.FullMethod)
+		if err := rejectDirectClusterSecret(ctx, cfg, internalauth.IsPeerForward(ctx)); err != nil {
+			return nil, err
+		}
 		policy, protected, err := protectedRPCPolicy(info.FullMethod)
 		if err != nil {
 			return nil, err
@@ -94,8 +101,12 @@ func authStreamInterceptor(cfg internalauth.AuthConfig) ggrpc.StreamServerInterc
 		if !protected {
 			return handler(srv, stream)
 		}
+		ctx := peerForwardContext(stream.Context(), info.FullMethod)
+		if err := rejectDirectClusterSecret(ctx, cfg, internalauth.IsPeerForward(ctx)); err != nil {
+			return err
+		}
 
-		ctx, err := internalauth.EvaluateGRPCCredentials(stream.Context(), cfg)
+		ctx, err = internalauth.EvaluateGRPCCredentials(ctx, cfg)
 		if err != nil {
 			return err
 		}
@@ -122,6 +133,36 @@ func authStreamInterceptor(cfg internalauth.AuthConfig) ggrpc.StreamServerInterc
 
 		return handler(srv, stream)
 	}
+}
+
+func rejectDirectClusterSecret(ctx context.Context, cfg internalauth.AuthConfig, peerForward bool) error {
+	if cfg.ClusterSecret == "" || peerForward {
+		return nil
+	}
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil
+	}
+	values := md.Get("authorization")
+	if len(values) != 1 || !strings.HasPrefix(strings.ToLower(values[0]), "bearer ") {
+		return nil
+	}
+	token := strings.TrimSpace(values[0][len("Bearer "):])
+	if len(token) == len(cfg.ClusterSecret) && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
+		return status.Error(codes.Unauthenticated, "cluster secret is reserved for inter-node forwarding")
+	}
+	return nil
+}
+
+func peerForwardContext(ctx context.Context, method string) context.Context {
+	if !strings.HasSuffix(method, "/Apply") {
+		return ctx
+	}
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok || len(md.Get("x-ledger-peer-forward")) != 1 || md.Get("x-ledger-peer-forward")[0] != "apply" {
+		return ctx
+	}
+	return internalauth.WithPeerForward(ctx, true)
 }
 
 func protectedRPCPolicy(method string) (*commonpb.MethodAuthPolicy, bool, error) {

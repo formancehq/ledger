@@ -469,6 +469,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 			clusterSecretName(ledger.Name),
 			clusterSecretKey,
 		))
+		envVars = append(envVars, secretKeyEnv("OPERATOR_SECRET", clusterSecretName(ledger.Name), operatorSecretKey))
 	}
 
 	container := corev1.Container{

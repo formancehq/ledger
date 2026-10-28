@@ -400,7 +400,8 @@ ledgerctl ledgers list
 
 The injected `LEDGERCTL_SERVER` uses the pod DNS name covered by the TLS
 certificate rather than `localhost` or `127.0.0.1`. For TLS clusters the
-operator injects `LEDGERCTL_AUTH_TOKEN` and, when `tls.caSecretKey` is
+operator injects `LEDGERCTL_AUTH_TOKEN` from a dedicated operator credential
+(never from the Raft `CLUSTER_SECRET`) and, when `tls.caSecretKey` is
 configured, `LEDGERCTL_TLS_CA_CERT`; for a plaintext cluster it injects
 `LEDGERCTL_INSECURE=true`. These values follow TLS mode transitions through
 StatefulSet rollouts. If `headlessService.enabled` is `false`, `spec.extraEnv`

@@ -152,16 +152,16 @@ func buildBackupJob(
 	)
 
 	if tlsMode == tlsModeRequired || tlsMode == tlsModeOptional {
-		// The cluster-secret only exists when TLS is at least partially
+		// The operator credential only exists when TLS is at least partially
 		// active (the ledger operator deletes it when TLS is off), and it
 		// must never travel in plaintext — so the bearer is gated together
 		// with TLS.
 		env = append(env, corev1.EnvVar{
-			Name: "CLUSTER_SECRET",
+			Name: "OPERATOR_SECRET",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: clusterSecretName(ls.Name)},
-					Key:                  clusterSecretKey,
+					Key:                  operatorSecretKey,
 				},
 			},
 		})
