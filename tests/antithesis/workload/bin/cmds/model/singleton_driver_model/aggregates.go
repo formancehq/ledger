@@ -123,8 +123,8 @@ func runAggregateQuery(src *generation.Source, ctx context.Context, client servi
 	c.validateAggregate(maxTicket, ledger, filter, opts, needed, res, nil)
 }
 
-// genGroupPrefixes rolls the account prefixes an aggregate groups by, one read
-// in four: one to three drawn from the address pool, with a prefix no account
+// genGroupPrefixes rolls the account prefixes an aggregate groups by, with
+// nominal weight 1/4: one to three drawn from the address pool, with a prefix no account
 // carries mixed in so an empty group is served too.
 func genGroupPrefixes(src *generation.Source) []string {
 	if !oneIn(src, 4) {
