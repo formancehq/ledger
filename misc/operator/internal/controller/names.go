@@ -82,9 +82,11 @@ func operatorCredentialsName(ledger *ledgerv1alpha1.Cluster) string {
 }
 
 // operatorCredentialsSelectorValue is stamped on the Cluster so the
-// cluster-scoped Credentials selector matches exactly this Cluster.
+// cluster-scoped Credentials selector matches exactly this Cluster. Include
+// the immutable UID so another Cluster cannot forge the value from namespace
+// and name alone.
 func operatorCredentialsSelectorValue(ledger *ledgerv1alpha1.Cluster) string {
-	sum := sha256.Sum256([]byte(ledger.Namespace + "/" + ledger.Name))
+	sum := sha256.Sum256([]byte(ledger.Namespace + "/" + ledger.Name + "/" + string(ledger.UID)))
 
 	return hex.EncodeToString(sum[:])[:16]
 }
@@ -98,7 +100,7 @@ func debugBoxCredentialsName(ledger *ledgerv1alpha1.Cluster) string {
 }
 
 func debugBoxCredentialsSelectorValue(ledger *ledgerv1alpha1.Cluster) string {
-	sum := sha256.Sum256([]byte(ledger.Namespace + "/" + ledger.Name))
+	sum := sha256.Sum256([]byte(ledger.Namespace + "/" + ledger.Name + "/" + string(ledger.UID)))
 
 	return hex.EncodeToString(sum[:])[:16]
 }

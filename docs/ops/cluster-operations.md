@@ -57,8 +57,12 @@ ledger run \
   --cluster-id prod-ledger \
   --join 127.0.0.1:7777 \
   --bind-addr 127.0.0.1:7778 \
-  --grpc-port 8889
+  --grpc-port 8888 \
+  --grpc-peer-port 8889
 ```
+
+The public gRPC port and the peer gRPC port must be distinct. The example uses
+the default values (`8888` and `8889` respectively).
 
 ### Join Sequence
 

@@ -389,6 +389,28 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		}
 	}
 
+	// Reconcile the cluster-secret before the operator Credentials readiness
+	// gate, but only its SAFE (create/update) side. A missing Secret must be
+	// repaired even while Credentials distribution is pending, otherwise a
+	// restarted pod cannot resolve CLUSTER_SECRET. Deletion remains deferred
+	// until after the StatefulSet pass below.
+	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
+		logger.Error(err, "failed to reconcile cluster secret")
+
+		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
+	}
+
+	debugBoxEnabled := ledger.Spec.DebugBox != nil && ledger.Spec.DebugBox.Enabled &&
+		ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled
+	// Revocation is independent of the maintenance credential. Clean up a
+	// disabled debug box before the readiness gate so a pending operator
+	// credential cannot keep its superuser Pod and Credentials alive.
+	if !debugBoxEnabled {
+		if _, err := r.reconcileDebugBox(ctx, ledger); err != nil {
+			return ctrl.Result{}, fmt.Errorf("cleaning up debug box: %w", err)
+		}
+	}
+
 	operatorCredentialReady, err := r.reconcileOperatorCredentials(ctx, ledger)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("reconciling operator Credentials: %w", err)
@@ -406,9 +428,12 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	}
 	meta.RemoveStatusCondition(&ledger.Status.Conditions, "OperatorCredentialsPending")
 
-	debugBoxReady, err := r.reconcileDebugBox(ctx, ledger)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("reconciling debug box: %w", err)
+	debugBoxReady := true
+	if debugBoxEnabled {
+		debugBoxReady, err = r.reconcileDebugBox(ctx, ledger)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("reconciling debug box: %w", err)
+		}
 	}
 	if ledger.Spec.DebugBox != nil && ledger.Spec.DebugBox.Enabled && ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled && !debugBoxReady {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -827,7 +852,10 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 		}
 		if spec.Service.HttpPort != 0 && spec.GrpcPeerPort == spec.Service.HttpPort {
 			return fmt.Errorf("grpcPeerPort must differ from service.httpPort, both are %d", spec.GrpcPeerPort)
-	}
+		}
+		if spec.GrpcPeerPort == raftPortFromBindAddr(spec.BindAddr) {
+			return fmt.Errorf("grpcPeerPort must differ from the Raft port, both are %d", spec.GrpcPeerPort)
+		}
 	}
 
 	// Auth requires TLS. The ledger server rejects --auth-enabled unless
