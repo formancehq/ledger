@@ -89,6 +89,12 @@ replay suppresses this final-state comparison. Creation timestamp and numeric
 ledger ID remain outside that pass; read-time metadata and mirror progress
 are excluded enrichments. See [checker.md](checker.md) for errors and scope.
 
+The allocation-boundary pass derives `nextTransactionId` and `nextLogId` from
+that same completed, verified FSM replay. A separate full-prefix scan validates
+every retained audit item's physical identity and parent membership, including
+items with no log. Parent presence alone never authorizes an item as an
+expectation source. See [the boundary and membership contract](checker.md#allocation-boundaries-and-audit-item-membership).
+
 ## Related
 
 - [Consensus → global-log.md](../consensus/global-log.md) — what produces the audit entries the chain links.

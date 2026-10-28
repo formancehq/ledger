@@ -145,6 +145,31 @@ func (r *AuditReplayer) LedgerInfos() (map[string]*commonpb.LedgerInfo, error) {
 	return infos, nil
 }
 
+// LedgerBoundaries returns allocation state produced only by replayed orders.
+// This includes effects absent from ledger logs, such as mirror fill gaps, and
+// excludes boundaries removed by canonical ledger deletion.
+func (r *AuditReplayer) LedgerBoundaries() (map[string]*raftcmdpb.LedgerBoundaries, error) {
+	reader, err := r.store.NewReadHandle()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = reader.Close() }()
+	rows, err := r.machine.Registry.Attrs.Boundary.ComputeAllForPrefix(reader, nil)
+	if err != nil {
+		return nil, err
+	}
+	boundaries := make(map[string]*raftcmdpb.LedgerBoundaries, len(rows))
+	for _, row := range rows {
+		var ledger domain.LedgerKey
+		if err := ledger.Unmarshal(row.CanonicalKey); err != nil {
+			return nil, fmt.Errorf("decoding audit-derived boundary key: %w", err)
+		}
+		boundaries[ledger.Name] = row.Value
+	}
+
+	return boundaries, nil
+}
+
 // Replay applies one successful audited proposal and returns the exact logs
 // produced by the canonical request processor. Call proposals in audit order.
 func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order) ([]*commonpb.Log, error) {
