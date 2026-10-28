@@ -139,9 +139,14 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		return ctrl.Result{}, fmt.Errorf("fetching StatefulSet for RC upgrade validation: %w", err)
 	}
 	var rcUpgradeError error
-	if existingStatefulSet == nil {
+	switch {
+	case ledger.Status.Upgrade != nil:
+		if ledger.Spec.Image.Tag != ledger.Status.Upgrade.Target {
+			rcUpgradeError = fmt.Errorf("stopped upgrade is in progress; restore spec.image.tag to %s", ledger.Status.Upgrade.Target)
+		}
+	case existingStatefulSet == nil:
 		rcUpgradeError = r.validateRCUpgradeWithoutStatefulSet(ctx, ledger)
-	} else {
+	default:
 		rcUpgradeError = validateRCUpgrade(ledger.Spec.Image.Tag, existingStatefulSet)
 	}
 	if rcUpgradeError != nil {
@@ -164,7 +169,6 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		Reason:             "Valid",
 		ObservedGeneration: ledger.Generation,
 	})
-
 	// Prune optional Services whose spec marks them disabled BEFORE running
 	// the drift guard: an edit that both disables a Service and tweaks
 	// additionalLabels would otherwise abort on drift detected on the
@@ -246,6 +250,21 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		} else {
 			meta.RemoveStatusCondition(&ledger.Status.Conditions, "DeletionProtectionInactive")
 		}
+	}
+
+	// The stop gate runs before any generic template mutation, including the
+	// scale-down and immutable claim-template recreation paths.
+	proceed, upgradeResult, err := r.reconcileRequiredUpgrade(ctx, ledger, existingStatefulSet)
+	if err != nil {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{Type: "Upgrade", Status: metav1.ConditionFalse, Reason: "Blocked", Message: err.Error(), ObservedGeneration: ledger.Generation})
+		ledger.Status.Phase = "Error"
+
+		return ctrl.Result{}, fmt.Errorf("reconciling required stopped upgrade: %w", err)
+	}
+	if !proceed {
+		ledger.Status.Phase = "Pending"
+
+		return upgradeResult, nil
 	}
 
 	// Compute spec hash for rolling updates
@@ -487,6 +506,8 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 		// users and automation that key off .status.phase.
 		case reconciledPhase == "Error":
 			latest.Status.Phase = "Error"
+		case latest.Status.Upgrade != nil:
+			latest.Status.Phase = "Pending"
 		case sts.Status.ReadyReplicas == replicas:
 			latest.Status.Phase = "Running"
 		case sts.Status.ReadyReplicas > 0:
@@ -499,6 +520,7 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 	latest.Status.ObservedGeneration = latest.Generation
 	latest.Status.Endpoints = ledger.Status.Endpoints
 	latest.Status.TLSMigrationPhase = ledger.Status.TLSMigrationPhase
+	latest.Status.Upgrade = ledger.Status.Upgrade
 
 	// Set condition
 	condition := metav1.Condition{

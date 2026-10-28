@@ -2,6 +2,13 @@
 
 Kubernetes operator for deploying and managing high-availability [Formance Ledger](https://github.com/formancehq/ledger) instances using Raft consensus.
 
+The embedded operator requires a complete StatefulSet stop when an image
+upgrade crosses a hardcoded release boundary (currently `v3.0.0-rc.2`). It
+retains the existing PVCs, waits for the old StatefulSet and Pods to disappear,
+then recreates the StatefulSet with the requested image. See the
+[server upgrade procedure](../../docs/ops/upgrades.md#operator-required-stopped-restart)
+for preflight, recovery and rollback limits.
+
 ## Overview
 
 The Ledger Operator manages `Cluster` and `EventSink` custom resources to automate the lifecycle of distributed ledger clusters and event delivery on Kubernetes. It handles:
