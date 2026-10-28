@@ -186,3 +186,11 @@ spec:
               kubectl exec ledger-tls-en-0 -n $NAMESPACE -c ledger -- \
                 rm -f /tmp/tls-en-operator-seed.hex
             timeout: 30s
+
+    # Credentials is cluster-scoped, so namespace cleanup does not remove it.
+    - name: Cleanup operator Credentials
+      try:
+        - script:
+            content: |
+              kubectl delete credentials tls-en-operator --ignore-not-found
+            timeout: 30s
