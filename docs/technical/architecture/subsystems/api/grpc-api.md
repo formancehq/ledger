@@ -684,10 +684,18 @@ The fixture also passes the actual forwarded close error to
 | `ALREADY_EXISTS` | Ledger already exists, idempotency key conflict, reference conflict |
 | `INVALID_ARGUMENT` | Invalid request parameters, Numscript parse error, validation error |
 | `FAILED_PRECONDITION` | Insufficient balance, transaction already reverted, balance not found |
-| `UNAVAILABLE` | No leader available (client should retry) |
+| `UNAVAILABLE` | No leader available or the local Raft run has stopped (client should retry) |
 | `INTERNAL` | Unrecognized business error |
 
 ### Error Reason Constants
+
+A cluster command interrupted by local Raft shutdown returns `UNAVAILABLE`,
+including when the stopped sentinel is wrapped by the caller. Unary and streaming
+RPCs share this mapping so clients can retry against a live node during a restart.
+Unclassified failures still return a sanitized `UNKNOWN` with a correlation ID.
+This status correction preserves protocol revision 40 and changes no protobuf
+fields, committed state, audit records, snapshots, or backups. During a rolling
+upgrade, older nodes can still return `UNKNOWN` for this shutdown condition.
 
 All business errors carry an `ErrorInfo` detail with a machine-readable reason. The reason constants are defined in `internal/domain/processing/errors.go` and shared between server and client.
 

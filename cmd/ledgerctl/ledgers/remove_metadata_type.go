@@ -54,10 +54,9 @@ func runRemoveMetadataType(cmd *cobra.Command, _ []string) error {
 
 	targetStr, _ := cmd.Flags().GetString("target")
 	if targetStr == "" {
-		result, err := pterm.DefaultInteractiveSelect.
+		result, err := cmdutil.PromptSelect(pterm.DefaultInteractiveSelect.
 			WithOptions(cmdutil.TargetTypeOptions()).
-			WithDefaultText("Select target type").
-			Show()
+			WithDefaultText("Select target type"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -72,9 +71,8 @@ func runRemoveMetadataType(cmd *cobra.Command, _ []string) error {
 
 	key, _ := cmd.Flags().GetString("key")
 	if key == "" {
-		result, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter metadata key name to remove").
-			Show()
+		result, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter metadata key name to remove"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -90,10 +88,9 @@ func runRemoveMetadataType(cmd *cobra.Command, _ []string) error {
 		pterm.Warning.Printfln("You are about to remove type declaration for %s.%s on ledger %s",
 			cmdutil.TargetTypeString(targetType), key, ledgerName)
 
-		confirmed, err := pterm.DefaultInteractiveConfirm.
+		confirmed, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
 			WithDefaultText(fmt.Sprintf("Remove type for '%s.%s'?", cmdutil.TargetTypeString(targetType), key)).
-			WithDefaultValue(false).
-			Show()
+			WithDefaultValue(false))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}

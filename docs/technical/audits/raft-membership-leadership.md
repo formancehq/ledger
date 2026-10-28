@@ -142,6 +142,11 @@ exceeds its stated operator-owned risk or fails to converge on retry/snapshot.
 
 ### Transport, forwarding, and ReadIndex
 
+An interrupted cluster command on a stopped Raft run must surface as retryable
+gRPC `Unavailable`, including a wrapped `raft.ErrStopped`. Verify the shared
+unary/streaming conversion without classifying unrelated failures as transient;
+those failures retain their sanitized error behavior.
+
 Separate Raft message redelivery from logical request retry. etcd/raft may safely
 receive duplicate or delayed protocol messages; that fact does not make an API
 mutation idempotent. Trace stream authentication, peer/connection replacement,
@@ -169,6 +174,19 @@ whether every projection and query surface correctly represents that certified
 horizon. A forwarded fallback must not become an unbarriered local read merely
 because leadership changed during resolution; explicit stale mode remains the
 only expected bypass.
+
+ReadIndex evidence must also track the complete request context across caller
+process incarnations. Retain an outstanding leader-side read at `C`, reconstruct
+the follower from retained storage with unchanged member identity, leader and
+term, then commit a distinguishable write `D > C` through the other voters
+while the restarted follower remains below `D`. Deliver the delayed heartbeat
+confirmation and resulting old response: Raft may accept it in the unchanged
+term, but production waiter resolution must reject it for the new invocation.
+A fresh certificate must cover `D`, and serving must await local application of
+that horizon. `internal/infra/node/read_index_restart_test.go` owns this
+regression. Verify that legacy eight-byte and new UUID contexts are echoed
+unchanged by the pinned Raft implementation; only upgraded callers gain the
+restart protection, with no persisted-state or service-revision migration.
 
 A committed `ConfChangeUpdateNode` with a peer-registration payload first
 refreshes the membership cache plus the operational Raft and service connection

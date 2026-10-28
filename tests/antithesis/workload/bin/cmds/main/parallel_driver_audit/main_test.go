@@ -29,7 +29,7 @@ import (
 func TestAuditDriverStream(t *testing.T) {
 	t.Parallel()
 
-	// The real server sanitizes raft: stopped to this Unknown status. Keep
+	// Older servers sanitized raft: stopped to this Unknown status. Keep
 	// the correlation ID so a receive failure remains diagnosable in the SDK output.
 	raftStopped := status.Error(codes.Unknown, "unknown server error (correlation ID: 335f07114da38bec)")
 	for _, tc := range []struct {

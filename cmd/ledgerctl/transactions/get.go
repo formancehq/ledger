@@ -56,9 +56,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	} else {
-		input, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter transaction ID").
-			Show()
+		input, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter transaction ID"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}

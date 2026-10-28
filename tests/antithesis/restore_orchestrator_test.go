@@ -3,7 +3,6 @@ package antithesis_test
 import (
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,9 +16,9 @@ import (
 func TestRestoreFinalizeRequiresDurableProof(t *testing.T) {
 	t.Parallel()
 
-	_, sourceFile, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	script := filepath.Join(filepath.Dir(sourceFile), "workload", "restore-orchestrator.sh")
+	script, err := filepath.Abs(filepath.Join("workload", "restore-orchestrator.sh"))
+	require.NoError(t, err)
+	require.FileExists(t, script)
 
 	for _, tc := range []struct {
 		name      string
