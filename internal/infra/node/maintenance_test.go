@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -51,7 +52,28 @@ func TestDoMaintenanceRetainsEntriesUntilRaftApplyAcked(t *testing.T) {
 	for i := range entries {
 		entries[i], _ = makeCreateLedgerEntry(t, uint64(i+1), "maintenance-ledger-"+string(rune('a'+i)))
 	}
-	require.NoError(t, node.wal.Append(nil, entries))
+	require.NoError(t, node.wal.Append(&raftpb.HardState{
+		Term:   proto.Uint64(1),
+		Vote:   proto.Uint64(1),
+		Commit: proto.Uint64(4),
+	}, entries))
+
+	// Use a real RawNode so this regression exercises the same apply-response
+	// contract as production: etcd/raft advances Applied from the last entry
+	// in MsgStorageApplyResp. An index-only message would bypass that contract
+	// and could leave the test green while the orchestrator path is broken.
+	rawNode, err := raft.NewRawNode(&raft.Config{
+		ID:              1,
+		ElectionTick:    10,
+		HeartbeatTick:   1,
+		Storage:         node.wal,
+		Applied:         1,
+		MaxSizePerMsg:   1024 * 1024,
+		MaxInflightMsgs: 256,
+		Logger:          NewLoggerAdapter(logging.Testing()),
+	})
+	require.NoError(t, err)
+	node.rawNode = rawNode
 
 	runDone := make(chan error, 1)
 	go func() { runDone <- setup.applier.Run(context.Background(), setup.stop) }()
@@ -71,14 +93,19 @@ func TestDoMaintenanceRetainsEntriesUntilRaftApplyAcked(t *testing.T) {
 	require.NoError(t, err, "entries needed by the election scan must remain available")
 
 	// Once the orchestrator receives the apply response for the whole batch,
-	// the normal margin can apply. Use the index-only response shape accepted
-	// by the Raft response path; production responses may carry Entries instead.
-	// The response's index is the authoritative acknowledgement cursor.
-	responseIndex := uint64(4)
-	node.recordRaftApplyResponse(&raftpb.Message{
-		Type:  raftpb.MsgStorageApplyResp.Enum(),
-		Index: &responseIndex,
-	})
+	// the normal margin can apply. Production responses carry the applied
+	// entries and leave Index unset; Step the real RawNode first, then record
+	// the same response in the node's shadow cursor.
+	applyResp := &raftpb.Message{
+		Type:    raftpb.MsgStorageApplyResp.Enum(),
+		To:      proto.Uint64(1),
+		From:    proto.Uint64(raft.LocalApplyThread),
+		Entries: entries,
+	}
+	require.NoError(t, node.rawNode.Step(applyResp))
+	node.recordRaftApplyResponse(applyResp)
+	require.Equal(t, uint64(4), node.rawNode.Status().Applied)
+	require.Equal(t, uint64(4), node.lastRaftApplied.Load())
 	require.NoError(t, node.doMaintenance())
 	_, err = node.wal.Entries(2, 5, ^uint64(0))
 	require.ErrorIs(t, err, raft.ErrCompacted)
