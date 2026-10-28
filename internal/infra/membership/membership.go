@@ -608,6 +608,9 @@ func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSess
 		}); err != nil {
 			return fmt.Errorf("session write peer %d: %w", nodeID, err)
 		}
+		if err := m.store.writePeerFormat(session, nodeID); err != nil {
+			return err
+		}
 
 		return nil
 	}
@@ -619,6 +622,9 @@ func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSess
 		case raftpb.ConfChangeRemoveNode:
 			if err := session.DeleteKey(peerKey(nodeID)); err != nil {
 				return fmt.Errorf("session delete peer %d: %w", nodeID, err)
+			}
+			if err := session.DeleteKey(peerFormatKey(nodeID)); err != nil {
+				return fmt.Errorf("session delete peer %d membership format: %w", nodeID, err)
 			}
 
 			if err := m.store.MarkRemoved(session, &raftcmdpb.RemovedMemberEntry{
