@@ -130,7 +130,7 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 		// Core configuration
 		strEnv("BIND_ADDR", spec.BindAddr),
 		int32Env("GRPC_PORT", spec.GrpcPort),
-		int32Env("GRPC_PEER_PORT", spec.GrpcPort+1),
+		int32Env("GRPC_PEER_PORT", grpcPeerPort(ledger)),
 		int32Env("HTTP_PORT", spec.HttpPort),
 		strEnv("WAL_DIR", spec.WalDir),
 		strEnv("DATA_DIR", spec.DataDir),

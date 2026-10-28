@@ -87,6 +87,14 @@ func serviceGrpcPort(ledger *ledgerv1alpha1.Cluster) int32 {
 }
 
 func serviceGrpcPeerPort(ledger *ledgerv1alpha1.Cluster) int32 {
+	return grpcPeerPort(ledger)
+}
+
+func grpcPeerPort(ledger *ledgerv1alpha1.Cluster) int32 {
+	if ledger.Spec.GrpcPeerPort != 0 {
+		return ledger.Spec.GrpcPeerPort
+	}
+
 	return serviceGrpcPort(ledger) + 1
 }
 
