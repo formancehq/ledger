@@ -835,6 +835,30 @@ indexes need their own progress barrier:
 7. The certificate is re-read from the projection snapshot used by the query;
    the wait never follows the moving store head.
 
+**Request identity across restarts**:
+
+Each invocation uses a fresh random UUID as its opaque request context. The
+pending-read map keys the complete context; an unknown, malformed, duplicate,
+or earlier invocation's response cannot complete another waiter. A term check
+alone is insufficient: an unchanged leader can retain an outstanding read at
+index `C` across a follower restart, then return that certificate after a later
+write at `D > C` completes. Reusing a process-local counter would let a new read
+accept `C`. Request identities must therefore remain distinct across process
+incarnations, even with the same persisted member identity, leader, and term.
+Only the matching fresh certificate can release the waiter, after which the
+existing local applied-index barrier still must complete.
+
+The UUID is transient correlation state generated outside FSM apply. It adds
+constant work per read and increases the context from eight to sixteen bytes;
+lookup and retained state remain constant per pending request. No business
+state, audit record, Raft entry encoding, snapshot, or backup format changes.
+
+During a rolling upgrade, older etcd/raft peers echo the opaque context bytes
+without decoding them, so they can certify upgraded callers. Upgraded callers
+ignore delayed legacy contexts. Older callers remain susceptible to counter
+reuse until their process is upgraded. The public API and frozen service
+protocol revision are unchanged; no persisted-state migration is required.
+
 **Benefits**:
 - **Linearizable reads on leaders, followers, and caught-up learners** that can reach quorum
 - **Read load distributed** across the cluster in the normal local path

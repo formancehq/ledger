@@ -411,8 +411,8 @@ type Node struct {
 	// when another ConfChange is pending. Accessed only from the orchestrate loop.
 	lastAutoPromote map[uint64]time.Time
 
-	// pendingReads tracks in-flight ReadIndex requests, keyed by unique request ID.
-	pendingReads *SyncMap[uint64, *readIndexRequest]
+	// pendingReads tracks in-flight ReadIndex requests, keyed by the full opaque context.
+	pendingReads *SyncMap[string, *readIndexRequest]
 
 	// indexTracker provides an accurate prediction of the next Raft index.
 	// Incremented by Propose() (all proposals) and processReady() (non-proposal
@@ -691,7 +691,7 @@ func NewNode(
 		tasks:            newTaskSet(),
 		stopChannel:      make(chan struct{}),
 		terminalCh:       make(chan struct{}),
-		pendingReads:     &SyncMap[uint64, *readIndexRequest]{},
+		pendingReads:     &SyncMap[string, *readIndexRequest]{},
 		membership:       membership,
 		lastAutoPromote:  make(map[uint64]time.Time),
 		indexTracker:     NewIndexTracker(initialIndex(wal)),
@@ -1499,11 +1499,7 @@ func (node *Node) retryReadySnapshotSync(stop chan struct{}, rd raft.Ready) {
 func (node *Node) resolveReadyReadStates(rd raft.Ready) {
 	// Resolve pending ReadIndex requests from rd.ReadStates.
 	for _, rs := range rd.ReadStates {
-		reqID, ok := parseReadIndexContext(rs.RequestCtx)
-		if !ok {
-			continue
-		}
-
+		reqID := string(rs.RequestCtx)
 		req, loaded := node.pendingReads.Load(reqID)
 		if !loaded {
 			continue
