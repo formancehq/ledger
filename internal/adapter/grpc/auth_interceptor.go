@@ -100,13 +100,6 @@ func authUnaryInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.Unar
 
 func authStreamInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.StreamServerInterceptor {
 	return func(srv any, stream ggrpc.ServerStream, info *ggrpc.StreamServerInfo, handler ggrpc.StreamHandler) error {
-		policy, protected, err := protectedRPCPolicy(info.FullMethod)
-		if err != nil {
-			return err
-		}
-		if !protected {
-			return handler(srv, stream)
-		}
 		ctx := stream.Context()
 		if peerOnly {
 			ctx = internalauth.WithPeerForward(ctx, true)
@@ -115,6 +108,14 @@ func authStreamInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.Str
 			}
 		} else if err := rejectDirectClusterSecret(ctx, cfg); err != nil {
 			return err
+		}
+
+		policy, protected, err := protectedRPCPolicy(info.FullMethod)
+		if err != nil {
+			return err
+		}
+		if !protected {
+			return handler(srv, &authServerStream{ServerStream: stream, ctx: ctx})
 		}
 
 		ctx, err = internalauth.EvaluateGRPCCredentials(ctx, cfg)
