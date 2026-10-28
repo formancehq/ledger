@@ -835,14 +835,6 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 		return fmt.Errorf("saving snapshot file: %w", err)
 	}
 
-	s.mu.Lock()
-	s.snapshot = snap
-	if becomesCompactedBoundary {
-		s.compactedIndex = index
-		s.compactedTerm = term
-	}
-	s.mu.Unlock()
-
 	// Write the WAL snapshot record BEFORE cleaning up old snap files.
 	// If a crash occurs between Save and SaveSnapshot, the old snap file
 	// is still on disk and LoadNewestAvailable will fall back to it.
@@ -855,6 +847,19 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 	}); err != nil {
 		return fmt.Errorf("saving snapshot record: %w", err)
 	}
+
+	// Publish the in-memory snapshot only after its WAL record is persisted.
+	// Until both authorities agree, a retry must be able to create the same
+	// snapshot again; publishing first would make the next maintenance tick
+	// treat ErrSnapOutOfDate as success and compact against an unrecorded
+	// snapshot.
+	s.mu.Lock()
+	s.snapshot = snap
+	if becomesCompactedBoundary {
+		s.compactedIndex = index
+		s.compactedTerm = term
+	}
+	s.mu.Unlock()
 
 	// Safe to clean up old snap files now — the WAL record guarantees that
 	// LoadNewestAvailable will match the new snap file on restart.
