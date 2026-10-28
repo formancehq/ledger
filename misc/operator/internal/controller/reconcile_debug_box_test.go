@@ -195,8 +195,8 @@ func TestReconcileDebugBoxReplacesPodWithUnexpectedOwner(t *testing.T) {
 	require.NoError(t, r.Update(context.Background(), pod))
 
 	_, err = r.reconcileDebugBox(context.Background(), cluster)
-	require.NoError(t, err)
-	require.Error(t, r.Get(context.Background(), types.NamespacedName{Name: debugBoxPodName(cluster), Namespace: cluster.Namespace}, &corev1.Pod{}))
+	require.ErrorContains(t, err, "owned by another controller")
+	require.NoError(t, r.Get(context.Background(), types.NamespacedName{Name: debugBoxPodName(cluster), Namespace: cluster.Namespace}, &corev1.Pod{}))
 }
 
 func TestReconcileDebugBoxSupportsNoAuth(t *testing.T) {
