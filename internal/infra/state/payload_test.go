@@ -64,7 +64,7 @@ func TestPayloadMirrorStatusCommitsOnlyWithIngestion(t *testing.T) {
 	}
 }
 
-func TestPayloadHistoryHasIdenticalAuditAndRecovery(t *testing.T) {
+func TestPayloadHistoryPreservesOutcomesWithNativeAuditAndRecovery(t *testing.T) {
 	t.Parallel()
 	legacy, oldStore, _ := newTestMachine(t)
 	modern, newStore, _ := newTestMachine(t)
@@ -107,14 +107,26 @@ func TestPayloadHistoryHasIdenticalAuditAndRecovery(t *testing.T) {
 		require.NoError(t, err)
 		newAudit, err := query.ReadLastAuditEntry(newReader)
 		require.NoError(t, err)
-		require.True(t, proto.Equal(oldAudit, newAudit), "audit headers and hashes must be identical")
+		require.NotEqual(t, oldAudit.GetHash(), newAudit.GetHash(), "native policy intent has its own hash preimage")
+		oldAudit.Hash = nil
+		newAudit.Hash = nil
+		require.True(t, proto.Equal(oldAudit, newAudit), "audit outcome headers must be identical")
 		oldItems, err := query.ReadAuditItems(t.Context(), oldReader, oldAudit.GetSequence())
 		require.NoError(t, err)
 		newItems, err := query.ReadAuditItems(t.Context(), newReader, newAudit.GetSequence())
 		require.NoError(t, err)
 		require.Len(t, newItems, len(oldItems))
 		for j := range oldItems {
-			require.True(t, proto.Equal(oldItems[j], newItems[j]))
+			if policyOrder := p.GetOrders()[0].GetSystemScoped().GetSetClusterPolicy(); policyOrder != nil && fresh.Results[0].AuditEntryWritten {
+				require.Empty(t, newItems[j].GetSerializedOrder())
+				require.NotEmpty(t, newItems[j].GetSerializedSetClusterPolicy())
+				control := &raftcmdpb.SetClusterPolicyProposal{}
+				require.NoError(t, control.UnmarshalVT(newItems[j].GetSerializedSetClusterPolicy()))
+				require.True(t, proto.Equal(policyOrder.GetPolicy(), control.GetPolicy()))
+				require.Equal(t, oldItems[j].GetLogSequence(), newItems[j].GetLogSequence())
+			} else if len(newItems[j].GetSerializedSetClusterPolicy()) == 0 {
+				require.True(t, proto.Equal(oldItems[j], newItems[j]))
+			}
 		}
 		require.NoError(t, oldReader.Close())
 		require.NoError(t, newReader.Close())
@@ -165,4 +177,27 @@ func TestTechnicalPayloadBeforeAuditKeyAndWithoutAudit(t *testing.T) {
 	require.NoError(t, result.Results[0].Error)
 	require.False(t, result.Results[0].AuditEntryWritten)
 	require.Equal(t, beforeTime, machine.State.LastAppliedTimestamp)
+}
+
+func TestPayloadBatchIdempotency(t *testing.T) {
+	t.Parallel()
+	machine, store, _ := newTestMachine(t)
+	apply := func(index uint64, ledger string) ApplyResult {
+		p := makeProposal(index, createLedgerOrder(ledger))
+		p.Idempotency = &commonpb.Idempotency{Key: "payload-key"}
+		result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, index, payloadProposal(t, p)))
+		require.NoError(t, err)
+
+		return result.Results[0]
+	}
+	first := apply(1, "first")
+	require.NoError(t, first.Error)
+	replay := apply(2, "first")
+	require.NoError(t, replay.Error)
+	require.True(t, replay.Replayed)
+	require.False(t, replay.AuditEntryWritten)
+	conflict := apply(3, "different")
+	require.Error(t, conflict.Error)
+	require.False(t, conflict.Replayed, "different native batches must not hash as an empty order list")
+	require.True(t, conflict.AuditEntryWritten)
 }

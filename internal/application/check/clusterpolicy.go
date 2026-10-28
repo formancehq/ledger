@@ -52,7 +52,10 @@ func (v *clusterPolicyVerifier) applyOrder(order *raftcmdpb.Order) {
 		return
 	}
 
-	policy := payload.SetClusterPolicy.GetPolicy()
+	v.applyPolicy(payload.SetClusterPolicy.GetPolicy())
+}
+
+func (v *clusterPolicyVerifier) applyPolicy(policy *commonpb.ClusterPolicy) {
 	if policy == nil {
 		return
 	}

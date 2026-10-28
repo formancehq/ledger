@@ -412,7 +412,7 @@ message ExecutionBatch {
 }
 
 // SetClusterPolicyProposal is an internal, audited control proposal. Its audit
-// evidence retains the historical SetClusterPolicyOrder representation.
+// evidence stores the native control; historical SetClusterPolicyOrder remains readable.
 message SetClusterPolicyProposal {
   common.ClusterPolicy policy = 1;
 }

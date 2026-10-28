@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
+	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -33,7 +34,7 @@ import (
 // those and converts them into ApplyResult.Error so the proposer learns
 // about the rejection without an FSM-level abort.
 func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, batch *dal.WriteSession, raftIndex uint64, proposal *raftcmdpb.Proposal) error {
-	for i, tu := range proposal.GetTechnicalUpdates() {
+	for i, tu := range proposals.TechnicalUpdates(proposal) {
 		scope, scopeErr := scopeFactory.NewScope(tu.GetCoverageBits())
 		if scopeErr != nil {
 			return fmt.Errorf("building scope for technical_updates[%d]: %w", i, scopeErr)

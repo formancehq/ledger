@@ -102,3 +102,8 @@ expectation source. See [the boundary and membership contract](checker.md#alloca
 - [Consensus → global-log.md](../consensus/global-log.md) — what produces the audit entries the chain links.
 - [Indexer → indexes.md](../indexer/indexes.md) — the index registry is a projection the checker verifies via `compareIndexes`.
 - [Attributes](../attributes/) — volumes / metadata / reversion / idempotency projections the checker also verifies.
+
+Policy verification reads both historical policy orders and native proposal
+controls. Their raw audit bytes are hash-bound separately; see
+[audit-chain.md](audit-chain.md) and the
+[proposal migration contract](../consensus/proposal-payloads.md).

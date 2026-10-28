@@ -1693,3 +1693,11 @@ Admission rejects the exact names `_` (system API routes) and `_system`
 (system events) on every ledger-scoped write, before proposing to Raft.
 This applies equally to HTTP and gRPC. Other underscore-prefixed names,
 including `_systemx` and `_System`, remain valid.
+
+### RC.2 policy audit intent
+
+Audit responses add `AuditItem.serialized_set_cluster_policy` (field 4) for
+native policy controls. Existing `serialized_order` (field 2) remains the
+business-order and historical-policy representation. Service revision stays 40;
+consumers must read both intent fields. See the
+[protocol contract](../architecture/subsystems/api/protocol-compatibility.md#native-policy-audit-items-rc2).

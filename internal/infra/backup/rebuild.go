@@ -16,6 +16,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/domain/auditintent"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -1074,6 +1075,11 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 			continue
 		}
 
+		if policy, err := auditintent.Policy(item); err != nil {
+			return fmt.Errorf("decoding audit control: %w", err)
+		} else if policy != nil {
+			continue
+		}
 		effects, err := replay.DecodeOrderEffects(item.GetSerializedOrder())
 		if err != nil {
 			return fmt.Errorf("decoding order from audit item %x: %w", iter.Key(), err)

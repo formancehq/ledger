@@ -38,7 +38,7 @@ type AuditEntry struct {
 	//	*AuditEntry_Success
 	//	*AuditEntry_Failure
 	Outcome isAuditEntry_Outcome `protobuf_oneof:"outcome"`
-	// Number of orders in the proposal (allows compact display without loading items).
+	// Number of audited intents: batch orders, or one standalone policy control.
 	OrderCount uint32 `protobuf:"varint,6,opt,name=order_count,json=orderCount,proto3" json:"order_count,omitempty"`
 	// Per-order detail lines. Populated by GetAuditEntry, empty on ListAuditEntries.
 	Items []*AuditItem `protobuf:"bytes,7,rep,name=items,proto3" json:"items,omitempty"`
@@ -60,7 +60,7 @@ type AuditEntry struct {
 	//     state.BuildHashedHeaderPayload — never persisted separately, so the
 	//     typed fields ARE the source of truth
 	//   - `per_item_payload` is the canonical binary encoding of each AuditItem
-	//     (order_index, log_sequence, serialized_order), rebuilt the same way
+	//     (order_index, log_sequence, serialized_order, serialized_set_cluster_policy), rebuilt
 	//     via state.BuildPerItemPayload
 	//   - `previous_audit_hash` is `hash` of the predecessor entry, or empty for
 	//     the first entry
@@ -234,7 +234,7 @@ func (*AuditEntry_Success) isAuditEntry_Outcome() {}
 
 func (*AuditEntry_Failure) isAuditEntry_Outcome() {}
 
-// AuditItem represents one order within a proposal, stored separately from the
+// AuditItem represents one order or standalone policy control, stored separately from the
 // AuditEntry header. Pebble key: [ZoneHistory][SubHistoryAuditItem][audit_seq BE 8][order_idx BE 4].
 type AuditItem struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -251,9 +251,16 @@ type AuditItem struct {
 	SerializedOrder []byte `protobuf:"bytes,2,opt,name=serialized_order,json=serializedOrder,proto3" json:"serialized_order,omitempty"`
 	// Sequence of the log produced by this order. Zero if the order was
 	// an idempotent replay or if the proposal failed.
-	LogSequence   uint64 `protobuf:"fixed64,3,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	LogSequence uint64 `protobuf:"fixed64,3,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
+	// Native SetClusterPolicyProposal business intent, captured deterministically
+	// at apply time. Exactly one intent field is populated: serialized_order for
+	// execution orders (including historical policy orders), or this field for a
+	// new policy control. Readers must handle both; writers never lower a new
+	// policy control to an Order. The hash binds these raw bytes with a distinct
+	// policy domain tag, preserving the preimage of historical order items.
+	SerializedSetClusterPolicy []byte `protobuf:"bytes,4,opt,name=serialized_set_cluster_policy,json=serializedSetClusterPolicy,proto3" json:"serialized_set_cluster_policy,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *AuditItem) Reset() {
@@ -305,6 +312,13 @@ func (x *AuditItem) GetLogSequence() uint64 {
 		return x.LogSequence
 	}
 	return 0
+}
+
+func (x *AuditItem) GetSerializedSetClusterPolicy() []byte {
+	if x != nil {
+		return x.SerializedSetClusterPolicy
+	}
+	return nil
 }
 
 // AuditSuccess records the log sequence range created by a successful proposal.
@@ -435,12 +449,13 @@ const file_audit_proto_rawDesc = "" +
 	"\x0fcaller_snapshot\x18\v \x01(\v2\x16.common.CallerSnapshotR\x0ecallerSnapshot\x125\n" +
 	"\vidempotency\x18\f \x01(\v2\x13.common.IdempotencyR\vidempotency\x129\n" +
 	"\tsignature\x18\r \x01(\v2\x1b.signature.SignedApplyBatchR\tsignatureB\t\n" +
-	"\aoutcome\"z\n" +
+	"\aoutcome\"\xbd\x01\n" +
 	"\tAuditItem\x12\x1f\n" +
 	"\vorder_index\x18\x01 \x01(\rR\n" +
 	"orderIndex\x12)\n" +
 	"\x10serialized_order\x18\x02 \x01(\fR\x0fserializedOrder\x12!\n" +
-	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequence\"b\n" +
+	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequence\x12A\n" +
+	"\x1dserialized_set_cluster_policy\x18\x04 \x01(\fR\x1aserializedSetClusterPolicy\"b\n" +
 	"\fAuditSuccess\x12(\n" +
 	"\x10min_log_sequence\x18\x01 \x01(\x06R\x0eminLogSequence\x12(\n" +
 	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\"@\n" +

@@ -1,97 +1,39 @@
 package proposals
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
-func TestExecutionViewPreservesPayloadAndCoverageTargets(t *testing.T) {
+func TestReadersPreserveIntentAndCoverage(t *testing.T) {
 	t.Parallel()
-	order := &raftcmdpb.Order{Technical: &raftcmdpb.OrderTechnical{}}
-	logical := &raftcmdpb.Proposal{Id: 3, PredictedIndex: 8, Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{order}}}}
-	before := logical.CloneVT()
-	wire := ExecutionView(logical)
-	require.Nil(t, wire.GetPayload())
-	require.Same(t, order, wire.GetOrders()[0])
-	require.True(t, proto.Equal(before, logical), "encoding must not mutate the logical proposal")
-	order.Technical.CoverageBits = []byte{7}
-	require.Equal(t, []byte{7}, wire.GetOrders()[0].GetTechnical().GetCoverageBits())
-	require.Equal(t, logical.GetPredictedIndex(), wire.GetPredictedIndex())
-}
-
-func TestPolicyEncodingKeepsAuditIntent(t *testing.T) {
-	t.Parallel()
-	policy := &commonpb.ClusterPolicy{Revision: 7}
-	control := &raftcmdpb.Proposal{
-		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterPolicy),
-		Payload:        &raftcmdpb.Proposal_SetClusterPolicy{SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: policy}},
-	}
-	legacy := ExecutionView(control)
-	require.Nil(t, legacy.GetPayload())
-	require.True(t, proto.Equal(PolicyOrder(policy), legacy.GetOrders()[0]))
-}
-
-// The execution view preserves the historical audit input, including its header.
-func TestExecutionViewMatchesReleasedEncoding(t *testing.T) {
-	t.Parallel()
-	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "ledger", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}}}}, Technical: &raftcmdpb.OrderTechnical{CoverageBits: []byte{1}}}
-	update := &raftcmdpb.TechnicalUpdate{Kind: &raftcmdpb.TechnicalUpdate_EventsSink{EventsSink: &raftcmdpb.EventsSinkUpdate{SinkName: "sink", Cursor: 2}}}
-	policy := &commonpb.ClusterPolicy{Revision: 3}
-	for _, kind := range []string{"business", "technical", "policy", "barrier"} {
-		t.Run(kind, func(t *testing.T) {
-			t.Parallel()
-			legacy := &raftcmdpb.Proposal{Id: 7, Date: &commonpb.Timestamp{Data: 9}, PredictedIndex: 11, ExecutionPlan: &raftcmdpb.ExecutionPlan{CacheEpoch: 2}, CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterPolicy)}
-			logical := legacy.CloneVT()
-			switch kind {
-			case "business":
-				legacy.Orders = []*raftcmdpb.Order{order}
-				legacy.Idempotency = &commonpb.Idempotency{Key: "key"}
-				legacy.Signature = &signaturepb.SignedApplyBatch{}
-				logical.Idempotency = legacy.GetIdempotency()
-				logical.Signature = legacy.GetSignature()
-				logical.Payload = &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{order}}}
-			case "technical":
-				legacy.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{update}
-				logical.Payload = &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{update}}}
-			case "policy":
-				legacy.Orders = []*raftcmdpb.Order{PolicyOrder(policy)}
-				logical.Payload = &raftcmdpb.Proposal_SetClusterPolicy{SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: policy}}
-			}
-			before := logical.CloneVT()
-			wire := ExecutionView(logical)
-			expected, err := legacy.MarshalVT()
-			require.NoError(t, err)
-			actual, err := wire.MarshalVT()
-			require.NoError(t, err)
-			require.Equal(t, expected, actual)
-			require.True(t, proto.Equal(before, logical))
-		})
+	order := &raftcmdpb.Order{Technical: &raftcmdpb.OrderTechnical{CoverageBits: []byte{7}}}
+	update := &raftcmdpb.TechnicalUpdate{CoverageBits: []byte{2}}
+	for _, legacy := range []bool{false, true} {
+		p := &raftcmdpb.Proposal{}
+		if legacy {
+			p.Orders = []*raftcmdpb.Order{order}
+			p.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{update}
+		} else {
+			p.Payload = &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{order}, TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{update}}}
+		}
+		before := p.CloneVT()
+		require.Same(t, order, BatchOrders(p)[0])
+		require.Same(t, update, TechnicalUpdates(p)[0])
+		require.Equal(t, 1, IntentCount(p))
+		require.True(t, proto.Equal(before, p))
 	}
 }
 
-func BenchmarkExecutionView(b *testing.B) {
-	for _, count := range []int{1, 100, 1000} {
-		b.Run(fmt.Sprintf("orders=%d", count), func(b *testing.B) {
-			orders := make([]*raftcmdpb.Order, count)
-			for i := range orders {
-				orders[i] = &raftcmdpb.Order{Technical: &raftcmdpb.OrderTechnical{CoverageBits: []byte{1}}}
-			}
-			logical := &raftcmdpb.Proposal{Id: 1, Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: orders}}}
-			b.ReportAllocs()
-			for b.Loop() {
-				wire := ExecutionView(logical)
-				if _, err := wire.MarshalVT(); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-	}
+func TestPolicyIsNotAnExecutionOrder(t *testing.T) {
+	t.Parallel()
+	p := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_SetClusterPolicy{SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{}}}
+	require.Empty(t, BatchOrders(p))
+	require.Empty(t, TechnicalUpdates(p))
+	require.Equal(t, 1, IntentCount(p))
+	require.Zero(t, IntentCount(&raftcmdpb.Proposal{}))
 }

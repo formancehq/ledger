@@ -256,12 +256,14 @@ wire-compatible.
 
 ## Proposal payload expansion
 
-The proposal oneof is introduced in an expansion phase. Producers use
-`ExecutionBatch` or `SetClusterPolicyProposal` internally, but the shared runner
-serializes the historical proposal fields before replication. Old and new
-replicas therefore receive the same command representation. Existing WAL,
-snapshots, backups, and audit history need no rewrite or operator migration.
-No capability activation or additional deployment flag is introduced.
+The RC.1 to RC.2 transition requires the coordinated restart procedure above.
+Stop every old node before starting any target node, and keep the WAL and data
+volumes. The target reads historical entries and writes `ExecutionBatch` or
+`SetClusterPolicyProposal` directly. Existing snapshots, backups and audit
+history need no rewrite or backfill. New policy controls also use the additive
+`AuditItem.serialized_set_cluster_policy` field; update audit consumers to read
+it as well as historical `serialized_order` items. Historical hashes remain
+unchanged. No capability flag enables this format. (refactor(raft): execute and audit native policy controls)
 
 This phase adds no new rollback restriction. Emitting payload-only Raft entries
 is a separate, future cutover requiring cluster-wide decoder readiness and its

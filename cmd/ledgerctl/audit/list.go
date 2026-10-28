@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/auditintent"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -253,6 +254,17 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 		// here is a display issue only; the hash chain itself is intact.
 		orders := make([]*raftcmdpb.Order, 0, len(items))
 		for _, item := range items {
+			policy, err := auditintent.Policy(item)
+			if err != nil {
+				pterm.Printf("    %s policy index=%d: %s\n", pterm.Yellow("⚠"), item.GetOrderIndex(), pterm.Red(err.Error()))
+
+				continue
+			}
+			if policy != nil {
+				pterm.Printf("    └─ set_cluster_policy revision=%d\n", policy.GetPolicy().GetRevision())
+
+				continue
+			}
 			order := &raftcmdpb.Order{}
 			if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
 				pterm.Printf("    %s order index=%d: %s\n",

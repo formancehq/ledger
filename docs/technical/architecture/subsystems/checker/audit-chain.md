@@ -67,6 +67,15 @@ Each `AuditItem` (one per order in the proposal) is encoded by `state.BuildPerIt
 | `LogSequence` | `uint64` BE |
 | `SerializedOrder` | length-prefixed (the order's canonical vtprotobuf bytes) |
 
+Native policy controls use `AuditItem.serialized_set_cluster_policy` (field 4)
+instead of `serialized_order`. For these items, append a length-prefixed
+`audit:set-cluster-policy:v1` tag and the length-prefixed raw control bytes to
+the historical layout above. Historical items have no extension, preserving
+all existing hashes. The native form occupies one item at index zero and has
+no client idempotency or signature; the checker rejects mixed intent fields.
+The checker replays the native control directly to derive logs and policy.
+Business orders and historical policy orders continue to use field 2.
+
 Items are concatenated in `OrderIndex` order before being fed into the hash. A single byte changed in any order, or any reordering, invalidates the hash.
 
 ### Chain link

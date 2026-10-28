@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/attribution"
+	"github.com/formancehq/ledger/v3/internal/domain/auditintent"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
@@ -2460,6 +2461,25 @@ func (c *Checker) verifyAuditHashChain(
 			return result, nil
 		}
 
+		// A native control is a whole proposal, never an order in a batch. Validate
+		// this persisted boundary even if the hash was recomputed over malformed data.
+		var nativePolicy *raftcmdpb.SetClusterPolicyProposal
+		for _, item := range items {
+			policy, intentErr := auditintent.Policy(item)
+			if intentErr == nil && policy != nil && (len(items) != 1 || item.GetOrderIndex() != 0 || entry.GetIdempotency() != nil || entry.GetSignature() != nil) {
+				intentErr = errors.New("native policy control must be a standalone, unkeyed and unsigned proposal")
+			}
+			if intentErr != nil {
+				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
+					fmt.Sprintf("audit entry %d has invalid intent: %v", entry.GetSequence(), intentErr), logSequenceFromAuditEntry(entry), "", "", ""))
+				folds.markLiveTruncated()
+
+				return result, nil
+			}
+			if policy != nil {
+				nativePolicy = policy
+			}
+		}
 		hashSlices := make([][]byte, 0, 1+len(items))
 		hashSlices = append(hashSlices, headerPayload)
 
@@ -2560,7 +2580,7 @@ func (c *Checker) verifyAuditHashChain(
 			_, replaySound := folds.bounds.auditedBound()
 			orders := make([]*raftcmdpb.Order, len(decoded))
 			for i, order := range decoded {
-				if order == nil || order.Type == nil {
+				if nativePolicy == nil && (order == nil || order.Type == nil) {
 					callback(errorEvent(
 						servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
 						fmt.Sprintf("audit entry %d item %d has no decodable order type; final ledger policy and boundary verification is incomplete", entry.GetSequence(), items[i].GetOrderIndex()),
@@ -2573,7 +2593,13 @@ func (c *Checker) verifyAuditHashChain(
 				orders[i] = order
 			}
 			if replaySound {
-				logs, replayErr := replayer.Replay(entry.GetTimestamp(), orders)
+				var logs []*commonpb.Log
+				var replayErr error
+				if nativePolicy != nil {
+					logs, replayErr = replayer.ReplayPolicy(entry.GetTimestamp(), nativePolicy)
+				} else {
+					logs, replayErr = replayer.Replay(entry.GetTimestamp(), orders)
+				}
 				if replayErr != nil {
 					return nil, fmt.Errorf("replaying chain-verified audit entry %d: %w", entry.GetSequence(), replayErr)
 				}
@@ -2618,6 +2644,12 @@ func (c *Checker) verifyAuditHashChain(
 				}
 
 				if logSeq < success.GetMinLogSequence() || logSeq > success.GetMaxLogSequence() {
+					continue
+				}
+
+				if nativePolicy != nil {
+					folds.policy.applyPolicy(nativePolicy.GetPolicy())
+
 					continue
 				}
 
@@ -2928,6 +2960,9 @@ func collectExpectedSkippable(
 	foldedLogSeqs := make(map[uint64]struct{}, len(items))
 
 	for i, item := range items {
+		if len(item.GetSerializedSetClusterPolicy()) != 0 {
+			continue
+		}
 		order := &raftcmdpb.Order{}
 		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
 			// An item that fails to unmarshal cannot tell us what its order

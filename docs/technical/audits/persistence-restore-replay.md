@@ -237,8 +237,10 @@ The proposal codec is part of this contract. Production writers serialize the
 execution and policy oneof directly after a full-stop upgrade. All source nodes
 must stop before any target starts, and old binaries must never reopen a WAL
 containing new payloads, including technical entries written during startup.
-Historical and payload entries must have identical canonical audit intent,
-hashes, coverage, HLC semantics, and checkpoint boundaries. Internal producers
+Historical replay must retain exact audit bytes and hashes. Native policy
+controls use their own hash-bound audit field and are never lowered to orders;
+compare intent and outcomes across formats, not their intentionally different
+chain suffixes. Preserve coverage, HLC semantics and checkpoint boundaries. Internal producers
 own shape construction. Preserve historical decoding for replay and policy
 restore parity with a nonempty incremental delta. Test a released store/WAL
 opened by the candidate, retained legacy entry replay, new writes and restart.

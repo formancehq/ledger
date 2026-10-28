@@ -287,3 +287,15 @@ all corruption callbacks and terminal status: require `METADATA_MISMATCH` or
 `TRANSACTION_UPDATE_MISMATCH` with raw-key/decoding evidence and unset identity
 fields, while terminal completion succeeds. Healthy controls must emit no
 corruption events. Malformed keys must not silently disappear from comparison.
+
+## Native policy audit intent
+
+Audit readers accept historical `serialized_order` and native
+`serialized_set_cluster_policy` bytes. The old item preimage stays exact;
+native controls extend it with a policy domain tag and length-prefixed bytes.
+Corrupting either intent field, the selected kind, or the derived policy must
+be observable. Reject mixed intent and a control embedded in an order batch.
+The checker executes native controls without manufacturing an Order, including
+successful no-log re-proposals, and derives the policy from verified history.
+Use a historical checkpoint plus a nonempty native policy delta as a restore
+witness; neither the stored policy nor the policy log can seed its expectation.
