@@ -44,6 +44,23 @@ func TestBuildPodTemplate_NormalModeUsesHTTPProbes(t *testing.T) {
 	assert.Equal(t, "/livez", c.StartupProbe.HTTPGet.Path)
 }
 
+func TestBuildPodTemplate_AuthKeysHashPresentWhenCredentialsRemoved(t *testing.T) {
+	t.Parallel()
+
+	ls := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "n", Namespace: "default"},
+		Spec: ledgerv1alpha1.ClusterSpec{
+			HttpPort: 9000,
+			GrpcPort: 8888,
+		},
+	}
+
+	tpl := buildPodTemplate(ls, "hash", nil, "")
+	hashValue, ok := tpl.Annotations[annotationAuthKeysHash]
+	require.True(t, ok, "auth-keys hash must remain present when the credential set is empty")
+	assert.Len(t, hashValue, 64, "auth-keys hash must be a SHA-256 hex digest")
+}
+
 // TestBuildPodTemplate_RestoreModeUsesTCPProbes is the headline guarantee:
 // restore mode does not expose /livez or /readyz on the management HTTP
 // server, so HTTP probes would loop forever and leave the pod NotReady. The

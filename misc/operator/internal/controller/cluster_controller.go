@@ -286,6 +286,28 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
+	// Reconcile the cluster-secret before the operator Credentials readiness
+	// gate, but only its SAFE (create/update) side. A missing Secret must be
+	// repaired even while Credentials distribution is pending, otherwise a
+	// restarted pod cannot resolve CLUSTER_SECRET. Deletion remains deferred
+	// until after the StatefulSet pass below.
+	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
+		logger.Error(err, "failed to reconcile cluster secret")
+
+		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
+	}
+
+	debugBoxEnabled := ledger.Spec.DebugBox != nil && ledger.Spec.DebugBox.Enabled &&
+		ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled
+	// Revocation is independent of the maintenance credential. Clean up a
+	// disabled debug box before the readiness gate so a pending operator
+	// credential cannot keep its superuser Pod and Credentials alive.
+	if !debugBoxEnabled {
+		if _, err := r.reconcileDebugBox(ctx, ledger); err != nil {
+			return ctrl.Result{}, fmt.Errorf("cleaning up debug box: %w", err)
+		}
+	}
+
 	operatorCredentialReady, err := r.reconcileOperatorCredentials(ctx, ledger)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("reconciling operator Credentials: %w", err)
@@ -303,9 +325,12 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	meta.RemoveStatusCondition(&ledger.Status.Conditions, "OperatorCredentialsPending")
 
-	debugBoxReady, err := r.reconcileDebugBox(ctx, ledger)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("reconciling debug box: %w", err)
+	debugBoxReady := true
+	if debugBoxEnabled {
+		debugBoxReady, err = r.reconcileDebugBox(ctx, ledger)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("reconciling debug box: %w", err)
+		}
 	}
 	if ledger.Spec.DebugBox != nil && ledger.Spec.DebugBox.Enabled && ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled && !debugBoxReady {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -325,22 +350,6 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		logger.Error(err, "failed to reconcile auth keys")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
-	}
-
-	// Reconcile the cluster-secret (TLS static bearer token) BEFORE the
-	// AuthKeysPending gate, but only its SAFE (create/update) side: mayDelete=false.
-	// Creating/keeping the Secret while any StatefulSet references it never mutates
-	// the pod template or triggers a rollout, so it is safe (and necessary) even
-	// while the auth-keys fail-safe holds the StatefulSet pass — otherwise a Secret
-	// that went missing during a long Credentials-non-distribution window would
-	// crash restarted pods referencing CLUSTER_SECRET via SecretKeyRef. Deletion
-	// (TLS-off) is deferred to AFTER reconcileStatefulSet on the non-pending path,
-	// so we never delete a Secret still referenced by a StatefulSet we cannot update
-	// (EN-1487; only the pod-template mutation may be frozen, not this).
-	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
-		logger.Error(err, "failed to reconcile cluster secret")
-
-		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
 	}
 
 	// Fail-safe (EN-1487): the auth-key set cannot be safely reconciled yet.
@@ -737,6 +746,9 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 		}
 		if spec.Service.HttpPort != 0 && spec.GrpcPeerPort == spec.Service.HttpPort {
 			return fmt.Errorf("grpcPeerPort must differ from service.httpPort, both are %d", spec.GrpcPeerPort)
+		}
+		if spec.GrpcPeerPort == raftPortFromBindAddr(spec.BindAddr) {
+			return fmt.Errorf("grpcPeerPort must differ from the Raft port, both are %d", spec.GrpcPeerPort)
 		}
 	}
 

@@ -54,19 +54,19 @@ func TestLedgerctlCommand_TLSModes(t *testing.T) {
 		{
 			name:           "disabled emits --insecure",
 			tlsMode:        tlsModeDisabled,
-			wantContains:   []string{"--insecure", `--auth-token "${OPERATOR_AUTH_TOKEN:-}"`, `--server "` + serverAddr + `"`},
+			wantContains:   []string{"--insecure", `--auth-token "${OPERATOR_AUTH_TOKEN:-}"`, `--server "` + serverAddr + `"`, "--scopes ledger:ReadLedger,ledger:WriteLedger,ledger:ReadOps,ledger:WriteOps,ledger:ReadCluster,ledger:WriteCluster"},
 			wantNotContain: []string{"--tls-ca-cert"},
 		},
 		{
 			name:           "required emits --tls-ca-cert and no --insecure",
 			tlsMode:        tlsModeRequired,
-			wantContains:   []string{`--tls-ca-cert "$TLS_CA_CERT_FILE"`, `--auth-token "${OPERATOR_AUTH_TOKEN:-}"`, `--server "` + serverAddr + `"`},
+			wantContains:   []string{`--tls-ca-cert "$TLS_CA_CERT_FILE"`, `--auth-token "${OPERATOR_AUTH_TOKEN:-}"`, `--server "` + serverAddr + `"`, "--scopes ledger:ReadLedger,ledger:WriteLedger,ledger:ReadOps,ledger:WriteOps,ledger:ReadCluster,ledger:WriteCluster"},
 			wantNotContain: []string{"--insecure"},
 		},
 		{
 			name:           "optional emits --tls-ca-cert and no --insecure",
 			tlsMode:        tlsModeOptional,
-			wantContains:   []string{`--tls-ca-cert "$TLS_CA_CERT_FILE"`, `--auth-token "${OPERATOR_AUTH_TOKEN:-}"`},
+			wantContains:   []string{`--tls-ca-cert "$TLS_CA_CERT_FILE"`, `--auth-token "${OPERATOR_AUTH_TOKEN:-}"`, "--scopes ledger:ReadLedger,ledger:WriteLedger,ledger:ReadOps,ledger:WriteOps,ledger:ReadCluster,ledger:WriteCluster"},
 			wantNotContain: []string{"--insecure"},
 		},
 	}

@@ -158,13 +158,13 @@ metadata:
   namespace: ledger
 spec:
   replicas: 3  # Must be odd for Raft
+  grpcPeerPort: 8889
   image:
     repository: ghcr.io/formancehq/ledger
     tag: latest
   config:
     bindAddr: "0.0.0.0:7777"
     grpcPort: 8888
-    grpcPeerPort: 8889
     httpPort: 9000
     dataDir: "/data/app"
     walDir: "/data/raft"
@@ -219,11 +219,11 @@ spec:
 
 ```yaml
 spec:
+  grpcPeerPort: 8889
   service:
     type: ClusterIP
     httpPort: 9000
     grpcPort: 8888
-    grpcPeerPort: 8889
     raftPort: 7777
     annotations: {}
 ```
@@ -238,6 +238,11 @@ spec:
     enabled: true
     annotations: {}
 ```
+
+The headless Service also carries the internal peer gRPC port. This port is not
+published by the public gRPC Ingress and should be restricted with a
+`NetworkPolicy` so only Ledger pods can reach it. Peer requests authenticate
+with the cluster secret; the secret is not a public API credential.
 
 #### Custom Labels
 

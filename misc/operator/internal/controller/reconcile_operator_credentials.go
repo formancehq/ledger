@@ -12,6 +12,8 @@ import (
 )
 
 var operatorCredentialScopes = []string{
+	"ledger:ReadLedger",
+	"ledger:WriteLedger",
 	"ledger:ReadOps",
 	"ledger:WriteOps",
 	"ledger:ReadCluster",
@@ -25,6 +27,14 @@ func (r *ClusterReconciler) reconcileOperatorCredentials(ctx context.Context, le
 	credentialsName := operatorCredentialsName(ledger)
 	authEnabled := ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled
 	if !authEnabled {
+		if ledger.Labels != nil {
+			if _, ok := ledger.Labels[labelOperatorCredential]; ok {
+				delete(ledger.Labels, labelOperatorCredential)
+				if err := r.Update(ctx, ledger); err != nil {
+					return false, fmt.Errorf("clearing operator Credentials selector label: %w", err)
+				}
+			}
+		}
 		credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: credentialsName}}
 		if err := r.Delete(ctx, credentials); err != nil && !apierrors.IsNotFound(err) {
 			return false, err

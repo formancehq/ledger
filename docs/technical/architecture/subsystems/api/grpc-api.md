@@ -60,12 +60,21 @@ records, snapshots or backups.
 
 ### Default Port
 
-The gRPC service server listens on port `8888` by default (configurable via `--grpc-port`).
+The public gRPC service server listens on port `8888` by default (configurable via
+`--grpc-port`). The authenticated peer service server listens on port `8889` by
+default (configurable via `--grpc-peer-port`).
 
-> **Note**: There are two separate gRPC servers:
+> **Note**: There are three separate gRPC servers:
 > - **Service server** (port 8888): External client-facing API (BucketService, ClusterService, Health)
 > - **Peer service server** (port 8889): Authenticated follower-to-leader service forwarding; accepts the cluster secret only
 > - **Raft server** (port 7777): Internal inter-node communication (RaftTransport, SnapshotService)
+
+The peer service server is an intra-cluster trust boundary, not a second public
+API. It is reachable through the internal/headless service only; it is not
+published by the public gRPC Ingress. Deployments should also use a
+`NetworkPolicy` to allow the peer port only between Ledger pods. A caller on
+that network path must present the cluster secret, which is reserved for this
+internal listener.
 
 ### Connection Example
 
@@ -906,10 +915,10 @@ ledgerctl transactions create --ledger my-ledger \
 
 ## Request Forwarding
 
-When a gRPC request reaches a follower node, it is automatically forwarded to the leader via the **ServiceConnectionPool** (connecting to the leader's service port 8888):
+When a gRPC request reaches a follower node, it is automatically forwarded to the leader via the **ServiceConnectionPool** (connecting to the leader's peer service port, `8889` by default and configurable via `--grpc-peer-port`):
 
 ```
-┌────────────┐   gRPC:8888   ┌────────────┐  Forward:8888  ┌────────────┐
+┌────────────┐   gRPC:8888   ┌────────────┐  Forward:8889  ┌────────────┐
 │   Client   │───────────────▶  Follower  │────────────────▶   Leader   │
 └────────────┘               └────────────┘                └────────────┘
        ▲                            │                            │

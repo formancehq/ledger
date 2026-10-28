@@ -342,9 +342,10 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 	podAnnotations := make(map[string]string)
 	maps.Copy(podAnnotations, ledger.Spec.PodAnnotations)
 	podAnnotations[annotationSpecHash] = specHash
-	if len(credentials) > 0 {
-		podAnnotations[annotationAuthKeysHash] = computeAuthKeysHash(credentials)
-	}
+	// Keep the hash present even when the credential set is empty. Removing the
+	// last Credentials must change the pod template so existing pods restart and
+	// stop serving with the revoked key material still loaded in memory.
+	podAnnotations[annotationAuthKeysHash] = computeAuthKeysHash(credentials)
 
 	// Container ports
 	ports := []corev1.ContainerPort{

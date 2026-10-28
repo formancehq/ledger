@@ -69,6 +69,14 @@ func TestValidateClusterConfig_RejectsPeerPortCollisionsAndOverflow(t *testing.T
 			want: "grpcPeerPort must differ from service.grpcPort",
 		},
 		{
+			name: "raft collision",
+			spec: ledgerv1alpha1.ClusterSpec{
+				BindAddr:     "0.0.0.0:7777",
+				GrpcPeerPort: 7777,
+			},
+			want: "grpcPeerPort must differ from the Raft port",
+		},
+		{
 			name: "overflow",
 			spec: ledgerv1alpha1.ClusterSpec{GrpcPeerPort: 65536},
 			want: "grpcPeerPort must be between 1 and 65535",
