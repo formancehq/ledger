@@ -102,9 +102,8 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 }
 
 // NewMembershipWithServicePort is the production constructor for clusters
-// that use a dedicated peer service port. It normalizes service addresses
-// loaded from pre-peer-port membership snapshots so a restart does not keep
-// dialing the old public listener.
+// that use a dedicated peer service port. It migrates legacy membership rows
+// once, then preserves the explicit peer service port on every reload.
 func NewMembershipWithServicePort(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort int, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
 	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, servicePort, selfInstanceID, logger)
 }
@@ -113,13 +112,14 @@ func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 	if err := ValidateInstanceID(selfInstanceID); err != nil {
 		return nil, fmt.Errorf("invalid self identity: %w", err)
 	}
+	if err := store.migrateLegacyServiceAddresses(servicePort); err != nil {
+		return nil, fmt.Errorf("migrating membership format: %w", err)
+	}
 
 	addresses, err := store.LoadAll()
 	if err != nil {
 		return nil, fmt.Errorf("loading peers from pebble: %w", err)
 	}
-	addresses = normalizeServiceAddresses(addresses, servicePort)
-
 	logger.WithFields(map[string]any{
 		"peerCount": len(addresses),
 	}).Infof("Loaded cluster membership from Pebble")
@@ -490,8 +490,6 @@ func (m *Membership) Rehydrate() error {
 	if err != nil {
 		return fmt.Errorf("loading peers from pebble: %w", err)
 	}
-
-	fresh = normalizeServiceAddresses(fresh, m.servicePort)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
