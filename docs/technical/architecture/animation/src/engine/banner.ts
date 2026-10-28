@@ -413,12 +413,12 @@ export function describeMsgLong(node: NodeId, msg: Msg): { title: string; desc: 
     case "ReadPersisted":
       return {
         title: `${at} — read Pebble.highestPersistedIdx`,
-        desc:  `Compactor queries Pebble for the safe truncation floor. Anything Pebble has durably persisted can be dropped from the WAL since the FSM can replay from Pebble alone.`,
+        desc:  `Compactor queries Pebble for the durable FSM floor and combines it with the snapshot and the Raft apply-ack frontier. Anything below the minimum is safe to drop; entries still awaiting MsgStorageApplyResp must remain available to RawNode.`,
       };
     case "ReadPersistedResp":
       return {
         title: `${at} — safe floor = ${msg.upTo}`,
-        desc:  `Pebble reports that index ${msg.upTo} is durably persisted. Compactor will now issue TruncateWAL up to this index — anything ≤ it is replayable from Pebble.`,
+        desc:  `Pebble reports durable progress through index ${msg.upTo}. Compactor applies the snapshot/FSM/Raft-ack minimum before issuing TruncateWAL — an entry is replayable from Pebble only after the corresponding Raft apply acknowledgement.`,
       };
     case "TruncateWAL":
       return {
