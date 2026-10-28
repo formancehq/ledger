@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -37,102 +38,105 @@ func TestDeleteLedgerSentinelRecovery(t *testing.T) {
 	for _, path := range []string{"wal_restart", "follower_catch_up"} {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()
-			ctx := logging.TestingContext()
-			dir := t.TempDir()
-			setup, closeSetup := newDeleteSentinelApplier(t, dir)
-			const deleted = "deleted-ledger"
-			const survivor = "surviving-ledger"
-			createDeleted, _ := makeCreateLedgerEntry(t, 1, deleted)
-			// Commit the normal cluster policy through the FSM before business
-			// transactions, so recovery restores the same metadata limits.
-			var initial raftcmdpb.Proposal
-			require.NoError(t, initial.UnmarshalVT(createDeleted.GetData()))
-			initial.Orders = append([]*raftcmdpb.Order{{Type: &raftcmdpb.Order_SystemScoped{
-				SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
-					SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: &commonpb.ClusterPolicy{
-						Revision: 1, QueryCheckpointLimit: 10,
-						MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
-						MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
-						MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
-						MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
-						MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
+
+			synctest.Test(t, func(t *testing.T) {
+				ctx := logging.TestingContext()
+				dir := t.TempDir()
+				setup, closeSetup := newDeleteSentinelApplier(t, dir)
+				const deleted = "deleted-ledger"
+				const survivor = "surviving-ledger"
+				createDeleted, _ := makeCreateLedgerEntry(t, 1, deleted)
+				// Commit the normal cluster policy through the FSM before business
+				// transactions, so recovery restores the same metadata limits.
+				var initial raftcmdpb.Proposal
+				require.NoError(t, initial.UnmarshalVT(createDeleted.GetData()))
+				initial.Orders = append([]*raftcmdpb.Order{{Type: &raftcmdpb.Order_SystemScoped{
+					SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
+						SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: &commonpb.ClusterPolicy{
+							Revision: 1, QueryCheckpointLimit: 10,
+							MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
+							MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
+							MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
+							MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
+							MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
+						}},
 					}},
-				}},
-			}}}, initial.GetOrders()...)
-			var err error
-			createDeleted.Data, err = initial.MarshalVT()
-			require.NoError(t, err)
-			createSurvivor, _ := makeCreateLedgerEntry(t, 2, survivor)
-			entries := []*raftpb.Entry{
-				createDeleted,
-				createSurvivor,
-				makeDeleteSentinelEntry(t, 3, deleted, false),
-				makeDeleteSentinelEntry(t, 4, survivor, false),
-				makeDeleteSentinelEntry(t, 5, deleted, true),
-			}
-			require.NoError(t, setup.wal.Append(&raftpb.HardState{
-				Term: proto.Uint64(1), Vote: proto.Uint64(1), Commit: proto.Uint64(5),
-			}, entries))
-
-			// Only ledger creation has reached Pebble; the committed transactions
-			// and deletion await application by the follower or after restart.
-			result, err := setup.fsm.ApplyEntries(ctx, setup.store, entries[:2]...)
-			require.NoError(t, err)
-			for _, applied := range result.Results {
-				require.NoError(t, applied.Error)
-			}
-			if path == "wal_restart" {
-				closeSetup()
-				setup, _ = newDeleteSentinelApplier(t, dir)
-			}
-			require.Equal(t, uint64(2), setup.fsm.State.LastAppliedIndex)
-
-			// Futures also verify that all three business orders succeeded;
-			// a rejected transaction must not make the sentinel regression pass.
-			pending := make([]*futures.Future[state.ApplyResult], 0, 3)
-			for _, entry := range entries[2:] {
-				future := futures.New[state.ApplyResult]()
-				setup.applier.StoreFuture(entry.GetIndex(), entry.GetTerm(), future)
-				pending = append(pending, future)
-			}
-			if path == "wal_restart" {
-				upToDate, err := setup.applier.RecoverAndReplay(ctx)
-				require.NoError(t, err, "WAL recovery must not reject an intentional ledger deletion")
-				require.True(t, upToDate)
-			} else {
-				runDeleteSentinelCatchUp(t, ctx, setup, entries[2:])
-			}
-			waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-			for _, future := range pending {
-				applied, err := future.Wait(waitCtx)
+				}}}, initial.GetOrders()...)
+				var err error
+				createDeleted.Data, err = initial.MarshalVT()
 				require.NoError(t, err)
-				require.NoError(t, applied.Error)
-			}
-
-			appliedIndex, err := query.ReadLastAppliedIndex(setup.store)
-			require.NoError(t, err)
-			require.Equal(t, uint64(5), appliedIndex)
-			_, err = query.GetLedgerByName(ctx, setup.store, deleted)
-			require.ErrorIs(t, err, domain.ErrNotFound)
-			_, err = query.GetLedgerByName(ctx, setup.store, survivor)
-			require.NoError(t, err)
-			for _, account := range []string{"world", "treasury"} {
-				key := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: deleted, Account: account}, Asset: "EUR"}
-				volume, err := setup.fsm.Registry.Attrs.Volume.Get(setup.store, key.Bytes())
-				require.NoError(t, err)
-				require.Nil(t, volume, "deleted ledger volumes must be absent")
-				key.LedgerName = survivor
-				volume, err = setup.fsm.Registry.Attrs.Volume.Get(setup.store, key.Bytes())
-				require.NoError(t, err)
-				require.NotNil(t, volume, "other ledgers' volumes must survive")
-				input, output := uint64(100), uint64(0)
-				if account == "world" {
-					input, output = output, input
+				createSurvivor, _ := makeCreateLedgerEntry(t, 2, survivor)
+				entries := []*raftpb.Entry{
+					createDeleted,
+					createSurvivor,
+					makeDeleteSentinelEntry(t, 3, deleted, false),
+					makeDeleteSentinelEntry(t, 4, survivor, false),
+					makeDeleteSentinelEntry(t, 5, deleted, true),
 				}
-				require.True(t, proto.Equal(commonpb.NewUint256FromUint64(input), volume.GetInput()))
-				require.True(t, proto.Equal(commonpb.NewUint256FromUint64(output), volume.GetOutput()))
-			}
+				require.NoError(t, setup.wal.Append(&raftpb.HardState{
+					Term: proto.Uint64(1), Vote: proto.Uint64(1), Commit: proto.Uint64(5),
+				}, entries))
+
+				// Only ledger creation has reached Pebble; the committed transactions
+				// and deletion await application by the follower or after restart.
+				result, err := setup.fsm.ApplyEntries(ctx, setup.store, entries[:2]...)
+				require.NoError(t, err)
+				for _, applied := range result.Results {
+					require.NoError(t, applied.Error)
+				}
+				if path == "wal_restart" {
+					closeSetup()
+					setup, _ = newDeleteSentinelApplier(t, dir)
+				}
+				require.Equal(t, uint64(2), setup.fsm.State.LastAppliedIndex)
+
+				// Futures also verify that all three business orders succeeded;
+				// a rejected transaction must not make the sentinel regression pass.
+				pending := make([]*futures.Future[state.ApplyResult], 0, 3)
+				for _, entry := range entries[2:] {
+					future := futures.New[state.ApplyResult]()
+					setup.applier.StoreFuture(entry.GetIndex(), entry.GetTerm(), future)
+					pending = append(pending, future)
+				}
+				if path == "wal_restart" {
+					upToDate, err := setup.applier.RecoverAndReplay(ctx)
+					require.NoError(t, err, "WAL recovery must not reject an intentional ledger deletion")
+					require.True(t, upToDate)
+				} else {
+					runDeleteSentinelCatchUp(t, ctx, setup, entries[2:])
+				}
+				waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				defer cancel()
+				for _, future := range pending {
+					applied, err := future.Wait(waitCtx)
+					require.NoError(t, err)
+					require.NoError(t, applied.Error)
+				}
+
+				appliedIndex, err := query.ReadLastAppliedIndex(setup.store)
+				require.NoError(t, err)
+				require.Equal(t, uint64(5), appliedIndex)
+				_, err = query.GetLedgerByName(ctx, setup.store, deleted)
+				require.ErrorIs(t, err, domain.ErrNotFound)
+				_, err = query.GetLedgerByName(ctx, setup.store, survivor)
+				require.NoError(t, err)
+				for _, account := range []string{"world", "treasury"} {
+					key := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: deleted, Account: account}, Asset: "EUR"}
+					volume, err := setup.fsm.Registry.Attrs.Volume.Get(setup.store, key.Bytes())
+					require.NoError(t, err)
+					require.Nil(t, volume, "deleted ledger volumes must be absent")
+					key.LedgerName = survivor
+					volume, err = setup.fsm.Registry.Attrs.Volume.Get(setup.store, key.Bytes())
+					require.NoError(t, err)
+					require.NotNil(t, volume, "other ledgers' volumes must survive")
+					input, output := uint64(100), uint64(0)
+					if account == "world" {
+						input, output = output, input
+					}
+					require.True(t, proto.Equal(commonpb.NewUint256FromUint64(input), volume.GetInput()))
+					require.True(t, proto.Equal(commonpb.NewUint256FromUint64(output), volume.GetOutput()))
+				}
+			})
 		})
 	}
 }

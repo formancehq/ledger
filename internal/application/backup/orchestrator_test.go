@@ -9,7 +9,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
-	"time"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -246,17 +246,20 @@ func TestProposeAndWait(t *testing.T) {
 func TestOrchestrator_LeadershipChangeCancelsRunCtx(t *testing.T) {
 	t.Parallel()
 
-	o := newOrchestrator(nil, nil)
-	o.OnLeadershipChange(true)
+	synctest.Test(t, func(t *testing.T) {
+		o := newOrchestrator(nil, nil)
+		o.OnLeadershipChange(true)
 
-	runCtx, cancel := o.runContext(context.Background())
-	defer cancel()
-	require.NoError(t, runCtx.Err(), "runCtx must be live while we are leader")
+		runCtx, cancel := o.runContext(context.Background())
+		defer cancel()
+		require.NoError(t, runCtx.Err(), "runCtx must be live while we are leader")
 
-	o.OnLeadershipChange(false)
+		o.OnLeadershipChange(false)
 
-	require.Eventually(t, func() bool { return runCtx.Err() != nil }, time.Second, time.Millisecond,
-		"runCtx must cancel when leadership is lost")
+		// Wait returns once the watcher goroutine has observed leaderCtx.
+		synctest.Wait()
+		require.ErrorIs(t, runCtx.Err(), context.Canceled, "runCtx must cancel when leadership is lost")
+	})
 }
 
 // TestOrchestrator_NonLeaderRunCtxStartsCancelled pins the
@@ -266,16 +269,19 @@ func TestOrchestrator_LeadershipChangeCancelsRunCtx(t *testing.T) {
 func TestOrchestrator_NonLeaderRunCtxStartsCancelled(t *testing.T) {
 	t.Parallel()
 
-	// Construct the orchestrator directly (not via newOrchestrator,
-	// which would call OnLeadershipChange(true)) so leaderCtx is the
-	// constructor's already-cancelled context.
-	o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry(), 0)
+	synctest.Test(t, func(t *testing.T) {
+		// Construct the orchestrator directly (not via newOrchestrator,
+		// which would call OnLeadershipChange(true)) so leaderCtx is the
+		// constructor's already-cancelled context.
+		o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry(), 0)
 
-	runCtx, cancel := o.runContext(context.Background())
-	defer cancel()
+		runCtx, cancel := o.runContext(context.Background())
+		defer cancel()
 
-	require.Eventually(t, func() bool { return runCtx.Err() != nil }, time.Second, time.Millisecond,
-		"runCtx must be cancelled when the orchestrator has not seen leadership")
+		synctest.Wait()
+		require.ErrorIs(t, runCtx.Err(), context.Canceled,
+			"runCtx must be cancelled when the orchestrator has not seen leadership")
+	})
 }
 
 // TestExecutorRegistry covers the in-memory liveness API the cleanup

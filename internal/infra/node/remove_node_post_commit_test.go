@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -57,33 +58,33 @@ func TestWaitForRemovalAppliedKeepsAdmissionBarrierAfterCallerStopsWaiting(t *te
 func TestTrackCommittedRemovalClearsBarrierAfterDurableApplyWithoutCaller(t *testing.T) {
 	t.Parallel()
 
-	setup := newTestApplierSetup(t)
-	runDone := make(chan struct{})
-	t.Cleanup(func() { close(runDone) })
-	m := newTestMembership(t)
-	instanceID := []byte("0123456789abcdef")
-	require.NoError(t, m.UnregisterAndBlacklist(3, instanceID, 1))
+	synctest.Test(t, func(t *testing.T) {
+		setup := newTestApplierSetup(t)
+		runDone := make(chan struct{})
+		t.Cleanup(func() { close(runDone) })
+		m := newTestMembership(t)
+		instanceID := []byte("0123456789abcdef")
+		require.NoError(t, m.UnregisterAndBlacklist(3, instanceID, 1))
 
-	n := &Node{
-		fsm:        setup.fsm,
-		membership: m,
-		logger:     logging.Testing(),
-		runDone:    runDone,
-	}
+		n := &Node{
+			fsm:        setup.fsm,
+			membership: m,
+			logger:     logging.Testing(),
+			runDone:    runDone,
+		}
 
-	_, err := n.trackCommittedRemoval(3, instanceID, 1)
-	require.NoError(t, err)
-	require.True(t, n.isRemovalPending(3, instanceID))
+		_, err := n.trackCommittedRemoval(3, instanceID, 1)
+		require.NoError(t, err)
+		require.True(t, n.isRemovalPending(3, instanceID))
 
-	entry, _ := makeCreateLedgerEntry(t, 1, "removal-barrier-cleanup")
-	setup.applyEntry(t, context.Background(), entry)
+		entry, _ := makeCreateLedgerEntry(t, 1, "removal-barrier-cleanup")
+		setup.applyEntry(t, context.Background(), entry)
 
-	require.Eventually(t, func() bool {
+		// The background waiter has either cleared the barrier or is parked.
+		synctest.Wait()
 		_, pending := n.pendingRemovals.load(3, 1)
-
-		return !pending
-	}, time.Second, 10*time.Millisecond,
-		"the node-local barrier must be cleared after the committed index is durable")
+		require.False(t, pending, "the node-local barrier must be cleared after the committed index is durable")
+	})
 }
 
 func TestVerifyAndClearPendingRemovalRetainsBarrierWithoutTombstone(t *testing.T) {

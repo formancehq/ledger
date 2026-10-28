@@ -3,6 +3,7 @@ package node
 import (
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -74,49 +75,53 @@ func TestFindApplyBoundaryKeepsUnchangedThresholdConfigInBatch(t *testing.T) {
 
 func TestRotationWaitsForPreviousCommit(t *testing.T) {
 	t.Parallel()
-	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t)
-	setup.fsm.Registry.Cache.SetGenerationThreshold(2)
 
-	entries := make([]*raftpb.Entry, 3)
-	for i := range entries {
-		entries[i], _ = makeCreateLedgerEntry(t, uint64(i+1), "rotation-ledger-"+string(rune('a'+i)))
-	}
-	decoded, err := state.DecodeEntries(entries)
-	require.NoError(t, err)
-	result := make(chan error, 1)
-	go func() {
-		result <- setup.applier.applyDecodedEntriesToFSM(ctx, setup.stop, setup.confState, nil, decoded)
-	}()
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		setup := newTestApplierSetup(t)
+		setup.fsm.Registry.Cache.SetGenerationThreshold(2)
 
-	var previous commitWork
-	select {
-	case previous = <-setup.applier.commitCh:
-	case <-time.After(5 * time.Second):
-		t.Fatal("pre-rotation batch was not prepared")
-	}
-	require.Never(t, func() bool {
-		return setup.fsm.Registry.Cache.CurrentGeneration() != 0
-	}, 100*time.Millisecond, 5*time.Millisecond)
-	require.False(t, listLedgerContains(setup.store, "rotation-ledger-a"))
+		entries := make([]*raftpb.Entry, 3)
+		for i := range entries {
+			entries[i], _ = makeCreateLedgerEntry(t, uint64(i+1), "rotation-ledger-"+string(rune('a'+i)))
+		}
+		decoded, err := state.DecodeEntries(entries)
+		require.NoError(t, err)
+		result := make(chan error, 1)
+		go func() {
+			result <- setup.applier.applyDecodedEntriesToFSM(ctx, setup.stop, setup.confState, nil, decoded)
+		}()
 
-	// The rotating entry is in the same Raft apply work item. It must not
-	// prepare (and rotate the cache) until the preceding batch is durable.
-	require.NoError(t, setup.fsm.CommitPreparedBatch(ctx, previous.prepared))
-	previous.done <- nil
+		var previous commitWork
+		select {
+		case previous = <-setup.applier.commitCh:
+		case <-time.After(5 * time.Second):
+			t.Fatal("pre-rotation batch was not prepared")
+		}
+		// Let the applier run as far as it can while the previous commit is
+		// withheld; a forbidden early rotation would have happened by now.
+		synctest.Wait()
+		require.Zero(t, setup.fsm.Registry.Cache.CurrentGeneration())
+		require.False(t, listLedgerContains(setup.store, "rotation-ledger-a"))
 
-	var rotating commitWork
-	select {
-	case rotating = <-setup.applier.commitCh:
-	case <-time.After(5 * time.Second):
-		t.Fatal("rotating batch was not prepared after the previous commit")
-	}
-	require.True(t, listLedgerContains(setup.store, "rotation-ledger-a"))
-	require.Equal(t, uint64(1), setup.fsm.Registry.Cache.CurrentGeneration())
-	require.NoError(t, setup.fsm.CommitPreparedBatch(ctx, rotating.prepared))
-	rotating.done <- nil
-	require.NoError(t, <-result)
-	require.NoError(t, setup.applier.waitPendingCommit(ctx))
+		// The rotating entry is in the same Raft apply work item. It must not
+		// prepare (and rotate the cache) until the preceding batch is durable.
+		require.NoError(t, setup.fsm.CommitPreparedBatch(ctx, previous.prepared))
+		previous.done <- nil
+
+		var rotating commitWork
+		select {
+		case rotating = <-setup.applier.commitCh:
+		case <-time.After(5 * time.Second):
+			t.Fatal("rotating batch was not prepared after the previous commit")
+		}
+		require.True(t, listLedgerContains(setup.store, "rotation-ledger-a"))
+		require.Equal(t, uint64(1), setup.fsm.Registry.Cache.CurrentGeneration())
+		require.NoError(t, setup.fsm.CommitPreparedBatch(ctx, rotating.prepared))
+		rotating.done <- nil
+		require.NoError(t, <-result)
+		require.NoError(t, setup.applier.waitPendingCommit(ctx))
+	})
 }
 
 // TestRotationPreloadReadsCommittedValue checks the original stale-seed
@@ -127,98 +132,101 @@ func TestRotationWaitsForPreviousCommit(t *testing.T) {
 // by plan.Builder (which cannot be imported by node tests without a cycle).
 func TestRotationPreloadReadsCommittedValue(t *testing.T) {
 	t.Parallel()
-	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t)
-	setup.fsm.Registry.Cache.SetGenerationThreshold(4)
-	ledgerName := "pre-rotation-ledger"
-	ledgerKey := domain.LedgerKey{Name: ledgerName}
-	ledgerID, _ := attributes.MakeKey(ledgerKey.Bytes())
-	create, _ := makeCreateLedgerEntry(t, 3, ledgerName)
-	entries := []*raftpb.Entry{
-		{Index: new(uint64(1)), Type: new(raftpb.EntryNormal)},
-		{Index: new(uint64(2)), Type: new(raftpb.EntryNormal)},
-		create,
-		{Index: new(uint64(4)), Type: new(raftpb.EntryNormal)},
-		{Index: new(uint64(5)), Type: new(raftpb.EntryNormal)},
-	}
-	decoded, err := state.DecodeEntries(entries)
-	require.NoError(t, err)
-	result := make(chan error, 1)
-	go func() {
-		result <- setup.applier.applyDecodedEntriesToFSM(ctx, setup.stop, setup.confState, nil, decoded)
-	}()
 
-	readSeed := func() (cache.CacheStatus, *commonpb.LedgerInfo, error) {
-		status := setup.fsm.Registry.Cache.Ledgers.CheckCache(9, ledgerID)
-		handle, err := setup.store.NewReadHandle()
-		if err != nil {
-			return status, nil, err
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		setup := newTestApplierSetup(t)
+		setup.fsm.Registry.Cache.SetGenerationThreshold(4)
+		ledgerName := "pre-rotation-ledger"
+		ledgerKey := domain.LedgerKey{Name: ledgerName}
+		ledgerID, _ := attributes.MakeKey(ledgerKey.Bytes())
+		create, _ := makeCreateLedgerEntry(t, 3, ledgerName)
+		entries := []*raftpb.Entry{
+			{Index: new(uint64(1)), Type: new(raftpb.EntryNormal)},
+			{Index: new(uint64(2)), Type: new(raftpb.EntryNormal)},
+			create,
+			{Index: new(uint64(4)), Type: new(raftpb.EntryNormal)},
+			{Index: new(uint64(5)), Type: new(raftpb.EntryNormal)},
 		}
-		defer func() { _ = handle.Close() }()
-		seed, err := setup.fsm.Registry.Attrs.Ledger.Get(handle, ledgerKey.Bytes())
-
-		return status, seed, err
-	}
-
-	var previous commitWork
-	select {
-	case previous = <-setup.applier.commitCh:
-	case <-time.After(5 * time.Second):
-		t.Fatal("pre-rotation batch was not prepared")
-	}
-	// Give the applier time to reach a forbidden early rotation. Keep draining
-	// its commit work even if this assertion fails, so the test cannot hang.
-	rotationWaited := assert.Never(t, func() bool {
-		return setup.fsm.Registry.Cache.CurrentGeneration() != 0
-	}, 100*time.Millisecond, 5*time.Millisecond)
-	status, seed, seedErr := readSeed()
-	observedRotation := !rotationWaited
-
-	serviceCommit := func(work commitWork) {
-		if !observedRotation && setup.fsm.Registry.Cache.CurrentGeneration() != 0 {
-			status, seed, seedErr = readSeed()
-			observedRotation = true
-		}
-		err := setup.fsm.CommitPreparedBatch(ctx, work.prepared)
-		work.done <- err
+		decoded, err := state.DecodeEntries(entries)
 		require.NoError(t, err)
-	}
-	serviceCommit(previous)
+		result := make(chan error, 1)
+		go func() {
+			result <- setup.applier.applyDecodedEntriesToFSM(ctx, setup.stop, setup.confState, nil, decoded)
+		}()
 
-	// The apply loop can submit more than one batch before returning. Service
-	// every submission, including on the regression path, before asserting.
-	var applyErr error
-	deadline := time.After(5 * time.Second)
-	applyDone := false
-	for !applyDone {
-		select {
-		case work := <-setup.applier.commitCh:
-			serviceCommit(work)
-		case applyErr = <-result:
-			applyDone = true
-		case <-deadline:
-			t.Fatal("applier did not finish after draining commit work")
+		readSeed := func() (cache.CacheStatus, *commonpb.LedgerInfo, error) {
+			status := setup.fsm.Registry.Cache.Ledgers.CheckCache(9, ledgerID)
+			handle, err := setup.store.NewReadHandle()
+			if err != nil {
+				return status, nil, err
+			}
+			defer func() { _ = handle.Close() }()
+			seed, err := setup.fsm.Registry.Attrs.Ledger.Get(handle, ledgerKey.Bytes())
+
+			return status, seed, err
 		}
-	}
-	// result is sent only after the applier has queued its final commit. Both
-	// channels may be ready in the select above, so drain the buffered work
-	// before waiting on the final commit's completion.
-drainQueued:
-	for {
+
+		var previous commitWork
 		select {
-		case work := <-setup.applier.commitCh:
-			serviceCommit(work)
-		default:
-			break drainQueued
+		case previous = <-setup.applier.commitCh:
+		case <-time.After(5 * time.Second):
+			t.Fatal("pre-rotation batch was not prepared")
 		}
-	}
-	require.NoError(t, applyErr)
-	require.NoError(t, setup.applier.waitPendingCommit(ctx))
-	require.True(t, observedRotation, "the test must observe a cache rotation")
-	require.Equal(t, cache.CacheMiss, status, "index 9 cannot use this Gen1-only ledger")
-	require.NoError(t, seedErr, "the required preload seed must already be durable")
-	require.NotNil(t, seed)
-	require.Equal(t, ledgerName, seed.GetName())
+		// Let the applier run as far as it can, so a forbidden early rotation
+		// has happened by now. Keep draining its commit work even if this
+		// assertion fails, so the test cannot hang.
+		synctest.Wait()
+		rotationWaited := assert.Zero(t, setup.fsm.Registry.Cache.CurrentGeneration())
+		status, seed, seedErr := readSeed()
+		observedRotation := !rotationWaited
+
+		serviceCommit := func(work commitWork) {
+			if !observedRotation && setup.fsm.Registry.Cache.CurrentGeneration() != 0 {
+				status, seed, seedErr = readSeed()
+				observedRotation = true
+			}
+			err := setup.fsm.CommitPreparedBatch(ctx, work.prepared)
+			work.done <- err
+			require.NoError(t, err)
+		}
+		serviceCommit(previous)
+
+		// The apply loop can submit more than one batch before returning. Service
+		// every submission, including on the regression path, before asserting.
+		var applyErr error
+		deadline := time.After(5 * time.Second)
+		applyDone := false
+		for !applyDone {
+			select {
+			case work := <-setup.applier.commitCh:
+				serviceCommit(work)
+			case applyErr = <-result:
+				applyDone = true
+			case <-deadline:
+				t.Fatal("applier did not finish after draining commit work")
+			}
+		}
+		// result is sent only after the applier has queued its final commit. Both
+		// channels may be ready in the select above, so drain the buffered work
+		// before waiting on the final commit's completion.
+	drainQueued:
+		for {
+			select {
+			case work := <-setup.applier.commitCh:
+				serviceCommit(work)
+			default:
+				break drainQueued
+			}
+		}
+		require.NoError(t, applyErr)
+		require.NoError(t, setup.applier.waitPendingCommit(ctx))
+		require.True(t, observedRotation, "the test must observe a cache rotation")
+		require.Equal(t, cache.CacheMiss, status, "index 9 cannot use this Gen1-only ledger")
+		require.NoError(t, seedErr, "the required preload seed must already be durable")
+		require.NotNil(t, seed)
+		require.Equal(t, ledgerName, seed.GetName())
+	})
 }
 
 type replayRotationNotifier struct {
@@ -321,49 +329,55 @@ func TestThresholdResetDoesNotPrepareAfterFailedCommit(t *testing.T) {
 
 func TestThresholdResetWaitsForPreviousCommit(t *testing.T) {
 	t.Parallel()
-	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t)
-	entry, _ := makeCreateLedgerEntry(t, 1, "before-reset")
-	proposal := commands.NewCommand()
-	proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterConfig)
-	proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
-		Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{
-			ClusterConfig: &commonpb.ClusterConfig{RotationThreshold: 2},
-		},
-	}}
-	data, err := proposal.MarshalVT()
-	require.NoError(t, err)
-	configEntry := &raftpb.Entry{Index: new(uint64(2)), Term: new(uint64(1)), Type: new(raftpb.EntryNormal), Data: data}
-	decoded, err := state.DecodeEntries([]*raftpb.Entry{entry, configEntry})
-	require.NoError(t, err)
 
-	epoch := setup.fsm.Registry.Cache.Epoch()
-	result := make(chan error, 1)
-	go func() {
-		result <- setup.applier.applyDecodedEntriesToFSM(ctx, setup.stop, setup.confState, nil, decoded)
-	}()
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		setup := newTestApplierSetup(t)
+		entry, _ := makeCreateLedgerEntry(t, 1, "before-reset")
+		proposal := commands.NewCommand()
+		proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterConfig)
+		proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+			Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{
+				ClusterConfig: &commonpb.ClusterConfig{RotationThreshold: 2},
+			},
+		}}
+		data, err := proposal.MarshalVT()
+		require.NoError(t, err)
+		configEntry := &raftpb.Entry{Index: new(uint64(2)), Term: new(uint64(1)), Type: new(raftpb.EntryNormal), Data: data}
+		decoded, err := state.DecodeEntries([]*raftpb.Entry{entry, configEntry})
+		require.NoError(t, err)
 
-	var previous commitWork
-	select {
-	case previous = <-setup.applier.commitCh:
-	case <-time.After(5 * time.Second):
-		t.Fatal("pre-reset batch was not prepared")
-	}
-	require.Never(t, func() bool { return setup.fsm.Registry.Cache.Epoch() != epoch }, 100*time.Millisecond, 5*time.Millisecond)
-	require.NoError(t, setup.fsm.CommitPreparedBatch(ctx, previous.prepared))
-	previous.done <- nil
+		epoch := setup.fsm.Registry.Cache.Epoch()
+		result := make(chan error, 1)
+		go func() {
+			result <- setup.applier.applyDecodedEntriesToFSM(ctx, setup.stop, setup.confState, nil, decoded)
+		}()
 
-	var configCommit commitWork
-	select {
-	case configCommit = <-setup.applier.commitCh:
-	case <-time.After(5 * time.Second):
-		t.Fatal("config batch was not prepared after the previous commit")
-	}
-	require.True(t, listLedgerContains(setup.store, "before-reset"))
-	require.Equal(t, epoch+1, setup.fsm.Registry.Cache.Epoch())
-	require.Equal(t, uint64(2), setup.fsm.Registry.Cache.GenerationThreshold())
-	require.NoError(t, setup.fsm.CommitPreparedBatch(ctx, configCommit.prepared))
-	configCommit.done <- nil
-	require.NoError(t, <-result)
-	require.NoError(t, setup.applier.waitPendingCommit(ctx))
+		var previous commitWork
+		select {
+		case previous = <-setup.applier.commitCh:
+		case <-time.After(5 * time.Second):
+			t.Fatal("pre-reset batch was not prepared")
+		}
+		// The config entry cannot reset the threshold while the previous
+		// commit is withheld, however far the applier runs.
+		synctest.Wait()
+		require.Equal(t, epoch, setup.fsm.Registry.Cache.Epoch())
+		require.NoError(t, setup.fsm.CommitPreparedBatch(ctx, previous.prepared))
+		previous.done <- nil
+
+		var configCommit commitWork
+		select {
+		case configCommit = <-setup.applier.commitCh:
+		case <-time.After(5 * time.Second):
+			t.Fatal("config batch was not prepared after the previous commit")
+		}
+		require.True(t, listLedgerContains(setup.store, "before-reset"))
+		require.Equal(t, epoch+1, setup.fsm.Registry.Cache.Epoch())
+		require.Equal(t, uint64(2), setup.fsm.Registry.Cache.GenerationThreshold())
+		require.NoError(t, setup.fsm.CommitPreparedBatch(ctx, configCommit.prepared))
+		configCommit.done <- nil
+		require.NoError(t, <-result)
+		require.NoError(t, setup.applier.waitPendingCommit(ctx))
+	})
 }

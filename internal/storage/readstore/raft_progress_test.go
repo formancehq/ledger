@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -86,55 +87,59 @@ func TestWaitForRaftProgressReturnsTerminalProjectionFailure(t *testing.T) {
 func TestAuditRaftProgressWaitsThroughRebuildAndRejectsDisabled(t *testing.T) {
 	t.Parallel()
 
-	s := newTestStore(t)
-	disabled, rebuilding := s.AuditProjectionState()
-	require.False(t, disabled)
-	require.False(t, rebuilding)
+	// The pending waits time out on the bubble's fake clock, once the waiter
+	// is parked, instead of costing real deadlines.
+	synctest.Test(t, func(t *testing.T) {
+		s := newTestStore(t)
+		disabled, rebuilding := s.AuditProjectionState()
+		require.False(t, disabled)
+		require.False(t, rebuilding)
 
-	s.SetAuditProjectionState(false, true)
-	disabled, rebuilding, generation := s.AuditProjectionStateWithGeneration()
-	require.False(t, disabled)
-	require.True(t, rebuilding)
-	require.Equal(t, uint64(1), generation)
+		s.SetAuditProjectionState(false, true)
+		disabled, rebuilding, generation := s.AuditProjectionStateWithGeneration()
+		require.False(t, disabled)
+		require.True(t, rebuilding)
+		require.Equal(t, uint64(1), generation)
 
-	waitCtx, cancelWait := context.WithTimeout(t.Context(), 100*time.Millisecond)
-	defer cancelWait()
-	require.ErrorIs(t, s.WaitForAuditRaftProgress(waitCtx, 1), context.DeadlineExceeded,
-		"rebuilding is transient: the certificate wait must remain pending")
+		waitCtx, cancelWait := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		defer cancelWait()
+		require.ErrorIs(t, s.WaitForAuditRaftProgress(waitCtx, 1), context.DeadlineExceeded,
+			"rebuilding is transient: the certificate wait must remain pending")
 
-	batch := s.NewBatch()
-	require.NoError(t, s.WriteAuditRaftProgress(batch, 1))
-	require.NoError(t, batch.Commit())
-	s.NotifyProgress()
+		batch := s.NewBatch()
+		require.NoError(t, s.WriteAuditRaftProgress(batch, 1))
+		require.NoError(t, batch.Commit())
+		s.NotifyProgress()
 
-	certifiedCtx, cancelCertified := context.WithTimeout(t.Context(), 100*time.Millisecond)
-	defer cancelCertified()
-	require.ErrorIs(t, s.WaitForAuditRaftProgress(certifiedCtx, 1), context.DeadlineExceeded,
-		"a stale certificate must not become ready while rebuilding")
+		certifiedCtx, cancelCertified := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		defer cancelCertified()
+		require.ErrorIs(t, s.WaitForAuditRaftProgress(certifiedCtx, 1), context.DeadlineExceeded,
+			"a stale certificate must not become ready while rebuilding")
 
-	// Repeating the same state does not create a fictitious lifecycle change.
-	s.SetAuditProjectionState(false, true)
-	_, _, sameGeneration := s.AuditProjectionStateWithGeneration()
-	require.Equal(t, generation, sameGeneration)
+		// Repeating the same state does not create a fictitious lifecycle change.
+		s.SetAuditProjectionState(false, true)
+		_, _, sameGeneration := s.AuditProjectionStateWithGeneration()
+		require.Equal(t, generation, sameGeneration)
 
-	s.SetAuditProjectionState(false, false)
-	require.NoError(t, s.WaitForAuditRaftProgress(t.Context(), 1),
-		"the waiter may consume the certificate only after the projection becomes ready")
+		s.SetAuditProjectionState(false, false)
+		require.NoError(t, s.WaitForAuditRaftProgress(t.Context(), 1),
+			"the waiter may consume the certificate only after the projection becomes ready")
 
-	s.SetAuditProjectionFailed()
-	disabled, rebuilding, generation = s.AuditProjectionStateWithGeneration()
-	require.False(t, disabled)
-	require.True(t, rebuilding, "admission treats a failed projection as transiently unavailable")
-	require.Equal(t, uint64(3), generation)
-	require.ErrorIs(t, s.WaitForAuditRaftProgress(context.Background(), 1), ErrAuditProjectionFailed,
-		"an in-flight checkpoint must release the normal indexer on a steady-state failure")
+		s.SetAuditProjectionFailed()
+		disabled, rebuilding, generation = s.AuditProjectionStateWithGeneration()
+		require.False(t, disabled)
+		require.True(t, rebuilding, "admission treats a failed projection as transiently unavailable")
+		require.Equal(t, uint64(3), generation)
+		require.ErrorIs(t, s.WaitForAuditRaftProgress(context.Background(), 1), ErrAuditProjectionFailed,
+			"an in-flight checkpoint must release the normal indexer on a steady-state failure")
 
-	s.SetAuditProjectionState(true, false)
-	disabled, rebuilding, generation = s.AuditProjectionStateWithGeneration()
-	require.True(t, disabled)
-	require.False(t, rebuilding)
-	require.Equal(t, uint64(4), generation)
-	require.ErrorIs(t, s.WaitForAuditRaftProgress(context.Background(), 1), ErrAuditProjectionUnavailable)
+		s.SetAuditProjectionState(true, false)
+		disabled, rebuilding, generation = s.AuditProjectionStateWithGeneration()
+		require.True(t, disabled)
+		require.False(t, rebuilding)
+		require.Equal(t, uint64(4), generation)
+		require.ErrorIs(t, s.WaitForAuditRaftProgress(context.Background(), 1), ErrAuditProjectionUnavailable)
+	})
 }
 
 func TestWaitForProgressWakesAfterNotification(t *testing.T) {
