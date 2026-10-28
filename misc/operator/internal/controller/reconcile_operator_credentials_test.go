@@ -29,7 +29,34 @@ func TestReconcileOperatorCredentialsCreatesScopedCredential(t *testing.T) {
 	require.NoError(t, r.Get(context.Background(), types.NamespacedName{Name: operatorCredentialsName(cluster)}, credentials))
 	require.Equal(t, operatorCredentialScopes, credentials.Spec.Scopes)
 	require.False(t, credentials.Spec.Superuser)
+	require.Empty(t, credentials.Spec.AdditionalNamespaces)
 	require.Equal(t, map[string]string{labelOperatorCredential: operatorCredentialsSelectorValue(cluster)}, credentials.Spec.Selector.MatchLabels)
+}
+
+func TestReconcileOperatorCredentialsRequiresExpectedDistributedSecret(t *testing.T) {
+	scheme := authKeysScheme(t)
+	cluster := authEnabledCluster("ledger", "tenant-a", nil)
+	r := &ClusterReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster).Build(),
+		Scheme: scheme,
+	}
+
+	ready, err := r.reconcileOperatorCredentials(context.Background(), cluster)
+	require.NoError(t, err)
+	require.False(t, ready)
+
+	credentials := &ledgerv1alpha1.Credentials{}
+	require.NoError(t, r.Get(context.Background(), types.NamespacedName{Name: operatorCredentialsName(cluster)}, credentials))
+	credentials.Status.Phase = "Ready"
+	credentials.Status.DistributedSecretRefs = []ledgerv1alpha1.SecretReference{{
+		Namespace: cluster.Namespace,
+		Name:      "stale-secret",
+	}}
+	require.NoError(t, r.Update(context.Background(), credentials))
+
+	ready, err = r.reconcileOperatorCredentials(context.Background(), cluster)
+	require.NoError(t, err)
+	require.False(t, ready)
 }
 
 func TestReconcileOperatorCredentialsDeletesWhenAuthDisabled(t *testing.T) {
