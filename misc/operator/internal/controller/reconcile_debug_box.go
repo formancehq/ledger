@@ -103,6 +103,9 @@ func (r *ClusterReconciler) reconcileDebugBoxPod(ctx context.Context, ledger *le
 		}
 		volumes := []corev1.Volume{{Name: "operator-credentials", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: secretName}}}}
 		mounts := []corev1.VolumeMount{{Name: "operator-credentials", MountPath: "/operator-credentials", ReadOnly: true}}
+		volumes = append(volumes, corev1.Volume{Name: "ledgerctl-wrapper", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}})
+		mounts = append(mounts, corev1.VolumeMount{Name: "ledgerctl-wrapper", MountPath: "/ledgerctl-wrapper"})
+		env = append(env, strEnv("PATH", "/ledgerctl-wrapper:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"))
 		if ledger.Spec.TLS != nil && ledger.Spec.TLS.Enabled && ledger.Spec.TLS.SecretName != "" {
 			if ledger.Spec.TLS.CASecretKey != "" {
 				env = append(env, strEnv("LEDGERCTL_TLS_CA_CERT", "/tls/"+ledger.Spec.TLS.CASecretKey))
@@ -126,16 +129,16 @@ func (r *ClusterReconciler) reconcileDebugBoxPod(ctx context.Context, ledger *le
 				Image:           fmt.Sprintf("%s:%s", ledger.Spec.Image.Repository, ledger.Spec.Image.Tag),
 				ImagePullPolicy: ledger.Spec.Image.PullPolicy,
 				Command:         []string{"/bin/bash", "-c"},
-				Args: []string{`ledgerctl() {
-  if [[ "$1" == "auth" && "$2" == "generate-token" ]]; then
-    /app/ledgerctl "$@"
-    return
-  fi
-  local token
-  token="$(/app/ledgerctl auth generate-token --signing-key "$OPERATOR_SIGNING_KEY" --key-id "$OPERATOR_SIGNING_KEY_ID" --subject ledger-debug-box --scopes ledger:ReadOps,ledger:WriteOps,ledger:ReadCluster,ledger:WriteCluster --expiration 5m)" || return
-  /app/ledgerctl "$@" --auth-token "$token"
-}
-export -f ledgerctl
+				Args: []string{`mkdir -p /ledgerctl-wrapper
+cat > /ledgerctl-wrapper/ledgerctl <<'LEDGERCTL_WRAPPER'
+#!/bin/bash
+if [[ "$1" == "auth" && "$2" == "generate-token" ]]; then
+  exec /app/ledgerctl "$@"
+fi
+token="$(/app/ledgerctl auth generate-token --signing-key "$OPERATOR_SIGNING_KEY" --key-id "$OPERATOR_SIGNING_KEY_ID" --subject ledger-debug-box --scopes ledger:ReadOps,ledger:WriteOps,ledger:ReadCluster,ledger:WriteCluster --expiration 5m)" || exit
+exec /app/ledgerctl "$@" --auth-token "$token"
+LEDGERCTL_WRAPPER
+chmod 0555 /ledgerctl-wrapper/ledgerctl
 trap : TERM INT
 sleep infinity & wait`},
 				Env:          env,

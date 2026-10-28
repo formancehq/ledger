@@ -400,14 +400,17 @@ ledgerctl ledgers list
 
 The injected `LEDGERCTL_SERVER` uses the pod DNS name covered by the TLS
 certificate rather than `localhost` or `127.0.0.1`. For TLS clusters the
-operator injects `LEDGERCTL_AUTH_TOKEN` from a dedicated operator credential
-(never from the Raft `CLUSTER_SECRET`) and, when `tls.caSecretKey` is
-configured, `LEDGERCTL_TLS_CA_CERT`; for a plaintext cluster it injects
-`LEDGERCTL_INSECURE=true`. These values follow TLS mode transitions through
-StatefulSet rollouts. If `headlessService.enabled` is `false`, `spec.extraEnv`
-must override `LEDGERCTL_SERVER` with a resolvable address. `spec.extraEnv` can
-also override any other injected `LEDGERCTL_*` value when a deployment needs
-custom client behavior.
+operator injects `LEDGERCTL_TLS_CA_CERT` when `tls.caSecretKey` is configured;
+for a plaintext cluster it injects `LEDGERCTL_INSECURE=true`. The regular
+Ledger pods do not receive a long-lived `LEDGERCTL_AUTH_TOKEN`: operator
+maintenance commands generate short-lived tokens from the mounted operator
+signing inputs when they run. For an interactive authenticated workflow, use
+the opt-in debug box described in [Authentication](./authentication.md#interactive-debug-box).
+These values follow TLS mode transitions through StatefulSet rollouts. If
+`headlessService.enabled` is `false`, `spec.extraEnv` must override
+`LEDGERCTL_SERVER` with a resolvable address. `spec.extraEnv` can also override
+any other injected `LEDGERCTL_*` value when a deployment needs custom client
+behavior.
 
 ### Disk Space Limiting
 

@@ -47,6 +47,29 @@ func TestReconcileDebugBoxCreatesSuperuserCredentialAndPod(t *testing.T) {
 	require.Equal(t, []string{"/bin/bash", "-c"}, pod.Spec.Containers[0].Command)
 	require.Equal(t, "ledgerctl", pod.Spec.Containers[0].Name)
 	require.Equal(t, operatorCredentialsSecretName(debugBoxCredentialsName(cluster)), pod.Spec.Volumes[0].Secret.SecretName)
+	require.Contains(t, pod.Spec.Containers[0].Args[0], "/ledgerctl-wrapper/ledgerctl")
+	require.Contains(t, envValue(pod.Spec.Containers[0].Env, "PATH"), "/ledgerctl-wrapper")
+	require.NotNil(t, volumeByName(pod.Spec.Volumes, "ledgerctl-wrapper").EmptyDir)
+}
+
+func envValue(env []corev1.EnvVar, name string) string {
+	for _, item := range env {
+		if item.Name == name {
+			return item.Value
+		}
+	}
+
+	return ""
+}
+
+func volumeByName(volumes []corev1.Volume, name string) corev1.Volume {
+	for _, volume := range volumes {
+		if volume.Name == name {
+			return volume
+		}
+	}
+
+	return corev1.Volume{}
 }
 
 func TestReconcileDebugBoxDeletesWhenDisabled(t *testing.T) {
