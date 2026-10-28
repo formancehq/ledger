@@ -9,6 +9,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -193,14 +194,11 @@ sleep infinity & wait`},
 	if err := r.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, pod); err == nil {
 		controller := metav1.GetControllerOf(pod)
 		if controller == nil || controller.UID != ledger.UID {
-			if err := r.Delete(ctx, pod); err != nil && !apierrors.IsNotFound(err) {
-				return fmt.Errorf("replacing debug box pod with unexpected owner: %w", err)
-			}
-
-			return nil
+			return fmt.Errorf("debug box pod %s is owned by another controller", pod.Name)
 		}
 		if pod.Annotations == nil || pod.Annotations[annotationDebugBoxSpecHash] != desiredSpecHash {
-			if err := r.Delete(ctx, pod); err != nil && !apierrors.IsNotFound(err) {
+			uid := pod.UID
+			if err := r.Delete(ctx, pod, &client.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &uid}}); err != nil && !apierrors.IsNotFound(err) {
 				return fmt.Errorf("replacing debug box pod: %w", err)
 			}
 
