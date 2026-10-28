@@ -58,7 +58,10 @@ func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Conte
 		return withAuthenticationState(ctx, false, false, nil), nil
 	}
 
-	token, hasToken := bearerTokenFromContext(ctx)
+	token, hasToken, err := BearerTokenFromGRPCContext(ctx)
+	if err != nil {
+		return ctx, err
+	}
 	if !hasToken {
 		// No bearer token: fall back to anonymous scopes.
 		effective := cfg.ScopeMapping.AnonymousScopes()
@@ -185,23 +188,26 @@ func allScopes() map[Scope]struct{} {
 // The boolean return is false when the metadata is absent or carries no
 // Bearer-prefixed authorization value — those cases are treated as "no token
 // presented" rather than "invalid token".
-func bearerTokenFromContext(ctx context.Context) (string, bool) {
+func BearerTokenFromGRPCContext(ctx context.Context) (string, bool, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return "", false
+		return "", false, nil
 	}
 
 	values := md.Get("authorization")
 	if len(values) == 0 {
-		return "", false
+		return "", false, nil
+	}
+	if len(values) != 1 {
+		return "", false, status.Error(codes.Unauthenticated, "ambiguous authorization metadata")
 	}
 
 	authHeader := values[0]
 	if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
-		return "", false
+		return "", false, nil
 	}
 
-	return strings.TrimSpace(authHeader[7:]), true
+	return strings.TrimSpace(authHeader[7:]), true, nil
 }
 
 type validatedToken struct {
