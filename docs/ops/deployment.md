@@ -394,10 +394,11 @@ Once a learner has caught up with the leader's log (within the threshold configu
 
 ### Using ledgerctl inside a cluster pod
 
-The operator configures the `ledgerctl` binary shipped in every ledger pod with
-the pod's own headless DNS address and the transport credentials matching the
-current TLS mode. After entering a pod, commands therefore work without
-connection flags when the operator-managed headless Service is enabled:
+The operator configures the `ledgerctl` binary shipped in every Ledger pod with
+the pod's own headless DNS address and the transport settings matching the
+current TLS mode. In an unauthenticated cluster, an interactive shell can use
+`ledgerctl` directly without connection flags when the operator-managed
+headless Service is enabled:
 
 ```bash
 ledgerctl cluster status
@@ -408,10 +409,13 @@ The injected `LEDGERCTL_SERVER` uses the pod DNS name covered by the TLS
 certificate rather than `localhost` or `127.0.0.1`. For TLS clusters the
 operator injects `LEDGERCTL_TLS_CA_CERT` when `tls.caSecretKey` is configured;
 for a plaintext cluster it injects `LEDGERCTL_INSECURE=true`. The regular
-Ledger pods do not receive a long-lived `LEDGERCTL_AUTH_TOKEN`: operator
-maintenance commands generate short-lived tokens from the mounted operator
-signing inputs when they run. For an interactive authenticated workflow, use
-the opt-in debug box described in [Authentication](./authentication.md#interactive-debug-box).
+Ledger pods do not receive a long-lived `LEDGERCTL_AUTH_TOKEN`, and an
+interactive shell in an authenticated Ledger pod cannot mint a service token
+from its operator signing inputs. Operator maintenance commands generate
+short-lived tokens only for the specific commands they execute. For interactive
+authenticated troubleshooting, use the opt-in debug box described in
+[Authentication](./authentication.md#interactive-debug-box), which has a
+dedicated short-lived superuser-token wrapper.
 These values follow TLS mode transitions through StatefulSet rollouts. If
 `headlessService.enabled` is `false`, `spec.extraEnv` must override
 `LEDGERCTL_SERVER` with a resolvable address. `spec.extraEnv` can also override
