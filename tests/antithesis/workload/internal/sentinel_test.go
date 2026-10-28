@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -39,7 +40,10 @@ func (s *sentinelCommitServer) Apply(_ context.Context, req *servicepb.ApplyRequ
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
 			Apply: &commonpb.ApplyLedgerLog{LedgerName: "sentinel-ledger", Log: &commonpb.LedgerLog{
 				Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-					CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 42}},
+					CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{
+						Id:        42,
+						Reference: req.GetUnsigned().GetRequests()[0].GetApply().GetAction().GetCreateTransaction().GetReference(),
+					}},
 				}},
 			}},
 		}},
@@ -114,6 +118,9 @@ func (s *sentinelSDKServer) GetTransaction(_ context.Context, request *servicepb
 
 func TestSentinelVerifySDK(t *testing.T) {
 	t.Parallel()
+	if !assert.Enabled {
+		t.Skip("requires enable_antithesis_sdk")
+	}
 	const survival = "committed sentinel transaction must survive operational events"
 	const success = "sentinel transaction read-after-write succeeded"
 	for _, code := range []codes.Code{codes.OK, codes.NotFound, codes.Unavailable, codes.DeadlineExceeded, codes.FailedPrecondition, codes.Unknown} {
@@ -124,15 +131,19 @@ func TestSentinelVerifySDK(t *testing.T) {
 				client := sdktest.Client(t, server, grpc.WithChainUnaryInterceptor(classifyUnaryInterceptor()))
 				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 				defer cancel()
-				sentinel := Sentinel{Ledger: "sdk-sentinel", Reference: "committed-reference", TxID: 42}
+				sentinel := newSentinel("sdk-sentinel", &commonpb.Transaction{Id: 42})
 				sentinel.Verify(ctx, client, "after-operation")
 				require.EqualValues(t, 1, server.calls.Load())
 			})
 			if events == nil {
 				return
 			}
+			if code != codes.OK {
+				sdktest.Absent(t, events, sentinelContentProperty)
+			}
 			switch code {
 			case codes.OK:
+				require.True(t, sdktest.Find(t, events, sentinelContentProperty).Condition)
 				event := sdktest.Find(t, events, success)
 				require.Equal(t, "Reachable", event.DisplayType)
 				require.True(t, event.Condition)
