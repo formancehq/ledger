@@ -76,6 +76,14 @@ published by the public gRPC Ingress. Deployments should also use a
 that network path must present the cluster secret, which is reserved for this
 internal listener.
 
+Persisted membership records advertise the peer service address, including its
+peer port. On the first startup after this format was introduced, Ledger runs a
+one-time migration for legacy records that still contain the public service
+port, records the membership format revision in Pebble, and then preserves
+explicit per-peer ports on later restarts and snapshot rehydrates. The migration
+is intended to be removed in the next release once all supported nodes have
+been upgraded.
+
 ### Connection Example
 
 ```go
