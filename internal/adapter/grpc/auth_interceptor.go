@@ -144,12 +144,14 @@ func rejectDirectClusterSecret(ctx context.Context, cfg internalauth.AuthConfig,
 		return nil
 	}
 	values := md.Get("authorization")
-	if len(values) != 1 || !strings.HasPrefix(strings.ToLower(values[0]), "bearer ") {
-		return nil
-	}
-	token := strings.TrimSpace(values[0][len("Bearer "):])
-	if len(token) == len(cfg.ClusterSecret) && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
-		return status.Error(codes.Unauthenticated, "cluster secret is reserved for inter-node forwarding")
+	for _, value := range values {
+		if !strings.HasPrefix(strings.ToLower(value), "bearer ") {
+			continue
+		}
+		token := strings.TrimSpace(value[len("Bearer "):])
+		if len(token) == len(cfg.ClusterSecret) && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
+			return status.Error(codes.Unauthenticated, "cluster secret is reserved for inter-node forwarding")
+		}
 	}
 
 	return nil

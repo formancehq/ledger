@@ -5,13 +5,15 @@ import (
 )
 
 const (
-	labelManagedBy          = "app.kubernetes.io/managed-by"
-	labelInstance           = "app.kubernetes.io/instance"
-	labelName               = "app.kubernetes.io/name"
-	labelOperatorCredential = "ledger.formance.com/operator-credential"
-	labelDebugBoxCredential = "ledger.formance.com/debug-box-credential"
-	annotationSpecHash      = "ledger.formance.com/spec-hash"
-	annotationAuthKeysHash  = "ledger.formance.com/auth-keys-hash"
+	labelManagedBy            = "app.kubernetes.io/managed-by"
+	labelInstance             = "app.kubernetes.io/instance"
+	labelName                 = "app.kubernetes.io/name"
+	labelOperatorCredential   = "ledger.formance.com/operator-credential"
+	labelDebugBoxCredential   = "ledger.formance.com/debug-box-credential"
+	annotationSpecHash        = "ledger.formance.com/spec-hash"
+	annotationAuthKeysHash    = "ledger.formance.com/auth-keys-hash"
+	annotationOperatorCluster = "ledger.formance.com/operator-cluster"
+	annotationDebugBoxCluster = "ledger.formance.com/debug-box-cluster"
 
 	// annotationKubectlRestartedAt is stamped on the pod template by
 	// `kubectl rollout restart`. It is user-owned state, not drift: the

@@ -729,10 +729,6 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 			"(the ledger server rejects --auth-enabled without --tls-mode=required); " +
 			"enable TLS before enabling auth")
 	}
-	if spec.DebugBox != nil && spec.DebugBox.Enabled &&
-		(spec.Auth == nil || spec.Auth.Enabled == nil || !*spec.Auth.Enabled) {
-		return errors.New("debugBox.enabled requires auth.enabled: the debug box uses a dedicated superuser credential")
-	}
 
 	if spec.Cache != nil && spec.Cache.RotationThreshold != nil && *spec.Cache.RotationThreshold <= 0 {
 		return fmt.Errorf("cache.rotationThreshold must be > 0, got %d", *spec.Cache.RotationThreshold)
