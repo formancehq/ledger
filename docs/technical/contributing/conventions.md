@@ -144,5 +144,5 @@ package-mode import path in a single directive so the package loads once.
 - [ ] Documentation updated if necessary
 - [ ] OpenAPI updated if new API
 - [ ] Protobufs regenerated if modified
-- [ ] No `time.Sleep` in tests
+- [ ] No `time.Sleep` in tests outside a `testing/synctest` bubble
 - [ ] Errors handled appropriately

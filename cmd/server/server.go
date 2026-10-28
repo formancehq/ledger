@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.uber.org/fx"
 	"go.yaml.in/yaml/v3"
@@ -361,7 +361,7 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 	}
 
 	defer func() {
-		switch loggerProvider := global.GetLoggerProvider().(type) {
+		switch loggerProvider := otel.GetLoggerProvider().(type) {
 		case *sdklog.LoggerProvider:
 			err := loggerProvider.ForceFlush(context.Background())
 			if err != nil {

@@ -78,6 +78,7 @@ needs_scenarios=false
 needs_schemathesis=false
 needs_operator=false
 needs_protocol=false
+needs_proto_lint=false
 has_change=false
 changed_packages=()
 
@@ -99,6 +100,9 @@ classify_path() {
     # scripts/checkprotocolversion, independently of the gates below.
     case "$path" in
         misc/proto/*|pkg/grpcprotocol/*) needs_protocol=true ;;
+    esac
+    case "$path" in
+        misc/proto/*|tools/buf-plugin-ledger/*) needs_proto_lint=true ;;
     esac
 
     case "$status" in
@@ -163,6 +167,13 @@ classify_path() {
             append_package "./$(dirname "$path")"
             return
             ;;
+        tools/*)
+            # Each tools/* directory is its own Go module: the root module
+            # cannot race-test it, and pre-commit builds and tests them.
+            needs_precommit=true
+            needs_tooling=true
+            return
+            ;;
     esac
 
     case "$path" in
@@ -178,7 +189,7 @@ classify_path() {
                     ;;
             esac
             ;;
-        misc/devenv/monitoring-dashboards/*|tools/*)
+        misc/devenv/monitoring-dashboards/*)
             needs_precommit=true
             needs_tooling=true
             ;;
@@ -225,6 +236,9 @@ if [[ "$needs_operator" == true ]]; then
 fi
 if [[ "$needs_protocol" == true ]]; then
     gates+=(protocol-revision)
+fi
+if [[ "$needs_proto_lint" == true ]]; then
+    gates+=(proto-lint)
 fi
 
 if [[ "$mode" == list ]]; then
@@ -292,6 +306,10 @@ echo "==> agent-check-pr: selected local gates: ${gates[*]}"
 if [[ "$needs_protocol" == true ]]; then
     # Cheap and decisive: run before the long suites.
     PROTOCOL_BASE_SHA="$base_sha" just check-protocol-version
+fi
+if [[ "$needs_proto_lint" == true ]]; then
+    go run ./scripts/lintproto
+    just test-buf-plugin
 fi
 if [[ "$needs_full" == true ]]; then
     bash "$SCRIPT_DIR/agent-check-full"

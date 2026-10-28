@@ -1,6 +1,10 @@
 package state
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,6 +14,44 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+func TestAuditReplayerDisablesWAL(t *testing.T) {
+	t.Parallel()
+
+	replayer, err := NewAuditReplayer(logging.Testing(), "test-cluster")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, replayer.Close())
+	})
+	replayDir := replayer.store.DataDir()
+
+	_, err = replayer.Replay(&commonpb.Timestamp{Data: 1}, []*raftcmdpb.Order{{
+		Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+				CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+			},
+		}},
+	}})
+	require.NoError(t, err)
+
+	err = filepath.WalkDir(replayDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".log") {
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if info.Size() != 0 {
+				return fmt.Errorf("unexpected WAL contents in %s", path)
+			}
+		}
+
+		return nil
+	})
+	require.NoError(t, err)
+}
 
 func TestAuditReplayerUsesRecoveredQueryCheckpointCounter(t *testing.T) {
 	t.Parallel()

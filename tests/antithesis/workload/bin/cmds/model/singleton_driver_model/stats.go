@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // statsUsage is the subset of the usagestore counters the model derives exactly.
@@ -61,8 +62,8 @@ func modelUsage(ls oracle.LedgerState) statsUsage {
 // linearizable routing — a ReadIndex barrier plus WaitForApplied in
 // RoutedController.readCtrl — is what puts the boundary read at or beyond every
 // bulk the model has observed committed.
-func runLedgerStats(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 2)
+func runLedgerStats(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	ledger, absent := pickLedgerReadTarget(src, c.ledgerNamesSnapshot(), 2)
 
 	c.mu.Lock()
 	readID := c.registerRead()

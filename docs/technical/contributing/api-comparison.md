@@ -8,9 +8,23 @@ This document compares the POC's API with the original Formance ledger API and d
 > intentionally unversioned. The original ledger's `/v2` is **not** preserved
 > by this POC — there is no compatibility shim.
 
+Every `/v3` operation rejects unknown query parameter names with HTTP 400
+`INVALID_REQUEST` before execution. The removed account `prefix` and transaction
+`reference` selectors use `filter`; HTTP does not support `checkpointId` for
+pinned reads, which remain available through gRPC. The unversioned ops routes
+retain their existing query handling. See [query parameter validation](../architecture/subsystems/api/http-api.md#query-parameter-validation).
+
 For the per-operation Ledger v2 → v3 path mapping, see
 [`v2-to-v3-endpoint-map.json`](v2-to-v3-endpoint-map.json). Update it in the same
 change when a route it names is renamed or removed.
+
+Cluster membership changes are exposed through the v3 `ClusterService`; the v2
+business endpoint map has no corresponding operation. Internal retries of one
+add, promote or remove call retain the original committed outcome through slow
+WAL persistence, rather than reporting a second admission error after the
+membership already changed. Success still requires local durable FSM apply;
+distinct calls keep their existing admission and cancellation semantics. This
+correction changes no route, message, field, status schema or protocol revision.
 
 HTTP typed metadata preserves exact integer values, including signed 64-bit
 bounds and values above 2^53, for metadata writes, transaction creation and
@@ -20,7 +34,40 @@ integer schema spans `-9223372036854775808` through `18446744073709551615`,
 matching signed negative and unsigned nonnegative metadata values. See
 [Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
 
+## Transaction metadata address validation
+
+Transaction creation (including bulk) rejects malformed `accountMetadata`
+addresses at admission using the existing `VALIDATION` error contract. When
+several addresses are invalid, the lexicographically smallest invalid address
+selects the typed failure. These structural rejections no longer create an audit
+entry or freeze an idempotency outcome. Valid requests, routes, fields, response
+envelopes and protocol revision 40 are unchanged. Committed entries retain
+processor validation. In v2.4.16, `TransactionRequest.ToCore` in
+`internal/api/bulking/elements.go` forwards account metadata unchanged. The
+stricter v3 address constraint already existed in its processor; this change
+makes the rejection earlier and deterministic to protect replicated audit
+history. See the [rollout restriction](../../ops/upgrades.md#account-metadata-address-validation).
+
+## Ledger integrity checking
+
+The v3 gRPC `CheckStore` and `ValidateRestore` streams verify canonical and global
+ledger policy rows independently against audited FSM replay, including retained
+tombstones. `CheckStore`'s additive `LEDGER_INFO_MISMATCH` enum value (32) reports identity,
+deletion-state, mode and mirror-source mismatches; existing field-specific error
+types remain. Protocol revision stays 40. Clients must retain failure semantics
+for unknown numeric error types; refreshed bindings expose the new symbolic name.
+`ValidateRestore` reports the same corruptions through its existing message-only
+`ValidateRestoreError` events, without an error-type enum.
+See [protocol compatibility](../architecture/subsystems/api/protocol-compatibility.md).
+There is no HTTP endpoint or envelope change, and v2 has no equivalent integrity
+stream requiring endpoint parity.
+
 ## Summary
+
+Cluster commands interrupted by local Raft shutdown now return gRPC
+`Unavailable` rather than a sanitized `Unknown`, allowing retry against a live
+node. This changes no HTTP route, request/response schema, or protocol revision.
+The v2 API has no equivalent Raft cluster-command lifecycle.
 
 ### LedgerInfo reads (EN-2780 / EN-1635)
 
@@ -1218,6 +1265,7 @@ Read endpoints comparison with the original ledger:
 | `DELETE /v3/{ledgerName}/prepared-queries/{queryName}` | ✅ | ❌ | Delete a prepared query |
 | `GET /v3/{ledgerName}/prepared-queries` | ✅ | ❌ | List prepared queries |
 | `POST /v3/{ledgerName}/prepared-queries/{queryName}/execute` | ✅ | ❌ | Execute a prepared query |
+| `POST /v3/numscripts/analyze` | ✅ | ❌ | Validate Numscript v1 source and return external inputs or typed diagnostics; requires `ledger:ReadQuery` when authentication is enabled (also granted by aggregate `ledger:read`) |
 | `GET /v3/{ledgerName}/numscripts` | ✅ | ❌ | List numscripts (greatest version of each), paged by name ([pagination](#pagination)) |
 | `GET /v3/{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (version selector, empty/latest = greatest semver) |
 | `GET /v3/{ledgerName}/numscripts/{name}/usage` | ✅ | ❌ | Get invocation count + last-used timestamp. A missing or deleted ledger returns `404 LEDGER_NOT_FOUND`; a never-invoked template returns a zero-valued `200` response |
@@ -1378,6 +1426,7 @@ Paged list RPCs follow the shared `ListOptions` contract and publish the
 | `Apply(PromoteLedger)` | Promote mirror ledger to normal mode | ✅ |
 | `Apply(SaveNumscript)` | Save an immutable numscript version (explicit full semver). Requires `ledger:WriteLedger`, matching `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ |
 | `GetNumscript` | Get a numscript by name and version selector | ✅ |
+| `AnalyzeNumscript` | Validate v1 source and return external inputs and typed diagnostics without ledger state access; HTTP parity is `POST /v3/numscripts/analyze` | ✅ |
 | `ListNumscripts` | List the greatest version of each saved numscript | ✅ |
 | `ListNumscriptVersions` | List the latest pointer and every stored version | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure). Request is `{ options }` only — no dedicated filter fields. Follows the shared `ListOptions` contract: cursor/page_size/reverse/checkpoint_id plus a bare-audit-field `QueryFilter` (outcome, ledger, caller_subject, order_type, idempotency_key, seq, proposal_id, timestamp, log_seq — bare fields resolved against the audit query target, EN-1549 replacing the old `audit[...]` syntax) resolved through the audit secondary index. `idempotency_key` supports equality and prefix matching and may return several historical entries after key reuse. Ledger scope and outcome selection are expressed as filter conditions | ✅ |
@@ -1589,7 +1638,7 @@ That proviso is the catch for third-party SDKs: a client older than the server, 
 
 The decoded representation lives at the adapter boundary by design, not in `internal/domain`. A decoded failure carries a reason and message belonging to the *sending* build. The audit chain hashes the stable reason, code and facts from `FailureDetails()`, never the diagnostic `Error()` text. No package under `internal/domain`, `internal/application/admission`, `internal/infra/state`, `internal/infra/plan` or `internal/infra/preload` may import `apierr`; `scripts/check-repo-invariants` enforces that as a dependency rule.
 
-**Two axes, deliberately separate.** The semantic `ErrorKind` answers the client; the gRPC status code is a transport-behaviour signal that drives retry and hop behaviour. The receiver preserves both: the kind through the `Descriptor`, the exact original status through the decoder's carrier (`GRPCStatus()`). Do not reconstruct a status from a `Kind`; it is lossy in both directions — `CodeForKind` sends both `KindConflict` and `KindPrecondition` as `codes.FailedPrecondition`, so a code cannot name a kind, and a reason from a newer build carries a kind this enum cannot derive at all. The axes may also disagree deliberately: the removed `READ_INDEX_NOT_CAUGHT_UP` was semantically `KindUnavailable` (`503` + `Retry-After` on REST) while travelling as `codes.FailedPrecondition`, because `actions.GRPCRetryPolicy` retries `codes.Unavailable` fifty times at 0.2s and the semantic code would have turned a read-index lag into a ten-second client-side hang.
+**Two axes, deliberately separate.** The semantic `ErrorKind` answers the client; the gRPC status code is a transport-behaviour signal that drives retry and hop behaviour. The receiver preserves both: the kind through the `Descriptor`, the exact original status through the decoder's carrier (`GRPCStatus()`). Do not reconstruct a status from a `Kind`; it is lossy in both directions — `CodeForKind` sends both `KindConflict` and `KindPrecondition` as `codes.FailedPrecondition`, so a code cannot name a kind, and a reason from a newer build carries a kind this enum cannot derive at all. The axes may also disagree deliberately: the removed `READ_INDEX_NOT_CAUGHT_UP` was semantically `KindUnavailable` (`503` + `Retry-After` on REST) while travelling as `codes.FailedPrecondition`, because `actions.GRPCRetryPolicy` makes five total attempts on `codes.Unavailable` with four exponential backoffs totaling 3.75s before jitter; the semantic code would have turned a read-index lag into a multi-second client-side delay.
 
 **Mismatch policy.** A reason ledger knows is a reason whose legitimate wire codes it knows: `CodeForKind(KindForReason(reason))`, today exactly one code, since every enum reason is encoded through `describableToGRPCStatus` and nothing else. Validation stays reason-keyed rather than kind-keyed so a reason that must travel under a second code can be widened alone. A known reason arriving under a code outside that set is a protocol fault, not a business outcome: every consumer branches on `apierr.InvalidWire` and answers its own internal-error representation — `500 INTERNAL_ERROR` + correlation ID on REST (unitary *and* per bulk element), `codes.Unknown` + correlation ID on gRPC, the invalid-pair message on `ledgerctl` — so the received message and metadata are dropped rather than echoed as trusted business information. An unknown reason cannot be validated and is preserved verbatim — reason, message, metadata and exact status.
 

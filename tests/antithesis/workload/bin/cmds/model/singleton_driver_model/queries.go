@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"github.com/holiman/uint256"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -25,6 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // Query reads exercise ListAccounts / ListTransactions — the filtered,
@@ -64,14 +64,14 @@ const (
 // the resume token is exercised; one in sixteen leaves the size to the server
 // (0) and one in thirty-two asks past the maximum — the two requests the server
 // answers with a size of its own choosing.
-func queryPageSize() (requested, effective int) {
+func queryPageSize(src *generation.Source) (requested, effective int) {
 	switch {
-	case oneIn(32):
-		requested = serverMaxPageSize + 1 + int(internal.Rand().Uint64()%64)
-	case oneIn(16):
+	case oneIn(src, 32):
+		requested = serverMaxPageSize + 1 + int(src.Uint64Range(0, 64-1))
+	case oneIn(src, 16):
 		requested = 0
 	default:
-		requested = int(random.RandomChoice([]uint8{1, 2, 3, 5, 10, 50}))
+		requested = int(generation.Choice(src, []uint8{1, 2, 3, 5, 10, 50}))
 	}
 
 	return requested, effectivePageSize(requested)
@@ -108,21 +108,21 @@ func noteClampedPageSize(requested, effective int) {
 // runAccountQuery issues a linearizable ListAccounts and checks the streamed
 // page against the model's ordered window (see validateAccountQuery). Filters
 // cover indexed and index-free reads plus missing-index and invalid-kind probes.
-func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
-	filter := rollFilterShape(genAccountFilter(c.sampleAccountFieldSeeds(ledger)))
+func runAccountQuery(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	ledger, _ := pickLedgerReadTarget(src, c.liveLedgerNamesSnapshot(), 0)
+	filter := rollFilterShape(src, genAccountFilter(src, c.sampleAccountFieldSeeds(ledger)))
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
 	_, _, bareAsset := hasAssetTarget(filter)
 	invalidTarget := bareLeaf(filter) && filterInvalidForTarget(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	refused := classifyRejectedFilter(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
-	requestedPageSize, pageSize := queryPageSize()
+	requestedPageSize, pageSize := queryPageSize(src)
 	noteClampedPageSize(requestedPageSize, pageSize)
-	reverse := random.RandomChoice([]uint8{0, 1}) == 1
+	reverse := generation.Choice(src, []uint8{0, 1}) == 1
 
 	var cursor string
-	if random.RandomChoice([]uint8{0, 1}) == 0 {
-		cursor = poolAddress()
+	if generation.Choice(src, []uint8{0, 1}) == 0 {
+		cursor = poolAddress(src)
 	}
 
 	c.mu.Lock()
@@ -253,34 +253,34 @@ func (c *Checker) sampleAccountFieldSeeds(ledger string) []fieldSeed {
 // runTransactionQuery issues a linearizable ListTransactions and checks the
 // streamed page against the model's ordered window (see validateTransactionQuery).
 // Filters cover indexed and index-free reads plus missing-index and invalid-kind probes.
-func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
-	filter := genTransactionFilter(c.sampleTxFilterSeeds(ledger))
+func runTransactionQuery(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	ledger, _ := pickLedgerReadTarget(src, c.liveLedgerNamesSnapshot(), 0)
+	filter := genTransactionFilter(src, c.sampleTxFilterSeeds(src, ledger))
 	unsupportedBuiltin := false
-	if probe, rolledProbe := rollUnsupportedBuiltinField(); rolledProbe {
+	if probe, rolledProbe := rollUnsupportedBuiltinField(src); rolledProbe {
 		filter, unsupportedBuiltin = probe, true
 	} else {
-		filter = rollFilterShape(filter)
+		filter = rollFilterShape(src, filter)
 	}
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, needed)
 	invalidTarget := bareLeaf(filter) && filterInvalidForTarget(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	refused := classifyRejectedFilter(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
-	requestedPageSize, pageSize := queryPageSize()
+	requestedPageSize, pageSize := queryPageSize(src)
 	noteClampedPageSize(requestedPageSize, pageSize)
-	reverse := random.RandomChoice([]uint8{0, 1}) == 1
+	reverse := generation.Choice(src, []uint8{0, 1}) == 1
 
 	var (
 		cursor  string
 		afterID uint64
 	)
 
-	malformed, rolled := rollMalformedCursor()
+	malformed, rolled := rollMalformedCursor(src)
 	switch {
 	case rolled:
 		cursor = malformed
-	case random.RandomChoice([]uint8{0, 1}) == 0:
-		afterID = 1 + internal.Rand().Uint64()%256
+	case generation.Choice(src, []uint8{0, 1}) == 0:
+		afterID = 1 + src.Uint64Range(0, 256-1)
 		cursor = pageToken(strconv.FormatUint(afterID, 10))
 	}
 
@@ -468,15 +468,15 @@ var unsupportedBuiltinFields = []commonpb.TransactionBuiltinIndex{
 
 // rollUnsupportedBuiltinField returns a range filter over a builtin field that
 // carries no uint64 order, one read in twenty-four.
-func rollUnsupportedBuiltinField() (*commonpb.QueryFilter, bool) {
-	if !oneIn(24) {
+func rollUnsupportedBuiltinField(src *generation.Source) (*commonpb.QueryFilter, bool) {
+	if !oneIn(src, 24) {
 		return nil, false
 	}
 
 	lo, hi := uint64(1), uint64(1_000_000)
 
 	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
-		Field: random.RandomChoice(unsupportedBuiltinFields),
+		Field: generation.Choice(src, unsupportedBuiltinFields),
 		Cond:  &commonpb.UintCondition{Min: &lo, Max: &hi},
 	}}}, true
 }
@@ -1052,92 +1052,94 @@ func isIndexNotFound(err error) bool {
 	return status.Code(err) == codes.FailedPrecondition && internal.HasErrorReason(err, "INDEX_NOT_FOUND")
 }
 
-// oneIn reports a 1-in-n chance through the Antithesis chooser, so the platform
-// can steer toward the (rare) branch it gates. n must be in [1, 256].
-func oneIn(n int) bool {
+// oneIn selects one of n Hegel integer choices (nominal weight 1/n).
+// Hegel may bias integer draws; this is not a frequency guarantee.
+// n must be in [1, 256].
+func oneIn(src *generation.Source, n int) bool {
 	choices := make([]uint8, n)
 	for i := range choices {
 		choices[i] = uint8(i)
 	}
 
-	return random.RandomChoice(choices) == 0
+	return generation.Choice(src, choices) == 0
 }
 
 // genAccountFilter rolls a query filter for ListAccounts. The sequential rolls
 // try an undeclared-field probe (1/8), a kind-mismatch probe (1/12), has-asset
 // (1/6), a target-invalid condition (1/16), then the no-filter universe (1/4).
-// These odds are conditional on earlier rolls missing. The remaining choices
-// mix declared metadata filters with address leaves or use index-free filters.
-func genAccountFilter(seeds []fieldSeed) *commonpb.QueryFilter {
+// These nominal weights apply only after earlier rolls miss; Hegel controls
+// actual frequencies. The remaining choices mix declared metadata filters with
+// address leaves or use index-free filters.
+func genAccountFilter(src *generation.Source, seeds []fieldSeed) *commonpb.QueryFilter {
 	switch {
-	case oneIn(8):
+	case oneIn(src, 8):
 		// A Field leaf on an UNDECLARED key: the index-not-found probe.
-		return filterMetaExists("undeclared-" + metaKey())
-	case oneIn(12):
+		return filterMetaExists("undeclared-" + metaKey(src))
+	case oneIn(src, 12):
 		// A bare kind-mismatched Field leaf: the FILTER_COMPILATION probe.
-		if f := genMismatchedFieldLeaf(seeds); f != nil {
+		if f := genMismatchedFieldLeaf(src, seeds); f != nil {
 			return f
 		}
 
-		return filterMetaExists(metaKey())
-	case oneIn(6):
-		return genAccountAssetFilter()
-	case oneIn(16):
+		return filterMetaExists(metaKey(src))
+	case oneIn(src, 6):
+		return genAccountAssetFilter(src)
+	case oneIn(src, 16):
 		// Target-invalid probe: a transactions-only condition, rejected on accounts.
-		if random.RandomChoice([]uint8{0, 1}) == 0 {
+		if generation.Choice(src, []uint8{0, 1}) == 0 {
 			return filterReverted(true)
 		}
 
 		return filterTxIDRange(0, 255)
-	case oneIn(4):
+	case oneIn(src, 4):
 		return nil // top-level universe (no filter)
-	case random.RandomChoice([]uint8{0, 1}) == 0:
-		return genAccountFilterIndexed(seeds, 0)
+	case generation.Choice(src, []uint8{0, 1}) == 0:
+		return genAccountFilterIndexed(src, seeds, 0)
 	default:
-		return genAccountFilterFree(0)
+		return genAccountFilterFree(src, 0)
 	}
 }
 
 // genAccountFilterIndexed rolls an accounts filter mixing metadata Field
 // leaves (on declared keys) and has-asset leaves with the index-free address
 // leaves.
-func genAccountFilterIndexed(seeds []fieldSeed, depth int) *commonpb.QueryFilter {
-	if depth >= maxQueryGenDepth || random.RandomChoice([]uint8{0, 1}) == 0 {
-		if oneIn(4) {
-			return genAccountAssetFilter()
+func genAccountFilterIndexed(src *generation.Source, seeds []fieldSeed, depth int) *commonpb.QueryFilter {
+	if depth >= maxQueryGenDepth || generation.Choice(src, []uint8{0, 1}) == 0 {
+		if oneIn(src, 4) {
+			return genAccountAssetFilter(src)
 		}
-		if f := genFieldLeaf(seeds); f != nil && random.RandomChoice([]uint8{0, 1, 2}) != 0 {
+		if f := genFieldLeaf(src, seeds); f != nil && generation.Choice(src, []uint8{0, 1, 2}) != 0 {
 			return f
 		}
 
-		return genAccountFilterFree(depth)
+		return genAccountFilterFree(src, depth)
 	}
 
-	return genBoolean(depth, func(d int) *commonpb.QueryFilter { return genAccountFilterIndexed(seeds, d) })
+	return genBoolean(src, depth, func(d int) *commonpb.QueryFilter { return genAccountFilterIndexed(src, seeds, d) })
 }
 
 // genAccountFilterFree rolls a non-nil index-free accounts filter: an address
 // prefix/exact leaf, or a boolean composition of the same. It never returns nil
 // — universe is expressible only as the absent top-level filter (a nil child in
 // a repeated And/Or field marshals as an empty condition the compiler rejects).
-func genAccountFilterFree(depth int) *commonpb.QueryFilter {
-	if depth >= maxQueryGenDepth || random.RandomChoice([]uint8{0, 1}) == 0 {
+func genAccountFilterFree(src *generation.Source, depth int) *commonpb.QueryFilter {
+	if depth >= maxQueryGenDepth || generation.Choice(src, []uint8{0, 1}) == 0 {
 		// The role only selects an index on the transactions target; accounts
 		// resolve the address the same way under any of the three.
-		role := random.RandomChoice([]commonpb.AddressRole{
+		role := generation.Choice(src, []commonpb.AddressRole{
 			commonpb.AddressRole_ADDRESS_ROLE_ANY,
 			commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
 			commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
 		})
 
-		if random.RandomChoice([]uint8{0, 1}) == 0 {
-			return filterAddrPrefixRole(poolName()+":", role)
+		if generation.Choice(src, []uint8{0, 1}) == 0 {
+			return filterAddrPrefixRole(poolName(src)+":", role)
 		}
 
-		return filterAddrExactRole(poolAddress(), role)
+		return filterAddrExactRole(poolAddress(src), role)
 	}
 
-	return genBoolean(depth, genAccountFilterFree)
+	return genBoolean(src, depth, func(d int) *commonpb.QueryFilter { return genAccountFilterFree(src, d) })
 }
 
 // txFilterSeeds carries committed-state samples the transaction filter
@@ -1152,16 +1154,16 @@ type txFilterSeeds struct {
 
 // sampleTxFilterSeeds snapshots up to a handful of committed references and
 // known date stamps of the ledger. Acquires c.mu.
-func (c *Checker) sampleTxFilterSeeds(ledger string) txFilterSeeds {
+func (c *Checker) sampleTxFilterSeeds(src *generation.Source, ledger string) txFilterSeeds {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	return txFilterSeedsOf(c.modelState.Ledger(ledger))
+	return txFilterSeedsOf(src, c.modelState.Ledger(ledger))
 }
 
 // txFilterSeedsOf is the lock-free core of sampleTxFilterSeeds, for callers
 // that already hold a committed state snapshot (the bulk generator).
-func txFilterSeedsOf(ls oracle.LedgerState) txFilterSeeds {
+func txFilterSeedsOf(src *generation.Source, ls oracle.LedgerState) txFilterSeeds {
 	var seeds txFilterSeeds
 
 	for ref := range ls.TxByRef().All() {
@@ -1177,7 +1179,7 @@ func txFilterSeedsOf(ls oracle.LedgerState) txFilterSeeds {
 			break
 		}
 
-		rec := txs.Get(internal.Rand().Intn(txs.Len()))
+		rec := txs.Get(src.Intn(txs.Len()))
 		for _, ts := range []*commonpb.Timestamp{rec.Timestamp(), rec.InsertedAt(), rec.RevertedAt()} {
 			if ts != nil {
 				seeds.stamps = append(seeds.stamps, ts.GetData())
@@ -1193,30 +1195,30 @@ func txFilterSeedsOf(ls oracle.LedgerState) txFilterSeeds {
 // genTransactionFilter rolls a query filter for ListTransactions. Sequential
 // rolls try an undeclared-field probe (1/8), a kind-mismatch probe (1/12), a
 // target-invalid condition (1/16), then the no-filter universe (1/4). These
-// odds are conditional on earlier rolls missing. The remainder favours the
-// indexed metadata/tx-builtin filters two to one over the index-free grammar,
+// nominal weights apply only after earlier rolls miss. The remaining pool gives
+// indexed metadata/tx-builtin filters twice the weight of the index-free grammar,
 // which needs no index and so proves nothing about the indexed surface.
-func genTransactionFilter(seeds txFilterSeeds) *commonpb.QueryFilter {
+func genTransactionFilter(src *generation.Source, seeds txFilterSeeds) *commonpb.QueryFilter {
 	switch {
-	case oneIn(8):
+	case oneIn(src, 8):
 		// A Field leaf on an UNDECLARED key: the index-not-found probe.
-		return filterMetaExists("undeclared-" + metaKey())
-	case oneIn(12):
+		return filterMetaExists("undeclared-" + metaKey(src))
+	case oneIn(src, 12):
 		// A bare kind-mismatched Field leaf: the FILTER_COMPILATION probe.
-		if f := genMismatchedFieldLeaf(seeds.fields); f != nil {
+		if f := genMismatchedFieldLeaf(src, seeds.fields); f != nil {
 			return f
 		}
 
-		return filterMetaExists(metaKey())
-	case oneIn(16):
+		return filterMetaExists(metaKey(src))
+	case oneIn(src, 16):
 		// Target-invalid probe: an accounts-only condition, rejected on transactions.
 		return filterHasAsset("USD", 2)
-	case random.RandomChoice([]uint8{0, 1, 2, 3}) == 0:
+	case generation.Choice(src, []uint8{0, 1, 2, 3}) == 0:
 		return nil // top-level universe (no filter)
-	case random.RandomChoice([]uint8{0, 1, 2}) != 0:
-		return genTransactionFilterIndexed(seeds, 0)
+	case generation.Choice(src, []uint8{0, 1, 2}) != 0:
+		return genTransactionFilterIndexed(src, seeds, 0)
 	default:
-		return genTransactionFilterFree(0)
+		return genTransactionFilterFree(src, 0)
 	}
 }
 
@@ -1227,43 +1229,43 @@ func genTransactionFilter(seeds txFilterSeeds) *commonpb.QueryFilter {
 // pressure than a single index does. Unlike has-asset on accounts, every tx leaf
 // selects from the same transaction-log universe, so composition needs no
 // special casing: the window evaluator handles any boolean of these.
-func genTransactionFilterIndexed(seeds txFilterSeeds, depth int) *commonpb.QueryFilter {
-	if depth >= maxQueryGenDepth || random.RandomChoice([]uint8{0, 1}) == 0 {
-		switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) {
+func genTransactionFilterIndexed(src *generation.Source, seeds txFilterSeeds, depth int) *commonpb.QueryFilter {
+	if depth >= maxQueryGenDepth || generation.Choice(src, []uint8{0, 1}) == 0 {
+		switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) {
 		case 0:
-			return filterReference(seedReference(seeds))
+			return filterReference(seedReference(src, seeds))
 		case 1, 2, 3:
-			return genDateLeaf(seeds)
+			return genDateLeaf(src, seeds)
 		case 4, 5, 6:
-			return genTxAddressLeaf()
+			return genTxAddressLeaf(src)
 		case 7, 8:
-			if f := genFieldLeaf(seeds.fields); f != nil {
+			if f := genFieldLeaf(src, seeds.fields); f != nil {
 				return f
 			}
 
-			return genTransactionFilterFree(depth)
+			return genTransactionFilterFree(src, depth)
 		default:
-			return genTransactionFilterFree(depth)
+			return genTransactionFilterFree(src, depth)
 		}
 	}
 
-	return genBoolean(depth, func(d int) *commonpb.QueryFilter { return genTransactionFilterIndexed(seeds, d) })
+	return genBoolean(src, depth, func(d int) *commonpb.QueryFilter { return genTransactionFilterIndexed(src, seeds, d) })
 }
 
 // genTxAddressLeaf rolls an address leaf for the transactions target: a pool
 // address (exact or cut to a prefix), or an unmatchable prefix, under a random
 // role. Pool addresses re-target heavily, so exact and prefix variants both
 // straddle live account→tx rows.
-func genTxAddressLeaf() *commonpb.QueryFilter {
+func genTxAddressLeaf(src *generation.Source) *commonpb.QueryFilter {
 	roles := []commonpb.AddressRole{
 		commonpb.AddressRole_ADDRESS_ROLE_ANY,
 		commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
 		commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
 	}
-	role := roles[int(random.RandomChoice([]uint8{0, 1, 2}))]
+	role := roles[int(generation.Choice(src, []uint8{0, 1, 2}))]
 
-	addr := poolAddress()
-	switch random.RandomChoice([]uint8{0, 1, 2, 3}) {
+	addr := poolAddress(src)
+	switch generation.Choice(src, []uint8{0, 1, 2, 3}) {
 	case 0:
 		return filterAddrExactRole(addr, role)
 	case 1:
@@ -1272,7 +1274,7 @@ func genTxAddressLeaf() *commonpb.QueryFilter {
 		// The "t-N:" one-type prefix; ":"-terminated so it cannot over-match.
 		return filterAddrPrefixRole(addr[:strings.IndexByte(addr, ':')+1], role)
 	default:
-		if oneIn(8) {
+		if oneIn(src, 8) {
 			return filterAddrPrefixRole("absent:", role)
 		}
 
@@ -1282,11 +1284,11 @@ func genTxAddressLeaf() *commonpb.QueryFilter {
 
 // seedReference picks a committed reference most of the time, a miss otherwise
 // (an unknown reference, or the empty string — never indexed, matches nothing).
-func seedReference(seeds txFilterSeeds) string {
+func seedReference(src *generation.Source, seeds txFilterSeeds) string {
 	switch {
-	case len(seeds.refs) > 0 && !oneIn(4):
-		return seeds.refs[internal.Rand().Intn(len(seeds.refs))]
-	case oneIn(8):
+	case len(seeds.refs) > 0 && !oneIn(src, 4):
+		return seeds.refs[src.Intn(len(seeds.refs))]
+	case oneIn(src, 8):
 		return ""
 	default:
 		return "t-ref:absent"
@@ -1297,20 +1299,20 @@ func seedReference(seeds txFilterSeeds) string {
 // bounded by committed stamps so it actually straddles live records: two seed
 // stamps as [min, max] (single-sided or exclusive variants occasionally), or
 // unconstrained bounds when the ledger has no known stamps yet.
-func genDateLeaf(seeds txFilterSeeds) *commonpb.QueryFilter {
+func genDateLeaf(src *generation.Source, seeds txFilterSeeds) *commonpb.QueryFilter {
 	fields := []commonpb.TransactionBuiltinIndex{
 		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
 		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
 		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
 	}
-	field := fields[int(random.RandomChoice([]uint8{0, 1, 2}))]
+	field := fields[int(generation.Choice(src, []uint8{0, 1, 2}))]
 
 	pick := func() uint64 {
 		if len(seeds.stamps) == 0 {
-			return internal.Rand().Uint64() % 1024
+			return src.Uint64Range(0, 1024-1)
 		}
 
-		return seeds.stamps[internal.Rand().Intn(len(seeds.stamps))]
+		return seeds.stamps[src.Intn(len(seeds.stamps))]
 	}
 
 	a, b := pick(), pick()
@@ -1319,29 +1321,29 @@ func genDateLeaf(seeds txFilterSeeds) *commonpb.QueryFilter {
 	}
 
 	f := filterDateRange(field, a, b)
-	rollOpenOrExclusive(f.GetBuiltinUint().GetCond())
+	rollOpenOrExclusive(src, f.GetBuiltinUint().GetCond())
 
 	return f
 }
 
 // rollOpenOrExclusive opens each side of a two-sided range one time in four
 // and otherwise makes it exclusive one time in four.
-func rollOpenOrExclusive(cond *commonpb.UintCondition) {
-	if oneIn(4) {
+func rollOpenOrExclusive(src *generation.Source, cond *commonpb.UintCondition) {
+	if oneIn(src, 4) {
 		cond.Min = nil
 	} else {
-		cond.MinExclusive = oneIn(4)
-		if oneIn(16) {
-			cond.Min = uintExtremum()
+		cond.MinExclusive = oneIn(src, 4)
+		if oneIn(src, 16) {
+			cond.Min = uintExtremum(src)
 		}
 	}
 
-	if oneIn(4) {
+	if oneIn(src, 4) {
 		cond.Max = nil
 	} else {
-		cond.MaxExclusive = oneIn(4)
-		if oneIn(16) {
-			cond.Max = uintExtremum()
+		cond.MaxExclusive = oneIn(src, 4)
+		if oneIn(src, 16) {
+			cond.Max = uintExtremum(src)
 		}
 	}
 }
@@ -1351,9 +1353,9 @@ func rollOpenOrExclusive(cond *commonpb.UintCondition) {
 // to the empty range and `<= MaxUint64` drops the bound entirely, while `< 0` is
 // empty and `>= 0` is no bound at all (see resolveUintBounds, applyMinExclusiveUint
 // and applyMaxInclusiveUint).
-func uintExtremum() *uint64 {
+func uintExtremum(src *generation.Source) *uint64 {
 	v := uint64(math.MaxUint64)
-	if oneIn(2) {
+	if oneIn(src, 2) {
 		v = 0
 	}
 
@@ -1363,35 +1365,35 @@ func uintExtremum() *uint64 {
 // genTransactionFilterFree rolls a non-nil index-free transactions filter: a
 // reverted or tx-id-range leaf, or a boolean composition of the same. Like the
 // accounts variant it never returns nil.
-func genTransactionFilterFree(depth int) *commonpb.QueryFilter {
-	if depth >= maxQueryGenDepth || random.RandomChoice([]uint8{0, 1}) == 0 {
-		switch random.RandomChoice([]uint8{0, 1, 2}) {
+func genTransactionFilterFree(src *generation.Source, depth int) *commonpb.QueryFilter {
+	if depth >= maxQueryGenDepth || generation.Choice(src, []uint8{0, 1}) == 0 {
+		switch generation.Choice(src, []uint8{0, 1, 2}) {
 		case 0:
 			return filterReverted(true)
 		case 1:
 			return filterReverted(false)
 		default:
-			lo := internal.Rand().Uint64() % 256
-			f := filterTxIDRange(lo, lo+internal.Rand().Uint64()%256)
-			rollOpenOrExclusive(f.GetBuiltinUint().GetCond())
+			lo := src.Uint64Range(0, 256-1)
+			f := filterTxIDRange(lo, lo+src.Uint64Range(0, 256-1))
+			rollOpenOrExclusive(src, f.GetBuiltinUint().GetCond())
 
 			return f
 		}
 	}
 
-	return genBoolean(depth, genTransactionFilterFree)
+	return genBoolean(src, depth, func(d int) *commonpb.QueryFilter { return genTransactionFilterFree(src, d) })
 }
 
 // genBoolean wraps one to three (And/Or) or one (Not) recursively-generated
 // children in a boolean combinator. gen never returns nil, so no combinator
 // carries a nil child (which would marshal as an empty condition the compiler
 // rejects).
-func genBoolean(depth int, gen func(int) *commonpb.QueryFilter) *commonpb.QueryFilter {
-	switch random.RandomChoice([]uint8{0, 1, 2}) {
+func genBoolean(src *generation.Source, depth int, gen func(int) *commonpb.QueryFilter) *commonpb.QueryFilter {
+	switch generation.Choice(src, []uint8{0, 1, 2}) {
 	case 0:
-		return filterAnd(genChildren(depth, gen)...)
+		return filterAnd(genChildren(src, depth, gen)...)
 	case 1:
-		return filterOr(genChildren(depth, gen)...)
+		return filterOr(genChildren(src, depth, gen)...)
 	default:
 		return filterNot(gen(depth + 1))
 	}
@@ -1400,8 +1402,8 @@ func genBoolean(depth int, gen func(int) *commonpb.QueryFilter) *commonpb.QueryF
 // genChildren rolls the operands of an And/Or: usually two, sometimes none,
 // one or three, so the empty combinator (an And is the universe, an Or is
 // empty), the compiler's single-child pass-through and its n-ary merge all run.
-func genChildren(depth int, gen func(int) *commonpb.QueryFilter) []*commonpb.QueryFilter {
-	n := int(random.RandomChoice([]uint8{0, 1, 2, 2, 3}))
+func genChildren(src *generation.Source, depth int, gen func(int) *commonpb.QueryFilter) []*commonpb.QueryFilter {
+	n := int(generation.Choice(src, []uint8{0, 1, 2, 2, 3}))
 	children := make([]*commonpb.QueryFilter, 0, n)
 	for range n {
 		children = append(children, gen(depth+1))

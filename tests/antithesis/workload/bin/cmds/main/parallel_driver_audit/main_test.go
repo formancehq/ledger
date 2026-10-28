@@ -24,12 +24,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func TestAuditDriverStream(t *testing.T) {
 	t.Parallel()
 
-	// The real server sanitizes raft: stopped to this Unknown status. Keep
+	// Older servers sanitized raft: stopped to this Unknown status. Keep
 	// the correlation ID so a receive failure remains diagnosable in the SDK output.
 	raftStopped := status.Error(codes.Unknown, "unknown server error (correlation ID: 335f07114da38bec)")
 	for _, tc := range []struct {
@@ -157,7 +159,9 @@ func runAuditCancellation(t *testing.T, mode string) {
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	runAuditCycle(ctx, servicepb.NewBucketServiceClient(conn), "default")
+	require.NoError(t, generation.RunOnce(func(src *generation.Source) {
+		runAuditCycle(ctx, servicepb.NewBucketServiceClient(conn), "default", src)
+	}))
 	require.NotNil(t, receiver, "must enter the audit receive loop")
 	require.Equal(t, entries, receiver.received, "must receive the prefix before canceling")
 	require.ErrorIs(t, ctx.Err(), context.Canceled, "must cancel the actual caller context")

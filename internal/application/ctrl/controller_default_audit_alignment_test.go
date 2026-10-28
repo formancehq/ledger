@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
-	"time"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -225,35 +225,33 @@ func TestListAuditEntriesIndexedFilterHonorsCancellation(t *testing.T) {
 func TestListAuditEntriesMapsConcurrentProjectionFailureToUnavailable(t *testing.T) {
 	t.Parallel()
 
-	ctrl, rs := newAuditAlignmentController(t, 12, 1)
-	errCh := make(chan error, 1)
-	started := make(chan struct{})
-	go func() {
-		close(started)
-		_, err := ctrl.ListAuditEntries(t.Context(), 10, 0, auditLedgerFilter("main"), false)
-		errCh <- err
-	}()
-	<-started
+	synctest.Test(t, func(t *testing.T) {
+		ctrl, rs := newAuditAlignmentController(t, 12, 1)
+		errCh := make(chan error, 1)
+		go func() {
+			_, err := ctrl.ListAuditEntries(t.Context(), 10, 0, auditLedgerFilter("main"), false)
+			errCh <- err
+		}()
 
-	require.Never(t, func() bool { return len(errCh) > 0 }, 50*time.Millisecond, time.Millisecond,
-		"the indexed read must wait while the projection certificate is behind")
-	rs.SetAuditProjectionFailed()
+		// Wait returns only once the read is parked on the projection wait.
+		synctest.Wait()
+		require.Empty(t, errCh, "the indexed read must wait while the projection certificate is behind")
+		rs.SetAuditProjectionFailed()
 
-	var err error
-	require.Eventually(t, func() bool {
+		synctest.Wait()
+		var err error
 		select {
 		case err = <-errCh:
-			return true
 		default:
-			return false
+			t.Fatal("the parked read must return once the projection fails")
 		}
-	}, time.Second, time.Millisecond)
-	var rebuilding *domain.ErrIndexBuilding
-	require.ErrorAs(t, err, &rebuilding)
-	require.Equal(t, "audit (rebuilding)", rebuilding.Index)
-	require.Equal(t, domain.ErrReasonIndexBuilding, rebuilding.Reason())
-	require.Equal(t, domain.KindUnavailable, rebuilding.Kind(),
-		"a projection failure racing the wait must keep the retryable rebuilding contract")
+		var rebuilding *domain.ErrIndexBuilding
+		require.ErrorAs(t, err, &rebuilding)
+		require.Equal(t, "audit (rebuilding)", rebuilding.Index)
+		require.Equal(t, domain.ErrReasonIndexBuilding, rebuilding.Reason())
+		require.Equal(t, domain.KindUnavailable, rebuilding.Kind(),
+			"a projection failure racing the wait must keep the retryable rebuilding contract")
+	})
 }
 
 func TestListAuditEntriesUsesAlignedAuditSnapshotAndMainHorizon(t *testing.T) {

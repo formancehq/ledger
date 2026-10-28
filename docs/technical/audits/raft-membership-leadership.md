@@ -81,11 +81,30 @@ Inspect serialization against a pending ConfChange, learner/voter role checks,
 updates, the committed-index wait, and response/error mapping. Concurrent
 operations against the same node must be distinguished by proposal identity and
 expected change type; a late commit must not satisfy a replacement waiter.
+Within one logical operation, retries must retain the same waiter. Delay WAL
+ConfState persistence beyond the retry timer after consuming the correlated
+waiter, then release the WAL and queued retry. Require the original committed
+index, no second admission/proposal, and durable local FSM application before
+success. Cancellation must release the caller without resolving a different
+operation or reporting premature success.
 
 For removal, every member carries a mandatory 16-byte instance_id (enforced at every admission, persistence, and promotion boundary). The replicated tombstone guarantee applies to every removal; identity-less phantom learners are no longer a supported member state. Distinguish a removal with a normal committed ConfChange from a force removal, which bypasses Raft consensus and relies on operator preconditions instead of quorum safety.
 Prove rejoin and promotion behavior through every production entry rather than
 assuming that one admission check covers direct add, auto-promotion, discovery,
 or leadership change.
+
+For retained-log catch-up, feed a real follower RawNode committed remove(A),
+add(B), remove(B) at one ordinal in a single Ready; also delay cleanup across
+separate Readies and compare with durable apply between cycles. Every removal
+must remain an independent node/index event with immutable identity. Verify all
+removed identities stay protected until their own durable index and tuple
+tombstone, fresh identities remain eligible, and exact duplicates reuse events
+while same-index contradictory identities fail. Cancel foreground waits, delay
+old cleanup across newer events or replacement pointers, and recover the same
+history through WAL replay. Require both tombstones and final ConfState parity.
+Missing tombstones/read failures must retain protection. Check the lookup cost
+partition and benchmark growing per-ordinal history separately from unrelated
+nodes; no set lock may span apply, store reads or proposal waits.
 
 ### Leadership and quorum transitions
 
@@ -123,6 +142,11 @@ exceeds its stated operator-owned risk or fails to converge on retry/snapshot.
 
 ### Transport, forwarding, and ReadIndex
 
+An interrupted cluster command on a stopped Raft run must surface as retryable
+gRPC `Unavailable`, including a wrapped `raft.ErrStopped`. Verify the shared
+unary/streaming conversion without classifying unrelated failures as transient;
+those failures retain their sanitized error behavior.
+
 Separate Raft message redelivery from logical request retry. etcd/raft may safely
 receive duplicate or delayed protocol messages; that fact does not make an API
 mutation idempotent. Trace stream authentication, peer/connection replacement,
@@ -150,6 +174,19 @@ whether every projection and query surface correctly represents that certified
 horizon. A forwarded fallback must not become an unbarriered local read merely
 because leadership changed during resolution; explicit stale mode remains the
 only expected bypass.
+
+ReadIndex evidence must also track the complete request context across caller
+process incarnations. Retain an outstanding leader-side read at `C`, reconstruct
+the follower from retained storage with unchanged member identity, leader and
+term, then commit a distinguishable write `D > C` through the other voters
+while the restarted follower remains below `D`. Deliver the delayed heartbeat
+confirmation and resulting old response: Raft may accept it in the unchanged
+term, but production waiter resolution must reject it for the new invocation.
+A fresh certificate must cover `D`, and serving must await local application of
+that horizon. `internal/infra/node/read_index_restart_test.go` owns this
+regression. Verify that legacy eight-byte and new UUID contexts are echoed
+unchanged by the pinned Raft implementation; only upgraded callers gain the
+restart protection, with no persisted-state or service-revision migration.
 
 A committed `ConfChangeUpdateNode` with a peer-registration payload first
 refreshes the membership cache plus the operational Raft and service connection
@@ -185,10 +222,45 @@ run a sink created inside the checkpoint. `TestSyncDonor`,
 `TestAddLearnerWaitsForLeaderReady`, `TestCheckAndPromoteLearnersWaitsForLeaderReady`,
 and `TestManagerLeadership` pin the donor rotation and the gates.
 
+After real snapshot catch-up, `tests/e2e/cluster/raft_test.go` restarts the
+recovered voter again and verifies retained business state through a
+linearizable read. Accept a healthy `Follower` or `Leader` with a known leader:
+a restarted voter may win an election, so a follower-only role assertion is not
+a valid recovery oracle.
+
 This domain owns the consensus-side selection, transfer, installation order and
 authority gates. General checkpoint/restore content correctness belongs to
 `persistence-restore-replay`; filesystem containment belongs to
 `filesystem-confinement-contracts`.
+
+## Antithesis witness and convergence evidence
+
+The workload's operational sentinels capture the complete acknowledged
+transaction and compare it after restart, scaling, configuration changes,
+quorum recovery and leadership transfer. These witnesses have private ledgers
+excluded from generic mutation. An ambiguous write is not an acknowledged
+witness; a transient read does not prove survival. Transfer coverage requires
+a fresh acknowledged business write as well as the transfer response.
+
+`eventually_cross_node_identity` requires every current member, including
+learners, to reach an exact durable horizon before comparing complete account
+listings and audit identity. Treat inaccessible current members as incomplete
+recovery evidence, not as replicas that can be excluded. Compare presence as
+well as contents; require successful stream completion and valid pagination.
+Read attribution depends on direct per-node addresses matching advertised
+membership, not a load-balanced service. The routed `GetClusterState` identity
+check validates the status response; it does not independently authenticate the
+endpoint of a stale read.
+Publish divergence only after final per-node/global/membership fences qualify
+the observation, retrying changed horizons. Keep qualification failures separate
+from actual unequal data. A one-member observation cannot prove replica
+agreement. This oracle does not compare uncommitted Raft suffixes or establish
+that every snapshot-install path was exercised.
+
+The local SDK sensitivity fixtures prove that these observations detect their
+target failures. They do not substitute for a remote campaign report or a
+quorum-backed distributed transition. See the
+[harness evidence contract](../../../tests/antithesis/README.md#raft-and-sentinel-evidence).
 
 ## Ownership and deduplication
 
@@ -243,3 +315,14 @@ bash scripts/ai-audit-challenge <audit-result.json>
 Both passes require the same exact clean `HEAD`; the providers remain read-only.
 Do not launch either command while reviewing this manifest PR. Jira preview or
 publication is a separate explicitly authorized action.
+
+## Received snapshot Ready suffix evidence
+
+For a Ready containing both a snapshot and subsequent entries, retain the
+original entries/HardState durability order, then verify that snapshot
+installation cannot erase the suffix from `LastIndex`, `Term`, `Entries` or
+a reopened WAL before storage acknowledgement. Identify the residual
+in-memory snapshot/cache and durable WAL prefix on any failure. The focused
+regression is `process_ready_snapshot_test.go` under `internal/infra/node/`.
+Snapshot-only processing retains its existing append count; a combined Ready
+reappends only the suffix once, with no retained-log scan.

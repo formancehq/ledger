@@ -24,6 +24,40 @@ presence, command flags, implementation comments and tests at the audited SHA.
 A stale table is not proof of a missing route. Conflicting sources or unspecified
 null/unknown-field/trailing-input policies become **questions**, not assumed bugs.
 
+For query-name validation, enumerate actual `/v3` route registrations and each
+operation's query parameters in `openapi.yml`. On every route, an unknown name
+or malformed query encoding must return `400 INVALID_REQUEST` before reaching
+the backend. Check the removed account `prefix` and transaction `reference`
+names for the `filter` hint, and `checkpointId` for the gRPC-only pinned-read
+hint. Preserve every declared query name at this boundary; value parsing has
+its own route-specific contract. The unversioned ops routes are outside this
+validation and retain their prior handling. Use the registered-router tests
+`TestQueryParameters_RejectUnknownAtRouter`,
+`TestQueryParameters_MatchOpenAPI`,
+`TestQueryParameters_LeaveOpsProbesUnchanged`, and
+`TestKnownQuery_AllowsDeclaredParameters` as the dynamic oracle, then inspect
+the route registrations and error body when diagnosing a failure.
+
+For Numscript source analysis, trace `POST /v3/numscripts/analyze` and
+`BucketService.AnalyzeNumscript` through their query-read guards into the shared
+analyser. The scope is `ledger:ReadQuery` when authentication is enabled;
+configured anonymous scopes and disabled authentication remain valid. Compare
+sorted external inputs and the version, syntax, feature and compile diagnostic
+kind, code, message and available zero-based ranges across both transports.
+Recognized source failures return diagnostics with no inputs; internal parser or
+compiler failures return transport errors without an analysis payload. Prove
+that neither adapter opens a ledger or mutates state.
+
+Exercise the source budget before the Numscript parser: over 64 KiB, more than
+32 `/*` openers nested deeply, and more than 32 openers in balanced pairs inside
+one outer block comment. The upstream lexer retains recursive alternatives even
+when pairs close, so a peak-depth-only probe is insufficient. The conservative
+marker count also includes text in string literals. At HTTP, consume the entire
+JSON body through the 4 MiB middleware limit; a second value or trailing junk
+must reject, and an oversized body must return 413. Keep the parser's internal
+grammar and runtime semantics with the scripting subsystem; this domain owns
+the observable API boundary and its resource budget.
+
 Prepared-query `LIST` page-size evidence must reach the registered HTTP execute
 route and service gRPC handler. Capture downstream requests for 0, 1000, 1001
 and uint32 maximum in both directions: zero selects 100, oversized values select
@@ -315,3 +349,18 @@ This domain owns projection, parsing and routing fidelity; election correctness
 and member persistence remain in raft-membership-leadership. Varint decoding
 alone does not establish full-range support in old uint32 readers. Require the
 client/server rollout limitation documented in the service protocol contract.
+
+## CLI posting amount boundaries
+
+`TestTransactionsCreatePostingAmounts` exercises the registered transaction
+creation command against a local gRPC Apply fixture. Cover colored and uncolored
+postings with negative one, zero, a positive control, uint256 maximum and 2^256.
+Invalid amounts must return ordinary errors without constructor panic or Apply,
+even after an earlier valid posting; accepted amounts must reach Apply exactly.
+The zero flag value remains accepted by the CLI parser.
+
+On Linux and macOS, `TestTransactionsCreateInteractiveAmount` drives the actual
+command through a pseudoterminal and checks overflowing input is rejected before
+Apply, alongside the existing negative and zero rejection. Terminal readiness
+is observed rather than inferred from a delay. These are CLI input-contract
+oracles; they do not claim server accounting or committed-state coverage.

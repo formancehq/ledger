@@ -7,13 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/antithesishq/antithesis-sdk-go/random"
-
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // Prepared queries are named, stored filter templates: a create/update/delete
@@ -44,8 +42,8 @@ import (
 // rather than by a dedicated probe.
 var preparedQueryNamePool = []uint8{0, 1, 2, 3, 4}
 
-func preparedQueryName() string {
-	return fmt.Sprintf("pq%d", random.RandomChoice(preparedQueryNamePool))
+func preparedQueryName(src *generation.Source) string {
+	return fmt.Sprintf("pq%d", generation.Choice(src, preparedQueryNamePool))
 }
 
 // preparedQueryTargets are the targets the FSM lets a prepared query be stored
@@ -74,10 +72,10 @@ func deletePreparedQueryReq(ledger, name string) *servicepb.Request {
 	}}
 }
 
-// rollPreparedQueryOp: ~1-in-16 a bulk is a prepared-query registry op rather
+// rollPreparedQueryOp: nominally 1-in-16 a bulk is a prepared-query registry op rather
 // than ledger traffic, churning the registry the execution reads probe.
-func rollPreparedQueryOp() bool {
-	return oneIn(16)
+func rollPreparedQueryOp(src *generation.Source) bool {
+	return oneIn(src, 16)
 }
 
 // generatePreparedQueryOp picks a name from the pool and moves it through the
@@ -88,17 +86,17 @@ func rollPreparedQueryOp() bool {
 // The rolls deliberately also produce the rejected cases the model predicts:
 // a create on a name already present (ALREADY_EXISTS) and an update or delete
 // on one that is absent (NOT_FOUND).
-func generatePreparedQueryOp(g oracle.GlobalState, ledger string) *servicepb.Request {
+func generatePreparedQueryOp(src *generation.Source, g oracle.GlobalState, ledger string) *servicepb.Request {
 	ls := g.Ledger(ledger)
-	name := preparedQueryName()
+	name := preparedQueryName(src)
 
 	stored, exists := ls.PreparedQuery(name)
 	if !exists {
-		target := random.RandomChoice(preparedQueryTargets)
+		target := generation.Choice(src, preparedQueryTargets)
 
 		var filter *commonpb.QueryFilter
-		if !oneIn(8) {
-			filter = genPreparedQueryFilter(ls, ledger, target)
+		if !oneIn(src, 8) {
+			filter = genPreparedQueryFilter(src, ls, ledger, target)
 			if filter == nil {
 				return nil
 			}
@@ -111,16 +109,16 @@ func generatePreparedQueryOp(g oracle.GlobalState, ledger string) *servicepb.Req
 		})
 	}
 
-	if oneIn(4) {
+	if oneIn(src, 4) {
 		return deletePreparedQueryReq(ledger, name)
 	}
-	if oneIn(8) {
+	if oneIn(src, 8) {
 		return updatePreparedQueryReq(ledger, name, nil)
 	}
 
 	// An update carries no target: the new filter must be valid on the STORED
 	// one, which is what the FSM validates it against.
-	filter := genPreparedQueryFilter(ls, ledger, stored.GetTarget())
+	filter := genPreparedQueryFilter(src, ls, ledger, stored.GetTarget())
 	if filter == nil {
 		return nil
 	}
@@ -134,16 +132,16 @@ func generatePreparedQueryOp(g oracle.GlobalState, ledger string) *servicepb.Req
 // shape (rollFilterShape). A filter the write-time validation refuses is sent
 // all the same; the model predicts the refusal. Returns nil when the generator
 // produced no concrete filter; the caller then emits no op this round.
-func genPreparedQueryFilter(ls oracle.LedgerState, ledger string, target commonpb.QueryTarget) *commonpb.QueryFilter {
+func genPreparedQueryFilter(src *generation.Source, ls oracle.LedgerState, ledger string, target commonpb.QueryTarget) *commonpb.QueryFilter {
 	var concrete *commonpb.QueryFilter
 
 	switch target {
 	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
-		concrete = genAccountFilter(sampleFieldSeeds(ls, target))
+		concrete = genAccountFilter(src, sampleFieldSeeds(ls, target))
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
-		concrete = genTransactionFilter(txFilterSeedsOf(ls))
+		concrete = genTransactionFilter(src, txFilterSeedsOf(src, ls))
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
-		concrete = genLogFilter(ledger, logDateSample(ls), 0)
+		concrete = genLogFilter(src, ledger, logDateSample(ls), 0)
 	default:
 		panic(fmt.Sprintf("genPreparedQueryFilter: non-executable target %v", target))
 	}
@@ -158,7 +156,7 @@ func genPreparedQueryFilter(ls oracle.LedgerState, ledger string, target commonp
 	// stored, and every execution binds fresh values discovered from the stored
 	// filter itself (genPreparedParams). Keeping a driver-side copy would be a
 	// second source of truth that a concurrent update immediately invalidates.
-	return rollFilterShape(parameterizeFilter(concrete, preparedParams{}))
+	return rollFilterShape(src, parameterizeFilter(src, concrete, preparedParams{}))
 }
 
 // --- parameterization ----------------------------------------------------
@@ -204,58 +202,58 @@ func (pz *paramizer) put(name string, v *commonpb.ParameterValue) string {
 	return name
 }
 
-// paramOdds: each eligible leaf value is parameterized with probability 1/2, so
-// a filter tree yields a mix of hardcoded and parameterized leaves.
-func rollParameterize() bool { return oneIn(2) }
+// Each eligible leaf uses oneIn(2), with nominal weight 1/2, to choose between
+// hardcoded and parameterized values. Hegel controls actual frequencies.
+func rollParameterize(src *generation.Source) bool { return oneIn(src, 2) }
 
 // parameterizeFilter returns a copy of f with a random subset of its hardcoded
 // leaf values rewritten into parameter references, recording each displaced
 // value in params. It is the inverse of substituteParams: for the params it
 // fills, substituteParams(parameterizeFilter(f, params), params) reproduces f.
-func parameterizeFilter(f *commonpb.QueryFilter, params preparedParams) *commonpb.QueryFilter {
+func parameterizeFilter(src *generation.Source, f *commonpb.QueryFilter, params preparedParams) *commonpb.QueryFilter {
 	if f == nil {
 		return nil
 	}
 
 	out := f.CloneVT()
 	pz := &paramizer{params: params}
-	parameterizeInto(out, pz)
+	parameterizeInto(src, out, pz)
 
 	return out
 }
 
-func parameterizeInto(f *commonpb.QueryFilter, pz *paramizer) {
+func parameterizeInto(src *generation.Source, f *commonpb.QueryFilter, pz *paramizer) {
 	switch c := f.GetFilter().(type) {
 	case *commonpb.QueryFilter_And:
 		for _, child := range c.And.GetFilters() {
-			parameterizeInto(child, pz)
+			parameterizeInto(src, child, pz)
 		}
 	case *commonpb.QueryFilter_Or:
 		for _, child := range c.Or.GetFilters() {
-			parameterizeInto(child, pz)
+			parameterizeInto(src, child, pz)
 		}
 	case *commonpb.QueryFilter_Not:
-		parameterizeInto(c.Not.GetFilter(), pz)
+		parameterizeInto(src, c.Not.GetFilter(), pz)
 	case *commonpb.QueryFilter_Address:
-		parameterizeAddress(c.Address, pz)
+		parameterizeAddress(src, c.Address, pz)
 	case *commonpb.QueryFilter_Reference:
-		parameterizeString(c.Reference.GetCond(), pz)
+		parameterizeString(src, c.Reference.GetCond(), pz)
 	case *commonpb.QueryFilter_Ledger:
-		parameterizeString(c.Ledger.GetCond(), pz)
+		parameterizeString(src, c.Ledger.GetCond(), pz)
 	case *commonpb.QueryFilter_LogId:
-		parameterizeUint(c.LogId.GetCond(), pz)
+		parameterizeUint(src, c.LogId.GetCond(), pz)
 	case *commonpb.QueryFilter_BuiltinUint:
-		parameterizeUint(c.BuiltinUint.GetCond(), pz)
+		parameterizeUint(src, c.BuiltinUint.GetCond(), pz)
 	case *commonpb.QueryFilter_LogBuiltinUint:
-		parameterizeUint(c.LogBuiltinUint.GetCond(), pz)
+		parameterizeUint(src, c.LogBuiltinUint.GetCond(), pz)
 	case *commonpb.QueryFilter_Field:
-		parameterizeField(c.Field, pz)
+		parameterizeField(src, c.Field, pz)
 	}
 	// AccountHasAsset, Reverted and Audit carry no parameterizable value.
 }
 
-func parameterizeAddress(am *commonpb.AddressMatch, pz *paramizer) {
-	if am == nil || !rollParameterize() {
+func parameterizeAddress(src *generation.Source, am *commonpb.AddressMatch, pz *paramizer) {
+	if am == nil || !rollParameterize(src) {
 		return
 	}
 
@@ -271,8 +269,8 @@ func parameterizeAddress(am *commonpb.AddressMatch, pz *paramizer) {
 	}
 }
 
-func parameterizeString(sc *commonpb.StringCondition, pz *paramizer) {
-	if sc == nil || !rollParameterize() {
+func parameterizeString(src *generation.Source, sc *commonpb.StringCondition, pz *paramizer) {
+	if sc == nil || !rollParameterize(src) {
 		return
 	}
 
@@ -281,8 +279,8 @@ func parameterizeString(sc *commonpb.StringCondition, pz *paramizer) {
 	}
 }
 
-func parameterizeBool(bc *commonpb.BoolCondition, pz *paramizer) {
-	if bc == nil || !rollParameterize() {
+func parameterizeBool(src *generation.Source, bc *commonpb.BoolCondition, pz *paramizer) {
+	if bc == nil || !rollParameterize(src) {
 		return
 	}
 
@@ -295,48 +293,48 @@ func parameterizeBool(bc *commonpb.BoolCondition, pz *paramizer) {
 // a two-sided range can end up half hardcoded. The bound itself is cleared: the
 // compiler reads the parameter when the param name is set, and leaving the
 // literal behind would make the inverse ambiguous.
-func parameterizeUint(uc *commonpb.UintCondition, pz *paramizer) {
+func parameterizeUint(src *generation.Source, uc *commonpb.UintCondition, pz *paramizer) {
 	if uc == nil {
 		return
 	}
 
-	if uc.Min != nil && rollParameterize() {
+	if uc.Min != nil && rollParameterize(src) {
 		uc.ParamMin = pz.put(pz.next(), uintParam(uc.GetMin()))
 		uc.Min = nil
 	}
 
-	if uc.Max != nil && rollParameterize() {
+	if uc.Max != nil && rollParameterize(src) {
 		uc.ParamMax = pz.put(pz.next(), uintParam(uc.GetMax()))
 		uc.Max = nil
 	}
 }
 
-func parameterizeInt(ic *commonpb.IntCondition, pz *paramizer) {
+func parameterizeInt(src *generation.Source, ic *commonpb.IntCondition, pz *paramizer) {
 	if ic == nil {
 		return
 	}
 
-	if ic.Min != nil && rollParameterize() {
+	if ic.Min != nil && rollParameterize(src) {
 		ic.ParamMin = pz.put(pz.next(), intParam(ic.GetMin()))
 		ic.Min = nil
 	}
 
-	if ic.Max != nil && rollParameterize() {
+	if ic.Max != nil && rollParameterize(src) {
 		ic.ParamMax = pz.put(pz.next(), intParam(ic.GetMax()))
 		ic.Max = nil
 	}
 }
 
-func parameterizeField(fc *commonpb.FieldCondition, pz *paramizer) {
+func parameterizeField(src *generation.Source, fc *commonpb.FieldCondition, pz *paramizer) {
 	switch c := fc.GetCondition().(type) {
 	case *commonpb.FieldCondition_StringCond:
-		parameterizeString(c.StringCond, pz)
+		parameterizeString(src, c.StringCond, pz)
 	case *commonpb.FieldCondition_IntCond:
-		parameterizeInt(c.IntCond, pz)
+		parameterizeInt(src, c.IntCond, pz)
 	case *commonpb.FieldCondition_UintCond:
-		parameterizeUint(c.UintCond, pz)
+		parameterizeUint(src, c.UintCond, pz)
 	case *commonpb.FieldCondition_BoolCond:
-		parameterizeBool(c.BoolCond, pz)
+		parameterizeBool(src, c.BoolCond, pz)
 	}
 	// ExistsCond carries no value.
 }
@@ -765,14 +763,14 @@ func describeParamValue(v *commonpb.ParameterValue) string {
 // genPreparedParams binds a value for every parameter the stored filter
 // references, drawing from the committed state so bound windows are populated
 // rather than trivially empty. Returns the map and whether the binding is
-// complete: ~1-in-8 a need is deliberately left unbound or bound with the wrong
+// complete: nominally 1-in-8 a need is deliberately left unbound or bound with the wrong
 // value type, which the compiler must reject — the negative path the validators
 // predict through substituteParams reporting failure.
 //
 // The stored filter is the only source of truth for what a query expects: the
 // driver keeps no record of what it created, and a concurrent update may have
 // rewritten the references since.
-func genPreparedParams(ls oracle.LedgerState, stored *commonpb.QueryFilter) (preparedParams, bool) {
+func genPreparedParams(src *generation.Source, ls oracle.LedgerState, stored *commonpb.QueryFilter) (preparedParams, bool) {
 	needs := collectParams(stored)
 	params := make(preparedParams, len(needs))
 
@@ -782,13 +780,13 @@ func genPreparedParams(ls oracle.LedgerState, stored *commonpb.QueryFilter) (pre
 
 	// At most one need is spoiled per call, so the rejection is attributable.
 	spoil := -1
-	if oneIn(8) {
-		spoil = internal.Rand().Intn(len(needs))
+	if oneIn(src, 8) {
+		spoil = src.Intn(len(needs))
 	}
 
 	for i, need := range needs {
 		if i == spoil {
-			if oneIn(2) {
+			if oneIn(src, 2) {
 				// Omitted entirely: "parameter %q not provided".
 				continue
 			}
@@ -799,7 +797,7 @@ func genPreparedParams(ls oracle.LedgerState, stored *commonpb.QueryFilter) (pre
 			continue
 		}
 
-		params[need.name] = genParamValue(ls, need.kind)
+		params[need.name] = genParamValue(src, ls, need.kind)
 	}
 
 	return params, spoil < 0
@@ -808,18 +806,18 @@ func genPreparedParams(ls oracle.LedgerState, stored *commonpb.QueryFilter) (pre
 // genParamValue draws a plausible value for one parameter kind. Address values
 // come from the ledger's own account universe where it has one, so an address
 // parameter usually selects something instead of an empty window.
-func genParamValue(ls oracle.LedgerState, kind paramKind) *commonpb.ParameterValue {
+func genParamValue(src *generation.Source, ls oracle.LedgerState, kind paramKind) *commonpb.ParameterValue {
 	switch kind {
 	case paramKindAddress:
-		return stringParam(sampleCommittedAddress(ls))
+		return stringParam(sampleCommittedAddress(src, ls))
 	case paramKindString:
-		return stringParam(sampleStringValue(ls))
+		return stringParam(sampleStringValue(src, ls))
 	case paramKindUint:
-		return uintParam(sampleUint(ls))
+		return uintParam(sampleUint(src, ls))
 	case paramKindInt:
-		return intParam(int64(random.RandomChoice([]uint8{0, 1, 2, 5, 10})) - 4)
+		return intParam(int64(generation.Choice(src, []uint8{0, 1, 2, 5, 10})) - 4)
 	default:
-		return boolParam(oneIn(2))
+		return boolParam(oneIn(src, 2))
 	}
 }
 
@@ -836,33 +834,33 @@ func mistypedParam(kind paramKind) *commonpb.ParameterValue {
 // sampleCommittedAddress picks a committed account address, falling back to the
 // address pool on an empty ledger. Distinct from actions.go's sampleAddress,
 // which renders a fresh address from a chart pattern.
-func sampleCommittedAddress(ls oracle.LedgerState) string {
+func sampleCommittedAddress(src *generation.Source, ls oracle.LedgerState) string {
 	universe := accountUniverse(ls)
 	if len(universe) == 0 {
-		return poolAddress()
+		return poolAddress(src)
 	}
 
-	return universe[internal.Rand().Intn(len(universe))]
+	return universe[src.Intn(len(universe))]
 }
 
 // sampleStringValue picks a value a string condition may match: a committed
 // transaction reference where one exists, else a pool address.
-func sampleStringValue(ls oracle.LedgerState) string {
-	seeds := txFilterSeedsOf(ls)
+func sampleStringValue(src *generation.Source, ls oracle.LedgerState) string {
+	seeds := txFilterSeedsOf(src, ls)
 	if len(seeds.refs) == 0 {
-		return sampleCommittedAddress(ls)
+		return sampleCommittedAddress(src, ls)
 	}
 
-	return seeds.refs[internal.Rand().Intn(len(seeds.refs))]
+	return seeds.refs[src.Intn(len(seeds.refs))]
 }
 
 // sampleUint picks a bound a uint condition may straddle: a known date stamp,
 // else a small id-space number.
-func sampleUint(ls oracle.LedgerState) uint64 {
-	seeds := txFilterSeedsOf(ls)
+func sampleUint(src *generation.Source, ls oracle.LedgerState) uint64 {
+	seeds := txFilterSeedsOf(src, ls)
 	if len(seeds.stamps) == 0 {
-		return uint64(random.RandomChoice([]uint8{0, 1, 2, 3, 5, 10}))
+		return uint64(generation.Choice(src, []uint8{0, 1, 2, 3, 5, 10}))
 	}
 
-	return seeds.stamps[internal.Rand().Intn(len(seeds.stamps))]
+	return seeds.stamps[src.Intn(len(seeds.stamps))]
 }

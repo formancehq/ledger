@@ -70,9 +70,8 @@ func runRevert(cmd *cobra.Command, args []string) error {
 			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	} else {
-		input, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter transaction ID to revert").
-			Show()
+		input, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter transaction ID to revert"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -112,9 +111,8 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		pterm.Println(pterm.Gray("This will create a new transaction reversing all postings."))
 		pterm.Println()
 
-		confirmed, err := pterm.DefaultInteractiveConfirm.
-			WithDefaultText("Are you sure you want to revert this transaction?").
-			Show()
+		confirmed, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
+			WithDefaultText("Are you sure you want to revert this transaction?"))
 		if err != nil {
 			return fmt.Errorf("failed to read confirmation: %w", err)
 		}

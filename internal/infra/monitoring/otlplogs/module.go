@@ -7,8 +7,8 @@ import (
 
 	prettyconsole "github.com/thessem/zap-prettyconsole"
 	"go.opentelemetry.io/contrib/bridges/otelzap"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
-	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.uber.org/zap"
@@ -91,7 +91,7 @@ func Logger(cfg ModuleConfig) (logging.Logger, error) {
 		sdklog.WithResource(cfg.Resource),
 	)
 
-	global.SetLoggerProvider(loggerProvider)
+	otel.SetLoggerProvider(loggerProvider)
 
 	// Build the console core (writes to cfg.Output).
 	// The console accepts the user-requested verbosity, including Trace.
@@ -138,7 +138,7 @@ func RecoverAndLogPanics(logger logging.Logger) {
 			logger.Errorf("Failed to write stack trace: %v", err)
 		}
 
-		switch loggerProvider := global.GetLoggerProvider().(type) {
+		switch loggerProvider := otel.GetLoggerProvider().(type) {
 		case *sdklog.LoggerProvider:
 			err := loggerProvider.ForceFlush(context.Background())
 			if err != nil {

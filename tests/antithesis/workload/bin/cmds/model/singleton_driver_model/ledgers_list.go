@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -17,17 +16,18 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // runLedgersList checks ListLedgers against the model: a linearizable listing
 // serves exactly the live fleet's ordered window for the page it was asked for,
 // and each entry is the whole LedgerInfo some candidate base holds — the same
 // comparison GetLedger is held to, over the whole page at once.
-func runLedgersList(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	requestedPageSize, pageSize := queryPageSize()
+func runLedgersList(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	requestedPageSize, pageSize := queryPageSize(src)
 	noteClampedPageSize(requestedPageSize, pageSize)
-	reverse := random.RandomChoice([]uint8{0, 1}) == 1
-	filter, filtered := rollLedgerListFilter()
+	reverse := generation.Choice(src, []uint8{0, 1}) == 1
+	filter, filtered := rollLedgerListFilter(src)
 
 	// The ledger cursor is the ledger name itself, so a fleet name resumes at a
 	// real boundary and a name outside it exercises the skip on a key the
@@ -37,17 +37,17 @@ func runLedgersList(ctx context.Context, client servicepb.BucketServiceClient, c
 		resumedAtGone bool
 	)
 
-	if oneIn(2) {
-		cursor = random.RandomChoice(c.ledgerNamesSnapshot())
+	if oneIn(src, 2) {
+		cursor = generation.Choice(src, c.ledgerNamesSnapshot())
 
 		// A tombstoned name is the boundary the skip is most likely to get
 		// wrong: it was a row, and the page must resume past it without it.
-		if deleted := c.deletedLedgerNames(); len(deleted) > 0 && oneIn(3) {
-			cursor = random.RandomChoice(deleted)
+		if deleted := c.deletedLedgerNames(); len(deleted) > 0 && oneIn(src, 3) {
+			cursor = generation.Choice(src, deleted)
 			resumedAtGone = true
 		}
 
-		if oneIn(4) {
+		if oneIn(src, 4) {
 			cursor = "no-such-ledger"
 			resumedAtGone = false
 		}
@@ -215,13 +215,13 @@ func runLedgersList(ctx context.Context, client servicepb.BucketServiceClient, c
 // to a client like a fleet that happens to match. The rate is high because the
 // listing is one arm of one slot of the read mix: a rarer roll leaves the
 // rejection unexercised over a whole local run.
-func rollLedgerListFilter() (*commonpb.QueryFilter, bool) {
-	if !oneIn(4) {
+func rollLedgerListFilter(src *generation.Source) (*commonpb.QueryFilter, bool) {
+	if !oneIn(src, 4) {
 		return nil, false
 	}
 
 	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
-		Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: poolAddress()},
+		Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: poolAddress(src)},
 	}}}, true
 }
 

@@ -2,6 +2,7 @@ package signal
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -50,23 +51,27 @@ func TestSignal_Coalescing(t *testing.T) {
 func TestSignal_NonBlockingNotify(t *testing.T) {
 	t.Parallel()
 
-	s := New()
-	// Notify on a signal with a full buffer should not block
-	s.Notify()
-	// This second Notify must not block
-	done := make(chan struct{})
-
-	go func() {
+	// In the bubble the watchdog fires only if Notify is durably blocked on
+	// the full buffer, not because the goroutine was scheduled late.
+	synctest.Test(t, func(t *testing.T) {
+		s := New()
+		// Notify on a signal with a full buffer should not block
 		s.Notify()
-		close(done)
-	}()
+		// This second Notify must not block
+		done := make(chan struct{})
 
-	select {
-	case <-done:
-		// success - Notify returned without blocking
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("Notify blocked on full buffer")
-	}
+		go func() {
+			s.Notify()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			// success - Notify returned without blocking
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("Notify blocked on full buffer")
+		}
+	})
 }
 
 func TestSignal_ChannelIsReadOnly(t *testing.T) {

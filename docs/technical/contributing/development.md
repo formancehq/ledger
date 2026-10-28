@@ -306,7 +306,7 @@ Use `pprof` for profiling by accessing the pprof endpoint at `/debug/pprof/profi
 - [ ] Documentation updated if necessary
 - [ ] OpenAPI updated if new API
 - [ ] Protobufs regenerated if modified
-- [ ] No `time.Sleep` in tests (Use `Eventually`)
+- [ ] No `time.Sleep` in tests outside a `testing/synctest` bubble (use `synctest` or `Eventually`)
 - [ ] Error handling appropriate
 - [ ] Structured logs with context
 - [ ] Minimize I/O in FSMs -- I/O is not strictly forbidden but should be minimized and optimized

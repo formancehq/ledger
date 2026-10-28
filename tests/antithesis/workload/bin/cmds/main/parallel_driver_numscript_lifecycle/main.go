@@ -3,26 +3,58 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
 	ledgergrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
+	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_numscript_lifecycle", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
-		runNumscriptLifecycle(ctx, client, ledger, "1.0.0", "2.0.0")
+	internal.RunGeneratedDriver("parallel_driver_numscript_lifecycle", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
+		first, later := numscriptVersions(src)
+		runNumscriptLifecycle(ctx, client, ledger, first, later)
 	})
 }
 
+func numscriptVersions(src *generation.Source) (string, string) {
+	// Retain the original major-version regression, alongside generated pairs.
+	if src.Intn(2) == 0 {
+		return "1.0.0", "2.0.0"
+	}
+	// Leave room for an increment even at the uint32 boundary. Derive the
+	// later version from the first; independent draws cannot guarantee order.
+	first := semver.Version{
+		Major: uint32(src.Uint64Range(0, math.MaxUint32-1)),
+		Minor: uint32(src.Uint64Range(0, math.MaxUint32-1)),
+		Patch: uint32(src.Uint64Range(0, math.MaxUint32-1)),
+	}
+	later := first
+	switch src.Intn(3) {
+	case 0:
+		later.Major++
+		later.Minor, later.Patch = 0, 0
+	case 1:
+		later.Minor++
+		later.Patch = 0
+	case 2:
+		later.Patch++
+	}
+
+	return first.String(), later.String()
+}
+
 func runNumscriptLifecycle(ctx context.Context, client servicepb.BucketServiceClient, ledger, version, version2 string) {
+	// SDK entropy isolates technical identities independently of business draws.
 	r := internal.Rand()
 	scriptName := fmt.Sprintf("lifecycle-%d", r.Uint64())
 
-	details := internal.Details{"ledger": ledger, "scriptName": scriptName}
+	details := internal.Details{"ledger": ledger, "scriptName": scriptName, "firstVersion": version, "laterVersion": version2}
 
 	// 1. Save a numscript.
 	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{

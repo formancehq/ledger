@@ -178,11 +178,13 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 		attributionNames = map[string]struct{}{}
 		commandsNames    = map[string]struct{}{}
 		authNames        = map[string]struct{}{}
+		synctestNames    = map[string]struct{}{}
 		timeDot          bool
 		osDot            bool
 		attributionDot   bool
 		commandsDot      bool
 		authDot          bool
+		synctestDot      bool
 	)
 
 	for _, spec := range file.Imports {
@@ -222,7 +224,33 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 			if name != "." && name != "_" {
 				authNames[name] = struct{}{}
 			}
+		case "testing/synctest":
+			synctestDot = name == "."
+			if name != "." && name != "_" {
+				synctestNames[name] = struct{}{}
+			}
 		}
+	}
+
+	// time.Sleep runs on the fake clock inside a synctest bubble, so it is
+	// deterministic there. Only the function literal passed directly to
+	// synctest.Test is recognised: a helper called from a bubble cannot be
+	// proven to run inside one. A nested literal that is stored or returned
+	// rather than called may run after the bubble ends, so it is not exempt.
+	var bubbles, escaping []ast.Node
+	if checkSleep {
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok || len(call.Args) != 2 || !callsImportedFunction(call.Fun, synctestNames, synctestDot, "Test") {
+				return true
+			}
+			if body, ok := call.Args[1].(*ast.FuncLit); ok {
+				bubbles = append(bubbles, body)
+				escaping = append(escaping, escapingFuncLits(body)...)
+			}
+
+			return true
+		})
 	}
 
 	var findings []finding
@@ -289,12 +317,13 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 			return true
 		}
 
-		if checkSleep && callsImportedFunction(call.Fun, timeNames, timeDot, "Sleep") {
+		if checkSleep && callsImportedFunction(call.Fun, timeNames, timeDot, "Sleep") &&
+			(!withinAny(bubbles, call.Pos()) || withinAny(escaping, call.Pos())) {
 			findings = append(findings, goFinding(
 				fileSet,
 				path,
 				call.Fun.Pos(),
-				"tests must not use time.Sleep; use deterministic synchronization or require.Eventually",
+				"tests must not use time.Sleep outside a synctest.Test bubble; use synctest, deterministic synchronization or require.Eventually",
 			))
 		}
 
@@ -422,6 +451,64 @@ func callsImportedFunction(
 	default:
 		return false
 	}
+}
+
+// escapingFuncLits returns the function literals nested in a bubble that may
+// run after it returns. A literal stays in the bubble only when it is invoked
+// in place (including through go and defer) or registered with Cleanup on the
+// bubble's own t, which runs before the bubble ends. Any other callback
+// argument may be retained by its callee, so it counts as escaping.
+func escapingFuncLits(bubble *ast.FuncLit) []ast.Node {
+	// Compare resolved objects, not names: a nested block may shadow the
+	// bubble's t with the enclosing test, whose cleanups run after the bubble.
+	var bubbleT *ast.Ident
+	if params := bubble.Type.Params.List; len(params) == 1 && len(params[0].Names) == 1 {
+		bubbleT = params[0].Names[0]
+	}
+	runsInBubble := func(literal *ast.FuncLit, parent ast.Node) bool {
+		call, ok := parent.(*ast.CallExpr)
+		if !ok {
+			return false
+		}
+		if call.Fun == literal {
+			return true
+		}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != "Cleanup" {
+			return false
+		}
+		receiver, ok := selector.X.(*ast.Ident)
+
+		return ok && bubbleT != nil && bubbleT.Obj != nil && receiver.Obj == bubbleT.Obj
+	}
+
+	var escaping []ast.Node
+	stack := []ast.Node{bubble}
+	ast.Inspect(bubble.Body, func(node ast.Node) bool {
+		if node == nil {
+			stack = stack[:len(stack)-1]
+
+			return true
+		}
+		if literal, ok := node.(*ast.FuncLit); ok && !runsInBubble(literal, stack[len(stack)-1]) {
+			escaping = append(escaping, literal)
+		}
+		stack = append(stack, node)
+
+		return true
+	})
+
+	return escaping
+}
+
+func withinAny(nodes []ast.Node, position token.Pos) bool {
+	for _, node := range nodes {
+		if node.Pos() <= position && position < node.End() {
+			return true
+		}
+	}
+
+	return false
 }
 
 func goFinding(fileSet *token.FileSet, path string, position token.Pos, message string) finding {

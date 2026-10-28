@@ -12,11 +12,12 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_indexes", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
-		metadataKey := fmt.Sprintf("idx-key-%d", internal.Rand().Uint64()%50)
+	internal.RunGeneratedDriver("parallel_driver_indexes", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
+		metadataKey := fmt.Sprintf("idx-key-%d", src.Uint64Range(0, 49))
 		details := internal.Details{"ledger": ledger, "metadataKey": metadataKey}
 
 		// The metadata schema field must exist before its index — declare it

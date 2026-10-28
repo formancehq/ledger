@@ -29,6 +29,12 @@ The endpoint retains its 10-second header read timeout and 120-second idle timeo
 
 ## HTTP REST API
 
+`POST /v3/numscripts/analyze` accepts JSON `{ "source": "...", "version": "v1" }`
+under query-read authorization. A valid source returns its sorted external
+inputs; invalid source or version returns typed diagnostics in a 200 response.
+The operation is independent of ledger state. See the
+[scripting contract](../scripting/numscript-library.md#read-only-source-analysis).
+
 ### Base URL
 
 By default: `http://localhost:9000`
@@ -36,6 +42,25 @@ By default: `http://localhost:9000`
 ### API Versioning
 
 All business routes are served under the `/v3/` prefix. Ops routes (`/health`, `/livez`, `/readyz`, `/clusterz`, `/_info`, `/debug/pprof/`) are unversioned and served at the root.
+
+### Query parameter validation
+
+Each `/v3` route accepts only the query parameter names declared for that
+operation in `openapi.yml`. An unknown name, including a misspelling or a
+retired option, returns HTTP 400 with `errorCode: "INVALID_REQUEST"` before
+the operation executes. The error names the rejected parameter. Malformed
+query encoding also returns 400. Unversioned ops routes retain their existing
+query handling; this validation applies to business routes under `/v3`.
+
+For migration from older APIs, use `filter` instead of the removed `prefix`
+parameter on account lists or `reference` parameter on transaction lists.
+Checkpoint-pinned reads are available through gRPC `ReadOptions.checkpoint_id`;
+`checkpointId` is not an HTTP query parameter, including on account, stats and
+audit reads. Sending it returns 400 rather than silently reading live data.
+
+This changes the response for requests that previously included ignored query
+parameters. Clients must remove unsupported parameters or use the documented
+replacement before upgrading to a server with this validation.
 
 ### Encoded metadata keys
 
@@ -563,9 +588,9 @@ preserves the received status verbatim instead of rebuilding it from the kind.
 newer build carries a kind this enum cannot derive at all. The axes may also
 disagree deliberately: the removed `READ_INDEX_NOT_CAUGHT_UP` was semantically
 `KindUnavailable` but travelled as `codes.FailedPrecondition`, because
-`actions.GRPCRetryPolicy` retries `codes.Unavailable` fifty times at 0.2s and
-the semantic code would have turned a read-index lag into a ten-second
-client-side hang. No reason needs that treatment today.
+`actions.GRPCRetryPolicy` makes five total attempts on `codes.Unavailable`
+with four exponential backoffs totaling 3.75s before jitter. The semantic
+code would have turned a read-index lag into a multi-second client-side delay. No reason needs that treatment today.
 
 **Kind derivation is reason-first.** `grpcerr` derives the `ErrorKind` from the
 reason when this build's `ErrorReason` enum knows it, and falls back to the

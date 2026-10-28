@@ -2153,7 +2153,7 @@ message NumscriptVersionValue {
 // ChartEnforcementMode controls how chart violations are handled.
 enum ChartEnforcementMode {
   CHART_ENFORCEMENT_STRICT = 0;  // Reject transactions with invalid addresses (default)
-  CHART_ENFORCEMENT_AUDIT = 1;   // Log warning but allow the transaction
+  CHART_ENFORCEMENT_AUDIT = 1;   // Allow unmatched accounts without reporting them
 }
 
 // ============================================================================

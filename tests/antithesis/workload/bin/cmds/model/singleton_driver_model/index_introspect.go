@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -19,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // The three registry read RPCs answer from the index registry, an FSM
@@ -34,16 +34,16 @@ import (
 // forward_encoding_version would be a cross-store comparison for the same
 // reason, and nothing documents pending_version > current_version as an
 // invariant, so neither relation is asserted.
-func runIndexIntrospection(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	switch random.RandomChoice([]uint8{0, 1, 2, 3}) {
+func runIndexIntrospection(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	switch generation.Choice(src, []uint8{0, 1, 2, 3}) {
 	case 0:
-		runIndexList(ctx, client, c)
+		runIndexList(src, ctx, client, c)
 	case 1:
-		runIndexGet(ctx, client, c)
+		runIndexGet(src, ctx, client, c)
 	case 2:
-		runIndexListFleet(ctx, client, c)
+		runIndexListFleet(src, ctx, client, c)
 	default:
-		runIndexEntryStatus(ctx, client, c)
+		runIndexEntryStatus(src, ctx, client, c)
 	}
 }
 
@@ -51,9 +51,9 @@ func runIndexIntrospection(ctx context.Context, client servicepb.BucketServiceCl
 // one of the ledger's declared metadata fields (whose registry entry the removal
 // cascade takes with the declaration), or — one in four — an id the workload
 // never registers, so the NotFound side is reached as often as the served one.
-func pickIntrospectIndex(c *Checker, ledger string) *commonpb.IndexID {
-	if oneIn(4) {
-		return indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "unregistered-"+metaKey())
+func pickIntrospectIndex(src *generation.Source, c *Checker, ledger string) *commonpb.IndexID {
+	if oneIn(src, 4) {
+		return indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "unregistered-"+metaKey(src))
 	}
 
 	c.mu.Lock()
@@ -74,15 +74,15 @@ func pickIntrospectIndex(c *Checker, ledger string) *commonpb.IndexID {
 		}
 	}
 
-	return all[internal.Rand().Intn(len(all))].id
+	return all[src.Intn(len(all))].id
 }
 
 // runIndexList streams one ledger's registry entries and checks the canonical
 // set against the model. SCOPE_LEDGER filters on an exact ledger match and
 // answers NotFound for a ledger the bucket does not hold, so a served listing is
 // that ledger's whole registry and an equality check is exact.
-func runIndexList(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 2)
+func runIndexList(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	ledger, absent := pickLedgerReadTarget(src, c.ledgerNamesSnapshot(), 2)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -212,8 +212,8 @@ func indexSetEqual(ls oracle.LedgerState, served map[string]bool) bool {
 // one-sided: it pins the scope's own contract (every entry ledger-less) without
 // claiming to know the set. The ledger-scoped half of SCOPE_ALL is exact — it
 // must be the union of the live fleet's registries, ledger by ledger.
-func runIndexListFleet(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	bucketScope := oneIn(2)
+func runIndexListFleet(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	bucketScope := oneIn(src, 2)
 	scope := servicepb.ListIndexesRequest_SCOPE_ALL
 	if bucketScope {
 		scope = servicepb.ListIndexesRequest_SCOPE_BUCKET
@@ -325,16 +325,16 @@ func describeIndexOwners(byLedger map[string]map[string]bool) string {
 }
 
 // runIndexGet reads one registry entry by id.
-func runIndexGet(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 2)
-	id := pickIntrospectIndex(c, ledger)
+func runIndexGet(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	ledger, absent := pickLedgerReadTarget(src, c.ledgerNamesSnapshot(), 2)
+	id := pickIntrospectIndex(src, c, ledger)
 	canonical := indexes.Canonical(id)
 
 	// An empty ledger addresses the bucket-scoped slot rather than a ledger's,
 	// so it is a different registry key, not a malformed request. The workload
 	// registers nothing there, so the lookup must miss — never answer with a
 	// ledger's entry that happens to share the canonical id.
-	if oneIn(8) {
+	if oneIn(src, 8) {
 		runBucketIndexGet(ctx, client, c, id, canonical)
 
 		return
@@ -423,9 +423,9 @@ func runBucketIndexGet(ctx context.Context, client servicepb.BucketServiceClient
 // runIndexEntryStatus reads one index's status view. Only the registry entry it
 // carries is checked; the backfill cursor and per-replica versions beside it come
 // from a readstore snapshot at its own fold point.
-func runIndexEntryStatus(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 2)
-	id := pickIntrospectIndex(c, ledger)
+func runIndexEntryStatus(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	ledger, absent := pickLedgerReadTarget(src, c.ledgerNamesSnapshot(), 2)
+	id := pickIntrospectIndex(src, c, ledger)
 	canonical := indexes.Canonical(id)
 
 	c.mu.Lock()

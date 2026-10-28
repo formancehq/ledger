@@ -59,8 +59,8 @@ const (
 	PrefixStatsWitness     OwnedLedgerPrefix = "stats-witness" // eventually_stats_consistency
 
 	// PrefixSentinel covers the witness-ledger family used by the
-	// operational singletons (scaling_structured, rolling_restart,
-	// config_change, quorum_recovery). Each singleton picks its own full
+	// operational drivers (scaling_structured, rolling_restart,
+	// config_change, quorum_recovery, transfer_leadership). Each picks its own full
 	// name ("sentinel-scaling-structured", …) via PrefixSentinel.WithSuffix.
 	PrefixSentinel OwnedLedgerPrefix = "sentinel"
 
