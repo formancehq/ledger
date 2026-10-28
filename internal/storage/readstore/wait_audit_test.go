@@ -3,6 +3,7 @@ package readstore
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -54,43 +55,48 @@ func TestWaitForAuditSequenceFastPath(t *testing.T) {
 func TestWaitForAuditSequenceBlocksUntilProgress(t *testing.T) {
 	t.Parallel()
 
-	s := newTestStore(t)
+	synctest.Test(t, func(t *testing.T) {
+		s := newTestStore(t)
 
-	waitErr := make(chan error, 1)
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		waitErr <- s.WaitForAuditSequence(ctx, 7)
-	}()
+		waitErr := make(chan error, 1)
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			waitErr <- s.WaitForAuditSequence(ctx, 7)
+		}()
 
-	// The waiter must not return yet — the cursor is still 0.
-	select {
-	case err := <-waitErr:
-		t.Fatalf("WaitForAuditSequence returned before progress: %v", err)
-	case <-time.After(50 * time.Millisecond):
-	}
+		// The waiter must not return yet — the cursor is still 0. Wait returns
+		// once it is parked in progressCond.
+		synctest.Wait()
+		select {
+		case err := <-waitErr:
+			t.Fatalf("WaitForAuditSequence returned before progress: %v", err)
+		default:
+		}
 
-	// A commit below the target must not unblock the waiter.
-	writeAuditProgress(t, s, 3)
-	s.NotifyProgress()
+		// A commit below the target must not unblock the waiter.
+		writeAuditProgress(t, s, 3)
+		s.NotifyProgress()
 
-	select {
-	case err := <-waitErr:
-		t.Fatalf("WaitForAuditSequence returned before reaching target: %v", err)
-	case <-time.After(50 * time.Millisecond):
-	}
+		synctest.Wait()
+		select {
+		case err := <-waitErr:
+			t.Fatalf("WaitForAuditSequence returned before reaching target: %v", err)
+		default:
+		}
 
-	// Reaching the target unblocks the waiter, exactly as processBatch does
-	// (WriteAuditProgress commit followed by NotifyProgress).
-	writeAuditProgress(t, s, 7)
-	s.NotifyProgress()
+		// Reaching the target unblocks the waiter, exactly as processBatch does
+		// (WriteAuditProgress commit followed by NotifyProgress).
+		writeAuditProgress(t, s, 7)
+		s.NotifyProgress()
 
-	select {
-	case err := <-waitErr:
-		require.NoError(t, err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("WaitForAuditSequence did not return after progress reached target")
-	}
+		select {
+		case err := <-waitErr:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("WaitForAuditSequence did not return after progress reached target")
+		}
+	})
 }
 
 // TestWaitForAuditSequenceContextCancel unblocks promptly on context
@@ -99,29 +105,32 @@ func TestWaitForAuditSequenceBlocksUntilProgress(t *testing.T) {
 func TestWaitForAuditSequenceContextCancel(t *testing.T) {
 	t.Parallel()
 
-	s := newTestStore(t)
+	synctest.Test(t, func(t *testing.T) {
+		s := newTestStore(t)
 
-	ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
 
-	waitErr := make(chan error, 1)
-	go func() {
-		waitErr <- s.WaitForAuditSequence(ctx, 100)
-	}()
+		waitErr := make(chan error, 1)
+		go func() {
+			waitErr <- s.WaitForAuditSequence(ctx, 100)
+		}()
 
-	select {
-	case err := <-waitErr:
-		t.Fatalf("WaitForAuditSequence returned before cancel: %v", err)
-	case <-time.After(50 * time.Millisecond):
-	}
+		synctest.Wait()
+		select {
+		case err := <-waitErr:
+			t.Fatalf("WaitForAuditSequence returned before cancel: %v", err)
+		default:
+		}
 
-	cancel()
+		cancel()
 
-	select {
-	case err := <-waitErr:
-		require.ErrorIs(t, err, context.Canceled)
-	case <-time.After(5 * time.Second):
-		t.Fatal("WaitForAuditSequence did not return after context cancel")
-	}
+		select {
+		case err := <-waitErr:
+			require.ErrorIs(t, err, context.Canceled)
+		case <-time.After(5 * time.Second):
+			t.Fatal("WaitForAuditSequence did not return after context cancel")
+		}
+	})
 }
 
 // TestLastIndexedAuditSequence reflects the committed audit cursor and is

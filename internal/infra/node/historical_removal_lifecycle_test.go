@@ -3,7 +3,7 @@ package node
 import (
 	"context"
 	"testing"
-	"time"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
@@ -115,62 +115,62 @@ func TestHistoricalRemovalLifecycleFailedVerificationRetainsEveryEvent(t *testin
 func TestHistoricalRemovalLifecycleDurableCleanupCannotClearLaterEvent(t *testing.T) {
 	t.Parallel()
 
-	n, setup := newHistoricalRemovalLifecycleSetup(t)
-	oldIdentity := []byte("old-instance-id-")
-	newIdentity := []byte("new-instance-id-")
-	require.NoError(t, n.membership.Register(2, "peer:7777", "peer:8888", oldIdentity))
-	oldPending, err := n.trackCommittedRemoval(2, oldIdentity, 1)
-	require.NoError(t, err)
-	newPending, err := n.trackCommittedRemoval(2, newIdentity, 3)
-	require.NoError(t, err)
-	_, err = n.trackCommittedRemoval(2, oldIdentity, 5)
-	require.NoError(t, err)
-
-	applierDone := make(chan error, 1)
-	go func() { applierDone <- setup.applier.Run(t.Context(), setup.stop) }()
-	t.Cleanup(func() {
-		close(setup.stop)
-		require.NoError(t, <-applierDone)
-	})
-	apply := func(entry *raftpb.Entry) {
-		setup.applier.Submit([]*raftpb.Entry{entry}, nil, nil, setup.stop)
-		setup.applier.Drain(setup.stop)
-	}
-	apply(historicalRemovalLifecycleEntry(t, 1, raftpb.ConfChangeRemoveNode, oldIdentity))
-	require.Eventually(t, func() bool {
-		_, pending := n.pendingRemovals.load(2, 1)
-
-		return !pending
-	}, time.Second, time.Millisecond)
-	require.True(t, n.isRemovalPending(2, oldIdentity), "the later removal of the same identity must retain its own guard")
-	require.True(t, n.isRemovalPending(2, newIdentity), "durable application of removal 1 must not release removal 3")
-	stored, ok := n.pendingRemovals.load(2, 3)
-	require.True(t, ok)
-	require.Same(t, newPending, stored)
-
-	// A delayed foreground verification can still hold the first event after
-	// its background cleanup. It must not release a later event at this ordinal.
-	cleared, err := n.verifyAndClearPendingRemoval(2, oldPending)
-	require.NoError(t, err)
-	require.False(t, cleared)
-	require.True(t, n.isRemovalPending(2, newIdentity))
-
-	apply(historicalRemovalLifecycleEntry(t, 2, raftpb.ConfChangeAddLearnerNode, newIdentity))
-	apply(historicalRemovalLifecycleEntry(t, 3, raftpb.ConfChangeRemoveNode, newIdentity))
-	require.Eventually(t, func() bool {
-		return !n.isRemovalPending(2, newIdentity)
-	}, time.Second, time.Millisecond)
-	require.True(t, n.isRemovalPending(2, oldIdentity))
-	apply(historicalRemovalLifecycleEntry(t, 4, raftpb.ConfChangeAddLearnerNode, oldIdentity))
-	apply(historicalRemovalLifecycleEntry(t, 5, raftpb.ConfChangeRemoveNode, oldIdentity))
-	require.Eventually(t, func() bool {
-		return !n.isRemovalPending(2, oldIdentity)
-	}, time.Second, time.Millisecond)
-	for _, identity := range [][]byte{oldIdentity, newIdentity} {
-		removed, err := n.membership.IsRemoved(2, identity)
+	synctest.Test(t, func(t *testing.T) {
+		n, setup := newHistoricalRemovalLifecycleSetup(t)
+		oldIdentity := []byte("old-instance-id-")
+		newIdentity := []byte("new-instance-id-")
+		require.NoError(t, n.membership.Register(2, "peer:7777", "peer:8888", oldIdentity))
+		oldPending, err := n.trackCommittedRemoval(2, oldIdentity, 1)
 		require.NoError(t, err)
-		require.True(t, removed)
-	}
+		newPending, err := n.trackCommittedRemoval(2, newIdentity, 3)
+		require.NoError(t, err)
+		_, err = n.trackCommittedRemoval(2, oldIdentity, 5)
+		require.NoError(t, err)
+
+		applierDone := make(chan error, 1)
+		go func() { applierDone <- setup.applier.Run(t.Context(), setup.stop) }()
+		t.Cleanup(func() {
+			close(setup.stop)
+			require.NoError(t, <-applierDone)
+		})
+		apply := func(entry *raftpb.Entry) {
+			setup.applier.Submit([]*raftpb.Entry{entry}, nil, nil, setup.stop)
+			setup.applier.Drain(setup.stop)
+		}
+		apply(historicalRemovalLifecycleEntry(t, 1, raftpb.ConfChangeRemoveNode, oldIdentity))
+		// Every background cleanup waiter has now either finished or parked on
+		// an index that is not yet durable.
+		synctest.Wait()
+		_, pending := n.pendingRemovals.load(2, 1)
+		require.False(t, pending)
+		require.True(t, n.isRemovalPending(2, oldIdentity), "the later removal of the same identity must retain its own guard")
+		require.True(t, n.isRemovalPending(2, newIdentity), "durable application of removal 1 must not release removal 3")
+		stored, ok := n.pendingRemovals.load(2, 3)
+		require.True(t, ok)
+		require.Same(t, newPending, stored)
+
+		// A delayed foreground verification can still hold the first event after
+		// its background cleanup. It must not release a later event at this ordinal.
+		cleared, err := n.verifyAndClearPendingRemoval(2, oldPending)
+		require.NoError(t, err)
+		require.False(t, cleared)
+		require.True(t, n.isRemovalPending(2, newIdentity))
+
+		apply(historicalRemovalLifecycleEntry(t, 2, raftpb.ConfChangeAddLearnerNode, newIdentity))
+		apply(historicalRemovalLifecycleEntry(t, 3, raftpb.ConfChangeRemoveNode, newIdentity))
+		synctest.Wait()
+		require.False(t, n.isRemovalPending(2, newIdentity))
+		require.True(t, n.isRemovalPending(2, oldIdentity))
+		apply(historicalRemovalLifecycleEntry(t, 4, raftpb.ConfChangeAddLearnerNode, oldIdentity))
+		apply(historicalRemovalLifecycleEntry(t, 5, raftpb.ConfChangeRemoveNode, oldIdentity))
+		synctest.Wait()
+		require.False(t, n.isRemovalPending(2, oldIdentity))
+		for _, identity := range [][]byte{oldIdentity, newIdentity} {
+			removed, err := n.membership.IsRemoved(2, identity)
+			require.NoError(t, err)
+			require.True(t, removed)
+		}
+	})
 }
 
 func TestNewNodeReplaysHistoricalRemovalCycles(t *testing.T) {

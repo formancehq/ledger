@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -40,26 +41,29 @@ func pendingLeaderReady(t *testing.T, n *Node) *leaderReadyGeneration {
 func TestAddLearnerWaitsForLeaderReady(t *testing.T) {
 	t.Parallel()
 
-	n := newConfiguredPeersTestNode(t)
-	n.logger = logging.Testing()
-	generation := pendingLeaderReady(t, n)
+	synctest.Test(t, func(t *testing.T) {
+		n := newConfiguredPeersTestNode(t)
+		n.logger = logging.Testing()
+		generation := pendingLeaderReady(t, n)
 
-	results := make(chan error, 1)
-	go func() {
-		results <- n.AddLearner(t.Context(), 2, "new:7777", "new:8888", []byte("next-instance-id"))
-	}()
+		results := make(chan error, 1)
+		go func() {
+			results <- n.AddLearner(t.Context(), 2, "new:7777", "new:8888", []byte("next-instance-id"))
+		}()
 
-	require.Never(t, func() bool {
+		// The command channel is unbuffered: an admission that reached it would
+		// be parked on the send, so a receive here would succeed.
+		time.Sleep(time.Minute)
+		synctest.Wait()
 		select {
 		case <-n.clusterCommandCh:
-			return true
+			t.Fatal("admission reached the proposal path before leader readiness")
 		default:
-			return false
 		}
-	}, 200*time.Millisecond, 10*time.Millisecond, "admission reached the proposal path before leader readiness")
 
-	generation.cancelAndWait()
-	require.ErrorIs(t, receiveForceRemoveError(t, results), ErrNotLeader)
+		generation.cancelAndWait()
+		require.ErrorIs(t, receiveForceRemoveError(t, results), ErrNotLeader)
+	})
 }
 
 // TestCheckAndPromoteLearnersWaitsForLeaderReady pins the same gate on

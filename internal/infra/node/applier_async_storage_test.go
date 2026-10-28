@@ -41,38 +41,40 @@ func makeApplyResp(nodeID uint64, index uint64) *raftpb.Message {
 func TestApplierFiresResponsesAfterCommit(t *testing.T) {
 	t.Parallel()
 
-	ctx := logging.TestingContext()
-	sink := make(LocalResponses, 4)
-	setup := newTestApplierSetupWithSink(t, sink)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		sink := make(LocalResponses, 4)
+		setup := newTestApplierSetupWithSink(t, sink)
 
-	runDone := make(chan error, 1)
-	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
+		runDone := make(chan error, 1)
+		go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	entry, _ := makeCreateLedgerEntry(t, 1, "async-normal")
-	resp := makeApplyResp(1, entry.GetIndex())
-	setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, []*raftpb.Message{resp}, setup.stop)
+		entry, _ := makeCreateLedgerEntry(t, 1, "async-normal")
+		resp := makeApplyResp(1, entry.GetIndex())
+		setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, []*raftpb.Message{resp}, setup.stop)
 
-	select {
-	case got := <-sink:
-		require.Len(t, got, 1)
-		require.Equal(t, resp.GetIndex(), got[0].GetIndex())
+		select {
+		case got := <-sink:
+			require.Len(t, got, 1)
+			require.Equal(t, resp.GetIndex(), got[0].GetIndex())
 
-		// Response arrived — the commit MUST have completed. Verify FSM
-		// state reflects the entry (this is the timing assertion behind
-		// the "Applied tracks FSM-applied" claim).
-		require.True(t, listLedgerContains(setup.store, "async-normal"),
-			"ledger must be committed to store before response fires")
-	case <-time.After(3 * time.Second):
-		t.Fatal("expected response on sink after successful commit")
-	}
+			// Response arrived — the commit MUST have completed. Verify FSM
+			// state reflects the entry (this is the timing assertion behind
+			// the "Applied tracks FSM-applied" claim).
+			require.True(t, listLedgerContains(setup.store, "async-normal"),
+				"ledger must be committed to store before response fires")
+		case <-time.After(3 * time.Second):
+			t.Fatal("expected response on sink after successful commit")
+		}
 
-	close(setup.stop)
-	select {
-	case err := <-runDone:
-		require.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not return after stop")
-	}
+		close(setup.stop)
+		select {
+		case err := <-runDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Run did not return after stop")
+		}
+	})
 }
 
 // TestApplierFiresResponsesFromSpoolBranch — non-statusNormal path. When the
@@ -82,39 +84,41 @@ func TestApplierFiresResponsesAfterCommit(t *testing.T) {
 func TestApplierFiresResponsesFromSpoolBranch(t *testing.T) {
 	t.Parallel()
 
-	ctx := logging.TestingContext()
-	sink := make(LocalResponses, 4)
-	setup := newTestApplierSetupWithSink(t, sink)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		sink := make(LocalResponses, 4)
+		setup := newTestApplierSetupWithSink(t, sink)
 
-	setup.applier.setOutOfSync()
+		setup.applier.setOutOfSync()
 
-	runDone := make(chan error, 1)
-	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
+		runDone := make(chan error, 1)
+		go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	entry, _ := makeCreateLedgerEntry(t, 1, "async-spool")
-	resp := makeApplyResp(1, entry.GetIndex())
-	setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, []*raftpb.Message{resp}, setup.stop)
+		entry, _ := makeCreateLedgerEntry(t, 1, "async-spool")
+		resp := makeApplyResp(1, entry.GetIndex())
+		setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, []*raftpb.Message{resp}, setup.stop)
 
-	select {
-	case got := <-sink:
-		require.Len(t, got, 1)
-		require.Equal(t, resp.GetIndex(), got[0].GetIndex())
+		select {
+		case got := <-sink:
+			require.Len(t, got, 1)
+			require.Equal(t, resp.GetIndex(), got[0].GetIndex())
 
-		// Under out-of-sync the entry is spooled, NOT applied — the sink
-		// must fire on spool durability, not on FSM state.
-		require.False(t, listLedgerContains(setup.store, "async-spool"),
-			"spool branch must not commit to store")
-	case <-time.After(3 * time.Second):
-		t.Fatal("expected response on sink from spool branch")
-	}
+			// Under out-of-sync the entry is spooled, NOT applied — the sink
+			// must fire on spool durability, not on FSM state.
+			require.False(t, listLedgerContains(setup.store, "async-spool"),
+				"spool branch must not commit to store")
+		case <-time.After(3 * time.Second):
+			t.Fatal("expected response on sink from spool branch")
+		}
 
-	close(setup.stop)
-	select {
-	case err := <-runDone:
-		require.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not return after stop")
-	}
+		close(setup.stop)
+		select {
+		case err := <-runDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Run did not return after stop")
+		}
+	})
 }
 
 // TestApplierNewApplierRejectsNilSink pins the wiring contract: NewApplier
@@ -187,28 +191,30 @@ func TestApplierNewApplierRejectsNilSink(t *testing.T) {
 func TestApplierNoFireWhenResponseObserverAbsent(t *testing.T) {
 	t.Parallel()
 
-	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t) // buffered sink, no observer draining it
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		setup := newTestApplierSetup(t) // buffered sink, no observer draining it
 
-	runDone := make(chan error, 1)
-	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
+		runDone := make(chan error, 1)
+		go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	entry, _ := makeCreateLedgerEntry(t, 1, "async-no-observer")
-	resp := makeApplyResp(1, entry.GetIndex())
-	setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, []*raftpb.Message{resp}, setup.stop)
+		entry, _ := makeCreateLedgerEntry(t, 1, "async-no-observer")
+		resp := makeApplyResp(1, entry.GetIndex())
+		setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, []*raftpb.Message{resp}, setup.stop)
 
-	setup.applier.Drain(setup.stop)
+		setup.applier.Drain(setup.stop)
 
-	require.True(t, listLedgerContains(setup.store, "async-no-observer"),
-		"entry must be applied even when nothing is draining the response sink")
+		require.True(t, listLedgerContains(setup.store, "async-no-observer"),
+			"entry must be applied even when nothing is draining the response sink")
 
-	close(setup.stop)
-	select {
-	case err := <-runDone:
-		require.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not return after stop")
-	}
+		close(setup.stop)
+		select {
+		case err := <-runDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Run did not return after stop")
+		}
+	})
 }
 
 // TestApplierNoFireWhenResponsesEmpty — regression guard: a Submit without
@@ -216,32 +222,36 @@ func TestApplierNoFireWhenResponseObserverAbsent(t *testing.T) {
 func TestApplierNoFireWhenResponsesEmpty(t *testing.T) {
 	t.Parallel()
 
-	ctx := logging.TestingContext()
-	sink := make(LocalResponses, 4)
-	setup := newTestApplierSetupWithSink(t, sink)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		sink := make(LocalResponses, 4)
+		setup := newTestApplierSetupWithSink(t, sink)
 
-	runDone := make(chan error, 1)
-	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
+		runDone := make(chan error, 1)
+		go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	entry, _ := makeCreateLedgerEntry(t, 1, "async-no-resp")
-	setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, nil, setup.stop)
+		entry, _ := makeCreateLedgerEntry(t, 1, "async-no-resp")
+		setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, nil, setup.stop)
 
-	setup.applier.Drain(setup.stop)
+		setup.applier.Drain(setup.stop)
 
-	select {
-	case got := <-sink:
-		t.Fatalf("sink must be empty when Submit carries no responses, got %d msg(s)", len(got))
-	case <-time.After(200 * time.Millisecond):
-		// expected: nothing fires
-	}
+		// The committer has finished the batch once every goroutine parks, so
+		// an empty sink now means nothing will fire.
+		synctest.Wait()
+		select {
+		case got := <-sink:
+			t.Fatalf("sink must be empty when Submit carries no responses, got %d msg(s)", len(got))
+		default:
+		}
 
-	close(setup.stop)
-	select {
-	case err := <-runDone:
-		require.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not return after stop")
-	}
+		close(setup.stop)
+		select {
+		case err := <-runDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Run did not return after stop")
+		}
+	})
 }
 
 // TestApplierMultipleBatchesOnlyLastResponsesFire — with multiple sub-batches
@@ -251,39 +261,41 @@ func TestApplierNoFireWhenResponsesEmpty(t *testing.T) {
 func TestApplierMultipleBatchesOnlyLastResponsesFire(t *testing.T) {
 	t.Parallel()
 
-	ctx := logging.TestingContext()
-	sink := make(LocalResponses, 8)
-	setup := newTestApplierSetupWithSink(t, sink)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		sink := make(LocalResponses, 8)
+		setup := newTestApplierSetupWithSink(t, sink)
 
-	runDone := make(chan error, 1)
-	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
+		runDone := make(chan error, 1)
+		go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	entry1, _ := makeCreateLedgerEntry(t, 1, "async-multi-1")
-	entry2, _ := makeCreateLedgerEntry(t, 2, "async-multi-2")
-	entry3, _ := makeCreateLedgerEntry(t, 3, "async-multi-3")
+		entry1, _ := makeCreateLedgerEntry(t, 1, "async-multi-1")
+		entry2, _ := makeCreateLedgerEntry(t, 2, "async-multi-2")
+		entry3, _ := makeCreateLedgerEntry(t, 3, "async-multi-3")
 
-	resp1 := makeApplyResp(1, entry1.GetIndex())
-	resp2 := makeApplyResp(1, entry2.GetIndex())
-	resp3 := makeApplyResp(1, entry3.GetIndex())
+		resp1 := makeApplyResp(1, entry1.GetIndex())
+		resp2 := makeApplyResp(1, entry2.GetIndex())
+		resp3 := makeApplyResp(1, entry3.GetIndex())
 
-	setup.applier.Submit([]*raftpb.Entry{entry1}, setup.confState, []*raftpb.Message{resp1}, setup.stop)
-	setup.applier.Submit([]*raftpb.Entry{entry2}, setup.confState, []*raftpb.Message{resp2}, setup.stop)
-	setup.applier.Submit([]*raftpb.Entry{entry3}, setup.confState, []*raftpb.Message{resp3}, setup.stop)
+		setup.applier.Submit([]*raftpb.Entry{entry1}, setup.confState, []*raftpb.Message{resp1}, setup.stop)
+		setup.applier.Submit([]*raftpb.Entry{entry2}, setup.confState, []*raftpb.Message{resp2}, setup.stop)
+		setup.applier.Submit([]*raftpb.Entry{entry3}, setup.confState, []*raftpb.Message{resp3}, setup.stop)
 
-	setup.applier.Drain(setup.stop)
+		setup.applier.Drain(setup.stop)
 
-	// Collect responses. Order is guaranteed by the single-writer applier→
-	// committer chain: batches commit in the order they're submitted.
-	receivedIdx := collectResponseIndices(t, sink, 3)
-	require.Equal(t, []uint64{entry1.GetIndex(), entry2.GetIndex(), entry3.GetIndex()}, receivedIdx)
+		// Collect responses. Order is guaranteed by the single-writer applier→
+		// committer chain: batches commit in the order they're submitted.
+		receivedIdx := collectResponseIndices(t, sink, 3)
+		require.Equal(t, []uint64{entry1.GetIndex(), entry2.GetIndex(), entry3.GetIndex()}, receivedIdx)
 
-	close(setup.stop)
-	select {
-	case err := <-runDone:
-		require.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not return after stop")
-	}
+		close(setup.stop)
+		select {
+		case err := <-runDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Run did not return after stop")
+		}
+	})
 }
 
 // TestApplierRunCommitterDoesNotDeadlockOnFullSink — regression guard for

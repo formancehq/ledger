@@ -26,6 +26,44 @@ func TestExample() {
 	require.Equal(t, 6, findings[0].line)
 }
 
+func TestCheckGoSourceAllowsSleepOnlyInsideSynctestBubble(t *testing.T) {
+	t.Parallel()
+
+	source := []byte(`package sample
+
+import (
+	"testing"
+	bubble "testing/synctest"
+	"time"
+)
+
+func sleepHelper() {
+	time.Sleep(1)
+}
+
+func TestExample(t *testing.T) {
+	var escaped func()
+	bubble.Test(t, func(t *testing.T) {
+		time.Sleep(1)
+		go func() { time.Sleep(1) }()
+		defer func() { time.Sleep(1) }()
+		t.Cleanup(func() { time.Sleep(1) })
+		sleepHelper()
+		escaped = func() { time.Sleep(1) }
+	})
+	escaped()
+	time.Sleep(1)
+}
+`)
+
+	findings, err := checkGoSource("sample_test.go", source)
+	require.NoError(t, err)
+	require.Len(t, findings, 3)
+	require.Equal(t, 10, findings[0].line, "a helper is not provably inside a bubble")
+	require.Equal(t, 21, findings[1].line, "a stored closure may run after the bubble returns")
+	require.Equal(t, 24, findings[2].line, "a sleep after the bubble returns uses the real clock")
+}
+
 func TestCheckGoSourceDetectsDotImportedEnvironmentReads(t *testing.T) {
 	t.Parallel()
 

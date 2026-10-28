@@ -807,6 +807,76 @@ Eventually(func(g Gomega) bool {
 }).Within(10 * time.Second).WithPolling(500 * time.Millisecond).Should(BeTrue())
 ```
 
+### Use `testing/synctest` for time-dependent unit tests
+
+In-process unit tests should not depend on the wall clock. A test that waits
+for a production retry delay, a ticker, or a short `time.After` deadline is
+slow, and it can fail when CI is loaded. Run such a test inside a
+`synctest.Test` bubble:
+
+- Time inside the bubble is fake. It moves only when every goroutine in the
+  bubble is durably blocked, so a one-second retry delay elapses at once.
+- `synctest.Wait()` returns when every other goroutine in the bubble is
+  durably blocked. After it returns, assert the state directly instead of
+  polling with `require.Eventually`.
+- A `time.After` watchdog in the bubble measures fake time, so scheduler
+  load cannot make it fire. It still fires before a slower fake-time
+  operation completes, so it must exceed every timer the operation waits on.
+- When the observation is monotonic, such as a counter, a generation, or
+  events that are only recorded and never removed, a `require.Never` window
+  becomes `time.Sleep(d); synctest.Wait(); require.Zero(t, count())`.
+  Because fake time is free, `d` can cover several production periods. A
+  single sample misses a condition that turns true and then false again, so
+  for such a condition record a sticky violation in the code under test or
+  keep polling.
+
+```go
+func TestRetryHonorsDelay(t *testing.T) {
+    t.Parallel()
+    synctest.Test(t, func(t *testing.T) {
+        m := newManager(t) // build every fixture inside the bubble
+        m.Start()
+        t.Cleanup(m.Stop) // runs inside the bubble, before it ends
+
+        time.Sleep(retryDelay)
+        synctest.Wait()
+        require.Equal(t, int64(2), m.attempts.Load())
+    })
+}
+```
+
+Follow these rules:
+
+- Call `t.Parallel()` on the outer `t`. Do not call `Parallel`, `Run`, or
+  `Deadline` on the `t` of the bubble. For subtests, start one bubble inside
+  each `t.Run` closure.
+- Build fixtures inside the bubble. A goroutine or channel created outside
+  the bubble is not managed by it, and a bubbled channel or timer panics when
+  it is used from outside.
+- Stop every goroutine started in the bubble before the bubble returns.
+  Fake time stops when the bubble function returns. A goroutine that exits
+  only on an idle timer then never exits, and `synctest.Test` panics with a
+  deadlock. Production workers that outlive their owner on an idle timer
+  should instead exit when their work drains, as the Pebble event logger
+  worker does.
+- A mutex wait is not durable blocking, so a goroutine parked on a leaked
+  `sync.Mutex` stops fake time: no watchdog fires, and the test, including its
+  cleanup, hangs until the `go test` timeout instead of failing. When a test
+  guards such a regression, probe the lock with `TryLock`, release whichever
+  hold exists, then assert, as
+  `internal/infra/node/force_remove_durability_test.go` does. Otherwise keep
+  the test out of a bubble.
+- Pebble and file I/O work inside a bubble. Fake time does not move while a
+  goroutine is in a system call or waits on a mutex.
+- Do not use a bubble for real network I/O: `net.Listen`, `net.Dial`,
+  `httptest.Server`, or gRPC over TCP. Do not use it for Docker,
+  testcontainers, subprocesses, or envtest. Fake time does not move while a
+  goroutine waits on a socket. Use `net.Pipe` or an in-memory fake instead.
+
+For examples, see `internal/infra/node/node_shutdown_test.go`,
+`internal/bootstrap/node_hook_test.go`, and
+`internal/application/events/manager_startup_retry_test.go`.
+
 ### Defensive Checks
 
 Always check that IDs are valid before use:

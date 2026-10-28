@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -257,63 +258,65 @@ func TestEmitterIntegration_ProcessExistingLogs(t *testing.T) {
 func TestEmitterIntegration_NotificationDrivenProcessing(t *testing.T) {
 	t.Parallel()
 
-	store := newTestStore(t)
-	sink := &recordingSink{}
-	proposer := &directProposer{store: store}
-	logger := logging.Testing()
+	synctest.Test(t, func(t *testing.T) {
+		store := newTestStore(t)
+		sink := &recordingSink{}
+		proposer := &directProposer{store: store}
+		logger := logging.Testing()
 
-	registerLedger(t, store, "payments")
+		registerLedger(t, store, "payments")
 
-	cfg := events.DefaultEmitterConfig()
-	cfg.BatchSize = 10
-	cfg.BatchDelay = 1 * time.Second // long delay so we test notification-driven path
-	emitter := events.NewEmitter(store, sink, "test-sink", proposer, newPlanBuilder(t, store), logger, cfg)
+		cfg := events.DefaultEmitterConfig()
+		cfg.BatchSize = 10
+		cfg.BatchDelay = 1 * time.Second // long delay so we test notification-driven path
+		emitter := events.NewEmitter(store, sink, "test-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 
-	emitter.Start()
-	defer emitter.Stop()
+		emitter.Start()
+		defer emitter.Stop()
 
-	// Verify no events emitted when there are no logs
-	require.Never(t, func() bool {
-		return len(sink.getEvents()) > 0
-	}, 100*time.Millisecond, 10*time.Millisecond, "emitter should not emit events when there are no logs")
+		// Verify no events emitted when there are no logs, across several ticks
+		time.Sleep(2 * cfg.BatchDelay)
+		synctest.Wait()
+		require.Empty(t, sink.getEvents(), "emitter should not emit events when there are no logs")
 
-	// Append logs and notify
-	now := libtime.Now()
-	appendTestLogs(t, store,
-		&commonpb.Log{
-			Sequence: 1,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
-						LedgerName: "payments",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(
-											commonpb.NewPosting("world", "merchant", "EUR", big.NewInt(500)),
-										).
-										WithID(1).
-										WithTimestamp(now),
+		// Append logs and notify
+		now := libtime.Now()
+		appendTestLogs(t, store,
+			&commonpb.Log{
+				Sequence: 1,
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_Apply{
+						Apply: &commonpb.ApplyLedgerLog{
+							LedgerName: "payments",
+							Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+								Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+									CreatedTransaction: &commonpb.CreatedTransaction{
+										Transaction: commonpb.NewTransaction().
+											WithPostings(
+												commonpb.NewPosting("world", "merchant", "EUR", big.NewInt(500)),
+											).
+											WithID(1).
+											WithTimestamp(now),
+									},
 								},
-							},
-						}).WithID(1).WithDate(now),
+							}).WithID(1).WithDate(now),
+						},
 					},
 				},
 			},
-		},
-	)
+		)
 
-	// Trigger notification
-	emitter.Notify()
+		// Trigger notification. No fake time passes before the assertion, so
+		// the BatchDelay ticker cannot be what delivers the event.
+		emitter.Notify()
+		synctest.Wait()
 
-	require.Eventually(t, func() bool {
-		return len(sink.getEvents()) >= 1
-	}, 5*time.Second, 10*time.Millisecond, "emitter should process after notification")
+		require.NotEmpty(t, sink.getEvents(), "emitter should process after notification")
 
-	published := sink.getEvents()
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].GetType())
-	require.Equal(t, "payments", published[0].GetLedger())
+		published := sink.getEvents()
+		require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].GetType())
+		require.Equal(t, "payments", published[0].GetLedger())
+	})
 }
 
 func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
@@ -807,104 +810,107 @@ func (s *flakySink) getEvents() []*eventspb.Event {
 func TestEmitterIntegration_FilteredLogDoesNotSkipPendingBatchOnFailure(t *testing.T) {
 	t.Parallel()
 
-	store := newTestStore(t)
-	sink := &flakySink{}
-	sink.failures.Store(1) // fail exactly one Publish
+	synctest.Test(t, func(t *testing.T) {
+		store := newTestStore(t)
+		sink := &flakySink{}
+		sink.failures.Store(1) // fail exactly one Publish
 
-	proposer := &directProposer{store: store}
-	logger := logging.Testing()
+		proposer := &directProposer{store: store}
+		logger := logging.Testing()
 
-	registerLedger(t, store, "test")
+		registerLedger(t, store, "test")
 
-	now := libtime.Now()
+		now := libtime.Now()
 
-	// Logs:
-	//   seq 1: COMMITTED_TRANSACTION (will be batched)
-	//   seq 2: SAVED_METADATA        (filtered out by config)
-	//   seq 3: COMMITTED_TRANSACTION (will be batched, triggers flush at BatchSize=2)
-	//   seq 4: SAVED_METADATA        (filtered out by config)
-	appendTestLogs(t, store,
-		&commonpb.Log{
-			Sequence: 1,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
-				LedgerName: "test",
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-					Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
-						Transaction: commonpb.NewTransaction().
-							WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
-							WithID(1).WithTimestamp(now),
-					}},
-				}).WithID(1).WithDate(now),
-			}}},
-		},
-		&commonpb.Log{
-			Sequence: 2,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
-				LedgerName: "test",
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-					Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
-						Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "bank"}}},
-						Metadata: commonpb.MetadataFromGoMap(map[string]string{"k": "v"}),
-					}},
-				}).WithID(2).WithDate(now),
-			}}},
-		},
-		&commonpb.Log{
-			Sequence: 3,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
-				LedgerName: "test",
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-					Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
-						Transaction: commonpb.NewTransaction().
-							WithPostings(commonpb.NewPosting("world", "alice", "USD", big.NewInt(50))).
-							WithID(2).WithTimestamp(now),
-					}},
-				}).WithID(3).WithDate(now),
-			}}},
-		},
-		&commonpb.Log{
-			Sequence: 4,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
-				LedgerName: "test",
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-					Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
-						Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "alice"}}},
-						Metadata: commonpb.MetadataFromGoMap(map[string]string{"k2": "v2"}),
-					}},
-				}).WithID(4).WithDate(now),
-			}}},
-		},
-	)
+		// Logs:
+		//   seq 1: COMMITTED_TRANSACTION (will be batched)
+		//   seq 2: SAVED_METADATA        (filtered out by config)
+		//   seq 3: COMMITTED_TRANSACTION (will be batched, triggers flush at BatchSize=2)
+		//   seq 4: SAVED_METADATA        (filtered out by config)
+		appendTestLogs(t, store,
+			&commonpb.Log{
+				Sequence: 1,
+				Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+					LedgerName: "test",
+					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
+							Transaction: commonpb.NewTransaction().
+								WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
+								WithID(1).WithTimestamp(now),
+						}},
+					}).WithID(1).WithDate(now),
+				}}},
+			},
+			&commonpb.Log{
+				Sequence: 2,
+				Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+					LedgerName: "test",
+					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
+							Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "bank"}}},
+							Metadata: commonpb.MetadataFromGoMap(map[string]string{"k": "v"}),
+						}},
+					}).WithID(2).WithDate(now),
+				}}},
+			},
+			&commonpb.Log{
+				Sequence: 3,
+				Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+					LedgerName: "test",
+					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
+							Transaction: commonpb.NewTransaction().
+								WithPostings(commonpb.NewPosting("world", "alice", "USD", big.NewInt(50))).
+								WithID(2).WithTimestamp(now),
+						}},
+					}).WithID(3).WithDate(now),
+				}}},
+			},
+			&commonpb.Log{
+				Sequence: 4,
+				Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+					LedgerName: "test",
+					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
+							Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "alice"}}},
+							Metadata: commonpb.MetadataFromGoMap(map[string]string{"k2": "v2"}),
+						}},
+					}).WithID(4).WithDate(now),
+				}}},
+			},
+		)
 
-	cfg := events.DefaultEmitterConfig()
-	cfg.BatchSize = 2
-	cfg.EventTypes = map[commonpb.EventType]struct{}{
-		commonpb.EventType_COMMITTED_TRANSACTION: {},
-	}
+		cfg := events.DefaultEmitterConfig()
+		cfg.BatchSize = 2
+		cfg.EventTypes = map[commonpb.EventType]struct{}{
+			commonpb.EventType_COMMITTED_TRANSACTION: {},
+		}
 
-	emitter := events.NewEmitter(store, sink, "lossy-sink", proposer, newPlanBuilder(t, store), logger, cfg)
-	emitter.Start()
+		emitter := events.NewEmitter(store, sink, "lossy-sink", proposer, newPlanBuilder(t, store), logger, cfg)
+		emitter.Start()
 
-	// Both committed-transaction events MUST be published despite the
-	// transient sink failure. Pre-fix, only the second one made it through:
-	// the failed first attempt advanced the in-memory cursor past the
-	// filtered log at seq 2, so the retry started past the committed-tx
-	// at seq 1.
-	require.Eventually(t, func() bool {
-		return len(sink.getEvents()) >= 2
-	}, 5*time.Second, 10*time.Millisecond,
-		"both committed-tx events must reach the sink even after a transient failure (#323)")
+		// Both committed-transaction events MUST be published despite the
+		// transient sink failure. Pre-fix, only the second one made it through:
+		// the failed first attempt advanced the in-memory cursor past the
+		// filtered log at seq 2, so the retry started past the committed-tx
+		// at seq 1. The retry waits out the sink failure backoff on the
+		// bubble's fake clock.
+		require.Eventually(t, func() bool {
+			return len(sink.getEvents()) >= 2
+		}, 5*time.Second, 10*time.Millisecond,
+			"both committed-tx events must reach the sink even after a transient failure (#323)")
 
-	require.Eventually(t, func() bool {
-		cursor, err := query.ReadSinkCursor(store, "lossy-sink")
+		require.Eventually(t, func() bool {
+			cursor, err := query.ReadSinkCursor(store, "lossy-sink")
 
-		return err == nil && cursor >= 4
-	}, 5*time.Second, 10*time.Millisecond, "cursor must advance past all logs")
+			return err == nil && cursor >= 4
+		}, 5*time.Second, 10*time.Millisecond, "cursor must advance past all logs")
 
-	emitter.Stop()
+		emitter.Stop()
 
-	require.Len(t, sink.getEvents(), 2,
-		"exactly two committed-tx events expected, lossy retry would have produced only 1 pre-fix")
+		require.Len(t, sink.getEvents(), 2,
+			"exactly two committed-tx events expected, lossy retry would have produced only 1 pre-fix")
+	})
 }
 
 func TestEmitterIntegration_StartStopIdempotent(t *testing.T) {
