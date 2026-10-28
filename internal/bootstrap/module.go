@@ -459,7 +459,7 @@ func Module() fx.Option {
 				return membership.NewService(
 					n, infraMembership, logger,
 					cfg.RaftConfig.AdvertiseAddr,
-					cfg.ServiceAdvertiseAddr(),
+					cfg.PeerServiceAdvertiseAddr(),
 				)
 			},
 			func(builder *plan.Builder, n *node.Node, store *dal.Store, cfg Config, logger logging.Logger) *backupapp.Orchestrator {
