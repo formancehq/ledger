@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -51,6 +52,15 @@ func TestReconcileDebugBoxCreatesSuperuserCredentialAndPod(t *testing.T) {
 	require.Equal(t, operatorCredentialsSecretName(debugBoxCredentialsName(cluster)), pod.Spec.Volumes[0].Secret.SecretName)
 	require.Contains(t, pod.Spec.Containers[0].Args[0], "/ledgerctl-wrapper/ledgerctl")
 	require.Contains(t, pod.Spec.Containers[0].Args[0], "--superuser")
+	script := pod.Spec.Containers[0].Args[0]
+	separator := strings.Index(script, `"$arg" == "--"`)
+	tokenInsertion := strings.Index(script, `command_args+=(--auth-token "$token")`)
+	argumentAppend := strings.Index(script, `command_args+=("$arg")`)
+	require.NotEqual(t, -1, separator)
+	require.NotEqual(t, -1, tokenInsertion)
+	require.NotEqual(t, -1, argumentAppend)
+	require.Less(t, tokenInsertion, argumentAppend, "the auth token must be inserted before the argument terminator is appended")
+	require.Contains(t, script, `exec /app/ledgerctl "${command_args[@]}"`)
 	require.Contains(t, envValue(pod.Spec.Containers[0].Env, "PATH"), "/ledgerctl-wrapper")
 	require.NotNil(t, volumeByName(pod.Spec.Volumes, "ledgerctl-wrapper").EmptyDir)
 }
