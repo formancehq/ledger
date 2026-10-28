@@ -241,25 +241,16 @@ func build(cmd struct{ CallerSnapshot any }) {
 	require.Len(t, findings, 3)
 }
 
-func TestProposalCodecMayOnlyCopyExistingAttribution(t *testing.T) {
+func TestProposalReadersCannotAttachAttribution(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
-		value   string
-		allowed bool
-	}{
-		{"p.GetCallerSnapshot()", true},
-		{"nil", false},
-		{"other.GetCallerSnapshot()", false},
-		{"newCaller()", false},
-	} {
-		source := []byte("package sample\nimport \"github.com/formancehq/ledger/v3/internal/proto/commonpb\"\nfunc header(p any) any { return &Proposal{CallerSnapshot: " + test.value + "} }")
+	// The former execution view copied the header. Native execution no longer
+	// needs that exception: readers cannot attach any caller, even a copied one.
+	for _, value := range []string{"p.GetCallerSnapshot()", "nil", "other.GetCallerSnapshot()", "newCaller()"} {
+		source := []byte("package sample\nimport \"github.com/formancehq/ledger/v3/internal/proto/commonpb\"\nfunc header(p any) any { return &Proposal{CallerSnapshot: " + value + "} }")
 		findings, err := checkGoSource("internal/pkg/proposals/payload.go", source)
 		require.NoError(t, err)
-		if test.allowed {
-			require.Empty(t, findings)
-		} else {
-			require.Len(t, findings, 1)
-		}
+		require.Len(t, findings, 1)
+		require.Contains(t, findings[0].message, "caller attribution")
 	}
 }
 
