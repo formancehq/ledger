@@ -18,6 +18,7 @@ const (
 	// operator can update the Pod template while retaining unknown metadata.
 	annotationPodConfigSpecHash = "ledger.formance.com/pod-config-spec-hash"
 	annotationAuthKeysHash      = "ledger.formance.com/auth-keys-hash"
+	annotationDebugBoxSpecHash  = "ledger.formance.com/debug-box-spec-hash"
 	annotationOperatorCluster = "ledger.formance.com/operator-cluster"
 	annotationDebugBoxCluster = "ledger.formance.com/debug-box-cluster"
 
