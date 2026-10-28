@@ -191,6 +191,14 @@ sleep infinity & wait`},
 
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: debugBoxPodName(ledger), Namespace: ledger.Namespace}}
 	if err := r.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, pod); err == nil {
+		controller := metav1.GetControllerOf(pod)
+		if controller == nil || controller.UID != ledger.UID {
+			if err := r.Delete(ctx, pod); err != nil && !apierrors.IsNotFound(err) {
+				return fmt.Errorf("replacing debug box pod with unexpected owner: %w", err)
+			}
+
+			return nil
+		}
 		if pod.Annotations == nil || pod.Annotations[annotationDebugBoxSpecHash] != desiredSpecHash {
 			if err := r.Delete(ctx, pod); err != nil && !apierrors.IsNotFound(err) {
 				return fmt.Errorf("replacing debug box pod: %w", err)
