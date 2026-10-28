@@ -1,6 +1,6 @@
 # Ledger v3 Documentation
 
-Formance Ledger v3 is a distributed, high-performance financial ledger built on Raft consensus with embedded Pebble storage. Single binary, no external dependencies, 106K+ transactions per second.
+Formance Ledger v3 is a distributed, high-performance financial ledger built on Raft consensus with embedded Pebble storage. Single binary, no external dependencies. A 2026-01-29 staging benchmark averaged about 106K transactions per second on 3 nodes, with HTTP bulks of 50 transactions in atomic mode and unbounded overdraft; see [the benchmark conditions](./sales/benchmarks.md).
 
 ## Documentation authority
 
@@ -42,6 +42,6 @@ Experimental ideas, advanced concepts, and future design proposals. These docume
 | Architecture overview | [technical/architecture/overview.md](./technical/architecture/overview.md) |
 | API comparison (v2 parity) | [technical/contributing/api-comparison.md](./technical/contributing/api-comparison.md) |
 | Query filtering (QueryFilter) | [technical/architecture/subsystems/read-path/query-filter.md](./technical/architecture/subsystems/read-path/query-filter.md) |
-| Benchmarks (106K tx/s) | [sales/benchmarks.md](./sales/benchmarks.md) |
+| Benchmarks (106K tx/s, 2026-01-29 staging run, bulks of 50) | [sales/benchmarks.md](./sales/benchmarks.md) |
 | Getting started | [technical/contributing/getting-started.md](./technical/contributing/getting-started.md) |
 | Operator | [misc/operator/README.md](../misc/operator/README.md) |

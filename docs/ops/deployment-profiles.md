@@ -140,8 +140,9 @@ server logs its estimated memory budget at startup; treat an estimate above
 `GOMEMLIMIT` as a deployment error. See [Memory Management](./memory.md) for the
 full formula.
 
-The published performance reference reached approximately 106K transactions/s
-with three nodes, 8 cores and 4 GiB per node, gp3 storage, and atomic bulks of 50.
+The published performance reference (a 2026-01-29 staging run) reached
+approximately 106K transactions/s with three nodes, 8 cores and 4 GiB per node,
+gp3 storage, atomic bulks of 50, and unbounded overdraft.
 It is evidence for that exact benchmark shape, not a general capacity promise.
 See [Performance Benchmarks](../sales/benchmarks.md).
 

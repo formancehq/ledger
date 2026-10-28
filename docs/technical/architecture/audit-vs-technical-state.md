@@ -368,12 +368,13 @@ map-bearing message serializes in Go's randomized map-iteration order, so the
 same proposal can persist byte-divergent values on different replicas.
 `AppliedProposal.TransientVolumes` documents this explicitly (`appendAppliedProposal`
 in `internal/infra/state/batch.go`: "two nodes will persist byte-divergent
-Cold-zone entries for the same proposal"), as do `Log` metadata maps and
+Cold-zone entries for the same proposal"; the Cold zone is now `ZoneHistory`),
+as do `Log` metadata maps and
 `saveIdempotencyKey` ("marshal order need not match across replicas"). Only the
 hash carrier is locked down: `AuditEntry` is marshalled via
 `MarshalDeterministicVT` (sorted map keys) precisely because it feeds the audit
-hash chain, and the sealer re-marshals deterministically for the cross-node state
-hash. This is why the checker must compare projections **logically** (decode and
+hash chain, which also makes a cross-node byte compare of the audit stream
+meaningful. This is why the checker must compare projections **logically** (decode and
 compare, or replay from the audit) rather than byte-wise — byte-equality is not a
 valid cross-replica integrity assumption for map-bearing main-store values, only
 for the deterministic audit stream.

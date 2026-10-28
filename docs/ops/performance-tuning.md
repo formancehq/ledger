@@ -2,7 +2,7 @@
 
 This document provides best practices for maximizing throughput and minimizing latency when using the Ledger v3 API. It covers data modeling (Numscript scripts, account addresses), operational tuning, and explains the internal design choices that make these recommendations effective.
 
-> **Reference benchmark:** 106K tx/s sustained, p99 < 75 ms, 3-node Raft cluster (8 cores / 4 GiB per node). See [benchmarks](../sales/benchmarks.md) for full details.
+> **Reference benchmark:** ~106K tx/s average, p99 < 75 ms, 3-node Raft cluster (8 cores / 4 GiB per node), from a 2026-01-29 staging run with HTTP bulks of 50 transactions in atomic mode and unbounded overdraft. It is evidence for that workload shape, not a general capacity promise. See [benchmarks](../sales/benchmarks.md) for full details.
 
 ---
 
@@ -186,15 +186,15 @@ In Ledger v2, a hot account (e.g., `bank`, `fees`, `treasury`) debited by many c
 
 ### The Solution (v3)
 
-v3 uses **append-only volume entries** (last-write-wins). Each transaction appends a new absolute volume value keyed by Raft index. No read-modify-write, no locks, no contention.
+v3 has no row locks. Raft orders every write, and the FSM applies committed entries one after another from in-memory state. Admission (validation and preload) runs in parallel; apply is sequential. Each ledger/account/asset key holds one current volume pair, which the FSM replaces as transactions are applied:
 
 ```
-Transaction A: bank/USD/log_1 = {input: 1000, output: 100}  (append)
-Transaction B: bank/USD/log_2 = {input: 1000, output: 150}  (append, parallel)
-Transaction C: bank/USD/log_3 = {input: 1000, output: 225}  (append, parallel)
+Transaction A applied: bank/USD = {input: 1000, output: 100}
+Transaction B applied: bank/USD = {input: 1000, output: 150}  (replaces the previous value)
+Transaction C applied: bank/USD = {input: 1000, output: 225}  (replaces the previous value)
 ```
 
-Balance is the latest absolute value (last-write-wins).
+Concurrent writers to a hot account do not wait on a lock; they are serialized by Raft/FSM order. See [What the Store Persists](../technical/architecture/subsystems/storage/storage.md#what-the-store-persists) and [FSM](../technical/architecture/subsystems/fsm/).
 
 ### Recommendations
 
@@ -398,7 +398,7 @@ for how they appear in Prometheus.
 
 ## Related Documentation
 
-- [Benchmark Results](../sales/benchmarks.md) - 106K tx/s benchmark details
+- [Benchmark Results](../sales/benchmarks.md) - 106K tx/s benchmark details (2026-01-29 staging run, bulks of 50)
 - [Numscript Reference](../technical/contributing/numscript.md) - Full Numscript language documentation
 - [Deterministic FSM Cache](../technical/architecture/subsystems/fsm/deterministic-fsm.md) - Cache and preload architecture
 - [Uint256 Wire Format](../technical/architecture/primitives/uint256-wire-format.md) - Zero-allocation monetary amounts

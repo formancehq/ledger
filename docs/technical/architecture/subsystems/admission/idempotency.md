@@ -57,12 +57,16 @@ type IdempotencyKeyValue struct {
 
 ### Behavior Matrix
 
+"Live" means the stored outcome's frozen `expires_at` has not passed (or is 0 = never). The expiry is fixed when the outcome is written; a later cluster-policy TTL change does not move it.
+
 | Scenario | Result |
 |----------|--------|
-| New idempotency key | Process normally, store key |
-| Same key + same content (within TTL) | Return reference to original log |
-| Same key + different content (within TTL) | Return `idempotency key conflict` error |
-| Same key (after TTL expiration) | Process normally (key treated as new) |
+| New idempotency key | Process normally, store the outcome |
+| Same key + same content, live success | Replay: return references to the original logs (`Replayed`), no new execution |
+| Same key + same content, live frozen failure (validation, not found, already exists, conflict, precondition) | Replay the original failure, no new execution |
+| Same key + same content after a non-freezable failure (unavailable, internal, …) or an attempt that never committed | Nothing was frozen, so the request executes normally |
+| Same key + different content, live outcome | `IDEMPOTENCY_KEY_CONFLICT`; the stored outcome is not overwritten |
+| Same key after `expires_at` | Process normally (key treated as new) |
 | No idempotency key | Process normally, no idempotency tracking |
 
 ## Historical outcomes and checkpoint readiness
@@ -230,7 +234,7 @@ All write operations support idempotency keys:
 | Delete transaction metadata | `DELETE /{ledger}/transactions/{id}/metadata/{key}` | Yes |
 | Create ledger | `POST /{ledger}` | Yes |
 | Delete ledger | `DELETE /{ledger}` | Yes |
-| Bulk operations | `POST /{ledger}/bulk` | Yes (per action) |
+| Bulk operations | `POST /{ledger}/bulk` | Yes: atomic mode uses one `Idempotency-Key` header for the whole batch; non-atomic mode uses each element's `ik` field |
 
 ## Key Validation
 
@@ -242,24 +246,27 @@ All write operations support idempotency keys:
 
 ### Conflict Error
 
-When a conflict is detected (same key, different content, within TTL):
+When a conflict is detected (same key, different content, live outcome):
 
 **HTTP Response:**
 ```json
 {
-  "errorCode": "CONFLICT",
-  "errorMessage": "idempotency key conflict: same key used with different request content"
+  "errorCode": "IDEMPOTENCY_KEY_CONFLICT",
+  "errorMessage": "idempotency key conflict: key \"unique-request-id-123\" used with different request content"
 }
 ```
 
-**Status Code:** `409 Conflict`
+**Status Code:** `409 Conflict` (gRPC `ALREADY_EXISTS`)
+
+A conflict means the key is bound to a live outcome of a *different* request. It never means "this request failed transiently".
 
 ### Best Practices
 
-1. **Use unique keys**: UUIDs or composite keys (e.g., `{client-id}-{request-id}`)
-2. **Be aware of TTL**: Keys expire after the configured TTL (default 24h)
-3. **Don't reuse keys**: Even for "similar" operations
-4. **Handle conflicts**: Implement retry logic with new keys on conflict
+1. **One key per business operation**: generate a UUID or composite key (e.g., `{client-id}-{payment-id}`) when the operation is created, and persist it with the operation before the first attempt.
+2. **Retry ambiguous outcomes with the same key and the same body**: after a timeout, a dropped connection, `UNAVAILABLE`, or a 5xx, resend the identical request with the *same* key. If the original attempt committed, the retry replays its outcome; if it did not, the retry executes it once. Never rotate the key to "unstick" a retry: a new key turns a possible duplicate into a certain one (for payments, a double charge).
+3. **Treat `IDEMPOTENCY_KEY_CONFLICT` as a client bug, not a retryable error**: the same key was reused with different content. Do not retry with a new key. Find out why the body changed (non-deterministic serialization, a changed amount or metadata, or two operations sharing a key), fix the request, or look up the original outcome under that key (for example `ledgerctl audit list --filter 'idempotency_key == "<key>"'`).
+4. **Size the retry window to the TTL**: a key is only protected until its frozen `expires_at` (cluster-policy TTL at write time, default 24h; `0` = never). A retry after expiry executes as a new request. Set `--idempotency-ttl` to at least the longest retry window promised to clients (see [deployment profiles](../../../../ops/deployment-profiles.md)).
+5. **Don't reuse keys across operations**, even "similar" ones.
 
 ## Related Documentation
 
