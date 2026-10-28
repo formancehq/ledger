@@ -85,6 +85,29 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 			require.NoError(t, c.Delete(ctx, secret))
 		}
 	}
+
+	// Disabling the Service mid-upgrade must not delete the DNS dependency
+	// needed to recover the already-entered stopped upgrade.
+	current := &ledgerv1alpha1.Cluster{}
+	require.NoError(t, c.Get(ctx, key, current))
+	current.Spec.HeadlessService.Enabled = new(bool)
+	require.NoError(t, c.Update(ctx, current))
+	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+	require.ErrorContains(t, err, "source StatefulSet disappeared before maintenance barrier")
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: headlessServiceName(cluster.Name), Namespace: cluster.Namespace}, &corev1.Service{}))
+}
+
+func TestStoppedUpgradeRequiresHeadlessService(t *testing.T) {
+	t.Parallel()
+	cluster := newMinimalCluster()
+	cluster.Spec.Image.Tag = "v3.0.0-rc.2"
+	cluster.Spec.HeadlessService.Enabled = new(bool)
+	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.1", true)
+	r := &ClusterReconciler{}
+	proceed, _, err := r.reconcileRequiredUpgrade(context.Background(), cluster, sts)
+	require.False(t, proceed)
+	require.ErrorContains(t, err, "spec.headlessService.enabled to remain true")
+	require.Nil(t, cluster.Status.Upgrade)
 }
 
 func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {

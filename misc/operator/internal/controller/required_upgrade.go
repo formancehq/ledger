@@ -107,6 +107,9 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if !requiresStoppedUpgrade(source, ledger.Spec.Image.Tag) {
 			return true, ctrl.Result{}, nil
 		}
+		if ledger.Spec.HeadlessService.Enabled != nil && !*ledger.Spec.HeadlessService.Enabled {
+			return false, ctrl.Result{}, errors.New("stopped upgrade requires spec.headlessService.enabled to remain true")
+		}
 		if !metav1.IsControlledBy(sts, ledger) {
 			return false, ctrl.Result{}, fmt.Errorf("StatefulSet %s is not controlled by Cluster %s", sts.Name, ledger.Name)
 		}

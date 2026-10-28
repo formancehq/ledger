@@ -13,7 +13,7 @@ import (
 
 func (r *ClusterReconciler) reconcileHeadlessService(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	enabled := ledger.Spec.HeadlessService.Enabled
-	if enabled != nil && !*enabled {
+	if enabled != nil && !*enabled && ledger.Status.Upgrade == nil {
 		return r.deleteIfExists(ctx, ledger, &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      headlessServiceName(ledger.Name),
