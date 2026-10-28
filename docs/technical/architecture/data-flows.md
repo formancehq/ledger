@@ -538,8 +538,10 @@ Compaction is triggered automatically after a snapshot is created:
 
 1. A snapshot is created at index `N`
 2. The system keeps a **compaction margin** (configurable via `CompactionMargin`)
-3. The safe frontier is `min(FSM.LastPersistedIndex, RawNode.Applied)`;
-   entries before `safe frontier - CompactionMargin` are deleted from the WAL
+3. The safe frontier is `min(snapshot index, FSM.LastPersistedIndex,
+   RawNode.Applied)`; `RawNode.Applied` advances only after the orchestrator
+   steps the `MsgStorageApplyResp` for the FSM batch. Entries before
+   `safe frontier - CompactionMargin` are deleted from the WAL
 4. Old WAL segment files are removed
 
 ### Compaction Margin
@@ -548,9 +550,10 @@ The compaction margin (`CompactionMargin` in configuration) determines how many 
 
 ```
 snapshotIndex = 1000
-raftApplied = 920
+fsmPersisted = 1000
+raftApplyAck = 920
 compactionMargin = 100
-safeFrontier = min(1000, 920) = 920
+safeFrontier = min(1000, 1000, 920) = 920
 compactIndex = 920 - 100 = 820
 
 → Entries 1-820 are deleted
