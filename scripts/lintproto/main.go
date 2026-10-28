@@ -3,7 +3,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,10 +18,6 @@ func main() {
 	}
 
 	if err := run(); err != nil {
-		if _, ok := errors.AsType[*exec.ExitError](err); ok {
-			fmt.Fprintln(os.Stderr, "lint-proto: FAIL")
-			os.Exit(1)
-		}
 		fmt.Fprintf(os.Stderr, "lint-proto: %v\nlint-proto: FAIL\n", err)
 		os.Exit(1)
 	}

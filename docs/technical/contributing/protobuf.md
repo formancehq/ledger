@@ -126,6 +126,8 @@ change an internal-only field number in those messages, update the corresponding
 `just lint-proto` (`go run ./scripts/lintproto`) runs `buf lint` on `misc/proto/`
 with the check plugin in `tools/buf-plugin-ledger`. It is part of
 `just pre-commit`, so the required `Dirty` CI job runs it.
+Plugin build failures include the captured compiler or module-download
+diagnostics; lint violations stream their diagnostics directly from buf.
 
 | Rule | Requirement |
 |---|---|
