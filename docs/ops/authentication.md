@@ -418,40 +418,27 @@ claim, and flag were removed before `v3.0.0-rc.1`.
 
 ### Operator maintenance credentials
 
-When service authentication is enabled on a managed Cluster, set
-`spec.auth.operatorCredentialsRef` to a `Credentials` resource whose selector
-matches that Cluster. Give it only the scopes needed by operator maintenance
-operations:
+When service authentication is enabled on a managed Cluster, the operator
+creates a dedicated `Credentials` resource automatically. It is not part of
+the `Cluster` spec and cannot be selected or widened by the user. The operator
+assigns only the scopes needed by maintenance operations:
+
+`ledger:ReadOps`, `ledger:WriteOps`, `ledger:ReadCluster`, and
+`ledger:WriteCluster`.
 
 ```yaml
-apiVersion: ledger.formance.com/v1alpha1
-kind: Credentials
-metadata:
-  name: ledger-operator
-spec:
-  scopes:
-    - ledger:ReadOps
-    - ledger:WriteOps
-    - ledger:ReadCluster
-    - ledger:WriteCluster
-  selector:
-    matchLabels:
-      app: ledger
----
 apiVersion: ledger.formance.com/v1alpha1
 kind: Cluster
 metadata:
   name: my-cluster
-  labels:
-    app: ledger
 spec:
   auth:
     enabled: true
-    operatorCredentialsRef: ledger-operator
 ```
 
-The operator mounts the generated seed only in the managed Ledger and backup
-pods, and signs short-lived JWTs for its `ledgerctl` calls. The Ledger receives
-the public key through its auth-key configuration. The credential is scoped and
-is not a superuser; the Raft `cluster-secret` remains reserved for peer
+The operator-created credential gets a deterministic, cluster-unique name,
+the generated seed is mounted only in the managed Ledger and backup pods, and
+short-lived JWTs are signed for its `ledgerctl` calls. The Ledger receives the
+public key through its auth-key configuration. The credential is scoped and is
+not a superuser; the Raft `cluster-secret` remains reserved for peer
 authentication and is never used as a service-API token.

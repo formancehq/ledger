@@ -319,10 +319,10 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 		if len(spec.Auth.AnonymousScopes) > 0 {
 			envs = append(envs, strEnv("AUTH_ANONYMOUS_SCOPES", strings.Join(spec.Auth.AnonymousScopes, ",")))
 		}
-		if spec.Auth.OperatorCredentialsRef != "" {
+		if spec.Auth.Enabled != nil && *spec.Auth.Enabled {
 			envs = append(envs,
 				strEnv("OPERATOR_SIGNING_KEY", "/operator-credentials/seed.hex"),
-				secretKeyEnv("OPERATOR_SIGNING_KEY_ID", operatorCredentialsSecretName(spec.Auth.OperatorCredentialsRef), "key-id"),
+				secretKeyEnv("OPERATOR_SIGNING_KEY_ID", operatorCredentialsSecretName(operatorCredentialsName(ledger)), "key-id"),
 			)
 		}
 	}

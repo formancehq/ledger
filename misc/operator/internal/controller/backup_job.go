@@ -152,11 +152,11 @@ func buildBackupJob(
 	)
 
 	if tlsMode == tlsModeRequired || tlsMode == tlsModeOptional {
-		if ls.Spec.Auth != nil && ls.Spec.Auth.OperatorCredentialsRef != "" {
+		if ls.Spec.Auth != nil && ls.Spec.Auth.Enabled != nil && *ls.Spec.Auth.Enabled {
 			volumes = append(volumes, corev1.Volume{
 				Name: "operator-credentials",
 				VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
-					SecretName: operatorCredentialsSecretName(ls.Spec.Auth.OperatorCredentialsRef),
+					SecretName: operatorCredentialsSecretName(operatorCredentialsName(ls)),
 				}},
 			})
 			mounts = append(mounts, corev1.VolumeMount{
@@ -164,7 +164,7 @@ func buildBackupJob(
 			})
 			env = append(env,
 				strEnv("OPERATOR_SIGNING_KEY", "/operator-credentials/seed.hex"),
-				secretKeyEnv("OPERATOR_SIGNING_KEY_ID", operatorCredentialsSecretName(ls.Spec.Auth.OperatorCredentialsRef), "key-id"),
+				secretKeyEnv("OPERATOR_SIGNING_KEY_ID", operatorCredentialsSecretName(operatorCredentialsName(ls)), "key-id"),
 			)
 		}
 

@@ -47,13 +47,14 @@ func TestBackupServerAddr(t *testing.T) {
 
 func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	t.Parallel()
+	enabled := true
 
 	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ledger-v3"},
 		Spec: ledgerv1alpha1.ClusterSpec{
 			Image: ledgerv1alpha1.ImageSpec{Repository: "ghcr.io/formancehq/ledger", Tag: "v0.0.8"},
 			TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-tls", CASecretKey: "ca.crt"},
-			Auth:  &ledgerv1alpha1.AuthorizationConfig{OperatorCredentialsRef: "ops"},
+			Auth:  &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled},
 		},
 	}
 	backup := &ledgerv1alpha1.Backup{
@@ -105,7 +106,7 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	// TLS volume must be present with the ledger-tls secret.
 	require.Len(t, job.Spec.Template.Spec.Volumes, 2)
 	require.Equal(t, "operator-credentials", job.Spec.Template.Spec.Volumes[0].Name)
-	require.Equal(t, operatorCredentialsSecretName("ops"), job.Spec.Template.Spec.Volumes[0].Secret.SecretName)
+	require.Equal(t, operatorCredentialsSecretName(operatorCredentialsName(ls)), job.Spec.Template.Spec.Volumes[0].Secret.SecretName)
 	require.Equal(t, "tls-certs", job.Spec.Template.Spec.Volumes[1].Name)
 	require.NotNil(t, job.Spec.Template.Spec.Volumes[1].Secret)
 	require.Equal(t, "ledger-tls", job.Spec.Template.Spec.Volumes[1].Secret.SecretName)

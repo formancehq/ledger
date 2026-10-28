@@ -1400,7 +1400,8 @@ func TestBuildEnvVars_LedgerctlConnection(t *testing.T) {
 			t.Parallel()
 			ls := newMinimalCluster()
 			ls.Spec.TLS = &ledgerv1alpha1.TLSConfig{CASecretKey: "ca.crt"}
-			ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{OperatorCredentialsRef: "ops"}
+			enabled := true
+			ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled}
 
 			envs := buildEnvVars(ls, tlsMode, nil)
 
@@ -1413,7 +1414,7 @@ func TestBuildEnvVars_LedgerctlConnection(t *testing.T) {
 				assertEnv(t, envs, "OPERATOR_SIGNING_KEY", "/operator-credentials/seed.hex")
 				keyID := findEnv(envs, "OPERATOR_SIGNING_KEY_ID")
 				require.NotNil(t, keyID)
-				require.Equal(t, operatorCredentialsSecretName("ops"), keyID.ValueFrom.SecretKeyRef.Name)
+				require.Equal(t, operatorCredentialsSecretName(operatorCredentialsName(ls)), keyID.ValueFrom.SecretKeyRef.Name)
 				require.Equal(t, "key-id", keyID.ValueFrom.SecretKeyRef.Key)
 			}
 		})
@@ -1423,7 +1424,8 @@ func TestBuildEnvVars_LedgerctlConnection(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
 		ls.Spec.TLS = &ledgerv1alpha1.TLSConfig{}
-		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{OperatorCredentialsRef: "ops"}
+		enabled := true
+		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled}
 
 		envs := buildEnvVars(ls, tlsModeRequired, nil)
 
