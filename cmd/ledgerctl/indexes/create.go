@@ -71,10 +71,9 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 
 	indexType, _ := cmd.Flags().GetString("type")
 	if indexType == "" {
-		result, err := pterm.DefaultInteractiveSelect.
+		result, err := cmdutil.PromptSelect(pterm.DefaultInteractiveSelect.
 			WithOptions(indexTypeOptions).
-			WithDefaultText("Select index type").
-			Show()
+			WithDefaultText("Select index type"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -149,10 +148,9 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 func resolveMetadataIndexFlags(cmd *cobra.Command) (commonpb.TargetType, string, error) {
 	targetStr, _ := cmd.Flags().GetString("target")
 	if targetStr == "" {
-		result, err := pterm.DefaultInteractiveSelect.
+		result, err := cmdutil.PromptSelect(pterm.DefaultInteractiveSelect.
 			WithOptions(cmdutil.TargetTypeOptions()).
-			WithDefaultText("Select target type").
-			Show()
+			WithDefaultText("Select target type"))
 		if err != nil {
 			return 0, "", fmt.Errorf("failed to read input: %w", err)
 		}
@@ -167,9 +165,8 @@ func resolveMetadataIndexFlags(cmd *cobra.Command) (commonpb.TargetType, string,
 
 	key, _ := cmd.Flags().GetString("key")
 	if key == "" {
-		result, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter metadata key name").
-			Show()
+		result, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter metadata key name"))
 		if err != nil {
 			return 0, "", fmt.Errorf("failed to read input: %w", err)
 		}

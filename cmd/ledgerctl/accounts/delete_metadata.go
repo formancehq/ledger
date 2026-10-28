@@ -50,9 +50,8 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		address = args[0]
 	} else {
-		address, err = pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter account address").
-			Show()
+		address, err = cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter account address"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -68,9 +67,8 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 	if len(args) > 1 {
 		key = args[1]
 	} else {
-		key, err = pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter metadata key to delete").
-			Show()
+		key, err = cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter metadata key to delete"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -87,9 +85,8 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 		pterm.Println()
 		pterm.Warning.Printfln("You are about to delete metadata key %q from account %q", key, address)
 
-		confirmed, err := pterm.DefaultInteractiveConfirm.
-			WithDefaultText("Are you sure?").
-			Show()
+		confirmed, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
+			WithDefaultText("Are you sure?"))
 		if err != nil {
 			return fmt.Errorf("failed to read confirmation: %w", err)
 		}
