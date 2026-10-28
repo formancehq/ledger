@@ -913,7 +913,7 @@ func Module() fx.Option {
 				return nil
 			}, fx.ParamTags(`name:"peer"`, ``)),
 			fx.Annotate(func(serviceServer *grpcadp.ServiceServer, clusterServiceServer clusterpb.ClusterServiceServer) error {
-				grpcadp.RegisterPeerClusterService(serviceServer.GetServer(), clusterServiceServer)
+				grpcadp.RegisterClusterService(serviceServer.GetServer(), clusterServiceServer)
 
 				return nil
 			}, fx.ParamTags(`name:"peer"`, ``)),
