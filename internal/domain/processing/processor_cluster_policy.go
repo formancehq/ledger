@@ -80,29 +80,14 @@ func validateClusterPolicyMetadataLimits(policy *commonpb.ClusterPolicy) domain.
 	return nil
 }
 
-// ProcessClusterPolicy executes a native proposal control directly. Policy
-// reads use replicated global state, so the scope needs no attribute coverage.
-// The legacy order handler shares applyClusterPolicy for historical replay.
-func (p *RequestProcessor) ProcessClusterPolicy(policy *commonpb.ClusterPolicy, factory ScopeFactory) (*OrdersResult, domain.SerializableError) {
+// ProcessClusterPolicy applies operational state without allocating business logs.
+// The released order handler above retains its original audited replay behavior.
+func (p *RequestProcessor) ProcessClusterPolicy(policy *commonpb.ClusterPolicy, factory ScopeFactory) domain.SerializableError {
 	scope, err := factory.NewScope(nil)
 	if err != nil {
-		return nil, &domain.ErrInvalidExecutionPlan{Reason_: err.Error()}
+		return &domain.ErrInvalidExecutionPlan{Reason_: err.Error()}
 	}
-	payload, processErr := applyClusterPolicy(policy, scope)
-	if processErr != nil {
-		return nil, processErr
-	}
-	result := &OrdersResult{Logs: make([]*raftcmdpb.CreatedLogOrReference, 1)}
-	if payload == nil {
-		return result, nil
-	}
-	sequence, sequenceErr := scope.IncrementNextSequenceID()
-	if sequenceErr != nil {
-		return nil, sequenceErr
-	}
-	log := &commonpb.Log{Sequence: sequence, Payload: payload}
-	result.Logs[0] = &raftcmdpb.CreatedLogOrReference{Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{CreatedLog: log}}
-	result.recordCreatedLog(log)
+	_, processErr := applyClusterPolicy(policy, scope)
 
-	return result, nil
+	return processErr
 }

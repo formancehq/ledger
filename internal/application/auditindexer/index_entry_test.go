@@ -116,18 +116,3 @@ func TestAppendEntryKeysPropagatesIdempotencyIndexWriteError(t *testing.T) {
 	}, entry, nil)
 	require.ErrorIs(t, err, want)
 }
-
-func TestNativePolicyAuditIndex(t *testing.T) {
-	t.Parallel()
-	entry := &auditpb.AuditEntry{Sequence: 9, Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}}}
-	control := &raftcmdpb.SetClusterPolicyProposal{Policy: &commonpb.ClusterPolicy{Revision: 3}}
-	item := &auditpb.AuditItem{LogSequence: 7, SerializedSetClusterPolicy: control.MarshalDeterministicVT(nil)}
-	var keys [][]byte
-	require.NoError(t, appendEntryKeys(dal.NewKeyBuilder(), func(key []byte) error {
-		keys = append(keys, key)
-
-		return nil
-	}, entry, []*auditpb.AuditItem{item}))
-	require.Contains(t, keys, readstore.AuditIndexStringKey(dal.NewKeyBuilder(), readstore.AuditFieldOrderType, "set_cluster_policy", 9))
-	require.Contains(t, keys, readstore.AuditIndexUint64Key(dal.NewKeyBuilder(), readstore.AuditFieldLogSeq, 7, 9))
-}

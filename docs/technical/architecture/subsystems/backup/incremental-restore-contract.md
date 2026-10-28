@@ -163,3 +163,34 @@ is independently checked against successful chain-verified orders by
 ledgerMetadataVerifier. The normal/mirror cross-lifecycle regression is
 TestBackup_CreateLedgerMetadataRestoreParity; it compares a real checkpoint plus
 a nonempty creation delta with live entity reads and requires a healthy checker.
+
+## Operational cluster policy
+
+Native `SetClusterPolicyProposal` has no business log or audit entry.
+`Manifest.clusterPolicy` is an optional snapshot containing deterministic policy
+protobuf bytes (`data`, base64 in JSON) and the source `appliedIndex`. Full
+checkpoints already include the policy row and reset this optional override.
+Incremental backup reads policy, applied index and history endpoints from one
+Pebble snapshot. It publishes a changed policy even when there are no history
+exports. A snapshot older than the checkpoint or previous policy snapshot, or
+behind already exported history, cannot replace the manifest policy.
+
+New history objects are uploaded before the manifest is published. A failed
+manifest write leaves the previously published backup intact; retry captures
+and publishes again. Policy-only updates use the same manifest publication
+boundary without creating empty export segments.
+
+Restore validates the optional policy before modifying the staging store,
+applies history exports, rebuilds their derived state (including legacy policy
+logs), then commits the operational policy override. Only successful staging
+restore may be activated. Failure leaves staging incomplete and must not activate
+it. Released manifests omit the override and preserve checkpoint/legacy-delta
+behavior. The source applied index orders backup captures; it is not a target
+Raft index to install during cross-cluster restore.
+
+The policy is structurally validated, not authenticated by the business audit
+chain. The manifest's integrity and access controls cover this operational state.
+The checker still verifies business effects without replaying operational quotas.
+Regression coverage includes a historical policy delta followed by a native
+update, a policy-only delta with no exports, restart conflict checks, and the
+real S3 restore lifecycle with Discovery readback of the post-checkpoint revision.

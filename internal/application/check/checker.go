@@ -21,7 +21,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/attribution"
-	"github.com/formancehq/ledger/v3/internal/domain/auditintent"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
@@ -906,7 +905,7 @@ func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader,
 	expectedNumscriptContent := state.expectedNumscriptContent
 	expectedNumscriptLatest := state.expectedNumscriptLatest
 	derivedLiveCheckpoints := state.derivedLiveCheckpoints
-	signing, policy, bounds := folds.signing, folds.policy, folds.bounds
+	signing, bounds := folds.signing, folds.bounds
 
 	// Comparison passes: expected = replayed state. A cell SimulateEphemeralPurge
 	// deleted from the replay store must be absent from the live store too.
@@ -968,13 +967,6 @@ func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader,
 	// pass exists to report.
 	if err := signing.compare(snap, callback); err != nil {
 		return fmt.Errorf("comparing signing projections: %w", err)
-	}
-
-	// The cluster policy is cluster-global too, and verified on the same
-	// grounds: no log means no audited SetClusterPolicy order, so a stored
-	// policy row is unaudited.
-	if err := policy.compare(snap, callback); err != nil {
-		return fmt.Errorf("comparing cluster policy projection: %w", err)
 	}
 
 	if err := folds.ledgerMetadata.compare(snap, c.attrs, callback); err != nil {
@@ -2279,10 +2271,7 @@ func compareTransactionPostCommitVolumes(
 type chainVerifierFolds struct {
 	// signing re-derives the signing key/config expectation from chain-bound
 	// signing orders (invariant #8). Never seeded from the live projection.
-	signing *signingVerifier
-	// policy re-derives the cluster policy from chain-bound SetClusterPolicy
-	// orders.
-	policy         *clusterPolicyVerifier
+	signing        *signingVerifier
 	ledgerMetadata *ledgerMetadataVerifier
 	ledgerPolicy   *ledgerPolicyVerifier
 	// bounds re-derives the highest log sequence the chain accounts for, from
@@ -2295,7 +2284,6 @@ type chainVerifierFolds struct {
 func newChainVerifierFolds() chainVerifierFolds {
 	return chainVerifierFolds{
 		signing:        newSigningVerifier(),
-		policy:         newClusterPolicyVerifier(),
 		ledgerMetadata: newLedgerMetadataVerifier(),
 		ledgerPolicy:   &ledgerPolicyVerifier{},
 		bounds:         newLogBoundsVerifier(),
@@ -2307,7 +2295,6 @@ func newChainVerifierFolds() chainVerifierFolds {
 // verifyAuditHashChain.
 func (f chainVerifierFolds) markLiveTruncated() {
 	f.signing.markLiveTruncated()
-	f.policy.markLiveTruncated()
 	f.ledgerMetadata.liveTruncated = true
 	f.ledgerPolicy.liveTruncated = true
 	f.bounds.markLiveTruncated()
@@ -2461,25 +2448,6 @@ func (c *Checker) verifyAuditHashChain(
 			return result, nil
 		}
 
-		// A native control is a whole proposal, never an order in a batch. Validate
-		// this persisted boundary even if the hash was recomputed over malformed data.
-		var nativePolicy *raftcmdpb.SetClusterPolicyProposal
-		for _, item := range items {
-			policy, intentErr := auditintent.Policy(item)
-			if intentErr == nil && policy != nil && (len(items) != 1 || item.GetOrderIndex() != 0 || entry.GetIdempotency() != nil || entry.GetSignature() != nil) {
-				intentErr = errors.New("native policy control must be a standalone, unkeyed and unsigned proposal")
-			}
-			if intentErr != nil {
-				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
-					fmt.Sprintf("audit entry %d has invalid intent: %v", entry.GetSequence(), intentErr), logSequenceFromAuditEntry(entry), "", "", ""))
-				folds.markLiveTruncated()
-
-				return result, nil
-			}
-			if policy != nil {
-				nativePolicy = policy
-			}
-		}
 		hashSlices := make([][]byte, 0, 1+len(items))
 		hashSlices = append(hashSlices, headerPayload)
 
@@ -2580,7 +2548,7 @@ func (c *Checker) verifyAuditHashChain(
 			_, replaySound := folds.bounds.auditedBound()
 			orders := make([]*raftcmdpb.Order, len(decoded))
 			for i, order := range decoded {
-				if nativePolicy == nil && (order == nil || order.Type == nil) {
+				if order == nil || order.Type == nil {
 					callback(errorEvent(
 						servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
 						fmt.Sprintf("audit entry %d item %d has no decodable order type; final ledger policy and boundary verification is incomplete", entry.GetSequence(), items[i].GetOrderIndex()),
@@ -2593,13 +2561,7 @@ func (c *Checker) verifyAuditHashChain(
 				orders[i] = order
 			}
 			if replaySound {
-				var logs []*commonpb.Log
-				var replayErr error
-				if nativePolicy != nil {
-					logs, replayErr = replayer.ReplayPolicy(entry.GetTimestamp(), nativePolicy)
-				} else {
-					logs, replayErr = replayer.Replay(entry.GetTimestamp(), orders)
-				}
+				logs, replayErr := replayer.Replay(entry.GetTimestamp(), orders)
 				if replayErr != nil {
 					return nil, fmt.Errorf("replaying chain-verified audit entry %d: %w", entry.GetSequence(), replayErr)
 				}
@@ -2647,12 +2609,6 @@ func (c *Checker) verifyAuditHashChain(
 					continue
 				}
 
-				if nativePolicy != nil {
-					folds.policy.applyPolicy(nativePolicy.GetPolicy())
-
-					continue
-				}
-
 				order := decoded[i]
 				if order == nil {
 					// Chain-bound bytes whose entry hash already verified, so a decode
@@ -2666,7 +2622,6 @@ func (c *Checker) verifyAuditHashChain(
 				}
 
 				folds.signing.applyOrder(order)
-				folds.policy.applyOrder(order)
 				folds.ledgerMetadata.applyOrder(order)
 			}
 		}
@@ -2960,9 +2915,6 @@ func collectExpectedSkippable(
 	foldedLogSeqs := make(map[uint64]struct{}, len(items))
 
 	for i, item := range items {
-		if len(item.GetSerializedSetClusterPolicy()) != 0 {
-			continue
-		}
 		order := &raftcmdpb.Order{}
 		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
 			// An item that fails to unmarshal cannot tell us what its order

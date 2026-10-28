@@ -136,38 +136,3 @@ func TestAuditRoutes_FullRouteIntegration(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Code)
 	})
 }
-
-// REST must expose the exact chain-bound bytes for both intent encodings.
-func TestHandleGetAuditEntry_PreservesIntentBytes(t *testing.T) {
-	t.Parallel()
-	for _, native := range []bool{false, true} {
-		t.Run(map[bool]string{false: "historical order", true: "native control"}[native], func(t *testing.T) {
-			t.Parallel()
-			item := &auditpb.AuditItem{OrderIndex: 0, LogSequence: 12}
-			field, absent := "serializedOrder", "serializedSetClusterPolicy"
-			if native {
-				item.SerializedSetClusterPolicy = []byte{0x0a, 0x02, 0x08, 0x03}
-				field, absent = absent, field
-			} else {
-				item.SerializedOrder = []byte{0x0a, 0x02, 0x08, 0x03}
-			}
-			backend := NewMockBackend(gomock.NewController(t))
-			backend.EXPECT().GetAuditEntry(gomock.Any(), uint64(7)).Return(&auditpb.AuditEntry{Sequence: 7, OrderCount: 1, Items: []*auditpb.AuditItem{item}}, nil)
-			srv := newTestServer(t, backend)
-			w := httptest.NewRecorder()
-			r := newRequest(t, http.MethodGet, "/_/audit-entries/7", nil, map[string]string{"sequence": "7"})
-			srv.handleGetAuditEntry(w, r)
-			require.Equal(t, http.StatusOK, w.Code)
-			resp := decodeResponse[BaseResponse[map[string]any]](t, w)
-			items, ok := resp.Data["items"].([]any)
-			require.True(t, ok)
-			require.Len(t, items, 1)
-			decoded, ok := items[0].(map[string]any)
-			require.True(t, ok)
-			require.Equal(t, "0a020803", decoded[field])
-			require.NotContains(t, decoded, absent)
-			require.EqualValues(t, 0, decoded["orderIndex"])
-			require.EqualValues(t, 12, decoded["logSequence"])
-		})
-	}
-}

@@ -6,7 +6,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/domain/auditintent"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -87,23 +86,15 @@ func appendEntryKeys(kb *dal.KeyBuilder, emit emitFn, entry *auditpb.AuditEntry,
 			}
 		}
 
-		policy, err := auditintent.Policy(item)
-		if err != nil {
-			return fmt.Errorf("decoding audit seq %d item %d: %w", seq, item.GetOrderIndex(), err)
+		raw := item.GetSerializedOrder()
+		if len(raw) == 0 {
+			continue
 		}
-		token := "set_cluster_policy"
-		if policy == nil {
-			raw := item.GetSerializedOrder()
-			if len(raw) == 0 {
-				continue
-			}
-			order := &raftcmdpb.Order{}
-			if err := proto.Unmarshal(raw, order); err != nil {
-				return fmt.Errorf("unmarshaling order for audit seq %d item %d: %w", seq, item.GetOrderIndex(), err)
-			}
-			token = domain.AuditOrderType(order)
+		order := &raftcmdpb.Order{}
+		if err := proto.Unmarshal(raw, order); err != nil {
+			return fmt.Errorf("unmarshaling order for audit seq %d item %d: %w", seq, item.GetOrderIndex(), err)
 		}
-
+		token := domain.AuditOrderType(order)
 		if _, done := seenType[token]; done {
 			continue
 		}

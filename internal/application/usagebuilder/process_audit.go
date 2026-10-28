@@ -9,7 +9,6 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/domain/auditintent"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -218,11 +217,6 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 					continue
 				}
 
-				if policy, err := auditintent.Policy(item); err != nil {
-					return cursor, fmt.Errorf("decoding audit control: %w", err)
-				} else if policy != nil {
-					continue
-				}
 				order := &raftcmdpb.Order{}
 				if err := proto.Unmarshal(item.GetSerializedOrder(), order); err != nil {
 					return cursor, fmt.Errorf("unmarshaling audit item order (audit_seq=%d, idx=%d): %w",

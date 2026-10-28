@@ -260,10 +260,11 @@ The RC.1 to RC.2 transition requires the coordinated restart procedure above.
 Stop every old node before starting any target node, and keep the WAL and data
 volumes. The target reads historical entries and writes `ExecutionBatch` or
 `SetClusterPolicyProposal` directly. Existing snapshots, backups and audit
-history need no rewrite or backfill. New policy controls also use the additive
-`AuditItem.serialized_set_cluster_policy` field; update audit consumers to read
-it as well as historical `serialized_order` items. Historical hashes remain
-unchanged. No capability flag enables this format. (refactor(raft): execute and audit native policy controls)
+history need no rewrite or backfill. Native policy controls persist operational
+state without business audit entries. Historical policy audits remain readable
+with unchanged hashes. Incremental backups preserve newer policy in a separate
+manifest snapshot, including policy-only changes. No capability flag enables
+this format.
 
 This phase adds no new rollback restriction. Emitting payload-only Raft entries
 is a separate, future cutover requiring cluster-wide decoder readiness and its

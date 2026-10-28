@@ -1537,9 +1537,9 @@ func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, build
 // revision. It gates on leadership itself and is safe to call repeatedly: the
 // ClusterPolicyReconciler invokes it on a ticker so a transient proposal failure
 // self-heals on the next tick. Unlike the cluster config, the policy flows
-// through AdmitClusterPolicy as an internal audited SetClusterPolicy order so
-// the checker can re-derive it; the write-readiness gate exempts this
-// non-business proposal so it is never blocked by its own cluster-policy gate.
+// through AdmitClusterPolicy as an operational SetClusterPolicyProposal.
+// The write-readiness gate exempts this non-business proposal so it is never
+// blocked by its own cluster-policy gate.
 func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, logger logging.Logger) {
 	if !isLeader() {
 		return

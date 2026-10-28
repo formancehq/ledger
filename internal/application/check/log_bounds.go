@@ -80,7 +80,7 @@ import (
 // not a statement that a success range can reach backwards.
 //
 // The expectation is never seeded from the log stream under test — that is the
-// same rule signingVerifier and clusterPolicyVerifier follow, and here it is
+// same rule signingVerifier follows, and here it is
 // what makes a missing tail visible at all.
 type logBoundsVerifier struct {
 	// expectedMax is the highest log sequence the chain-verified success ranges

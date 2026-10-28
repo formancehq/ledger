@@ -120,3 +120,8 @@ The periodic leader reconciler proposes initialization before policy and
 retries on transient failure, so an early request cannot wedge the FSM or wait
 forever after a one-shot failure. The FSM domain owns deterministic first-wins
 apply semantics; this domain owns gate reachability and liveness.
+
+Native policy reconciliation is operational and does not write business audit.
+It remains subject to its admission gates, while the business audit-key gate
+protects audited execution batches. Policy readiness and audit-key readiness
+remain distinct prerequisites.

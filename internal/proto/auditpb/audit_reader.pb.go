@@ -152,7 +152,6 @@ type AuditItemReader interface {
 	GetOrderIndex() uint32
 	GetSerializedOrder() []byte
 	GetLogSequence() uint64
-	GetSerializedSetClusterPolicy() []byte
 	Mutate() *AuditItem
 }
 
@@ -168,10 +167,6 @@ func (r *auditItemReadonly) GetSerializedOrder() []byte {
 
 func (r *auditItemReadonly) GetLogSequence() uint64 {
 	return (*AuditItem)(r).GetLogSequence()
-}
-
-func (r *auditItemReadonly) GetSerializedSetClusterPolicy() []byte {
-	return bytes.Clone((*AuditItem)(r).GetSerializedSetClusterPolicy())
 }
 
 func (r *auditItemReadonly) Mutate() *AuditItem {

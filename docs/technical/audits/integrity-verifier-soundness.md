@@ -54,7 +54,7 @@ root cause across multiple affected passes or callers.
 | Pass selection and verdict | `internal/application/check/checker.go`: trace `Check`, every comparison and early exit. Inventory current calls, not a frozen count from the documentation table. `Check` returns execution errors and emits corruption through its callback; progress and a nil return are not alone a healthy verdict. |
 | Source chain and bounds | `verifyAuditHashChain`, `newProposalBoundaryReader`, `internal/query/audit.go`, `log.go`, `applied_proposal.go`, `internal/infra/state/audit_envelope.go`, `batch.go`, `machine.go`: identify entry/item/log/proposal key ranges and cardinalities, hash inputs and the verified source of replay inputs. Include first/last inclusivity and iterator terminal errors. |
 | Reconstruction | `checker.go`, `replay_store.go`, `internal/domain/replay/`, `internal/domain/processing/processor*.go`: establish order-to-log-to-projection provenance. Inspect producer code to establish semantics and correlated defects, without treating producer agreement as an independent oracle. |
-| Projection coverage | Inventory volumes, metadata, transactions and post-commit volumes, reversions, exclusions, idempotency outcomes, indexes, mirror position, numscript content/latest pointers, ledger presence/schema/account types/boundaries/references, signing, cluster policy and query checkpoints from actual calls. Map each field to expected-source and stored-row scans, including deletion and unmatched rows. This discovery list must be refreshed on the audited SHA. |
+| Projection coverage | Inventory volumes, metadata, transactions and post-commit volumes, reversions, exclusions, idempotency outcomes, indexes, mirror position, numscript content/latest pointers, ledger presence/schema/account types/boundaries/references, signing and query checkpoints from actual calls. Map each field to expected-source and stored-row scans, including deletion and unmatched rows. This discovery list must be refreshed on the audited SHA. |
 | Storage boundary | `internal/storage/dal/`, `internal/infra/attributes/`, `internal/storage/readstore/`, `reverse_map_orphans.go`: primary snapshot and cursor semantics; only the documented reverse-map exception reads peer data for a verdict. Broad globs are counterevidence sources, not a general storage or index audit. |
 | Result consumption | `internal/adapter/grpc/server_bucket.go` (`CheckStore`), `server_restore.go` (`CheckRestore`), `cmd/ledgerctl/store/check.go`, `bootstrap.go`: trace events, transport errors and final decisions. A staged store has no peer readstore; it cannot certify peer contents. Restore correctness itself belongs to the persistence domain. |
 | Existing evidence | `internal/application/check/*_test.go`, `internal/domain/replay/*_test.go`, relevant `tests/e2e/business/` and `tests/e2e/cluster/`: record assertions actually reached, not test names or line coverage as proof. |
@@ -288,20 +288,17 @@ all corruption callbacks and terminal status: require `METADATA_MISMATCH` or
 fields, while terminal completion succeeds. Healthy controls must emit no
 corruption events. Malformed keys must not silently disappear from comparison.
 
-## Native policy audit intent
+## Operational policy exemption
 
-Audit readers accept historical `serialized_order` and native
-`serialized_set_cluster_policy` bytes. The old item preimage stays exact;
-native controls extend it with a policy domain tag and length-prefixed bytes.
-Corrupting either intent field, the selected kind, or the derived policy must
-be observable. Reject mixed intent and a control embedded in an order batch.
-The checker executes native controls without manufacturing an Order, including
-successful no-log re-proposals, and derives the policy from verified history.
-Use a historical checkpoint plus a nonempty native policy delta as a restore
-witness; neither the stored policy nor the policy log can seed its expectation.
+Native policy controls have no business audit representation. Historical policy
+orders and their exact hash preimages remain readable and replayable. The current
+policy row is an explicit operational exemption, not an unchecked business
+projection. Replay accepted intent without metadata or checkpoint quotas and
+without reading this row. Verify actual effects, semantic rules, frozen
+idempotency outcomes and historical audit integrity. Retain tamper regressions
+for business projections; policy absence or different current limits alone must
+not produce a business-integrity finding.
 
-Audit transport must preserve this evidence: gRPC returns both intent fields,
-and REST returns the exact native bytes as hex in `serializedSetClusterPolicy`.
-An empty order field on a native control must not erase its intent at the
-manual JSON or OpenAPI boundary. Keep a real HTTP-handler regression alongside
-store-level hash and projection-corruption tests.
+Restore evidence must include a policy-only incremental snapshot and a legacy
+policy log followed by a native override. Discovery and recovery validate the
+restored operational state independently of a clean business checker result.

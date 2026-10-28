@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -510,6 +511,29 @@ func RunIncrementalBackup(
 		return nil, fmt.Errorf("reading current last audit sequence: %w", err)
 	}
 
+	// Capture operational policy from this exact history snapshot. Never replace
+	// a newer manifest policy with one observed before a snapshot rollback.
+	policy, err := query.ReadClusterPolicy(readHandle)
+	if err != nil {
+		return nil, fmt.Errorf("reading backup cluster policy: %w", err)
+	}
+	appliedIndex, err := query.ReadLastAppliedIndex(readHandle)
+	if err != nil {
+		return nil, fmt.Errorf("reading backup applied index: %w", err)
+	}
+	policyChanged := false
+	policyFloor := manifest.Checkpoint.LastAppliedIndex
+	if manifest.ClusterPolicy != nil {
+		policyFloor = max(policyFloor, manifest.ClusterPolicy.AppliedIndex)
+	}
+	if policy != nil && appliedIndex >= policyFloor && currentLogSeq >= afterLogSeq && currentAuditSeq >= afterAuditSeq {
+		data := policy.MarshalDeterministicVT(nil)
+		if manifest.ClusterPolicy == nil || !bytes.Equal(manifest.ClusterPolicy.Data, data) {
+			manifest.ClusterPolicy = &ClusterPolicySnapshot{AppliedIndex: appliedIndex, Data: data}
+			policyChanged = true
+		}
+	}
+
 	// Ensure monotonicity: after a RestoreCheckpoint (leadership change +
 	// snapshot from new leader), Pebble may have a lower history-zone sequence
 	// than what the manifest already recorded from a previous export.
@@ -520,6 +544,11 @@ func RunIncrementalBackup(
 	// 5. Check if there's anything new
 	if currentLogSeq <= afterLogSeq && currentAuditSeq <= afterAuditSeq {
 		logger.Infof("No new entries to export")
+		if policyChanged {
+			if err := WriteManifest(ctx, storage, manifestKey, manifest); err != nil {
+				return nil, fmt.Errorf("writing operational policy manifest: %w", err)
+			}
+		}
 
 		// Still prune orphan exports — dangling segments are independent of
 		// whether new entries arrived since the previous run.

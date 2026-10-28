@@ -608,8 +608,8 @@ Revision 36 removes the `cluster_policy_invalid`,
 proposal or an admission coverage contract violation. An affected proposal
 returns its typed error without an `AuditFailure` entry or frozen idempotency
 result; staged order writes are discarded. A corrected proposal can be retried.
-Successful cluster-policy updates still produce audited orders and the policy
-projection remains checker-verified. The removed arms were renumbered before
+At revision 36, successful cluster-policy updates still produced audited orders and the policy
+projection was checker-verified. The removed arms were renumbered before
 the first RC. This shared gRPC change requires revision 36 on both sides.
 
 ## Technical failures outside the audited outcome (revision 37)
@@ -717,12 +717,10 @@ Custom and anonymous scope mappings must use the new granular values; see the
 Persisted audit snapshots retain the exact effective scope strings captured at
 admission, so historical hashes remain verifiable without a storage migration.
 
-### Native policy audit items (RC.2)
+### Operational policy (RC.2)
 
-`AuditItem` adds `serialized_set_cluster_policy` at field 4. Existing fields,
-wire types and service revision 40 remain unchanged. Business order items and
-historical policy items retain field 2 and their exact hash preimages. New
-policy controls carry deterministic `SetClusterPolicyProposal` bytes in field 4,
-with a separate hash domain. Old clients can decode these responses but need an
-update to display or verify native policy intent. See
-[proposal payloads](../consensus/proposal-payloads.md) for the full-stop cutover.
+Native policy controls update operational state without business audit entries.
+Historical policy orders retain their audit fields and exact hash preimages.
+`AuditItem` and service revision 40 are unchanged. Discovery exposes the current
+policy. See [proposal payloads](../consensus/proposal-payloads.md) for the full-stop
+cutover and backup preservation contract.

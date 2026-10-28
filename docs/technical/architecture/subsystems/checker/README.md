@@ -107,3 +107,7 @@ Policy verification reads both historical policy orders and native proposal
 controls. Their raw audit bytes are hash-bound separately; see
 [audit-chain.md](audit-chain.md) and the
 [proposal migration contract](../consensus/proposal-payloads.md).
+
+Cluster operational policy is exempt from business projection verification.
+Replay checks actual business effects without resource quotas; see the
+[policy boundary](checker.md#operational-policy-boundary).

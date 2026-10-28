@@ -67,14 +67,10 @@ Each `AuditItem` (one per order in the proposal) is encoded by `state.BuildPerIt
 | `LogSequence` | `uint64` BE |
 | `SerializedOrder` | length-prefixed (the order's canonical vtprotobuf bytes) |
 
-Native policy controls use `AuditItem.serialized_set_cluster_policy` (field 4)
-instead of `serialized_order`. For these items, append a length-prefixed
-`audit:set-cluster-policy:v1` tag and the length-prefixed raw control bytes to
-the historical layout above. Historical items have no extension, preserving
-all existing hashes. The native form occupies one item at index zero and has
-no client idempotency or signature; the checker rejects mixed intent fields.
-The checker replays the native control directly to derive logs and policy.
-Business orders and historical policy orders continue to use field 2.
+Native policy controls produce no audit items. Historical policy orders retain
+`serialized_order` and their exact hash preimages. The current policy row and
+operational quota checks are outside checker scope; actual business effects
+remain verified.
 
 Items are concatenated in `OrderIndex` order before being fed into the hash. A single byte changed in any order, or any reordering, invalidates the hash.
 
@@ -232,7 +228,7 @@ A same-key-different-hash conflict, by contrast, is **not** a replay — it's a 
 Two independent monotone counters, bridged per successful non-replayed proposal:
 
 - **`audit_sequence`** advances by 1 for each audited success or definitive failure (`AppendAuditEntry` in `internal/infra/state/fsmstate.go`). Replay, order-less paths and `UncommittedFailure` do not advance it. The allocated values themselves are **dense** (no gaps in the numbering), although multiple unaudited proposals can occur between consecutive entries.
-- **`log_sequence`** advances only when a log is produced. The mapping `audit_seq → [MinLog, MaxLog]` is sparse: failures contribute zero logs; a success in which every order took the no-log outcome in `ProcessOrders` — today an idempotent mirror replay, or a `SetClusterPolicy` re-proposal at the applied revision — contributes `[0, 0]`. (The in-batch idempotent *reference* that used to produce this shape no longer exists: per-batch idempotency moved out of `ProcessOrders` into the FSM apply path, which short-circuits replays before the processor runs, so `ReferenceSequence` items are no longer produced — `internal/domain/processing/processor.go`.)
+- **`log_sequence`** advances only when a log is produced. The mapping `audit_seq → [MinLog, MaxLog]` is sparse: failures contribute zero logs; a success in which every order took the no-log outcome in `ProcessOrders` — today an idempotent mirror replay, or a historical `SetClusterPolicy` order re-proposal at the applied revision — contributes `[0, 0]`. (The in-batch idempotent *reference* that used to produce this shape no longer exists: per-batch idempotency moved out of `ProcessOrders` into the FSM apply path, which short-circuits replays before the processor runs, so `ReferenceSequence` items are no longer produced — `internal/domain/processing/processor.go`.)
 
 Gaps live on the **companion streams**, not on `audit_sequence` itself:
 

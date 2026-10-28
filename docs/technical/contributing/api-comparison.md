@@ -1694,11 +1694,8 @@ Admission rejects the exact names `_` (system API routes) and `_system`
 This applies equally to HTTP and gRPC. Other underscore-prefixed names,
 including `_systemx` and `_System`, remain valid.
 
-### RC.2 policy audit intent
+### RC.2 operational policy
 
-Audit responses add `AuditItem.serialized_set_cluster_policy` (field 4) for
-native policy controls. Existing `serialized_order` (field 2) remains the
-business-order and historical-policy representation. Service revision stays 40;
-consumers must read both intent fields. REST uses the camelCase, hex-encoded
-`serializedSetClusterPolicy` property, alongside historical `serializedOrder`. See the
-[protocol contract](../architecture/subsystems/api/protocol-compatibility.md#native-policy-audit-items-rc2).
+New cluster-policy controls no longer appear in business audit listings.
+Historical policy audit entries remain readable. Audit response fields and
+service revision 40 are unchanged. Discovery still returns the committed policy.

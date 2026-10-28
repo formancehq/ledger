@@ -156,3 +156,18 @@ func TestProcessDeleteQueryCheckpoint_ZeroID(t *testing.T) {
 	_, procErr := processor.ProcessOrder(deleteQueryCheckpointOrder(0), mockStore)
 	require.ErrorIs(t, procErr, domain.ErrCheckpointIDRequired)
 }
+
+// Audit replay must not consult operational policy or the capacity projection.
+// Existing live-apply tests above still enforce the configured cap.
+func TestReplayQueryCheckpointDoesNotReadOperationalQuota(t *testing.T) {
+	t.Parallel()
+	scope := NewMockScope(gomock.NewController(t))
+	scope.EXPECT().IncrementNextQueryCheckpointID().Return(uint64(7))
+	scope.EXPECT().GetNextSequenceID().Return(uint64(100))
+	scope.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 42}).AsReader())
+	scope.EXPECT().GetRaftIndex().Return(uint64(123))
+	scope.EXPECT().SaveQueryCheckpoint(gomock.Any())
+	payload, err := processCreateQueryCheckpoint(&raftcmdpb.CreateQueryCheckpointOrder{}, &Context{Scope: scope, auditReplay: true})
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), payload.GetCreatedQueryCheckpoint().GetCheckpointId())
+}
