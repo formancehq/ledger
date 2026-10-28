@@ -3,6 +3,7 @@ package membership
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -90,8 +91,8 @@ func newMembershipServiceNodeWithPool(t *testing.T) (*Service, *transport.Connec
 	require.NoError(t, err)
 	n, err := node.NewNode(node.NodeConfig{
 		NodeID: 1, AdvertiseAddr: "self:7777", ServiceAdvertiseAddr: "self:8888",
-		// Keep the ConfChange retry window above the 500ms floor so package
-		// co-scheduling does not turn a committed registration into a retry.
+		// Keep the ConfChange retry window above its 500ms floor. The tests
+		// run in a synctest bubble, so the long ticks cost no wall-clock time.
 		InstanceID: []byte("self-instance-id"), TickInterval: 100 * time.Millisecond,
 		ElectionTick: 15, HeartbeatTick: 10,
 		ProcessingTickInterval: time.Millisecond, MaintenanceInterval: time.Hour,
@@ -141,32 +142,34 @@ func TestService_LearnerRegistrationCommitsAndPreservesCallerIntent(t *testing.T
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			s := newMembershipServiceNode(t)
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-			defer cancel()
-			register := s.AddLearner
-			if bootJoin {
-				register = s.JoinAsLearner
-			}
-			require.NoError(t, register(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id")))
-			peers, err := s.ListPeers(ctx)
-			require.NoError(t, err)
-			require.Contains(t, peers, Peer{
-				ID: 2, RaftAddress: "peer:7777", ServiceAddress: "peer:8888", InstanceID: []byte("peer-instance-id"),
-			})
+			synctest.Test(t, func(t *testing.T) {
+				s := newMembershipServiceNode(t)
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+				defer cancel()
+				register := s.AddLearner
+				if bootJoin {
+					register = s.JoinAsLearner
+				}
+				require.NoError(t, register(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id")))
+				peers, err := s.ListPeers(ctx)
+				require.NoError(t, err)
+				require.Contains(t, peers, Peer{
+					ID: 2, RaftAddress: "peer:7777", ServiceAddress: "peer:8888", InstanceID: []byte("peer-instance-id"),
+				})
 
-			// The existing voter has replicated its own no-op. An administrative
-			// retry is idempotent, while a fresh-WAL boot against that progress
-			// must report stale state, even with the same persisted identity.
-			before := s.infraMembership.PeerAddresses()
-			err = register(ctx, 1, "replacement:7777", "replacement:8888", []byte("self-instance-id"))
-			if bootJoin {
-				require.ErrorIs(t, err, node.ErrNodeStaleProgress)
-			} else {
-				require.ErrorIs(t, err, node.ErrNodeAlreadyInCluster)
-			}
-			require.ErrorContains(t, err, "adding learner:")
-			require.Equal(t, before, s.infraMembership.PeerAddresses(), "rejected registration must retain committed addresses")
+				// The existing voter has replicated its own no-op. An administrative
+				// retry is idempotent, while a fresh-WAL boot against that progress
+				// must report stale state, even with the same persisted identity.
+				before := s.infraMembership.PeerAddresses()
+				err = register(ctx, 1, "replacement:7777", "replacement:8888", []byte("self-instance-id"))
+				if bootJoin {
+					require.ErrorIs(t, err, node.ErrNodeStaleProgress)
+				} else {
+					require.ErrorIs(t, err, node.ErrNodeAlreadyInCluster)
+				}
+				require.ErrorContains(t, err, "adding learner:")
+				require.Equal(t, before, s.infraMembership.PeerAddresses(), "rejected registration must retain committed addresses")
+			})
 		})
 	}
 }
@@ -174,23 +177,25 @@ func TestService_LearnerRegistrationCommitsAndPreservesCallerIntent(t *testing.T
 func TestService_ListPeersReturnsCompleteIndependentSnapshot(t *testing.T) {
 	t.Parallel()
 
-	s := newMembershipServiceNode(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	require.NoError(t, s.AddLearner(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id")))
-	// A cached row alone must not leak into the configured member response.
-	require.NoError(t, s.infraMembership.Set(3, "extra:7777", "extra:8888", []byte("extra-instanceid")))
-	want := []Peer{
-		{ID: 1, RaftAddress: "public-self:7777", ServiceAddress: "public-self:8888", InstanceID: []byte("self-instance-id")},
-		{ID: 2, RaftAddress: "peer:7777", ServiceAddress: "peer:8888", InstanceID: []byte("peer-instance-id")},
-	}
-	peers, err := s.ListPeers(ctx)
-	require.NoError(t, err)
-	require.ElementsMatch(t, want, peers)
-	for i := range peers {
-		peers[i].InstanceID[0] ^= 0xff
-	}
-	fresh, err := s.ListPeers(ctx)
-	require.NoError(t, err)
-	require.ElementsMatch(t, want, fresh, "caller mutation must not corrupt a later discovery response")
+	synctest.Test(t, func(t *testing.T) {
+		s := newMembershipServiceNode(t)
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		require.NoError(t, s.AddLearner(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id")))
+		// A cached row alone must not leak into the configured member response.
+		require.NoError(t, s.infraMembership.Set(3, "extra:7777", "extra:8888", []byte("extra-instanceid")))
+		want := []Peer{
+			{ID: 1, RaftAddress: "public-self:7777", ServiceAddress: "public-self:8888", InstanceID: []byte("self-instance-id")},
+			{ID: 2, RaftAddress: "peer:7777", ServiceAddress: "peer:8888", InstanceID: []byte("peer-instance-id")},
+		}
+		peers, err := s.ListPeers(ctx)
+		require.NoError(t, err)
+		require.ElementsMatch(t, want, peers)
+		for i := range peers {
+			peers[i].InstanceID[0] ^= 0xff
+		}
+		fresh, err := s.ListPeers(ctx)
+		require.NoError(t, err)
+		require.ElementsMatch(t, want, fresh, "caller mutation must not corrupt a later discovery response")
+	})
 }
