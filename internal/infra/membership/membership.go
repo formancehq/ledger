@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"slices"
+	"strconv"
 	"sync"
 
 	"go.etcd.io/raft/v3/raftpb"
@@ -64,6 +66,7 @@ type Membership struct {
 	selfNodeID      uint64
 	selfRaftAddr    string
 	selfServiceAddr string
+	servicePort     int
 	selfInstanceID  []byte
 	logger          logging.Logger
 
@@ -95,6 +98,18 @@ type Membership struct {
 // boot with an empty cache while the WAL ConfState still claims the
 // cluster has voters.
 func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
+	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, 0, selfInstanceID, logger)
+}
+
+// NewMembershipWithServicePort is the production constructor for clusters
+// that use a dedicated peer service port. It normalizes service addresses
+// loaded from pre-peer-port membership snapshots so a restart does not keep
+// dialing the old public listener.
+func NewMembershipWithServicePort(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort int, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
+	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, servicePort, selfInstanceID, logger)
+}
+
+func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort int, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
 	if err := ValidateInstanceID(selfInstanceID); err != nil {
 		return nil, fmt.Errorf("invalid self identity: %w", err)
 	}
@@ -103,6 +118,7 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 	if err != nil {
 		return nil, fmt.Errorf("loading peers from pebble: %w", err)
 	}
+	addresses = normalizeServiceAddresses(addresses, servicePort)
 
 	logger.WithFields(map[string]any{
 		"peerCount": len(addresses),
@@ -115,10 +131,29 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 		selfNodeID:      selfNodeID,
 		selfRaftAddr:    selfRaftAddr,
 		selfServiceAddr: selfServiceAddr,
+		servicePort:     servicePort,
 		selfInstanceID:  bytes.Clone(selfInstanceID),
 		logger:          logger,
 		addresses:       addresses,
 	}, nil
+}
+
+func normalizeServiceAddresses(addresses map[uint64]ConfChangeContext, servicePort int) map[uint64]ConfChangeContext {
+	if servicePort == 0 {
+		return addresses
+	}
+
+	for nodeID, addr := range addresses {
+		host, _, err := net.SplitHostPort(addr.ServiceAddress)
+		if err != nil {
+			continue
+		}
+
+		addr.ServiceAddress = net.JoinHostPort(host, strconv.Itoa(servicePort))
+		addresses[nodeID] = addr
+	}
+
+	return addresses
 }
 
 // Start wires every peer currently in the cache into the transport +
@@ -455,6 +490,8 @@ func (m *Membership) Rehydrate() error {
 	if err != nil {
 		return fmt.Errorf("loading peers from pebble: %w", err)
 	}
+
+	fresh = normalizeServiceAddresses(fresh, m.servicePort)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -238,7 +238,7 @@ func Module() fx.Option {
 				appCfg Config,
 				logger logging.Logger,
 			) (*raftmembership.Membership, error) {
-				return raftmembership.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, appCfg.PeerServiceAdvertiseAddr(), cfg.InstanceID, logger)
+				return raftmembership.NewMembershipWithServicePort(store, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, appCfg.PeerServiceAdvertiseAddr(), appCfg.PeerGRPCPort(), cfg.InstanceID, logger)
 			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker
