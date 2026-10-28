@@ -299,3 +299,9 @@ The checker executes native controls without manufacturing an Order, including
 successful no-log re-proposals, and derives the policy from verified history.
 Use a historical checkpoint plus a nonempty native policy delta as a restore
 witness; neither the stored policy nor the policy log can seed its expectation.
+
+Audit transport must preserve this evidence: gRPC returns both intent fields,
+and REST returns the exact native bytes as hex in `serializedSetClusterPolicy`.
+An empty order field on a native control must not erase its intent at the
+manual JSON or OpenAPI boundary. Keep a real HTTP-handler regression alongside
+store-level hash and projection-corruption tests.

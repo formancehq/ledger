@@ -123,9 +123,10 @@ func (x *AuditEntry) MarshalJSON() ([]byte, error) {
 // client to locate the first order or interpret the no-log sentinel.
 func (x *AuditItem) MarshalJSON() ([]byte, error) {
 	type Aux struct {
-		OrderIndex      uint32 `json:"orderIndex"`
-		SerializedOrder string `json:"serializedOrder,omitempty"`
-		LogSequence     uint64 `json:"logSequence"`
+		OrderIndex                 uint32 `json:"orderIndex"`
+		SerializedOrder            string `json:"serializedOrder,omitempty"`
+		SerializedSetClusterPolicy string `json:"serializedSetClusterPolicy,omitempty"`
+		LogSequence                uint64 `json:"logSequence"`
 	}
 
 	aux := Aux{
@@ -135,6 +136,9 @@ func (x *AuditItem) MarshalJSON() ([]byte, error) {
 
 	if so := x.GetSerializedOrder(); len(so) > 0 {
 		aux.SerializedOrder = hex.EncodeToString(so)
+	}
+	if policy := x.GetSerializedSetClusterPolicy(); len(policy) > 0 {
+		aux.SerializedSetClusterPolicy = hex.EncodeToString(policy)
 	}
 
 	return json.Marshal(aux)

@@ -1699,5 +1699,6 @@ including `_systemx` and `_System`, remain valid.
 Audit responses add `AuditItem.serialized_set_cluster_policy` (field 4) for
 native policy controls. Existing `serialized_order` (field 2) remains the
 business-order and historical-policy representation. Service revision stays 40;
-consumers must read both intent fields. See the
+consumers must read both intent fields. REST uses the camelCase, hex-encoded
+`serializedSetClusterPolicy` property, alongside historical `serializedOrder`. See the
 [protocol contract](../architecture/subsystems/api/protocol-compatibility.md#native-policy-audit-items-rc2).

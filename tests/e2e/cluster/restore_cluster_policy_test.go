@@ -390,6 +390,16 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 })
 
 func clusterPolicyFromAuditItem(item *auditpb.AuditItem) (*commonpb.ClusterPolicy, error) {
+	if raw := item.GetSerializedSetClusterPolicy(); len(raw) != 0 {
+		control := &raftcmdpb.SetClusterPolicyProposal{}
+		if err := control.UnmarshalVT(raw); err != nil {
+			return nil, err
+		}
+
+		return control.GetPolicy(), nil
+	}
+
+	// Retained audit history can still contain the released policy order.
 	order := &raftcmdpb.Order{}
 	if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
 		return nil, err

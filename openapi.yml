@@ -6841,7 +6841,7 @@ components:
 
     AuditItem:
       type: object
-      description: One order within a proposal.
+      description: One execution order or a standalone cluster-policy control within a proposal.
       properties:
         orderIndex:
           type: integer
@@ -6850,6 +6850,9 @@ components:
         serializedOrder:
           type: string
           description: Hex-encoded deterministic serialized bytes of the order at apply time
+        serializedSetClusterPolicy:
+          type: string
+          description: Hex-encoded deterministic SetClusterPolicyProposal bytes for a native policy control. Mutually exclusive with serializedOrder; historical policy orders retain serializedOrder.
         logSequence:
           type: integer
           format: uint64
