@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -94,6 +95,7 @@ func TestReconcileDebugBoxDeletesWhenDisabled(t *testing.T) {
 		Annotations: map[string]string{annotationDebugBoxCluster: cluster.Namespace + "/" + cluster.Name},
 	}}
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: debugBoxPodName(cluster), Namespace: cluster.Namespace}}
+	require.NoError(t, controllerutil.SetControllerReference(cluster, pod, scheme))
 	r := &ClusterReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, credentials, pod).Build(),
 		Scheme: scheme,
@@ -104,6 +106,20 @@ func TestReconcileDebugBoxDeletesWhenDisabled(t *testing.T) {
 	require.True(t, ready)
 	require.Error(t, r.Get(context.Background(), types.NamespacedName{Name: debugBoxCredentialsName(cluster)}, &ledgerv1alpha1.Credentials{}))
 	require.Error(t, r.Get(context.Background(), types.NamespacedName{Name: debugBoxPodName(cluster), Namespace: cluster.Namespace}, &corev1.Pod{}))
+}
+
+func TestReconcileDebugBoxDoesNotDeleteForeignPod(t *testing.T) {
+	scheme := authKeysScheme(t)
+	cluster := authEnabledCluster("ledger", "tenant-a", nil)
+	foreign := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: debugBoxPodName(cluster), Namespace: cluster.Namespace}}
+	r := &ClusterReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, foreign).Build(),
+		Scheme: scheme,
+	}
+
+	_, err := r.reconcileDebugBox(context.Background(), cluster)
+	require.ErrorContains(t, err, "is owned by another controller")
+	require.NoError(t, r.Get(context.Background(), types.NamespacedName{Name: foreign.Name, Namespace: foreign.Namespace}, &corev1.Pod{}))
 }
 
 func TestReconcileDebugBoxRejectsForeignCredentialCollision(t *testing.T) {
