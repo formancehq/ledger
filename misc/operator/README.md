@@ -354,6 +354,18 @@ recreation.
 explicit GitOps capacity request. Keep the cap at least as large as live
 requests if automatic growth should remain available.
 
+### Retained claims and retiring profiles
+
+Storage readiness and PVC updates cover the live StatefulSet replica count.
+Claims retained outside that count can keep an older VolumeAttributesClass;
+scale-up reuses them and reconciliation requests the new profile after proving
+ownership, then observes CSI completion. Ready storage conditions alone do not
+prove that a class is unused. The platform/GitOps owner must inventory all PVC
+requested/current/pending class references, StatefulSet templates and desired
+manifests before retiring a shared class. Keep it while inactive claims still
+reference it; never delete claims to retire a profile. See the
+[retirement procedure and EKS/EBS acceptance gate](../../docs/technical/architecture/subsystems/operator/storage-reconciliation.md#retained-claims-and-class-retirement).
+
 ### Storage prerequisites and limits
 
 Capacity increases require the PVC's StorageClass to permit expansion

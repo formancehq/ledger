@@ -664,6 +664,20 @@ volume through interruptions. A Kind fixture without the required CSI driver
 does not prove EBS expansion, IOPS/throughput application or filesystem growth.
 Report executed checks separately from proposed dynamic scenarios.
 
+### Retained claim profile boundary
+
+Exercise scale-down with retained claims, a profile edit and scale-up. Verify
+that inactive claims keep their old request while outside live replicas, current
+templates carry the new class, reused claims require ownership evidence, and
+storage readiness returns through pending to CSI-observed completion without
+changing PVC/PV identity. Readiness certifies only live ordinals. Class retirement
+belongs to the platform/GitOps owner and requires all-namespace requested,
+current and pending PVC reference inventory plus templates and desired manifests;
+never infer absence of references from storage conditions. Record real EKS/EBS
+versions, throughput increase/decrease, operator restart, actual adoption,
+unchanged EBS identities and retained Ledger data separately from fake/envtest
+results. See the [operational boundary](../architecture/subsystems/operator/storage-reconciliation.md#retained-claims-and-class-retirement).
+
 ## Severity
 
 Use the native P0–P3 scale with demonstrated impact and explicit preconditions:

@@ -144,6 +144,38 @@ other writer's fields/conditions across optimistic conflicts. A normal check
 uses a five-minute interval; pending/error paths retry sooner. Work scales with
 the live replica count and the two volume kinds, not Ledger business cardinality.
 
+## Retained claims and class retirement
+
+PVC actuation and storage readiness cover only ordinals below the live
+StatefulSet replica count. After scale-down with retained claims, a profile edit
+updates active claims and aligns claim templates, but inactive retained claims
+can still request or report the previous class. On scale-up, reconciliation
+updates reused claims after ownership is established by a live owned Pod (or
+an exact supported owner reference), then waits for CSI observation separately.
+`WALStorageReady` / `DataStorageReady` do not certify that an old class has no
+remaining references.
+
+The GitOps/platform owner manages VolumeAttributesClass retirement; the operator
+never deletes classes. Keep the old class until a cluster-wide inventory of
+PVCs (all namespaces, including inactive retained claims) shows no reference in
+`spec.volumeAttributesClassName`, `status.currentVolumeAttributesClassName` or
+`status.modifyVolumeStatus.targetVolumeAttributesClassName`, and no
+StatefulSet claim template or desired GitOps manifest still names it. Also
+check other consumers of the shared class. Coordinate concurrent writers before
+inventory and deletion; one snapshot is not a fence against new references.
+Bring retained ordinals back through supported scale-up and wait for CSI
+completion, or keep the old class. Do not patch ambiguous claims by name alone,
+remove protection, or delete PVCs/PVs to retire a class.
+
+Real EKS/EBS acceptance remains a release/adoption validation gate. Record the
+Kubernetes, EBS CSI driver/sidecar and operator image versions, gp3 throughput
+increase and decrease, an operator restart during reconciliation, successful
+StatefulSet orphan/adoption, unchanged PVC/PV UIDs and EBS volume IDs, and
+read/write verification of preexisting Ledger data. Include retained claims
+across scale-down/profile-change/scale-up. Unit/envtest evidence does not
+establish these runtime properties; do not mark this gate complete without
+artifacts from controllers and CSI running in the target environment.
+
 ## Durable template replacement
 
 Kubernetes claim templates are immutable. For same-name capacity/profile edits,
