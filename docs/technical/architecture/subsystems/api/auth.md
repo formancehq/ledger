@@ -122,7 +122,7 @@ Raft transport uses a **shared cluster secret**, not JWT. `internal/adapter/grpc
 - Comparison uses `crypto/subtle.ConstantTimeCompare` to avoid timing attacks.
 - If `--cluster-secret` is empty, the legacy "no auth" mode is used (not recommended).
 
-There is a **fast path** when the cluster secret is presented through the client surface (`grpc_auth.go:EvaluateGRPCCredentials`): the request bypasses JWT validation, gets every granular scope, is marked as cluster-internal in the context, and — if the request is a leader forwarding a follower's work — carries the forwarded `CallerSnapshot` so the audit chain still attributes the operation to the original caller. Auth-disabled snapshots are the exception: each node derives that explicit principal locally, so followers do not forward it. If a request carries a forwarded snapshot but the connection is **not** cluster-internal (cluster secret unset or mismatched), the leader **rejects** it with `PermissionDenied` rather than silently dropping the identity (`server_bucket.go:adoptForwardedSnapshotIfTrusted`) — a misconfiguration surfaces as a failed write instead of an unattributed audit entry.
+The cluster secret is reserved for the Raft plane and the explicit follower-to-leader `Apply` forwarding hop. A service-API request carrying it for any other method is rejected; it is never a direct `ledgerctl` credential. Operator automation uses a separate `--operator-secret` identity, which receives service scopes but is not marked cluster-internal and cannot provide forwarded attribution. Auth-disabled snapshots are derived locally. If a forwarded snapshot arrives without the peer-forward trust marker, the leader rejects it rather than silently dropping identity.
 
 ## Caller identity in the audit chain
 

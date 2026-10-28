@@ -265,11 +265,7 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 		if spec.TLS != nil && spec.TLS.CASecretKey != "" {
 			envs = append(envs, strEnv("LEDGERCTL_TLS_CA_CERT", "/tls/"+spec.TLS.CASecretKey))
 		}
-		envs = append(envs, secretKeyEnv(
-			"LEDGERCTL_AUTH_TOKEN",
-			clusterSecretName(ledger.Name),
-			clusterSecretKey,
-		))
+		envs = append(envs, secretKeyEnv("LEDGERCTL_AUTH_TOKEN", clusterSecretName(ledger.Name), operatorSecretKey))
 	}
 
 	// GOMEMLIMIT: set to a percentage of memory limit if available.
