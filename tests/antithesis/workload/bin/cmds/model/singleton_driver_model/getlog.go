@@ -58,7 +58,7 @@ func pickLogSequence(state oracle.GlobalState) (target committedLogTarget, learn
 // runGetLog reads one log by global sequence and checks it against the model's
 // own record of that log, field by field, the way a ListLogs page is checked.
 //
-// A log is immutable once committed and GetLog falls back to cold storage, so a
+// A log is immutable once committed and history is permanent in the main store, so a
 // learned sequence must resolve to the same log on every base; NotFound on one
 // is a lost log rather than staleness. The reverse direction is checked too: a
 // sequence past every one handed out must resolve to nothing.
