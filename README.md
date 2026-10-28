@@ -2,6 +2,7 @@
 
 Distributed ledger system using the Raft consensus protocol to ensure data consistency across a cluster of nodes. The system uses a **single Raft group** to manage all ledgers and their transactions, providing strong consistency and simplified operations.
 
+
 ## Key Features
 
 | Feature                      | Description                                                     |
