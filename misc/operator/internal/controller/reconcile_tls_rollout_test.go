@@ -34,7 +34,7 @@ func tlsDisableFixture(t *testing.T) (client.WithWatch, *ledgerv1alpha1.Cluster)
 	applyDefaults(cluster)
 	cluster.Spec.Persistence.DeletionProtection = new(false)
 	sts := &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: cluster.Namespace, Generation: 1, CreationTimestamp: metav1.Now()},
+		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: cluster.Namespace, UID: "tls-statefulset", Generation: 1, CreationTimestamp: metav1.Now()},
 		Spec:       buildStatefulSetSpec(cluster, "initial", nil, tlsModeRequired),
 		Status:     appsv1.StatefulSetStatus{ObservedGeneration: 1, UpdatedReplicas: 1, ReadyReplicas: 1},
 	}

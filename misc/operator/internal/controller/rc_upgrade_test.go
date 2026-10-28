@@ -205,6 +205,9 @@ func TestRCVolumeClaimRecreationWaitsForRollout(t *testing.T) {
 	sts.Name = resourceName(cluster.Name)
 	sts.Namespace = cluster.Namespace
 	sts.CreationTimestamp = metav1.Now()
+	cluster.UID = "cluster"
+	sts.UID = "statefulset"
+	sts.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(cluster, ledgerv1alpha1.GroupVersion.WithKind("Cluster"))}
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))

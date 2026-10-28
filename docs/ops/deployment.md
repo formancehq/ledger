@@ -214,6 +214,15 @@ spec:
       whenDeleted: Retain
 ```
 
+Scale-down honors `retentionPolicy.whenScaled` independently of `whenDeleted`.
+The default `Retain` keeps claims for removed ordinals. Only explicit `Delete`
+authorizes manual cleanup after membership removal and the replica update;
+the update requests Pod termination, and PVC protection still governs removal
+of claims that remain in use. HostPath/PVC layout recreation verifies the
+current Cluster-owned StatefulSet through a direct API read and uses UID and
+resourceVersion deletion preconditions; stale/foreign workloads are rejected
+and require a fresh reconciliation, rather than deletion by name.
+
 For PVC-backed WAL and data volumes, `size` is a minimum for existing PVCs as
 well as future claims. Increasing it requests in-place capacity growth even
 when `autoExpansion` is disabled. Larger live requests/capacities, including

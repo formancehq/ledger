@@ -664,6 +664,24 @@ volume through interruptions. A Kind fixture without the required CSI driver
 does not prove EBS expansion, IOPS/throughput application or filesystem growth.
 Report executed checks separately from proposed dynamic scenarios.
 
+### Scale-down and legacy layout deletion safety
+
+Exercise the Cluster reconciler, not only the PVC reconciler, across 3 to 1
+replicas with omitted/default Retain, explicit Retain and an independent
+WhenDeleted=Delete policy. Require no claim deletion and unchanged PVC/PV UIDs,
+bindings and volume sources, including PV reclaim Delete. Preserve explicit
+WhenScaled=Delete membership/removal failure-and-retry tests. The reduced
+replica write requests termination; it does not establish Pod termination or
+prove mounted-data retention in envtest.
+
+For direct hostPath/PVC layout recreation, require owned observed identity,
+a direct API reread and UID/resourceVersion delete preconditions. Cover foreign
+cached/live ownership, changed UID/version and terminating sources without a
+delete attempt. Against a real API server, change ownership/metadata or replace
+the same name after the final read; the DELETE must conflict and leave the
+current object intact. A fresh read can retry a benign metadata update. These
+fences supplement, rather than replace, the size/profile journal contract.
+
 ### Retained claim profile boundary
 
 Exercise scale-down with retained claims, a profile edit and scale-up. Verify

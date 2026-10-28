@@ -144,6 +144,28 @@ other writer's fields/conditions across optimistic conflicts. A normal check
 uses a five-minute interval; pending/error paths retry sooner. Work scales with
 the live replica count and the two volume kinds, not Ledger business cardinality.
 
+## Deletion boundaries
+
+After Raft membership removal succeeds, the Cluster reconciler persists the
+reduced StatefulSet replica count. That write requests Pod termination; it does
+not wait for it. Manual ordinal-PVC deletion is authorized only by the effective
+`whenScaled: Delete` policy. Omission or `Retain` preserves the PVC/PV identities
+and bindings, independently of `whenDeleted`. PVC protection controls removal of
+in-use claims. An error after the replica write does not roll it back; existing
+membership removals remain committed and claims may remain after a failed
+cleanup. Retain does not attempt cleanup and must not depend on protection
+admission rejecting an otherwise unauthorized delete.
+
+The separate hostPath/PVC layout recreation path also uses deletion fences.
+Before orphan deletion it requires a nonempty observed UID/resourceVersion and
+the current Cluster controller owner, then directly rereads the StatefulSet.
+A different UID or resourceVersion, foreign owner, or terminating source returns
+an error before deletion. The DELETE carries both UID and resourceVersion
+preconditions to reject changes between that read and the API operation.
+A conflict preserves the current StatefulSet; retry must observe it again.
+This adds one direct read only on the legacy layout-deletion path. It does not
+add a journal, change size/profile recovery, or prove hostPath/PVC data migration.
+
 ## Retained claims and class retirement
 
 PVC actuation and storage readiness cover only ordinals below the live

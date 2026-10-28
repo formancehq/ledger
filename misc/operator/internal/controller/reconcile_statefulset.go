@@ -226,9 +226,23 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 				desired.Template = preserveExistingStorageWiring(existing.Spec.Template, desired.Template)
 			} else {
 				logger.Info("VolumeClaimTemplates changed, recreating StatefulSet with orphan propagation")
+				// A cached name is not deletion authority. Revalidate the exact
+				// owned incarnation through the API, then fence the remaining
+				// read/delete race with both identity and version preconditions.
+				if existing.UID == "" || existing.ResourceVersion == "" || !metav1.IsControlledBy(existing, ledger) {
+					return ctrl.Result{}, fmt.Errorf("StatefulSet %s has no owned deletion identity", name)
+				}
+				live := &appsv1.StatefulSet{}
+				if err := r.storageAPIReader().Get(ctx, client.ObjectKeyFromObject(existing), live); err != nil {
+					return ctrl.Result{}, fmt.Errorf("reading StatefulSet before layout deletion: %w", err)
+				}
+				if live.UID != existing.UID || live.ResourceVersion != existing.ResourceVersion || !metav1.IsControlledBy(live, ledger) || !live.DeletionTimestamp.IsZero() {
+					return ctrl.Result{}, fmt.Errorf("StatefulSet %s changed before layout deletion", name)
+				}
 				orphan := metav1.DeletePropagationOrphan
-				if err := r.Delete(ctx, existing, &client.DeleteOptions{
+				if err := r.Delete(ctx, live, &client.DeleteOptions{
 					PropagationPolicy: &orphan,
+					Preconditions:     &metav1.Preconditions{UID: &live.UID, ResourceVersion: &live.ResourceVersion},
 				}); err != nil {
 					return ctrl.Result{}, fmt.Errorf("deleting StatefulSet for VolumeClaimTemplate change: %w", err)
 				}
@@ -262,8 +276,9 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		return ctrl.Result{}, err
 	}
 
-	// After the StatefulSet is updated (pods terminated), delete orphaned PVCs.
-	if scalingDown && r.Clientset != nil {
+	// The replica update requests Pod termination; it does not prove it is done.
+	// Retain is the default, independently of the policy for Cluster deletion.
+	if scalingDown && r.Clientset != nil && desired.PersistentVolumeClaimRetentionPolicy.WhenScaled == appsv1.DeletePersistentVolumeClaimRetentionPolicyType {
 		volNames := pvcVolumeNames(&ledger.Spec.Persistence)
 		if err := deleteScaledDownPVCs(ctx, r.Clientset, ledger.Namespace, name, previousReplicas, desiredReplicas, volNames); err != nil {
 			return ctrl.Result{}, fmt.Errorf("deleting PVCs after scale-down: %w", err)

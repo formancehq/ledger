@@ -35,7 +35,10 @@ recovers committed removals whose response was lost, without matching CLI error
 substrings.
 
 Only after all removed ordinals satisfy that postcondition does the operator
-persist the reduced StatefulSet replica count and issue PVC deletions. The
+persist the reduced StatefulSet replica count. Manual PVC cleanup runs only
+with effective `spec.persistence.retentionPolicy.whenScaled: Delete`. Omitted
+policy and `Retain` preserve all claims, even when `whenDeleted: Delete`; the
+Cluster-deletion policy does not authorize scale-down cleanup. The
 StatefulSet update requests Pod termination; it does not wait for termination to
 finish. If a membership check or removal fails, replicas and PVCs are retained,
 although the template update and earlier membership removals may already have
@@ -353,6 +356,15 @@ recreation.
 `autoExpansion.maximumSize` limits automatic decisions only; it does not cap an
 explicit GitOps capacity request. Keep the cap at least as large as live
 requests if automatic growth should remain available.
+
+The separate hostPath/PVC layout replacement path verifies the observed
+StatefulSet's Cluster owner and nonempty identity, rereads it directly from the
+API, and rejects a changed UID/resourceVersion, foreign owner or terminating
+source. Its orphan DELETE includes UID and resourceVersion preconditions, so a
+replacement or ownership update after that read is rejected by Kubernetes.
+A rejected delete leaves the current controller and its dependents in place;
+normal reconciliation retries from a fresh observation. This path does not use
+the size/profile recovery journal and does not certify a data migration.
 
 ### Retained claims and retiring profiles
 

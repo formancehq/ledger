@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -39,6 +40,7 @@ func TestReconcileScaleDownReplacementMembership(t *testing.T) {
 				ledger.UID = types.UID(namespace + "-cluster")
 				applyDefaults(ledger)
 				ledger.Spec.Persistence.DeletionProtection = new(false)
+				ledger.Spec.Persistence.RetentionPolicy = &ledgerv1alpha1.RetentionPolicySpec{WhenScaled: "Delete", WhenDeleted: "Retain"}
 				clientset, err := kubernetes.NewForConfig(testEnv.Config)
 				require.NoError(t, err)
 				reconciler := &ClusterReconciler{
@@ -214,5 +216,75 @@ func requireScaleDownReconcileState(t *testing.T, clientset kubernetes.Interface
 				require.NotNil(t, pvc.DeletionTimestamp, "removed replicas must have their PVCs deleted")
 			}
 		}
+	}
+}
+
+// Only ledgerctl is modeled. The real API proves the full reconciliation
+// preserves retained claim/volume objects; it does not mount or inspect data.
+func TestReconcileScaleDownRetainsClaims(t *testing.T) {
+	t.Parallel()
+	for _, policy := range []string{"default", "Retain", "WhenDeletedDelete"} {
+		t.Run(policy, func(t *testing.T) {
+			t.Parallel()
+			namespace := createTestNamespace(t)
+			ledger := newCluster("retained", namespace)
+			ledger.UID = types.UID(namespace + "-cluster")
+			applyDefaults(ledger)
+			ledger.Spec.Persistence.DeletionProtection = new(false)
+			if policy != "default" {
+				ledger.Spec.Persistence.RetentionPolicy = &ledgerv1alpha1.RetentionPolicySpec{WhenScaled: "Retain", WhenDeleted: "Retain"}
+				if policy == "WhenDeletedDelete" {
+					ledger.Spec.Persistence.RetentionPolicy.WhenDeleted = "Delete"
+				}
+			}
+			clientset, err := kubernetes.NewForConfig(testEnv.Config)
+			require.NoError(t, err)
+			r := &ClusterReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Config: testEnv.Config, Clientset: clientset}
+			fixture := &scaleDownReconcileMembership{t: t, namespace: namespace, pod0: podName(ledger.Name, 0), members: map[int]bool{1: true, 2: true, 3: true}}
+			_, err = r.reconcileStatefulSetWithExec(ctx, ledger, computeSpecHash(&ledger.Spec), nil, fixture.exec)
+			require.NoError(t, err)
+			claims := []*corev1.PersistentVolumeClaim{}
+			volumes := []*corev1.PersistentVolume{}
+			for ordinal := range 3 {
+				createScaleDownReconcilePod(t, clientset, namespace, podName(ledger.Name, ordinal), corev1.PodRunning)
+				for _, kind := range []string{"wal", "data"} {
+					name := fmt.Sprintf("%s-%s-%d", kind, resourceName(ledger.Name), ordinal)
+					pvName := namespace + "-" + name
+					claim, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Create(ctx, &corev1.PersistentVolumeClaim{
+						ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: corev1.PersistentVolumeClaimSpec{VolumeName: pvName, AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}, Resources: corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")}}},
+					}, metav1.CreateOptions{})
+					require.NoError(t, err)
+					volume, err := clientset.CoreV1().PersistentVolumes().Create(ctx, &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: pvName}, Spec: corev1.PersistentVolumeSpec{
+						Capacity: claim.Spec.Resources.Requests.DeepCopy(), AccessModes: claim.Spec.AccessModes, PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimDelete,
+						ClaimRef: &corev1.ObjectReference{Name: name, Namespace: namespace, UID: claim.UID}, PersistentVolumeSource: corev1.PersistentVolumeSource{CSI: &corev1.CSIPersistentVolumeSource{Driver: "example.csi", VolumeHandle: pvName}},
+					}}, metav1.CreateOptions{})
+					require.NoError(t, err)
+					t.Cleanup(func() {
+						require.NoError(t, clientset.CoreV1().PersistentVolumes().Delete(ctx, pvName, metav1.DeleteOptions{}))
+					})
+					claims = append(claims, claim)
+					volumes = append(volumes, volume)
+				}
+			}
+			ledger.Spec.Replicas = new(int32(1))
+			_, err = r.reconcileStatefulSetWithExec(ctx, ledger, computeSpecHash(&ledger.Spec), nil, fixture.exec)
+			require.NoError(t, err)
+			sts, err := clientset.AppsV1().StatefulSets(namespace).Get(ctx, resourceName(ledger.Name), metav1.GetOptions{})
+			require.NoError(t, err)
+			require.EqualValues(t, 1, *sts.Spec.Replicas)
+			require.Equal(t, map[int]bool{1: true}, fixture.members)
+			for i, claim := range claims {
+				got, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, claim.Name, metav1.GetOptions{})
+				require.NoError(t, err)
+				require.Nil(t, got.DeletionTimestamp, "Retain must never request deletion of scaled-down claims")
+				require.Equal(t, claim.UID, got.UID)
+				require.Equal(t, claim.Spec, got.Spec)
+				pv, err := clientset.CoreV1().PersistentVolumes().Get(ctx, volumes[i].Name, metav1.GetOptions{})
+				require.NoError(t, err)
+				require.Nil(t, pv.DeletionTimestamp)
+				require.Equal(t, volumes[i].UID, pv.UID)
+				require.Equal(t, volumes[i].Spec, pv.Spec)
+			}
+		})
 	}
 }
