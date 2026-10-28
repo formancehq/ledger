@@ -5,10 +5,11 @@ import (
 )
 
 const (
-	labelManagedBy     = "app.kubernetes.io/managed-by"
-	labelInstance      = "app.kubernetes.io/instance"
-	labelName          = "app.kubernetes.io/name"
-	annotationSpecHash = "ledger.formance.com/spec-hash"
+	labelManagedBy          = "app.kubernetes.io/managed-by"
+	labelInstance           = "app.kubernetes.io/instance"
+	labelName               = "app.kubernetes.io/name"
+	labelOperatorCredential = "ledger.formance.com/operator-credential"
+	annotationSpecHash      = "ledger.formance.com/spec-hash"
 	// Stored on the StatefulSet metadata, outside the PodTemplate, so migrating
 	// legacy hashes and editing PVC settings do not restart existing Pods.
 	annotationPodConfigHash = "ledger.formance.com/pod-config-hash"
