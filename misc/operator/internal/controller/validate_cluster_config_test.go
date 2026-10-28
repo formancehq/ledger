@@ -42,6 +42,49 @@ func TestValidateClusterConfig_AcceptsNilAndEmpty(t *testing.T) {
 	}))
 }
 
+func TestValidateClusterConfig_RejectsPeerPortCollisionsAndOverflow(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		spec ledgerv1alpha1.ClusterSpec
+		want string
+	}{
+		{
+			name: "public grpc collision",
+			spec: ledgerv1alpha1.ClusterSpec{GrpcPort: 8999, GrpcPeerPort: 8999},
+			want: "grpcPeerPort must differ from grpcPort",
+		},
+		{
+			name: "http collision",
+			spec: ledgerv1alpha1.ClusterSpec{HttpPort: 9000, GrpcPeerPort: 9000},
+			want: "grpcPeerPort must differ from httpPort",
+		},
+		{
+			name: "service grpc collision",
+			spec: ledgerv1alpha1.ClusterSpec{
+				GrpcPeerPort: 18888,
+				Service:      ledgerv1alpha1.ServiceSpec{GrpcPort: 18888},
+			},
+			want: "grpcPeerPort must differ from service.grpcPort",
+		},
+		{
+			name: "overflow",
+			spec: ledgerv1alpha1.ClusterSpec{GrpcPeerPort: 65536},
+			want: "grpcPeerPort must be between 1 and 65535",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateClusterConfig(&tt.spec)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.want)
+		})
+	}
+}
+
 func TestValidateClusterConfig_AuthRequiresTLS(t *testing.T) {
 	t.Parallel()
 

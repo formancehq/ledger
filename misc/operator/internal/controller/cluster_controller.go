@@ -659,6 +659,13 @@ func applyDefaults(ledger *ledgerv1alpha1.Cluster) {
 	if ledger.Spec.GrpcPort == 0 {
 		ledger.Spec.GrpcPort = 8888
 	}
+	if ledger.Spec.GrpcPeerPort == 0 {
+		if ledger.Spec.Service.GrpcPort != 0 {
+			ledger.Spec.GrpcPeerPort = ledger.Spec.Service.GrpcPort + 1
+		} else {
+			ledger.Spec.GrpcPeerPort = ledger.Spec.GrpcPort + 1
+		}
+	}
 	if ledger.Spec.HttpPort == 0 {
 		ledger.Spec.HttpPort = 9000
 	}
@@ -715,6 +722,24 @@ func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
 // this only rejects values that would either be silently ignored or that the
 // server would refuse.
 func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
+	if spec.GrpcPeerPort != 0 {
+		if spec.GrpcPeerPort < 1 || spec.GrpcPeerPort > 65535 {
+			return fmt.Errorf("grpcPeerPort must be between 1 and 65535, got %d", spec.GrpcPeerPort)
+		}
+		if spec.GrpcPort != 0 && spec.GrpcPeerPort == spec.GrpcPort {
+			return fmt.Errorf("grpcPeerPort must differ from grpcPort, both are %d", spec.GrpcPeerPort)
+		}
+		if spec.HttpPort != 0 && spec.GrpcPeerPort == spec.HttpPort {
+			return fmt.Errorf("grpcPeerPort must differ from httpPort, both are %d", spec.GrpcPeerPort)
+		}
+		if spec.Service.GrpcPort != 0 && spec.GrpcPeerPort == spec.Service.GrpcPort {
+			return fmt.Errorf("grpcPeerPort must differ from service.grpcPort, both are %d", spec.GrpcPeerPort)
+		}
+		if spec.Service.HttpPort != 0 && spec.GrpcPeerPort == spec.Service.HttpPort {
+			return fmt.Errorf("grpcPeerPort must differ from service.httpPort, both are %d", spec.GrpcPeerPort)
+		}
+	}
+
 	// Auth requires TLS. The ledger server rejects --auth-enabled unless
 	// --tls-mode=required, and buildEnvVars defers auth env until TLS converges
 	// to `required`. Without this guard a CR with auth.enabled=true but

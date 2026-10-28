@@ -164,6 +164,7 @@ spec:
   config:
     bindAddr: "0.0.0.0:7777"
     grpcPort: 8888
+    grpcPeerPort: 8889
     httpPort: 9000
     dataDir: "/data/app"
     walDir: "/data/raft"
@@ -222,6 +223,7 @@ spec:
     type: ClusterIP
     httpPort: 9000
     grpcPort: 8888
+    grpcPeerPort: 8889
     raftPort: 7777
     annotations: {}
 ```

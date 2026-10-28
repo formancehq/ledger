@@ -1343,6 +1343,11 @@
       "description": "GrpcCompression enables gzip compression on gRPC calls.",
       "type": "boolean"
     },
+    "grpcPeerPort": {
+      "description": "GrpcPeerPort is the dedicated gRPC port used for authenticated\ninter-node service forwarding.",
+      "format": "int32",
+      "type": "integer"
+    },
     "grpcPort": {
       "default": 8888,
       "description": "GrpcPort is the gRPC service port.",
