@@ -4,6 +4,7 @@ package cluster
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -27,23 +28,29 @@ import (
 )
 
 // Pins the expected behavior of a ledgerctl-style TLS client (no client cert,
-// operator-secret bearer) against a tls-mode=required server with CAFile set
+// operator Credentials JWT) against a tls-mode=required server with CAFile set
 // (mTLS opt-in) — the exact transport shape the operator-driven backup Job and
 // raft scale-down ledgerctl invocations use. The RPC must succeed; if a
 // regression ever makes this start failing with "error reading server preface",
 // we want to catch it in CI instead of in production.
 var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func() {
 	var (
-		certs       *testserver.TestCerts
-		lease       *testserver.NodeLease
-		ports       testserver.NodePorts
-		operatorTok = "test-operator-secret-840bef"
+		certs         *testserver.TestCerts
+		lease         *testserver.NodeLease
+		ports         testserver.NodePorts
+		operatorPriv  ed25519.PrivateKey
+		operatorKeyID = "operator-key"
 	)
 
 	BeforeAll(func() {
 		ctx := logging.TestingContext()
 		certDir := GinkgoT().TempDir()
+		var authKeysPath string
 		var err error
+		operatorPriv, authKeysPath, err = writeEd25519KeysConfig(certDir, operatorKeyID, []string{
+			"ledger:ReadOps", "ledger:WriteOps", "ledger:ReadCluster", "ledger:WriteCluster",
+		})
+		Expect(err).To(Succeed())
 		certs, err = testserver.GenerateTestCerts(certDir)
 		Expect(err).To(Succeed())
 
@@ -73,7 +80,7 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 			testserver.WithTLSCACertFile(certs.CACertFile), // mTLS opt-in, matches operator setup
 			testservice.InstrumentationFunc(func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-				cfg.AppendArgs("--operator-secret", operatorTok)
+				cfg.AppendArgs("--auth-enabled", "--auth-ed25519-keys", authKeysPath, "--auth-service", "ledger")
 				return nil
 			}),
 		)
@@ -87,7 +94,7 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 		})
 	})
 
-	It("connects with TLS + operator-secret bearer and gets a successful RPC", func() {
+	It("connects with TLS + operator Credentials JWT and gets a successful RPC", func() {
 		caPEM, err := os.ReadFile(certs.CACertFile)
 		Expect(err).To(Succeed())
 		pool := x509.NewCertPool()
@@ -107,7 +114,11 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+operatorTok)
+		token, err := signEdDSAJWT(operatorPriv, operatorKeyID, makeEdDSAClaims(
+			"ledger:ReadOps", "ledger:WriteOps", "ledger:ReadCluster", "ledger:WriteCluster",
+		))
+		Expect(err).To(Succeed())
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
 		c := clusterpb.NewClusterServiceClient(conn)
 		Eventually(func(g Gomega) {

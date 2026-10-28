@@ -2130,7 +2130,6 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 
 	authCfg.ScopeMapping = scopeMapping
 	authCfg.ClusterSecret = cfg.ClusterSecret
-	authCfg.OperatorSecret = cfg.AuthConfig.OperatorSecret
 
 	return authCfg, nil
 }
