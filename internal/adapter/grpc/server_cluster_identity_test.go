@@ -16,6 +16,48 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+func TestRegisterPeerClusterServiceExposesOnlyInterNodeMethods(t *testing.T) {
+	t.Parallel()
+
+	server := ggrpc.NewServer()
+	RegisterPeerClusterService(server, &clusterpb.UnimplementedClusterServiceServer{})
+
+	info, ok := server.GetServiceInfo()["cluster.ClusterService"]
+	require.True(t, ok)
+
+	methods := make(map[string]struct{}, len(info.Methods))
+	for _, method := range info.Methods {
+		methods[method.Name] = struct{}{}
+	}
+
+	for _, method := range []string{
+		"GetClusterState",
+		"GetDiskUsage",
+		"GetNodeTime",
+		"TransferLeadership",
+		"AddLearner",
+		"PromoteLearner",
+		"RemoveNode",
+		"Backup",
+		"IncrementalBackup",
+	} {
+		_, ok := methods[method]
+		require.Truef(t, ok, "peer service must expose %s", method)
+	}
+
+	for _, method := range []string{
+		"CompactPrimary",
+		"CompactSecondary",
+		"CreateCheckpoint",
+		"ListQueryCheckpoints",
+		"GetQueryCheckpointInfo",
+		"GetQueryCheckpointSchedule",
+	} {
+		_, ok := methods[method]
+		require.Falsef(t, ok, "peer service must not expose %s", method)
+	}
+}
+
 type clusterIdentityServer struct {
 	clusterpb.UnimplementedClusterServiceServer
 
