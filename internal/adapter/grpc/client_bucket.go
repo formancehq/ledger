@@ -49,7 +49,6 @@ func (g *BucketGrpcClient) Barrier(ctx context.Context) (uint64, error) {
 // The signed/unsigned variant rides through unchanged for leader-side
 // verification.
 func (g *BucketGrpcClient) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-	ctx = metadata.AppendToOutgoingContext(ctx, "x-ledger-peer-forward", "apply")
 	caller := auth.ResolveCallerSnapshot(ctx)
 	// Auth-disabled attribution is derived from the leader's immutable local
 	// auth state as well. Do not put it on the wire: clusters may intentionally
