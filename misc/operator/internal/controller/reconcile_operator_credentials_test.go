@@ -62,7 +62,11 @@ func TestReconcileOperatorCredentialsRequiresExpectedDistributedSecret(t *testin
 func TestReconcileOperatorCredentialsDeletesWhenAuthDisabled(t *testing.T) {
 	scheme := authKeysScheme(t)
 	cluster := authEnabledCluster("ledger", "tenant-a", nil)
-	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: operatorCredentialsName(cluster)}}
+	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{
+		Name:        operatorCredentialsName(cluster),
+		Labels:      map[string]string{labelManagedBy: "ledger-operator"},
+		Annotations: map[string]string{annotationOperatorCluster: cluster.Namespace + "/" + cluster.Name},
+	}}
 	r := &ClusterReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, credentials).Build(),
 		Scheme: scheme,
@@ -73,4 +77,24 @@ func TestReconcileOperatorCredentialsDeletesWhenAuthDisabled(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ready)
 	require.Error(t, r.Get(context.Background(), types.NamespacedName{Name: operatorCredentialsName(cluster)}, &ledgerv1alpha1.Credentials{}))
+}
+
+func TestReconcileOperatorCredentialsRejectsForeignCollision(t *testing.T) {
+	scheme := authKeysScheme(t)
+	cluster := authEnabledCluster("ledger", "tenant-a", nil)
+	foreign := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{
+		Name:   operatorCredentialsName(cluster),
+		Labels: map[string]string{labelManagedBy: "another-controller"},
+	}}
+	r := &ClusterReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, foreign).Build(),
+		Scheme: scheme,
+	}
+
+	_, err := r.reconcileOperatorCredentials(context.Background(), cluster)
+	require.ErrorContains(t, err, "is not owned by Cluster tenant-a/ledger")
+
+	got := &ledgerv1alpha1.Credentials{}
+	require.NoError(t, r.Get(context.Background(), types.NamespacedName{Name: foreign.Name}, got))
+	require.Equal(t, "another-controller", got.Labels[labelManagedBy])
 }

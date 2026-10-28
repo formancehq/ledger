@@ -75,19 +75,34 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Use a Cluster finalizer to remove it explicitly.
 	if !ledger.DeletionTimestamp.IsZero() {
 		credentialsPending := false
-		for _, credentialsName := range []string{operatorCredentialsName(ledger), debugBoxCredentialsName(ledger)} {
-			credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: credentialsName}}
+		for _, target := range []struct {
+			name, annotation string
+		}{
+			{operatorCredentialsName(ledger), annotationOperatorCluster},
+			{debugBoxCredentialsName(ledger), annotationDebugBoxCluster},
+		} {
+			credentials, managed, err := r.managedCredentials(ctx, ledger, target.name, target.annotation)
+			if err != nil {
+				// Never mutate or delete a foreign object with a colliding name.
+				if credentials != nil {
+					continue
+				}
+				return ctrl.Result{}, fmt.Errorf("checking generated Credentials %s: %w", target.name, err)
+			}
+			if !managed {
+				continue
+			}
 			if err := r.Delete(ctx, credentials); err != nil && !apierrors.IsNotFound(err) {
-				return ctrl.Result{}, fmt.Errorf("deleting generated Credentials %s: %w", credentialsName, err)
+				return ctrl.Result{}, fmt.Errorf("deleting generated Credentials %s: %w", target.name, err)
 			}
 
 			remaining := &ledgerv1alpha1.Credentials{}
-			err := r.Get(ctx, types.NamespacedName{Name: credentialsName}, remaining)
+			err = r.Get(ctx, types.NamespacedName{Name: target.name}, remaining)
 			switch {
 			case err == nil:
 				credentialsPending = true
 			case !apierrors.IsNotFound(err):
-				return ctrl.Result{}, fmt.Errorf("checking generated Credentials %s deletion: %w", credentialsName, err)
+				return ctrl.Result{}, fmt.Errorf("checking generated Credentials %s deletion: %w", target.name, err)
 			}
 		}
 		if credentialsPending {
