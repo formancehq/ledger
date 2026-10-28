@@ -92,8 +92,10 @@ the old or the new primary key.
 
 ## Success criteria
 
-The bucket is at version 55, and the `logs_blocks` primary key is
-`(ledger, previous)`:
+The bucket is at version 55 or later, and the `logs_blocks` primary key is
+`(ledger, previous)`. Version 55 means this migration has run; a full upgrade
+of this release line ends at version 56, after
+[`54-fix-log-hash-lookup`](log-hash-lookup.md):
 
 ```sql
 select a.attname

@@ -43,8 +43,12 @@ query as an index hint.
   `ledger buckets upgrade`, or `ledger serve --auto-upgrade`.
 - Migration order: appended after `53-ensure-logs-blocks-composite-pkey`, at
   migration position 56. Both existing and new buckets receive the function.
-- Compatibility: previous v2.4 binaries can use the new function. Old and new
-  replicas use the same hash representation and ledger locking protocol.
+- Compatibility: replicas already running a previous v2.4 binary keep working
+  with the new function; they use the same hash representation and ledger
+  locking protocol. A previous binary cannot start once the bucket is at
+  position 56: driver initialization rejects a bucket version above its own
+  migration count as a downgrade. Restart or scale all replicas on the new
+  binary only, or drain older replicas before the upgrade.
 - Expected work: replace one function definition per bucket. There is no
   table scan or explicit lock on the `logs` table in this migration. Catalog
   locking and migration-runner coordination can still cause waits; duration
@@ -55,9 +59,10 @@ query as an index hint.
   function remains. Retry through the normal bucket upgrade command.
 - Duplicate execution: replacing the function again has the same result;
   the runner serializes and records migrations per bucket.
-- Rollback: a previous v2.4 binary works with the corrected function; no data
-  rollback is required. Restoring the original function reintroduces the slow
-  lookup and should only be considered for a confirmed regression.
+- Rollback: no data rollback is required, but downgrading the binary is not
+  possible once the bucket is at position 56, for the reason above. Restoring
+  the original function body reintroduces the slow lookup and should only be
+  considered for a confirmed regression.
 
 The replacement preserves `SECURITY DEFINER` and explicitly sets the function's
 `search_path` to its bucket. Historical migration files remain unchanged.
@@ -91,5 +96,6 @@ PostgreSQL versions require validation before release.
 > Migration 54 fixes slow synchronous log hashing in buckets with multiple
 > ledgers and uneven log ID ranges. It replaces the previous-hash lookup to
 > use the existing composite index efficiently, without changing hash chains
-> or rebuilding indexes. It runs during the normal bucket upgrade and remains
-> compatible with previous v2.4 binaries. No data repair is needed.
+> or rebuilding indexes. It runs during the normal bucket upgrade. Once a
+> bucket is upgraded, previous binaries refuse to start on it, so roll out the
+> new binary to every replica. No data repair is needed.
