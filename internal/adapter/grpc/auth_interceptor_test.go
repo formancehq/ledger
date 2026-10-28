@@ -282,12 +282,12 @@ func TestFixedPolicyCredentialModes(t *testing.T) {
 			wantCode: codes.OK,
 		},
 		{
-			name: "cluster internal secret",
+			name: "cluster secret is rejected on direct service API",
 			cfg:  internalauth.AuthConfig{Enabled: true, ClusterSecret: "cluster-secret"},
 			ctx: metadata.AppendToOutgoingContext(
 				context.Background(), "authorization", "Bearer cluster-secret",
 			),
-			wantCode: codes.OK,
+			wantCode: codes.Unauthenticated,
 		},
 	}
 
