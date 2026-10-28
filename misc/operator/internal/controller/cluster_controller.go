@@ -334,7 +334,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			ObservedGeneration: ledger.Generation,
 		})
 
-		return ctrl.Result{RequeueAfter: authKeysPendingRequeueInterval}, nil
+		return r.reconcilePendingOperatorCredentials(ctx, ledger)
 	}
 	meta.RemoveStatusCondition(&ledger.Status.Conditions, "OperatorCredentialsPending")
 
@@ -430,6 +430,22 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	return result, nil
+}
+
+// reconcilePendingOperatorCredentials keeps volume deletion protection
+// independent from the operator Credentials readiness gate. StatefulSet
+// changes remain deferred until the credentials are distributed, but PVC/PV
+// labels must continue to follow the Cluster spec while that gate is pending.
+func (r *ClusterReconciler) reconcilePendingOperatorCredentials(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (ctrl.Result, error) {
+	result, err := r.reconcileVolumeProtectionPass(ctx, ledger)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("reconciling volume protection while operator credentials pending: %w", err)
+	}
+	if !result.IsZero() {
+		return result, nil
+	}
+
+	return ctrl.Result{RequeueAfter: authKeysPendingRequeueInterval}, nil
 }
 
 // deletionProtectionPolicyInstalled reports whether the cluster-scoped volume
