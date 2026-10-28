@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"encoding/json"
 	"errors"
 	"math/big"
 	"net/http"
@@ -35,6 +36,12 @@ func TestTransactionCreate(t *testing.T) {
 	}
 
 	testCases := []testCase{
+		{
+			name:               "rejects exponent expansion in legacy monetary variable",
+			payload:            json.RawMessage(`{"script":{"plain":"send $val","vars":{"val":{"asset":"USD","amount":1e1000000}}}}`),
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  common.ErrValidation,
+		},
 		{
 			name: "using plain numscript",
 			payload: bulking.TransactionRequest{
@@ -126,6 +133,22 @@ func TestTransactionCreate(t *testing.T) {
 					},
 				},
 			},
+		},
+		{
+			name: "rejects fractional legacy monetary variable",
+			payload: bulking.TransactionRequest{
+				Script: ledgercontroller.ScriptV1{
+					Script: ledgercontroller.Script{Plain: `send $val`},
+					Vars: map[string]any{
+						"val": map[string]any{
+							"asset":  "USD",
+							"amount": 1.5,
+						},
+					},
+				},
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  common.ErrValidation,
 		},
 		{
 			name:                 "using plain numscript and dry run",
