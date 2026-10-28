@@ -120,14 +120,14 @@ var metaTargetPool = []commonpb.TargetType{
 // transactions set no reference, so they are untracked and not gated here.
 const (
 	txEmitFull  = 500  // below this count: always create new transactions
-	txEmitTaper = 2000 // below this: ~half the time
-	txEmitStop  = 4000 // below this: ~1-in-8; at or above: stop creating new ones
+	txEmitTaper = 2000 // below this: nominally half the time
+	txEmitStop  = 4000 // below this: nominally 1-in-8; at or above: stop creating new ones
 )
 
 // --- Idempotency replay -------------------------------------------------
 
 // A generated bulk becomes a replayable original — stamped with a tracked
-// idempotency key so runReplay can re-send it — with probability
+// idempotency key so runReplay can re-send it — with nominal weight
 // 1/replayTrackOneIn, but only while the registry has room. Capping the count
 // of tracked keys bounds the model's frozen idempotency map, which is never
 // evicted (the model assumes an infinite TTL).
@@ -142,7 +142,7 @@ const replayRegistryCap = 2048
 
 // Once the registry is non-empty, a generated bulk reuses a committed key with
 // its own (different) body — forcing an IDEMPOTENCY_KEY_CONFLICT — with
-// probability 1/replayConflictOneIn.
+// nominal weight 1/replayConflictOneIn; Hegel controls actual frequencies.
 const replayConflictOneIn = 6
 
 // --- Worker pacing ------------------------------------------------------

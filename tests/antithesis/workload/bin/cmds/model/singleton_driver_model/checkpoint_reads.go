@@ -396,7 +396,8 @@ func predictedCheckpointLedgerMatches(state oracle.GlobalState, ledger string, i
 	return info.GetName() == ledger && ledgerInfoMatches(state, info)
 }
 
-// pickCheckpointReadTarget samples uniformly from every retained snapshot.
+// pickCheckpointReadTarget selects from all retained snapshots through Hegel.
+// Every snapshot is eligible; selection frequency is not guaranteed uniform.
 // Whether the ID is live or deleted is derived from its owning registry and is
 // used only to credit a definitive post-deletion NotFound observation.
 // Caller holds c.mu.

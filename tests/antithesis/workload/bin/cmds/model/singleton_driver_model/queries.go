@@ -1052,8 +1052,9 @@ func isIndexNotFound(err error) bool {
 	return status.Code(err) == codes.FailedPrecondition && internal.HasErrorReason(err, "INDEX_NOT_FOUND")
 }
 
-// oneIn reports a 1-in-n chance through the Antithesis chooser, so the platform
-// can steer toward the (rare) branch it gates. n must be in [1, 256].
+// oneIn selects one of n Hegel integer choices (nominal weight 1/n).
+// Hegel may bias integer draws; this is not a frequency guarantee.
+// n must be in [1, 256].
 func oneIn(src *generation.Source, n int) bool {
 	choices := make([]uint8, n)
 	for i := range choices {
@@ -1066,8 +1067,9 @@ func oneIn(src *generation.Source, n int) bool {
 // genAccountFilter rolls a query filter for ListAccounts. The sequential rolls
 // try an undeclared-field probe (1/8), a kind-mismatch probe (1/12), has-asset
 // (1/6), a target-invalid condition (1/16), then the no-filter universe (1/4).
-// These odds are conditional on earlier rolls missing. The remaining choices
-// mix declared metadata filters with address leaves or use index-free filters.
+// These nominal weights apply only after earlier rolls miss; Hegel controls
+// actual frequencies. The remaining choices mix declared metadata filters with
+// address leaves or use index-free filters.
 func genAccountFilter(src *generation.Source, seeds []fieldSeed) *commonpb.QueryFilter {
 	switch {
 	case oneIn(src, 8):
@@ -1193,8 +1195,8 @@ func txFilterSeedsOf(src *generation.Source, ls oracle.LedgerState) txFilterSeed
 // genTransactionFilter rolls a query filter for ListTransactions. Sequential
 // rolls try an undeclared-field probe (1/8), a kind-mismatch probe (1/12), a
 // target-invalid condition (1/16), then the no-filter universe (1/4). These
-// odds are conditional on earlier rolls missing. The remainder favours the
-// indexed metadata/tx-builtin filters two to one over the index-free grammar,
+// nominal weights apply only after earlier rolls miss. The remaining pool gives
+// indexed metadata/tx-builtin filters twice the weight of the index-free grammar,
 // which needs no index and so proves nothing about the indexed surface.
 func genTransactionFilter(src *generation.Source, seeds txFilterSeeds) *commonpb.QueryFilter {
 	switch {

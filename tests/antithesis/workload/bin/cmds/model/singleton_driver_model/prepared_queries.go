@@ -72,7 +72,7 @@ func deletePreparedQueryReq(ledger, name string) *servicepb.Request {
 	}}
 }
 
-// rollPreparedQueryOp: ~1-in-16 a bulk is a prepared-query registry op rather
+// rollPreparedQueryOp: nominally 1-in-16 a bulk is a prepared-query registry op rather
 // than ledger traffic, churning the registry the execution reads probe.
 func rollPreparedQueryOp(src *generation.Source) bool {
 	return oneIn(src, 16)
@@ -202,8 +202,8 @@ func (pz *paramizer) put(name string, v *commonpb.ParameterValue) string {
 	return name
 }
 
-// paramOdds: each eligible leaf value is parameterized with probability 1/2, so
-// a filter tree yields a mix of hardcoded and parameterized leaves.
+// Each eligible leaf uses oneIn(2), with nominal weight 1/2, to choose between
+// hardcoded and parameterized values. Hegel controls actual frequencies.
 func rollParameterize(src *generation.Source) bool { return oneIn(src, 2) }
 
 // parameterizeFilter returns a copy of f with a random subset of its hardcoded
@@ -763,7 +763,7 @@ func describeParamValue(v *commonpb.ParameterValue) string {
 // genPreparedParams binds a value for every parameter the stored filter
 // references, drawing from the committed state so bound windows are populated
 // rather than trivially empty. Returns the map and whether the binding is
-// complete: ~1-in-8 a need is deliberately left unbound or bound with the wrong
+// complete: nominally 1-in-8 a need is deliberately left unbound or bound with the wrong
 // value type, which the compiler must reject — the negative path the validators
 // predict through substituteParams reporting failure.
 //

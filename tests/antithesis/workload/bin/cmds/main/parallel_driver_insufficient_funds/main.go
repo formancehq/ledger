@@ -25,7 +25,6 @@ func main() {
 	})
 }
 
-
 func runInsufficientFunds(ctx context.Context, client servicepb.BucketServiceClient, ledger, account string, fundAmount uint64) {
 	// The driver owns this ledger and account, so no other workload writes can
 	// change the balance between the precondition read and the probe.

@@ -564,12 +564,10 @@ func hasIndexGap(ls oracle.LedgerState) bool {
 	return false
 }
 
-// rollIndexOp: ~1-in-8 a bulk is an index create/drop rather than ledger
-// traffic. Lifecycle operations consume part of the same finite run, so this
-// rate keeps every builtin and metadata index reachable before the coverage
-// probes are evaluated. A ledger still missing indexes rolls harder: ledgers
-// are created and deleted mid-run, and a fresh one starts bare, so its whole
-// index set has to be built at more than the saturated fleet's average rate.
+// rollIndexOp: nominally 1-in-8 a bulk is an index create/drop rather than ledger
+// traffic. A ledger with missing indexes uses nominal weight 1/3 instead,
+// prioritizing index construction after creation. Hegel controls actual rates;
+// coverage probes must establish whether each index was exercised.
 func rollIndexOp(src *generation.Source, ls oracle.LedgerState) bool {
 	if hasIndexGap(ls) {
 		return oneIn(src, 3)
@@ -580,7 +578,7 @@ func rollIndexOp(src *generation.Source, ls oracle.LedgerState) bool {
 
 // generateIndexOp picks one workload index; creates it when the ledger lacks
 // it, else occasionally drops it (so the lifecycle keeps cycling) and otherwise
-// leaves it in place for queries to validate against. One-in-16 it instead
+// leaves it in place for queries to validate against. With nominal weight 1/16 it
 // probes CreateIndex on an UNDECLARED metadata field — rejected with
 // METADATA_FIELD_NOT_IN_SCHEMA, which the model predicts identically. Reads
 // committed state only.
@@ -596,10 +594,9 @@ func generateIndexOp(src *generation.Source, g oracle.GlobalState, ledger string
 	ls := g.Ledger(ledger)
 	all := ledgerIndexPool(ls)
 
-	// A uniform pick spreads lifecycle operations over every (ledger, index)
-	// pair, so a fleet this size converges to "mostly present" far slower than
-	// one run lasts and queries are gated on an absent index. Filling a gap
-	// takes priority; the uniform pick still runs often enough to keep dropping.
+	// Prefer filling an absent index so index-gated queries can run. The
+	// fallback selects from every (ledger, index) pair through Hegel, allowing
+	// drops as well; neither branch promises an execution frequency.
 	absent := absentIndexes(ls, all)
 	if len(absent) > 0 && !oneIn(src, 4) {
 		gap := absent[src.Intn(len(absent))]

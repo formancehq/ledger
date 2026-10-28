@@ -328,7 +328,7 @@ func generateLifecycle(src *generation.Source, g oracle.GlobalState, ledgers []s
 	default:
 		// Enables stop every business worker for the recovery window, so generate
 		// them much less often than disables. An active maintenance window still
-		// gets the full toggle probability and closes promptly.
+		// gets the full nominal toggle weight.
 		if !g.MaintenanceMode() && generation.Choice(src, indexPool(8)) != 0 {
 			return nil
 		}
@@ -356,7 +356,7 @@ func rollTransaction(src *generation.Source, ls oracle.LedgerState) bool {
 }
 
 // pickLedgers returns the ledger(s) a bulk's requests draw from: usually one,
-// ~1-in-6 a distinct 2-3 so the bulk spans ledgers.
+// nominally 1-in-6 a distinct 2-3 so the bulk spans ledgers.
 func pickLedgers(src *generation.Source, ledgers []string) []string {
 	if len(ledgers) < 2 || generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5}) != 0 {
 		return []string{generation.Choice(src, ledgers)}
@@ -386,26 +386,26 @@ func sampleDistinct(src *generation.Source, ledgers []string, n int) []string {
 	return out
 }
 
-// ~30%: a chart op fills this bulk slot, else a transaction.
+// nominally 30%: a chart op fills this bulk slot, else a transaction.
 func rollChartOp(src *generation.Source) bool {
 	return generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) < 3
 }
 
-// ~1-in-48: a metadata-schema op (declare/remove a field type) fills this slot.
-// Rare enough that a retyped index usually sees several readiness polls
+// nominally 1-in-48: a metadata-schema op (declare/remove a field type) fills this slot.
+// Intended to allow a retyped index to see several readiness polls
 // (indexPollInterval apart) before its next retype, so its window can close;
-// the exponential gap tail still chains retypes within a poll often enough to
-// exercise window extension.
+// successive draws can still chain retypes within a poll to exercise window
+// extension. These are nominal weights, not timing or frequency guarantees.
 func rollSchemaOp(src *generation.Source) bool {
 	return src.Uint64Range(0, 48-1) == 0
 }
 
-// ~25%: a metadata op fills this bulk slot, when a chart/schema op didn't.
+// nominally 25%: a metadata op fills this bulk slot, when a chart/schema op didn't.
 func rollMetadataOp(src *generation.Source) bool {
 	return generation.Choice(src, []uint8{0, 1, 2, 3}) == 0
 }
 
-// ~1-in-6: revert a committed transaction in this slot.
+// nominally 1-in-6: revert a committed transaction in this slot.
 func rollRevert(src *generation.Source) bool {
 	return generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5}) == 0
 }
@@ -419,7 +419,8 @@ func generateChartOp(src *generation.Source, ledger string) *servicepb.Request {
 	return generateRemoveAccountType(src, ledger)
 }
 
-// Heavy tail toward 1: 5/8 single, 2/8 pair, 1/8 in {3,4,5}.
+// Nominal pool weights: 5/8 single, 2/8 pair, 1/8 in {3,4,5}.
+// Hegel integer bias can change observed frequencies.
 func bulkSize(src *generation.Source) int {
 	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
 	case 0, 1, 2, 3, 4:
@@ -456,7 +457,7 @@ func randomTransientType(src *generation.Source, ls oracle.LedgerState) *oracle.
 // A chaos transaction of 1–4 postings between blindly-picked pool addresses
 // (source may be "world"), amounts and force rolled at random so the server
 // resolves typing, the balance floor, intra-transaction posting composition,
-// and — with force — overdrafts uniformly; or, ~1/4 of the time, a deliberate
+// and — with force — overdrafts; or, with nominal weight 1/4, a deliberate
 // drain of an EPHEMERAL cell to exercise the purge sweep.
 func generateTransaction(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
 	if generation.Choice(src, []uint8{0, 1, 2, 3}) == 0 {
@@ -476,7 +477,7 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 		}
 	}
 
-	// ~1/16: a deliberately-malformed transaction exercising a create rejection
+	// nominally 1/16: a deliberately-malformed transaction exercising a create rejection
 	// branch (empty / duplicate-reference / volume-overflow). The server rejects
 	// it and the oracle reproduces the reason, so validateFailure explains it.
 	if generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) == 0 {
@@ -485,7 +486,7 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 		}
 	}
 
-	// Force (~1/8) skips the balance floor, letting a non-world source overdraft.
+	// Force (nominally 1/8) skips the balance floor, letting a non-world source overdraft.
 	force := generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7}) == 0
 
 	// 1–4 postings, each between blindly-picked accounts. Multiple postings
@@ -498,7 +499,7 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 	}
 
 	// Every transaction gets a unique reference so it is targetable by later
-	// transaction-metadata writes. ~half also carry metadata at creation.
+	// transaction-metadata writes. nominally half also carry metadata at creation.
 	payload := &servicepb.CreateTransactionPayload{
 		Postings:  postings,
 		Reference: txRef(),
@@ -509,13 +510,13 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 		payload.Metadata = randomMetaMap(src)
 	}
 
-	// ~half also carry a user-supplied timestamp — stored verbatim and echoed on
+	// nominally half also carry a user-supplied timestamp — stored verbatim and echoed on
 	// reads (it does not feed the HLC / log order). Backdated to stay non-future.
 	if generation.Choice(src, []uint8{0, 1}) == 0 {
 		payload.Timestamp = &commonpb.Timestamp{Data: 1 + src.Uint64Range(0, 1_500_000_000_000_000-1)}
 	}
 
-	// ~1/3 also set account metadata via the transaction payload, applied
+	// nominally 1/3 also set account metadata via the transaction payload, applied
 	// atomically with the tx. Target a posting's own destination: it already
 	// passes the posting chart check when the tx commits, so the account-metadata
 	// write never introduces a chart rejection.
@@ -619,7 +620,7 @@ func generateAddAccountType(src *generation.Source, ledger string) *servicepb.Re
 	}
 }
 
-// NORMAL ~1/2, EPHEMERAL ~1/3, TRANSIENT ~1/6 — both non-NORMAL kinds
+// NORMAL nominally 1/2, EPHEMERAL nominally 1/3, TRANSIENT nominally 1/6 — both non-NORMAL kinds
 // exercise distinct end-of-bulk machinery.
 func pickPersistence(src *generation.Source) commonpb.AccountTypePersistence {
 	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5}) {
@@ -742,9 +743,9 @@ func metaKey(src *generation.Source) string {
 	return fmt.Sprintf("k%d", generation.Choice(src, metaKeyPool))
 }
 
-// Picks a ledger-level op (~1/5), a transaction-level op (~1/5, falling back to
+// Picks a ledger-level op (nominally 1/5), a transaction-level op (nominally 1/5, falling back to
 // account when no transaction exists yet), or an account-level op — each Add
-// (~2/3) vs Delete (~1/3). A delete falls back to its add when the model holds no
+// (nominally 2/3) vs Delete (nominally 1/3). A delete falls back to its add when the model holds no
 // metadata of that kind yet.
 func generateMetadataOp(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
 	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4}) {
@@ -869,7 +870,7 @@ func generateDeleteMetadata(src *generation.Source, ledger string, ls oracle.Led
 }
 
 // generateTxMetadataOp targets a committed transaction by reference: Delete
-// (~1/3) of an existing (reference, key), else Add. Returns nil when the model
+// (nominally 1/3) of an existing (reference, key), else Add. Returns nil when the model
 // holds no transactions yet (caller falls back to account metadata).
 func generateTxMetadataOp(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
 	if generation.Choice(src, []uint8{0, 1, 2}) == 0 {
@@ -956,8 +957,8 @@ func generateDeleteTxMetadata(src *generation.Source, ledger string, ls oracle.L
 	return nil
 }
 
-// generateRevert reverts a committed transaction by reference, ~half with force
-// and ~half at the original's effective date (the revert then inherits the
+// generateRevert reverts a committed transaction by reference, nominally half with force
+// and nominally half at the original's effective date (the revert then inherits the
 // original's timestamp — verifiable when the original carried a user-supplied
 // one). A non-forced revert applies the balance floor to the reversed postings —
 // the reversed source is the original destination, which may since have spent
@@ -977,12 +978,12 @@ func generateRevert(src *generation.Source, ledger string, ls oracle.LedgerState
 	payload := &servicepb.RevertTransactionPayload{
 		TransactionId: uint64(id),
 		Force:         generation.Choice(src, []uint8{0, 1}) == 0,
-		// ~half at the original's effective date: the revert inherits the
+		// nominally half at the original's effective date: the revert inherits the
 		// original's timestamp instead of the server's current date.
 		AtEffectiveDate: generation.Choice(src, []uint8{0, 1}) == 0,
 	}
 
-	// ~half the reverts carry metadata on the revert transaction, echoed
+	// nominally half the reverts carry metadata on the revert transaction, echoed
 	// verbatim on its log (see validateBulkSuccess's revert check).
 	if generation.Choice(src, []uint8{0, 1}) == 0 {
 		payload.Metadata = randomMetaMap(src)
@@ -1070,7 +1071,7 @@ func generateDeleteLedgerMetadata(src *generation.Source, ledger string, ls orac
 	}
 }
 
-// Picks Set (~3/4) vs Remove (~1/4) of a metadata field type. Remove falls back
+// Picks Set (nominally 3/4) vs Remove (nominally 1/4) of a metadata field type. Remove falls back
 // to Set when the model declares no field types yet.
 func generateSchemaOp(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
 	if generation.Choice(src, []uint8{0, 1, 2, 3}) == 0 {

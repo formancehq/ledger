@@ -23,7 +23,9 @@ use explicit typed ranges. Full-width amounts retain zero and the entire uint64
 domain. Color generation uses explicit equal-probability boolean decisions for
 its geometric distribution and retains all 65 buckets. Counting trailing zeros
 in a biased Hegel uint64 would distort its collision frequencies. Other integer
-and float generators can be biased; pool entries do not promise exact frequencies.
+and float generators can be biased; pool entries do not promise exact
+frequencies. Ratios and percentages in integer selector comments describe
+nominal weights, conditional on reaching that draw, not coverage guarantees. Validate coverage through the SDK observations.
 
 The only retained `internal.Rand` calls generate technical identities: the run
 ID, fresh idempotency keys, unique transaction references and absent ledger

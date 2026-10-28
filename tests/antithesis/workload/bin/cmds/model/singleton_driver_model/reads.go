@@ -109,15 +109,15 @@ func isShutdownError(err error) bool {
 	}
 }
 
-// percentChance reports true with probability pct/100, drawing from the
-// callback-scoped Hegel source so it can steer how often the branch is taken.
+// percentChance compares a callback-scoped Hegel integer draw with pct.
+// pct/100 is a nominal weight; Hegel controls the actual branch frequency.
 func percentChance(src *generation.Source, pct uint64) bool {
 	return src.Uint64Range(0, 100-1) < pct
 }
 
 // pickReadTarget chooses what GetAccount reads back. Most reads hit a known
-// account (pickCell); ~5% probe an account the model has no state for in a known
-// ledger (pickAbsentAccount, absentAccount=true); ~2% probe any account in a
+// account (pickCell); nominally 5% probe an account the model has no state for in a known
+// ledger (pickAbsentAccount, absentAccount=true); nominally 2% probe any account in a
 // ledger outside the fleet (absentLedger=true). Both probes close blind spots
 // pickCell can't reach — it only ever targets accounts the model already holds,
 // so GetAccount is otherwise structurally blind to server state the model lacks
@@ -186,7 +186,7 @@ func modelKnowsAccount(ls oracle.LedgerState, addr string) bool {
 // pickCell returns a random readable account as (ledger, address, asset), or
 // ok=false if the model holds nothing readable. It seeks a random pool-space
 // probe into a random ledger's tables — O(log n) per pick, no table walk.
-// ~1/4 of picks target a metadata-bearing address with an empty asset, so a
+// nominally 1/4 of picks target a metadata-bearing address with an empty asset, so a
 // metadata-only account is still reachable — the read validates that account's
 // whole metadata map regardless of the asset. Ledgers are tried round-robin
 // from a random start so an empty one doesn't blind the pick.
@@ -274,7 +274,7 @@ func absentLedgerName(ledgers []string) string {
 }
 
 // pickLedgerReadTarget chooses a ledger for a ledger-scoped read: usually a known
-// fleet ledger, else an absent one (absent=true) with probability absentPct. The
+// fleet ledger, else an absent one (absent=true) with nominal weight absentPct/100. The
 // absent probe closes the blind spot a known-only pick leaves — a ledger-scoped
 // read can never otherwise detect the server serving a ledger the model never
 // created. An absent ledger must answer NotFound; a served snapshot is a finding.
@@ -337,7 +337,7 @@ func runLedgerRead(src *generation.Source, ctx context.Context, client servicepb
 // pickTransactionID picks a ledger and a transaction id to read back. Usually a
 // fleet ledger, probing up to a small slack past the committed frontier so the id
 // may land on a committed transaction, an in-flight one, or an unassigned id (a
-// legal NotFound). ~2% target a ledger outside the fleet (absentLedger=true),
+// legal NotFound). Nominally 2% target a ledger outside the fleet (absentLedger=true),
 // where no transaction can exist and any id must resolve NotFound. ok=false only
 // before any ledger exists.
 func pickTransactionID(src *generation.Source, g oracle.GlobalState, ledgers []string) (ledger string, id uint64, absentLedger, ok bool) {

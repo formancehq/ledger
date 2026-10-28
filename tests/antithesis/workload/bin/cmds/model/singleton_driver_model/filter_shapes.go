@@ -29,8 +29,8 @@ func rollFilterShape(src *generation.Source, f *commonpb.QueryFilter) *commonpb.
 	return mutateFilter(src, f)
 }
 
-// mutateFilter returns a copy of f with one node, picked uniformly in tree
-// order, rewritten.
+// mutateFilter returns a copy of f with one node, picked by a Hegel integer draw in tree
+// order (without a uniform-frequency guarantee), rewritten.
 func mutateFilter(src *generation.Source, f *commonpb.QueryFilter) *commonpb.QueryFilter {
 	if f == nil {
 		return genAnyFilter(src, 0)
