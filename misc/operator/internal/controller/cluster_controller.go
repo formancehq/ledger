@@ -74,11 +74,24 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// cannot garbage-collect the generated credential through an owner reference.
 	// Use a Cluster finalizer to remove it explicitly.
 	if !ledger.DeletionTimestamp.IsZero() {
+		credentialsPending := false
 		for _, credentialsName := range []string{operatorCredentialsName(ledger), debugBoxCredentialsName(ledger)} {
 			credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: credentialsName}}
 			if err := r.Delete(ctx, credentials); err != nil && !apierrors.IsNotFound(err) {
 				return ctrl.Result{}, fmt.Errorf("deleting generated Credentials %s: %w", credentialsName, err)
 			}
+
+			remaining := &ledgerv1alpha1.Credentials{}
+			err := r.Get(ctx, types.NamespacedName{Name: credentialsName}, remaining)
+			switch {
+			case err == nil:
+				credentialsPending = true
+			case !apierrors.IsNotFound(err):
+				return ctrl.Result{}, fmt.Errorf("checking generated Credentials %s deletion: %w", credentialsName, err)
+			}
+		}
+		if credentialsPending {
+			return ctrl.Result{RequeueAfter: authKeysPendingRequeueInterval}, nil
 		}
 		if controllerutil.ContainsFinalizer(ledger, operatorCredentialsFinalizer) {
 			controllerutil.RemoveFinalizer(ledger, operatorCredentialsFinalizer)
