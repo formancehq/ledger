@@ -172,7 +172,8 @@ protobuf bytes (`data`, base64 in JSON) and the source `appliedIndex`. Full
 checkpoints already include the policy row and reset this optional override.
 Incremental backup reads policy, applied index and history endpoints from one
 Pebble snapshot. It publishes a changed policy even when there are no history
-exports. A snapshot older than the checkpoint or previous policy snapshot, or
+exports. A newer observation advances the policy watermark even when policy
+bytes are unchanged. A snapshot older than the checkpoint or previous policy snapshot, or
 behind already exported history, cannot replace the manifest policy.
 
 New history objects are uploaded before the manifest is published. A failed
