@@ -175,7 +175,19 @@ if [[ -z "${OPERATOR_SIGNING_KEY:-}" ]]; then
   exec /app/ledgerctl "$@"
 fi
 token="$(/app/ledgerctl auth generate-token --signing-key "$OPERATOR_SIGNING_KEY" --key-id "$OPERATOR_SIGNING_KEY_ID" --subject ledger-debug-box --superuser --expiration 5m)" || exit
-exec /app/ledgerctl "$@" --auth-token "$token"
+command_args=()
+auth_inserted=false
+for arg in "$@"; do
+  if [[ "$auth_inserted" == false && "$arg" == "--" ]]; then
+    command_args+=(--auth-token "$token")
+    auth_inserted=true
+  fi
+  command_args+=("$arg")
+done
+if [[ "$auth_inserted" == false ]]; then
+  command_args+=(--auth-token "$token")
+fi
+exec /app/ledgerctl "${command_args[@]}"
 LEDGERCTL_WRAPPER
 chmod 0555 /ledgerctl-wrapper/ledgerctl
 trap : TERM INT
