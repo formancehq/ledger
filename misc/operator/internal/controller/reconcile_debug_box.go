@@ -172,7 +172,7 @@ fi
 if [[ -z "${OPERATOR_SIGNING_KEY:-}" ]]; then
   exec /app/ledgerctl "$@"
 fi
-token="$(/app/ledgerctl auth generate-token --signing-key "$OPERATOR_SIGNING_KEY" --key-id "$OPERATOR_SIGNING_KEY_ID" --subject ledger-debug-box --scopes ledger:ReadOps,ledger:WriteOps,ledger:ReadCluster,ledger:WriteCluster --expiration 5m)" || exit
+token="$(/app/ledgerctl auth generate-token --signing-key "$OPERATOR_SIGNING_KEY" --key-id "$OPERATOR_SIGNING_KEY_ID" --subject ledger-debug-box --superuser --expiration 5m)" || exit
 exec /app/ledgerctl "$@" --auth-token "$token"
 LEDGERCTL_WRAPPER
 chmod 0555 /ledgerctl-wrapper/ledgerctl
