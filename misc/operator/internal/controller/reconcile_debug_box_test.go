@@ -88,7 +88,11 @@ func volumeByName(volumes []corev1.Volume, name string) corev1.Volume {
 func TestReconcileDebugBoxDeletesWhenDisabled(t *testing.T) {
 	scheme := authKeysScheme(t)
 	cluster := authEnabledCluster("ledger", "tenant-a", nil)
-	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: debugBoxCredentialsName(cluster)}}
+	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{
+		Name:        debugBoxCredentialsName(cluster),
+		Labels:      map[string]string{labelManagedBy: "ledger-operator"},
+		Annotations: map[string]string{annotationDebugBoxCluster: cluster.Namespace + "/" + cluster.Name},
+	}}
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: debugBoxPodName(cluster), Namespace: cluster.Namespace}}
 	r := &ClusterReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, credentials, pod).Build(),
@@ -100,6 +104,23 @@ func TestReconcileDebugBoxDeletesWhenDisabled(t *testing.T) {
 	require.True(t, ready)
 	require.Error(t, r.Get(context.Background(), types.NamespacedName{Name: debugBoxCredentialsName(cluster)}, &ledgerv1alpha1.Credentials{}))
 	require.Error(t, r.Get(context.Background(), types.NamespacedName{Name: debugBoxPodName(cluster), Namespace: cluster.Namespace}, &corev1.Pod{}))
+}
+
+func TestReconcileDebugBoxRejectsForeignCredentialCollision(t *testing.T) {
+	scheme := authKeysScheme(t)
+	cluster := authEnabledCluster("ledger", "tenant-a", nil)
+	cluster.Spec.DebugBox = &ledgerv1alpha1.DebugBoxSpec{Enabled: true}
+	foreign := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{
+		Name:   debugBoxCredentialsName(cluster),
+		Labels: map[string]string{labelManagedBy: "another-controller"},
+	}}
+	r := &ClusterReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, foreign).Build(),
+		Scheme: scheme,
+	}
+
+	_, err := r.reconcileDebugBox(context.Background(), cluster)
+	require.ErrorContains(t, err, "is not owned by Cluster tenant-a/ledger")
 }
 
 func TestReconcileDebugBoxReplacesPodWhenConfigurationChanges(t *testing.T) {

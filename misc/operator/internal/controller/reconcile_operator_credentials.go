@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -35,8 +34,7 @@ func (r *ClusterReconciler) reconcileOperatorCredentials(ctx context.Context, le
 				}
 			}
 		}
-		credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: credentialsName}}
-		if err := r.Delete(ctx, credentials); err != nil && !apierrors.IsNotFound(err) {
+		if err := r.deleteManagedCredentials(ctx, ledger, credentialsName, annotationOperatorCluster); err != nil {
 			return false, err
 		}
 
@@ -55,6 +53,9 @@ func (r *ClusterReconciler) reconcileOperatorCredentials(ctx context.Context, le
 	}
 
 	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: credentialsName}}
+	if _, _, err := r.managedCredentials(ctx, ledger, credentialsName, annotationOperatorCluster); err != nil {
+		return false, err
+	}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, credentials, func() error {
 		if credentials.Labels == nil {
 			credentials.Labels = make(map[string]string)
