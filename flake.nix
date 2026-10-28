@@ -2,12 +2,12 @@
   description = "A Nix-flake-based Go 1.27.3 development environment";
 
   inputs = {
-    # Keep application tooling pinned; update only the compiler and its linter.
+    # Keep golangci-lint 2.15.0; stable currently provides 2.12.2.
     go-tooling = {
       url = "github:NixOS/nixpkgs/8cec5ef1131078ea76689e84c362b0ed6a1fb6a1";
       flake = false;
     };
-    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2511";
+    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2605";
     nixpkgs-unstable.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1";
 
     goreleaser = {
@@ -69,13 +69,30 @@
               sha256 = speakeasyHashes.${system};
             };
 
-            nativeBuildInputs = [ pkgs.unzip ];
+            nativeBuildInputs = [ pkgs.unzip pkgs.python3 ]
+              ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
+                pkgs.darwin.autoSignDarwinBinariesHook
+              ];
             dontUnpack = true;
 
             installPhase = ''
               mkdir -p $out/bin
               unzip $src
-              ls -al
+              # The pinned generator embeds templates/go/config.ts. Update only
+              # its Go SDK lint tool: Staticcheck 0.6.1 cannot read Go 1.27 exports.
+              # Keep the generator, SDK templates, lint checks and release hashes.
+              python3 - <<'PYTHON'
+              from pathlib import Path
+
+              binary = Path("speakeasy")
+              data = binary.read_bytes()
+              old = b'"honnef.co/go/tools/cmd/staticcheck@v0.6.1",\n            "-checks=inherit,-SA1019",'
+              new = old.replace(b"@v0.6.1", b"@v0.8.2")
+              # Equal length preserves embedded-file offsets on every platform.
+              if len(old) != len(new) or data.count(old) != 1:
+                  raise SystemExit("unexpected Speakeasy Go SDK lint template")
+              binary.write_bytes(data.replace(old, new))
+              PYTHON
               install -m755 speakeasy $out/bin/
             '';
 
@@ -91,15 +108,10 @@
 
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         let
-          # Import only Go recipes so unrelated tools and all four platforms stay pinned.
-          go127 = pkgs.callPackage "${go-tooling}/pkgs/development/compilers/go/1.27.nix" {
-            buildGo127Module = build127;
-          };
-          build127 = pkgs.buildGoModule.override { go = go127; };
-          go = go127;
-          golangci-lint = pkgs.callPackage "${go-tooling}/pkgs/by-name/go/golangci-lint/package.nix" {
-            buildGo127Module = build127;
-          };
+          # Use upstream Go so CI can reuse the stable nixpkgs binary cache.
+          go = pkgs.go_1_27;
+          buildGoModule = pkgs.buildGo127Module;
+          golangci-lint = pkgs.callPackage "${go-tooling}/pkgs/by-name/go/golangci-lint/package.nix" { };
 
           stablePackages = with pkgs; [
             ginkgo
@@ -111,7 +123,7 @@
             jdk11
             jq
             just
-            mockgen
+            (mockgen.override { inherit buildGoModule; })
             nodejs_22
             protobuf_27
             protoc-gen-go
