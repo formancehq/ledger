@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -75,6 +76,17 @@ func TestDoMaintenanceRetainsEntriesUntilRaftApplyAcked(t *testing.T) {
 	require.NoError(t, err)
 	node.rawNode = rawNode
 
+	// Route the response through orchestrate, which is the production owner of
+	// RawNode.Step and recordRaftApplyResponse. Returning nil transport channels
+	// keeps this isolated test focused on the local response queue.
+	transport := NewMockTransport(gomock.NewController(t))
+	transport.EXPECT().RecvHighPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
+	transport.EXPECT().RecvMediumPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
+	transport.EXPECT().RecvLowPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
+	transport.EXPECT().Unreachable().AnyTimes().Return((<-chan uint64)(nil))
+	node.transport = transport
+	node.localResponseCh = NewLocalResponses()
+
 	runDone := make(chan error, 1)
 	go func() { runDone <- setup.applier.Run(context.Background(), setup.stop) }()
 	setup.applier.Submit(entries, nil, nil, setup.stop)
@@ -102,8 +114,15 @@ func TestDoMaintenanceRetainsEntriesUntilRaftApplyAcked(t *testing.T) {
 		From:    proto.Uint64(raft.LocalApplyThread),
 		Entries: entries,
 	}
-	require.NoError(t, node.rawNode.Step(applyResp))
-	node.recordRaftApplyResponse(applyResp)
+	orchestrateStop := make(chan struct{})
+	orchestrateDone := make(chan error, 1)
+	go func() { orchestrateDone <- node.orchestrate(context.Background(), orchestrateStop) }()
+	node.localResponseCh <- []*raftpb.Message{applyResp}
+	require.Eventually(t, func() bool {
+		return node.rawNode.Status().Applied == 4 && node.lastRaftApplied.Load() == 4
+	}, time.Second, time.Millisecond)
+	close(orchestrateStop)
+	require.NoError(t, <-orchestrateDone)
 	require.Equal(t, uint64(4), node.rawNode.Status().Applied)
 	require.Equal(t, uint64(4), node.lastRaftApplied.Load())
 	require.NoError(t, node.doMaintenance())
