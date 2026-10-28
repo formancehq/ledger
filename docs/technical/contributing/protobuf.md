@@ -129,9 +129,27 @@ with the check plugin in `tools/buf-plugin-ledger`. It is part of
 
 | Rule | Requirement |
 |---|---|
-| `LEDGER_NO_RESERVED` | No `reserved` numbers or names in messages or enums |
-| `LEDGER_FIELD_NUMBERS_SEQUENTIAL` | Message field numbers are exactly `1..N`, oneof members included; map entries are exempt |
-| `LEDGER_ENUM_NUMBERS_SEQUENTIAL` | Enum value numbers are exactly `0..N-1`, without aliases |
+| `LEDGER_NO_RESERVED` | New messages and enums declare no `reserved` numbers or names |
+| `LEDGER_FIELD_NUMBERS_SEQUENTIAL` | New message field numbers are exactly `1..N`, oneof members included; map entries are exempt |
+| `LEDGER_ENUM_NUMBERS_SEQUENTIAL` | New enum value numbers are exactly `0..N-1`, without aliases |
+
+These are initial-layout conventions, not compatibility checks. Existing types
+are identified by their fully qualified names in
+`tools/buf-plugin-ledger/existing-types.txt`, captured from the descriptors at
+`ce910700e0b696a40067d00a3c76147b72fafd06` (the target branch when this
+lint was introduced). All three rules exempt those types, including legitimate
+gaps and reservations. New nested types are checked even inside an existing
+message. Do not add names to the baseline to silence findings. Types introduced
+after this baseline remain subject to these conventions; a later compatible
+removal requiring gaps or reservations needs an explicit, reviewed baseline
+update with release evidence before lint can accept it. Never renumber a
+published type to satisfy lint.
+
+The service wire freeze remains enforced independently by
+`just check-protocol-version`; lint does not prove persisted-format or rolling
+upgrade compatibility. Those still require the review and tests described above.
+`just test-buf-plugin` runs the separate module's tests with the race detector,
+including existing-type exemptions and new nested types.
 
 Imported files such as `google/protobuf/descriptor.proto` are not checked. To
 add a rule, add a `check.RuleSpec` to the plugin with a fixture-based test, list

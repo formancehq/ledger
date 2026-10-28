@@ -5,8 +5,8 @@
 version: v2
 breaking:
   # WIRE flags changes that make an existing peer decode bytes differently
-  # (deleted or renumbered fields, incompatible type changes). Ledger v3
-  # renumbers fields without reservations, so every such change is real.
+  # (deleted or renumbered fields, incompatible type changes). Published
+  # numbers are preserved during the RC, including reserved numbers.
   # Removed services and RPCs are added because a peer still calling them
   # breaks even though the remaining bytes decode the same way.
   use:
@@ -14,7 +14,8 @@ breaking:
     - SERVICE_NO_DELETE
     - RPC_NO_DELETE
 lint:
-  # Ledger v3 conventions only (docs/technical/contributing/protobuf.md). The
+  # Initial-layout conventions for new types only; existing-types.txt exempts
+  # types present when lint was introduced. See contributing/protobuf.md. The
   # builtin buf categories are not enabled: they mostly flag naming choices
   # that are part of the published API.
   use:

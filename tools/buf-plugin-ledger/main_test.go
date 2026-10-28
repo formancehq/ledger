@@ -87,3 +87,21 @@ func TestFirstMissing(t *testing.T) {
 		})
 	}
 }
+
+func TestExistingTypesRetainNumbersAndReservations(t *testing.T) {
+	t.Parallel()
+
+	checktest.CheckTest{
+		Request: &checktest.RequestSpec{
+			Files: &checktest.ProtoFileSpec{DirPaths: []string{"testdata/existing"}, FilePaths: []string{"existing.proto"}},
+		},
+		Spec: newSpec(),
+		ExpectedAnnotations: []checktest.ExpectedAnnotation{{
+			RuleID: fieldNumbersSequentialRuleID,
+			FileLocation: &checktest.ExpectedFileLocation{
+				FileName:  "existing.proto",
+				StartLine: 11, StartColumn: 2, EndLine: 13, EndColumn: 3,
+			},
+		}},
+	}.Run(t)
+}

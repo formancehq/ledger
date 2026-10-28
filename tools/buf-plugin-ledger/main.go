@@ -1,20 +1,31 @@
 // Command buf-plugin-ledger is a buf check plugin enforcing the Ledger v3
-// protobuf conventions from docs/technical/contributing/protobuf.md. Ledger v3
-// is unreleased: obsolete fields are deleted and the remaining numbers are
-// realigned instead of being reserved.
+// protobuf conventions for new types from docs/technical/contributing/protobuf.md.
+// Existing types retain their published numbers and reservations during the RC.
 //
 // It is declared in misc/proto/buf.yaml and runs through `buf lint`.
 package main
 
 import (
 	"context"
+	_ "embed"
 	"slices"
+	"strings"
 
 	"buf.build/go/bufplugin/check"
 	"buf.build/go/bufplugin/check/checkutil"
 	"buf.build/go/bufplugin/descriptor"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
+
+// existingTypes records the types present when these conventions were introduced.
+// Do not add new types to this baseline to silence lint findings.
+//
+//go:embed existing-types.txt
+var existingTypes string
+
+func isExistingType(name protoreflect.FullName) bool {
+	return slices.Contains(strings.Fields(existingTypes), string(name))
+}
 
 const (
 	noReservedRuleID             = "LEDGER_NO_RESERVED"
@@ -34,21 +45,21 @@ func newSpec() *check.Spec {
 			{
 				ID:      noReservedRuleID,
 				Default: true,
-				Purpose: "Checks that messages and enums declare no reserved numbers or names; v3 realigns numbers instead.",
+				Purpose: "Checks that new messages and enums declare no reserved numbers or names.",
 				Type:    check.RuleTypeLint,
 				Handler: checkutil.NewFileRuleHandler(checkNoReserved, checkutil.WithoutImports()),
 			},
 			{
 				ID:      fieldNumbersSequentialRuleID,
 				Default: true,
-				Purpose: "Checks that message field numbers are exactly 1..N, oneof members included.",
+				Purpose: "Checks that new message field numbers are exactly 1..N, oneof members included.",
 				Type:    check.RuleTypeLint,
 				Handler: checkutil.NewMessageRuleHandler(checkFieldNumbersSequential, checkutil.WithoutImports()),
 			},
 			{
 				ID:      enumNumbersSequentialRuleID,
 				Default: true,
-				Purpose: "Checks that enum value numbers are exactly 0..N-1.",
+				Purpose: "Checks that new enum value numbers are exactly 0..N-1.",
 				Type:    check.RuleTypeLint,
 				Handler: checkutil.NewEnumRuleHandler(checkEnumNumbersSequential, checkutil.WithoutImports()),
 			},
@@ -105,7 +116,7 @@ func reportReserved(
 	ranges int, rangeField int32,
 	names int, nameField int32,
 ) {
-	if ranges == 0 && names == 0 {
+	if isExistingType(decl.FullName()) || (ranges == 0 && names == 0) {
 		return
 	}
 
@@ -117,7 +128,7 @@ func reportReserved(
 		for i := range entry.count {
 			path := slices.Concat(base, protoreflect.SourcePath{entry.field, int32(i)})
 			responseWriter.AddAnnotation(
-				check.WithMessagef("%s %q declares reserved entries; Ledger v3 deletes obsolete fields and realigns the remaining numbers.", kind, decl.FullName()),
+				check.WithMessagef("new %s %q declares reserved entries; assign contiguous numbers when introducing a type.", kind, decl.FullName()),
 				check.WithFileNameAndSourcePath(fd.Path(), path),
 			)
 		}
@@ -130,7 +141,7 @@ func checkFieldNumbersSequential(
 	_ check.Request,
 	message protoreflect.MessageDescriptor,
 ) error {
-	if message.IsMapEntry() {
+	if message.IsMapEntry() || isExistingType(message.FullName()) {
 		return nil
 	}
 
@@ -155,6 +166,10 @@ func checkEnumNumbersSequential(
 	_ check.Request,
 	enum protoreflect.EnumDescriptor,
 ) error {
+	if isExistingType(enum.FullName()) {
+		return nil
+	}
+
 	values := enum.Values()
 	numbers := make([]int, values.Len())
 	for i := range values.Len() {
