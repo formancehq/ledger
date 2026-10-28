@@ -255,3 +255,10 @@ StatefulSet GC safety, Pod shutdown or persisted Raft/business data recovery.
 The three-voter Chainsaw scenario is the corresponding dynamic evidence path.
 Treat missing StatefulSets with orphan Pods, external Secret loss and custom
 quorum-dependent probes as explicit recovery boundaries, not successful pause.
+
+Suspension must preserve the source `whenDeleted` policy: StatefulSet claim
+owners for `Delete` remain valid while that StatefulSet is retained. Wait for
+ordinal-Pod owners to disappear before scaling. If a late enabled reconcile
+restores `whenScaled: Delete`, repair it without overwriting the saved topology
+and repeat observation/ownership checks. Exercise failed repair followed by
+success and both deletion policies; fake clients do not establish real GC.

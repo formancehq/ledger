@@ -60,12 +60,14 @@ an existing workload.
    the Cluster UID. Changing a parent reference does not retarget an existing
    execution.
 2. The Cluster controller saves the current StatefulSet replica count in
-   `ledger.formance.com/suspended-replicas` and sets both StatefulSet PVC
-   retention policies to `Retain` in one durable update. It keeps replicas
+   `ledger.formance.com/suspended-replicas` and sets StatefulSet PVC
+   `whenScaled` retention to `Retain` in one durable update, preserving the
+   source `whenDeleted` policy. It keeps replicas
    unchanged in that update.
 3. The Cluster controller waits until the StatefulSet controller observes that
-   generation and removes the StatefulSet/ordinal-Pod garbage-collection owner
-   references from the retained claims.
+   generation and removes ordinal-Pod garbage-collection owner references
+   from the retained claims. StatefulSet owners remain valid for
+   `whenDeleted: Delete` because suspension retains the StatefulSet.
 4. The Cluster controller sets the StatefulSet replica target to zero.
 5. The Cluster controller waits for Ledger Pods and active backup Job Pods to
    disappear before reporting `Suspended`.
@@ -73,7 +75,10 @@ an existing workload.
 Each completed API write remains after a later error. Failed writes leave the
 saved topology and retained resources available for retry. The controller
 requeues during suspension, so restarts, delayed garbage-collection updates and
-late workload creation can converge without another spec edit. It never uses
+late workload creation can converge without another spec edit. If an enabled
+reconciliation already in flight restores `whenScaled: Delete`, suspension
+repairs it without replacing the saved replica count, then repeats controller
+observation and claim-ownership checks before scaling. It never uses
 the ordinary Raft scale-down/removal path for suspension.
 
 An initially disabled Cluster receives its stable cluster ID, but does not
@@ -92,7 +97,7 @@ normal provisioning.
    finalized restore cannot boot in restore mode again. All other template
    configuration, including image, TLS transport and storage, stays retained.
    The controller then restores the saved replica count with the retained PVCs
-   and retention still set to `Retain`.
+   and `whenScaled` retention still set to `Retain`.
 3. The Cluster controller waits for that StatefulSet generation to be observed
    and for all saved replicas to become ready.
 4. The Cluster controller resumes only backup Jobs that it marked with
@@ -169,7 +174,9 @@ transaction, then performs two suspension/resume cycles. It configures
 PVC UIDs, Cluster/StatefulSet identity, inter-node Secret and certificate
 identity, and the exact non-empty transactions from each local voter
 projection after restart. It also runs store integrity checks and commits a
-new transaction after each resume to prove write quorum recovered.
+new transaction after each resume to prove write quorum recovered. Finally it
+selects `whenDeleted: Delete`, suspends again, deletes the Cluster and verifies
+that garbage collection removes all six claims.
 
 Run it on the disposable Kind harness described in
 [Operator development](../../misc/operator/README.md#development):

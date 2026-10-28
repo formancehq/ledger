@@ -107,7 +107,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// Suspension precedes validation, credentials and lifecycle gates: a bad
 	// desired upgrade/configuration must never prevent stopping the old workload.
-	if handled, result, err := r.reconcileSuspension(ctx, ledger); handled || err != nil {
+	if handled, result, err := (clusterSuspension{r}).reconcileSuspension(ctx, ledger); handled || err != nil {
 		return result, err
 	}
 

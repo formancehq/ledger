@@ -42,84 +42,97 @@ func suspensionFixture(t *testing.T) (*ClusterReconciler, *ledgerv1alpha1.Cluste
 
 func TestSuspensionRetainsTopologyAndStorageAcrossRepeatedCycles(t *testing.T) {
 	t.Parallel()
-	r, cluster, original := suspensionFixture(t)
-	ctx := t.Context()
-	key := client.ObjectKeyFromObject(original)
-	sts := &appsv1.StatefulSet{}
-	claim := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "data-ledger-test-2", Namespace: "ns", UID: "durable-claim", OwnerReferences: []metav1.OwnerReference{{Kind: "StatefulSet", Name: original.Name, UID: original.UID}}}}
-	require.NoError(t, r.Create(ctx, claim))
-	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: original.Name + "-2", Namespace: "ns", UID: "pod"}}
-	for cycle := range 2 {
-		cluster.Spec.Disabled = true
-		cluster.Spec.Image.Tag = "v3.0.0-rc.99" // Invalid desired upgrade cannot prevent stopping.
-		cluster.Spec.Replicas = new(int32(1))
-		require.NoError(t, r.Create(ctx, pod.DeepCopy()))
-		handled, _, err := r.reconcileSuspension(ctx, cluster)
-		require.NoError(t, err)
-		require.True(t, handled)
-		require.NoError(t, r.Get(ctx, key, sts))
-		require.EqualValues(t, 3, *sts.Spec.Replicas)
-		require.Equal(t, "3", sts.Annotations[annotationSuspendedReplicas])
-		require.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)
-		require.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
-		require.Equal(t, original.Spec.Template, sts.Spec.Template)
-		_, _, err = r.reconcileSuspension(ctx, cluster)
-		require.NoError(t, err)
-		require.NoError(t, r.Get(ctx, key, sts))
-		require.EqualValues(t, 3, *sts.Spec.Replicas, "wait for retention observation")
-		sts.Status.ObservedGeneration = sts.Generation
-		require.NoError(t, r.Status().Update(ctx, sts))
-		if cycle == 0 {
-			_, _, err = r.reconcileSuspension(ctx, cluster)
-			require.NoError(t, err)
-			require.NoError(t, r.Get(ctx, key, sts))
-			require.EqualValues(t, 3, *sts.Spec.Replicas, "GC ownership must be removed first")
-			claim.OwnerReferences = []metav1.OwnerReference{{Kind: "Pod", Name: original.Name + "-2", UID: "old-pod"}}
-			require.NoError(t, r.Update(ctx, claim))
-			_, _, err = r.reconcileSuspension(ctx, cluster)
-			require.NoError(t, err)
-			require.NoError(t, r.Get(ctx, key, sts))
-			require.EqualValues(t, 3, *sts.Spec.Replicas, "ordinal Pod owner must also be removed before zero")
-			claim.OwnerReferences = nil
-			require.NoError(t, r.Update(ctx, claim))
-		}
-		_, _, err = r.reconcileSuspension(ctx, cluster)
-		require.NoError(t, err)
-		require.NoError(t, r.Get(ctx, key, sts))
-		require.Zero(t, *sts.Spec.Replicas)
-		_, _, err = r.reconcileSuspension(ctx, cluster)
-		require.NoError(t, err)
-		require.Equal(t, "Suspending", cluster.Status.Phase)
-		require.NoError(t, r.Delete(ctx, pod))
-		_, _, err = r.reconcileSuspension(ctx, cluster)
-		require.NoError(t, err)
-		require.Equal(t, "Suspended", cluster.Status.Phase)
-		require.True(t, meta.IsStatusConditionTrue(cluster.Status.Conditions, "Suspended"))
-		cluster.Spec.Disabled = false
-		r = &ClusterReconciler{Client: r.Client, Scheme: r.Scheme} // Controller replacement.
-		_, _, err = r.reconcileSuspension(ctx, cluster)
-		require.NoError(t, err)
-		require.NoError(t, r.Get(ctx, key, sts))
-		require.EqualValues(t, 3, *sts.Spec.Replicas, "restore all old voters before desired scale-down to one")
-		require.Equal(t, original.Spec.Template, sts.Spec.Template)
-		sts.Status.ReadyReplicas = 2
-		require.NoError(t, r.Status().Update(ctx, sts))
-		_, _, err = r.reconcileSuspension(ctx, cluster)
-		require.NoError(t, err)
-		require.NoError(t, r.Get(ctx, key, sts))
-		require.Equal(t, "3", sts.Annotations[annotationSuspendedReplicas])
-		sts.Status.ReadyReplicas = 3
-		require.NoError(t, r.Status().Update(ctx, sts))
-		_, _, err = r.reconcileSuspension(ctx, cluster)
-		require.NoError(t, err)
-		require.NoError(t, r.Get(ctx, key, sts))
-		require.Empty(t, sts.Annotations[annotationSuspendedReplicas])
-		require.Equal(t, original.UID, sts.UID)
-		require.Equal(t, "stable-id", cluster.Spec.ClusterID)
-		require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(claim), claim))
-		require.Equal(t, types.UID("durable-claim"), claim.UID)
-		sts.Generation++ // New generation for next retention handshake.
-		require.NoError(t, r.Update(ctx, sts))
+	for _, whenDeleted := range []appsv1.PersistentVolumeClaimRetentionPolicyType{appsv1.DeletePersistentVolumeClaimRetentionPolicyType, appsv1.RetainPersistentVolumeClaimRetentionPolicyType} {
+		t.Run(string(whenDeleted), func(t *testing.T) {
+			t.Parallel()
+			r, cluster, original := suspensionFixture(t)
+			ctx := t.Context()
+			original.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted = whenDeleted
+			require.NoError(t, r.Update(ctx, original))
+			key := client.ObjectKeyFromObject(original)
+			sts := &appsv1.StatefulSet{}
+			claim := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "data-ledger-test-2", Namespace: "ns", UID: "durable-claim", OwnerReferences: []metav1.OwnerReference{{Kind: "StatefulSet", Name: original.Name, UID: original.UID}}}}
+			if whenDeleted == appsv1.DeletePersistentVolumeClaimRetentionPolicyType {
+				claim.OwnerReferences = []metav1.OwnerReference{{Kind: "Pod", Name: original.Name + "-2", UID: "old-pod"}}
+			}
+			require.NoError(t, r.Create(ctx, claim))
+			pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: original.Name + "-2", Namespace: "ns", UID: "pod"}}
+			for cycle := range 2 {
+				cluster.Spec.Disabled = true
+				cluster.Spec.Image.Tag = "v3.0.0-rc.99" // Invalid desired upgrade cannot prevent stopping.
+				cluster.Spec.Replicas = new(int32(1))
+				require.NoError(t, r.Create(ctx, pod.DeepCopy()))
+				handled, _, err := (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+				require.NoError(t, err)
+				require.True(t, handled)
+				require.NoError(t, r.Get(ctx, key, sts))
+				require.EqualValues(t, 3, *sts.Spec.Replicas)
+				require.Equal(t, "3", sts.Annotations[annotationSuspendedReplicas])
+				require.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)
+				require.Equal(t, whenDeleted, sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
+				require.Equal(t, original.Spec.Template, sts.Spec.Template)
+				_, _, err = (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+				require.NoError(t, err)
+				require.NoError(t, r.Get(ctx, key, sts))
+				require.EqualValues(t, 3, *sts.Spec.Replicas, "wait for retention observation")
+				sts.Status.ObservedGeneration = sts.Generation
+				require.NoError(t, r.Status().Update(ctx, sts))
+				if cycle == 0 {
+					_, _, err = (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+					require.NoError(t, err)
+					require.NoError(t, r.Get(ctx, key, sts))
+					require.EqualValues(t, 3, *sts.Spec.Replicas, "GC ownership must be removed first")
+					claim.OwnerReferences = []metav1.OwnerReference{{Kind: "Pod", Name: original.Name + "-2", UID: "old-pod"}}
+					require.NoError(t, r.Update(ctx, claim))
+					_, _, err = (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+					require.NoError(t, err)
+					require.NoError(t, r.Get(ctx, key, sts))
+					require.EqualValues(t, 3, *sts.Spec.Replicas, "ordinal Pod owner must also be removed before zero")
+					claim.OwnerReferences = nil
+					if whenDeleted == appsv1.DeletePersistentVolumeClaimRetentionPolicyType {
+						claim.OwnerReferences = []metav1.OwnerReference{{Kind: "StatefulSet", Name: original.Name, UID: original.UID}}
+					}
+					require.NoError(t, r.Update(ctx, claim))
+				}
+				_, _, err = (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+				require.NoError(t, err)
+				require.NoError(t, r.Get(ctx, key, sts))
+				require.Zero(t, *sts.Spec.Replicas)
+				_, _, err = (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+				require.NoError(t, err)
+				require.Equal(t, "Suspending", cluster.Status.Phase)
+				require.NoError(t, r.Delete(ctx, pod))
+				_, _, err = (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+				require.NoError(t, err)
+				require.Equal(t, "Suspended", cluster.Status.Phase)
+				require.True(t, meta.IsStatusConditionTrue(cluster.Status.Conditions, "Suspended"))
+				cluster.Spec.Disabled = false
+				r = &ClusterReconciler{Client: r.Client, Scheme: r.Scheme} // Controller replacement.
+				_, _, err = (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+				require.NoError(t, err)
+				require.NoError(t, r.Get(ctx, key, sts))
+				require.EqualValues(t, 3, *sts.Spec.Replicas, "restore all old voters before desired scale-down to one")
+				require.Equal(t, original.Spec.Template, sts.Spec.Template)
+				sts.Status.ReadyReplicas = 2
+				require.NoError(t, r.Status().Update(ctx, sts))
+				_, _, err = (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+				require.NoError(t, err)
+				require.NoError(t, r.Get(ctx, key, sts))
+				require.Equal(t, "3", sts.Annotations[annotationSuspendedReplicas])
+				sts.Status.ReadyReplicas = 3
+				require.NoError(t, r.Status().Update(ctx, sts))
+				_, _, err = (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+				require.NoError(t, err)
+				require.NoError(t, r.Get(ctx, key, sts))
+				require.Empty(t, sts.Annotations[annotationSuspendedReplicas])
+				require.Equal(t, original.UID, sts.UID)
+				require.Equal(t, "stable-id", cluster.Spec.ClusterID)
+				require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(claim), claim))
+				require.Equal(t, types.UID("durable-claim"), claim.UID)
+				sts.Generation++ // New generation for next retention handshake.
+				require.NoError(t, r.Update(ctx, sts))
+			}
+		})
 	}
 }
 
@@ -143,13 +156,13 @@ func TestSuspensionFailedRetentionWriteNeverScales(t *testing.T) {
 	r, cluster, sts := suspensionFixture(t)
 	base := r.Client
 	r.Client = &failSuspensionWrite{Client: base, fail: true}
-	_, _, err := r.reconcileSuspension(t.Context(), cluster)
+	_, _, err := (clusterSuspension{r}).reconcileSuspension(t.Context(), cluster)
 	require.ErrorContains(t, err, "injected retention")
 	stored := &appsv1.StatefulSet{}
 	require.NoError(t, base.Get(t.Context(), client.ObjectKeyFromObject(sts), stored))
 	require.EqualValues(t, 3, *stored.Spec.Replicas)
 	require.Empty(t, stored.Annotations)
-	_, _, err = r.reconcileSuspension(t.Context(), cluster)
+	_, _, err = (clusterSuspension{r}).reconcileSuspension(t.Context(), cluster)
 	require.NoError(t, err)
 	require.NoError(t, base.Get(t.Context(), client.ObjectKeyFromObject(sts), stored))
 	require.EqualValues(t, 3, *stored.Spec.Replicas)
@@ -190,23 +203,23 @@ func TestSuspensionBackupJobsRetainExecutionIdentity(t *testing.T) {
 	for _, obj := range []client.Object{backup, run, job, pod} {
 		require.NoError(t, r.Create(t.Context(), obj))
 	}
-	stopped, err := r.suspendBackupJobs(t.Context(), cluster, true)
+	stopped, err := (clusterSuspension{r}).suspendBackupJobs(t.Context(), cluster, true)
 	require.NoError(t, err)
 	require.False(t, stopped)
 	require.NoError(t, r.Get(t.Context(), client.ObjectKeyFromObject(job), job))
 	require.True(t, *job.Spec.Suspend)
 	require.NoError(t, r.Delete(t.Context(), pod))
-	stopped, err = r.suspendBackupJobs(t.Context(), cluster, true)
+	stopped, err = (clusterSuspension{r}).suspendBackupJobs(t.Context(), cluster, true)
 	require.NoError(t, err)
 	require.True(t, stopped)
-	_, err = r.suspendBackupJobs(t.Context(), cluster, false)
+	_, err = (clusterSuspension{r}).suspendBackupJobs(t.Context(), cluster, false)
 	require.NoError(t, err)
 	require.NoError(t, r.Get(t.Context(), client.ObjectKeyFromObject(job), job))
 	require.False(t, *job.Spec.Suspend)
 	require.Equal(t, types.UID("job"), job.UID)
 	job.Spec.Suspend = new(true) // Preserve user suspension.
 	require.NoError(t, r.Update(t.Context(), job))
-	_, err = r.suspendBackupJobs(t.Context(), cluster, false)
+	_, err = (clusterSuspension{r}).suspendBackupJobs(t.Context(), cluster, false)
 	require.NoError(t, err)
 	require.NoError(t, r.Get(t.Context(), client.ObjectKeyFromObject(job), job))
 	require.True(t, *job.Spec.Suspend)
@@ -226,17 +239,17 @@ func TestSuspensionBackupTargetSurvivesMutableParents(t *testing.T) {
 	for _, obj := range []client.Object{backup, run, job} {
 		require.NoError(t, r.Create(t.Context(), obj))
 	}
-	_, err := r.suspendBackupJobs(t.Context(), other, true)
+	_, err := (clusterSuspension{r}).suspendBackupJobs(t.Context(), other, true)
 	require.NoError(t, err)
 	require.NoError(t, r.Get(t.Context(), client.ObjectKeyFromObject(job), job))
 	require.False(t, ptr.Deref(job.Spec.Suspend, false))
-	_, err = r.suspendBackupJobs(t.Context(), cluster, true)
+	_, err = (clusterSuspension{r}).suspendBackupJobs(t.Context(), cluster, true)
 	require.NoError(t, err)
 	require.NoError(t, r.Get(t.Context(), client.ObjectKeyFromObject(job), job))
 	require.True(t, *job.Spec.Suspend)
 	run.Spec.BackupRef = "missing-parent"
 	require.NoError(t, r.Update(t.Context(), run))
-	_, err = r.suspendBackupJobs(t.Context(), cluster, false)
+	_, err = (clusterSuspension{r}).suspendBackupJobs(t.Context(), cluster, false)
 	require.NoError(t, err)
 	require.NoError(t, r.Get(t.Context(), client.ObjectKeyFromObject(job), job))
 	require.False(t, *job.Spec.Suspend)
@@ -258,7 +271,7 @@ func TestSuspensionRepairsAuthorizationBeforeRestoringVoters(t *testing.T) {
 	require.NoError(t, r.Update(t.Context(), sts))
 	// There is intentionally no auth ConfigMap: recovery must repair it before
 	// the required volume or revoked metadata can become active on a new Pod.
-	_, _, err := r.reconcileSuspension(t.Context(), cluster)
+	_, _, err := (clusterSuspension{r}).reconcileSuspension(t.Context(), cluster)
 	require.NoError(t, err)
 	cm := &corev1.ConfigMap{}
 	require.NoError(t, r.Get(t.Context(), types.NamespacedName{Name: authKeysConfigMapName(cluster.Name), Namespace: cluster.Namespace}, cm))
@@ -268,7 +281,7 @@ func TestSuspensionRepairsAuthorizationBeforeRestoringVoters(t *testing.T) {
 	// Scope reduction must also be persisted while all voters remain stopped.
 	cred.Spec.Scopes = []string{"narrow"}
 	require.NoError(t, r.Update(t.Context(), cred))
-	_, _, err = r.reconcileSuspension(t.Context(), cluster)
+	_, _, err = (clusterSuspension{r}).reconcileSuspension(t.Context(), cluster)
 	require.NoError(t, err)
 	require.NoError(t, r.Get(t.Context(), client.ObjectKeyFromObject(cm), cm))
 	require.Contains(t, cm.Data["auth-keys.json"], "narrow")
@@ -279,7 +292,7 @@ func TestSuspensionRepairsAuthorizationBeforeRestoringVoters(t *testing.T) {
 	// the obsolete required volume before startup, rather than deadlocking it.
 	require.NoError(t, r.Delete(t.Context(), cred))
 	cluster.Spec.Auth.Enabled = new(false)
-	_, _, err = r.reconcileSuspension(t.Context(), cluster)
+	_, _, err = (clusterSuspension{r}).reconcileSuspension(t.Context(), cluster)
 	require.NoError(t, err)
 	require.NoError(t, r.Get(t.Context(), client.ObjectKeyFromObject(sts), sts))
 	require.Zero(t, *sts.Spec.Replicas)
@@ -304,13 +317,13 @@ func TestSuspensionAllowsFinalizedRestoreHandoffBeforeReadiness(t *testing.T) {
 	// A finalized restore cannot boot --restore (RESTORED is already present).
 	// Neither a ready Pod nor storage inspection is needed for this explicit
 	// user-requested handoff; normal startup enforces persisted-state checks.
-	_, _, err := r.reconcileSuspension(t.Context(), cluster)
+	_, _, err := (clusterSuspension{r}).reconcileSuspension(t.Context(), cluster)
 	require.NoError(t, err)
 	require.NoError(t, r.Get(t.Context(), client.ObjectKeyFromObject(sts), sts))
 	require.Zero(t, *sts.Spec.Replicas)
 	require.Equal(t, buildCommand(cluster), sts.Spec.Template.Spec.Containers[0].Command)
 	require.NotNil(t, sts.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet)
-	_, _, err = r.reconcileSuspension(t.Context(), cluster)
+	_, _, err = (clusterSuspension{r}).reconcileSuspension(t.Context(), cluster)
 	require.NoError(t, err)
 	require.NoError(t, r.Get(t.Context(), client.ObjectKeyFromObject(sts), sts))
 	require.EqualValues(t, 3, *sts.Spec.Replicas)
@@ -342,7 +355,10 @@ func TestSuspensionConcurrentReconcilersPreserveRetentionCursor(t *testing.T) {
 	for range 2 {
 		worker := &ClusterReconciler{Client: suspensionReadBarrier{Client: r.Client, arrived: &arrived, release: release}, Scheme: r.Scheme}
 		workerCluster := cluster.DeepCopy()
-		go func() { _, _, err := worker.reconcileSuspension(t.Context(), workerCluster); results <- err }()
+		go func() {
+			_, _, err := (clusterSuspension{worker}).reconcileSuspension(t.Context(), workerCluster)
+			results <- err
+		}()
 	}
 	arrived.Wait()
 	close(release)
@@ -359,7 +375,7 @@ func TestSuspensionConcurrentReconcilersPreserveRetentionCursor(t *testing.T) {
 	require.Equal(t, "3", sts.Annotations[annotationSuspendedReplicas])
 	require.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)
 	// The losing worker retries from the winning cursor without replacing it.
-	_, _, err := r.reconcileSuspension(t.Context(), cluster)
+	_, _, err := (clusterSuspension{r}).reconcileSuspension(t.Context(), cluster)
 	require.NoError(t, err)
 	require.NoError(t, r.Get(t.Context(), client.ObjectKeyFromObject(sts), sts))
 	require.EqualValues(t, 3, *sts.Spec.Replicas)
@@ -388,4 +404,64 @@ func TestSuspensionLegacyBackupIgnoresFlagTextInsideArguments(t *testing.T) {
 	command := ledgerctlCommand("ledger-A.ns.svc.cluster.local:8888", tlsModeDisabled, "store", "backup", "--s3-bucket", `--server "ledger-B.ns.svc.cluster.local:8888"`)[2]
 	require.False(t, backupCommandTargetsCluster(command, `--server "ledger-B.ns.svc.cluster.local:`))
 	require.True(t, backupCommandTargetsCluster(command, `--server "ledger-A.ns.svc.cluster.local:`))
+}
+
+func TestSuspensionRepairsRetentionDriftWithoutChangingDeletionPolicy(t *testing.T) {
+	t.Parallel()
+	for _, whenDeleted := range []appsv1.PersistentVolumeClaimRetentionPolicyType{appsv1.DeletePersistentVolumeClaimRetentionPolicyType, appsv1.RetainPersistentVolumeClaimRetentionPolicyType} {
+		t.Run(string(whenDeleted), func(t *testing.T) {
+			t.Parallel()
+			r, cluster, sts := suspensionFixture(t)
+			ctx := t.Context()
+			sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted = whenDeleted
+			require.NoError(t, r.Update(ctx, sts))
+			_, _, err := (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+			require.NoError(t, err)
+			require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(sts), sts))
+			// A late enabled reconciliation restores Delete and changes the replica
+			// target after the source topology was saved. Do not save that new target.
+			sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled = appsv1.DeletePersistentVolumeClaimRetentionPolicyType
+			sts.Spec.Replicas = new(int32(5))
+			sts.Generation++
+			require.NoError(t, r.Update(ctx, sts))
+			r.Client = &failSuspensionWrite{Client: r.Client, fail: true}
+			_, _, err = (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+			require.ErrorContains(t, err, "injected retention write failure")
+			require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(sts), sts))
+			require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)
+			require.EqualValues(t, 5, *sts.Spec.Replicas)
+			r = &ClusterReconciler{Client: r.Client, Scheme: r.Scheme}
+			_, _, err = (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+			require.NoError(t, err)
+			require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(sts), sts))
+			require.Equal(t, "3", sts.Annotations[annotationSuspendedReplicas])
+			require.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)
+			require.Equal(t, whenDeleted, sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
+			_, _, err = (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+			require.NoError(t, err)
+			require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(sts), sts))
+			require.EqualValues(t, 5, *sts.Spec.Replicas, "repair must repeat observation handshake")
+			claim := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "data-" + sts.Name + "-2", Namespace: cluster.Namespace, OwnerReferences: []metav1.OwnerReference{{Kind: "Pod", Name: sts.Name + "-2", UID: "pod"}}}}
+			require.NoError(t, r.Create(ctx, claim))
+			sts.Status.ObservedGeneration = sts.Generation
+			require.NoError(t, r.Status().Update(ctx, sts))
+			_, _, err = (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+			require.NoError(t, err)
+			require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(sts), sts))
+			require.EqualValues(t, 5, *sts.Spec.Replicas, "repair must wait for Pod ownership removal")
+			claim.OwnerReferences = nil
+			if whenDeleted == appsv1.DeletePersistentVolumeClaimRetentionPolicyType {
+				// The StatefulSet controller keeps this owner for deletion cleanup.
+				claim.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(sts, appsv1.SchemeGroupVersion.WithKind("StatefulSet"))}
+			}
+			require.NoError(t, r.Update(ctx, claim))
+			_, _, err = (clusterSuspension{r}).reconcileSuspension(ctx, cluster)
+			require.NoError(t, err)
+			require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(sts), sts))
+			require.Zero(t, *sts.Spec.Replicas)
+			require.Equal(t, whenDeleted, sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
+			require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(claim), claim))
+			require.Equal(t, whenDeleted == appsv1.DeletePersistentVolumeClaimRetentionPolicyType, metav1.IsControlledBy(claim, sts))
+		})
+	}
 }

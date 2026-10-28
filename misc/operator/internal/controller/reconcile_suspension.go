@@ -44,10 +44,14 @@ func clusterWorkloadsPaused(ctx context.Context, c client.Client, cluster *ledge
 	return sts.Annotations[annotationSuspendedReplicas] != "", nil
 }
 
+type clusterSuspension struct {
+	*ClusterReconciler
+}
+
 // reconcileSuspension never calls the normal scale-down path: membership and
 // per-ordinal WAL/data are required intact for a cold restart. Its recovery
 // cursor is committed on the StatefulSet before replicas can reach zero.
-func (r *ClusterReconciler) reconcileSuspension(ctx context.Context, cluster *ledgerv1alpha1.Cluster) (bool, ctrl.Result, error) {
+func (r clusterSuspension) reconcileSuspension(ctx context.Context, cluster *ledgerv1alpha1.Cluster) (bool, ctrl.Result, error) {
 	retry := ctrl.Result{RequeueAfter: suspensionRequeueInterval}
 	sts, err := r.fetchExistingStatefulSet(ctx, cluster)
 	if err != nil {
@@ -148,13 +152,18 @@ func (r *ClusterReconciler) reconcileSuspension(ctx context.Context, cluster *le
 				return true, retry, errors.New("cannot infer pre-suspension topology from zero replicas")
 			}
 			sts.Annotations[annotationSuspendedReplicas] = strconv.FormatInt(int64(count), 10)
-			sts.Spec.PersistentVolumeClaimRetentionPolicy = &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{WhenScaled: appsv1.RetainPersistentVolumeClaimRetentionPolicyType, WhenDeleted: appsv1.RetainPersistentVolumeClaimRetentionPolicyType}
+		}
+		if saved == "" || sts.Spec.PersistentVolumeClaimRetentionPolicy == nil || sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled != appsv1.RetainPersistentVolumeClaimRetentionPolicyType {
+			// Repair drift from an enabled reconciliation already in flight without
+			// overwriting the source topology. Preserve deletion semantics: only
+			// scale-down retention must change while the StatefulSet is retained.
+			if sts.Spec.PersistentVolumeClaimRetentionPolicy == nil {
+				sts.Spec.PersistentVolumeClaimRetentionPolicy = &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{WhenDeleted: appsv1.RetainPersistentVolumeClaimRetentionPolicyType}
+			}
+			sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled = appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 			// A separate update is essential: the StatefulSet controller must first
 			// remove GC ownership imposed by Delete policies before terminating Pods.
 			return true, retry, r.Update(ctx, sts)
-		}
-		if sts.Spec.PersistentVolumeClaimRetentionPolicy == nil || sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled != appsv1.RetainPersistentVolumeClaimRetentionPolicyType || sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted != appsv1.RetainPersistentVolumeClaimRetentionPolicyType {
-			return true, retry, errors.New("suspended StatefulSet lost Retain policy")
 		}
 		if sts.Status.ObservedGeneration < sts.Generation {
 			return true, retry, nil
@@ -165,9 +174,9 @@ func (r *ClusterReconciler) reconcileSuspension(ctx context.Context, cluster *le
 		}
 		for _, claim := range claims.Items {
 			for _, owner := range claim.OwnerReferences {
-				// StatefulSet's Delete retention owns claims either directly or through
-				// an ordinal Pod. Wait for the controller to relinquish both references.
-				if owner.UID == sts.UID || (owner.Kind == "Pod" && hasStatefulSetOrdinal(owner.Name, sts.Name)) {
+				// Pod owners can delete claims on scale-down. StatefulSet owners
+				// are safe while it is retained and preserve whenDeleted: Delete.
+				if (owner.UID == sts.UID && sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted != appsv1.DeletePersistentVolumeClaimRetentionPolicyType) || (owner.Kind == "Pod" && hasStatefulSetOrdinal(owner.Name, sts.Name)) {
 					return true, retry, nil
 				}
 			}
@@ -204,7 +213,7 @@ func (r *ClusterReconciler) reconcileSuspension(ctx context.Context, cluster *le
 
 // suspendBackupJobs checks Job -> BackupRun ownership and the persisted Job
 // endpoint. Mutable parent specs and labels alone do not identify the target.
-func (r *ClusterReconciler) suspendBackupJobs(ctx context.Context, cluster *ledgerv1alpha1.Cluster, suspend bool) (bool, error) {
+func (r clusterSuspension) suspendBackupJobs(ctx context.Context, cluster *ledgerv1alpha1.Cluster, suspend bool) (bool, error) {
 	jobs := &batchv1.JobList{}
 	if err := r.List(ctx, jobs, client.InNamespace(cluster.Namespace)); err != nil {
 		return false, err

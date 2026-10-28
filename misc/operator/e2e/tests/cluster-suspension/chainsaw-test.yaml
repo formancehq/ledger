@@ -41,10 +41,10 @@ spec:
                 replicas: 3
               status:
                 phase: Suspended
-                readyReplicas: 0
         - script:
             content: |
               set -eu
+              test "$(kubectl get cluster suspension -n "$NAMESPACE" -o json | jq '.status.readyReplicas // 0')" -eq 0
               test "$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/instance=suspension -o json | jq '.items | length')" -eq 0
               identity=$(kubectl get cluster suspension -n "$NAMESPACE" -o jsonpath='{.spec.clusterID}')
               test -n "$identity"
@@ -145,6 +145,25 @@ spec:
                 echo "Cycle $cycle retained all six PVCs, identities and committed transactions"
               done
             timeout: 25m
+
+    - name: Preserve configured deletion cleanup after suspension
+      try:
+        - script:
+            content: |
+              set -eu
+              kubectl patch cluster suspension -n "$NAMESPACE" --type merge \
+                -p '{"spec":{"persistence":{"retentionPolicy":{"whenDeleted":"Delete"}}}}'
+              kubectl wait statefulset/ledger-suspension -n "$NAMESPACE" \
+                --for=jsonpath='{.spec.persistentVolumeClaimRetentionPolicy.whenDeleted}'=Delete --timeout=120s
+              kubectl patch cluster suspension -n "$NAMESPACE" --type merge -p '{"spec":{"disabled":true}}'
+              kubectl wait cluster/suspension -n "$NAMESPACE" --for=jsonpath='{.status.phase}'=Suspended --timeout=300s
+              test "$(kubectl get pvc -n "$NAMESPACE" -o json | jq '.items | length')" -eq 6
+              test "$(kubectl get statefulset ledger-suspension -n "$NAMESPACE" -o jsonpath='{.spec.persistentVolumeClaimRetentionPolicy.whenDeleted}')" = Delete
+              kubectl delete cluster suspension -n "$NAMESPACE" --wait=true
+              kubectl wait --for=delete statefulset/ledger-suspension -n "$NAMESPACE" --timeout=120s
+              kubectl wait --for=delete pvc --all -n "$NAMESPACE" --timeout=120s
+              test "$(kubectl get pvc -n "$NAMESPACE" -o json | jq '.items | length')" -eq 0
+            timeout: 12m
 
   catch:
     - describe:
