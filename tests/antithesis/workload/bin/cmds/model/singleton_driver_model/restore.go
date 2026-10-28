@@ -11,6 +11,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // The restore cycle periodically hands the live ledger to an external
@@ -114,7 +115,8 @@ type RestoreTrigger interface {
 // so a stuck trigger cannot leave workers parked.
 func runRestoreCycle(ctx context.Context, c *Checker, trigger RestoreTrigger, interval time.Duration) {
 	for {
-		jitter := time.Duration(internal.Rand().Int63n(int64(interval/2) + 1))
+		var jitter time.Duration
+		runGeneration(func(src *generation.Source) { jitter = time.Duration(src.Int63n(int64(interval/2) + 1)) })
 		select {
 		case <-ctx.Done():
 			return

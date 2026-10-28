@@ -75,7 +75,6 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -83,6 +82,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
@@ -155,7 +155,7 @@ func main() {
 	// the server's from the first bulk.
 	schemas := make(map[string][]*commonpb.SetMetadataFieldTypeCommand, len(names))
 	for _, name := range names {
-		schemas[name] = initialSchema()
+		runGeneration(func(src *generation.Source) { schemas[name] = initialSchema(src) })
 	}
 
 	if !setupLedgers(ctx, client, names, schemas) {
@@ -259,85 +259,87 @@ func runWorker(
 			return
 		}
 
-		// 1-in-5: a read this iteration, split across the whole-ledger read
-		// (chart + ledger metadata), a single-account read, a transaction read
-		// (id + postings + reverted + metadata), a metadata-schema read (declared
-		// field types), the list queries (filtered, paginated, ordered windows
-		// over accounts, transactions and logs), and the prepared-query surface
-		// (the registry listing, and execution of a stored definition with its
-		// parameters bound). Reads validate against the in-flight bulk set,
-		// exercising cross-node freshness without needing quiescence. Account and
-		// transaction queries receive extra slots because together they must
-		// exercise every builtin and declared metadata index.
-		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) {
-			case 0:
-				runLedgerRead(ctx, client, c)
-			case 1:
-				runTransactionRead(ctx, client, c)
-			case 2:
-				runSchemaRead(ctx, client, c)
-			case 3, 4:
-				runAccountQuery(ctx, client, c)
-			case 5, 6, 7:
-				runTransactionQuery(ctx, client, c)
-			case 8:
-				runReplay(ctx, client, c)
-			case 9:
-				runLogQuery(ctx, client, c)
-			case 10:
-				runListPreparedQueries(ctx, client, c)
-			case 11:
-				runExecutePreparedQuery(ctx, client, c)
-			case 12:
-				node := random.RandomChoice(checkpointNodes)
-				runCheckpointRead(ctx, node, c)
-			case 13, 14:
-				runSecondaryRead(ctx, client, c)
-			case 15:
-				runRead(ctx, client, c)
-			default:
-				// Every slot the roll can produce has an arm; a fall-through means
-				// the two lists drifted and a read kind stopped being dispatched.
-				assert.Unreachable("singleton_driver_model: read dispatch has an unreachable slot", nil)
+		runGeneration(func(src *generation.Source) {
+			// Nominal weight 1/5: a read this iteration, split across the whole-ledger read
+			// (chart + ledger metadata), a single-account read, a transaction read
+			// (id + postings + reverted + metadata), a metadata-schema read (declared
+			// field types), the list queries (filtered, paginated, ordered windows
+			// over accounts, transactions and logs), and the prepared-query surface
+			// (the registry listing, and execution of a stored definition with its
+			// parameters bound). Reads validate against the in-flight bulk set,
+			// exercising cross-node freshness without needing quiescence. Account and
+			// transaction queries receive extra slots because together they must
+			// exercise every builtin and declared metadata index.
+			if generation.Choice(src, []uint8{0, 1, 2, 3, 4}) == 0 {
+				switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) {
+				case 0:
+					runLedgerRead(src, ctx, client, c)
+				case 1:
+					runTransactionRead(src, ctx, client, c)
+				case 2:
+					runSchemaRead(src, ctx, client, c)
+				case 3, 4:
+					runAccountQuery(src, ctx, client, c)
+				case 5, 6, 7:
+					runTransactionQuery(src, ctx, client, c)
+				case 8:
+					runReplay(src, ctx, client, c)
+				case 9:
+					runLogQuery(src, ctx, client, c)
+				case 10:
+					runListPreparedQueries(src, ctx, client, c)
+				case 11:
+					runExecutePreparedQuery(src, ctx, client, c)
+				case 12:
+					node := generation.Choice(src, checkpointNodes)
+					runCheckpointRead(src, ctx, node, c)
+				case 13, 14:
+					runSecondaryRead(src, ctx, client, c)
+				case 15:
+					runRead(src, ctx, client, c)
+				default:
+					// Every slot the roll can produce has an arm; a fall-through means
+					// the two lists drifted and a read kind stopped being dispatched.
+					assert.Unreachable("singleton_driver_model: read dispatch has an unreachable slot", nil)
+				}
+
+				return
 			}
 
-			continue
-		}
+			// Snapshot the committed state (O(1): persistent collections) and
+			// generate outside the lock — a published GlobalState is never mutated,
+			// the processor only rebinds c.modelState to a fork.
+			c.mu.Lock()
+			if c.paused {
+				c.mu.Unlock()
 
-		// Snapshot the committed state (O(1): persistent collections) and
-		// generate outside the lock — a published GlobalState is never mutated,
-		// the processor only rebinds c.modelState to a fork.
-		c.mu.Lock()
-		if c.paused {
+				return
+			}
+			state := c.modelState
+			ledgers := c.ledgerNamesSnapshot()
 			c.mu.Unlock()
 
-			continue
-		}
-		state := c.modelState
-		ledgers := c.ledgerNamesSnapshot()
-		c.mu.Unlock()
-
-		var bulk oracle.Bulk
-		if percentChance(10) {
-			bulk = generateCheckpointBulk(state)
-		} else {
-			bulk = generateBulk(state, ledgers, c.nextLedgerName(), c.liveTarget)
-		}
-		if len(bulk.Requests) == 0 {
-			continue
-		}
-		if !c.reserveLedgerCreate(bulk) {
-			continue
-		}
-		dispatchBulk(ctx, client, checkpointNodes, c, bulk)
+			var bulk oracle.Bulk
+			if percentChance(src, 10) {
+				bulk = generateCheckpointBulk(src, state)
+			} else {
+				bulk = generateBulk(src, state, ledgers, c.nextLedgerName(), c.liveTarget)
+			}
+			if len(bulk.Requests) == 0 {
+				return
+			}
+			if !c.reserveLedgerCreate(bulk) {
+				return
+			}
+			dispatchBulk(src, ctx, client, checkpointNodes, c, bulk)
+		})
 	}
 }
 
 // dispatchBulk sends every generated request through the same inflight and
 // processor path. Maintenance enable schedules a modeled disable independently,
 // so a write-blocked worker fleet cannot stall the run permanently.
-func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, checkpointNodes internal.PerNodeConns, c *Checker, bulk oracle.Bulk) {
+func dispatchBulk(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, checkpointNodes internal.PerNodeConns, c *Checker, bulk oracle.Bulk) {
 	defer c.releaseLedgerCreate(bulk)
 	checkpointCreate := isCheckpointCreate(bulk)
 	if checkpointCreate {
@@ -353,7 +355,7 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 
 		return
 	}
-	c.stampIdempotency(&bulk)
+	c.stampIdempotency(src, &bulk)
 	var predictedCheckpointID uint64
 	if checkpointCreate {
 		predictedCheckpointID = c.modelState.NextQueryCheckpointID()
@@ -368,7 +370,7 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 		registered := make(chan struct{})
 		done := make(chan struct{})
 		probeDone = done
-		node := random.RandomChoice(checkpointNodes)
+		node := generation.Choice(src, checkpointNodes)
 		go func() {
 			defer close(done)
 			runPredictedCheckpointRead(ctx, node.Bucket, c, predictedCheckpointID, start, registered)
@@ -465,7 +467,8 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 			enableSeq := c.maintenanceEnableSeq
 			c.mu.Unlock()
 
-			delay := time.Duration(internal.Rand().Int63n(int64(maintenanceMaxWindow)))
+			var delay time.Duration
+			runGeneration(func(src *generation.Source) { delay = time.Duration(src.Int63n(int64(maintenanceMaxWindow))) })
 			select {
 			case <-ctx.Done():
 				c.mu.Lock()
@@ -564,24 +567,24 @@ func bulkEnablesMaintenance(bulk oracle.Bulk) bool {
 // runSecondaryRead dispatches one of the read surfaces that share a single
 // slot of the read mix, so the entity queries the coverage sondes depend on
 // keep their share of the worker's reads.
-func runSecondaryRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
+func runSecondaryRead(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
 	case 0:
-		runAggregateQuery(ctx, client, c)
+		runAggregateQuery(src, ctx, client, c)
 	case 1:
-		runAuditQuery(ctx, client, c)
+		runAuditQuery(src, ctx, client, c)
 	case 2:
-		runLedgersList(ctx, client, c)
+		runLedgersList(src, ctx, client, c)
 	case 3:
-		runLedgerStats(ctx, client, c)
+		runLedgerStats(src, ctx, client, c)
 	case 4:
-		runIndexIntrospection(ctx, client, c)
+		runIndexIntrospection(src, ctx, client, c)
 	case 5:
-		runGetLog(ctx, client, c)
+		runGetLog(src, ctx, client, c)
 	case 6:
-		runAuditEntryRead(ctx, client, c)
+		runAuditEntryRead(src, ctx, client, c)
 	case 7:
-		runInspectIndex(ctx, client, c)
+		runInspectIndex(src, ctx, client, c)
 	default:
 		// Every slot the roll can produce has an arm; a fall-through means the
 		// two lists drifted and a read surface stopped being dispatched.
@@ -595,14 +598,14 @@ func runSecondaryRead(ctx context.Context, client servicepb.BucketServiceClient,
 // seeds the same declarations so the model's schema state matches the server's
 // from the start. Declaring a type creates no index (populateInitialSchema only
 // records the schema), so a later remove drops nothing.
-func initialSchema() []*commonpb.SetMetadataFieldTypeCommand {
-	n := int(random.RandomChoice([]uint8{0, 1, 2, 3}))
+func initialSchema(src *generation.Source) []*commonpb.SetMetadataFieldTypeCommand {
+	n := int(generation.Choice(src, []uint8{0, 1, 2, 3}))
 	cmds := make([]*commonpb.SetMetadataFieldTypeCommand, 0, n)
 	for range n {
 		cmds = append(cmds, &commonpb.SetMetadataFieldTypeCommand{
-			TargetType: random.RandomChoice(metaTargetPool),
-			Key:        metaKey(),
-			Type:       random.RandomChoice(metaTypePool),
+			TargetType: generation.Choice(src, metaTargetPool),
+			Key:        metaKey(src),
+			Type:       generation.Choice(src, metaTypePool),
 		})
 	}
 

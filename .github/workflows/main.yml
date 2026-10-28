@@ -199,6 +199,12 @@ jobs:
         run: >
           nix develop .#ci --command go -C tests/antithesis/workload test -race
           -tags enable_antithesis_sdk ./...
+      - name: Verify Hegel in the Debian workload runtime
+        run: nix develop .#ci --command just --justfile tests/antithesis/Justfile hegel-smoke
+      - name: Build the complete instrumented Antithesis workload
+        run: >-
+          nix develop .#ci --command just --justfile tests/antithesis/Justfile
+          workload-build-check ledger-antithesis-workload-ci:${{ github.sha }}
 
   Tests-Model:
     runs-on: namespace-profile-linux-amd64-4vcpu

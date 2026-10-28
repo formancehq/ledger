@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -22,6 +21,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // Index lifecycle. The query surface has index-backed conditions the compiler
@@ -205,18 +205,18 @@ func hasAssetTarget(f *commonpb.QueryFilter) (base string, precision uint32, ok 
 // asset — the account-by-asset lifecycle path. Bare, its result set is exactly
 // EverAssetAccounts(base, precision); under a combinator, matchAccountFilterIn
 // composes it with the current-account leaves.
-func genAccountAssetFilter() *commonpb.QueryFilter {
-	a := workloadAssets[int(random.RandomChoice([]uint8{0, 1, 2}))]
+func genAccountAssetFilter(src *generation.Source) *commonpb.QueryFilter {
+	a := workloadAssets[int(generation.Choice(src, []uint8{0, 1, 2}))]
 
 	switch {
-	case oneIn(16):
+	case oneIn(src, 16):
 		// A precision the index's one-byte cell cannot hold: rejected at
 		// compile time once the index is ready.
-		return filterHasAsset(a.base, math.MaxUint8+1+uint32(internal.Rand().Uint64()%1000))
-	case oneIn(8):
+		return filterHasAsset(a.base, math.MaxUint8+1+uint32(src.Uint64Range(0, 1000-1)))
+	case oneIn(src, 8):
 		// A cell nothing ever touched: a workload base under another precision,
 		// or a base the workload never posts.
-		if oneIn(2) {
+		if oneIn(src, 2) {
 			return filterHasAsset(a.base, a.precision+4)
 		}
 
@@ -564,50 +564,47 @@ func hasIndexGap(ls oracle.LedgerState) bool {
 	return false
 }
 
-// rollIndexOp: ~1-in-8 a bulk is an index create/drop rather than ledger
-// traffic. Lifecycle operations consume part of the same finite run, so this
-// rate keeps every builtin and metadata index reachable before the coverage
-// probes are evaluated. A ledger still missing indexes rolls harder: ledgers
-// are created and deleted mid-run, and a fresh one starts bare, so its whole
-// index set has to be built at more than the saturated fleet's average rate.
-func rollIndexOp(ls oracle.LedgerState) bool {
+// rollIndexOp: nominally 1-in-8 a bulk is an index create/drop rather than ledger
+// traffic. A ledger with missing indexes uses nominal weight 1/3 instead,
+// prioritizing index construction after creation. Hegel controls actual rates;
+// coverage probes must establish whether each index was exercised.
+func rollIndexOp(src *generation.Source, ls oracle.LedgerState) bool {
 	if hasIndexGap(ls) {
-		return oneIn(3)
+		return oneIn(src, 3)
 	}
 
-	return oneIn(8)
+	return oneIn(src, 8)
 }
 
 // generateIndexOp picks one workload index; creates it when the ledger lacks
 // it, else occasionally drops it (so the lifecycle keeps cycling) and otherwise
-// leaves it in place for queries to validate against. One-in-16 it instead
+// leaves it in place for queries to validate against. With nominal weight 1/16 it
 // probes CreateIndex on an UNDECLARED metadata field — rejected with
 // METADATA_FIELD_NOT_IN_SCHEMA, which the model predicts identically. Reads
 // committed state only.
-func generateIndexOp(g oracle.GlobalState, ledger string) *servicepb.Request {
-	if oneIn(16) {
+func generateIndexOp(src *generation.Source, g oracle.GlobalState, ledger string) *servicepb.Request {
+	if oneIn(src, 16) {
 		return createIndexReq(ledger, indexes.MetadataID(
-			random.RandomChoice([]commonpb.TargetType{
+			generation.Choice(src, []commonpb.TargetType{
 				commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-			}), "undeclared-"+metaKey()))
+			}), "undeclared-"+metaKey(src)))
 	}
 
 	ls := g.Ledger(ledger)
 	all := ledgerIndexPool(ls)
 
-	// A uniform pick spreads lifecycle operations over every (ledger, index)
-	// pair, so a fleet this size converges to "mostly present" far slower than
-	// one run lasts and queries are gated on an absent index. Filling a gap
-	// takes priority; the uniform pick still runs often enough to keep dropping.
+	// Prefer filling an absent index so index-gated queries can run. The
+	// fallback selects from every (ledger, index) pair through Hegel, allowing
+	// drops as well; neither branch promises an execution frequency.
 	absent := absentIndexes(ls, all)
-	if len(absent) > 0 && !oneIn(4) {
-		gap := absent[internal.Rand().Intn(len(absent))]
+	if len(absent) > 0 && !oneIn(src, 4) {
+		gap := absent[src.Intn(len(absent))]
 
 		return createIndexReq(ledger, gap.id)
 	}
 
-	pick := all[internal.Rand().Intn(len(all))]
+	pick := all[src.Intn(len(all))]
 
 	exists, _ := ls.IndexState(pick.canonical)
 	if !exists {
@@ -617,7 +614,7 @@ func generateIndexOp(g oracle.GlobalState, ledger string) *servicepb.Request {
 	// A dropped index is rebuilt from scratch, and queries needing it are gated
 	// until every replica reports it ready, so a high drop rate leaves the
 	// indexed query surface mostly unserved.
-	if oneIn(8) {
+	if oneIn(src, 8) {
 		return dropIndexReq(ledger, pick.id)
 	}
 
@@ -737,7 +734,8 @@ func (c *Checker) demoteAllIndexes() {
 // replica demotes it to ambiguous, where a not-ready rejection is tolerated.
 func runIndexReadinessPoller(ctx context.Context, c *Checker, conns internal.PerNodeConns, interval time.Duration) {
 	for {
-		jitter := time.Duration(internal.Rand().Int63n(int64(interval/2) + 1))
+		var jitter time.Duration
+		runGeneration(func(src *generation.Source) { jitter = time.Duration(src.Int63n(int64(interval/2) + 1)) })
 		select {
 		case <-ctx.Done():
 			return

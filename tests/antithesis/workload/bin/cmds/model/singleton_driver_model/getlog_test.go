@@ -4,11 +4,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"hegel.dev/go/hegel"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // topLevelLog builds a response log with no Apply arm — the shape ledger
@@ -24,26 +27,29 @@ func topLevelLog(seq uint64) *commonpb.Log {
 
 func TestPickLogSequenceUsesTheModelsLearnedSequences(t *testing.T) {
 	t.Parallel()
+	hegel.Test(t, func(ht *hegel.T) {
+		src := generation.NewSource(ht)
 
-	state := committedStateWithSequences(t, 42)
+		state := committedStateWithSequences(t, 42)
 
-	var sawLearned, sawUnassigned bool
-	for range 200 {
-		target, learned, ok := pickLogSequence(state)
-		require.True(t, ok)
-		if learned {
-			require.Equal(t, committedLogTarget{ledger: "L", id: 1, sequence: 42}, target)
-			sawLearned = true
-		} else {
-			require.Equal(t, uint64(42+unassignedSeqSlack), target.sequence, "the unassigned probe sits past every learned sequence")
-			sawUnassigned = true
+		var sawLearned, sawUnassigned bool
+		for range 200 {
+			target, learned, ok := pickLogSequence(src, state)
+			require.True(t, ok)
+			if learned {
+				require.Equal(t, committedLogTarget{ledger: "L", id: 1, sequence: 42}, target)
+				sawLearned = true
+			} else {
+				require.Equal(t, uint64(42+unassignedSeqSlack), target.sequence, "the unassigned probe sits past every learned sequence")
+				sawUnassigned = true
+			}
 		}
-	}
-	require.True(t, sawLearned)
-	require.True(t, sawUnassigned)
+		require.True(t, sawLearned)
+		require.True(t, sawUnassigned)
 
-	_, _, ok := pickLogSequence(oracle.NewGlobalState())
-	require.False(t, ok, "nothing to read back before a sequence is learned")
+		_, _, ok := pickLogSequence(src, oracle.NewGlobalState())
+		require.False(t, ok, "nothing to read back before a sequence is learned")
+	}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))
 }
 
 func TestCommittedLogMatchesTheModelsRow(t *testing.T) {
@@ -76,24 +82,27 @@ func TestCommittedLogMatchesTheModelsRow(t *testing.T) {
 // expectation for it must hold on a base that has folded the delete.
 func TestCommittedLogSurvivesLedgerDeletion(t *testing.T) {
 	t.Parallel()
+	hegel.Test(t, func(ht *hegel.T) {
+		src := generation.NewSource(ht)
 
-	gs := committedStateWithSequences(t, 42)
-	target := committedLogTarget{ledger: "L", id: 1, sequence: 42}
-	got := servedRows(gs.Ledger("L"), "L", 1)[0]
+		gs := committedStateWithSequences(t, 42)
+		target := committedLogTarget{ledger: "L", id: 1, sequence: 42}
+		got := servedRows(gs.Ledger("L"), "L", 1)[0]
 
-	deleted := gs.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
-		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
-	}}))
-	require.True(t, deleted.OK, deleted.Reason)
-	require.Empty(t, deleted.State.Ledger("L").LogRows(), "the per-ledger view is gone")
+		deleted := gs.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
+			DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
+		}}))
+		require.True(t, deleted.OK, deleted.Reason)
+		require.Empty(t, deleted.State.Ledger("L").LogRows(), "the per-ledger view is gone")
 
-	require.True(t, committedLogMatches(deleted.State, target, got))
+		require.True(t, committedLogMatches(deleted.State, target, got))
 
-	picked, learned, ok := pickLogSequence(deleted.State)
-	require.True(t, ok)
-	if learned {
-		require.Equal(t, target, picked, "the deleted ledger's log stays a read target")
-	}
+		picked, learned, ok := pickLogSequence(src, deleted.State)
+		require.True(t, ok)
+		if learned {
+			require.Equal(t, target, picked, "the deleted ledger's log stays a read target")
+		}
+	}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))
 }
 
 func TestServerLogKindMatchesModelVocabulary(t *testing.T) {

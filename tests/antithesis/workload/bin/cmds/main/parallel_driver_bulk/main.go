@@ -10,15 +10,16 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_bulk", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunGeneratedDriver("parallel_driver_bulk", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
 		r := internal.Rand()
-		addr1 := internal.GetRandomAddress()
-		addr2 := internal.GetRandomAddress()
+		addr1 := internal.GeneratedAddress(src)
+		addr2 := internal.GeneratedAddress(src)
 		metaKey := fmt.Sprintf("bulk-meta-%d", r.Uint64())
-		metaValue := fmt.Sprintf("v-%d", r.Uint64())
+		metaValue := fmt.Sprintf("v-%d", src.Uint64())
 
 		details := internal.Details{"ledger": ledger, "addr1": addr1, "addr2": addr2}
 
@@ -35,7 +36,7 @@ func main() {
 								Postings: []*commonpb.Posting{{
 									Source:      "world",
 									Destination: addr1,
-									Amount:      commonpb.NewUint256FromUint64(r.Uint64()%1000 + 1),
+									Amount:      commonpb.NewUint256FromUint64(src.Uint64Range(0, 999) + 1),
 									Asset:       "USD/2",
 								}},
 								Force: true,
@@ -53,7 +54,7 @@ func main() {
 								Postings: []*commonpb.Posting{{
 									Source:      "world",
 									Destination: addr2,
-									Amount:      commonpb.NewUint256FromUint64(r.Uint64()%1000 + 1),
+									Amount:      commonpb.NewUint256FromUint64(src.Uint64Range(0, 999) + 1),
 									Asset:       "EUR/2",
 								}},
 								Force: true,

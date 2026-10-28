@@ -27,17 +27,17 @@ import (
 	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_list_completeness", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunGeneratedDriver("parallel_driver_list_completeness", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -47,7 +47,7 @@ func main() {
 		}
 
 		// Menu axis: size of the confirmed write set.
-		txCount := antirandom.RandomChoice([]int{3, 8, 20})
+		txCount := generation.Choice(src, []int{3, 8, 20})
 
 		var (
 			acked  = map[uint64]uint64{} // acked tx ID → log sequence from the Apply ack
@@ -102,111 +102,129 @@ func main() {
 
 		// Menu axis: page size — small on purpose so a pagination spans many
 		// request/stream boundaries, maximizing mid-list fault windows.
-		pageSize := antirandom.RandomChoice([]uint32{1, 2, 5})
+		pageSize := generation.Choice(src, []uint32{1, 2, 5})
 
-		var (
-			afterTxID uint64
-			lastID    uint64
-			haveLast  bool
-			ordered   = true
-			seen      = map[uint64]int{}
-			clean     = false
-		)
+		assertListCompleteness(ctx, client, ledger, acked, txCount, pageSize, details)
+	})
+}
 
-		// Bounded exit: the owned ledger holds at most txCount acked writes
-		// plus a handful of ambiguous-but-committed ones; cap pages generously.
-		maxPages := txCount*4 + 16
+// Each page has its own read snapshot. Only pre-pagination acknowledgements
+// establish the required set; ambiguous writes may become visible between pages.
+// Transaction IDs are immutable and this owned ledger is never deleted, so the
+// exclusive ascending cursor cannot skip an acknowledged transaction legitimately.
+func assertListCompleteness(ctx context.Context, client servicepb.BucketServiceClient, ledger string, acked map[uint64]uint64, txCount int, pageSize uint32, details internal.Details) {
+	var (
+		afterTxID    uint64
+		lastID       uint64
+		haveLast     bool
+		ordered      = true
+		pagesBounded = true
+		seen         = map[uint64]int{}
+		clean        = false
+	)
 
-		for range maxPages {
-			var cursor string
-			if afterTxID > 0 {
-				cursor = pagecursor.Cursor{Key: strconv.FormatUint(afterTxID, 10)}.Encode()
-			}
-			stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-				Ledger: ledger,
-				Options: &commonpb.ListOptions{
-					PageSize: pageSize,
-					Cursor:   cursor,
-					Reverse:  true, // oldest-first, so IDs must increase across pages
-				},
-			})
-			if err != nil {
-				// Errored termination (transient or otherwise): inconclusive.
-				return
-			}
+	// Bounded exit: the owned ledger holds at most txCount acked writes
+	// plus a handful of ambiguous-but-committed ones; cap pages generously.
+	maxPages := txCount*4 + 16
 
-			var pageCount int
-
-			for {
-				tx, err := stream.Recv()
-				if errors.Is(err, io.EOF) {
-					break
-				}
-
-				if err != nil {
-					// Aborted stream: an explicit error is the CORRECT way to
-					// end an incomplete stream — never a violation here.
-					return
-				}
-
-				pageCount++
-
-				id := tx.GetId()
-				if haveLast && id <= lastID {
-					ordered = false
-				}
-
-				seen[id]++
-				lastID = id
-				haveLast = true
-				afterTxID = id
-			}
-
-			if pageCount == 0 {
-				// Clean EOF on an empty page: pagination is complete.
-				clean = true
-
-				break
-			}
+	for range maxPages {
+		var cursor string
+		if afterTxID > 0 {
+			cursor = pagecursor.Cursor{Key: strconv.FormatUint(afterTxID, 10)}.Encode()
 		}
-
-		if !clean {
-			// Page budget exhausted without a clean end — inconclusive.
+		stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
+			Ledger: ledger,
+			Options: &commonpb.ListOptions{
+				PageSize: pageSize,
+				Cursor:   cursor,
+				Reverse:  true, // oldest-first, so IDs must increase across pages
+			},
+		})
+		if err != nil {
+			// Errored termination (transient or otherwise): inconclusive.
 			return
 		}
 
-		var (
-			missing    []uint64
-			duplicates []uint64
-		)
+		var pageCount int
 
-		for id := range acked {
-			if seen[id] == 0 {
-				missing = append(missing, id)
+		for {
+			tx, err := stream.Recv()
+			if errors.Is(err, io.EOF) {
+				break
 			}
+
+			if err != nil {
+				// Aborted stream: an explicit error is the CORRECT way to
+				// end an incomplete stream — never a violation here.
+				return
+			}
+
+			pageCount++
+
+			id := tx.GetId()
+			if haveLast && id <= lastID {
+				ordered = false
+			}
+
+			seen[id]++
+			lastID = id
+			haveLast = true
+			afterTxID = id
 		}
 
-		for id, n := range seen {
-			if n > 1 {
-				duplicates = append(duplicates, id)
-			}
+		// A clean stream must honor the small requested page size. Otherwise
+		// completeness could pass without exercising the intended boundaries.
+		if pageCount > int(pageSize) {
+			pagesBounded = false
 		}
 
-		resultDetails := details.With(internal.Details{
-			"pageSize":   pageSize,
-			"seenCount":  len(seen),
-			"missing":    fmt.Sprintf("%v", missing),
-			"duplicates": fmt.Sprintf("%v", duplicates),
-		})
+		if pageCount == 0 {
+			// Clean EOF on an empty page: pagination is complete.
+			clean = true
 
-		assert.Always(len(missing) == 0,
-			"clean-EOF list pagination contains every acked transaction",
-			resultDetails)
-		assert.Always(len(duplicates) == 0,
-			"clean-EOF list pagination yields no duplicate transaction IDs",
-			resultDetails)
-		assert.Always(ordered,
-			"clean-EOF list pagination yields strictly increasing transaction IDs",
-			resultDetails)
+			break
+		}
+	}
+
+	if !clean {
+		// Page budget exhausted without a clean end — inconclusive.
+		return
+	}
+
+	var (
+		missing    []uint64
+		duplicates []uint64
+	)
+
+	for id := range acked {
+		if seen[id] == 0 {
+			missing = append(missing, id)
+		}
+	}
+
+	for id, n := range seen {
+		if n > 1 {
+			duplicates = append(duplicates, id)
+		}
+	}
+
+	resultDetails := details.With(internal.Details{
+		"pageSize":   pageSize,
+		"seenCount":  len(seen),
+		"missing":    fmt.Sprintf("%v", missing),
+		"duplicates": fmt.Sprintf("%v", duplicates),
 	})
+
+	assert.Always(pagesBounded,
+		"clean-EOF list pagination respects the requested page size",
+		resultDetails)
+	assert.Always(len(missing) == 0,
+		"clean-EOF list pagination contains every acked transaction",
+		resultDetails)
+	assert.Always(len(duplicates) == 0,
+		"clean-EOF list pagination yields no duplicate transaction IDs",
+		resultDetails)
+	assert.Always(ordered,
+		"clean-EOF list pagination yields strictly increasing transaction IDs",
+		resultDetails)
 }

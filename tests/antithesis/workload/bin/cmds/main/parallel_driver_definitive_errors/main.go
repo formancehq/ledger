@@ -26,6 +26,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 const attemptCount = 8
@@ -70,7 +71,8 @@ func referenceFilterCheck(
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_definitive_errors", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunGeneratedDriver("parallel_driver_definitive_errors", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
+		// This identity isolates the oracle ledger and its retry/reference keys.
 		r := internal.Rand()
 
 		// Dedicated ledger + dedicated account prefix: nothing ever funds
@@ -95,7 +97,7 @@ func main() {
 
 		for i := range attemptCount {
 			ref := fmt.Sprintf("deferr-%d-%d", run, i)
-			source := fmt.Sprintf("deferr-src:%d", r.Uint64()%internal.UserAccountCount)
+			source := fmt.Sprintf("deferr-src:%d", src.Uint64Range(0, internal.UserAccountCount-1))
 
 			// Two engineered rejection classes: (a) overdraft without Force
 			// from a never-funded account → FailedPrecondition-class;

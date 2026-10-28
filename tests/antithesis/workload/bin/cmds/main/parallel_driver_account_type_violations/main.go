@@ -13,19 +13,18 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_account_type_violations", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
-		r := internal.Rand()
-
+	internal.RunGeneratedDriver("parallel_driver_account_type_violations", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
 		// Use a dedicated ledger with strict enforcement.
 		ledger := internal.PrefixTypeViolation.New()
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}
 
-		typeName := fmt.Sprintf("customer-%d", r.Uint64()%10000)
+		typeName := fmt.Sprintf("customer-%d", src.Uint64Range(0, 9999))
 		pattern := typeName + ":{id}"
 		details := internal.Details{"ledger": ledger, "typeName": typeName, "pattern": pattern}
 
@@ -66,7 +65,7 @@ func main() {
 		}
 
 		// 3. Transaction with a valid address — should succeed.
-		validAddr := fmt.Sprintf("%s:%d", typeName, r.Uint64()%1000)
+		validAddr := fmt.Sprintf("%s:%d", typeName, src.Uint64Range(0, 999))
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
@@ -91,7 +90,7 @@ func main() {
 			details.With(internal.Details{"address": validAddr, "error": err}))
 
 		// 4. Transaction with an invalid address — should fail with ACCOUNT_NOT_MATCHING_TYPE.
-		invalidAddr := fmt.Sprintf("invalid-prefix:%d", r.Uint64()%1000)
+		invalidAddr := fmt.Sprintf("invalid-prefix:%d", src.Uint64Range(0, 999))
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
