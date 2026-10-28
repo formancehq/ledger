@@ -189,7 +189,6 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 
 	// Shared secret for inter-node authentication
 	runCmd.Flags().String("cluster-secret", "", "Shared secret for inter-node gRPC authentication. Requires TLS (--tls-mode != disabled) — the secret would otherwise be sent in plaintext.")
-	runCmd.Flags().String("operator-secret", "", "Secret for operator ledgerctl calls. Distinct from --cluster-secret and requires TLS.")
 
 	// Ed25519 authentication keys
 	runCmd.Flags().String("auth-ed25519-keys", "", "Path to JSON file with Ed25519 public keys and scopes for authentication")
@@ -622,7 +621,6 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 
 	// Cluster secret for inter-node authentication
 	cfg.ClusterSecret = getString("cluster-secret", "")
-	operatorSecret := getString("operator-secret", "")
 
 	// Authentication configuration
 	ed25519KeysFile := getString("auth-ed25519-keys", "")
@@ -637,7 +635,6 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 		ScopeMappingJSON:     scopeMappingJSON,
 		AnonymousScopes:      getString("auth-anonymous-scopes", ""),
 		OIDCDiscoveryTimeout: getDuration("auth-discovery-timeout", 10*time.Second),
-		OperatorSecret:       operatorSecret,
 	}
 	// Idempotency TTL
 	cfg.IdempotencyTTL = getDuration("idempotency-ttl", 24*time.Hour)

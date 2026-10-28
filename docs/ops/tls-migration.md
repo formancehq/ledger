@@ -132,9 +132,11 @@ at least partially active (`mode != disabled`). Sending a
 static token over plaintext is an anti-pattern, so the secret only exists
 when the wire is encrypted.
 
-The operator also provisions a distinct `operator-secret` key in the managed
-Secret. `ledgerctl` and backup Jobs use that credential; the Raft
-`cluster-secret` is never exposed as a direct client token.
+Operator maintenance commands use an Ed25519 credential from the `Credentials`
+CRD. The private seed remains in the Credentials Secret and the public key is
+mounted into Ledger through `AUTH_ED25519_KEYS`; the operator signs short-lived
+JWTs for `ledgerctl` and backup Jobs. The Raft `cluster-secret` is never exposed
+as a direct client token.
 
 This means **authentication requires TLS**. Note the two guards differ in
 strictness:

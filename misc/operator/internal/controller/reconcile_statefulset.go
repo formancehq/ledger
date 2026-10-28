@@ -375,6 +375,18 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 	var volumeMounts []corev1.VolumeMount
 	var volumes []corev1.Volume
 
+	if targetTLSMode != tlsModeDisabled && ledger.Spec.Auth != nil && ledger.Spec.Auth.OperatorCredentialsRef != "" {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name: "operator-credentials", MountPath: "/operator-credentials", ReadOnly: true,
+		})
+		volumes = append(volumes, corev1.Volume{
+			Name: "operator-credentials",
+			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
+				SecretName: operatorCredentialsSecretName(ledger.Spec.Auth.OperatorCredentialsRef),
+			}},
+		})
+	}
+
 	for _, vd := range volumeDefs {
 		if vd.spec.HostPath != nil {
 			hp := vd.spec.HostPath
@@ -469,7 +481,6 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 			clusterSecretName(ledger.Name),
 			clusterSecretKey,
 		))
-		envVars = append(envVars, secretKeyEnv("OPERATOR_SECRET", clusterSecretName(ledger.Name), operatorSecretKey))
 	}
 
 	container := corev1.Container{

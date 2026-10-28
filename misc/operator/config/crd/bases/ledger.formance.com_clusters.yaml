@@ -1013,6 +1013,11 @@ spec:
                     items:
                       type: string
                     type: array
+                  operatorCredentialsRef:
+                    description: |-
+                      OperatorCredentialsRef names a cluster-scoped Credentials resource whose
+                      Ed25519 seed is used by operator-issued ledgerctl JWTs.
+                    type: string
                   readKeySetMaxRetries:
                     description: ReadKeySetMaxRetries is the maximum number of retries
                       for reading key sets.

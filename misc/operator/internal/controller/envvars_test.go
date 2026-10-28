@@ -1400,6 +1400,7 @@ func TestBuildEnvVars_LedgerctlConnection(t *testing.T) {
 			t.Parallel()
 			ls := newMinimalCluster()
 			ls.Spec.TLS = &ledgerv1alpha1.TLSConfig{CASecretKey: "ca.crt"}
+			ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{OperatorCredentialsRef: "ops"}
 
 			envs := buildEnvVars(ls, tlsMode, nil)
 
@@ -1408,12 +1409,13 @@ func TestBuildEnvVars_LedgerctlConnection(t *testing.T) {
 			assertNoEnv(t, envs, "LEDGERCTL_INSECURE")
 			assertEnv(t, envs, "LEDGERCTL_TLS_CA_CERT", "/tls/ca.crt")
 
-			authToken := findEnv(envs, "LEDGERCTL_AUTH_TOKEN")
-			require.NotNil(t, authToken)
-			require.NotNil(t, authToken.ValueFrom)
-			require.NotNil(t, authToken.ValueFrom.SecretKeyRef)
-			require.Equal(t, clusterSecretName(ls.Name), authToken.ValueFrom.SecretKeyRef.Name)
-			require.Equal(t, operatorSecretKey, authToken.ValueFrom.SecretKeyRef.Key)
+			if tlsMode == tlsModeRequired {
+				assertEnv(t, envs, "OPERATOR_SIGNING_KEY", "/operator-credentials/seed.hex")
+				keyID := findEnv(envs, "OPERATOR_SIGNING_KEY_ID")
+				require.NotNil(t, keyID)
+				require.Equal(t, operatorCredentialsSecretName("ops"), keyID.ValueFrom.SecretKeyRef.Name)
+				require.Equal(t, "key-id", keyID.ValueFrom.SecretKeyRef.Key)
+			}
 		})
 	}
 
@@ -1421,6 +1423,7 @@ func TestBuildEnvVars_LedgerctlConnection(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
 		ls.Spec.TLS = &ledgerv1alpha1.TLSConfig{}
+		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{OperatorCredentialsRef: "ops"}
 
 		envs := buildEnvVars(ls, tlsModeRequired, nil)
 
@@ -1429,12 +1432,7 @@ func TestBuildEnvVars_LedgerctlConnection(t *testing.T) {
 		assertNoEnv(t, envs, "LEDGERCTL_INSECURE")
 		assertNoEnv(t, envs, "LEDGERCTL_TLS_CA_CERT")
 
-		authToken := findEnv(envs, "LEDGERCTL_AUTH_TOKEN")
-		require.NotNil(t, authToken)
-		require.NotNil(t, authToken.ValueFrom)
-		require.NotNil(t, authToken.ValueFrom.SecretKeyRef)
-		require.Equal(t, clusterSecretName(ls.Name), authToken.ValueFrom.SecretKeyRef.Name)
-		require.Equal(t, operatorSecretKey, authToken.ValueFrom.SecretKeyRef.Key)
+		assertEnv(t, envs, "OPERATOR_SIGNING_KEY", "/operator-credentials/seed.hex")
 	})
 }
 

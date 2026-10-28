@@ -4546,8 +4546,9 @@ the same on all nodes in the cluster.
 
 `--cluster-secret` is not a `ledgerctl` credential. Direct service-API calls
 with it are rejected; only the follower-to-leader write-forwarding hop may use
-it. Operator automation uses the separate `--operator-secret` credential,
-which also requires TLS and is never treated as a cluster peer.
+it. Operator automation uses an Ed25519 credential from the `Credentials` CRD,
+with only the scopes required for maintenance operations, and is never treated
+as a cluster peer.
 
 The cluster secret and `--auth-enabled` are separate mechanisms:
 

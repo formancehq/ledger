@@ -64,6 +64,12 @@ func clusterSecretName(crName string) string {
 	return resourceName(crName) + "-cluster-secret"
 }
 
+// operatorCredentialsSecretName returns the per-cluster replica Secret created
+// by the Credentials reconciler for an operator credential.
+func operatorCredentialsSecretName(credentialsName string) string {
+	return prefixedName(credentialsName) + "-credentials-keys"
+}
+
 // credentialsCanonicalSecretName returns the name of the canonical seed Secret for a
 // Credentials. This Secret lives in the operator's own namespace and
 // holds the sole source of truth for the credentials's Ed25519 keypair; the
