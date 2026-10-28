@@ -131,6 +131,28 @@ func TestStoppedUpgradeRequiresHeadlessService(t *testing.T) {
 	require.Nil(t, cluster.Status.Upgrade)
 }
 
+func TestStoppedUpgradePreservesAuthKeysWithUnresolvedCredentials(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cluster := authEnabledCluster("test", "default", map[string]string{"tier": "gold"})
+	*cluster.Spec.Auth.Enabled = false
+	cred := matchingCredentials("test-cred", cluster.Labels, false, "", "")
+	cm := existingAuthKeysConfigMap(cluster.Name, cluster.Namespace)
+	c := fake.NewClientBuilder().WithScheme(authKeysScheme(t)).WithObjects(cred, cm).Build()
+	r := &ClusterReconciler{Client: c}
+
+	_, pending, err := r.reconcileAuthKeysWithDeletion(ctx, cluster, false)
+	require.NoError(t, err)
+	require.False(t, pending.pending())
+	key := types.NamespacedName{Name: cm.Name, Namespace: cm.Namespace}
+	require.NoError(t, c.Get(ctx, key, &corev1.ConfigMap{}), "active upgrade must keep a ConfigMap still mounted by source Pods")
+
+	_, pending, err = r.reconcileAuthKeysWithDeletion(ctx, cluster, true)
+	require.NoError(t, err)
+	require.False(t, pending.pending())
+	require.True(t, apierrors.IsNotFound(c.Get(ctx, key, &corev1.ConfigMap{})), "ordinary reconciliation may remove the stale ConfigMap")
+}
+
 func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

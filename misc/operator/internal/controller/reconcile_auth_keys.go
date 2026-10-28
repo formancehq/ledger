@@ -437,6 +437,9 @@ func (r *ClusterReconciler) reconcileAuthKeysWithDeletion(ctx context.Context, l
 	// preserve (the server needs no key set here), so delete the ConfigMap like any
 	// other no-effective-keys removal rather than ship an empty one.
 	if len(merged) == 0 {
+		if !mayDelete {
+			return nil, authKeysNotPending, nil
+		}
 		cm := &corev1.ConfigMap{}
 		if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: cmName}, cm); err != nil {
 			if !apierrors.IsNotFound(err) {
