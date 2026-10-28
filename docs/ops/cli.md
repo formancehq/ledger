@@ -1545,6 +1545,11 @@ ledgerctl transactions create [flags]
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
+Posting flag amounts must be decimal integers between `0` and `2^256 - 1`
+(inclusive). Interactive amounts must be positive and obey the same upper
+bound. Negative and overflowing amounts return a validation error before any
+Apply RPC; accepted amounts retain their exact value, including uint256 maximum.
+
 **Creating transactions with postings:**
 
 ```bash
@@ -2811,35 +2816,6 @@ ledgerctl cluster transfer-leader 2
 
 # Transfer with custom timeout
 ledgerctl cluster transfer-leader 3 --timeout 5s
-```
-
-#### cluster promote-learner
-
-Promote a learner (non-voting) node to a full voter in the Raft cluster. The request is forwarded to the leader.
-
-```bash
-ledgerctl cluster promote-learner <node-id> [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--timeout` | `30s` | Request timeout |
-
-**Behavior:**
-- The request is forwarded to the current leader if sent to a follower
-- The leader proposes a ConfChange to promote the learner to a voter
-- Once committed, the node participates in elections and can become leader
-
-**Example:**
-
-```bash
-# Promote learner node 4 to voter
-ledgerctl cluster promote-learner 4
-
-# Promote with custom timeout
-ledgerctl cluster promote-learner 5 --timeout 60s
 ```
 
 #### cluster remove-node
@@ -4124,11 +4100,17 @@ ledger run --response-signing-key ./response-keys/seed.hex [other flags...]
 ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create --ledger my-ledger --posting "world,bank,1000,USD"
 ```
 
-With `--response-verify-key`, prepared query create/update/delete and query
-checkpoint create/delete verify the returned Apply log signatures before
-reporting success or reading the created checkpoint ID. Verification also
-checks that each visible log matches the authenticated payload. Missing or
-invalid signatures and mismatched logs cause the command to fail.
+With `--response-verify-key`, `transactions set-metadata`/`delete-metadata`,
+`numscripts save`, prepared query create/update/delete, and query checkpoint
+create/delete verify the returned Apply log signatures before reporting
+success or reading returned fields such as a script name/version or checkpoint
+ID. Verification also checks that each visible log matches the authenticated
+payload. Missing or invalid signatures, signatures from another key, and
+mismatched logs cause the command to fail. Without this flag, verification is
+optional and unsigned responses remain accepted.
+
+Verification happens after the mutation RPC completes. A verification failure
+does not roll back the mutation; the client cannot authenticate its outcome.
 
 Clients can also discover the server's public key via the `Discovery` RPC.
 
@@ -4300,6 +4282,10 @@ Configure in-memory caches used by the FSM and Numscript parser.
 | `--cache-rotation-threshold` | uint64 | `1000` | Cache rotation threshold: number of Raft entries applied before rotating the FSM attribute cache generation (0 = use default 1000) |
 
 The FSM attribute cache uses a two-generation scheme. After `cache-rotation-threshold` entries are applied, the active generation is rotated. Higher values use more memory but reduce cache misses. This is a mutable cluster-wide setting: change it with the [rolling upgrade procedure](./cluster-operations.md#cluster-configuration-updates) so the leader propagates the new value deterministically through Raft.
+
+Zero resolves to 1000 before the leader compares or proposes the desired
+configuration. See the [zero-default rollout restrictions](./cluster-operations.md#zero-default-rollout-and-existing-committed-zero-entries)
+when older binaries can still become leader or a zero value was already committed.
 
 ```bash
 # Default: rotate every 1000 entries
@@ -5017,8 +5003,11 @@ progress, not proof of external delivery: internal or filtered logs can advance
 the cursor without a publish. The human view also shows the error occurrence time.
 Startup errors clear after the sink starts successfully.
 Human, JSON, YAML, and JSON result-file output mask credentials embedded in
-NATS, HTTP, and ClickHouse URLs. Usernames and connection details remain
-visible, while passwords and token-only NATS userinfo display as `****`.
+NATS, HTTP, and ClickHouse URLs. Connection details and usernames paired with
+passwords remain visible. HTTP endpoints use the shared sensitive-URL policy:
+passwords, passwordless userinfo tokens, and credential query values such as
+`access_token` display as `xxxxx`; harmless query controls remain visible.
+NATS and ClickHouse credentials display as `****`.
 
 ```bash
 ledgerctl events list
@@ -5036,6 +5025,10 @@ Add a named event sink configuration. An existing name is rejected; the configur
 
 After a successful update, the displayed configuration applies the same URL
 credential masking as `events list`; the submitted configuration is unchanged.
+This applies to human, JSON, YAML, and JSON result-file output. JSON, YAML,
+and JSON result-file output represent HTTP HMAC secrets with `(set)` / `(none)`
+presence markers. Human output shows `Secret: (set)` when configured and
+omits the Secret row when no HMAC secret is set.
 
 Currently supported sink types: **NATS JetStream**, **ClickHouse**, **Kafka**, **HTTP**, **Databricks**.
 

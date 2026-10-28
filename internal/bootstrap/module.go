@@ -1485,6 +1485,9 @@ func generateAuditKey() ([]byte, error) {
 func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, builder *plan.Builder, store *dal.Store, cfg Config, logger logging.Logger) {
 	clusterState, _ := query.ReadClusterState(store)
 
+	// Resolve local sentinels before replication, just as cache construction does.
+	cfg.RaftConfig.SetDefaults()
+
 	// Clone before mutating: cfg.BloomConfig is the process-wide fx-provided
 	// message, and LeaderReadyEvent can be dispatched concurrently (the
 	// observer dispatches inline, and a leadership gain spawns an unguarded

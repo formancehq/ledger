@@ -147,6 +147,14 @@ older-than-one-minute samples.
 
 ## Read Operations
 
+### Analyze Numscript source
+
+`BucketService.AnalyzeNumscript` takes source text and the required language
+version `v1`. It returns sorted external inputs and typed diagnostics in the
+response. It needs query-read authorization and never accesses a ledger or
+changes state. See the [scripting contract](../scripting/numscript-library.md#read-only-source-analysis)
+for feature and diagnostic behavior.
+
 ### Ledger configuration confidentiality
 
 GetLedger and ListLedgers return detached credential-safe views, including
@@ -647,7 +655,15 @@ preservation of unrelated, `Unknown`, and structured statuses during closure.
 This is an interrupted outcome, not a definitive business rejection:
 `Unavailable` can arrive **after a write has committed** when its response is
 lost. A client retry must retain the original idempotency key and payload.
-Without a key, replaying the request may execute it again. The regressions in
+Without a key, replaying the request may execute it again.
+`pkg/actions/grpc_test.go` count attempts against a server that always returns
+`Unavailable`. `actions.GRPCRetryPolicy` allows five total attempts, grpc-go's
+default cap, with four exponential backoffs totaling 3.75s before jitter. This
+covers the default 1–2s leader-election window without extending every failed
+call to the former declared 50 attempts. The Antithesis per-node connections
+use their retry interceptors without a second native retry policy.
+
+The regressions in
 `tests/antithesis/workload/internal/client_transport_test.go` commit against a
 real Ledger node and close the peer connection before response delivery. They
 retain the native gRPC retry control and separately exercise the actual
