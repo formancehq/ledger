@@ -442,3 +442,26 @@ short-lived JWTs are signed for its `ledgerctl` calls. The Ledger receives the
 public key through its auth-key configuration. The credential is scoped and is
 not a superuser; the Raft `cluster-secret` remains reserved for peer
 authentication and is never used as a service-API token.
+
+### Interactive debug box
+
+For interactive troubleshooting, opt into a dedicated `ledgerctl` pod:
+
+```yaml
+spec:
+  auth:
+    enabled: true
+  debugBox:
+    enabled: true
+```
+
+The operator creates a separate `Credentials` resource with `superuser: true`
+and a pod using the Ledger image with its server entrypoint overridden by an
+idle shell. The credential seed is mounted only in that pod. The interactive
+shell exposes a `ledgerctl` wrapper that mints a five-minute token for each
+command; the underlying signing inputs are available as
+`$OPERATOR_SIGNING_KEY` and `$OPERATOR_SIGNING_KEY_ID`. Disabling the option,
+disabling authentication, or
+deleting the Cluster removes the pod and the credential. Because this grants
+full service access, keep the option disabled outside an explicitly controlled
+debugging window.

@@ -9,6 +9,7 @@ const (
 	labelInstance           = "app.kubernetes.io/instance"
 	labelName               = "app.kubernetes.io/name"
 	labelOperatorCredential = "ledger.formance.com/operator-credential"
+	labelDebugBoxCredential = "ledger.formance.com/debug-box-credential"
 	annotationSpecHash      = "ledger.formance.com/spec-hash"
 	annotationAuthKeysHash  = "ledger.formance.com/auth-keys-hash"
 

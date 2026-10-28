@@ -52,7 +52,7 @@ const operatorCredentialsFinalizer = "ledger.formance.com/operator-credentials"
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=delete;get;list;patch
 // +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;patch
-// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
@@ -74,9 +74,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// cannot garbage-collect the generated credential through an owner reference.
 	// Use a Cluster finalizer to remove it explicitly.
 	if !ledger.DeletionTimestamp.IsZero() {
-		credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: operatorCredentialsName(ledger)}}
-		if err := r.Delete(ctx, credentials); err != nil && !apierrors.IsNotFound(err) {
-			return ctrl.Result{}, fmt.Errorf("deleting operator Credentials: %w", err)
+		for _, credentialsName := range []string{operatorCredentialsName(ledger), debugBoxCredentialsName(ledger)} {
+			credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: credentialsName}}
+			if err := r.Delete(ctx, credentials); err != nil && !apierrors.IsNotFound(err) {
+				return ctrl.Result{}, fmt.Errorf("deleting generated Credentials %s: %w", credentialsName, err)
+			}
 		}
 		if controllerutil.ContainsFinalizer(ledger, operatorCredentialsFinalizer) {
 			controllerutil.RemoveFinalizer(ledger, operatorCredentialsFinalizer)
@@ -301,6 +303,22 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	meta.RemoveStatusCondition(&ledger.Status.Conditions, "OperatorCredentialsPending")
 
+	debugBoxReady, err := r.reconcileDebugBox(ctx, ledger)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("reconciling debug box: %w", err)
+	}
+	if ledger.Spec.DebugBox != nil && ledger.Spec.DebugBox.Enabled && ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled && !debugBoxReady {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               "DebugBoxPending",
+			Status:             metav1.ConditionTrue,
+			Reason:             "CredentialsNotReady",
+			Message:            "waiting for the debug box superuser Credentials keypair to be distributed",
+			ObservedGeneration: ledger.Generation,
+		})
+	} else {
+		meta.RemoveStatusCondition(&ledger.Status.Conditions, "DebugBoxPending")
+	}
+
 	// Reconcile auth keys from Credentials (before StatefulSet).
 	credentials, pendingReason, err := r.reconcileAuthKeys(ctx, ledger)
 	if err != nil {
@@ -426,6 +444,7 @@ func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ServiceAccount{}).
 		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.Pod{}).
 		Owns(&networkingv1.Ingress{}).
 		Owns(&networkingv1.NetworkPolicy{}).
 		Watches(&ledgerv1alpha1.Credentials{}, handler.EnqueueRequestsFromMapFunc(r.credentialsToClusters)).
@@ -709,6 +728,10 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 		return errors.New("auth.enabled requires tls.enabled: authentication needs TLS " +
 			"(the ledger server rejects --auth-enabled without --tls-mode=required); " +
 			"enable TLS before enabling auth")
+	}
+	if spec.DebugBox != nil && spec.DebugBox.Enabled &&
+		(spec.Auth == nil || spec.Auth.Enabled == nil || !*spec.Auth.Enabled) {
+		return errors.New("debugBox.enabled requires auth.enabled: the debug box uses a dedicated superuser credential")
 	}
 
 	if spec.Cache != nil && spec.Cache.RotationThreshold != nil && *spec.Cache.RotationThreshold <= 0 {
