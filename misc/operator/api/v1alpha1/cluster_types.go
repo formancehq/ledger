@@ -78,6 +78,11 @@ type ClusterSpec struct {
 	// +optional
 	GrpcPort int32 `json:"grpcPort,omitempty"`
 
+	// GrpcPeerPort is the dedicated gRPC port used for authenticated
+	// inter-node service forwarding.
+	// +optional
+	GrpcPeerPort int32 `json:"grpcPeerPort,omitempty"`
+
 	// HttpPort is the HTTP service port.
 	// +kubebuilder:default=9000
 	// +optional
