@@ -27,14 +27,15 @@ Two pages cover what the checker depends on and what it does.
 
 ## Why a dedicated subsystem
 
-The audit chain and the checker are tightly coupled by an explicit invariant: **every persisted dataset is either hash-bound (the audit log itself) or derivable from the hash-bound data, in which case the checker must verify it on every `Check()` run** ([CLAUDE.md invariant #8](../../../../../AGENTS.md)). Two scope refinements from invariant #8 apply: the rule covers the **primary FSM store** that `Check()` opens and walks — **peer secondary stores** (the `readstore` inverted index today; the `usagestore` counters forthcoming with EN-1334) are out of *main-store checker* scope as a rule, with **exactly one narrow, deliberate exception**: the readstore **reverse map** (`0x03`), verified by `compareReverseMapOrphans` (EN-1458), which `Check()` opens the peer readstore read-only to scan. That is the only peer-store data any pass reads; `usagestore` stays out entirely. The carve-out is **not** a claim the rest is integrity-safe: the readstore's index *contents* are a **current open integrity gap** until its per-replica detect/drop/rebuild is wired (`EN-1514` / `EN-1323`) — a rebuild-health concern of the index builder, not a main-store checker concern. And a primary-store projection is exempt only when it is rebuildable through a real, *wired* rebuild path or is purely informational. This rule shapes design decisions across every other subsystem — what to refactor versus what to bind — so the checker's coverage is its own first-class architectural concern.
+The audit chain and the checker are tightly coupled by an explicit invariant: **every persisted business projection is either hash-bound (the audit log itself) or derivable from the hash-bound data and verified on every `Check()` run; other primary-store state requires an explicit documented exemption** ([AGENTS.md invariant #8](../../../../../AGENTS.md)). Two scope refinements from invariant #8 apply: the rule covers the **primary FSM store** that `Check()` opens and walks — **peer secondary stores** (the `readstore` inverted index today; the `usagestore` counters forthcoming with EN-1334) are out of *main-store checker* scope as a rule, with **exactly one narrow, deliberate exception**: the readstore **reverse map** (`0x03`), verified by `compareReverseMapOrphans` (EN-1458), which `Check()` opens the peer readstore read-only to scan. That is the only peer-store data any pass reads; `usagestore` stays out entirely. The carve-out is **not** a claim the rest is integrity-safe: the readstore's index *contents* are a **current open integrity gap** until its per-replica detect/drop/rebuild is wired (`EN-1514` / `EN-1323`) — a rebuild-health concern of the index builder, not a main-store checker concern. A primary-store dataset may instead have an explicit operational exemption, such as cluster policy below, or qualify through a real, wired rebuild path. Business and signing projections retain their verification obligations. This rule shapes design decisions across every other subsystem — what to refactor versus what to bind — so the checker's coverage is its own first-class architectural concern.
 
 For new persisted state, first classify whether it is business truth, governance
 truth, operational consensus state, or a rebuildable projection using
 [Audit-Bound vs Technical State](../../audit-vs-technical-state.md). Per invariant
 #8, every non-audit dataset persisted in the main Pebble store needs checker
-coverage unless it is genuinely discarded and rebuilt by a lifecycle path or lives
-in a separate rebuildable side-store. "Genuinely discarded and rebuilt" is narrow:
+coverage or an explicit operational exemption. Other exclusions cover data
+genuinely discarded and rebuilt by a lifecycle path or held in a separate
+rebuildable side-store. "Genuinely discarded and rebuilt" is narrow:
 bloom filters qualify on the backup/restore path
 (`internal/infra/attributes/prepare.go` deletes the persisted blocks so restore
 rebuilds them from a full attribute scan) and on a bloom-config change applied
@@ -103,11 +104,9 @@ expectation source. See [the boundary and membership contract](checker.md#alloca
 - [Indexer → indexes.md](../indexer/indexes.md) — the index registry is a projection the checker verifies via `compareIndexes`.
 - [Attributes](../attributes/) — volumes / metadata / reversion / idempotency projections the checker also verifies.
 
-Policy verification reads both historical policy orders and native proposal
-controls. Their raw audit bytes are hash-bound separately; see
-[audit-chain.md](audit-chain.md) and the
+Historical policy orders retain their original audit bytes and replay behavior.
+Native policy controls emit no business logs or audit entries. The current
+cluster policy is explicitly exempt from business projection verification;
+replay checks actual business effects without resource quotas. See the
+[policy boundary](checker.md#operational-policy-boundary) and the
 [proposal migration contract](../consensus/proposal-payloads.md).
-
-Cluster operational policy is exempt from business projection verification.
-Replay checks actual business effects without resource quotas; see the
-[policy boundary](checker.md#operational-policy-boundary).
