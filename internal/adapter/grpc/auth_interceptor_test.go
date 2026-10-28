@@ -73,6 +73,34 @@ func TestRejectDirectClusterSecret(t *testing.T) {
 	require.Equal(t, codes.Unauthenticated, status.Code(rejectDirectClusterSecret(duplicate, internalauth.AuthConfig{ClusterSecret: "cluster-secret"})))
 }
 
+type authTestServerStream struct{ ctx context.Context }
+
+func (s *authTestServerStream) SetHeader(metadata.MD) error  { return nil }
+func (s *authTestServerStream) SendHeader(metadata.MD) error { return nil }
+func (s *authTestServerStream) SetTrailer(metadata.MD)       {}
+func (s *authTestServerStream) Context() context.Context     { return s.ctx }
+func (s *authTestServerStream) SendMsg(any) error            { return nil }
+func (s *authTestServerStream) RecvMsg(any) error            { return nil }
+
+func TestAuthStreamInterceptorGuardsInfrastructureMethodsOnPeerListener(t *testing.T) {
+	interceptor := authStreamInterceptor(internalauth.AuthConfig{Enabled: true, ClusterSecret: "cluster-secret"}, true)
+	info := &ggrpc.StreamServerInfo{FullMethod: "/grpc.reflection.v1.ServerReflection/ServerReflectionInfo"}
+	called := false
+	handler := func(any, ggrpc.ServerStream) error {
+		called = true
+		return nil
+	}
+
+	err := interceptor(nil, &authTestServerStream{ctx: context.Background()}, info, handler)
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+	require.False(t, called)
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer cluster-secret"))
+	err = interceptor(nil, &authTestServerStream{ctx: ctx}, info, handler)
+	require.NoError(t, err)
+	require.True(t, called)
+}
+
 func (s *authInterceptorBucketServer) Barrier(ctx context.Context, _ *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
 	s.barrierCalls.Add(1)
 	s.barrierHasScope.Store(internalauth.HasScope(internalauth.ExpandedScopesFromContext(ctx), internalauth.ScopeOpsRead))
