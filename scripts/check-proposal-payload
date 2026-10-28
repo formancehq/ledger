@@ -14,12 +14,12 @@ compare_reports() {
     fi
 }
 
-# Native policy controls intentionally change audit item bytes and hence the
-# chain suffix. Compare intent/outcomes separately; never mask the raw legacy
-# comparison or the historical prefix of the stopped upgrade.
+# Native policy controls are unaudited. The probe independently checks chain
+# integrity and exact audit counts; compare final state across encodings and
+# preserve byte comparisons for all retained legacy history.
 compare_semantics() {
-    compare_reports <(jq -S 'del(.Items) | .Audit |= map(del(.hash))' "$1") \
-                    <(jq -S 'del(.Items) | .Audit |= map(del(.hash))' "$2")
+    compare_reports <(jq -S '{Policy, Ledgers, Applied, Timestamp}' "$1") \
+                    <(jq -S '{Policy, Ledgers, Applied, Timestamp}' "$2")
 }
 
 baseline=${1:-v3.0.0-rc.1}
@@ -56,4 +56,4 @@ compare_semantics "$probe_dir/old.json" "$probe_dir/upgraded.json"
 compare_reports <(jq -S '{Audit: .Audit[:3], Items: .Items[:3]}' "$probe_dir/old.json") \
                 <(jq -S '{Audit: .Audit[:3], Items: .Items[:3]}' "$probe_dir/upgraded.json")
 compare_reports "$probe_dir/upgraded.json" "$probe_dir/restarted.json"
-echo "PROPOSAL_PAYLOAD_COMPAT=PASS baseline=$baseline (legacy byte parity, native intent/state parity, retained historical prefix, stopped store/WAL upgrade and restart)"
+echo "PROPOSAL_PAYLOAD_COMPAT=PASS baseline=$baseline (legacy byte parity, native state parity and policy audit omission, retained historical prefix, stopped store/WAL upgrade and restart)"

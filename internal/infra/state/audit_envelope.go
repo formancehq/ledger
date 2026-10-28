@@ -292,12 +292,6 @@ func BuildPerItemPayload(item *auditpb.AuditItem) []byte {
 	buf = appendU32(buf, item.GetOrderIndex())
 	buf = appendU64(buf, item.GetLogSequence())
 	buf = appendLenBytes(buf, item.GetSerializedOrder())
-	// Historical items keep their exact preimage. The extension is present only
-	// for native policy intent and binds both its kind and immutable raw bytes.
-	if raw := item.GetSerializedSetClusterPolicy(); len(raw) != 0 {
-		buf = appendLenBytes(buf, []byte("audit:set-cluster-policy:v1"))
-		buf = appendLenBytes(buf, raw)
-	}
 
 	return buf
 }

@@ -64,7 +64,7 @@ func TestPayloadMirrorStatusCommitsOnlyWithIngestion(t *testing.T) {
 	}
 }
 
-func TestPayloadHistoryPreservesOutcomesWithNativeAuditAndRecovery(t *testing.T) {
+func TestPayloadHistoryPreservesOutcomesWithoutPolicyAuditAndRecovery(t *testing.T) {
 	t.Parallel()
 	legacy, oldStore, _ := newTestMachine(t)
 	modern, newStore, _ := newTestMachine(t)
@@ -90,47 +90,20 @@ func TestPayloadHistoryPreservesOutcomesWithNativeAuditAndRecovery(t *testing.T)
 		require.True(t, proto.Equal(before, wire), "apply must not mutate the wire proposal")
 		require.NoError(t, modern.CommitPreparedBatch(t.Context(), prepared))
 		fresh := prepared.Result
-		require.Equal(t, old.Results[0].AuditEntryWritten, fresh.Results[0].AuditEntryWritten)
+		nativePolicy := wire.GetSetClusterPolicy() != nil
+		require.Equal(t, !nativePolicy && old.Results[0].AuditEntryWritten, fresh.Results[0].AuditEntryWritten)
 		if old.Results[0].Error != nil {
 			require.EqualError(t, fresh.Results[0].Error, old.Results[0].Error.Error())
 		} else {
 			require.NoError(t, fresh.Results[0].Error)
 		}
-		require.Equal(t, legacy.State.LastAppliedTimestamp, modern.State.LastAppliedTimestamp)
-		require.Equal(t, legacy.State.NextSequenceID, modern.State.NextSequenceID)
 		require.True(t, proto.Equal(legacy.State.ClusterPolicy, modern.State.ClusterPolicy))
-		oldReader, err := oldStore.NewDirectReadHandle()
-		require.NoError(t, err)
-		newReader, err := newStore.NewDirectReadHandle()
-		require.NoError(t, err)
-		oldAudit, err := query.ReadLastAuditEntry(oldReader)
-		require.NoError(t, err)
-		newAudit, err := query.ReadLastAuditEntry(newReader)
-		require.NoError(t, err)
-		require.NotEqual(t, oldAudit.GetHash(), newAudit.GetHash(), "native policy intent has its own hash preimage")
-		oldAudit.Hash = nil
-		newAudit.Hash = nil
-		require.True(t, proto.Equal(oldAudit, newAudit), "audit outcome headers must be identical")
-		oldItems, err := query.ReadAuditItems(t.Context(), oldReader, oldAudit.GetSequence())
-		require.NoError(t, err)
-		newItems, err := query.ReadAuditItems(t.Context(), newReader, newAudit.GetSequence())
-		require.NoError(t, err)
-		require.Len(t, newItems, len(oldItems))
-		for j := range oldItems {
-			if policyOrder := p.GetOrders()[0].GetSystemScoped().GetSetClusterPolicy(); policyOrder != nil && fresh.Results[0].AuditEntryWritten {
-				require.Empty(t, newItems[j].GetSerializedOrder())
-				require.NotEmpty(t, newItems[j].GetSerializedSetClusterPolicy())
-				control := &raftcmdpb.SetClusterPolicyProposal{}
-				require.NoError(t, control.UnmarshalVT(newItems[j].GetSerializedSetClusterPolicy()))
-				require.True(t, proto.Equal(policyOrder.GetPolicy(), control.GetPolicy()))
-				require.Equal(t, oldItems[j].GetLogSequence(), newItems[j].GetLogSequence())
-			} else if len(newItems[j].GetSerializedSetClusterPolicy()) == 0 {
-				require.True(t, proto.Equal(oldItems[j], newItems[j]))
-			}
+		if nativePolicy {
+			require.Empty(t, fresh.Results[0].Logs)
 		}
-		require.NoError(t, oldReader.Close())
-		require.NoError(t, newReader.Close())
 	}
+	require.Equal(t, uint64(3), modern.State.NextAuditSequenceID, "only business success and failure are audited")
+	require.Equal(t, uint64(2), modern.State.NextSequenceID, "only ledger creation consumes a log sequence")
 	recovered := recoverMachineOnStore(t, newStore)
 	require.True(t, proto.Equal(modern.State.ClusterPolicy, recovered.State.ClusterPolicy))
 	require.Equal(t, modern.State.LastAppliedIndex, recovered.State.LastAppliedIndex)
@@ -148,11 +121,15 @@ func TestPolicyPayloadMaintenanceAndExhaustionGuards(t *testing.T) {
 	require.Equal(t, uint64(1), machine.State.ClusterPolicy.GetRevision())
 	machine.sharedState.SetMaintenanceMode(false)
 	machine.State.NextAuditSequenceID = ^uint64(0)
-	_, err = machine.ApplyEntries(t.Context(), store, makeEntry(t, 2, p))
-	var exhausted *domain.ErrSequenceExhausted
-	require.ErrorAs(t, err, &exhausted)
-	require.Equal(t, domain.SequenceCounterAudit, exhausted.Counter)
-	require.Equal(t, uint64(1), machine.State.ClusterPolicy.GetRevision())
+	machine.State.AuditKey = ""
+	beforeTime := machine.State.LastAppliedTimestamp
+	result, err = machine.ApplyEntries(t.Context(), store, makeEntry(t, 2, p))
+	require.NoError(t, err)
+	require.NoError(t, result.Results[0].Error)
+	require.False(t, result.Results[0].AuditEntryWritten)
+	require.Equal(t, uint64(2), machine.State.ClusterPolicy.GetRevision())
+	require.Equal(t, beforeTime, machine.State.LastAppliedTimestamp)
+	require.Equal(t, ^uint64(0), machine.State.NextAuditSequenceID)
 }
 
 func TestTechnicalPayloadBeforeAuditKeyAndWithoutAudit(t *testing.T) {

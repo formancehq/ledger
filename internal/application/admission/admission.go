@@ -623,11 +623,12 @@ func (a *Admission) prepareAdmission(ctx context.Context, buildPlan func(context
 		}
 	}
 
-	// Every audited request, including an internal cluster-policy proposal, requires the one-time
-	// replicated key. Waiting here prevents an early client request from
-	// committing an unhashable order while the leader initializes the key.
-	if err := a.waitAuditKeyReady(ctx); err != nil {
-		return nil, err
+	// Audited execution batches require the replicated key. Native policy
+	// controls have no business audit and can establish policy independently.
+	if admPlan.businessBatch {
+		if err := a.waitAuditKeyReady(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	// Hold business writes until the replicated cluster policy is committed. The

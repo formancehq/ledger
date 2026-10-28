@@ -22,7 +22,7 @@ func TechnicalUpdates(p *raftcmdpb.Proposal) []*raftcmdpb.TechnicalUpdate {
 	return p.GetTechnicalUpdates()
 }
 
-// IntentCount counts audited operations, including a native policy control.
+// IntentCount counts operations, including an unaudited native policy control.
 func IntentCount(p *raftcmdpb.Proposal) int {
 	if _, ok := p.GetPayload().(*raftcmdpb.Proposal_SetClusterPolicy); ok {
 		return 1

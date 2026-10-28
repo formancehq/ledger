@@ -225,16 +225,10 @@ const (
 	// expectations are never seeded from the live projection -- that would
 	// verify old, never-touched keys against a copy of themselves.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE CheckStoreErrorType = 23
-	// Emitted when the persisted cluster policy (SubGlobClusterPolicy) differs
-	// from the policy re-derived from chain-bound SetClusterPolicy orders. The
-	// policy gates idempotency expiration and query-checkpoint admission
-	// cluster-wide, so a tampered row silently changes replay/expiry and
-	// checkpoint behavior. The audit chain is the source of truth.
+	// Historical result retained for wire compatibility. Operational cluster
+	// policy is no longer compared against business audit history.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH CheckStoreErrorType = 24
-	// Emitted when the cluster policy could not be verified over the whole audit
-	// history: the live audit range was cut short by a hash chain break, so any
-	// policy update recorded after the break is unread. The pass reports this
-	// rather than presenting a partial replay as clean.
+	// Historical result retained for wire compatibility; no longer emitted.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE CheckStoreErrorType = 25
 	// Emitted when the persisted query-checkpoint rows (SubGlobQueryCheckpoint)
 	// diverge from the set the checker re-derived from chain-bound

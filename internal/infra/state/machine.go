@@ -1309,7 +1309,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// are deliberately kept beyond this no-mutation guard. MaxUint64 itself is
 	// not allocatable because persisting it would make the next sequence wrap to
 	// zero (EN-1860).
-	if proposals.IntentCount(proposal) > 0 {
+	if len(proposals.BatchOrders(proposal)) > 0 {
 		if fsm.State.AuditKey == "" {
 			return nil, errors.New("invariant: audit key is not committed before orders")
 		}
@@ -1378,6 +1378,26 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// proposal coverage — since the validation is cross-order by nature.
 	scopeFactory := NewScopeFactory(buffer, proposal.GetExecutionPlan(), fsm.logger, fsm.preloadMissCounter, raftIndex)
 
+	// Native policy controls are operational consensus state: no business log,
+	// audit sequence, idempotency outcome or HLC advancement.
+	if control, ok := proposal.GetPayload().(*raftcmdpb.Proposal_SetClusterPolicy); ok {
+		if fsm.sharedState.MaintenanceMode() {
+			result.Error = &domain.BusinessError{Err: domain.ErrMaintenanceMode}
+
+			return result, nil
+		}
+		if err := fsm.processor.ProcessClusterPolicy(control.SetClusterPolicy.GetPolicy(), scopeFactory); err != nil {
+			result.Error = &domain.BusinessError{Err: err}
+
+			return result, nil
+		}
+		if err := buffer.Merge(batch, nil); err != nil {
+			return nil, fmt.Errorf("merging cluster policy: %w", err)
+		}
+
+		return result, nil
+	}
+
 	if err := fsm.applyTechnicalUpdates(scopeFactory, batch, raftIndex, proposal); err != nil {
 		if invariant := planInvariantFailure(err); invariant != nil {
 			// Coverage miss or malformed execution plan in a TU handler
@@ -1429,7 +1449,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// FSM-level maintenance mode check: reject proposals containing non-maintenance
 	// orders that were admitted before maintenance mode was enabled but batched into
 	// a Raft entry applied after the maintenance mode flag was set.
-	if fsm.sharedState.MaintenanceMode() && (proposal.GetSetClusterPolicy() != nil || !authorizedInMaintenanceMode(proposals.BatchOrders(proposal))) {
+	if fsm.sharedState.MaintenanceMode() && !authorizedInMaintenanceMode(proposals.BatchOrders(proposal)) {
 		// Proves the admitted-before/applied-after race is actually exercised:
 		// this branch only fires when a write passed admission before the
 		// maintenance flag flipped on but applies after.
@@ -1576,11 +1596,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// never re-walks `logs` to rebuild them.
 	var ordersResult *processing.OrdersResult
 	if err == nil {
-		if control, ok := proposal.GetPayload().(*raftcmdpb.Proposal_SetClusterPolicy); ok {
-			ordersResult, err = fsm.processor.ProcessClusterPolicy(control.SetClusterPolicy.GetPolicy(), scopeFactory)
-		} else {
-			ordersResult, err = fsm.processor.ProcessOrders(orders, scopeFactory, buffer)
-		}
+		ordersResult, err = fsm.processor.ProcessOrders(orders, scopeFactory, buffer)
 		if ordersResult != nil {
 			logs = ordersResult.Logs
 		}
@@ -1588,7 +1604,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// A rejected internal proposal has no committed business verdict. Discard
 	// the staged WriteSet and let the caller retry after its producer is fixed.
 	// The error type owns this disposition; successes still take the normal
-	// audited path, including successful cluster-policy updates.
+	// audited path, including historical cluster-policy orders.
 	if _, uncommitted := errors.AsType[domain.UncommittedFailure](err); uncommitted {
 		fsm.State.LastAppliedTimestamp = previousTimestamp
 		result.Error = &domain.BusinessError{Err: err}
@@ -1839,7 +1855,7 @@ func (fsm *Machine) writeProposalAuditEntry(batch *dal.WriteSession, proposal *r
 	entry.Sequence = fsm.State.NextAuditSequenceID
 	entry.Timestamp = effectiveDate
 	entry.ProposalId = proposal.GetId()
-	entry.OrderCount = uint32(proposals.IntentCount(proposal))
+	entry.OrderCount = uint32(len(proposals.BatchOrders(proposal)))
 	entry.Ledgers = extractLedgers(orders)
 	entry.HashVersion = uint32(fsm.State.HashGenerator.Algorithm())
 	entry.CallerSnapshot = proposal.GetCallerSnapshot()
@@ -1854,10 +1870,6 @@ func (fsm *Machine) writeProposalAuditEntry(batch *dal.WriteSession, proposal *r
 	entry.Signature = proposal.GetSignature()
 
 	items := buildAuditItems(serializedOrders, logs)
-	if control, ok := proposal.GetPayload().(*raftcmdpb.Proposal_SetClusterPolicy); ok {
-		items = buildAuditItems([][]byte{nil}, logs)
-		items[0].SerializedSetClusterPolicy = control.SetClusterPolicy.MarshalDeterministicVT(nil)
-	}
 
 	// Hash pre-image: [header_payload || per_item_0 || ... ||
 	// per_item_N-1] hashed alongside lastAuditHash. The verifier

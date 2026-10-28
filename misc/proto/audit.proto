@@ -24,7 +24,7 @@ message AuditEntry {
     AuditSuccess success = 4;
     AuditFailure failure = 5;
   }
-  // Number of audited intents: batch orders, or one standalone policy control.
+  // Number of orders in the proposal (allows compact display without loading items).
   uint32 order_count = 6;
   // Per-order detail lines. Populated by GetAuditEntry, empty on ListAuditEntries.
   repeated AuditItem items = 7;
@@ -44,7 +44,7 @@ message AuditEntry {
   //     state.BuildHashedHeaderPayload — never persisted separately, so the
   //     typed fields ARE the source of truth
   //   - `per_item_payload` is the canonical binary encoding of each AuditItem
-  //     (order_index, log_sequence, serialized_order, serialized_set_cluster_policy), rebuilt
+  //     (order_index, log_sequence, serialized_order), rebuilt the same way
   //     via state.BuildPerItemPayload
   //   - `previous_audit_hash` is `hash` of the predecessor entry, or empty for
   //     the first entry
@@ -67,7 +67,7 @@ message AuditEntry {
   signature.SignedApplyBatch signature = 13;
 }
 
-// AuditItem represents one order or standalone policy control, stored separately from the
+// AuditItem represents one order within a proposal, stored separately from the
 // AuditEntry header. Pebble key: [ZoneHistory][SubHistoryAuditItem][audit_seq BE 8][order_idx BE 4].
 message AuditItem {
   // Zero-based position of this order within the proposal.
@@ -84,13 +84,6 @@ message AuditItem {
   // Sequence of the log produced by this order. Zero if the order was
   // an idempotent replay or if the proposal failed.
   fixed64 log_sequence = 3;
-  // Native SetClusterPolicyProposal business intent, captured deterministically
-  // at apply time. Exactly one intent field is populated: serialized_order for
-  // execution orders (including historical policy orders), or this field for a
-  // new policy control. Readers must handle both; writers never lower a new
-  // policy control to an Order. The hash binds these raw bytes with a distinct
-  // policy domain tag, preserving the preimage of historical order items.
-  bytes serialized_set_cluster_policy = 4;
 }
 
 // AuditSuccess records the log sequence range created by a successful proposal.

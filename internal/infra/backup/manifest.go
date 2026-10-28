@@ -17,6 +17,16 @@ import (
 type Manifest struct {
 	Checkpoint *CheckpointManifest `json:"checkpoint"`
 	Exports    []ExportSegment     `json:"exports"`
+	// ClusterPolicy is operational state captured from the same snapshot as
+	// the latest exports. Absent on released manifests: replay their old logs.
+	ClusterPolicy *ClusterPolicySnapshot `json:"clusterPolicy,omitempty"`
+}
+
+// ClusterPolicySnapshot is independent of business/audit sequence numbers: a
+// policy-only incremental backup can update it without exporting history.
+type ClusterPolicySnapshot struct {
+	AppliedIndex uint64 `json:"appliedIndex"`
+	Data         []byte `json:"data"` // deterministic ClusterPolicy protobuf bytes
 }
 
 // CheckpointManifest describes a full Pebble checkpoint upload.

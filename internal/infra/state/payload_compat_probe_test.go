@@ -107,7 +107,11 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 		for _, entry := range entries {
 			result, err := machine.ApplyEntries(t.Context(), store, entry)
 			require.NoError(t, err)
-			require.True(t, result.Results[0].AuditEntryWritten)
+			decoded := &raftcmdpb.Proposal{}
+			require.NoError(t, decoded.UnmarshalVT(entry.GetData()))
+			// RC.1 sees only the legacy orders; native controls contain none.
+			nativePolicy := len(decoded.GetOrders()) == 0 && (entry.GetIndex() == 1 || entry.GetIndex() == 4)
+			require.Equal(t, !nativePolicy, result.Results[0].AuditEntryWritten)
 		}
 	}
 	var report struct {
@@ -115,7 +119,6 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 		Ledgers   []*commonpb.LedgerInfo
 		Audit     []*auditpb.AuditEntry
 		Items     [][]*auditpb.AuditItem
-		Intent    [][]*auditpb.AuditItem
 		Applied   uint64
 		Timestamp uint64
 	}
@@ -140,40 +143,27 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 		header, err := BuildHashedHeaderPayload(audit)
 		require.NoError(t, err)
 		slices := [][]byte{header}
-		normalized := make([]*auditpb.AuditItem, len(items))
-		for i, item := range items {
+		for _, item := range items {
 			slices = append(slices, BuildPerItemPayload(item))
-			normalized[i] = item.CloneVT()
-			// Decode field 4 by its published wire number so this exact test source
-			// also compiles against RC.1. Normalize intent only in the test report;
-			// the separate Items report retains the real persisted evidence.
-			encoded, err := item.MarshalVT()
-			require.NoError(t, err)
-			for rest := encoded; len(rest) > 0; {
-				number, typ, n := protowire.ConsumeTag(rest)
-				require.Positive(t, n)
-				size := protowire.ConsumeFieldValue(number, typ, rest[n:])
-				require.GreaterOrEqual(t, size, 0)
-				if number == 4 {
-					raw, consumed := protowire.ConsumeBytes(rest[n:])
-					require.Positive(t, consumed)
-					control := &raftcmdpb.SetClusterPolicyOrder{}
-					require.NoError(t, control.UnmarshalVT(raw))
-					bytes, err := policyOrder(control.GetPolicy()).MarshalVT()
-					require.NoError(t, err)
-					normalized[i] = &auditpb.AuditItem{OrderIndex: item.GetOrderIndex(), LogSequence: item.GetLogSequence(), SerializedOrder: bytes}
-				}
-				rest = rest[n+size:]
-			}
 		}
 		generator := processing.NewHashGenerator(commonpb.HashAlgorithm(audit.GetHashVersion()), machine.State.AuditKey)
 		_, actualHash := generator.Compute(nil, previousHash, slices)
 		require.Equal(t, audit.GetHash(), actualHash)
 		previousHash = audit.GetHash()
-		report.Intent = append(report.Intent, normalized)
 		report.Audit = append(report.Audit, audit)
 		report.Items = append(report.Items, items)
 	}
+	expectedAudits := 5
+	switch {
+	case phase == "seed":
+		expectedAudits = 2
+	case phase == "resume" || phase == "verify":
+		expectedAudits = 4
+	case os.Getenv("LEDGER_PROPOSAL_PROBE_ENCODING") == "payload":
+		expectedAudits = 3
+	}
+	require.Len(t, report.Audit, expectedAudits)
+
 	report.Policy = machine.State.ClusterPolicy
 	report.Applied = machine.State.LastAppliedIndex
 	report.Timestamp = machine.State.LastAppliedTimestamp

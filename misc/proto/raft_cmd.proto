@@ -411,13 +411,13 @@ message ExecutionBatch {
   repeated TechnicalUpdate technical_updates = 2;
 }
 
-// SetClusterPolicyProposal is an internal, audited control proposal. Its audit
-// evidence stores the native control; historical SetClusterPolicyOrder remains readable.
+// SetClusterPolicyProposal updates operational state without business audit or logs.
+// Historical SetClusterPolicyOrder remains readable.
 message SetClusterPolicyProposal {
   common.ClusterPolicy policy = 1;
 }
 
-// Proposal separates execution batches from audited cluster-policy controls.
+// Proposal separates execution batches from operational cluster-policy controls.
 // Producers write payloads directly after a full-stop upgrade. Legacy fields
 // remain readable for historical WAL replay; old binaries cannot read new writes.
 message Proposal {

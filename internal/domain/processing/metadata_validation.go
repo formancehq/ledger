@@ -1,6 +1,8 @@
 package processing
 
 import (
+	"math"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -13,7 +15,7 @@ func validateMetadataAtApply(metadata map[string]*commonpb.MetadataValue, ctx *C
 	if len(metadata) == 0 {
 		return nil
 	}
-	limits := domain.MetadataLimitsFromPolicy(ctx.Scope.GetClusterPolicy())
+	limits := ctx.metadataLimits()
 	if err := limits.ValidateMap(metadata); err != nil {
 		return err
 	}
@@ -33,7 +35,7 @@ func validateMetadataAtApply(metadata map[string]*commonpb.MetadataValue, ctx *C
 // validateMetadataKeyAtApply bounds bare caller keys against the committed
 // policy before a delete or schema change mutates state.
 func validateMetadataKeyAtApply(key string, ctx *Context) domain.SerializableError {
-	limits := domain.MetadataLimitsFromPolicy(ctx.Scope.GetClusterPolicy())
+	limits := ctx.metadataLimits()
 	if err := limits.ValidateKey(key); err != nil {
 		return err
 	}
@@ -47,4 +49,18 @@ func validateMetadataKeyAtApply(key string, ctx *Context) domain.SerializableErr
 	}
 
 	return limits.ValidateCommandBytes(total)
+}
+
+// metadataLimits never consults live or historical policy during audit replay.
+// Shape, schema and accounting checks remain enabled in the shared handlers.
+func (ctx *Context) metadataLimits() domain.MetadataLimits {
+	if ctx.auditReplay {
+		return domain.MetadataLimits{
+			MaxEntriesPerEntity: math.MaxUint64, MaxKeyBytes: math.MaxUint64,
+			MaxValueBytes: math.MaxUint64, MaxTotalBytesPerEntity: math.MaxUint64,
+			MaxTotalBytesPerCommand: math.MaxUint64,
+		}
+	}
+
+	return domain.MetadataLimitsFromPolicy(ctx.Scope.GetClusterPolicy())
 }
