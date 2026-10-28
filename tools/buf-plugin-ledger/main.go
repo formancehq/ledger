@@ -193,7 +193,7 @@ func firstMissing(numbers []int, start int) (int, bool) {
 	for _, number := range numbers {
 		present[number] = struct{}{}
 	}
-	for i := range len(numbers) {
+	for i := range numbers {
 		if _, ok := present[start+i]; !ok {
 			return start + i, false
 		}

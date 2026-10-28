@@ -425,8 +425,8 @@ generate-proto:
 test-rpcauth-generator:
     go -C tools/protoc-gen-rpcauth test ./...
 
-# Ledger protobuf conventions (no reserved, sequential numbers) via the buf
-# check plugin in tools/buf-plugin-ledger.
+# Initial-layout conventions for new protobuf types via the buf check plugin
+# in tools/buf-plugin-ledger; existing types retain their published numbers.
 lint-proto:
     go run ./scripts/lintproto
 
