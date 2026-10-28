@@ -431,7 +431,7 @@ lint-proto:
     go run ./scripts/lintproto
 
 test-buf-plugin:
-    go -C tools/buf-plugin-ledger test ./...
+    go -C tools/buf-plugin-ledger test -race ./...
 
 # --- Operator (Kubernetes) ---
 

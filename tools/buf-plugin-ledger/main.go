@@ -174,9 +174,12 @@ func checkEnumNumbersSequential(
 // and, when it is not, the first number of that range absent from numbers.
 // A duplicate (enum alias) necessarily leaves one number of the range absent.
 func firstMissing(numbers []int, start int) (int, bool) {
-	sorted := slices.Sorted(slices.Values(numbers))
-	for i, number := range sorted {
-		if number != start+i {
+	present := make(map[int]struct{}, len(numbers))
+	for _, number := range numbers {
+		present[number] = struct{}{}
+	}
+	for i := range len(numbers) {
+		if _, ok := present[start+i]; !ok {
 			return start + i, false
 		}
 	}

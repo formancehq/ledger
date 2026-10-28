@@ -74,6 +74,8 @@ func TestFirstMissing(t *testing.T) {
 		{name: "unordered permutation", numbers: []int{3, 1, 2}, start: 1, ok: true},
 		{name: "gap", numbers: []int{1, 3}, start: 1, missing: 2},
 		{name: "duplicate", numbers: []int{0, 1, 1}, start: 0, missing: 2},
+		{name: "leading alias", numbers: []int{0, 0, 1}, start: 0, missing: 2},
+		{name: "negative value", numbers: []int{0, -1, 1}, start: 0, missing: 2},
 		{name: "wrong start", numbers: []int{2}, start: 1, missing: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

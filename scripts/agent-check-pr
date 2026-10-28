@@ -309,7 +309,7 @@ if [[ "$needs_protocol" == true ]]; then
 fi
 if [[ "$needs_proto_lint" == true ]]; then
     go run ./scripts/lintproto
-    go -C tools/buf-plugin-ledger test ./...
+    just test-buf-plugin
 fi
 if [[ "$needs_full" == true ]]; then
     bash "$SCRIPT_DIR/agent-check-full"
