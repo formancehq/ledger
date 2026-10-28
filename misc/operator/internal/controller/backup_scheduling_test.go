@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,6 +31,7 @@ func newBackupSchedulingFixture(t *testing.T) *backupSchedulingFixture {
 	t.Helper()
 	scheme := runtime.NewScheme()
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	require.NoError(t, appsv1.AddToScheme(scheme))
 	zero := int32(0)
 	backup := &ledgerv1alpha1.Backup{
 		ObjectMeta: metav1.ObjectMeta{Name: "daily", Namespace: "test", UID: "backup-uid"},

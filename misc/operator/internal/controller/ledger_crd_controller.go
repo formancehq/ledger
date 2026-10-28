@@ -83,6 +83,20 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// Freeze all runtime mutations, including Ready index reconciliation and
+	// best-effort deletion. A pause must not release cleanup ownership merely
+	// because no Ledger Pod is available.
+	var cluster ledgerv1alpha1.Cluster
+	if err := r.Get(ctx, client.ObjectKey{Namespace: ledger.Namespace, Name: ledger.Spec.ClusterRef}, &cluster); err == nil {
+		if paused, err := clusterWorkloadsPaused(ctx, r.Client, &cluster); err != nil {
+			return ctrl.Result{}, err
+		} else if paused {
+			return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
+		}
+	} else if client.IgnoreNotFound(err) != nil {
+		return ctrl.Result{}, err
+	}
+
 	// Handle deletion before setting up the deferred status update,
 	// because deletion modifies metadata (finalizer removal), not status.
 	if !ledger.DeletionTimestamp.IsZero() {

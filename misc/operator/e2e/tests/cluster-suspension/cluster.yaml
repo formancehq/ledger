@@ -1,0 +1,25 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: suspension
+spec:
+  disabled: true
+  replicas: 3
+  image:
+    repository: ledger
+    tag: e2e
+    pullPolicy: Never
+  tls:
+    enabled: true
+    secretName: suspension-certs
+    caSecretKey: ca.crt
+  persistence:
+    # Suspension must retain these claims even when ordinary scaling deletes them.
+    deletionProtection: false
+    retentionPolicy:
+      whenScaled: Delete
+      whenDeleted: Retain
+    wal:
+      size: 1Gi
+    data:
+      size: 1Gi

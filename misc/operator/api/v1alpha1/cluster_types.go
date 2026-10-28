@@ -35,6 +35,12 @@ type ClusterList struct {
 
 // ClusterSpec defines the desired state of Cluster.
 type ClusterSpec struct {
+	// Disabled suspends workloads without removing Raft members or durable data.
+	// Replicas remains the configured topology for resumption. Omitted or false
+	// enables normal reconciliation.
+	// +optional
+	Disabled bool `json:"disabled,omitempty"`
+
 	// Image configuration for the ledger container.
 	// +optional
 	Image ImageSpec `json:"image,omitempty"`
@@ -1354,7 +1360,7 @@ type ClusterStatus struct {
 	// +optional
 	TLSRollout *TLSRolloutStatus `json:"tlsRollout,omitempty"`
 
-	// Phase of the Cluster: Pending, Running, Degraded, Error.
+	// Phase of the Cluster: Pending, Running, Degraded, Error, Suspending, Suspended, Resuming.
 	// +optional
 	Phase string `json:"phase,omitempty"`
 

@@ -98,6 +98,14 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.setRunFailed(ctx, &run, fmt.Sprintf("Cluster %q not found: %v", backup.Spec.ClusterRef, err))
 	}
 
+	// Do not provision, interpret or release execution evidence while the
+	// Cluster controller is suspending Jobs or recovering the retained topology.
+	if paused, err := clusterWorkloadsPaused(ctx, r.Client, &cluster); err != nil {
+		return ctrl.Result{}, err
+	} else if paused {
+		return ctrl.Result{RequeueAfter: concurrencyRequeue}, nil
+	}
+
 	// Forbid concurrency: any sibling already Running blocks this one.
 	if blocking, err := r.findBlockingSibling(ctx, &run); err != nil {
 		return ctrl.Result{}, fmt.Errorf("listing sibling runs: %w", err)

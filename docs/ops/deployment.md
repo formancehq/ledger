@@ -135,7 +135,7 @@ go run . run
 
 ### Operator Installation
 
-The Ledger operator manages the full lifecycle of Ledger clusters via a `Ledger` custom resource.
+The Ledger operator manages the full lifecycle of Ledger clusters via a `Cluster` custom resource.
 
 ```bash
 # The chart installs the CRDs through its ledger-operator-crds dependency
@@ -148,11 +148,11 @@ helm install ledger-operator misc/operator/helm/operator \
 
 ### Creating a Ledger Cluster
 
-Create a `Ledger` custom resource:
+Create a `Cluster` custom resource:
 
 ```yaml
 apiVersion: ledger.formance.com/v1alpha1
-kind: Ledger
+kind: Cluster
 metadata:
   name: my-ledger
   namespace: ledger
@@ -161,20 +161,19 @@ spec:
   image:
     repository: ghcr.io/formancehq/ledger
     tag: latest
-  config:
-    bindAddr: "0.0.0.0:7777"
-    grpcPort: 8888
-    httpPort: 9000
-    dataDir: "/data/app"
-    walDir: "/data/raft"
-    raft:
-      maintenanceInterval: "30s"
-      compactionMargin: 1000
-      electionTick: 10
-      heartbeatTick: 1
-      maxSizePerMsg: 1048576
-      maxInflightMsgs: 256
-      tickInterval: "100ms"
+  bindAddr: "0.0.0.0:7777"
+  grpcPort: 8888
+  httpPort: 9000
+  dataDir: "/data/app"
+  walDir: "/data/raft"
+  raft:
+    maintenanceInterval: "30s"
+    compactionMargin: 1000
+    electionTick: 10
+    heartbeatTick: 1
+    maxSizePerMsg: 1048576
+    maxInflightMsgs: 256
+    tickInterval: "100ms"
 ```
 
 The operator creates and manages all sub-resources: StatefulSet, Services, Ingresses, ServiceAccount, PDB, etc.
@@ -186,6 +185,12 @@ and scaling. An explicitly configured ID is honored. Reusing existing storage
 with a different ID fails the normal persisted-configuration check; set the
 original ID when reattaching data. A new Cluster with fresh storage gets a new
 ID even if its name is reused. Direct `ledger run` still requires `--cluster-id`.
+
+Set `spec.disabled: true` for a reversible global pause. The operator stops
+Ledger and active backup workloads while retaining PVCs, identity and runtime
+configuration; `spec.replicas` remains the configured restart topology.
+See [Cluster suspension](cluster-suspension.md) before pausing or changing
+configuration during a pause. Deleting the CR remains a separate lifecycle.
 
 ### Main Configuration
 

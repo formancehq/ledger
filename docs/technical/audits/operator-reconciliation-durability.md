@@ -234,3 +234,24 @@ Keep the same exact HEAD for both passes. Raw and qualified artifacts stay under
 ignored `build/ai-audit/`; they are separate from the manifest PR. Inspect the
 qualified report before reporting confirmed counts. Jira publication requires
 separate explicit authorization and is not part of either pass.
+
+## Reversible Cluster suspension boundary
+
+[Cluster suspension](../../ops/cluster-suspension.md) is a workload stop, not
+Raft scale-down. Test retained identities, per-ordinal data, Retain ownership
+convergence before zero replicas, recovery from the saved source topology,
+and dependent reconciliation gates. Repair current authorization before
+restarting Pods; honor an explicit finalized restore-to-normal handoff without
+waiting for the old restore-mode readiness. Bind existing backup executions to
+their persisted target, independently of mutable parent references. A false/absent flag preserves the ordinary
+lifecycle; initially disabled creation persists identity without workloads.
+Include failures before/after each API write, a fresh controller, repeated
+pause reversals and deferred topology/image/TLS/restore changes. Backup Jobs
+stop through Job suspension; process attempts can restart, while completed
+results and schedule cursors remain subject to the existing recovery contract.
+
+The fake-client tests establish write ordering and retained objects, not real
+StatefulSet GC safety, Pod shutdown or persisted Raft/business data recovery.
+The three-voter Chainsaw scenario is the corresponding dynamic evidence path.
+Treat missing StatefulSets with orphan Pods, external Secret loss and custom
+quorum-dependent probes as explicit recovery boundaries, not successful pause.

@@ -81,6 +81,14 @@ func (r *BackupReconciler) reconcile(ctx context.Context, req ctrl.Request, now 
 		return r.setFailed(ctx, &backup, fmt.Sprintf("Cluster %q not found: %v", backup.Spec.ClusterRef, err))
 	}
 
+	// Suspension freezes scheduling and history so a pause cannot erase the
+	// result evidence or completion cursor needed on resume.
+	if paused, err := clusterWorkloadsPaused(ctx, r.Client, &cluster); err != nil {
+		return ctrl.Result{}, err
+	} else if paused {
+		return ctrl.Result{RequeueAfter: concurrencyRequeue}, nil
+	}
+
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	var fullSched cron.Schedule

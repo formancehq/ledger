@@ -1,0 +1,164 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cluster-suspension
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    - name: Create an external certificate Secret
+      try:
+        - script:
+            content: |
+              set -eu
+              workdir=$(mktemp -d)
+              trap 'rm -rf "$workdir"' EXIT
+              cd "$workdir"
+              openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+                -nodes -keyout ca.key -out ca.crt -days 1 -subj /CN=suspension-ca
+              printf '%s\n' '[SAN]' \
+                "subjectAltName=DNS:localhost,DNS:*.ledger-suspension-headless.${NAMESPACE}.svc.cluster.local,IP:127.0.0.1" > extensions.cnf
+              openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+                -nodes -keyout tls.key -out tls.csr -subj /CN=suspension
+              openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key \
+                -CAcreateserial -out tls.crt -days 1 -extfile extensions.cnf -extensions SAN
+              kubectl create secret generic suspension-certs -n "$NAMESPACE" \
+                --from-file=tls.crt --from-file=tls.key --from-file=ca.crt
+            timeout: 60s
+
+    - name: Create a disabled Cluster without starting workloads
+      try:
+        - apply:
+            file: cluster.yaml
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: Cluster
+              metadata:
+                name: suspension
+              spec:
+                disabled: true
+                replicas: 3
+              status:
+                phase: Suspended
+                readyReplicas: 0
+        - script:
+            content: |
+              set -eu
+              test "$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/instance=suspension -o json | jq '.items | length')" -eq 0
+              identity=$(kubectl get cluster suspension -n "$NAMESPACE" -o jsonpath='{.spec.clusterID}')
+              test -n "$identity"
+              kubectl annotate namespace "$NAMESPACE" "suspension-cluster-id=$identity"
+
+    - name: Enable the original Cluster and seed committed data
+      try:
+        - script:
+            content: |
+              set -eu
+              kubectl patch cluster suspension -n "$NAMESPACE" --type merge -p '{"spec":{"disabled":false}}'
+              kubectl wait cluster/suspension -n "$NAMESPACE" --for=jsonpath='{.status.phase}'=Running --timeout=300s
+              kubectl exec ledger-suspension-0 -n "$NAMESPACE" -c ledger -- \
+                ./ledgerctl ledgers create suspension-sentinel
+              kubectl exec ledger-suspension-0 -n "$NAMESPACE" -c ledger -- \
+                ./ledgerctl transactions create --ledger suspension-sentinel \
+                  --posting world,retained,123,USD --reference before-suspension --force
+            timeout: 360s
+
+    - name: Preserve every voter and its data through two full pause and resume cycles
+      try:
+        - script:
+            content: |
+              set -eu
+              ledgerctl() {
+                ordinal=$1
+                shift
+                kubectl exec "ledger-suspension-$ordinal" -n "$NAMESPACE" -c ledger -- ./ledgerctl "$@"
+              }
+              cluster_uid=$(kubectl get cluster suspension -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+              cluster_id=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.annotations.suspension-cluster-id}')
+              sts_uid=$(kubectl get statefulset ledger-suspension -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+              secret_uid=$(kubectl get secret ledger-suspension-cluster-secret -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+              secret_version=$(kubectl get secret ledger-suspension-cluster-secret -n "$NAMESPACE" -o jsonpath='{.metadata.resourceVersion}')
+              cert_uid=$(kubectl get secret suspension-certs -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+              test -n "$secret_uid"
+              expected_claims=$(kubectl get pvc -n "$NAMESPACE" -o json | jq -cS '[.items[] | {name:.metadata.name,uid:.metadata.uid}] | sort_by(.name)')
+              test "$(echo "$expected_claims" | jq length)" -eq 6
+              expected_data=$(ledgerctl 0 transactions list --ledger suspension-sentinel --all --json | jq -cS .)
+              echo "$expected_data" | jq -e 'length == 1' >/dev/null
+              # Establish that all three local stores hold the sentinel before
+              # stopping them; do not rely on a quorum acknowledgement alone.
+              for ordinal in 0 1 2; do
+                for attempt in $(seq 1 30); do
+                  actual_data=$(ledgerctl "$ordinal" transactions list --ledger suspension-sentinel --all --json --consistency stale | jq -cS .)
+                  [ "$actual_data" = "$expected_data" ] && break
+                  sleep 2
+                done
+                test "$actual_data" = "$expected_data"
+              done
+
+              for cycle in 1 2; do
+                old_pods=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/instance=suspension -o json | jq -cS '[.items[].metadata.uid] | sort')
+                kubectl patch cluster suspension -n "$NAMESPACE" --type merge -p '{"spec":{"disabled":true}}'
+                kubectl wait cluster/suspension -n "$NAMESPACE" --for=jsonpath='{.status.phase}'=Suspended --timeout=300s
+                test "$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/instance=suspension -o json | jq '.items | length')" -eq 0
+                test "$(kubectl get statefulset ledger-suspension -n "$NAMESPACE" -o jsonpath='{.spec.replicas}')" -eq 0
+                test "$(kubectl get cluster suspension -n "$NAMESPACE" -o jsonpath='{.spec.replicas}')" -eq 3
+                test "$(kubectl get cluster suspension -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')" = "$cluster_uid"
+                test "$(kubectl get cluster suspension -n "$NAMESPACE" -o jsonpath='{.spec.clusterID}')" = "$cluster_id"
+                actual_claims=$(kubectl get pvc -n "$NAMESPACE" -o json | jq -cS '[.items[] | {name:.metadata.name,uid:.metadata.uid}] | sort_by(.name)')
+                test "$actual_claims" = "$expected_claims"
+                test "$(kubectl get secret ledger-suspension-cluster-secret -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')" = "$secret_uid"
+                test "$(kubectl get secret ledger-suspension-cluster-secret -n "$NAMESPACE" -o jsonpath='{.metadata.resourceVersion}')" = "$secret_version"
+
+                kubectl patch cluster suspension -n "$NAMESPACE" --type merge -p '{"spec":{"disabled":false}}'
+                kubectl wait cluster/suspension -n "$NAMESPACE" --for=jsonpath='{.status.phase}'=Running --timeout=300s
+                kubectl rollout status statefulset/ledger-suspension -n "$NAMESPACE" --timeout=120s
+                test "$(kubectl get statefulset ledger-suspension -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')" = "$sts_uid"
+                test "$(kubectl get cluster suspension -n "$NAMESPACE" -o jsonpath='{.spec.clusterID}')" = "$cluster_id"
+                actual_claims=$(kubectl get pvc -n "$NAMESPACE" -o json | jq -cS '[.items[] | {name:.metadata.name,uid:.metadata.uid}] | sort_by(.name)')
+                test "$actual_claims" = "$expected_claims"
+                test "$(kubectl get secret suspension-certs -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')" = "$cert_uid"
+                test "$(kubectl get secret ledger-suspension-cluster-secret -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')" = "$secret_uid"
+                new_pods=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/instance=suspension -o json | jq -cS '[.items[].metadata.uid] | sort')
+                test "$new_pods" != "$old_pods"
+                for ordinal in 0 1 2; do
+                  # Read the local projection. A leader-routed read alone could
+                  # hide a broken follower's retained storage.
+                  actual_data=$(ledgerctl "$ordinal" transactions list --ledger suspension-sentinel --all --json --consistency stale | jq -cS .)
+                  test "$actual_data" = "$expected_data"
+                  ledgerctl "$ordinal" store check
+                done
+                # A successful local read is insufficient to prove the cold
+                # cluster recovered write quorum. Commit fresh data each cycle.
+                ledgerctl 0 transactions create --ledger suspension-sentinel \
+                  --posting world,retained,7,USD --reference "after-resume-$cycle" --force
+                expected_data=$(ledgerctl 0 transactions list --ledger suspension-sentinel --all --json | jq -cS .)
+                test "$(echo "$expected_data" | jq length)" -eq "$((cycle + 1))"
+                for ordinal in 0 1 2; do
+                  for attempt in $(seq 1 30); do
+                    actual_data=$(ledgerctl "$ordinal" transactions list --ledger suspension-sentinel --all --json --consistency stale | jq -cS .)
+                    [ "$actual_data" = "$expected_data" ] && break
+                    sleep 2
+                  done
+                  test "$actual_data" = "$expected_data"
+                done
+                echo "Cycle $cycle retained all six PVCs, identities and committed transactions"
+              done
+            timeout: 25m
+
+  catch:
+    - describe:
+        apiVersion: ledger.formance.com/v1alpha1
+        kind: Cluster
+        name: suspension
+    - describe:
+        apiVersion: apps/v1
+        kind: StatefulSet
+        name: ledger-suspension
+    - script:
+        content: |
+          kubectl get pvc -n "$NAMESPACE" -o yaml
+          kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp
+    - podLogs:
+        selector: app.kubernetes.io/instance=suspension
+        container: ledger

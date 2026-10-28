@@ -79,6 +79,13 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return r.sinkFailure(ctx, &sink, "ClusterDeleting", fmt.Errorf("cluster %q is deleting", cluster.Name), sinkDriftCheckInterval)
 		}
 	}
+	// Keep cleanup ownership and runtime cursors during a reversible pause,
+	// including when the StatefulSet has not been created yet.
+	if paused, err := clusterWorkloadsPaused(ctx, r.Client, &cluster); err != nil {
+		return ctrl.Result{}, err
+	} else if paused {
+		return ctrl.Result{RequeueAfter: sinkRequeueInterval}, nil
+	}
 	applyDefaults(&cluster)
 
 	var sts appsv1.StatefulSet
