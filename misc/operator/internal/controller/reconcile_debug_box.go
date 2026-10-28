@@ -186,12 +186,37 @@ sleep infinity & wait`},
 	if ledger.Spec.SecurityContext != nil {
 		desiredSpec.Containers[0].SecurityContext = ledger.Spec.SecurityContext
 	}
+	desiredSpecHash := computeDebugBoxPodSpecHash(&desiredSpec)
 
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: debugBoxPodName(ledger), Namespace: ledger.Namespace}}
 	if err := r.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, pod); err == nil {
-		if !equality.Semantic.DeepEqual(pod.Spec, desiredSpec) {
+		if pod.Annotations == nil || pod.Annotations[annotationDebugBoxSpecHash] != desiredSpecHash {
 			if err := r.Delete(ctx, pod); err != nil && !apierrors.IsNotFound(err) {
 				return fmt.Errorf("replacing debug box pod: %w", err)
+			}
+
+			return nil
+		}
+
+		original := pod.DeepCopy()
+		if pod.Labels == nil {
+			pod.Labels = make(map[string]string)
+		}
+		for key, value := range labels {
+			pod.Labels[key] = value
+		}
+		if pod.Annotations == nil {
+			pod.Annotations = make(map[string]string)
+		}
+		pod.Annotations[annotationDebugBoxSpecHash] = desiredSpecHash
+		if err := controllerutil.SetControllerReference(ledger, pod, r.Scheme); err != nil {
+			return err
+		}
+		if !equality.Semantic.DeepEqual(original.Labels, pod.Labels) ||
+			!equality.Semantic.DeepEqual(original.Annotations, pod.Annotations) ||
+			!equality.Semantic.DeepEqual(original.OwnerReferences, pod.OwnerReferences) {
+			if err := r.Update(ctx, pod); err != nil {
+				return fmt.Errorf("updating debug box pod metadata: %w", err)
 			}
 		}
 		return nil
@@ -200,6 +225,7 @@ sleep infinity & wait`},
 	}
 
 	pod.Labels = labels
+	pod.Annotations = map[string]string{annotationDebugBoxSpecHash: desiredSpecHash}
 	pod.Spec = desiredSpec
 	if err := controllerutil.SetControllerReference(ledger, pod, r.Scheme); err != nil {
 		return err
