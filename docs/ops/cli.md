@@ -4100,11 +4100,17 @@ ledger run --response-signing-key ./response-keys/seed.hex [other flags...]
 ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create --ledger my-ledger --posting "world,bank,1000,USD"
 ```
 
-With `--response-verify-key`, prepared query create/update/delete and query
-checkpoint create/delete verify the returned Apply log signatures before
-reporting success or reading the created checkpoint ID. Verification also
-checks that each visible log matches the authenticated payload. Missing or
-invalid signatures and mismatched logs cause the command to fail.
+With `--response-verify-key`, `transactions set-metadata`/`delete-metadata`,
+`numscripts save`, prepared query create/update/delete, and query checkpoint
+create/delete verify the returned Apply log signatures before reporting
+success or reading returned fields such as a script name/version or checkpoint
+ID. Verification also checks that each visible log matches the authenticated
+payload. Missing or invalid signatures, signatures from another key, and
+mismatched logs cause the command to fail. Without this flag, verification is
+optional and unsigned responses remain accepted.
+
+Verification happens after the mutation RPC completes. A verification failure
+does not roll back the mutation; the client cannot authenticate its outcome.
 
 Clients can also discover the server's public key via the `Discovery` RPC.
 
