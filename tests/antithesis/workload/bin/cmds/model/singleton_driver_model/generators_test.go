@@ -32,6 +32,13 @@ func TestGenFieldLeafCoversEveryNumericShape(t *testing.T) {
 		var splitRange, wrapShape bool
 
 		for range 20_000 {
+			// This test proves shape coverage. Stop once every witness is seen
+			// instead of spending the remaining draw budget on duplicate shapes.
+			if uintOpenMin && uintOpenMax && uintExclMin && uintExclMax && uintZero && uintMax &&
+				intOpenMin && intOpenMax && intExclMin && intExclMax && intMin && intMax &&
+				splitRange && wrapShape {
+				break
+			}
 			f := genFieldLeaf(src, seeds)
 
 			// A split range is And(key >= lo, key <= hi) on one key; with an
