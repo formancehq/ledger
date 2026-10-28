@@ -67,18 +67,6 @@ func NewChecker(store *dal.Store, attrs *attributes.Attributes, readStore *reads
 	}
 }
 
-// Check verifies the store integrity and calls the callback for each event.
-// It verifies:
-// 1. Log sequence continuity: no interior gaps, log key/value sequence agreement, and the stored log bound against the audited log range
-// 2. BLAKE3 hash chain integrity
-// 3. Reversion invariants (no double reverts, valid revert targets)
-// 4. Volume consistency (input/output per account/asset)
-// 5. Account metadata consistency
-// 6. Transaction update consistency.
-//
-// Every pass runs whatever the log count: a history made only of rejected
-// proposals holds audit entries and no logs, and its chain must still be
-// verified (EN-1526).
 // logPrefixUpperBound is the exclusive upper bound covering EVERY Log row.
 //
 // Named here because the log loop and its fixtures both need it, but the rule
@@ -94,7 +82,7 @@ func logPrefixUpperBound() []byte {
 
 // readHighestLogKey returns the greatest Log KEY sequence in the store, or 0
 // when it holds no Log row. Read off the key, never off the value's `sequence`
-// field — see the head comment in Check.
+// field — see the head comment in pinCheckSnapshots.
 func readHighestLogKey(reader dal.PebbleReader) (uint64, error) {
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.ZoneHistory, dal.SubHistoryLog},
@@ -166,7 +154,69 @@ func emitSequenceGapRun(first, last uint64, callback func(*servicepb.CheckStoreE
 		first, "", "", ""))
 }
 
+// Check verifies the store integrity and calls the callback for each event.
+// It verifies:
+// 1. Log sequence continuity: no interior gaps, log key/value sequence agreement, and the stored log bound against the audited log range
+// 2. BLAKE3 hash chain integrity
+// 3. Reversion invariants (no double reverts, valid revert targets)
+// 4. Volume consistency (input/output per account/asset)
+// 5. Account metadata consistency
+// 6. Transaction update consistency.
+//
+// Every pass runs whatever the log count: a history made only of rejected
+// proposals holds audit entries and no logs, and its chain must still be
+// verified (EN-1526).
+// Snapshots, audit verification, log replay, and projection comparisons run
+// in that order; each phase preserves the event order of its checks.
 func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStoreEvent)) error {
+	peerSnap, snap, storedMaxLogSeq, err := c.pinCheckSnapshots()
+	if err != nil {
+		return err
+	}
+	if peerSnap != nil {
+		defer func() { _ = peerSnap.Close() }()
+	}
+	defer func() { _ = snap.Close() }()
+	// Allocate replay storage before the audit walk, as in the original check.
+	replay, err := newReplayStore()
+	if err != nil {
+		return fmt.Errorf("creating replay store: %w", err)
+	}
+	defer func() { _ = replay.Close() }()
+
+	chainBound, folds, auditExpected, err := c.verifyCheckAudit(ctx, snap, callback)
+	if err != nil {
+		return err
+	}
+
+	state, err := c.replayLogs(ctx, snap, replay, storedMaxLogSeq, auditExpected, chainBound, folds.bounds, callback)
+	if err != nil {
+		return err
+	}
+
+	return c.compareProjections(ctx, snap, peerSnap, storedMaxLogSeq, chainBound, folds, state, callback)
+}
+
+// checkReplayState contains the audit-derived projections produced by the single
+// forward log scan. Its fields are private to the checker phases.
+type checkReplayState struct {
+	replay                   *replayStore
+	observed                 storedLogObservations
+	excluded                 excludedVolumesSet
+	knownLedgers             map[string]struct{}
+	ledgerRevertedTxIDs      map[string]*bitset.Bitset
+	expectedIndexes          map[domain.IndexKey]*commonpb.Index
+	deletedInReplay          map[string]struct{}
+	expectedSchemas          map[string]*commonpb.MetadataSchema
+	expectedBoundaries       map[string]*raftcmdpb.LedgerBoundaries
+	expectedNumscriptContent map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo
+	expectedNumscriptLatest  map[domain.NumscriptVersionKey]string
+	derivedLiveCheckpoints   map[uint64]*commonpb.CreatedQueryCheckpointLog
+}
+
+// pinCheckSnapshots pins the peer before the primary store. The order keeps
+// the peer fold cursor no farther ahead than the primary log head.
+func (c *Checker) pinCheckSnapshots() (*pebble.Snapshot, *dal.ReadHandle, uint64, error) {
 	// Pin the peer read-index snapshot FIRST — strictly BEFORE the primary one.
 	// The order is load-bearing for compareReverseMapOrphans, which compares the
 	// peer's fold cursor against lastSequence (read off the primary snapshot
@@ -194,8 +244,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	if c.readStore != nil {
 		peerSnap = c.readStore.NewSnapshot()
-
-		defer func() { _ = peerSnap.Close() }()
 	}
 
 	// Take a point-in-time snapshot so that log iteration and live attribute
@@ -204,10 +252,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// mismatches (the live volumes include effects of logs the replay never saw).
 	snap, err := c.store.NewReadHandle()
 	if err != nil {
-		return fmt.Errorf("creating read snapshot: %w", err)
-	}
+		if peerSnap != nil {
+			_ = peerSnap.Close()
+		}
 
-	defer func() { _ = snap.Close() }()
+		return nil, nil, 0, fmt.Errorf("creating read snapshot: %w", err)
+	}
 
 	// The store head, read off the Pebble KEY of the last Log row rather than
 	// off the value's `sequence` field (query.ReadLastSequence). ONE head, used
@@ -225,24 +275,20 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// snapshot, so this read and the loop see the same rows and cannot disagree.
 	storedMaxLogSeq, err := readHighestLogKey(snap)
 	if err != nil {
-		return fmt.Errorf("getting last sequence: %w", err)
+		_ = snap.Close()
+		if peerSnap != nil {
+			_ = peerSnap.Close()
+		}
+
+		return nil, nil, 0, fmt.Errorf("getting last sequence: %w", err)
 	}
 
-	// No early return for a zero head. A store can hold a complete audit
-	// history and no logs at all — every proposal in it failed, so each one
-	// wrote an AuditEntry (plus one AuditItem per order) and no Log. Returning
-	// clean there left the hash chain of such a history unverified, since
-	// verifyAuditHashChain runs below (EN-1526). The head is still used to size
-	// progress and to align the reverse-map oracle; both handle 0.
+	return peerSnap, snap, storedMaxLogSeq, nil
+}
 
-	// Create replay store (replaces in-memory maps + txStateStore)
-	replay, err := newReplayStore()
-	if err != nil {
-		return fmt.Errorf("creating replay store: %w", err)
-	}
-
-	defer func() { _ = replay.Close() }()
-
+// verifyCheckAudit verifies the complete audit chain, including histories
+// containing only rejected proposals and no log rows.
+func (c *Checker) verifyCheckAudit(ctx context.Context, snap dal.PebbleReader, callback func(*servicepb.CheckStoreEvent)) (*chainBoundState, chainVerifierFolds, *auditVerification, error) {
 	// chainBound aggregates the audit-derived state feeding
 	// verifySkippedOrder: references, reverted, metadata timeline,
 	// account-type timeline, per-ledger nextTxID counter, and the set
@@ -253,7 +299,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// share one suppression contract, not merely because they travel together —
 	// see chainVerifierFolds.
 	folds := newChainVerifierFolds()
-	signing, policy, bounds := folds.signing, folds.policy, folds.bounds
 
 	// Verify the audit hash chain before log replay. This iterates every
 	// audit entry and recomputes each hash from the stored orders. Populates
@@ -261,24 +306,31 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// and the signing orders onto `signing`.
 	auditKey, err := query.ReadAuditKey(snap)
 	if err != nil {
-		return fmt.Errorf("reading audit key for checker: %w", err)
+		return nil, chainVerifierFolds{}, nil, fmt.Errorf("reading audit key for checker: %w", err)
 	}
 	auditHead, err := query.ReadLastAuditEntry(snap)
 	if err != nil {
-		return fmt.Errorf("reading audit head for checker: %w", err)
+		return nil, chainVerifierFolds{}, nil, fmt.Errorf("reading audit head for checker: %w", err)
 	}
 	if auditHead != nil && auditKey == nil {
-		return errors.New("audit key missing while history exists")
+		return nil, chainVerifierFolds{}, nil, errors.New("audit key missing while history exists")
 	}
 	auditExpected, err := c.verifyAuditHashChain(ctx, snap, string(auditKey), chainBound, folds, callback)
 	if err != nil {
-		return fmt.Errorf("verifying audit hash chain: %w", err)
+		return nil, chainVerifierFolds{}, nil, fmt.Errorf("verifying audit hash chain: %w", err)
 	}
+
+	return chainBound, folds, auditExpected, nil
+}
+
+// replayLogs scans the pinned primary snapshot once and derives the state used
+// by the projection checks. The audit-derived logs remain the business oracle.
+func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay *replayStore, storedMaxLogSeq uint64, auditExpected *auditVerification, chainBound *chainBoundState, bounds *logBoundsVerifier, callback func(*servicepb.CheckStoreEvent)) (*checkReplayState, error) {
 	expectedSkippable := auditExpected.skippable
 
 	proposalBoundaries, err := c.newProposalBoundaryReader(ctx, snap)
 	if err != nil {
-		return fmt.Errorf("reading proposal log boundaries: %w", err)
+		return nil, fmt.Errorf("reading proposal log boundaries: %w", err)
 	}
 	defer func() { _ = proposalBoundaries.Close() }()
 
@@ -310,12 +362,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// Expected metadata schema per ledger, derived from
 		// CreateLedger.initial_schema + SetMetadataFieldType /
 		// RemovedMetadataFieldType logs. Compared against the stored
-		// LedgerInfo.MetadataSchema in compareSchema.
+		// schema-dependent reverse-map diagnostics.
 		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
-		// Expected default account-type enforcement per ledger, derived from
-		// CreateLedger.default_enforcement_mode and later audited updates.
-		// Compared against LedgerInfo.DefaultEnforcementMode.
-		expectedEnforcementModes = make(map[string]commonpb.ChartEnforcementMode)
 		// Expected LedgerBoundaries per ledger: id fields and replay-derivable
 		// counters, advanced per replayed log, then topped up with the
 		// chain-bound audit-order effects (mirror fill-gap advances, numscript
@@ -371,7 +419,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	nextProposalEnd, hasProposalEnd, err := proposalBoundaries.Next()
 	if err != nil {
-		return fmt.Errorf("reading first proposal log boundary: %w", err)
+		return nil, fmt.Errorf("reading first proposal log boundary: %w", err)
 	}
 
 	var ephemeralPurgeBuffer *domainreplay.EphemeralPurgeBuffer
@@ -386,7 +434,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		UpperBound: logPrefixUpperBound(),
 	})
 	if err != nil {
-		return fmt.Errorf("creating log iterator: %w", err)
+		return nil, fmt.Errorf("creating log iterator: %w", err)
 	}
 
 	defer func() { _ = logIter.Close() }()
@@ -422,7 +470,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	for logIter.First(); logIter.Valid(); logIter.Next() {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return nil, ctx.Err()
 		}
 
 		// Extract sequence from key: [ZoneHistory(1)][SubHistoryLog(1)][sequence(8)]
@@ -463,12 +511,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
 			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
-				return fmt.Errorf("flushing replay ephemeral purge at missing log boundary %d: %w", nextProposalEnd, err)
+				return nil, fmt.Errorf("flushing replay ephemeral purge at missing log boundary %d: %w", nextProposalEnd, err)
 			}
 
 			nextProposalEnd, hasProposalEnd, err = proposalBoundaries.Next()
 			if err != nil {
-				return fmt.Errorf("reading next proposal log boundary: %w", err)
+				return nil, fmt.Errorf("reading next proposal log boundary: %w", err)
 			}
 		}
 
@@ -509,19 +557,19 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		} else {
 			nextExpectedSeq, exhausted := domain.CheckedNextSequence(seq, domain.SequenceCounterLog)
 			if exhausted != nil {
-				return fmt.Errorf("checking log sequence %d: %w", seq, exhausted)
+				return nil, fmt.Errorf("checking log sequence %d: %w", seq, exhausted)
 			}
 			expectedSeq = nextExpectedSeq
 		}
 
 		value, err := logIter.ValueAndErr()
 		if err != nil {
-			return fmt.Errorf("reading log %d value: %w", seq, err)
+			return nil, fmt.Errorf("reading log %d value: %w", seq, err)
 		}
 
 		log := &commonpb.Log{}
 		if err := log.UnmarshalVT(value); err != nil {
-			return fmt.Errorf("unmarshaling log %d: %w", seq, err)
+			return nil, fmt.Errorf("unmarshaling log %d: %w", seq, err)
 		}
 		storedLog := log
 
@@ -582,7 +630,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					name := payload.CreateLedger.GetName()
 					knownLedgers[name] = struct{}{}
 					expectedSchemas[name] = payload.CreateLedger.GetMetadataSchema().CloneVT()
-					expectedEnforcementModes[name] = payload.CreateLedger.GetDefaultEnforcementMode()
 					expectedBoundaries[name] = &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 					seedAccountTypes(rawLedgerTypes, ledgerAccountTypes, name, payload.CreateLedger.GetAccountTypes())
 				}
@@ -591,7 +638,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					name := payload.DeleteLedger.GetName()
 					delete(knownLedgers, name)
 					delete(expectedSchemas, name)
-					delete(expectedEnforcementModes, name)
 					delete(rawLedgerTypes, name)
 					delete(ledgerAccountTypes, name)
 
@@ -600,7 +646,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					// replayed expectations, or the volume/metadata/tx/reference
 					// comparisons would expect data the store correctly lacks.
 					if err := replay.deleteLedgerData(name); err != nil {
-						return fmt.Errorf("purging replay rows for deleted ledger %q: %w", name, err)
+						return nil, fmt.Errorf("purging replay rows for deleted ledger %q: %w", name, err)
 					}
 					// The live apply drops the boundary row at delete time, so
 					// the expectation goes with it — compareBoundaries flags a
@@ -671,7 +717,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						verifySavedMetadataAgainstAuditedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), chainBound, callback)
 
 						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), payload.Apply.GetLog().GetDate(), replayWriter, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
-							return fmt.Errorf("replaying log %d: %w", seq, err)
+							return nil, fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 
 						// Verify the transaction's post-commit volume snapshot
@@ -685,12 +731,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						// fallback (post-purge state) from producing false mismatches.
 						if ephemeralPurgeBuffer != nil {
 							if err := compareTransactionPostCommitVolumes(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, callback); err != nil {
-								return fmt.Errorf("verifying post-commit volumes for log %d: %w", seq, err)
+								return nil, fmt.Errorf("verifying post-commit volumes for log %d: %w", seq, err)
 							}
 						}
 
 						if err := advanceExpectedBoundaries(expectedBoundaries, ledgerName, payload.Apply.GetLog()); err != nil {
-							return fmt.Errorf("advancing expected boundaries at log %d: %w", seq, err)
+							return nil, fmt.Errorf("advancing expected boundaries at log %d: %w", seq, err)
 						}
 
 						// Index registry derivation: every CreateIndex /
@@ -743,10 +789,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 								}
 								delete(expectedIndexes, key)
 							}
-						case *commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode:
-							if update := d.UpdatedDefaultEnforcementMode; update != nil {
-								expectedEnforcementModes[ledgerName] = update.GetEnforcementMode()
-							}
 						}
 
 						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
@@ -774,12 +816,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
 			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
-				return fmt.Errorf("flushing replay ephemeral purge at log %d: %w", seq, err)
+				return nil, fmt.Errorf("flushing replay ephemeral purge at log %d: %w", seq, err)
 			}
 
 			nextProposalEnd, hasProposalEnd, err = proposalBoundaries.Next()
 			if err != nil {
-				return fmt.Errorf("reading next proposal log boundary: %w", err)
+				return nil, fmt.Errorf("reading next proposal log boundary: %w", err)
 			}
 		}
 
@@ -802,7 +844,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	if err := logIter.Error(); err != nil {
-		return fmt.Errorf("log iterator error: %w", err)
+		return nil, fmt.Errorf("log iterator error: %w", err)
 	}
 
 	// Final position. A store with no logs reports (0, 0) here: the loop body
@@ -825,7 +867,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	if ephemeralPurgeBuffer != nil {
 		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
-			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)
+			return nil, fmt.Errorf("flushing final replay ephemeral purge: %w", err)
 		}
 	}
 
@@ -834,7 +876,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// accumulated above, `stored` now represents the full per-ledger
 	// exclusion set the index builder will consume.
 	if err := c.collectStoredTransientVolumes(ctx, snap, addStored); err != nil {
-		return fmt.Errorf("reading applied proposals for exclusion check: %w", err)
+		return nil, fmt.Errorf("reading applied proposals for exclusion check: %w", err)
 	}
 
 	// Compare the stored projection against the replay-derived ground
@@ -847,6 +889,35 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// Both turn into spurious index entries downstream, so we surface
 	// them via EXCLUSION_RECORD_MISMATCH for human review.
 	compareExclusionProjections(stored, excluded, callback)
+
+	return &checkReplayState{
+		replay: replay, observed: observed, excluded: excluded,
+		knownLedgers: knownLedgers, ledgerRevertedTxIDs: ledgerRevertedTxIDs,
+		expectedIndexes: expectedIndexes,
+		deletedInReplay: deletedInReplay, expectedSchemas: expectedSchemas,
+		expectedBoundaries:       expectedBoundaries,
+		expectedNumscriptContent: expectedNumscriptContent,
+		expectedNumscriptLatest:  expectedNumscriptLatest,
+		derivedLiveCheckpoints:   derivedLiveCheckpoints,
+	}, nil
+}
+
+// compareProjections checks stored rows against the completed replay and audit
+// folds, in the same order in which Check historically emitted findings.
+func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader, peerSnap *pebble.Snapshot, storedMaxLogSeq uint64, chainBound *chainBoundState, folds chainVerifierFolds, state *checkReplayState, callback func(*servicepb.CheckStoreEvent)) error {
+	replay := state.replay
+	observed := state.observed
+	excluded := state.excluded
+	knownLedgers := state.knownLedgers
+	ledgerRevertedTxIDs := state.ledgerRevertedTxIDs
+	expectedIndexes := state.expectedIndexes
+	deletedInReplay := state.deletedInReplay
+	expectedSchemas := state.expectedSchemas
+	expectedBoundaries := state.expectedBoundaries
+	expectedNumscriptContent := state.expectedNumscriptContent
+	expectedNumscriptLatest := state.expectedNumscriptLatest
+	derivedLiveCheckpoints := state.derivedLiveCheckpoints
+	signing, policy, bounds := folds.signing, folds.policy, folds.bounds
 
 	// Comparison passes: expected = replayed state. A cell SimulateEphemeralPurge
 	// deleted from the replay store must be absent from the live store too.
@@ -883,19 +954,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// projection rebuilt from the surviving prefix is self-consistent.
 	bounds.compare(observed, callback)
 
-	if err := c.compareSchema(ctx, snap, expectedSchemas, callback); err != nil {
-		return err
-	}
-
-	if err := c.compareLedgerPresence(ctx, snap, knownLedgers, callback); err != nil {
-		return err
-	}
-
-	if err := c.compareAccountTypes(ctx, snap, rawLedgerTypes, callback); err != nil {
-		return err
-	}
-
-	if err := c.compareDefaultEnforcementModes(ctx, snap, expectedEnforcementModes, callback); err != nil {
+	if err := folds.ledgerPolicy.compare(snap, c.attrs, callback); err != nil {
 		return err
 	}
 
@@ -1202,8 +1261,8 @@ func (c *Checker) compareIndexes(
 //
 // A non-mirror ledger has stored == 0 and audited max == 0 → equal → not flagged.
 // A mirror ledger corrupted to 0 has audited max > 0 → not equal → flagged. There
-// is no legacy/no-backfill leniency: existing pre-field clusters are unsupported
-// (no compat shim).
+// is no no-backfill leniency for development clusters before v3.0.0-rc.1.
+// Later releases must preserve or migrate this persisted boundary.
 //
 // The comparison is driven from the UNION of (a) ledgers with a stored boundary
 // row and (b) ledgers with audited MirrorIngest orders (maxMirrorV2LogID > 0).
@@ -1860,6 +1919,11 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		var mk domain.MetadataKey
 
 		if err := mk.Unmarshal([]byte(key)); err != nil {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+				fmt.Sprintf("unparseable metadata projection key %x: %v", key, err), 0, "", "", ""))
+
+			errorCount++
+
 			continue
 		}
 
@@ -2009,6 +2073,10 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 
 		var tk domain.TransactionKey
 		if err := tk.Unmarshal([]byte(key)); err != nil {
+			emitErr(fmt.Sprintf("unparseable transaction projection key %x: %v", key, err))
+
+			errorCount++
+
 			continue
 		}
 
@@ -2230,6 +2298,7 @@ type chainVerifierFolds struct {
 	// orders.
 	policy         *clusterPolicyVerifier
 	ledgerMetadata *ledgerMetadataVerifier
+	ledgerPolicy   *ledgerPolicyVerifier
 	// bounds re-derives the highest log sequence the chain accounts for, from
 	// the chain-verified AuditSuccess ranges. Compared against the stored Log
 	// keys after the log loop — see logBoundsVerifier for the premise and for
@@ -2242,6 +2311,7 @@ func newChainVerifierFolds() chainVerifierFolds {
 		signing:        newSigningVerifier(),
 		policy:         newClusterPolicyVerifier(),
 		ledgerMetadata: newLedgerMetadataVerifier(),
+		ledgerPolicy:   &ledgerPolicyVerifier{},
 		bounds:         newLogBoundsVerifier(),
 	}
 }
@@ -2253,6 +2323,7 @@ func (f chainVerifierFolds) markLiveTruncated() {
 	f.signing.markLiveTruncated()
 	f.policy.markLiveTruncated()
 	f.ledgerMetadata.liveTruncated = true
+	f.ledgerPolicy.liveTruncated = true
 	f.bounds.markLiveTruncated()
 }
 
@@ -2513,6 +2584,9 @@ func (c *Checker) verifyAuditHashChain(
 					}
 					expectedLogs[log.GetSequence()] = log
 				}
+			} else {
+				// An incomplete replay cannot substantiate final ledger policy.
+				folds.ledgerPolicy.liveTruncated = true
 			}
 
 			// Fold signing orders from this successful entry, over the SAME fresh-log
@@ -2569,6 +2643,14 @@ func (c *Checker) verifyAuditHashChain(
 
 	if checked > 0 {
 		c.logger.Infof("Audit hash chain verified: %d entries checked", checked)
+	}
+
+	if !folds.ledgerPolicy.liveTruncated {
+		infos, err := replayer.LedgerInfos()
+		if err != nil {
+			return nil, fmt.Errorf("reading audit-derived ledger policies: %w", err)
+		}
+		folds.ledgerPolicy.expected = infos
 	}
 
 	if err := c.compareIdempotencyOutcomes(reader, expectedIdem, hasVerifiedRange, callback); err != nil {
@@ -4541,38 +4623,6 @@ func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleRead
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
 				fmt.Sprintf("ledger %q account types diverge from the audit-derived declarations", name),
-				0, name, "", "",
-			))
-		}
-	}
-
-	return nil
-}
-
-// compareDefaultEnforcementModes verifies the persisted policy that controls
-// whether unmatched accounts are rejected. The expectation is reconstructed
-// from the ledger's creation log and subsequent audited mode-update logs.
-func (c *Checker) compareDefaultEnforcementModes(ctx context.Context, reader dal.PebbleReader, expected map[string]commonpb.ChartEnforcementMode, callback func(*servicepb.CheckStoreEvent)) error {
-	ledgerCursor, err := query.ReadLedgers(ctx, reader)
-	if err != nil {
-		return fmt.Errorf("reading ledgers for default enforcement mode verification: %w", err)
-	}
-
-	ledgers, err := cursor.Collect(ledgerCursor)
-	if err != nil {
-		return fmt.Errorf("collecting ledgers for default enforcement mode verification: %w", err)
-	}
-
-	for _, info := range ledgers {
-		if info.GetDeletedAt() != nil {
-			continue
-		}
-
-		name := info.GetName()
-		if mode, ok := expected[name]; ok && mode != info.GetDefaultEnforcementMode() {
-			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH,
-				fmt.Sprintf("ledger %q default enforcement mode diverges from the audit-derived policy", name),
 				0, name, "", "",
 			))
 		}

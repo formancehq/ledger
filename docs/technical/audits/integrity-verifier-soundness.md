@@ -94,6 +94,40 @@ this manifest.
   were removed. A partial fold can emit a mismatch/incomplete signal and stop;
   the contract does not demand every corruption be enumerated after failure.
 
+## Ledger policy evidence
+
+`internal/application/check/ledger_policy.go` verifies canonical `SubAttrLedger`
+and global `SubGlobLedgerInfo` separately against ledger information exported
+by `internal/infra/state/audit_replay.go`. The existing isolated FSM replay is
+fed successful chain-verified audit proposals; stored logs and either stored
+ledger projection are not its policy oracle. Record actual persisted keys as
+well as embedded names. Agreement between the two stored copies is insufficient
+when both are corrupted.
+
+Include a canonical row at the bare attribute prefix (an empty canonical key):
+the streaming iterator omits it, so the policy pass must read it separately
+from the same primary snapshot. A full checker regression must start healthy,
+inject a valid LedgerInfo there, and require exactly one canonical
+UNAUDITED_LEDGER event with an empty ledger identity and no terminal error.
+
+Coverage includes missing and surplus rows, name, schema, account types,
+default enforcement mode, normal/mirror mode, complete source configuration
+and exact deletion timestamp. Audited deletion retains tombstones and their
+final policy in both keyspaces; promotion clears the source and sets normal
+mode. Probe normal and mirror creation, promotion, deletion, rejected and skipped
+orders before attributing a mismatch to corruption. Suppress this final-state
+comparison after an incomplete audit chain or isolated replay rather than
+comparing a prefix with the final store.
+
+Pair each healthy fixture with independent canonical/global changes and a
+coordinated two-copy change, keeping the audit witness intact. Assert all typed
+events, keyspace identities and terminal errors. Mirror configuration may hold
+credentials: diagnostics must name the affected field without exposing values.
+Creation timestamps and numeric ledger IDs remain outside this policy pass;
+read-time metadata and mirror progress are excluded enrichments. Its coverage
+must not be described as verification of every LedgerInfo field. The pass
+changes verification only, with no persisted format or apply-semantic change.
+
 ## Ownership and deduplication
 
 Choose the owner by the missing protection and required correction. Shared
@@ -196,3 +230,14 @@ Ledger metadata expectations fold successful chain-bound audited creation, save,
 Can missing, injected or altered creation metadata evade detection, or can later saves/deletes produce false mismatches? Does a truncated audit chain cause misleading metadata errors based on an incomplete prefix?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## Malformed account metadata and transaction keys
+
+`checker_malformed_keys_test.go` exercises full `Check` on stores created through
+real FSM apply. Preserve legitimate rows and their audit/log witnesses, then add
+a surplus account-metadata key without its account/key separator or a transaction
+key with an incorrect separator, each holding a valid protobuf value. Inspect
+all corruption callbacks and terminal status: require `METADATA_MISMATCH` or
+`TRANSACTION_UPDATE_MISMATCH` with raw-key/decoding evidence and unset identity
+fields, while terminal completion succeeds. Healthy controls must emit no
+corruption events. Malformed keys must not silently disappear from comparison.

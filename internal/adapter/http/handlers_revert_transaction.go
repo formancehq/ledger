@@ -12,6 +12,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
+// revertTransactionRequestBody is the JSON body of the revert endpoint.
+type revertTransactionRequestBody struct {
+	Force           bool           `json:"force"`
+	AtEffectiveDate bool           `json:"atEffectiveDate"`
+	Metadata        map[string]any `json:"metadata"`
+}
+
 // handleRevertTransaction handles POST /{ledgerName}/transactions/{transactionId}/revert to revert a transaction.
 func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request) {
 	ledgerName, ok := requireLedgerName(w, r)
@@ -27,7 +34,10 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	// Read the whole body through the router's MaxBytesReader before decoding.
 	// A stream decoder can stop at the first value and miss trailing data or
 	// an oversized suffix. Only a zero-byte body means default revert options.
-	var reqBody map[string]any
+	// The typed body rejects an option of the wrong JSON type (for example
+	// "atEffectiveDate":"true" or "metadata":[...]) with 400 instead of
+	// silently applying the default. JSON null keeps the default.
+	var reqBody revertTransactionRequestBody
 	if r.Body != nil {
 		body, err := io.ReadAll(r.Body)
 		if err == nil && len(body) != 0 {
@@ -48,34 +58,25 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 
 	// Build request payload
 	payload := &servicepb.RevertTransactionPayload{
-		TransactionId: transactionID,
+		TransactionId:   transactionID,
+		Force:           reqBody.Force,
+		AtEffectiveDate: reqBody.AtEffectiveDate,
 	}
 
-	// Extract optional fields from request body
-	if reqBody != nil {
-		if metadata, ok := reqBody["metadata"].(map[string]any); ok {
-			// Decode metadata through the shared typed-metadata path so numeric,
-			// boolean and other non-string values survive losslessly (parity with
-			// create-transaction / set-metadata). Invalid values (objects, arrays,
-			// non-integer floats) are rejected with 400 INVALID_REQUEST instead of
-			// being silently dropped (EN-1509).
-			ms, err := commonpb.MetadataFromAnyMap(metadata)
-			if err != nil {
-				writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid metadata: %w", err))
+	if reqBody.Metadata != nil {
+		// Decode metadata through the shared typed-metadata path so numeric,
+		// boolean and other non-string values survive losslessly (parity with
+		// create-transaction / set-metadata). Invalid values (objects, arrays,
+		// non-integer floats) are rejected with 400 INVALID_REQUEST instead of
+		// being silently dropped (EN-1509).
+		ms, err := commonpb.MetadataFromAnyMap(reqBody.Metadata)
+		if err != nil {
+			writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid metadata: %w", err))
 
-				return
-			}
-
-			payload.Metadata = ms
+			return
 		}
 
-		if force, ok := reqBody["force"].(bool); ok {
-			payload.Force = force
-		}
-
-		if atEffectiveDate, ok := reqBody["atEffectiveDate"].(bool); ok {
-			payload.AtEffectiveDate = atEffectiveDate
-		}
+		payload.Metadata = ms
 	}
 
 	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
@@ -119,5 +120,5 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		panic(emptyLogPayload("revert-transaction", logEntry, details))
 	}
 
-	writeMonetaryCreated(w, r, rt.RevertedTransaction)
+	writeCreated(w, r, rt.RevertedTransaction)
 }

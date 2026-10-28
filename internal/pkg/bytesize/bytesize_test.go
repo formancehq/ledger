@@ -18,6 +18,10 @@ func TestParse(t *testing.T) {
 		{"1", 1},
 		{"1024", 1024},
 		{"1048576", 1048576},
+		{" 1Ki ", 1024},
+		{"+1Ki", 1024},
+		{"0Ei", 0},
+		{"0E", 0},
 
 		// Binary suffixes
 		{"1Ki", 1024},
@@ -58,6 +62,7 @@ func TestParseErrors(t *testing.T) {
 		"1.5Gi",
 		"Mi",
 		"1Xi",
+		"9223372036854775808Ki",
 	}
 
 	for _, input := range tests {
@@ -107,6 +112,58 @@ func TestRoundTrip(t *testing.T) {
 			parsed, err := Parse(input)
 			require.NoError(t, err)
 			require.Equal(t, input, parsed.String())
+		})
+	}
+}
+
+// TestParseRejectsOverflowIntoDefault pins EN-2924: 16Ei must not become
+// the zero sentinel used by server flags to select consumer defaults.
+func TestParseRejectsOverflowIntoDefault(t *testing.T) {
+	t.Parallel()
+	_, err := Parse("16Ei")
+	require.ErrorContains(t, err, "out of range")
+}
+
+func TestParseRejectsNegativeSizes(t *testing.T) {
+	t.Parallel()
+	for _, input := range []string{"-1", "-1Ki", "-1Ei", "-16Ei", "-1k", "-1E", "-9223372036854775808"} {
+		t.Run(input, func(t *testing.T) {
+			t.Parallel()
+			_, err := Parse(input)
+			require.ErrorContains(t, err, "must be non-negative")
+		})
+	}
+}
+
+func TestParseBoundaries(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		valid    string
+		expected ByteSize
+		overflow string
+	}{
+		{"9223372036854775807", 9223372036854775807, "9223372036854775808"},
+		{"9007199254740991Ki", 9223372036854774784, "9007199254740992Ki"},
+		{"8796093022207Mi", 9223372036853727232, "8796093022208Mi"},
+		{"8589934591Gi", 9223372035781033984, "8589934592Gi"},
+		{"8388607Ti", 9223370937343148032, "8388608Ti"},
+		{"8191Pi", 9222246136947933184, "8192Pi"},
+		{"7Ei", 8070450532247928832, "8Ei"},
+		{"9223372036854775k", 9223372036854775000, "9223372036854776k"},
+		{"9223372036854M", 9223372036854000000, "9223372036855M"},
+		{"9223372036G", 9223372036000000000, "9223372037G"},
+		{"9223372T", 9223372000000000000, "9223373T"},
+		{"9223P", 9223000000000000000, "9224P"},
+		{"9E", 9000000000000000000, "10E"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.valid, func(t *testing.T) {
+			t.Parallel()
+			got, err := Parse(tt.valid)
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, got)
+			_, err = Parse(tt.overflow)
+			require.ErrorContains(t, err, "out of range")
 		})
 	}
 }

@@ -34,7 +34,7 @@ type PerNodeConn struct {
 	Addr string
 	// NodeID is the Raft node ID resolved once via GetClusterState. Zero if it
 	// could not be resolved (node down at dial time); Addr is still usable.
-	NodeID uint32
+	NodeID uint64
 
 	conn    *grpc.ClientConn
 	Bucket  servicepb.BucketServiceClient
@@ -96,26 +96,12 @@ func nodeAddresses() []string {
 func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 	addrs := nodeAddresses()
 
-	serviceConfig := `{
-		"methodConfig": [{
-			"name": [{}],
-			"retryPolicy": {
-				"MaxAttempts": 50,
-				"InitialBackoff": "0.2s",
-				"MaxBackoff": "2s",
-				"BackoffMultiplier": 1.5,
-				"RetryableStatusCodes": ["UNAVAILABLE"]
-			}
-		}]
-	}`
-
 	// As in NewGRPCConn, only a retry-forever client rides maintenance out.
 	retryMaintenance := os.Getenv("LEDGER_RETRY_FOREVER") != ""
 
 	opts := []grpc.DialOption{
 		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultServiceConfig(serviceConfig),
 		grpc.WithUnaryInterceptor(retryUnaryInterceptor(retryMaxAttempts, retryMaintenance)),
 		grpc.WithStreamInterceptor(retryStreamInterceptor(retryMaxAttempts, retryMaintenance)),
 	}
@@ -162,7 +148,7 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 		// One successful leader response carries the full node list, so the
 		// remaining connections can be resolved from the same snapshot.
 		if len(state.GetNodes()) > 0 {
-			byAddr := make(map[string]uint32, len(state.GetNodes()))
+			byAddr := make(map[string]uint64, len(state.GetNodes()))
 			for _, n := range state.GetNodes() {
 				byAddr[n.GetServiceAddress()] = n.GetId()
 			}

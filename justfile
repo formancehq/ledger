@@ -3,6 +3,10 @@ set dotenv-load
 pre-commit: fuzz-inventory-check generate generate-proto test-rpcauth-generator operator-generate test-dashboards tidy lint
 pc: pre-commit
 
+# Compare the service contract with the current PR or merge-queue target.
+check-protocol-version:
+    go run ./scripts/checkprotocolversion --base "$PROTOCOL_BASE_SHA"
+
 # Regenerate the Grafana dashboards (otel + prom variants) from Jsonnet
 # sources under misc/devenv/monitoring-dashboards/jsonnet/. The output
 # is written under misc/devenv/monitoring-dashboards/config/dashboards/
@@ -33,15 +37,59 @@ lint:
     echo "==> golangci-lint (model workload)"
     (cd tests/antithesis/workload && golangci-lint run --fix --build-tags enable_antithesis_sdk --timeout 5m)
 
+# Go modules kept tidy by `just tidy` (and checked by the Dirty CI job).
+tidy_modules := ". misc/operator tests/antithesis/workload"
+
 tidy:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "==> go mod tidy (.)"
-    go mod tidy
-    echo "==> go mod tidy (operator)"
-    (cd misc/operator && go mod tidy)
-    echo "==> go mod tidy (model workload)"
-    (cd tests/antithesis/workload && go mod tidy)
+    for dir in {{tidy_modules}}; do
+        echo "==> go mod tidy ($dir)"
+        go -C "$dir" mod tidy
+    done
+
+# Download every Go module CI needs, plus the pinned controller-gen, into
+# GOMODCACHE without modifying any file. CI runs this in Setup Env so every job
+# commits the full module set to the shared Namespace cache volume: the last
+# job to commit on a node decides what the next job forks, so modules only one
+# job needs would otherwise be lost. tests/perf is excluded because no CI job
+# builds it.
+go-mod-download:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    work=$(mktemp -d)
+    trap 'rm -rf "$work"' EXIT
+    i=0
+    for dir in {{tidy_modules}} misc/devenv/monitoring-dashboards tools/*/; do
+        dir=${dir%/}
+        echo "==> go mod download ($dir)"
+        # Without arguments, `go mod download` may rewrite inconsistent
+        # requirements in go.mod and add checksums to go.sum. Point it at
+        # copies so the checkout stays exactly as committed.
+        i=$((i + 1))
+        cp "$dir/go.mod" "$work/$i.mod"
+        if [ -f "$dir/go.sum" ]; then
+            cp "$dir/go.sum" "$work/$i.sum"
+        fi
+        go -C "$dir" mod download -modfile="$work/$i.mod"
+    done
+    # `go mod tidy` also loads the tests of dependencies, whose modules
+    # `go mod download` skips. `go mod tidy -diff` resolves the same set without
+    # writing go.mod/go.sum. It exits 1 and prints the diff on stdout when a
+    # module is untidy, which the Dirty job reports, so only that case is not
+    # fatal here.
+    for dir in {{tidy_modules}}; do
+        echo "==> go mod tidy -diff ($dir)"
+        status=0
+        go -C "$dir" mod tidy -diff >"$work/tidy.diff" || status=$?
+        if [ "$status" -eq 1 ] && [ -s "$work/tidy.diff" ]; then
+            echo "$dir is not tidy; run 'just tidy'"
+        elif [ "$status" -ne 0 ]; then
+            exit "$status"
+        fi
+    done
+    echo "==> controller-gen (download and build)"
+    {{controller-gen}} --version
 
 # All optional feature build tags
 all_tags := "kafka,nats,clickhouse,databricks,s3,azure,pyroscope"
@@ -204,6 +252,16 @@ test-internal-coverage:
     mkdir -p {{coverage_dir}}
     echo "==> Internal tests with optional features and coverage..."
     scripts/go-test-coverage {{coverage_dir}}/internal.out -race -tags "{{all_tags}}" -coverpkg={{coverage_pkgs}} -timeout 20m ./internal/...
+
+# Run PostgreSQL mirror integration regressions (requires Docker or LEDGER_TEST_POSTGRES_DSN).
+test-postgres-mirror-coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p {{coverage_dir}}
+    scripts/go-test-coverage {{coverage_dir}}/postgres-mirror.out \
+        -race -tags integration -coverpkg={{coverage_pkgs}} \
+        -run Postgres -count=1 -timeout 5m \
+        ./internal/adapter/v2 ./internal/application/mirror
 
 # Run E2E tests with coverage. The CI gates invoke this recipe once for each
 # isolated Business/Cluster job. Every invocation uses the full tag set: the
@@ -400,6 +458,16 @@ operator-install-plugin:
 # Run operator unit tests
 operator-test:
     cd misc/operator && go test ./...
+
+# Run Ledger target admission regressions in the operator-tests Nix shell.
+operator-test-admission:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unset GOROOT
+    KUBEBUILDER_ASSETS=$(setup-envtest use 1.32.x -p path)
+    export KUBEBUILDER_ASSETS
+    cd misc/operator
+    go test -race -tags integration ./internal/controller -run '^TestLedgerAdmission' -count=1 -timeout 3m
 
 # Run operator pre-commit checks (generate + tidy + build)
 operator-pre-commit: operator-generate

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
@@ -116,6 +117,32 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ledger.Status.Phase = "Error"
 
 		return ctrl.Result{}, nil // Don't requeue; wait for spec change.
+	}
+
+	// Check the live image before reconciling any resource. The Cluster API has
+	// no source-version field: the current StatefulSet template is the source of
+	// truth for an RC transition.
+	existingStatefulSet, err := r.fetchExistingStatefulSet(ctx, ledger)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("fetching StatefulSet for RC upgrade validation: %w", err)
+	}
+	var rcUpgradeError error
+	if existingStatefulSet == nil {
+		rcUpgradeError = r.validateRCUpgradeWithoutStatefulSet(ctx, ledger)
+	} else {
+		rcUpgradeError = validateRCUpgrade(ledger.Spec.Image.Tag, existingStatefulSet)
+	}
+	if rcUpgradeError != nil {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               "ConfigValid",
+			Status:             metav1.ConditionFalse,
+			Reason:             "ValidationFailed",
+			Message:            rcUpgradeError.Error(),
+			ObservedGeneration: ledger.Generation,
+		})
+		ledger.Status.Phase = "Error"
+
+		return ctrl.Result{}, nil
 	}
 
 	// Clear any previous validation failure.
@@ -625,8 +652,8 @@ func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
 	return nil
 }
 
-// validateClusterConfig validates cluster-wide cache and bloom parameters that
-// flow to the server via env vars. Defaults are server-side (loadBloomConfig);
+// validateClusterConfig validates cluster-wide parameters that
+// flow to the server via env vars. Defaults are server-side;
 // this only rejects values that would either be silently ignored or that the
 // server would refuse.
 func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
@@ -647,6 +674,15 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 
 	if spec.Cache != nil && spec.Cache.RotationThreshold != nil && *spec.Cache.RotationThreshold <= 0 {
 		return fmt.Errorf("cache.rotationThreshold must be > 0, got %d", *spec.Cache.RotationThreshold)
+	}
+	if spec.Health != nil && spec.Health.Interval != "" {
+		interval, err := time.ParseDuration(spec.Health.Interval)
+		if err != nil {
+			return fmt.Errorf("health.interval %q is not a valid duration: %w", spec.Health.Interval, err)
+		}
+		if interval <= 0 {
+			return fmt.Errorf("health.interval must be greater than zero, got %q", spec.Health.Interval)
+		}
 	}
 	if spec.Bloom == nil {
 		return nil

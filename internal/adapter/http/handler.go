@@ -138,6 +138,10 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				})
 			})
 
+			r.With(requireQueriesRead).Group(func(r chi.Router) {
+				r.Post("/numscripts/analyze", server.handleAnalyzeNumscript)
+			})
+
 			// Ledgers read scope
 			r.With(requireLedgersRead).Group(func(r chi.Router) {
 				r.Get("/", server.handleListAllLedgers)

@@ -17,10 +17,10 @@ import (
 )
 
 func init() {
-	registerSinkFactory("clickhouse", func(sc *commonpb.SinkConfig, _ Format) (Sink, error) {
+	registerSinkFactory("clickhouse", func(ctx context.Context, sc *commonpb.SinkConfig, _ Format) (Sink, error) {
 		s := sc.GetType().(*commonpb.SinkConfig_Clickhouse)
 
-		return NewClickHouseSink(context.Background(), ClickHouseSinkConfig{
+		return NewClickHouseSink(ctx, ClickHouseSinkConfig{
 			DSN:   s.Clickhouse.GetDsn(),
 			Table: s.Clickhouse.GetTable(),
 		})
@@ -48,13 +48,15 @@ const clickhouseTransactionColumns = `JSON(
         )`
 
 // ClickHouseCreateTableDDL returns the CREATE TABLE statement for the events table
-// with a fully-typed JSON column matching the ledger v2 reference implementation.
+// with a fully-typed JSON column matching the analytical event projection.
+// Account metadata retains its account -> metadata key -> string shape.
 //
 // Delivery is at-least-once, so a redelivered batch re-inserts rows with an
 // identical (ledger, log_sequence). ReplacingMergeTree collapses those duplicates
 // during background merges; dedup is therefore eventual, and exact queries must
 // use FINAL or GROUP BY to avoid transiently counting an un-merged duplicate.
 func ClickHouseCreateTableDDL(table string) string {
+	//nolint:dupword // Nested ClickHouse map types and closing parentheses are required SQL syntax.
 	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
     log_sequence UInt64,
     type         LowCardinality(String),
@@ -62,7 +64,7 @@ func ClickHouseCreateTableDDL(table string) string {
     date         DateTime64(6, 'UTC'),
     data         JSON(
         transaction %s,
-        accountMetadata Map(String, String),
+        accountMetadata Map(String, Map(String, String)),
         revertedTransactionId Nullable(UInt64),
         revertTransaction %s,
         targetType Nullable(String),

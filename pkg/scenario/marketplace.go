@@ -35,7 +35,7 @@ func MarketplaceBlocks() *BlockGroup {
 	}
 }
 
-func marketplaceDeposit(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func marketplaceDeposit(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	customerID := 1 + RandIntN(r, MarketplaceNumCustomers)
 	address := fmt.Sprintf("customer:%d", customerID)
 	amount := int64(100_000) + RandInt64N(r, int64(MarketplaceDepositAmt))
@@ -48,7 +48,7 @@ func marketplaceDeposit(ctx context.Context, client servicepb.BucketServiceClien
 	)
 }
 
-func marketplacePurchase(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func marketplacePurchase(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	customerID := 1 + RandIntN(r, MarketplaceNumCustomers)
 	merchantID := 1 + RandIntN(r, MarketplaceNumMerchants)
 	customer := fmt.Sprintf("customer:%d", customerID)
@@ -71,7 +71,7 @@ func marketplacePurchase(ctx context.Context, client servicepb.BucketServiceClie
 	)
 }
 
-func marketplaceRevert(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func marketplaceRevert(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	tx, ok := GetNonRevertedTransaction(ctx, client, MarketplaceLedger, r)
 	if !ok {
 		return nil, ErrSkip
@@ -82,7 +82,7 @@ func marketplaceRevert(ctx context.Context, client servicepb.BucketServiceClient
 	)
 }
 
-func marketplacePayout(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func marketplacePayout(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	merchantID := 1 + RandIntN(r, MarketplaceNumMerchants)
 	merchant := fmt.Sprintf("merchant:%d", merchantID)
 
@@ -99,7 +99,7 @@ func marketplacePayout(ctx context.Context, client servicepb.BucketServiceClient
 	)
 }
 
-func marketplaceMetadata(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func marketplaceMetadata(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	var address string
 	if RandIntN(r, 2) == 0 {
 		address = fmt.Sprintf("customer:%d", 1+RandIntN(r, MarketplaceNumCustomers))
@@ -110,7 +110,7 @@ func marketplaceMetadata(ctx context.Context, client servicepb.BucketServiceClie
 	resp, err := ApplyActions(ctx, client,
 		actions.SaveAccountMetadataAction(MarketplaceLedger, address, map[string]string{
 			"tier":      fmt.Sprintf("tier-%d", RandIntN(r, 5)),
-			"last_seen": strconv.FormatUint(r(), 10),
+			"last_seen": strconv.FormatUint(r.Uint64(), 10),
 		}),
 	)
 	if err != nil {

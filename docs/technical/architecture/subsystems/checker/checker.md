@@ -6,6 +6,8 @@ The checker (`internal/application/check`) verifies that the data persisted in P
 
 Its job is to enforce the system-wide invariant that the audit log is the only source of truth and every other persisted dataset is a re-derivable projection. Anything the checker doesn't verify is, by definition, an unmonitored tampering vector.
 
+`Checker.Check` runs four ordered phases: `pinCheckSnapshots` pins the peer read-index snapshot before the primary snapshot and reads the log head from the primary Log key; `verifyCheckAudit` verifies the audit chain and builds the business oracle even when there are no logs; `replayLogs` scans logs once, emits replay findings and progress, and derives expected state; `compareProjections` checks stored rows against that state. The replay store and both snapshots stay open through the projection phase. This ordering is part of the streamed event contract: audit findings precede replay progress, and projection findings follow it.
+
 ## Surface
 
 `misc/proto/bucket.proto`:
@@ -46,8 +48,11 @@ Each pass takes a persisted projection, re-derives the expected value by replayi
 | 13 | `signingVerifier.compare` | The `SubGlobSigningKey` rows (public-key bytes + `parent_key_id`) and the `SubGlobSigningConfig` require-signatures flag, compared in both directions | Fold of the chain-bound `RegisterSigningKey` / `RevokeSigningKey` / `SetSigningConfig` orders over the audit range | `SIGNING_KEY_MISMATCH`, `SIGNING_CONFIG_MISMATCH`, `SIGNING_VERIFICATION_INCOMPLETE` |
 | 14 | log key/value sequence agreement | Each `Log` row's `sequence` field equals the sequence encoded in its Pebble key. Log rows are not hash-bound, and `query.ReadLastSequence` reads the value's field, so a single edited field used to resize the whole run; the checker no longer reads it at all (see [Stored log bounds](#stored-log-bounds)). The row is reported **and still replayed** under its key sequence: the field is not an input to replay, so the divergence is one finding rather than the head of a cascade | The Pebble key, which every projection is keyed on | `LOG_SEQUENCE_MISMATCH` |
 | 15 | `logBoundsVerifier.compare` | The stored `Log` KEY sequences agree with the range the audit chain accounts for, in **both** directions and **independently**: a deleted log **tail**, which the interior gap scan of pass 1 cannot see, and rows above everything the audit produced. Bounds the audited interval from **above only** — its lower end is pinned in the log loop, which reports a row at reserved key sequence 0 (a position `NextSequenceID` never allocates, and one no other pass can see) | Union of the chain-verified `AuditSuccess` `[min_log_sequence, max_log_sequence]` ranges, each validated against its own entry's chain-verified `AuditItem` sequences | `SEQUENCE_GAP` (tail), `LOG_UNAUDITED`, `LOG_VERIFICATION_INCOMPLETE` |
+| 16 | `ledgerPolicyVerifier.compare` | Canonical `SubAttrLedger` and global `SubGlobLedgerInfo` rows, each keyed independently: presence, name, schema, account types, default enforcement, mode, mirror source and deletion timestamp | Ledger policies exported from the isolated FSM replay of successful chain-verified audit proposals | `MISSING_LEDGER`, `UNAUDITED_LEDGER`, `SCHEMA_MISMATCH`, `ACCOUNT_TYPE_MISMATCH`, `DEFAULT_ENFORCEMENT_MODE_MISMATCH`, `LEDGER_INFO_MISMATCH` |
 
 Notes:
+
+- **Account metadata and transaction projection keys must decode.** A surplus row with a valid protobuf value but a malformed canonical key emits `METADATA_MISMATCH` or `TRANSACTION_UPDATE_MISMATCH`, respectively. The event includes the raw key and decoding error; identity fields remain unset because partial decoding is not authoritative. Each malformed key counts as an error, and checking continues over the remaining rows.
 
 - **`compareIndexes` covers presence + identity** (`IndexID` match), **not `IndexVersionState`** — that state is by design local and may legitimately differ across nodes mid-rewrite (see [indexer / indexes.md](../indexer/indexes.md)).
 - **`compareIndexes` has no unmatched-row tolerance.** Expected = the replayed registry state, and an unmatched stored entry is a hard mismatch. A tolerated stale or tampered registry row is what makes `compareReverseMapOrphans`' registry term treat orphaned reverse-map rows as legitimate — two corrupted projections could mask each other and leave `Check()` clean; do not introduce a tolerance without replacing that coverage.
@@ -169,6 +174,11 @@ Three building blocks under `internal/domain/replay/`:
 
 Replay reads from a Pebble-backed `replayStore` with merge operators so a multi-million-row accumulation stays `O(1)` per write rather than `O(log n)`.
 
+The chain-verified FSM pass also uses an isolated `AuditReplayer` store. That
+directory is process-local and disposable: it is never reopened after a crash
+and is removed when the check finishes. It therefore disables Pebble's WAL;
+the live primary store keeps its normal WAL and recovery guarantees.
+
 The transaction merge operator is associative. On a partial merge — Pebble compacting operands without the base value, `includesBase=false` — it defers the ordered ops as a `txOpBatch` instead of collapsing them into a finalized snapshot: a metadata delete has no snapshot representation, so collapsing would silently drop it and a later fold with the base could not undo it. Only a base-inclusive fold (at read, or the LSM bottom) resolves to a finalized `TransactionState`.
 
 ## Pass-by-pass derivation flow
@@ -189,20 +199,49 @@ flowchart TB
     B --> N[compareNumscripts]
     B --> O["compareReverseMapOrphans (peer readstore snapshot)"]
     B -->|"on success: fold signing orders"| P["signingVerifier.compare"]
+    B -->|"complete isolated replay"| Q["ledgerPolicyVerifier.compare"]
     D & E & F & G & I & J & L & M & N & O --> K[stream errors as they happen]
     C --> K
     P --> K
+    Q --> K
 ```
 
-`compareDefaultEnforcementModes` verifies the live
-`LedgerInfo.default_enforcement_mode` projection against the mode derived from
-`CreateLedger.default_enforcement_mode` and every subsequent audited
-`UpdateDefaultEnforcementMode` log. The pass skips soft-deleted tombstones, whose
-live projection was removed by the audited ledger deletion, and reports
-`DEFAULT_ENFORCEMENT_MODE_MISMATCH` when the stored policy differs. This is a
-governance-truth check: the field decides whether unmatched accounts are rejected.
+`ledgerPolicyVerifier` compares both persisted ledger projections independently
+against `AuditReplayer.LedgerInfos()`, exported from the isolated FSM replay
+already used to reconstruct expected logs. It replaces the production calls to
+the global-only ledger presence, schema, account-type and default-enforcement
+comparators. Neither stored ledger projection nor stored log payloads seed the
+expectation. Successful verified proposals run through the canonical processor,
+so skipped orders and rejected proposals do not manufacture ledger changes,
+and proposal-local ordering follows the live FSM.
 
-All non-chain passes are independent of each other (each replays the subset of orders it needs) and can be reordered without changing semantics — they share only the Pebble snapshot, the `expectedIdempotency` map, and the signing expectation the chain walk accumulates. `compareReverseMapOrphans` is the one pass whose *data* comes from outside that snapshot: it takes its own read-only snapshot of the peer readstore, and uses the main-store snapshot plus the replay-derived schema and live-ledger sets as its oracle.
+The pass uses each row's actual persisted key as its identity, then checks its
+embedded name. It detects missing and surplus rows in each keyspace and compares
+metadata schema, account types, default enforcement mode, ledger mode, complete
+mirror source configuration and deletion timestamp. An audited deletion retains
+a tombstone in both keyspaces with its final policy; those rows remain subject
+to comparison. Promotion changes mode to normal and clears the mirror source.
+Comparing the two stored copies only with one another would miss coordinated
+corruption, so each is checked against the replay expectation.
+
+The canonical streaming iterator excludes the empty canonical key. A separate
+point read on the same pinned snapshot includes that row in the comparison,
+so a row stored at the bare ledger attribute prefix is reported as unaudited.
+
+Existing field-specific error types remain in use. `LEDGER_INFO_MISMATCH`
+identifies name, deletion-state, mode, mirror-source and global-key-encoding
+mismatches. Events identify the keyspace, ledger and field without printing
+mirror configuration, which may contain credentials. Invalid stored values or
+iterator failures return an execution error. The pass is suppressed when the
+verified chain or isolated replay is incomplete; the already reported audit or
+replay failure remains the evidence of an unhealthy check.
+
+This policy pass deliberately excludes creation timestamps and numeric ledger
+IDs, whose projection verification remains a separate coverage gap. Read-time
+metadata and mirror-sync progress are also excluded: they are enrichments, not
+persisted ledger policy. The change adds verification only; it does not rewrite
+stored rows or alter committed-entry application.
+Projection comparisons consume expectations accumulated during the verified audit and log replay phases, including the isolated ledger-policy replay. They compare stored rows on the pinned primary snapshot. `compareReverseMapOrphans` is the one pass whose stored data comes from outside that snapshot: it uses the separately pinned peer readstore snapshot, with the main-store snapshot plus replay-derived schema and live-ledger sets as its oracle.
 
 ## Error event shape
 
@@ -251,6 +290,7 @@ enum CheckStoreErrorType {
   LOG_VERIFICATION_INCOMPLETE = 29;
   LOG_UNAUDITED               = 30;
   LOG_PAYLOAD_MISMATCH        = 31;
+  LEDGER_INFO_MISMATCH        = 32;
 }
 ```
 
@@ -262,6 +302,9 @@ Adding a new persisted projection requires adding a new pass *and* a new error t
 
 A short list, because it matters for the threat model:
 
+- **LedgerInfo creation timestamp and numeric ID**: the ledger policy pass
+  excludes these fields; comparison of the covered policy fields does not
+  certify the entire LedgerInfo value.
 - **Transaction `inserted_at` / `updated_at` in ledger-log payloads**: the
   transaction pass verifies `TransactionState`, which deliberately does not
   contain these read-model fields. For mirror ingests the source date is
@@ -270,7 +313,7 @@ A short list, because it matters for the threat model:
   ledger log. This is an existing primary-store projection gap; EN-1854 changes
   the authoritative source value without claiming to close that checker gap.
 - **`IndexVersionState`** (per-replica): legitimately diverges during a rewrite — see [indexer / indexes.md](../indexer/indexes.md).
-- **Bloom filters**: a probabilistic cache; correctness is a function of the underlying attribute store, which the checker *does* verify.
+- **Bloom filters**: a probabilistic cache; the checker verifies the underlying attribute store, not the persisted Bloom blocks. Recovery scans that store when blocks are missing, unsealed, carry a seal stale against the durable applied index, or are incompatible with the committed Bloom configuration. Only compatible blocks with a current seal are restored directly. The remaining checker gap for trusted blocks is described in [audit vs. technical state](../../audit-vs-technical-state.md).
 - **Read store index *contents* (inverted index for queries)**: rebuildable from scratch by the [indexer](../indexer/), so a divergence is recoverable without an audit — but the *source* attributes the indexer projects from are checked. Whether any index row holds the right *value* is unverified, tracked under `EN-1514` / `EN-1323`. **Not** in this list: reverse-map (`0x03`) row *presence*, which `compareReverseMapOrphans` detects against the index registry — see pass 12 above.
 - **Snapshot files and the spool**: transient transport artefacts, not persisted projections.
 

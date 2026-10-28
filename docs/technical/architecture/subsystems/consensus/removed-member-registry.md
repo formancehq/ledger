@@ -15,7 +15,7 @@ The bug this addresses is tracked as [EN-1045](https://formance-team.atlassian.n
 - The guarantee is authoritative on the leader side — it does not rely on the removed peer behaving correctly (which is precisely the trust we are revoking).
 - The check is deterministic across leader changes (any elected leader enforces the same registry).
 - No new coupling from the ledger to Kubernetes — the operator does not need to inform the leader of intent beyond the existing `remove-node` call.
-- `instance_id` is **mandatory** on every membership-creation and discovery path: `JoinAsLearner`, administrative `AddLearner`, `PeerInfo`, the ConfChange registration payload, and the persisted peer row. Mixed-format state is rejected by design — v3 is unreleased and has no compatibility burden.
+- `instance_id` is **mandatory** on every membership-creation and discovery path: `JoinAsLearner`, administrative `AddLearner`, `PeerInfo`, the ConfChange registration payload, and the persisted peer row. This format change preceded `v3.0.0-rc.1`; later changes must provide a supported migration from the preceding release.
 
 ## Non-Goals
 
@@ -88,16 +88,75 @@ type ConfChangeContext struct {
 
 The leader reads the peer's `instanceID` from its Membership state before proposing (leader-only path, not FSM hot path — no preload constraint). A missing or malformed identity is an invariant failure and the proposal is rejected before Raft is mutated. The proposal is then replicated normally.
 
-Every node applies the same log entry through the FSM apply path. The apply batch performs two mutations inside a single `dal.WriteSession`:
+Every node applies the same log entry through the FSM apply path. The apply
+batch deletes the persisted peer row and writes
+`RemovedMembers[nodeID, instanceID]` to Pebble via `membership` inside a single
+`dal.WriteSession`. Both persisted mutations belong to the same Pebble
+transaction, so they are atomic. Cross-node convergence is guaranteed by [invariant #2](../../../../../CLAUDE.md#invariants) (FSM determinism): same input log entry on every node → same `RemovedMembers` on every node.
 
-1. Delegate the ConfChange to raft's own state machine (unchanged from today).
-2. Write `RemovedMembers[nodeID, instanceID]` to Pebble via `membership`.
-
-Both mutations belong to the same Pebble transaction, so they are atomic. Cross-node convergence is guaranteed by [invariant #2](../../../../../CLAUDE.md#invariants) (FSM determinism): same input log entry on every node → same `RemovedMembers` on every node.
-
-No crash window on this path.
+Raft commit observation and durable FSM application are separate stages. Before
+submitting a Ready to the asynchronous applier, `finishReady` applies each
+configuration change to RawNode. For a removal it installs admission protection
+before removing the cached peer; for a registration it publishes the new peer
+to the cache/transport. It then persists the WAL snapshot ConfState, resolves
+correlated futures, and submits the committed
+entries. The FSM deletes the persisted peer row and writes the identity's
+tombstone in one Pebble batch; its durable applied index is published only after
+commit. A crash before that batch leaves committed WAL entries to replay, even
+if the in-memory peer or WAL ConfState already changed. Startup replay and
+membership rehydration recover the committed result. RawNode mutation is not
+part of the Pebble transaction.
 
 On the leader serving `RemoveNode`, `ProposalID` — together with the expected node ID and ConfChange type — selects the exact pending future, which then carries the committed Raft entry index. A canceled proposal that commits late cannot resolve a newer operation for the same node. Every removal waits on `Machine.WaitForApplied(index)` rather than polling Pebble against a fixed wall-clock deadline. If the caller stops waiting after commit but before durable apply, Ledger returns `UNAVAILABLE` with `ErrorInfo.reason=RAFT_NODE_REMOVAL_COMMITTED` and the `nodeId` / `committedIndex` metadata. Observing the committed ConfChange installs a node-local admission barrier for `(nodeID, instanceID)` before the caller's future can be resolved or discarded. A node-lifecycle-bound background waiter starts from that commit observation, waits for apply, verifies the same durable tombstone invariant as the foreground path, and only then clears that exact barrier; the replicated tombstone remains authoritative, and no operator command currently removes it (the `ledgerctl cluster forget-removed` / `list-removed` commands described in [`ledgerctl` Additions](#ledgerctl-additions) are not implemented). Protection therefore does not depend on the RPC winning its cancellation race, while cancellation cannot leave a permanent node-local block after a valid tombstone apply.
+
+#### Historical replay and pending removal events
+
+A lagging follower must accept a committed remove/add/remove history for one
+node number even when the add carries a fresh identity and all three entries
+arrive in one Ready. Commit observation precedes submission of that entire
+Ready, so waiting for the first removal to apply inside this loop would prevent
+the batch from reaching the FSM.
+
+Pending admission protection is indexed by `(nodeID, committedIndex)`, with an
+immutable copy of the removed identity in each event. Exact duplicate
+observations reuse the event; different identities at the same node/index are
+an invariant failure. Different committed indexes coexist, including repeated
+identity bytes. Admission checks every outstanding event for the requested
+node and rejects matching identities; a fresh identity is not blocked by an
+older incarnation's pending removal. Durable tuple tombstones continue to
+enforce rejection after pending protection is cleared.
+
+Foreground and background cleanup first wait for the event's durable applied
+index, then verify its matching tuple tombstone. Missing tombstones or read
+errors retain protection. Deletion requires both the committed index and the
+original event pointer, so delayed cleanup cannot remove another event or a
+replacement pointer. Caller cancellation leaves the lifecycle-bound background
+waiter responsible for cleanup. A terminated node discards these local guards;
+restart replays its committed WAL and rehydrates durable membership before
+serving. No persisted representation, committed FSM effect, wire contract,
+protocol revision, or upgrade migration changes with this bookkeeping.
+
+The set lock protects only in-memory lookup/insertion/deletion and is released
+before FSM waits, store reads, or proposal waits. Insertion and deletion have
+expected O(1) cost; admission lookup is O(k), where k is the outstanding removal
+history of that ordinal, and does not scan other nodes. Memory and existing
+background waiters grow with total outstanding removals. The trigger is observed
+committed removal, not ordinary reads or proposals; there is no proposal/WAL
+amplification. Apply lag can retain an unbounded history until apply reaches
+each event and its tombstone verification succeeds. The background waiter
+verifies only once and exits on a missing tombstone or read error; later apply
+progress alone does not retry verification or release that event. After a
+verification failure, cleanup requires successful verification of the same
+event by a foreground waiter that is still active, or a node restart. No
+TTL/eviction is safe.
+Operationally sustained lag or verification failure requires investigation;
+large retained histories are a trigger to reassess cleanup scheduling and
+resource limits without weakening identity protection. The deterministic
+partition test and `BenchmarkPendingRemovalAdmission` cover one, 64, and 1,024
+events per ordinal with zero or 4,096 unrelated pending ordinals. Representative
+Darwin arm64 measurements were 27–30 ns, 338–345 ns, and 5.7–5.9 us respectively,
+with no allocations per lookup; these are cost-shape evidence, not latency
+limits for other hardware or concurrent workloads.
 
 #### Force path (`ForceRemoveNode`)
 
@@ -166,7 +225,7 @@ Two paths must consult the registry:
 
 2. **`checkAndPromoteLearners`** (`internal/infra/node/node.go`): before proposing `ConfChangeAddNode` for a caught-up learner, the promotion loop checks the same registry. Belt-and-suspenders — a learner should never be present in the ConfState if it was blacklisted at `JoinAsLearner`, but if for any reason it slipped in through an unforeseen path, promotion still refuses.
 
-Both checks are leader-only, outside the FSM hot path, so they read straight from Pebble via `NewDirectReadHandle`. There is no in-memory cache for the registry: the read cost is a single point lookup per admission / promotion tick, and the registry is small (bounded by the number of scale-down events over the cluster's lifetime, in practice tens to hundreds of entries). Invariants #6 and #9 (preload + coverage gate on FSM cache reads) do not apply — the check runs before any proposal is emitted, not from inside a hot-path apply.
+Both checks are leader-only, outside the FSM hot path, so they read straight from Pebble via `NewDirectReadHandle`, and only once the leader is ready: `retryConfChange` waits on `WaitLeaderReady` and auto-promotion skips its tick until then, because a leader elected while its store is behind its Raft log has not restored the registry yet, and a tombstone inside the checkpoint it still has to fetch is invisible to it. There is no in-memory cache for the registry: the read cost is a single point lookup per admission / promotion tick, and the registry is small (bounded by the number of scale-down events over the cluster's lifetime, in practice tens to hundreds of entries). Invariants #6 and #9 (preload + coverage gate on FSM cache reads) do not apply — the check runs before any proposal is emitted, not from inside a hot-path apply.
 
 ### Peer-Side Behavior
 

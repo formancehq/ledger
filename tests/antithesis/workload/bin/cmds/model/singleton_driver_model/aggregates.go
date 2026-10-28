@@ -287,10 +287,10 @@ func mergePrecisions(sums map[assetColor]*aggPair) map[assetColor]*aggPair {
 // splitAsset reads the server's asset convention: "BASE/N" carries precision
 // N, a bare base has precision 0.
 func splitAsset(asset string) (base string, precision uint8) {
-	if i := strings.LastIndexByte(asset, '/'); i >= 0 {
-		n, err := strconv.ParseUint(asset[i+1:], 10, 8)
+	if before, after, ok := strings.CutLast(asset, "/"); ok {
+		n, err := strconv.ParseUint(after, 10, 8)
 		if err == nil {
-			return asset[:i], uint8(n)
+			return before, uint8(n)
 		}
 	}
 

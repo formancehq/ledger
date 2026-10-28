@@ -205,7 +205,7 @@ The **Applier** (owned by the Node) manages the synchronization process through 
 | `statusNormal` | 0 | Normal operation: committed entries applied directly to FSM (pipelined) |
 | `statusSyncing` | 1 | Pebble checkpoint fetch from leader in progress: entries spooled |
 | `statusSnapshotting` | 2 | Local checkpoint creation in progress (QueryCheckpoint): entries spooled |
-| `statusOutOfSync` | 3 | Store behind FSM snapshot: waiting for leader discovery |
+| `statusOutOfSync` | 3 | Store behind the WAL snapshot: waiting for the next donor attempt |
 | `statusInstallingSnapshot` | 4 | Leader snapshot being installed by processReadies: entries spooled, unspool skipped |
 
 #### State Transitions
@@ -227,11 +227,12 @@ The **Applier** (owned by the Node) manages the synchronization process through 
            └─────────────────┘               │ resume      │   │
                                              └─────────────┘   │
                                                     ▲           │
-  startup ──►┌──────────────┐  leader    ┌─────────────────┐   │
-  (store     │statusOutOfSync│──found───►│  statusSyncing   │──┘
+  startup ──►┌──────────────┐  donor     ┌─────────────────┐   │
+  (store     │statusOutOfSync│──picked──►│  statusSyncing   │──┘
    behind)   └──────────────┘            └────────┬────────┘
                     ▲                             │
-                    │         peer unavailable     │
+                    │   donor unavailable or       │
+                    │   resynchronizing itself     │
                     └─────────────────────────────┘
 ```
 
@@ -241,11 +242,29 @@ When the node starts with an out-of-date store, or when a `MsgSnap` is received 
 
 1. Snapshot is applied to WAL and FSM state is restored (fast, in-memory)
 2. If the store is behind, status transitions to `statusOutOfSync`
-3. When a leader is discovered (`SoftState` with non-zero leader), status transitions to `statusSyncing`
-4. A background task fetches the Pebble checkpoint from the leader via gRPC
+3. On the next Ready, `processReady` picks a donor (`Node.syncDonor`) and status transitions to `statusSyncing`
+4. A background task fetches the Pebble checkpoint from the donor via gRPC
 5. On completion, spooled entries are replayed and status returns to `statusNormal`
 
-If the leader is unreachable during sync, the node falls back to `statusOutOfSync` and retries when a new leader is found.
+#### Donor Selection
+
+Attempts rotate through the known leader first, then the other voters in
+ascending ID order, each peer once per round. The node is never its own
+donor. Attempts are at least `syncRetryInterval` (1s) apart, and the attempt
+counter resets once the applier is back in `statusNormal` or a new `MsgSnap`
+is installed.
+
+The leader is not always a usable donor. A node elected while out of sync
+leads on its log while its store is behind (see
+[Elections While Out of Sync](#elections-while-out-of-sync)); until it has
+fetched a checkpoint itself it cannot serve one. A donor in that state refuses
+`PrepareSnapshot` with `FailedPrecondition` (`Applier.WaitForCheckpointable`),
+which the fetcher treats as final, so the requester falls back to
+`statusOutOfSync` and moves on to the next voter instead of waiting out its
+`PrepareSnapshot` budget. An unreachable donor produces the same fallback.
+Any voter whose applied index covers the requester's WAL snapshot index is a
+valid donor: applied entries are committed, and committed entries are
+identical on every node.
 
 #### Entry Processing During Sync
 
@@ -270,12 +289,26 @@ In normal mode, the Applier uses a pipelined approach: `PrepareEntries()` (CPU-b
 
 The `processReadies` goroutine submits entries asynchronously via `node.applier.Submit()`, allowing WAL writes to overlap with FSM application across consecutive Ready cycles. This ensures that new Raft entries committed during synchronization are not lost -- they are buffered in the Spool.
 
-#### Protection Against Premature Leadership
+#### Elections While Out of Sync
 
-Two mechanisms prevent a syncing node from becoming leader prematurely:
+A node whose store is behind still holds a complete, durable Raft log, and
+elections are decided on the log alone. `rawNode.Tick()` therefore keeps
+firing in `statusSyncing` and `statusOutOfSync` (`shouldTickRaft`): the node
+times out, votes, campaigns, and may win. Withholding its ticks would be
+unsafe for availability, not for consistency: when the voters holding the
+newest log are the resynchronizing ones, no candidate with an older log can
+win, and a cluster whose out-of-sync voters never campaign stays leaderless
+with every node up. Only `statusInstallingSnapshot`, the short window in which
+`processReadies` rewrites the WAL snapshot, pauses the clock.
 
-1. **Tick suppression**: During `statusSyncing` and `statusOutOfSync`, `rawNode.Tick()` is not called. Without ticks, the node cannot trigger election timeouts.
-2. **MsgTimeoutNow rejection**: If a leader tries to transfer leadership to a syncing node via `TransferLeadership`, the `MsgTimeoutNow` message is silently dropped.
+What needs the store is gated on its own:
+
+1. **Admission** waits for `leaderReady`, which completes only once the FSM has applied the new leader's no-op entry. An out-of-sync leader admits nothing until its checkpoint sync and spool replay are done.
+2. **ReadIndex** refuses while the node is syncing or out of sync.
+3. **MsgTimeoutNow rejection**: if a leader tries to transfer leadership to a node outside `statusNormal` via `TransferLeadership`, the `MsgTimeoutNow` message is silently dropped.
+4. **Maintenance snapshots** wait for `LastPersistedIndex` to move, so an out-of-sync node never compacts entries it has not applied.
+5. **Event sinks and mirrors** start on `LeaderReadyEvent`, behind the same gate as admission, so their managers read sink and mirror config from a current store. Leadership loss stops them at once.
+6. **Membership changes** wait for `leaderReady` before proposing (`retryConfChange`), and automatic promotion skips its tick until then, so the removed-member registry and instance identities they check are read from a current store. Force removal, the no-quorum recovery path, is not gated.
 
 #### Sync Completion
 
@@ -297,18 +330,18 @@ sequenceDiagram
     participant Spool
     participant FSM
     participant Store
-    participant Leader as Leader (gRPC)
+    participant Donor as Donor (gRPC)
 
     Note over Applier: Store behind snapshot at startup
     Applier->>Applier: status = OutOfSync
-    Note over Node: SoftState reveals leader
+    Note over Node: Ready picks a donor (leader first)
     Applier->>Applier: status = Syncing
     Applier->>Applier: Start background task
 
     par Background Sync
         Applier->>FSM: SynchronizeWithLeader()
-        FSM->>Leader: Fetch Pebble checkpoint (SnapshotService gRPC)
-        Leader-->>FSM: Checkpoint stream
+        FSM->>Donor: Fetch Pebble checkpoint (SnapshotService gRPC)
+        Donor-->>FSM: Checkpoint stream
         FSM->>Store: Restore checkpoint
         FSM-->>Applier: Sync complete
         Applier->>Spool: ReplayUntil(watermark)

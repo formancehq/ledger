@@ -54,5 +54,5 @@ func (s *Server) handleListBucketIndexes(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	writeProtoListOK(w, entries)
+	writeProtoListOK(w, r, entries)
 }

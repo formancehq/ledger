@@ -226,7 +226,7 @@ func (r *LedgerReconciler) reconcileReady(ctx context.Context, ledger *ledgerv1a
 			Type:               conditionSpecDrifted,
 			Status:             metav1.ConditionTrue,
 			Reason:             "LedgerImmutable",
-			Message:            "Ledger spec was modified but ledgers are immutable after creation. Delete and recreate to apply changes.",
+			Message:            "Ledger spec was modified but ledgers are immutable after creation. Restore the original immutable fields before deletion; cleanup uses the stored name and clusterRef.",
 			ObservedGeneration: ledger.Generation,
 		})
 		log.Info("spec drift detected on immutable ledger", "name", ledger.Spec.Name)
@@ -234,7 +234,7 @@ func (r *LedgerReconciler) reconcileReady(ctx context.Context, ledger *ledgerv1a
 		// Do NOT run index reconciliation while an immutable field has drifted:
 		// spec.name / spec.clusterRef may now point at a different ledger or
 		// cluster, so creating/dropping indexes here would mutate the wrong
-		// target. Hold until the drift is resolved by delete + recreate.
+		// target. Hold until the original immutable fields are restored.
 		return ctrl.Result{}, nil
 	}
 

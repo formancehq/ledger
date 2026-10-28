@@ -108,6 +108,24 @@ layer and does not perform active fuzzing.
 
 Store integration tests cover both runtime state and log persistence now that log storage is part of the store.
 
+PostgreSQL mirror integration tests use isolated disposable databases and two
+independent source transactions to distinguish late commits from permanent
+sequence gaps. CI runs the `Postgres` selection in `internal/adapter/v2` and
+`internal/application/mirror` with `-tags integration` and the race detector
+through the same recipe available locally:
+
+```bash
+nix develop .#ci --command just test-postgres-mirror-coverage
+```
+
+The recipe writes `build/coverage/postgres-mirror.out`, which CI uploads and
+requires when merging coverage profiles.
+By default these tests start
+PostgreSQL through Testcontainers. To use an existing disposable PostgreSQL
+service, set `LEDGER_TEST_POSTGRES_DSN` to its administrator URI; each case
+creates and drops its own database. The source-privilege test also creates and
+drops a temporary role. Never point this override at a production service.
+
 **Example**:
 ```go
 //go:build integration
@@ -125,6 +143,33 @@ func TestStoreIntegration(t *testing.T) {
     // ...
 }
 ```
+
+### Schemathesis API Conformance Tests
+
+**Location**: `tests/schemathesis/`
+
+Run `just test-schemathesis` in the Nix development environment. The runner
+starts a disposable single-node server with authentication disabled and seeds
+nonempty responses. Ledger deletion uses a separate sacrificial ledger so the
+fixture ledger survives the run.
+
+The Python wrapper invokes the pinned Schemathesis public CLI with the
+`examples`, `fuzzing`, and `stateful` phases and positive generation. It selects
+`not_a_server_error`, `status_code_conformance`, and
+`response_schema_conformance` explicitly and disables security-parameter
+generation for the auth-disabled server. Generation is deterministic, the
+Hypothesis database is disabled, and shrinking is disabled unless
+`SCHEMATHESIS_SHRINK=1`. Keep `SCHEMATHESIS_WORKERS=1` for the reproducible gate;
+increase it only for exploratory runs. `MAX_EXAMPLES` controls fuzzing and
+stateful generation.
+
+The wrapper reads the CLI's NDJSON report. Passing requires a zero CLI exit
+status, an `EngineFinished` event, and an actual successful check in a
+`ScenarioFinished` recorder. Every error or check failure remains fatal even
+after a later success. Missing or malformed reports and runs without
+successful checks fail. Reporting regressions run before the API suite, and
+the shell pipeline preserves failures while saving diagnostics under
+`/tmp/schemathesis-*.txt`.
 
 ### End-to-End Tests (E2E)
 
@@ -422,6 +467,20 @@ driver's template decides who it shares the timeline with:
 
 The split is wired in `tests/antithesis/workload/Dockerfile`.
 
+#### Scenario randomness and reusable driver episodes
+
+Scenario blocks receive `scenario.Random`, which exposes `Intn`, `Int63n`
+and `Uint64`. Existing `scenario.RandFunc` callers retain the same one-draw
+modulo mapping for positive bounds; a raw `func() uint64` must be explicitly
+wrapped with `scenario.RandFunc`. Custom `Block.Run` callbacks must accept
+`scenario.Random`. The interface adds no generator dependency to the root
+module and leaves the choice of random source to the caller.
+
+The Numscript lifecycle and projection-alignment drivers expose reusable
+execution functions with explicit business inputs. Their Composer entry points
+retain the existing fixed version pair (`1.0.0`, `2.0.0`) and asset (`USD/2`),
+SDK entropy for technical identities, RPC sequence and assertion names.
+
 #### Dedicated-ledger query oracles
 
 The reference-race, definitive-errors and bulk-atomicity drivers declare the
@@ -680,6 +739,13 @@ teardown (CR + PVCs), restore-mode round-trip (`ledgerctl restore download` /
 `singleton_driver_model: restore cycle completed` Sometimes assertion in the
 report is the proof the path actually ran.
 
+The sidecar does not infer finalization from a CLI error string. A lost
+`restore finalize` response is accepted only when the restore-mode pod still
+exposes both `checkpoints/0` and a valid `RESTORED` marker. The marker is the
+server's durable commit point and is written after checkpoint publication; when
+the marker is absent, including after a restart that forgot in-memory staging
+state, the sidecar tears the attempt down and retries the complete restore.
+
 #### Maintaining the model
 
 The model in `tests/oracle/model.go` is a hand-written mirror of the server's
@@ -867,7 +933,11 @@ export DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock
 
 ### Operator Integration Tests
 
-The default Nix shell provides `setup-envtest`, and its shell hook exports `KUBEBUILDER_ASSETS`. The first shell start downloads the etcd and kube-apiserver binaries. The `ci` shell does not include envtest because no CI job runs the `integration` tag.
+The default Nix shell provides `setup-envtest`, and its shell hook exports `KUBEBUILDER_ASSETS`. The first shell start downloads the etcd and kube-apiserver binaries. The lean `ci` shell does not include envtest. The `Tests-Operator` CI job uses the dedicated `operator-tests` shell for the focused Ledger target admission regressions, selecting Kubernetes 1.32.x assets:
+
+```bash
+nix develop .#operator-tests --command just operator-test-admission
+```
 
 ```bash
 # Run from misc/operator/ inside the default shell
@@ -895,6 +965,7 @@ go tool cover -html=coverage.out
 ```
 
 The `just` coverage recipes (`test-coverage`, `test-internal-coverage`,
+`test-postgres-mirror-coverage`,
 `test-antithesis-assertions`, `test-e2e-coverage`, `test-scenarios-coverage`,
 `fuzz-check-coverage`) run through `scripts/go-test-coverage` rather than
 `-coverprofile`. With `-coverpkg=github.com/formancehq/ledger/v3/internal/...`,
@@ -1081,6 +1152,24 @@ To inspect the cluster state during a test:
 2. Use `time.Sleep` temporarily for inspection
 3. Access HTTP endpoints directly
 
+## Schemathesis API conformance
+
+Run the CI gate against a disposable single-node server without Docker:
+
+```bash
+nix develop .#ci --command bash -c 'MAX_EXAMPLES=10 SCHEMATHESIS_WORKERS=1 just test-schemathesis'
+```
+
+The harness runs its Python regression tests before the endpoint checks. Header
+generation must satisfy HTTP field-value syntax as well as the OpenAPI schema:
+permit HTAB, visible ASCII and obs-text, but exclude other control bytes and DEL.
+Schema-derived strategies can generate header values that Go rejects before
+routing.
+Closing the connection with an unread request body can reset it before the
+client receives the rejection, making the gate depend on TCP timing. The
+`before_generate_headers` hook filters both inline and constrained shared header
+parameters. Keep transport errors fatal: a later successful request does not validate a failed one.
+
 ## CI/CD
 
 ### GitHub Actions (Example)
@@ -1097,7 +1186,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
         with:
-          go-version: '1.25'
+          go-version: '1.27.3'
       - run: go test ./...
       - run: go test -tags integration ./...
       - run: ginkgo run -tags e2e ./tests/e2e

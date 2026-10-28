@@ -26,7 +26,7 @@ func TestCreateSink_Kafka_FailsWithoutBroker(t *testing.T) {
 		Format: "json",
 	}
 
-	sink, err := m.createSink(cfg)
+	sink, err := m.createSink(t.Context(), cfg)
 	// Kafka connection will fail since there is no broker
 	require.Error(t, err)
 	require.Nil(t, sink)

@@ -18,5 +18,5 @@ func (s *Server) handleListPreparedQueries(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	writeOK(w, queries)
+	writeOK(w, r, queries)
 }

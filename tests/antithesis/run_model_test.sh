@@ -128,6 +128,8 @@ GRPC_BASE="${GRPC_BASE:-$(( 20000 + RANDOM % 10000 ))}"
 RAFT_BASE=$(( GRPC_BASE + 100 ))
 HTTP_BASE=$(( GRPC_BASE + 200 ))
 MINIO_PORT=$(( GRPC_BASE + 300 ))
+# Formance's digest-pinned MinIO mirror; it ships both minio and mc.
+MINIO_IMAGE="ghcr.io/formancehq/minio:RELEASE.2025-10-15T17-29-55Z@sha256:69b55a1c1c5dc285ce04db96689f5b2102317fc77a50680a1874ca6efd1c87f9"
 
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/model-test.XXXXXX")"
 DRIVER_LOG="$WORKDIR/driver.log"
@@ -191,11 +193,11 @@ start_minio() {
 	docker rm -f "$MINIO_CONTAINER" >/dev/null 2>&1
 	docker run -d --rm --name "$MINIO_CONTAINER" -p "127.0.0.1:$MINIO_PORT:9000" \
 		-e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-		minio/minio:RELEASE.2024-06-13T22-53-53Z server /data >/dev/null 2>&1 || return 1
-	# Retry until MinIO is reachable, then create the bucket (idempotent). The mc
-	# image's entrypoint is mc itself, so override it to run a shell.
+		"$MINIO_IMAGE" server /data >/dev/null 2>&1 || return 1
+	# Retry until MinIO is reachable, then create the bucket (idempotent). The
+	# image's entrypoint launches minio, so override it to run mc from a shell.
 	for _ in $(seq 1 30); do
-		if docker run --rm --network host --entrypoint sh minio/mc:RELEASE.2024-06-12T14-34-03Z -c \
+		if docker run --rm --network host --entrypoint sh "$MINIO_IMAGE" -c \
 			"mc alias set m http://127.0.0.1:$MINIO_PORT minioadmin minioadmin && mc mb --ignore-existing m/$S3_BUCKET" >/dev/null 2>&1; then
 			return 0
 		fi
@@ -307,14 +309,15 @@ start_node() {
 	SERVER_PIDS[$i]=$!
 }
 
-# Wait (bounded) for a node to log leadership; fail if it dies first. A caller
+# Wait (bounded) for a node to log leader readiness, the point where its FSM
+# has caught up and it admits writes; fail if it dies first. A caller
 # relaunching a node passes the log's current byte size: server logs are
-# appended across boots, so without the offset a leadership line from an
+# appended across boots, so without the offset a readiness line from an
 # earlier boot satisfies the check instantly.
 wait_leader() {
 	local i="$1" offset="${2:-0}"
 	for _ in $(seq 1 60); do
-		if tail -c +"$(( offset + 1 ))" "${SERVER_LOGS[$i]}" 2>/dev/null | grep -qE "Became leader|became leader at term"; then return 0; fi
+		if tail -c +"$(( offset + 1 ))" "${SERVER_LOGS[$i]}" 2>/dev/null | grep -q "Leader ready"; then return 0; fi
 		if ! kill -0 "${SERVER_PIDS[$i]}" 2>/dev/null; then
 			echo "ERROR: node $(( i + 1 )) exited during startup:" >&2
 			tail -20 "${SERVER_LOGS[$i]}" >&2

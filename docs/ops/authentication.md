@@ -44,23 +44,43 @@ The ledger accepts virtual scopes in JWTs and expands them to granular Ledger sc
 
 | Scope | Operations |
 |-------|------------|
-| `ledger:read` | All read operations (GET HTTP, List*/Get* gRPC RPCs). Also covers `Barrier`, which is read-after-write tooling but proposes a no-op through Raft, so it is authenticated and requires the `ledger:OpsRead` granular scope (included in the read bundle). |
+| `ledger:read` | All read operations (GET HTTP, List*/Get* gRPC RPCs). Also covers `Barrier`, which is read-after-write tooling but proposes a no-op through Raft, so it is authenticated and requires the `ledger:ReadOps` granular scope (included in the read bundle). |
 | `ledger:write` | All write operations (Apply: create/revert transactions, save/delete metadata, create/delete ledgers, set maintenance mode, etc.) |
 | `ledger:admin` | Cluster operations (GetClusterState, TransferLeadership, Backup, AddLearner, PromoteLearner, RemoveNode, GetDiskUsage, GetNodeTime) |
 
 If `--auth-service=myapp`, the scopes become `myapp:read`, `myapp:write`, `myapp:admin`.
 
-Granular scopes use the Ledger application namespace with the `ledger:<Resource><Action>` shape:
+Granular scopes use the Ledger application namespace with the `ledger:<Action><Resource>` shape:
 
 ```
-ledger:LedgerRead       ledger:LedgerWrite
-ledger:TransactionRead  ledger:TransactionWrite
-ledger:AccountRead      ledger:MetadataWrite
-ledger:AuditRead        ledger:AuditWrite
-ledger:OpsRead          ledger:OpsWrite
-ledger:QueryRead        ledger:QueryWrite
-ledger:ClusterRead      ledger:ClusterWrite
+ledger:ReadLedger       ledger:WriteLedger
+ledger:ReadTransaction  ledger:WriteTransaction
+ledger:ReadAccount      ledger:WriteMetadata
+ledger:ReadAudit        ledger:WriteAudit
+ledger:ReadOps          ledger:WriteOps
+ledger:ReadQuery        ledger:WriteQuery
+ledger:ReadCluster      ledger:WriteCluster
 ```
+
+### Migration from RC.1 granular labels
+
+RC.1 used `ledger:<Resource><Action>` (for example,
+`ledger:TransactionRead`). Replace those labels with
+`ledger:<Action><Resource>` (for example, `ledger:ReadTransaction`) in issued
+tokens, Ed25519 key allowlists, custom `AUTH_SCOPE_MAPPING` or
+`--auth-scope-mapping-file` values, and `--auth-anonymous-scopes`. The old
+granular labels are not recognized as effective rights by the new default
+mapping. The aggregate token labels `ledger:read`, `ledger:write`, and
+`ledger:admin` are unchanged and continue to map to the corresponding new
+granular rights. Custom mapping files replace the default mapping, so update
+their values before deploying this revision. Ledger-local `*:read` and
+`*:write` values still expand to all matching rights.
+
+This change does not alter a business storage key or protobuf field. Effective
+scope strings are captured in persisted audit `CallerSnapshot` records and
+bound into their hashes. Historical records retain their original strings;
+verification reads and hashes those stored strings without translating them.
+Do not rewrite historical audit entries during the rollout.
 
 ## Configuration Invariants
 
@@ -131,7 +151,7 @@ Both forms are supported — the CLI flag is shorthand for the JSON entry.
 
 When neither is set, the behavior is identical to before (every request must authenticate, no regression possible).
 
-Note: `/debug/pprof/*` endpoints require the `ledger:OpsRead` scope when authentication is enabled.
+Note: `/debug/pprof/*` endpoints require the `ledger:ReadOps` scope when authentication is enabled.
 
 ## gRPC Authentication
 
@@ -190,6 +210,13 @@ Setting `--auth-ed25519-keys` automatically enables `--auth-enabled` unless `--a
 |------|------|---------|-------------|
 | `--auth-ed25519-keys` | string | `""` | Path to JSON file with Ed25519 public keys and scopes |
 
+Every entry must have a nonempty `keyId`, and each exact ID must be unique
+throughout the file, including entries with identical keys or policies. A
+duplicate rejects startup with an error naming the ID. Ledger processes entries
+in order: it rejects a duplicate before reading that entry's public-key file,
+but an invalid file in an earlier entry can fail first. A rejected configuration
+publishes no static keyset or scope/superuser policy maps.
+
 ### Client Usage
 
 1. Generate a JWT token:
@@ -234,6 +261,8 @@ ledgerctl --auth-token @token.txt ledgers list
 ### Scope Enforcement
 
 Ed25519 keys have a per-key scope allowlist defined in `auth-keys.json`. A token cannot claim scopes beyond what the key allows, even if the JWT payload contains them. This provides defense-in-depth: the server restricts what each key can do, independent of what the client requests.
+
+The server compares claimed scopes with the key's allowlist after expansion through the scope mapping. A claimed scope is accepted when the key lists it verbatim, or when every granular scope it expands to is covered by the key's expanded allowlist. For example, a key allowed `ledger:read` can sign a least-privilege token that claims only `ledger:ReadTransaction`. A key allowed only `ledger:ReadTransaction` cannot sign a token that claims `ledger:read`. A scope that the mapping does not know is rejected unless the key lists it verbatim.
 
 ### Superuser Mode
 
@@ -385,4 +414,4 @@ spec:
 The generated key configuration and `kubectl-ledger credentials get-key` bundle
 use `superuser` as well. Update Credentials manifests, auth key JSON, OIDC claim
 mappings, and token-generation commands together. The previous privileged field,
-claim, and flag have no compatibility aliases in unreleased v3.
+claim, and flag were removed before `v3.0.0-rc.1`.

@@ -1478,7 +1478,9 @@ spec:
                       (0.0-1.0).
                     type: string
                   interval:
-                    description: Interval between health checks.
+                    description: |-
+                      Interval between health checks, as a Go duration greater than zero.
+                      Omitted or empty uses the server default of 30s.
                     type: string
                   walResumeThreshold:
                     description: |-
@@ -4203,6 +4205,31 @@ spec:
                   machine; users observe the user-facing tls.enabled bool, this field
                   exposes the intermediate "optional" mode used during a toggle.
                 type: string
+              tlsRollout:
+                description: |-
+                  TLSRollout preserves certificate references and mode across operator restarts
+                  and StatefulSet recreation. Cleared after the disabled rollout converges.
+                properties:
+                  caSecretKey:
+                    description: CASecretKey is the optional CA key in the certificate
+                      Secret.
+                    type: string
+                  mode:
+                    description: Mode is the last TLS mode selected before mutating
+                      the StatefulSet.
+                    enum:
+                    - disabled
+                    - optional
+                    - required
+                    type: string
+                  secretName:
+                    description: SecretName is the same-namespace certificate Secret
+                      retained for the rollout.
+                    type: string
+                required:
+                - mode
+                - secretName
+                type: object
             type: object
         type: object
     served: true

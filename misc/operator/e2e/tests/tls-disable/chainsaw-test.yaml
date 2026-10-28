@@ -54,8 +54,17 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec ledger-tls-dis-0 -n $NAMESPACE -c ledger -- \
-                /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+              set -e
+              kubectl exec ledger-tls-dis-0 -n "$NAMESPACE" -c ledger -- \
+                ./ledgerctl provision run marketplace --scale 0.5
+              TRANSACTIONS=$(kubectl exec ledger-tls-dis-0 -n "$NAMESPACE" -c ledger -- \
+                ./ledgerctl transactions list --ledger marketplace --all --json)
+              echo "$TRANSACTIONS" | jq -e 'length > 0'
+              DATA_FILE=$(mktemp)
+              trap 'rm -f "$DATA_FILE"' EXIT
+              printf '%s\n' "$TRANSACTIONS" > "$DATA_FILE"
+              kubectl create configmap tls-dis-expected-data -n "$NAMESPACE" \
+                --from-file=transactions="$DATA_FILE"
             timeout: 120s
 
     # 4. Toggle TLS off.
@@ -102,6 +111,7 @@ spec:
               status:
                 tlsMigrationPhase: disabled
                 readyReplicas: 3
+                (tlsRollout == `null`): true
 
     - name: Assert cluster-secret removed
       try:
@@ -118,6 +128,16 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec ledger-tls-dis-0 -n $NAMESPACE -c ledger -- \
-                /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure'
+              set -e
+              LEDGER=$(kubectl exec ledger-tls-dis-0 -n "$NAMESPACE" -c ledger -- \
+                ./ledgerctl ledgers get marketplace --json)
+              echo "$LEDGER" | jq -e '.name == "marketplace"'
+              EXPECTED=$(kubectl get configmap tls-dis-expected-data -n "$NAMESPACE" \
+                -o jsonpath='{.data.transactions}')
+              EXPECTED=$(echo "$EXPECTED" | jq -cS .)
+              ACTUAL=$(kubectl exec ledger-tls-dis-0 -n "$NAMESPACE" -c ledger -- \
+                ./ledgerctl transactions list --ledger marketplace --all --json)
+              ACTUAL=$(echo "$ACTUAL" | jq -cS .)
+              [ "$ACTUAL" = "$EXPECTED" ] || { echo "FAIL: marketplace transactions changed during TLS disable"; exit 1; }
+              kubectl get secret tls-dis-certs -n "$NAMESPACE" >/dev/null
             timeout: 30s

@@ -131,17 +131,30 @@ wait for the same `Run` completion.
 `Run` owns task termination: it closes the task stop channels and joins the
 orchestrator, ready processor, maintenance loop, and applier. During applier
 exit, any pending commit is drained, the commit queue is closed, the committer
-is joined, and the decoder is cancelled and joined. `Run` then stops FSM
-background tasks and publishes completion. A successful `Stop` waits for this
-whole sequence. This preserves the existing pending-commit drain; it does not
+is joined, and the decoder is cancelled and joined. Once the ready processor
+has exited and can no longer replace the readiness generation, `Run` cancels
+and joins the final leader-ready waiter, including any synchronous observer
+callback already executing. It then stops FSM background tasks and publishes
+completion. The same readiness join precedes FSM cleanup on task failure.
+A successful `Stop` waits for this whole sequence. This preserves the existing
+pending-commit drain; it does not
 promise to apply every queued entry before shutdown.
 
-Bootstrap leaves the run context live until `Stop` returns so normal shutdown
-can complete pending commits. If `Stop` times out, the shutdown request remains
-published and bootstrap cancels context-aware work, but that cancellation does
-not itself terminate idle tasks or join `Run`. Task/drain completion may still
-be pending, so a timeout must not be treated as permission to close the node's
-storage or transport. `Stop` after `Run` has exited returns immediately.
+Bootstrap retains its own `Run` completion channel across startup and stop.
+After `Stop(ctx)` returns, the node hook unconditionally joins `Run`, then
+cancels the run context and returns the original wrapped Stop error, if any.
+The run context stays live throughout pending task/commit drain, including
+when the stop context expires. `Stop` after `Run` has exited returns immediately.
+This preserves hook ownership before later hooks can close storage or transport;
+a permanently stalled drain can retain the hook and dependencies indefinitely.
+
+Fx's outer `App.Stop` can return its context error while the node hook is still
+joining. Fx v1.24.0 checks the shared context before each subsequent stop hook,
+so expiry skips remaining dependency hooks; those resources are not necessarily
+closed after the join. The service runner may also exit after the outer stop
+timeout. The hook-level guarantee applies once the node hook is entered: it
+does not guarantee process survival, a bounded drain, or execution of a hook
+skipped because the shared context already expired.
 
 Failed startup has its own cleanup owner: Fx does not call `OnStop` for a hook
 whose `OnStart` failed. The bootstrap node hook waits for readiness or `Run`
@@ -168,8 +181,9 @@ Leadership acquisition does not admit writes immediately. The node first
 drains previously submitted apply work and waits until the FSM has applied the
 new leader's current-term no-op entry. Applying that entry proves that every
 preceding entry is committed and locally applied. `WaitLeaderReady` exposes
-this generation-specific gate to admission, and `LeaderReadyEvent` lets
-bootstrap reconcile persisted cluster configuration only after the same gate.
+this generation-specific gate to admission and to membership changes, and
+`LeaderReadyEvent` lets bootstrap reconcile persisted cluster configuration and
+start the event and mirror managers only after the same gate.
 
 Each acquisition owns a cancellable readiness generation. After the FSM
 wait succeeds, the waiter rechecks cancellation before emitting the event and
@@ -182,7 +196,16 @@ observer callback finish before the loss transition is published. The join
 provides this ordering; `cancelAndWait` does not acquire the publication lock.
 The leadership-loss signal wakes requests already waiting on that generation
 with `ErrNotLeader`. A later acquisition always installs a new independent
-generation.
+generation. Terminal node shutdown cancels and joins the final generation
+after the task pool exits. Cancellation is idempotent so this also works after
+a processed leadership loss. A callback already executing must return before
+`Run` completes; generation cancellation does not interrupt arbitrary observer
+code. `LeaderReadyEvent.Context` carries generation cancellation into blocking
+observer work. The bootstrap cluster-config observer derives its 30-second
+proposal timeout from that context, so shutdown or leadership loss interrupts
+its Raft-acceptance/FSM-apply wait rather than waiting for the timeout. Store
+reads and lock acquisition still precede that wait; cancellation is not a hard
+bound on arbitrary observer code or storage operations.
 
 A failed FSM wait completes the background waiter without marking the
 generation ready, so admission remains blocked until its request context is
@@ -455,6 +478,23 @@ the request context is cancelled after commit but before local durable apply,
 the call returns an error even though the committed change may still apply;
 only a nil response establishes the full local durability postcondition.
 
+The internal retry timer detects configuration proposals that Raft may have
+dropped while another change was pending; it is not a durability deadline.
+One logical operation retains the same proposal ID and waiter across attempts.
+Once `finishReady` consumes that waiter for a correlated committed entry, a
+queued retry must skip admission and proposal on the orchestrator, even if WAL
+ConfState persistence has not yet resolved the future. Otherwise an already
+committed promotion or removal can be reported as an admission error, or a
+retry can wait on a replacement future that no entry will resolve. The original
+future completes only after the existing WAL update, followed by the unchanged
+durable FSM barrier. Caller cancellation still bounds the wait; a distinct API
+invocation retains its own identity and admission checks.
+
+This adds a constant-time waiter lookup per retry and retains one waiter per
+serialized membership operation, rather than allocating one per attempt. It
+changes no Raft entry, persisted format, quorum, or apply behavior, so mixed
+release-candidate versions continue to apply identical committed entries.
+
 ### Why a Partition Cannot Commit Two Histories
 
 A voter grants at most one vote per term, a candidate needs a majority to
@@ -519,8 +559,8 @@ the leader after a failure.
   locally, and only then read Pebble. See
   [Linearizable Reads via ReadIndex](#linearizable-reads-via-readindex).
 - Cluster bootstrap, learner registration, automatic voter promotion, and the
-  safeguards preventing a syncing node from becoming leader are detailed in
-  [Cluster Lifecycle](../../../../ops/cluster-operations.md).
+  gates an out-of-sync node keeps on serving while it may still vote and lead
+  are detailed in [Cluster Lifecycle](../../../../ops/cluster-operations.md).
 
 ## Snapshots
 
@@ -648,33 +688,50 @@ The leader tracks each follower's state:
 | `StateReplicate` | Normal operation, pipeline enabled |
 | `StateSnapshot` | Snapshot is being sent, waiting for confirmation |
 
-#### Code Reference
+#### Receiving a snapshot Ready
 
-In `internal/infra/node/node.go`, the follower receives and applies the snapshot through a two-phase process. The Applier is drained first to ensure no concurrent FSM access:
+`Node.processReady` keeps these durability and mutation boundaries:
 
-```go
-// Phase 1: Install snapshot to FSM (in-memory state)
-if !raft.IsEmptySnap(rd.Snapshot) {
-    node.logger.Infof("Applying snapshot sent by leader")
+1. Persist the Ready's entries and HardState together through `WAL.Append`.
+   Persisting HardState without its entries would expose a committed-log gap
+   on a crash before snapshot installation.
+2. Ask the Applier to drain pending commits, interrupt conflicting maintenance,
+   and enter `statusInstallingSnapshot` before changing snapshot/FSM state.
+3. `WAL.ApplySnapshot` replaces its in-memory snapshot and cached entry window.
+   It saves the full snapshot file, writes a durable guard snapshot record,
+   saves HardState, then writes the snapshot record again as the sync barrier.
+   Persistence failure leaves the preceding in-memory mutations visible and
+   returns an error; the node stops instead of acknowledging the Ready.
+4. If this same Ready carries entries after the snapshot, append that suffix
+   again to restore the cached Storage window before any peer or local storage
+   acknowledgement. This repeats at most the Ready suffix's bytes once, only
+   on a snapshot Ready; ordinary Ready persistence has no additional append.
+5. `Synchronizer.InstallSnapshot` records the expected snapshot index and resets
+   caches. It does not install business data from the Raft message. Enqueue
+   checkpoint synchronization, then release the Ready's messages and local
+   storage responses.
 
-    // Drain the Applier to ensure no concurrent FSM access
-    node.applier.Drain(stop)
+The suffix restoration uses the existing WAL format and append path. Live
+`LastIndex`, `Term` and `Entries` must expose the same suffix that a reopened
+WAL recovers. The repeated `Append` updates cached entries before its durable
+write. If that write fails, the installed snapshot and suffix stay
+visible in memory while disk retains the last successfully written WAL prefix.
+Ready processing stops before storage acknowledgement; these in-memory changes
+are not rolled back.
 
-    // Write snapshot to WAL
-    node.wal.ApplySnapshot(rd.Snapshot)
-
-    // Install snapshot state in FSM (fast, in-memory)
-    node.fsm.InstallSnapshot(ctx, rd.Snapshot)
-
-    // Report success to Raft
-    node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
-
-    // Start async synchronization with leader
-    node.applier.SyncSnapshot(ctx, node.lastSoftState.Load().Lead)
-}
-```
+The suffix restoration changes no wire or persisted fields and requires no
+migration of released RC state. Old and new voters remain interoperable during
+a rolling upgrade. The WAL suffix is cluster-local Raft state; cross-cluster
+restore continues to rebuild its independent Raft domain from the restored
+business checkpoint and exported delta.
 
 #### Snapshot Synchronization Flow
+
+The checkpoint is fetched from a donor the follower picks on each attempt:
+the leader first, then the other voters in turn, never itself. The leader
+can be unreachable, or resynchronizing itself after winning an election while
+out of sync; a donor in that state refuses and the follower tries the next
+one. See [Donor Selection](../../data-flows.md#donor-selection).
 
 The `SynchronizeWithLeader` method handles the complex task of bringing the store up to date:
 
@@ -737,7 +794,7 @@ not a consistency proof. With `CheckQuorum` disabled, an isolated former leader
 can temporarily keep its local leader role and serve old local state if that
 route shortcuts `ReadIndex`.
 
-Because v3 is unreleased, EN-1946 removes the `x-consistency: leader` selector
+Before `v3.0.0-rc.1`, EN-1946 removed the `x-consistency: leader` selector
 instead of preserving that ambiguous contract. The default route always uses
 `ReadIndexAndWait`; `stale` remains the sole explicit opt-out and says exactly
 that it skips quorum confirmation.

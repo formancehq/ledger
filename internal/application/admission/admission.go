@@ -560,7 +560,7 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 			return nil, fmt.Errorf("resolving caller attribution: %w", err)
 		}
 
-		return nil, &domain.BusinessError{Err: invalid}
+		return nil, invalid
 	}
 
 	if err := a.writeGate.CheckWritesAllowed(); err != nil {

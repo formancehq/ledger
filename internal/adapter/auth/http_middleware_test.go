@@ -503,6 +503,33 @@ func TestHTTPAuthMiddleware_EdDSA_ExcessiveScopes(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
+func TestHTTPAuthMiddleware_EdDSA_GranularScopeFromVirtualScopeKey(t *testing.T) {
+	t.Parallel()
+
+	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-http-key")
+	cfg := AuthConfig{
+		Enabled:      true,
+		KeySet:       edKeySet,
+		Service:      "ledger",
+		ScopeMapping: DefaultMapping("ledger"),
+		Ed25519AllowedScopes: map[string][]string{
+			"ed-http-key": {"ledger:read"},
+		},
+	}
+	handler := HTTPAuthMiddleware(cfg)(ok200)
+
+	// Least-privilege token: a single granular scope covered by the key's "ledger:read".
+	claims := newTestClaims("ledger:ReadTransaction")
+	claims.Issuer = ""
+	token := signEdDSA(t, edPriv, "ed-http-key", claims)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/test-ledger", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	handler.ServeHTTP(w, r)
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+}
+
 func TestHTTPAuthMiddleware_EdDSA_UnknownKey(t *testing.T) {
 	t.Parallel()
 

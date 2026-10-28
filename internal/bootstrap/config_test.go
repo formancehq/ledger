@@ -94,11 +94,40 @@ func validBaseConfig() Config {
 			FileRetryCount: 3,
 		},
 		HealthConfig: HealthConfig{
+			Interval:            30 * time.Second,
 			WALThreshold:        0.8,
 			DataThreshold:       0.8,
 			WALResumeThreshold:  0.75,
 			DataResumeThreshold: 0.75,
 		},
+	}
+}
+
+func TestValidateHealthCheckInterval(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name     string
+		interval time.Duration
+		wantErr  bool
+	}{
+		{name: "zero", wantErr: true},
+		{name: "negative", interval: -time.Second, wantErr: true},
+		{name: "default", interval: 30 * time.Second},
+		{name: "smallest positive", interval: time.Nanosecond},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := validBaseConfig()
+			cfg.HealthConfig.Interval = tt.interval
+			err := cfg.Validate()
+			if tt.wantErr {
+				require.EqualError(t, err, "--health-check-interval must be greater than zero")
+			} else {
+				require.NoError(t, err)
+			}
+		})
 	}
 }
 

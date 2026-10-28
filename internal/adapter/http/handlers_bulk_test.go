@@ -21,7 +21,7 @@ import (
 )
 
 // bulkWriteBody is a single-element bulk payload whose action (CREATE_TRANSACTION)
-// requires the ledger:TransactionWrite granular scope.
+// requires the ledger:WriteTransaction granular scope.
 const bulkWriteBody = `[{"action":"CREATE_TRANSACTION","data":{"postings":[{"source":"world","destination":"bank","amount":100,"asset":"USD/2"}]}}]`
 
 func TestHandleBulk_InvalidBody(t *testing.T) {
@@ -326,4 +326,52 @@ func TestHandleBulk_AuthDisabled_NoToken_Allowed(t *testing.T) {
 	handler.ServeHTTP(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
+}
+
+// TestHandleBulk_NullElement_Rejected covers a JSON null entry in the bulk
+// array: it must be rejected as a validation error naming its index, in every
+// mode and before the auth scope check, without reaching the backend.
+func TestHandleBulk_NullElement_Rejected(t *testing.T) {
+	t.Parallel()
+
+	const validElement = `{"action":"CREATE_TRANSACTION","data":{"postings":[{"source":"world","destination":"bank","amount":100,"asset":"USD/2"}]}}`
+
+	for _, tc := range []struct {
+		name        string
+		body        string
+		query       string
+		authEnabled bool
+		wantMessage string
+	}{
+		{name: "only null", body: `[null]`, wantMessage: "element 0 is null"},
+		{name: "mixed", body: `[` + validElement + `,null]`, wantMessage: "element 1 is null"},
+		{name: "only null atomic", body: `[null]`, query: "?atomic=true", wantMessage: "element 0 is null"},
+		{name: "mixed atomic", body: `[` + validElement + `,null]`, query: "?atomic=true", wantMessage: "element 1 is null"},
+		{name: "mixed continue on failure", body: `[` + validElement + `,null]`, query: "?continueOnFailure=true", wantMessage: "element 1 is null"},
+		{name: "only null auth enabled", body: `[null]`, authEnabled: true, wantMessage: "element 0 is null"},
+		{name: "mixed auth enabled", body: `[` + validElement + `,null]`, authEnabled: true, wantMessage: "element 1 is null"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var authCfg internalauth.AuthConfig
+			if tc.authEnabled {
+				authCfg = internalauth.AuthConfig{
+					Enabled:      true,
+					ScopeMapping: internalauth.DefaultMapping("ledger"),
+				}
+			}
+			handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), authCfg, version.Info{})
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPost, "/v3/ledger1/bulk"+tc.query, strings.NewReader(tc.body))
+
+			handler.ServeHTTP(w, r)
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			resp := decodeResponse[bulkResponse](t, w)
+			require.Equal(t, "VALIDATION", resp.ErrorCode)
+			require.Equal(t, tc.wantMessage, resp.ErrorMessage)
+		})
+	}
 }

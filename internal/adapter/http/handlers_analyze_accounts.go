@@ -119,5 +119,5 @@ func (s *Server) handleAnalyzeAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeOK(w, toAnalyzeAccountsJSON(resp))
+	writeOK(w, r, toAnalyzeAccountsJSON(resp))
 }

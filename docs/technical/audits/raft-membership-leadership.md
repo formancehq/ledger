@@ -23,8 +23,9 @@ through the complete transition:
 - discovered peer endpoint, outbound connection attempt, priority stream, and
   outstanding liveness probe identity and deadline;
 - node status (`normal`, snapshotting, syncing/out-of-sync, stopped, or terminal)
-  and the exact gate controlling proposal, ReadIndex, campaign, transfer, and
-  serving behavior;
+  and the exact gate controlling proposal, ReadIndex, transfer, membership
+  admission, and serving behavior; campaigning and voting depend on the Raft
+  log alone and have no store gate;
 - for snapshot catch-up, the snapshot term/index/ConfState, FSM snapshot horizon,
   spooled committed suffix, and main-store synchronization horizon.
 
@@ -80,11 +81,30 @@ Inspect serialization against a pending ConfChange, learner/voter role checks,
 updates, the committed-index wait, and response/error mapping. Concurrent
 operations against the same node must be distinguished by proposal identity and
 expected change type; a late commit must not satisfy a replacement waiter.
+Within one logical operation, retries must retain the same waiter. Delay WAL
+ConfState persistence beyond the retry timer after consuming the correlated
+waiter, then release the WAL and queued retry. Require the original committed
+index, no second admission/proposal, and durable local FSM application before
+success. Cancellation must release the caller without resolving a different
+operation or reporting premature success.
 
 For removal, every member carries a mandatory 16-byte instance_id (enforced at every admission, persistence, and promotion boundary). The replicated tombstone guarantee applies to every removal; identity-less phantom learners are no longer a supported member state. Distinguish a removal with a normal committed ConfChange from a force removal, which bypasses Raft consensus and relies on operator preconditions instead of quorum safety.
 Prove rejoin and promotion behavior through every production entry rather than
 assuming that one admission check covers direct add, auto-promotion, discovery,
 or leadership change.
+
+For retained-log catch-up, feed a real follower RawNode committed remove(A),
+add(B), remove(B) at one ordinal in a single Ready; also delay cleanup across
+separate Readies and compare with durable apply between cycles. Every removal
+must remain an independent node/index event with immutable identity. Verify all
+removed identities stay protected until their own durable index and tuple
+tombstone, fresh identities remain eligible, and exact duplicates reuse events
+while same-index contradictory identities fail. Cancel foreground waits, delay
+old cleanup across newer events or replacement pointers, and recover the same
+history through WAL replay. Require both tombstones and final ConfState parity.
+Missing tombstones/read failures must retain protection. Check the lookup cost
+partition and benchmark growing per-ordinal history separately from unrelated
+nodes; no set lock may span apply, store reads or proposal waits.
 
 ### Leadership and quorum transitions
 
@@ -170,9 +190,25 @@ Prove compatibility and order across Raft snapshot metadata/`ConfState`, WAL
 installation, FSM replacement, spool replay, business-store synchronization,
 status transition, and serving gates. Exercise interruption before and after
 each durable boundary and preserve entries committed after the snapshot through
-the retained log or spool. A receiver must reject transfer/campaign and fail or
-forward quorum-dependent work until its applied and durable horizons meet the
-documented requirement.
+the retained log or spool. A receiver must reject transfer and fail or forward
+quorum-dependent work until its applied and durable horizons meet the
+documented requirement. It keeps voting and campaigning on its log: when the
+voters holding the newest log are the resynchronizing ones, no other candidate
+can win, so an out-of-sync voter may lead on its log while every
+store-dependent path stays gated (admission, ReadIndex, event sinks and
+mirrors, membership changes) until its checkpoint sync and spool replay
+finish, and it must never fetch that checkpoint from itself. The regression is
+`tests/e2e/cluster/out_of_sync_election_test.go`: the two newest-log voters
+restart out of sync, elect among themselves, resynchronize from a peer, and
+run a sink created inside the checkpoint. `TestSyncDonor`,
+`TestAddLearnerWaitsForLeaderReady`, `TestCheckAndPromoteLearnersWaitsForLeaderReady`,
+and `TestManagerLeadership` pin the donor rotation and the gates.
+
+After real snapshot catch-up, `tests/e2e/cluster/raft_test.go` restarts the
+recovered voter again and verifies retained business state through a
+linearizable read. Accept a healthy `Follower` or `Leader` with a known leader:
+a restarted voter may win an election, so a follower-only role assertion is not
+a valid recovery oracle.
 
 This domain owns the consensus-side selection, transfer, installation order and
 authority gates. General checkpoint/restore content correctness belongs to
@@ -232,3 +268,14 @@ bash scripts/ai-audit-challenge <audit-result.json>
 Both passes require the same exact clean `HEAD`; the providers remain read-only.
 Do not launch either command while reviewing this manifest PR. Jira preview or
 publication is a separate explicitly authorized action.
+
+## Received snapshot Ready suffix evidence
+
+For a Ready containing both a snapshot and subsequent entries, retain the
+original entries/HardState durability order, then verify that snapshot
+installation cannot erase the suffix from `LastIndex`, `Term`, `Entries` or
+a reopened WAL before storage acknowledgement. Identify the residual
+in-memory snapshot/cache and durable WAL prefix on any failure. The focused
+regression is `process_ready_snapshot_test.go` under `internal/infra/node/`.
+Snapshot-only processing retains its existing append count; a combined Ready
+reappends only the suffix once, with no retained-log scan.

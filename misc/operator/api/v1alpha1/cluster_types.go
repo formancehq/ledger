@@ -658,7 +658,8 @@ type CacheConfig struct {
 
 // HealthConfig holds health check configuration.
 type HealthConfig struct {
-	// Interval between health checks.
+	// Interval between health checks, as a Go duration greater than zero.
+	// Omitted or empty uses the server default of 30s.
 	// +optional
 	Interval string `json:"interval,omitempty"`
 
@@ -1331,8 +1332,28 @@ type ProviderSpecificProperty struct {
 	Value string `json:"value"`
 }
 
+// TLSRolloutStatus retains the TLS configuration needed to resume a rollout.
+// Only references are stored; the referenced Secret remains user-owned.
+type TLSRolloutStatus struct {
+	// Mode is the last TLS mode selected before mutating the StatefulSet.
+	// +kubebuilder:validation:Enum=disabled;optional;required
+	Mode string `json:"mode"`
+
+	// SecretName is the same-namespace certificate Secret retained for the rollout.
+	SecretName string `json:"secretName"`
+
+	// CASecretKey is the optional CA key in the certificate Secret.
+	// +optional
+	CASecretKey string `json:"caSecretKey,omitempty"`
+}
+
 // ClusterStatus defines the observed state of Cluster.
 type ClusterStatus struct {
+	// TLSRollout preserves certificate references and mode across operator restarts
+	// and StatefulSet recreation. Cleared after the disabled rollout converges.
+	// +optional
+	TLSRollout *TLSRolloutStatus `json:"tlsRollout,omitempty"`
+
 	// Phase of the Cluster: Pending, Running, Degraded, Error.
 	// +optional
 	Phase string `json:"phase,omitempty"`

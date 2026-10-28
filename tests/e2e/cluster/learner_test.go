@@ -32,10 +32,10 @@ func phantomPeer() (raftAddr, serviceAddr string, instanceID []byte) {
 }
 
 // waitForLearner polls the cluster state on the leader until the given node appears as a learner.
-func waitForLearner(clusterClient clusterpb.ClusterServiceClient, leaderID uint64, learnerNodeID uint32) {
+func waitForLearner(clusterClient clusterpb.ClusterServiceClient, leaderID uint64, learnerNodeID uint64) {
 	Eventually(func(g Gomega) {
 		state, err := clusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
-			NodeId: uint32(leaderID),
+			NodeId: leaderID,
 		})
 		g.Expect(err).To(Succeed())
 
@@ -83,7 +83,7 @@ var _ = Describe("Learner node", func() {
 		It("should show the learner in cluster status", func() {
 			lid := *leaderID
 			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-				NodeId: uint32(lid),
+				NodeId: lid,
 			})
 			Expect(err).To(Succeed())
 
@@ -100,7 +100,7 @@ var _ = Describe("Learner node", func() {
 		It("should have 4 nodes total (3 voters + 1 learner)", func() {
 			lid := *leaderID
 			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-				NodeId: uint32(lid),
+				NodeId: lid,
 			})
 			Expect(err).To(Succeed())
 
@@ -157,7 +157,7 @@ var _ = Describe("Learner node", func() {
 
 			Eventually(func() error {
 				_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-					Transferee: uint32(followerID),
+					Transferee: followerID,
 				})
 				return err
 			}, "10s").Should(Succeed())

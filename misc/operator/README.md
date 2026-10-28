@@ -11,7 +11,6 @@ The Ledger Operator manages `Cluster` and `EventSink` custom resources to automa
 - **Observability** with OpenTelemetry traces, Prometheus metrics, and Pyroscope profiling
 - **Security** with TLS, OIDC authentication, and Ed25519 response signing
 - **Backups** to S3-compatible backends, with [recoverable Job provisioning](../../docs/ops/backup-restore.md#scheduling-with-the-kubernetes-operator) and sibling-run exclusion
-- **Cold storage** archival to S3-compatible backends
 - **Event sinks** reconciled into Ledger's Raft-replicated runtime configuration
 - **Credentials** for application-level access control
 
@@ -43,6 +42,36 @@ although the template update and earlier membership removals may already have
 succeeded. A later reconciliation checks membership again and skips ordinals
 already removed.
 
+## Ledger target identity
+
+A `Ledger` CR's `spec.name` and `spec.clusterRef` are immutable from creation,
+including while Pending. Kubernetes rejects changes to either field before the
+controller can create, promote, reconcile indexes, or delete against a different
+target. Correct a target by deleting and recreating the CR. Index updates and
+mirror-to-normal promotion remain supported without changing the target.
+The generated CRDs, including the Helm CRD chart, enforce these CEL transition
+rules in the API server; exported JSON schemas alone do not enforce transitions.
+
+Before installing these rules on an existing deployment, stop all operator
+reconcilers and inventory existing Ledger CRs. Verify each stored name and
+cluster reference against the intended external ledger before resuming the
+operator. Recover any drifted target **before** installing the new CRDs: the
+rules freeze the currently stored values and will reject corrections afterward.
+Include Pending CRs in this inventory: a timed-out creation or failed status
+write may have left an external ledger even when the CR never became Ready.
+`status.appliedSpecHash` cannot reconstruct the original target; if that target
+is unknown, keep reconciliation stopped until external records establish it.
+Do not delete a drifted CR as a recovery step with the old controller, because
+deletion uses its currently stored target.
+
+Admission immutability fixes the target name and Cluster reference, not the
+incarnation of a Cluster recreated under the same name or ownership of an
+already-existing external ledger. Ledger deletion retains its best-effort
+behavior: it attempts external deletion and then removes the finalizer even
+when endpoint resolution or execution fails; the external ledger may remain.
+This change does not add controller binding state or alter Ledger storage,
+audit records, backup formats, or service APIs.
+
 ## Declarative ledger indexes
 
 For a Ledger with `spec.indexes`, reconciliation creates missing indexes in
@@ -58,6 +87,33 @@ excluded. Manual replacement between verification and the unconditional drop
 can still be deleted: this race is explicitly accepted, and no atomic deletion
 precondition is provided. See the [audit attribution contract](../../docs/technical/architecture/subsystems/indexer/operator-ownership.md).
 
+## TLS disable recovery
+
+Removing `spec.tls`, or setting `tls.enabled: false` while clearing its Secret
+reference, drives the existing cluster through `optional` before `disabled`.
+The operator first persists `status.tlsRollout` (mode, certificate Secret name
+and CA key), then changes or recreates the StatefulSet using those references.
+If that status write fails, the workload remains unchanged. Desired spec is
+not rewritten. A replacement controller can resume even after orphan deletion
+has removed the StatefulSet; retained mode prevents plaintext bootstrap while
+TLS peers still exist.
+
+The retained reference remains until the disabled template has converged
+(current StatefulSet generation observed, all desired replicas updated and
+ready). A failed workload or cleanup write leaves durable recovery state for
+retry. Keep the externally owned certificate Secret until that convergence
+and rollout-state cleanup; the operator never deletes it. The separately
+managed inter-node `cluster-secret` is removed after the disabled template
+has dropped its reference. External authentication continues to require TLS.
+New backup Jobs resolve TLS mode and certificate/CA references from the same
+owned StatefulSet template, so removing desired TLS cannot strip trust from a
+Job targeting the optional phase. Missing workloads retry provisioning; foreign
+owners are rejected. Existing Jobs retain their own persisted templates.
+In-pod ledgerctl calls from Ledger and EventSink reconciliation also retry
+without exec when the StatefulSet is absent, then read its mode after recreation.
+See [TLS migration](../../docs/ops/tls-migration.md) for phases, interruption
+boundaries and recovery guidance.
+
 ## Pyroscope credentials
 
 `spec.monitoring.pyroscope.authTokenFrom` and `basicAuthPasswordFrom` accept
@@ -68,6 +124,21 @@ Plaintext `authToken` and `basicAuthPassword` fields are not supported.
 Reference changes trigger a rollout; rotating Secret contents requires a Pod
 restart. See [profiling deployment](../../docs/ops/deployment.md#pyroscope-continuous-profiling)
 for examples and missing-reference behavior.
+
+## Health check interval
+
+`spec.health.interval` accepts a Go duration that parses to a value greater
+than zero, such as `30s` or `1m30s`. Omitting it, or setting an empty string,
+uses the server's `30s` default. Invalid, zero, negative, overflowing, and
+sub-nanosecond values that round to zero stop reconciliation with
+`ConfigValid=False`, reason `ValidationFailed`, and phase `Error` before workload
+creation or updates. Existing workloads remain unchanged; correcting the field
+resumes reconciliation. This validation runs during reconciliation, so the CR
+may be accepted by Kubernetes and its generated cluster identity may already
+have been persisted before validation fails.
+
+`spec.extraEnv` retains its override precedence. The server validates the final
+selected interval at startup, including values supplied through that override.
 
 ## Backup scheduling
 
@@ -414,7 +485,7 @@ The `kubectl-ledger` plugin provides a CLI for managing Cluster resources.
 
 ### Installation
 
-**From source (requires Go 1.26+):**
+**From source (use Go 1.27.3; module language minimum Go 1.26.0):**
 
 ```bash
 go build -o $(go env GOPATH)/bin/kubectl-ledger ./cmd/kubectl-ledger

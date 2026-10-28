@@ -84,7 +84,7 @@ started containers; it does not update an already running container's environmen
 Omit both references to retain the default AWS credential chain on the **Ledger
 server**, which performs the upload (including its IAM/IRSA configuration).
 The Job's ServiceAccount is still inherited from the Cluster, but ambient AWS
-credentials in the Job are not forwarded by the backup RPC. This unreleased CRD
+credentials in the Job are not forwarded by the backup RPC. Before the first RC, this CRD
 replaces the former literal `s3AccessKeyId` and `s3SecretAccessKey` fields; update
 Backup manifests to use the references when upgrading the operator and CRDs.
 
@@ -107,13 +107,20 @@ ownership or remove that Job before provisioning can resume. The controller neve
 adopts or deletes a foreign Job automatically. Retryable provisioning errors are
 persisted in the message without rewriting unchanged diagnostics. If that status
 write fails, the run stays nonterminal and reconciliation retries. The message is
-cleared after the owned Job becomes available, before processing its outcome.
+cleared when the owned Job is observed still running or its result is captured.
 Definitive local construction errors and API
 `Invalid`/`BadRequest` creation rejections mark the run Failed; other provisioning
 errors retry. Transient reads of the parent Backup or Cluster also retry rather
 than ending the run during recovery. Once the owned Job completes, its outcome
 and valid result payload are persisted on the run, including after a controller
-restart.
+restart. Pod listing, temporarily absent Pods, and fallback log opening or reading
+errors leave the run Running with a diagnostic and return an error for controller
+backoff. The same owned Job is reused, siblings remain blocked, and history pruning
+cannot remove the nonterminal run. Unchanged diagnostics do not cause status writes.
+Acquired malformed summaries and failed Jobs still mark the run Failed. A missing
+result that never becomes available requires operator intervention; no new timeout
+or automatic backup resubmission is introduced. Runs already marked Failed by an
+older operator remain terminal.
 
 The run history limits retain Kubernetes `BackupRun` resources only. They do
 not retain historical backup artifacts or restore points in object storage.
@@ -302,7 +309,7 @@ The backup is a complete Pebble database that contains:
 | Cluster transient | `0x07` | Backup jobs, removed on cross-cluster restore |
 | Cluster persistent | `0x08` | Source applied index, node/cluster identity, Raft members and removal tombstones, Bloom blocks; removed on cross-cluster restore except for the rewritten genesis boundary |
 
-This changes the physical Pebble layout. An older pre-release store is rejected
+This pre-RC change altered the physical Pebble layout. An older development store is rejected
 at startup through its old boot anchor; take a new backup with the matching
 binary before recovery. See the [key-by-key restore classification](../technical/architecture/subsystems/backup/README.md#global-key-lifetimes-en-1415).
 
@@ -486,7 +493,11 @@ The server-side job:
 3. Reads the manifest from S3 and downloads the checkpoint files in parallel
    through an `errgroup` worker pool. The pool size is set by the server flag
    `--restore-download-parallelism` (default 16, clamped to `[1, 64]`).
-4. Applies any incremental export segments on top of the checkpoint and rebuilds derived state (volumes, metadata, transactions, reversion bitsets, prepared queries, the index registry) from the exported logs, starting at the checkpoint's last log sequence. Every object must contain the explicit stream footer and the complete sequence range advertised by the manifest; physical EOF or incomplete coverage fails the download closed. This is the same `ApplyExports` + `RebuildDelta` path used by the offline `ledgerctl store bootstrap` command, so a manifest with incremental backups restores all data written after the last full checkpoint. Prepared-query create, update, and delete logs are folded in order, including multiple mutations within one delta. The index registry fold covers the full lifecycle — create, retype version bump, drop, and the removal cascade — see [Restore Lifecycle](../technical/architecture/subsystems/indexer/indexes.md#restore-lifecycle); per-replica read indexes are deliberately NOT restored and are rebuilt by each node's indexbuilder from the restored registry.
+   Every checkpoint file must match the size recorded in the manifest and the
+   sha256 embedded in its object key. A mismatch fails the job
+   (`DOWNLOAD_STATE_FAILED`) with an error that names the file, and the
+   staging directory is wiped.
+4. Applies any incremental export segments on top of the checkpoint and rebuilds derived state (volumes, metadata, transactions, reversion bitsets, prepared queries, the index registry) from the exported logs, starting at the checkpoint's last log sequence. Every object must terminate with the explicit stream footer at the exact end, match the manifest byte size, and contain the complete sequence range advertised by the manifest; physical EOF, trailing bytes, size mismatch, or incomplete coverage fails the download closed. This is the same `ApplyExports` + `RebuildDelta` path used by the offline `ledgerctl store bootstrap` command, so a manifest with incremental backups restores all data written after the last full checkpoint. Prepared-query create, update, and delete logs are folded in order, including multiple mutations within one delta. The index registry fold covers the full lifecycle — create, retype version bump, drop, and the removal cascade — see [Restore Lifecycle](../technical/architecture/subsystems/indexer/indexes.md#restore-lifecycle); per-replica read indexes are deliberately NOT restored and are rebuilt by each node's indexbuilder from the restored registry.
 5. On success, marks the staging as ready.
 
 If the job fails or is cancelled, the staging directory is wiped so the
@@ -590,10 +601,14 @@ Finalization performs these steps:
 
 1. Prepares the staged store ([Backup Preparation on Restore](#backup-preparation-on-restore): applied index preserved as the genesis boundary, persisted config/bloom/peers/cache reset).
 2. Reads back `lastAppliedIndex` and `lastAppliedTimestamp` from the prepared store.
-3. Writes the **RESTORED marker** JSON file to `{dataDir}/RESTORED`.
-4. Creates `{dataDir}/checkpoints/` directory.
-5. **Atomically** hard-links the staging directory to `{dataDir}/checkpoints/0` (using a temp directory + `os.Rename` for crash safety).
-6. Removes the staging directory.
+3. Closes the staging Pebble handle, creates `{dataDir}/checkpoints/`, and removes any existing `checkpoints/0` path.
+4. Hard-links staging into a temporary checkpoint directory, then renames it to `{dataDir}/checkpoints/0`.
+5. Writes the **RESTORED marker** JSON file to `{dataDir}/RESTORED`. The marker is the commit point and is written only after checkpoint placement.
+6. Removes the staging directory. A cleanup failure is logged after success; the published checkpoint and marker remain valid.
+
+One finalization owns the staged generation from preparation through publication and cleanup. A concurrent call fails with `FailedPrecondition` without changing the owner's staging or checkpoint. A repeated call after success also fails because the staging handle is gone; it does not return success again. Shutdown waits for an admitted finalizer before closing restore resources.
+
+If preparation fails, the staging handle remains open and the marker is absent; the staged bytes may already have changed if Pebble committed before reporting an error. If publication fails after the handle closes, staging files remain but cannot be finalized again in the same server process. A marker-write failure removes the newly placed checkpoint; if that rollback fails, remove the leftover checkpoint manually. Restart restore mode with a fresh target and repeat download and validation before retrying. Never treat a failed finalization as a committed restore.
 
 On next startup, `ScanLatestCheckpointID()` scans the `checkpoints/` directory for the highest numbered subdirectory to find the active checkpoint.
 
@@ -622,9 +637,9 @@ Client                       Restore Server                    Disk / S3
   |<-- summary -------------------|--- OpenReadOnly(staging) ---->|
   |                               |                               |
   |--- FinalizeRestore ---------->|                               |
-  |                               |--- Write RESTORED marker ---->|
   |                               |--- HardLink staging --------->|
   |                               |    -> checkpoints/0           |
+  |                               |--- Write RESTORED marker ---->|
   |                               |--- Remove staging ----------->|
   |<-- response ------------------|                               |
 
@@ -667,7 +682,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 ### How It Works
 
 1. **Fresh directory guard**: Scans the target data directory's `checkpoints/` subdirectory for existing checkpoints using `ScanLatestCheckpointID()`. Refuses to overwrite.
-2. **Download**: Reads the manifest from the configured backend, downloads all checkpoint files and export segments into `{data-dir}/restore-staging/`.
+2. **Download**: Reads the manifest from the configured backend, creates or opens the selected data directory, then creates `restore-staging/` through that directory's filesystem root. Staging must be a real directory: a staging-root symlink is rejected even when its target is inside the data directory. Downloads checkpoint files sequentially through a filesystem root opened on staging. Each manifest filename is converted from slash-separated form and must be lexically local before parent creation, object lookup or file creation for that entry. Rooted parent and file creation reject symlink escapes. Each checkpoint file is verified against its manifest size and the sha256 in its object key; a mismatch aborts bootstrap and names the file. Staging is created even for an export-only manifest.
 3. **Apply exports**: If the manifest contains incremental export segments, applies them to the staging database and rebuilds derived state.
 4. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
 5. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`. Execution failures or reported integrity errors abort bootstrap before confirmation, preparation, and finalization. Without this flag, bootstrap skips Checker entirely.
@@ -675,6 +690,14 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 7. **Prepare**: Prepares attributes for backup (Global-zone resets: applied index preserved as the genesis boundary — the restored genesis' WAL-snapshot index — persisted config stripped, persisted bloom blocks dropped); the attribute zone is left intact.
 8. **Finalize**: Hard-links staging to `{data-dir}/checkpoints/0`, writes the `RESTORED` marker JSON.
 9. **Cleanup**: Removes the staging directory.
+
+The download roots are closed before export replay, preview, validation,
+confirmation and finalization. Download rejection is per entry, rather than an
+atomic check of the whole manifest: earlier files and a partially written failing
+file can remain in staging after an error. Failed downloads do not reach those
+later steps, and do not automatically remove staging. Size/hash verification
+detects object corruption; it does not authenticate manifest filenames or
+replace destination confinement.
 
 Use `--validate` for recovery and restore drills so integrity checks succeed
 before the data is finalized. Its default of `false` makes it opt-in; successful

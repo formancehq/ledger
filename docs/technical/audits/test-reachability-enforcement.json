@@ -67,7 +67,7 @@
     "use go list -test and go test -list under the exact runner tag sets and package selectors to compare intended and effective Go collection without treating -coverpkg as execution",
     "render Just recipes and trace agent-check wrappers and GitHub workflow commands to map each source family to its effective package selectors, environment, trigger, and exit-status propagation",
     "perform framework-native dry discovery or result inspection for Ginkgo, Schemathesis, Chainsaw, scenarios, operator envtest/e2e, dashboard tests, and Antithesis image template/driver layouts",
-    "run tests/schemathesis/test_reporting.py with the pinned dependencies to verify that transport errors followed by successful checks remain visible and fail, while genuine error-free execution passes and empty or unfinished execution fails",
+    "run tests/schemathesis/test_reporting.py with the pinned dependencies to verify that CLI NDJSON errors and check failures remain fatal after later successful scenarios, that absent or malformed reports and nonzero CLI exits fail, and that success requires EngineFinished plus an actual successful check in a ScenarioFinished recorder",
     "build the Antithesis workload compiler target with instrumentation and each supported driver filter so module replacement, go mod tidy, transitive root-package imports, and driver compilation are exercised together",
     "enumerate Fuzz functions and compare them with seed-replay lists, active-fuzz target lists, and any scheduled or external campaign configuration",
     "inspect Skip, pending, focus, credential, environment, and dependency gates and prove whether the exact claimed runner reaches the core assertion rather than only collecting its container",

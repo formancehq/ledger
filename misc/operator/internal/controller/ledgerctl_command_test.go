@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -248,7 +249,8 @@ func TestFetchTLSMode(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "missing StatefulSet returns empty without error",
+			name:    "missing StatefulSet returns retryable lookup error",
+			wantErr: true,
 			nsName:  "ns",
 			stsName: "ledger",
 			want:    "",
@@ -280,12 +282,65 @@ func TestFetchTLSMode(t *testing.T) {
 
 			got, err := fetchTLSMode(context.Background(), c, tt.nsName, tt.stsName)
 			if tt.wantErr {
-				require.Error(t, err)
+				require.True(t, apierrors.IsNotFound(err), "got %v", err)
 
 				return
 			}
 			require.NoError(t, err)
 			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// A recreated StatefulSet can temporarily be absent while its TLS pods survive.
+// Neither exec caller may interpret that absence as a plaintext workload.
+func TestLedgerctlExecOutputMissingTLSWorkload(t *testing.T) {
+	t.Parallel()
+	scheme := runtime.NewScheme()
+	require.NoError(t, appsv1.AddToScheme(scheme))
+	for _, caller := range []string{"ledger", "cluster"} {
+		t.Run(caller, func(t *testing.T) {
+			t.Parallel()
+			c := fake.NewClientBuilder().WithScheme(scheme).Build()
+			var output string
+			var err error
+			// No exec configuration is provided: lookup must fail before reaching exec.
+			if caller == "ledger" {
+				r := &LedgerReconciler{Client: c}
+				output, err = r.ledgerctlExecOutput(context.Background(), "ns", "example", "ledger-example-0", 8888, "status")
+			} else {
+				r := &ClusterReconciler{Client: c}
+				output, err = r.ledgerctlExecOutput(context.Background(), "ns", "example", "ledger-example-0", 8888, "status")
+			}
+			require.ErrorContains(t, err, "resolving TLS mode for Cluster")
+			require.True(t, apierrors.IsNotFound(err), "got %v", err)
+			require.Empty(t, output)
+		})
+	}
+}
+
+func TestFetchTLSModeRecoversAfterWorkloadRecreation(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{tlsModeOptional, tlsModeRequired, tlsModeDisabled} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			scheme := runtime.NewScheme()
+			require.NoError(t, appsv1.AddToScheme(scheme))
+			c := fake.NewClientBuilder().WithScheme(scheme).Build()
+			got, err := fetchTLSMode(ctx, c, "ns", resourceName("example"))
+			require.True(t, apierrors.IsNotFound(err), "got %v", err)
+			require.Empty(t, got)
+			sts := &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName("example"), Namespace: "ns"},
+				Spec: appsv1.StatefulSetSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "ledger", Env: []corev1.EnvVar{{Name: "TLS_MODE", Value: mode}}}},
+				}}},
+			}
+			require.NoError(t, c.Create(ctx, sts))
+			got, err = fetchTLSMode(ctx, c, "ns", resourceName("example"))
+			require.NoError(t, err)
+			require.Equal(t, mode, got)
 		})
 	}
 }

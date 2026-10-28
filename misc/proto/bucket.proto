@@ -154,6 +154,10 @@ service BucketService {
   rpc GetNumscript(GetNumscriptRequest) returns (common.NumscriptInfo) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
   }
+  // AnalyzeNumscript validates source without reading or changing ledger state.
+  rpc AnalyzeNumscript(AnalyzeNumscriptRequest) returns (AnalyzeNumscriptResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
+  }
   // ListNumscripts streams all numscripts (latest version of each)
   rpc ListNumscripts(ListNumscriptsRequest) returns (stream common.NumscriptInfo) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
@@ -426,6 +430,43 @@ message DropIndexRequest {
 // Numscript Library Messages
 // ============================================================================
 
+message AnalyzeNumscriptRequest {
+  string source = 1;
+  // Required language version. The current version is "v1".
+  string version = 2;
+}
+
+message NumscriptInput {
+  string name = 1;
+  string type = 2;
+}
+
+enum NumscriptDiagnosticKind {
+  NUMSCRIPT_DIAGNOSTIC_KIND_UNSPECIFIED = 0;
+  NUMSCRIPT_DIAGNOSTIC_KIND_VERSION = 1;
+  NUMSCRIPT_DIAGNOSTIC_KIND_SYNTAX = 2;
+  NUMSCRIPT_DIAGNOSTIC_KIND_FEATURE = 3;
+  NUMSCRIPT_DIAGNOSTIC_KIND_COMPILE = 4;
+}
+
+message NumscriptDiagnostic {
+  NumscriptDiagnosticKind kind = 1;
+  // Stable machine-readable diagnostic code.
+  string code = 2;
+  string message = 3;
+  // Zero-based source coordinates. Omitted when the diagnostic has no range.
+  optional uint32 start_line = 4;
+  optional uint32 start_column = 5;
+  optional uint32 end_line = 6;
+  optional uint32 end_column = 7;
+}
+
+message AnalyzeNumscriptResponse {
+  // Sorted by name; populated only when diagnostics is empty.
+  repeated NumscriptInput inputs = 1;
+  repeated NumscriptDiagnostic diagnostics = 2;
+}
+
 // SaveNumscriptRequest appends an immutable version to the library. version
 // must be an explicit full semver (e.g. "1.0.0").
 message SaveNumscriptRequest {
@@ -627,7 +668,7 @@ message RemoveAccountTypeLedgerRequest {
 
 message GetPrimaryMetricsRequest {
   // node_id indicates which node to query (0 = local node)
-  uint32 node_id = 1;
+  uint64 node_id = 1;
 }
 
 message GetPrimaryMetricsResponse {
@@ -639,7 +680,7 @@ message GetPrimaryMetricsResponse {
 
 message GetSecondaryMetricsRequest {
   // node_id indicates which node to query (0 = local node)
-  uint32 node_id = 1;
+  uint64 node_id = 1;
 }
 
 message GetSecondaryMetricsResponse {
@@ -980,6 +1021,10 @@ enum CheckStoreErrorType {
   // re-derived by replaying the chain-verified AuditItem orders. Logs are a
   // projection of the audit chain and never an input to expected-state replay.
   CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH = 31;
+  // A ledger projection has a different key/name, deletion state, mode or
+  // mirror source than the state replayed from verified audit orders. Applies
+  // independently to canonical FSM attributes and global ledger information.
+  CHECK_STORE_ERROR_TYPE_LEDGER_INFO_MISMATCH = 32;
 }
 
 message CheckStoreError {
@@ -1226,6 +1271,9 @@ message ExecutePreparedQueryRequest {
   string ledger = 1;
   string query_name = 2;
   map<string, common.ParameterValue> parameters = 3;
+  // LIST defaults zero to 100 and clamps values above 1000 to 1000 before
+  // collecting or enriching results. The cursor reports the effective size.
+  // AGGREGATE_VOLUMES ignores page_size and aggregates all matching accounts.
   uint32 page_size = 4;
   string cursor = 5;
   common.QueryMode mode = 6;
@@ -1259,6 +1307,8 @@ message GetIndexStatusResponse {
   fixed64 last_indexed_sequence = 1;
   fixed64 last_log_sequence = 2;
   fixed64 lag = 3;
+  // Bytes the answering node's read index occupies on disk, live and obsolete
+  // files included, from Pebble's disk-usage metrics.
   fixed64 index_file_size = 4;
   repeated IndexEntry indexes = 5;
 }
@@ -1510,6 +1560,8 @@ message InspectIndexRequest {
   common.TargetType target_type = 2;
   string metadata_key = 3;
   InspectIndexMode mode = 4;
+  // Values or facets per page. 0 selects 100; values above 10000 are capped
+  // at 10000 and the response carries a next cursor.
   uint32 page_size = 5;
   string cursor = 6;
   fixed64 checkpoint_id = 7;

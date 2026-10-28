@@ -29,6 +29,13 @@ See the [operational contract](../../../../ops/backup-restore.md#s3-credentials-
 for configuration, failure behavior and Secret update timing. This changes
 Kubernetes runtime delivery only, not audit state or incremental restore parity.
 
+## Operator result recovery
+
+Completed Jobs retain their Running reservation while result acquisition retries.
+Only a parsed result persisted on the run enables successful parent accounting and
+incremental scheduling. See [the recovery ordering](operator-scheduling.md#completed-job-result-recovery)
+for observation failures, terminal payload failures and history pruning.
+
 ## How a backup is taken
 
 A Pebble *checkpoint* is the engine primitive: hard-link every live SST file into a separate directory at a point in time. The checkpoint is **quasi-free** (no copy), and writes to the live database keep going untouched.
@@ -165,18 +172,51 @@ changes the Pebble key layout: boot validation rejects an earlier store
 through the old boot-anchor probe. There is no in-place migration of
 pre-release stores. In-cluster snapshot installation retains the local zone.
 
+For gRPC finalization, the restore service claims the single downloaded staging generation under its mutex before `PrepareForBackup`. The claim remains held through metadata reads, staging-handle closure, checkpoint publication, marker publication, and staging cleanup. A competing finalizer fails with `FailedPrecondition` before it can read or mutate the same generation. A sequential retry after success fails because the handle was cleared. `Shutdown` joins the active request before it closes retained resources.
+
+The durable publication sequence is: prepare and read metadata from the open staging store; close its Pebble handle; create the checkpoint parent and remove an old `checkpoints/0` path; hard-link staging into a temporary directory and rename it to `checkpoints/0`; atomically write `RESTORED`; then remove staging. `RESTORED` is the commit point and always follows checkpoint placement. A preparation error leaves an open staging handle, but its Pebble writes can be indeterminate after a commit or flush error. A filesystem publication error leaves staging files with no open handle and no marker; a marker-write error additionally attempts to remove the placed checkpoint. Cleanup failure after the marker is logged and does not revoke success. Recovery from an unsuccessful finalization requires a fresh restore-mode download and validation, with any leftover checkpoint removed if rollback failed; the same in-process staging generation cannot be retried after its handle was closed.
+
 `internal/infra/backup/restore.go` is the entry point. The flow is conceptually the inverse:
 
 1. Read the manifest from the destination.
-2. Download every SST file the manifest references into a fresh Pebble directory.
+2. Download every checkpoint file the manifest references into a fresh Pebble
+   directory. Each download is checked with `CheckpointFile.CopyVerified`: the
+   object must have exactly the manifest's `size` and its sha256 must equal the
+   hash embedded in its content-addressed key. A damaged, truncated, or
+   replaced object fails the download and names the file. This check detects
+   object corruption; it does not authenticate the manifest itself.
 3. Apply any incremental exports on top (`ApplyExports`).
 4. Reconstruct post-checkpoint derived state from the exported log and audit streams (`RebuildDelta`).
 5. Boot the node against the restored directory.
 
-Each export object must terminate with its explicit stream footer and contain
-the complete sequence range advertised by the manifest. A physical EOF, an
-empty segment, or missing range boundary fails the download before the staging
-restore can be considered successful. `ApplyExports` writes large segments in
+Offline `ledgerctl store bootstrap` downloads checkpoint files through
+`downloadBootstrapCheckpoint` in `cmd/ledgerctl/store/bootstrap.go`. It creates
+or opens the operator-selected data directory, creates `restore-staging` through
+that root, then uses rooted `Lstat` to require a real staging directory before
+opening a staging root. All staging-root symlinks are rejected, including targets
+inside the data directory, because later finalization walks the staging path
+without following a root symlink. Staging is acquired even when the manifest
+contains exports only.
+
+For each checkpoint map key, the downloader applies `filepath.FromSlash` and
+`filepath.IsLocal` before rooted parent creation, remote lookup by the separate
+content key, and rooted file creation. `os.Root` confines the final create even
+when a parent or leaf is a symlink. Downloads remain sequential and use
+`CheckpointFile.CopyVerified`; locality does not replace size/hash verification.
+This is a per-entry boundary, not a whole-manifest transaction. On failure,
+earlier files and partial file bytes can remain in staging; offline bootstrap
+does not automatically wipe failed downloads. Directory handles close before
+export replay, preview, optional Checker validation, confirmation and
+finalization; a download failure reaches none of those steps. This change does
+not alter backup formats, replay semantics or persisted business state.
+
+Each export object must terminate with its explicit stream footer at the exact
+end of the object and match the manifest byte size. Its keys must belong to
+the declared type and range, be ordered, and cover every sequence for log,
+audit, and audit-item segments. Applied-proposal sequences may be sparse because
+failed proposals have no applied-proposal row. Physical EOF, trailing bytes,
+size mismatch, empty segment, or missing sequence fails the download before
+the staging restore can be considered successful. `ApplyExports` writes large segments in
 bounded Pebble batches, so batches committed before a later read failure can
 remain until the caller discards or retries that staging directory. The gRPC
 download job wipes staging on failure and never enables finalization; an

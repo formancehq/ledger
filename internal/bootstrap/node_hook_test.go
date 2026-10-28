@@ -2,8 +2,10 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,7 +63,8 @@ func TestNodeHookCancelledStartupJoinsRun(t *testing.T) {
 		// Record violations without aborting: the unfixed hook still needs its
 		// blocked Run released before the synctest bubble can finish.
 		select {
-		case <-result:
+		case err := <-result:
+			assert.ErrorIs(t, err, context.Canceled)
 			t.Error("cancelled startup returned while Run was still initializing")
 		default:
 		}
@@ -74,7 +77,8 @@ func TestNodeHookCancelledStartupJoinsRun(t *testing.T) {
 			t.Error("cancelled startup did not request node shutdown")
 		}
 		select {
-		case <-result:
+		case err := <-result:
+			assert.ErrorIs(t, err, context.Canceled)
 			t.Error("cancelled startup returned before Run exited")
 		default:
 		}
@@ -163,6 +167,193 @@ func TestNodeHookSuccessfulStartupPreservesRunContextThroughStop(t *testing.T) {
 		require.NoError(t, <-result)
 		require.ErrorIs(t, runCtx.Err(), context.Canceled)
 	})
+}
+
+func TestNodeHookStopJoinsRun(t *testing.T) {
+	t.Parallel()
+	stopFailure := errors.New("stop failed")
+	for _, test := range []struct {
+		name    string
+		context func() (context.Context, context.CancelFunc)
+		stopErr error
+	}{
+		{"cancelled during stop", func() (context.Context, context.CancelFunc) {
+			return context.WithCancel(context.Background())
+		}, context.Canceled},
+		{"deadline during stop", func() (context.Context, context.CancelFunc) {
+			return context.WithTimeout(context.Background(), time.Second)
+		}, context.DeadlineExceeded},
+		{"already expired", func() (context.Context, context.CancelFunc) {
+			return context.WithDeadline(context.Background(), time.Now())
+		}, context.DeadlineExceeded},
+		{"stop error", func() (context.Context, context.CancelFunc) {
+			return context.WithCancel(context.Background())
+		}, stopFailure},
+		{"early successful stop", func() (context.Context, context.CancelFunc) {
+			return context.WithCancel(context.Background())
+		}, nil},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				waitForCancel := errors.Is(test.stopErr, context.Canceled) || errors.Is(test.stopErr, context.DeadlineExceeded)
+				stopEntered := make(chan struct{})
+				terminate := make(chan struct{})
+				runContexts := make(chan context.Context, 1)
+				n := controlledNode{
+					run: func(ctx context.Context, ready chan struct{}) error {
+						runContexts <- ctx
+						close(ready)
+						<-terminate
+						assert.NoError(t, ctx.Err(), "commit drain must retain a live run context")
+
+						return nil
+					},
+					stop: func(ctx context.Context) error {
+						close(stopEntered)
+						if waitForCancel {
+							<-ctx.Done()
+
+							return ctx.Err()
+						}
+
+						return test.stopErr
+					},
+				}
+				hook := nodeHook(n, logging.Testing())
+				require.NoError(t, hook.OnStart(context.Background()))
+				runCtx := <-runContexts
+				ctx, cancel := test.context()
+				defer cancel()
+				result := make(chan error, 1)
+				returned := make(chan struct{})
+				go func() {
+					result <- hook.OnStop(ctx)
+					close(returned)
+				}()
+				<-stopEntered
+				if test.name == "cancelled during stop" {
+					cancel()
+				}
+				if waitForCancel {
+					<-ctx.Done()
+				}
+				synctest.Wait()
+				select {
+				case <-returned:
+					t.Error("stop hook returned before Run exited")
+				default:
+				}
+				assert.NoError(t, runCtx.Err(), "stop timeout must not cancel pending commit drain")
+				// Release even on the unfixed path so a failed regression joins its fixture.
+				close(terminate)
+				synctest.Wait()
+				err := <-result
+				if test.stopErr == nil {
+					require.NoError(t, err)
+				} else {
+					require.ErrorIs(t, err, test.stopErr)
+					require.Contains(t, err.Error(), "shutting down raft cluster")
+				}
+				require.ErrorIs(t, runCtx.Err(), context.Canceled)
+			})
+		})
+	}
+}
+
+func TestNodeHookOwnsRunThroughFxStop(t *testing.T) {
+	t.Parallel()
+	for _, cancelled := range []bool{false, true} {
+		name := "successful drain"
+		if cancelled {
+			name = "outer timeout"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				terminate := make(chan struct{})
+				stopEntered := make(chan struct{})
+				hookReturned := make(chan struct{})
+				runContexts := make(chan context.Context, 1)
+				exited := false
+				dependencyClosed := false
+				n := controlledNode{
+					run: func(ctx context.Context, ready chan struct{}) error {
+						runContexts <- ctx
+						close(ready)
+						<-terminate
+						assert.NoError(t, ctx.Err())
+						assert.False(t, dependencyClosed)
+						exited = true
+
+						return nil
+					},
+					stop: func(ctx context.Context) error {
+						close(stopEntered)
+						select {
+						case <-ctx.Done():
+							return ctx.Err()
+						case <-terminate:
+							return nil
+						}
+					},
+				}
+				dependency := fx.Hook{
+					OnStart: func(context.Context) error { return nil },
+					OnStop: func(context.Context) error {
+						assert.True(t, exited, "dependency closure must follow Run exit")
+						dependencyClosed = true
+
+						return nil
+					},
+				}
+				app := fx.New(fx.NopLogger, fx.Invoke(func(lc fx.Lifecycle) {
+					lc.Append(dependency)
+					hook := nodeHook(n, logging.Testing())
+					lc.Append(fx.Hook{
+						OnStart: hook.OnStart,
+						OnStop: func(ctx context.Context) error {
+							defer close(hookReturned)
+
+							return hook.OnStop(ctx)
+						},
+					})
+				}))
+				require.NoError(t, app.Start(context.Background()))
+				runCtx := <-runContexts
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				result := make(chan error, 1)
+				go func() { result <- app.Stop(ctx) }()
+				<-stopEntered
+				if cancelled {
+					cancel()
+					require.ErrorIs(t, <-result, context.Canceled)
+				}
+				synctest.Wait()
+				select {
+				case <-hookReturned:
+					t.Error("node hook lost ownership before Run exited")
+				default:
+				}
+				assert.NoError(t, runCtx.Err())
+				assert.False(t, dependencyClosed)
+				close(terminate)
+				synctest.Wait()
+				<-hookReturned
+				require.ErrorIs(t, runCtx.Err(), context.Canceled)
+				if cancelled {
+					// Fx skips remaining hooks with an expired context. Release the
+					// dependency explicitly after the node hook has joined Run.
+					require.False(t, dependencyClosed)
+					require.NoError(t, dependency.OnStop(context.Background()))
+				} else {
+					require.NoError(t, <-result)
+				}
+				require.True(t, dependencyClosed)
+			})
+		})
+	}
 }
 
 // lifecycleEvents observes real Fx rollback without assuming that an expired

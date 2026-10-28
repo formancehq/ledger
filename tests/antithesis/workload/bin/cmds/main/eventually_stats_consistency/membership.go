@@ -32,7 +32,7 @@ func activeReplicas(ctx context.Context, source *internal.PerNodeConn, candidate
 	for _, conn := range candidates {
 		byAddress[conn.Addr] = conn
 	}
-	seenIDs := make(map[uint32]bool)
+	seenIDs := make(map[uint64]bool)
 	seenAddresses := make(map[string]bool)
 	var replicas internal.PerNodeConns
 	for _, node := range state.GetNodes() {

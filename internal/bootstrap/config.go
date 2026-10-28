@@ -341,6 +341,12 @@ func (c Config) Validate() error {
 		return errors.New("--idempotency-ttl must not be negative")
 	}
 
+	// The health worker requires a positive ticker interval; zero does not
+	// disable polling. Reject invalid input before starting its goroutine.
+	if c.HealthConfig.Interval <= 0 {
+		return errors.New("--health-check-interval must be greater than zero")
+	}
+
 	if err := validateHealthThresholds(c.HealthConfig.WALThreshold, c.HealthConfig.WALResumeThreshold); err != nil {
 		return fmt.Errorf("wal: %w", err)
 	}
