@@ -303,7 +303,7 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 			}
 
 			if field, ok := node.(*ast.KeyValueExpr); ok && !callerAssignmentAllowed(path) {
-				if ident, ok := field.Key.(*ast.Ident); ok && ident.Name == "CallerSnapshot" && !proposalAttributionCopyAllowed(path, field.Value) {
+				if ident, ok := field.Key.(*ast.Ident); ok && ident.Name == "CallerSnapshot" {
 					findings = append(findings, goFinding(
 						fileSet, path, field.Pos(),
 						"caller attribution may only be attached at admission or an allowlisted system producer",
@@ -416,26 +416,6 @@ func callerAssignmentAllowed(path string) bool {
 	return path == "internal/application/admission/admission.go" ||
 		path == "internal/infra/state/machine.go" ||
 		systemProducerAllowed(path)
-}
-
-// The proposal codec borrows attribution from the input header. It is not a
-// producer and cannot mint or replace that principal. Keep this exemption at
-// the exact read expression, rather than allowlisting the file as a producer.
-func proposalAttributionCopyAllowed(path string, expression ast.Expr) bool {
-	if path != "internal/pkg/proposals/payload.go" {
-		return false
-	}
-	call, ok := expression.(*ast.CallExpr)
-	if !ok || len(call.Args) != 0 {
-		return false
-	}
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok || selector.Sel.Name != "GetCallerSnapshot" {
-		return false
-	}
-	receiver, ok := selector.X.(*ast.Ident)
-
-	return ok && receiver.Name == "p"
 }
 
 func callsAnyImportedFunction(

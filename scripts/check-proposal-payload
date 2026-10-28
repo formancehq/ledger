@@ -14,6 +14,14 @@ compare_reports() {
     fi
 }
 
+# Native policy controls intentionally change audit item bytes and hence the
+# chain suffix. Compare intent/outcomes separately; never mask the raw legacy
+# comparison or the historical prefix of the stopped upgrade.
+compare_semantics() {
+    compare_reports <(jq -S 'del(.Items) | .Audit |= map(del(.hash))' "$1") \
+                    <(jq -S 'del(.Items) | .Audit |= map(del(.hash))' "$2")
+}
+
 baseline=${1:-v3.0.0-rc.1}
 repo=$(git rev-parse --show-toplevel)
 mkdir -p "$repo/build"
@@ -34,7 +42,7 @@ LEDGER_PROPOSAL_PROBE_OUTPUT="$probe_dir/new-legacy.json" \
 LEDGER_PROPOSAL_PROBE_OUTPUT="$probe_dir/new-payload.json" LEDGER_PROPOSAL_PROBE_ENCODING=payload \
     "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
 compare_reports "$probe_dir/old.json" "$probe_dir/new-legacy.json"
-compare_reports "$probe_dir/old.json" "$probe_dir/new-payload.json"
+compare_semantics "$probe_dir/old.json" "$probe_dir/new-payload.json"
 # The source process exits and closes the real store/WAL before the candidate
 # opens them. The candidate replays the retained old entry, appends new payloads,
 # then another candidate process verifies recovery without replaying applied work.
@@ -44,6 +52,8 @@ LEDGER_PROPOSAL_PROBE_OUTPUT="$probe_dir/upgraded.json" LEDGER_PROPOSAL_PROBE_DI
     "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
 LEDGER_PROPOSAL_PROBE_OUTPUT="$probe_dir/restarted.json" LEDGER_PROPOSAL_PROBE_DIR="$probe_dir/upgrade" LEDGER_PROPOSAL_PROBE_PHASE=verify \
     "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
-compare_reports "$probe_dir/old.json" "$probe_dir/upgraded.json"
+compare_semantics "$probe_dir/old.json" "$probe_dir/upgraded.json"
+compare_reports <(jq -S '{Audit: .Audit[:3], Items: .Items[:3]}' "$probe_dir/old.json") \
+                <(jq -S '{Audit: .Audit[:3], Items: .Items[:3]}' "$probe_dir/upgraded.json")
 compare_reports "$probe_dir/upgraded.json" "$probe_dir/restarted.json"
-echo "PROPOSAL_PAYLOAD_COMPAT=PASS baseline=$baseline (audit/state parity, stopped store/WAL upgrade, new writes and restart)"
+echo "PROPOSAL_PAYLOAD_COMPAT=PASS baseline=$baseline (legacy byte parity, native intent/state parity, retained historical prefix, stopped store/WAL upgrade and restart)"

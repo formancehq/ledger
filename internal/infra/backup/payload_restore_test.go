@@ -7,11 +7,14 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/v3/internal/application/check"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 func TestProposalPayloadPolicyIncrementalRestore(t *testing.T) {
@@ -22,7 +25,7 @@ func TestProposalPayloadPolicyIncrementalRestore(t *testing.T) {
 	applyPolicy := func(index uint64, modern bool) {
 		p := &raftcmdpb.Proposal{Id: index, Date: &commonpb.Timestamp{Data: 1700000000 + index},
 			CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterPolicy),
-			Orders:         []*raftcmdpb.Order{proposals.PolicyOrder(policy.CloneVT())},
+			Orders:         []*raftcmdpb.Order{{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: policy.CloneVT()}}}}}},
 		}
 		wire := p
 		if modern {
@@ -46,6 +49,7 @@ func TestProposalPayloadPolicyIncrementalRestore(t *testing.T) {
 	policy.Revision = 4
 	policy.QueryCheckpointLimit = 21
 	applyPolicy(3, true)
+	applyPolicy(4, true) // Native no-op is audited without consuming a log sequence.
 	inc, err := RunIncrementalBackup(t.Context(), testLogger(), store, storage, "payload", 0)
 	require.NoError(t, err)
 	require.EqualValues(t, 2, inc.LogEntriesExported)
@@ -57,6 +61,34 @@ func TestProposalPayloadPolicyIncrementalRestore(t *testing.T) {
 	require.True(t, proto.Equal(policy, actual), "delta must replace checkpoint policy")
 	auditKeyCheckerClean(t, store)
 	auditKeyCheckerClean(t, restored)
+
+	// The checker must derive policy from native audit intent, never from the
+	// live policy projection or its companion log. Test each corruption alone.
+	reader, err := restored.NewReadHandle()
+	require.NoError(t, err)
+	nativeItems, err := query.ReadAuditItems(t.Context(), reader, 3)
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+	require.Len(t, nativeItems, 1)
+	require.Empty(t, nativeItems[0].GetSerializedOrder())
+	require.NotEmpty(t, nativeItems[0].GetSerializedSetClusterPolicy())
+	tamperedPolicy := policy.CloneVT()
+	tamperedPolicy.QueryCheckpointLimit++
+
+	batch := restored.OpenWriteSession()
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, tamperedPolicy))
+	require.NoError(t, batch.Commit())
+	var found bool
+	checker := check.NewChecker(restored, attributes.New(), nil, testLogger())
+	require.NoError(t, checker.Check(t.Context(), func(event *servicepb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok && e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH {
+			found = true
+		}
+	}))
+	require.True(t, found, "checker must detect policy projection tampering after a native delta")
+	batch = restored.OpenWriteSession()
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, policy))
+	require.NoError(t, batch.Commit())
 	recovered := recoveredAuditKeyMachine(t, restored)
 	require.True(t, proto.Equal(policy, recovered.State.ClusterPolicy))
 	// Recovery must preserve the policy and the next revision's conflict
@@ -73,4 +105,22 @@ func TestProposalPayloadPolicyIncrementalRestore(t *testing.T) {
 	require.Error(t, result.Results[0].Error)
 	require.False(t, result.Results[0].AuditEntryWritten)
 	require.True(t, proto.Equal(policy, recovered.State.ClusterPolicy))
+
+	tamperedItem := nativeItems[0].CloneVT()
+	tamperedItem.SerializedSetClusterPolicy = (&raftcmdpb.SetClusterPolicyProposal{Policy: tamperedPolicy}).MarshalDeterministicVT(nil)
+	batch = restored.OpenWriteSession()
+	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(3).PutUint32(0).Consume()
+	require.NoError(t, batch.SetProto(key, tamperedItem))
+	require.NoError(t, batch.Commit())
+	found = false
+	require.NoError(t, checker.Check(t.Context(), func(event *servicepb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok && e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH {
+			found = true
+		}
+	}))
+	require.True(t, found, "native policy audit bytes must be hash-bound")
+	batch = restored.OpenWriteSession()
+	require.NoError(t, batch.SetProto(key, nativeItems[0]))
+	require.NoError(t, batch.Commit())
+	auditKeyCheckerClean(t, restored)
 }

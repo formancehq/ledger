@@ -350,8 +350,8 @@ must use the matching revision.
 Revision 26 removes `Request.set_cluster_policy` from the public
 `BucketService.Apply` envelope. Cluster policy reconciliation is now admitted
 only through the server-internal `Admission.AdmitClusterPolicy` entry point,
-which still commits the internal Raft `SetClusterPolicyOrder` and audited
-`SetClusterPolicy` log payload.
+which commits the internal Raft `SetClusterPolicyProposal` and audited
+`SetClusterPolicy` log payload. Historical policy orders remain readable.
 
 A revision-25 client can still encode field 28 in `Request.type`, but a
 revision-26 server no longer interprets that field as a valid Apply request.
@@ -716,3 +716,13 @@ Custom and anonymous scope mappings must use the new granular values; see the
 [authentication migration](../../../../ops/authentication.md#migration-from-rc1-granular-labels).
 Persisted audit snapshots retain the exact effective scope strings captured at
 admission, so historical hashes remain verifiable without a storage migration.
+
+### Native policy audit items (RC.2)
+
+`AuditItem` adds `serialized_set_cluster_policy` at field 4. Existing fields,
+wire types and service revision 40 remain unchanged. Business order items and
+historical policy items retain field 2 and their exact hash preimages. New
+policy controls carry deterministic `SetClusterPolicyProposal` bytes in field 4,
+with a separate hash domain. Old clients can decode these responses but need an
+update to display or verify native policy intent. See
+[proposal payloads](../consensus/proposal-payloads.md) for the full-stop cutover.

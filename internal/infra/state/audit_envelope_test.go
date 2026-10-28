@@ -620,3 +620,22 @@ func TestBuildPerItemPayload_LegacyBytesVerifyVerbatim(t *testing.T) {
 	// which is exactly why verification hashes stored bytes rather than re-deriving.
 	require.NotEqual(t, legacyBytes, marshalOrdersForAudit([]*raftcmdpb.Order{legacyOrder})[0])
 }
+
+// Native policy intent has a distinct preimage; old order items remain exactly
+// compatible with the independently encoded RC.1 layout.
+func TestNativePolicyAuditPreimage(t *testing.T) {
+	t.Parallel()
+	item := &auditpb.AuditItem{OrderIndex: 0, LogSequence: 7, SerializedSetClusterPolicy: []byte{10, 2, 8, 3}}
+	expected := goldenBuildPerItem(item)
+	expected = goldenLenBytes(expected, []byte("audit:set-cluster-policy:v1"))
+	expected = goldenLenBytes(expected, item.GetSerializedSetClusterPolicy())
+	require.Equal(t, expected, BuildPerItemPayload(item))
+	original := BuildPerItemPayload(item)
+	item.SerializedSetClusterPolicy[3]++
+	require.NotEqual(t, original, BuildPerItemPayload(item))
+	legacy := &auditpb.AuditItem{OrderIndex: 0, LogSequence: 7, SerializedOrder: item.GetSerializedSetClusterPolicy()}
+	require.Equal(t, goldenBuildPerItem(legacy), BuildPerItemPayload(legacy))
+	require.NotEqual(t, BuildPerItemPayload(legacy), BuildPerItemPayload(item), "intent kind is hash-bound")
+	item.SerializedOrder = []byte("injected")
+	require.NotEqual(t, original, BuildPerItemPayload(item), "both fields are hash-bound even on invalid input")
+}

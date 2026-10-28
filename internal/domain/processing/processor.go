@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -423,7 +424,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 // Single-threaded apply only (reuses p.hashBuf via computeOrderHash).
 func (p *RequestProcessor) HashProposal(proposal *raftcmdpb.Proposal) []byte {
 	h := blake3.New()
-	for _, order := range proposal.GetOrders() {
+	for _, order := range proposals.BatchOrders(proposal) {
 		var oh []byte
 		oh, p.hashBuf = hashOrder(order, p.hashBuf)
 		_, _ = h.Write(oh)

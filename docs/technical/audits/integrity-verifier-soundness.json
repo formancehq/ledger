@@ -5,6 +5,7 @@
   "paths": [
     "internal/application/check/**",
     "internal/domain/replay/**",
+    "internal/domain/auditintent/**",
     "internal/query/audit.go",
     "internal/query/log.go",
     "internal/query/applied_proposal.go",
@@ -48,6 +49,7 @@
     "docs/technical/architecture/subsystems/api/atomic-ledger-creation.md"
   ],
   "invariants": [
+    "Read historical serialized_order and native serialized_set_cluster_policy audit intent. Never lower new policy controls to legacy orders. Preserve historical preimages exactly and bind native intent kind and raw bytes. Reject mixed intent or non-standalone controls. Derive expected logs and policy from verified intent, including no-log policy re-proposals, and detect tampered native policy projections after incremental restore.",
     "Audit completeness applies to committed business outcomes, not UncommittedFailure attempts. The latter allocate no audit sequence or companion rows and restore the prior HLC; absence of their audit entry is healthy, while a missing entry for a witnessed audited outcome remains corruption.",
     "For definitive failures, the chain stores one typed FailureDetails variant. Its field annotation determines the public reason and its arm determines the stable code; neither reason nor code is a separate persisted authority. The checker must reject missing or malformed variants and compare skipped and idempotency projections with the chain-bound details.",
     "Within AGENTS.md invariant #8 and its documented scope refinements, every non-exempt primary-store projection requires reachable verification against audit-bound evidence. Inventory the current production call graph and persisted fields rather than assuming the documented pass table is exhaustive; record known gaps as prior work, not new findings.",

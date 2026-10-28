@@ -19,6 +19,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -114,6 +115,7 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 		Ledgers   []*commonpb.LedgerInfo
 		Audit     []*auditpb.AuditEntry
 		Items     [][]*auditpb.AuditItem
+		Intent    [][]*auditpb.AuditItem
 		Applied   uint64
 		Timestamp uint64
 	}
@@ -128,11 +130,47 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 		require.NoError(t, err)
 		report.Ledgers = append(report.Ledgers, ledger)
 	}
+	var previousHash []byte
 	for sequence := uint64(1); sequence < machine.State.NextAuditSequenceID; sequence++ {
 		audit, err := query.ReadAuditEntry(t.Context(), reader, sequence)
 		require.NoError(t, err)
 		items, err := query.ReadAuditItems(t.Context(), reader, sequence)
 		require.NoError(t, err)
+		// Check every chain link in both binaries, including the native suffix.
+		header, err := BuildHashedHeaderPayload(audit)
+		require.NoError(t, err)
+		slices := [][]byte{header}
+		normalized := make([]*auditpb.AuditItem, len(items))
+		for i, item := range items {
+			slices = append(slices, BuildPerItemPayload(item))
+			normalized[i] = item.CloneVT()
+			// Decode field 4 by its published wire number so this exact test source
+			// also compiles against RC.1. Normalize intent only in the test report;
+			// the separate Items report retains the real persisted evidence.
+			encoded, err := item.MarshalVT()
+			require.NoError(t, err)
+			for rest := encoded; len(rest) > 0; {
+				number, typ, n := protowire.ConsumeTag(rest)
+				require.Positive(t, n)
+				size := protowire.ConsumeFieldValue(number, typ, rest[n:])
+				require.GreaterOrEqual(t, size, 0)
+				if number == 4 {
+					raw, consumed := protowire.ConsumeBytes(rest[n:])
+					require.Positive(t, consumed)
+					control := &raftcmdpb.SetClusterPolicyOrder{}
+					require.NoError(t, control.UnmarshalVT(raw))
+					bytes, err := policyOrder(control.GetPolicy()).MarshalVT()
+					require.NoError(t, err)
+					normalized[i] = &auditpb.AuditItem{OrderIndex: item.GetOrderIndex(), LogSequence: item.GetLogSequence(), SerializedOrder: bytes}
+				}
+				rest = rest[n+size:]
+			}
+		}
+		generator := processing.NewHashGenerator(commonpb.HashAlgorithm(audit.GetHashVersion()), machine.State.AuditKey)
+		_, actualHash := generator.Compute(nil, previousHash, slices)
+		require.Equal(t, audit.GetHash(), actualHash)
+		previousHash = audit.GetHash()
+		report.Intent = append(report.Intent, normalized)
 		report.Audit = append(report.Audit, audit)
 		report.Items = append(report.Items, items)
 	}

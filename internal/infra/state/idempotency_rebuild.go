@@ -79,6 +79,11 @@ func recomputeProposalHash(items []*auditpb.AuditItem) []byte {
 	orders := make([]*raftcmdpb.Order, 0, len(items))
 
 	for _, item := range items {
+		// Native policy controls never carry an idempotency key. Reject malformed
+		// history rather than hashing an empty order in their place.
+		if len(item.GetSerializedSetClusterPolicy()) != 0 {
+			return nil
+		}
 		order := &raftcmdpb.Order{}
 		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
 			return nil

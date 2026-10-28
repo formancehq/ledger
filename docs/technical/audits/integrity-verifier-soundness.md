@@ -336,3 +336,15 @@ exactly one "no matching CreateIndex" `INDEX_MISMATCH`, and an audited row
 stripped of its `Id` must produce exactly one `Id`-drift `INDEX_MISMATCH`.
 `collectIndexedFields` in the reverse-map pass still ignores rows without `Id`;
 that only widens its orphan verdicts, and `compareIndexes` reports the row.
+
+## Native policy audit intent
+
+Audit readers accept historical `serialized_order` and native
+`serialized_set_cluster_policy` bytes. The old item preimage stays exact;
+native controls extend it with a policy domain tag and length-prefixed bytes.
+Corrupting either intent field, the selected kind, or the derived policy must
+be observable. Reject mixed intent and a control embedded in an order batch.
+The checker executes native controls without manufacturing an Order, including
+successful no-log re-proposals, and derives the policy from verified history.
+Use a historical checkpoint plus a nonempty native policy delta as a restore
+witness; neither the stored policy nor the policy log can seed its expectation.
