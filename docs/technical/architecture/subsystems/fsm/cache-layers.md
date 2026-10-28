@@ -86,7 +86,7 @@ These invariants are upheld by a layered stack between the order processor and t
 
 The coverage state lives on `gatedScope` as `coverage coverageSlots` — a dense `[len(cacheAttrKinds)][]attributes.U128` array, indexed by the precomputed `coverageSlotIndex[byte]` lookup (sub-attribute byte → slot or `-1`). `CheckCoverage(kind, canonical)` is one `int8` table read followed by a linear scan over the slot's slice — cache-friendly for the ≤ 10 ids per slot the typical proposal carries.
 
-A single `gatedScope` is allocated per proposal: `gatedScope` doubles as its own factory (the `processing.ScopeFactory` interface is implemented on it), and each `NewScope(coverage_bits)` truncates the slots in place and re-applies the selected plans. The FSM apply path is strictly sequential — `applyTechnicalUpdates` → `ProcessOrders` → `ValidateTransientVolumes` never overlap — so reusing one instance is safe and avoids the `*gatedScope` + 11 backing-array allocations per order the original design paid.
+A single `gatedScope` is allocated per proposal: `gatedScope` doubles as its own factory (the `processing.ScopeFactory` interface is implemented on it), and each `NewScope(coverage_bits)` truncates the slots in place and re-applies the selected plans. The FSM apply path is strictly sequential — technical-update preparation, `ProcessOrders`, and `ValidateTransientVolumes` never overlap — so reusing one instance is safe and avoids the `*gatedScope` + 11 backing-array allocations per order the original design paid.
 
 Empty `coverage_bits` on `NewScope` admit no plan (any `CheckCoverage` misses). Proposal-wide coverage — needed by `ValidateTransientVolumes` to reach into every ledger the proposal touched — uses the separate `NewProposalScope()` method, so an order whose proto `OrderTechnical.coverage_bits` is unset cannot silently inherit coverage from another order in the same batch.
 
@@ -113,6 +113,13 @@ for _, tu := range proposal.GetTechnicalUpdates() {
     }
 }
 ```
+
+The [atomicity contract](technical-update-atomicity.md) distinguishes immediate
+legacy dispatch from marked whole-proposal preparation. In the marked path,
+scopes are validated and Mirror writes are staged before orders, while direct
+technical effects wait for whole-proposal success. Configuration resets occur
+after Merge so pre-reset declarations remain usable and stale cache-mirror rows
+do not survive the reset.
 
 Two consequences fall out of the envelope:
 

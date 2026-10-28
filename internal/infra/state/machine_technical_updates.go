@@ -20,11 +20,11 @@ import (
 // IdempotencyEviction, ClusterConfig, BackupOrder, IncrementalBackupOrder)
 // ship with empty bits and never consult their scope.
 //
-// Reads and attribute-cache writes both flow through `buffer` — the same
-// WriteSet that ProcessOrders will use. Attribute mutations queue in
-// `buffer.Derived` and reach the cache + Pebble at WriteSet.Merge. Any
-// handler error short-circuits the loop before Merge, so no half-written
-// tech-update mutations leak into the cache.
+// This is the legacy interpreter for absent/false atomic_technical_updates.
+// MirrorSync queues in the WriteSet, but other handlers write directly to the
+// shared batch or mutate live state. A later soft rejection historically retains
+// those prefix effects. Preserve that interpretation for released WAL entries;
+// marked proposals use prepareTechnicalUpdates instead.
 //
 // Backup lifecycle handlers (BackupOrder / IncrementalBackupOrder) return
 // the typed sentinels ErrBackupInProgress / ErrBackupJobNotFound /

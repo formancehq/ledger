@@ -97,6 +97,46 @@ the separate
 [Cluster Configuration Updates](./cluster-operations.md#cluster-configuration-updates)
 procedure.
 
+## Technical-update atomicity bridge
+
+Technical-update atomicity uses a two-release rollout. The bridge understands
+both internal `Proposal.atomic_technical_updates` interpreters and explicitly
+emits false in `Builder.Run`; absent/false entries retain legacy semantics
+permanently. Installing the bridge alone does not change rejection behavior.
+No service protocol revision change or store rewrite activates this mechanism.
+
+1. Release and roll out the bridge using the adjacent-RC rolling procedure.
+   Record the actual source and target builds and validate mixed-version writes,
+   leadership transfer, replay, and restart. Do not infer this evidence from
+   same-binary tests.
+2. Confirm that every voter and learner has the bridge interpreter and has
+   caught up. A learner that can later become a voter must not retain an older
+   interpreter. Keep all producers emitting false throughout this upgrade.
+   Inventory membership with `GetClusterState`, then query each member's own
+   identity, build and applied/persisted indexes with
+   `ledgerctl cluster status --node-id ID --json`. Missing, unreachable or unknown
+   versions prevent activation; include offline members before re-admission.
+   This is an operator-controlled prerequisite, not automatic capability
+   negotiation. Freeze enrollment and replacement paths that could introduce
+   older binaries: external AddLearner, internal JoinAsLearner/bootstrap,
+   scaling, and process or PVC replacement. The operator's adjacent-RC rollout
+   checks alone do not inventory independently enrolled learners.
+3. Activate true-marked proposals only in a separate following adjacent RC.
+   During that rollout, bridge nodes and activation nodes must agree on both
+   marked new commands and unmarked historical commands. Do not skip the bridge
+   RC or allow a pre-bridge binary to rejoin after activation.
+4. After a true-marked entry is committed, rollback to a pre-bridge interpreter
+   is unsafe: it ignores the marker and can apply rejected technical prefixes.
+   Any rollback must retain a binary that understands both interpretations and
+   must follow the release's separately validated downgrade procedure.
+
+Before activation, the legacy technical-prefix behavior remains a known
+limitation. A marked rejected proposal drops all technical effects, while an
+ordinary definitive business rejection still preserves its existing failure
+audit, keyed outcome, and HLC. Publication and Merge failures remain fatal;
+this is not a general rollback mechanism for mutated process memory.
+See the [FSM contract](../technical/architecture/subsystems/fsm/technical-update-atomicity.md).
+
 ## Account metadata address validation
 
 Upgrading from a binary with unordered transaction account-metadata address

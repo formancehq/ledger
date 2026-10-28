@@ -21,6 +21,7 @@
     "tests/antithesis/**"
   ],
   "related_docs": [
+    "docs/technical/architecture/subsystems/fsm/technical-update-atomicity.md",
     "AGENTS.md",
     "docs/ops/upgrades.md",
     "docs/technical/agent-context.md",
@@ -38,6 +39,7 @@
     "docs/technical/architecture/subsystems/attributes/bloom.md"
   ],
   "invariants": [
+    "The internal Proposal.atomic_technical_updates marker alone selects legacy (absent/false, permanently) versus whole-proposal (true) interpretation. Bridge producers explicitly emit false on every Builder.Run path. Marked proposals validate per-update scopes and stage Mirror effects, defer direct effects until whole-proposal success, publish non-config effects before Merge and configuration resets after Merge; every rejection or replay drops prepared technical effects. Fatal publication/Merge failures do not promise in-memory rollback.",
     "An UncommittedFailure is a deterministic unaudited transition: staged business writes are discarded, no audit/item/log or frozen idempotency row is emitted, the prior HLC is restored, and replicas agree on the technical error and next corrected outcome.",
     "Post-commit sentinel expectations must follow successful ordered effects, including same-proposal and cross-entry ledger deletion and ephemeral purge. Captured expectations must own reused WriteSet data; legitimate removal must not fail live apply or WAL replay, while missing or changed surviving volumes and any rows left by a deleted ledger's cascade must remain fatal, even if their aggregate is balanced or deletion is the only order in a batch.",
     "For a fixed committed proposal, Raft index, and prior committed state, every replica and replay must produce the same apply outcome, audit bytes, counters, cache mutations, and durable writes. Wall clock, randomness, goroutine scheduling, map iteration, process identity, host resources, and node-local configuration must not affect that transition.",
@@ -62,6 +64,7 @@
     "Transaction account metadata address validation chooses the lexicographically smallest invalid address, including empty, after merged metadata limits and the command budget. Admission validation complements rather than replaces apply validation. A rejection discards staged business effects while its exact typed failure remains audit-bound and is frozen for a fresh idempotency key. Upgrading from unordered selection requires a maintenance barrier durably applied by every old voter before any binary replacement, with maintenance held throughout mixed-version coexistence; historical stored failures must not be recomputed or rewritten."
   ],
   "adversarial_questions": [
+    "Can identical marked bytes disagree across replicas or WAL replay, or can an unmarked historical command silently acquire new semantics? Do a later technical/order rejection, same-proposal eviction and replay, or configuration reset leak a prepared prefix, bypass scoped pre-reset cache reads, or leave stale post-reset cache-mirror rows?",
     "Can preload unavailability, coverage or plan faults, or invalid cluster-policy updates accidentally emit audit evidence, freeze an idempotency result, advance HLC, or leave staged effects on one replica? Does a corrected retry converge?",
     "For every production apply entry point and dispatched order or technical update, what exact values can influence branching and output? Can any call reach time.Now, timers, randomness, unordered map traversal, environment/configuration, host/process identity, mutable global state, or a node-local service?",
     "Can two replicas starting from the same committed state but deliberately different flags, clocks, cache Gen0/Gen1 residency, Bloom readiness, preload timing, or loader completion produce different ApplyResult, audit encoding, WriteSet, counters, or cache state for identical proposal bytes and index?",
@@ -87,6 +90,7 @@
     "Can competing invalid caller or merged transaction account metadata addresses choose different typed failures or hashes across replicas? Does the rollout hold every old/new voter behind the same durable maintenance barrier, including in-flight proposals and restarted voters, and preserve historical failure bytes and frozen outcomes?"
   ],
   "dynamic_checks_to_consider": [
+    "Compare absent, false and true command transitions through live apply and WAL replay; cover every technical-update variant, later scope/backup/order failure, same-proposal eviction plus replay/conflict, and configuration-before/after-Mirror through durable restart. Verify both production Builder.Run paths overwrite a supplied true marker with false in the bridge.",
     "Apply each reachable UncommittedFailure on cloned replicas and compare error reason, empty audit/item/log/idempotency deltas, unchanged prior HLC and business state, then apply a corrected retry and compare its definitive outcome.",
     "Exercise transaction-then-DeleteLedger in one proposal, multiple entries, and separate commits with sentinel enabled. Include multiple deletion names to expose reused-slice aliasing, a surviving ledger with identical account/asset keys, deliberate missing/changed surviving rows, and balanced leftovers after a successful deletion in both mixed and deletion-only batches. Reopen WAL/Pebble and run Applier.RecoverAndReplay plus asynchronous follower catch-up; setup rejection or a disabled sentinel is not proof.",
     "Inventory the production dispatch tables, processing.Scope reads, plan attr-code resolvers, state coverage slots/gated accessors, preload loaders, cache/Bloom registries, and protobuf oneofs. Build an exact declaration-to-enforcement matrix and reject a finding based only on a missing test or textual mismatch.",

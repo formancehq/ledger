@@ -80,6 +80,14 @@ after deletion and while the original call is still waiting for materialization.
 They do not wait again or recreate anything. New creations retain the
 [checkpoint lifecycle wait](../read-path/query-checkpoints.md#readiness-and-error-contract).
 
+For a true-marked `Proposal.atomic_technical_updates`, deduplication uses the
+pre-proposal committed outcome. A same-proposal eviction cannot remove that
+outcome to force re-execution. Replays and key conflicts discard every prepared
+technical update. An uncommitted first attempt freezes nothing; a definitive
+business failure retains its existing failure audit and keyed outcome while
+also discarding the technical updates. Bridge producers still emit false and
+retain legacy behavior. See [the FSM atomicity contract](../fsm/technical-update-atomicity.md).
+
 ## Numscript Dependency-Resolution Failures
 
 Idempotency keys also govern a narrower, forward-vs-terminate decision admission has to make while *preparing* a `CreateTransaction` order that references a Numscript script. Before a script's order can be proposed, admission statically discovers the accounts, assets, and metadata it depends on (`DiscoverNumscriptDependencies`, `internal/domain/processing/numscript/discover.go` — see [Numscript Library](../scripting/numscript-library.md)) so the FSM never has to touch Pebble to resolve them. When that discovery fails, admission must decide whether the failure is **deterministic** — the script could never have succeeded, no matter how many times it is retried — or **state-dependent** — current state caused it, and a different (or later) state might not. `Admission.classifyResolutionFailure` (`internal/application/admission/admission.go`) makes this call from two signals Ledger already owns; it never inspects error strings or Numscript internals. The error's kind refines one case: `convertNumscriptError` maps the library's public resolver error types to `ErrNumscriptExecution` (`NUMSCRIPT_EXECUTION_ERROR`, `KindPrecondition`) when the script, its vars, or the state it read caused the failure.

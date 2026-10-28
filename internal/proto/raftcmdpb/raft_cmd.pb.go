@@ -3318,8 +3318,13 @@ type Proposal struct {
 	// coverage_bits so the FSM applies per-update isolation, exactly like
 	// Order.coverage_bits.
 	TechnicalUpdates []*TechnicalUpdate `protobuf:"bytes,9,rep,name=technical_updates,json=technicalUpdates,proto3" json:"technical_updates,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Selects whole-proposal staging for technical updates. Absent/false keeps
+	// historical apply semantics, including during WAL replay. Bridge-release
+	// producers emit false; activation requires the adjacent-RC rollout described
+	// in docs/ops/upgrades.md. Never select this behavior from local apply config.
+	AtomicTechnicalUpdates bool `protobuf:"varint,10,opt,name=atomic_technical_updates,json=atomicTechnicalUpdates,proto3" json:"atomic_technical_updates,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *Proposal) Reset() {
@@ -3413,6 +3418,13 @@ func (x *Proposal) GetTechnicalUpdates() []*TechnicalUpdate {
 		return x.TechnicalUpdates
 	}
 	return nil
+}
+
+func (x *Proposal) GetAtomicTechnicalUpdates() bool {
+	if x != nil {
+		return x.AtomicTechnicalUpdates
+	}
+	return false
 }
 
 // TechnicalUpdate is the per-update envelope that carries the coverage
@@ -5605,7 +5617,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"-\n" +
 	"\x19DeleteLedgerMetadataOrder\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\"\xc2\x03\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\"\xfc\x03\n" +
 	"\bProposal\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x06R\x02id\x12#\n" +
 	"\x06orders\x18\x02 \x03(\v2\v.raft.OrderR\x06orders\x12%\n" +
@@ -5615,7 +5627,9 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x0fcaller_snapshot\x18\x06 \x01(\v2\x16.common.CallerSnapshotR\x0ecallerSnapshot\x125\n" +
 	"\vidempotency\x18\a \x01(\v2\x13.common.IdempotencyR\vidempotency\x129\n" +
 	"\tsignature\x18\b \x01(\v2\x1b.signature.SignedApplyBatchR\tsignature\x12B\n" +
-	"\x11technical_updates\x18\t \x03(\v2\x15.raft.TechnicalUpdateR\x10technicalUpdates\"\xf5\x03\n" +
+	"\x11technical_updates\x18\t \x03(\v2\x15.raft.TechnicalUpdateR\x10technicalUpdates\x128\n" +
+	"\x18atomic_technical_updates\x18\n" +
+	" \x01(\bR\x16atomicTechnicalUpdates\"\xf5\x03\n" +
 	"\x0fTechnicalUpdate\x12#\n" +
 	"\rcoverage_bits\x18\x01 \x01(\fR\fcoverageBits\x129\n" +
 	"\vmirror_sync\x18\x02 \x01(\v2\x16.raft.MirrorSyncUpdateH\x00R\n" +

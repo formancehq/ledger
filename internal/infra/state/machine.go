@@ -1307,14 +1307,22 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// proposal coverage — since the validation is cross-order by nature.
 	scopeFactory := NewScopeFactory(buffer, proposal.GetExecutionPlan(), fsm.logger, fsm.preloadMissCounter, raftIndex)
 
-	if err := fsm.applyTechnicalUpdates(scopeFactory, batch, raftIndex, proposal); err != nil {
+	var preparedUpdates *preparedTechnicalUpdates
+	var technicalErr error
+	if proposal.GetAtomicTechnicalUpdates() {
+		preparedUpdates, technicalErr = fsm.prepareTechnicalUpdates(scopeFactory, raftIndex, proposal)
+	} else {
+		// Unmarked committed entries retain historical interpretation forever.
+		technicalErr = fsm.applyTechnicalUpdates(scopeFactory, batch, raftIndex, proposal)
+	}
+	if err := technicalErr; err != nil {
 		if invariant := planInvariantFailure(err); invariant != nil {
 			// Coverage miss or malformed execution plan in a TU handler
 			// — same model as orders: surface as a business rejection,
 			// not as an FSM-killing error. The overlay accumulated by
-			// earlier TUs is discarded with the WriteSet when the
-			// caller cancels the batch, so cache and Pebble stay in
-			// lockstep for the next proposal. The audit chain is not
+			// marked TUs is discarded with the WriteSet and deferred
+			// effects; the outer shared batch still commits Raft progress.
+			// Unmarked entries keep legacy direct effects. The audit chain is not
 			// extended here: TU-only proposals don't appear in the
 			// audit log at all, and a mixed proposal that fails before
 			// reaching the orders phase already has its preload-miss
@@ -1348,7 +1356,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		// any tech-update writes (PutLedger, PutAccountMetadata, …) reach
 		// the cache + Pebble. With no orders there is no log to append; the
 		// audit-entry path is skipped entirely.
-		if err := buffer.Merge(batch, nil); err != nil {
+		if err := fsm.mergeProposalWrites(batch, raftIndex, nil, preparedUpdates); err != nil {
 			return nil, fmt.Errorf("merging technical-update writes: %w", err)
 		}
 
@@ -1619,7 +1627,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Merge consumes the per-order log slice (CreatedLog or ReferenceSequence)
 	// so it can inject Log.purged_volumes using per-order tracking before
 	// AppendLogs runs.
-	if err := buffer.Merge(batch, logs); err != nil {
+	if err := fsm.mergeProposalWrites(batch, raftIndex, logs, preparedUpdates); err != nil {
 		return nil, err
 	}
 

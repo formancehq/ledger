@@ -24,7 +24,7 @@ import (
 // entries either.
 func noopConfChangeHandler(*raftpb.Entry, *dal.WriteSession) error { return nil }
 
-func newNoopNotifier(t *testing.T) *MockNotifier {
+func newNoopNotifier(t testing.TB) *MockNotifier {
 	t.Helper()
 
 	n := NewMockNotifier(gomock.NewController(t))

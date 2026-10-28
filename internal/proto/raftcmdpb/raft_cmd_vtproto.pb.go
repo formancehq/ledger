@@ -1344,6 +1344,7 @@ func (m *Proposal) CloneVT() *Proposal {
 	r.CallerSnapshot = m.CallerSnapshot.CloneVT()
 	r.Idempotency = m.Idempotency.CloneVT()
 	r.Signature = m.Signature.CloneVT()
+	r.AtomicTechnicalUpdates = m.AtomicTechnicalUpdates
 	if rhs := m.Orders; rhs != nil {
 		tmpContainer := make([]*Order, len(rhs))
 		for k, v := range rhs {
@@ -4433,6 +4434,9 @@ func (this *Proposal) EqualVT(that *Proposal) bool {
 				return false
 			}
 		}
+	}
+	if this.AtomicTechnicalUpdates != that.AtomicTechnicalUpdates {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -8776,6 +8780,16 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.AtomicTechnicalUpdates {
+		i--
+		if m.AtomicTechnicalUpdates {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x50
+	}
 	if len(m.TechnicalUpdates) > 0 {
 		for iNdEx := len(m.TechnicalUpdates) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.TechnicalUpdates[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -12148,6 +12162,9 @@ func (m *Proposal) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.AtomicTechnicalUpdates {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -20883,6 +20900,26 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AtomicTechnicalUpdates", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.AtomicTechnicalUpdates = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
