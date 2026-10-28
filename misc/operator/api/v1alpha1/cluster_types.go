@@ -448,7 +448,6 @@ type AuthorizationConfig struct {
 	// this setting; only the *absence* of a token triggers the fallback.
 	// +optional
 	AnonymousScopes []string `json:"anonymousScopes,omitempty"`
-
 }
 
 // PebbleConfig holds Pebble storage engine configuration.
