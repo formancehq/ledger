@@ -343,8 +343,10 @@ So an ahead cursor means the deployment is already broken — an offline restore
 ## Historical address projection repair
 
 Transaction ANY, SOURCE and DESTINATION mappings describe retained transaction
-postings, so purged EPHEMERAL volume cells remain discoverable after their current
-account state disappears. TRANSIENT volume cells remain excluded. These buckets
+postings. A purged EPHEMERAL cell's mappings remain usable while the account
+retains current volume or metadata attributes. Address predicates still require
+current account existence; full account disappearance does not gain a historical
+search contract. TRANSIENT volume cells remain excluded. These buckets
 are additive peer secondary state; the builder reconstructs them from permanent
 transaction logs and the applied-proposal exclusion history.
 

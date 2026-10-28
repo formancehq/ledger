@@ -136,8 +136,9 @@ At `CreateIndex`, `EMPTY` promotes a fresh version directly (`current > 0`, `pen
 
 ### Current account cells and historical transaction addresses
 
-Users must be able to discover a transaction by the exact posting address after
-an EPHEMERAL cell disappears from current account storage. Each log therefore
+Users must be able to discover a transaction by its posting address after an
+EPHEMERAL cell disappears while the account retains other current attributes
+(for example, another asset/color or metadata). Each log therefore
 has two posting exclusion sets: current memberships exclude TRANSIENT cells and
 the log's purged/ephemeral cells; immutable address mappings exclude TRANSIENT
 cells only. All keys include account, asset and color. The shared posting writer
@@ -156,8 +157,10 @@ union cost, proportional to matching transaction IDs, rather than page size.
 Index writes and cursor/progress publication retain the existing batch order
 and rollback contract. Previously omitted rows require explicit repair; see
 [Upgrades](../../../../ops/upgrades.md#repairing-historical-transaction-address-indexes).
-Current-account cleanup remains a separate lifecycle contract. Exact historical
-matching and prefixes over current accounts are documented in the
+Current-account cleanup remains a separate lifecycle contract. Retained mappings
+do not bypass current-account existence checks: once all volume and metadata
+attributes disappear, address filters do not expose that account's history.
+Address matching over current accounts is documented in the
 [query pipeline](../read-path/query-pipeline.md).
 
 `internal/application/indexbuilder/process_logs_indexing.go` — the `indexPayload` dispatcher and every per-payload handler live in this file.

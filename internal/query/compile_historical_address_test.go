@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -14,56 +15,59 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-// The retained address mappings outlive the account's last volume/metadata
-// attribute. Compile and page the public query iterators over real Pebble rows;
-// no account attribute is seeded for the historical address.
-func TestCompileHistoricalAddressWithoutCurrentAccount(t *testing.T) {
+// Retained index rows alone do not make a fully purged account searchable.
+// Current metadata or a surviving volume keeps exact transaction roles usable.
+func TestCompileAddressRequiresCurrentAccount(t *testing.T) {
 	t.Parallel()
-
-	store := parityStore(t)
-	const address = "accounts:gone"
-	batch := store.NewBatch()
-	kb := dal.NewKeyBuilder()
-	for _, row := range []struct {
-		prefix byte
-		id     uint64
-	}{
-		{readstore.PrefixAccountTx, 100},
-		{readstore.PrefixAccountTx, 101},
-		{readstore.PrefixDestinationAccountTx, 100}, // funding
-		{readstore.PrefixSourceAccountTx, 101},      // draining
-	} {
-		require.NoError(t, batch.SetBytes(readstore.AccountTxKey(kb, row.prefix, parityLedger, address, row.id), nil))
-	}
-	// Transaction metadata is independent of current account metadata.
-	id := make([]byte, 8)
-	binary.BigEndian.PutUint64(id, 100)
-	require.NoError(t, batch.SetBytes(readstore.MetadataIndexEventKeyV(kb,
-		parityLedger, readstore.NamespaceTransaction, "colour", 1,
-		readstore.EncodeString(nil, "blue"), id, 10, readstore.MetadataEventAdd), nil))
-	require.NoError(t, batch.Commit())
-
-	for _, reverse := range []bool{false, true} {
-		name := "ascending"
-		if reverse {
-			name = "descending"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, residency := range []string{"absent", "metadata", "volume"} {
+		t.Run(residency, func(t *testing.T) {
 			t.Parallel()
-
-			for _, tc := range []struct {
-				name string
-				role commonpb.AddressRole
-				want []uint64
+			store := parityStore(t)
+			const address = "accounts:ephemeral"
+			batch := store.NewBatch()
+			kb := dal.NewKeyBuilder()
+			for _, row := range []struct {
+				prefix byte
+				id     uint64
 			}{
-				{"any", commonpb.AddressRole_ADDRESS_ROLE_ANY, []uint64{100, 101}},
-				{"source", commonpb.AddressRole_ADDRESS_ROLE_SOURCE, []uint64{101}},
-				{"destination", commonpb.AddressRole_ADDRESS_ROLE_DESTINATION, []uint64{100}},
+				{readstore.PrefixAccountTx, 100},
+				{readstore.PrefixAccountTx, 101},
+				{readstore.PrefixDestinationAccountTx, 100},
+				{readstore.PrefixSourceAccountTx, 101},
 			} {
-				t.Run(tc.name, func(t *testing.T) {
+				require.NoError(t, batch.SetBytes(readstore.AccountTxKey(kb, row.prefix, parityLedger, address, row.id), nil))
+			}
+			switch residency {
+			case "metadata":
+				key := kb.Reset().PutZonePrefix(dal.ZoneAttributes, dal.SubAttrMetadata).
+					PutBytes((domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: parityLedger, Account: address}, Key: "owner"}).Bytes()).Build()
+				require.NoError(t, batch.SetBytes(key, []byte{1}))
+			case "volume":
+				key := kb.Reset().PutZonePrefix(dal.ZoneAttributes, dal.SubAttrVolume).
+					PutBytes(domain.NewVolumeKey(parityLedger, address, "EUR", "").Bytes()).Build()
+				require.NoError(t, batch.SetBytes(key, []byte{1}))
+			}
+			id := make([]byte, 8)
+			binary.BigEndian.PutUint64(id, 100)
+			require.NoError(t, batch.SetBytes(readstore.MetadataIndexEventKeyV(kb,
+				parityLedger, readstore.NamespaceTransaction, "colour", 1,
+				readstore.EncodeString(nil, "blue"), id, 10, readstore.MetadataEventAdd), nil))
+			require.NoError(t, batch.Commit())
+			for _, reverse := range []bool{false, true} {
+				for _, tc := range []struct {
+					role commonpb.AddressRole
+					want []uint64
+				}{
+					{commonpb.AddressRole_ADDRESS_ROLE_ANY, []uint64{100, 101}},
+					{commonpb.AddressRole_ADDRESS_ROLE_SOURCE, []uint64{101}},
+					{commonpb.AddressRole_ADDRESS_ROLE_DESTINATION, []uint64{100}},
+				} {
 					want := slices.Clone(tc.want)
 					if reverse {
 						slices.Reverse(want)
+					}
+					if residency == "absent" {
+						want = nil
 					}
 					filter := addressExactFilter(address, tc.role)
 					require.Equal(t, want, historicalAddressPages(t, store, filter, nil, reverse))
@@ -72,41 +76,22 @@ func TestCompileHistoricalAddressWithoutCurrentAccount(t *testing.T) {
 						"address": {Value: &commonpb.ParameterValue_StringValue{StringValue: address}},
 					}
 					require.Equal(t, want, historicalAddressPages(t, store, filter, params, reverse))
-				})
-			}
-
-			filter := addressExactFilter(address, commonpb.AddressRole_ADDRESS_ROLE_ANY)
-			require.Equal(t, []uint64{100}, historicalAddressPages(t, store,
-				andFilter(filter, referenceFilter(parityReferenceA)), nil, reverse))
-			require.Equal(t, []uint64{100}, historicalAddressPages(t, store,
-				andFilter(filter, stringFieldFilter("colour", "blue")), nil, reverse))
-			require.Equal(t, []uint64{100}, historicalAddressPages(t, store,
-				stringFieldFilter("colour", "blue"), nil, reverse))
-			require.Equal(t, []uint64{101}, historicalAddressPages(t, store,
-				andFilter(filter, notFilter(txIDEqualFilter(100))), nil, reverse))
-			require.Empty(t, historicalAddressPages(t, store,
-				addressExactFilter("unknown", commonpb.AddressRole_ADDRESS_ROLE_ANY), nil, reverse))
-			// Prefix expansion still enumerates current accounts.
-			require.Empty(t, historicalAddressPages(t, store,
-				addressPrefixFilter(address, commonpb.AddressRole_ADDRESS_ROLE_ANY), nil, reverse))
-
-			reader := store.DB()
-			if reverse {
-				iter, err := query.CompileReverse(reader, dal.NewKeyBuilder(), filter,
-					commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger, nil, nil,
-					parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
-				require.NoError(t, err)
-				defer iter.Close()
-				require.False(t, iter.Next(), "historical mappings do not imply current account membership")
-				require.NoError(t, iter.Err())
-			} else {
-				iter, err := query.Compile(reader, dal.NewKeyBuilder(), filter,
-					commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger, nil, nil,
-					parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
-				require.NoError(t, err)
-				defer iter.Close()
-				require.False(t, iter.Next(), "historical mappings do not imply current account membership")
-				require.NoError(t, iter.Err())
+				}
+				filter := addressExactFilter(address, commonpb.AddressRole_ADDRESS_ROLE_ANY)
+				wantFunding, wantDraining := []uint64{100}, []uint64{101}
+				if residency == "absent" {
+					wantFunding, wantDraining = nil, nil
+				}
+				require.Equal(t, wantFunding, historicalAddressPages(t, store,
+					andFilter(filter, referenceFilter(parityReferenceA)), nil, reverse))
+				require.Equal(t, wantFunding, historicalAddressPages(t, store,
+					andFilter(filter, stringFieldFilter("colour", "blue")), nil, reverse))
+				require.Equal(t, []uint64{100}, historicalAddressPages(t, store,
+					stringFieldFilter("colour", "blue"), nil, reverse))
+				require.Equal(t, wantDraining, historicalAddressPages(t, store,
+					andFilter(filter, notFilter(txIDEqualFilter(100))), nil, reverse))
+				require.Empty(t, historicalAddressPages(t, store,
+					addressExactFilter("unknown", commonpb.AddressRole_ADDRESS_ROLE_ANY), nil, reverse))
 			}
 		})
 	}
