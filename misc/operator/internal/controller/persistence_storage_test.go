@@ -353,6 +353,108 @@ func TestPersistenceChangesVolumeAttributesInPlace(t *testing.T) {
 	}
 }
 
+// Fake clients exercise the replica boundary and request/observation split;
+// they do not run StatefulSet/CSI controllers or prove effective throughput.
+func TestPersistenceRetainedClaimsConvergeAfterScaleUp(t *testing.T) {
+	t.Parallel()
+	ledger, sts, c := persistenceTestFixture(t, 3)
+	for ordinal := range 3 {
+		for _, kind := range []string{"wal", "data"} {
+			pvc := readPersistencePVC(t, c, kind, ordinal)
+			// Retain-policy claims have no owner reference. A live owned Pod
+			// must establish their identity when the ordinal returns.
+			pvc.OwnerReferences = nil
+			pvc.Spec.VolumeAttributesClassName = new("slow")
+			require.NoError(t, c.Update(t.Context(), pvc))
+			pvc.Status.CurrentVolumeAttributesClassName = new("slow")
+			require.NoError(t, c.Status().Update(t.Context(), pvc))
+		}
+	}
+	setReplicas := func(replicas int32) {
+		t.Helper()
+		ledger.Spec.Replicas = &replicas
+		require.NoError(t, c.Update(t.Context(), ledger))
+		require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(sts), sts))
+		sts.Spec.Replicas = &replicas
+		require.NoError(t, c.Update(t.Context(), sts))
+	}
+	createPod := func(ordinal int) {
+		t.Helper()
+		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf("%s-%d", sts.Name, ordinal), Namespace: sts.Namespace,
+			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(sts, appsv1.SchemeGroupVersion.WithKind("StatefulSet"))},
+		}}
+		for _, kind := range []string{"wal", "data"} {
+			pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{Name: kind, VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: readPersistencePVC(t, c, kind, ordinal).Name},
+			}})
+		}
+		require.NoError(t, c.Create(t.Context(), pod))
+	}
+	setReplicas(1) // Higher ordinals retain their claims but have no live Pods.
+	createPod(0)
+	ledger.Spec.Persistence.WAL.VolumeAttributesClassName = "fast"
+	ledger.Spec.Persistence.Data.VolumeAttributesClassName = "fast"
+	require.NoError(t, c.Update(t.Context(), ledger))
+	// Simulate installation of the recovery's aligned immutable templates.
+	// The recovery/adoption suites separately exercise their durable handoff.
+	aligned, changed, err := alignedClaimTemplates(sts.Spec.VolumeClaimTemplates, buildVolumeClaimTemplates(ledger))
+	require.NoError(t, err)
+	require.True(t, changed)
+	sts.Spec.VolumeClaimTemplates = aligned
+	require.NoError(t, c.Update(t.Context(), sts))
+	for _, claim := range sts.Spec.VolumeClaimTemplates {
+		require.Equal(t, "fast", *claim.Spec.VolumeAttributesClassName)
+	}
+	_, err = reconcilePersistence(t, c, ledger)
+	require.NoError(t, err)
+	for ordinal := range 3 {
+		want := "slow"
+		if ordinal == 0 {
+			want = "fast"
+		}
+		for _, kind := range []string{"wal", "data"} {
+			pvc := readPersistencePVC(t, c, kind, ordinal)
+			require.Equal(t, want, *pvc.Spec.VolumeAttributesClassName)
+			if ordinal == 0 {
+				pvc.Status.CurrentVolumeAttributesClassName = new("fast")
+				require.NoError(t, c.Status().Update(t.Context(), pvc))
+			}
+		}
+	}
+	_, err = reconcilePersistence(t, c, ledger)
+	require.NoError(t, err)
+	require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(ledger), ledger))
+	for _, condition := range []string{walStorageCondition, dataStorageCondition} {
+		require.True(t, meta.IsStatusConditionTrue(ledger.Status.Conditions, condition), "readiness covers only live ordinals")
+	}
+	setReplicas(3)
+	createPod(1)
+	createPod(2)
+	_, err = reconcilePersistence(t, c, ledger)
+	require.NoError(t, err)
+	require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(ledger), ledger))
+	for _, condition := range []string{walStorageCondition, dataStorageCondition} {
+		require.False(t, meta.IsStatusConditionTrue(ledger.Status.Conditions, condition), "reused claims still await CSI completion")
+	}
+	for ordinal := range 3 {
+		for _, kind := range []string{"wal", "data"} {
+			pvc := readPersistencePVC(t, c, kind, ordinal)
+			require.Equal(t, "fast", *pvc.Spec.VolumeAttributesClassName)
+			require.Equal(t, types.UID(pvc.Name+"-uid"), pvc.UID)
+			require.Equal(t, "pv-"+pvc.Name, pvc.Spec.VolumeName)
+			pvc.Status.CurrentVolumeAttributesClassName = new("fast")
+			require.NoError(t, c.Status().Update(t.Context(), pvc))
+		}
+	}
+	_, err = reconcilePersistence(t, c, ledger)
+	require.NoError(t, err)
+	require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(ledger), ledger))
+	for _, condition := range []string{walStorageCondition, dataStorageCondition} {
+		require.True(t, meta.IsStatusConditionTrue(ledger.Status.Conditions, condition))
+	}
+}
+
 func TestPersistenceRejectsUnsupportedChanges(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
