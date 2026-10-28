@@ -68,6 +68,12 @@ change. It enables replicated maintenance, reads a leader commit index after
 maintenance is visible, and waits until every voter reports maintenance active,
 normal sync and a durable FSM cursor at or beyond that index. This barrier
 ensures already committed business entries are applied under the source binary.
+The upgrade state machine owns only the stop barrier, the PVC identity and
+retention checks, and the decision to release ordinary reconciliation. The
+ordinary StatefulSet reconciler creates the replacement and applies its pod
+template and mutable fields. Both paths use the same retention policy builder;
+while `status.upgrade` exists it selects `Retain`, and after maintenance is
+released it restores the requested policy.
 While the workload is stopped, reconciliation still repairs the headless Service
 needed to reach voters, the ServiceAccount, and the TLS cluster Secret and
 auth-key ConfigMap needed by replacement Pods. It keeps an existing auth-key
