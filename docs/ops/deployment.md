@@ -162,20 +162,19 @@ spec:
   image:
     repository: ghcr.io/formancehq/ledger
     tag: latest
-  config:
-    bindAddr: "0.0.0.0:7777"
-    grpcPort: 8888
-    httpPort: 9000
-    dataDir: "/data/app"
-    walDir: "/data/raft"
-    raft:
-      maintenanceInterval: "30s"
-      compactionMargin: 1000
-      electionTick: 10
-      heartbeatTick: 1
-      maxSizePerMsg: 1048576
-      maxInflightMsgs: 256
-      tickInterval: "100ms"
+  bindAddr: "0.0.0.0:7777"
+  grpcPort: 8888
+  httpPort: 9000
+  dataDir: "/data/app"
+  walDir: "/data/raft"
+  raft:
+    maintenanceInterval: "30s"
+    compactionMargin: 1000
+    electionTick: 10
+    heartbeatTick: 1
+    maxSizePerMsg: 1048576
+    maxInflightMsgs: 256
+    tickInterval: "100ms"
 ```
 
 The operator creates and manages all sub-resources: StatefulSet, Services, Ingresses, ServiceAccount, PDB, etc.
@@ -424,7 +423,7 @@ behavior.
 The cluster monitors disk usage across all nodes and rejects write operations when usage exceeds configurable thresholds. See [Disk Space Limiting](./disk-space.md) for detailed architecture documentation.
 
 ```yaml
-config:
+spec:
   health:
     interval: "30s"       # Health check interval
     walThreshold: 0.8     # WAL volume threshold (80%)
@@ -688,7 +687,7 @@ The ServiceMonitor scrapes metrics from the `/metrics` endpoint on the HTTP port
 #### Timeouts
 
 ```yaml
-config:
+spec:
   raft:
     electionTick: 10      # Election timeout (10 * tickInterval)
     heartbeatTick: 1       # Heartbeat interval (1 * tickInterval)
@@ -702,7 +701,7 @@ config:
 #### Performance
 
 ```yaml
-config:
+spec:
   raft:
     maxSizePerMsg: 1048576    # 1MB - Max size per message
     maxInflightMsgs: 256      # Max number of messages in flight
@@ -713,7 +712,7 @@ config:
 #### Global Configuration
 
 ```yaml
-config:
+spec:
   raft:
     maintenanceInterval: "30s"  # Periodic maintenance interval (default: 30s)
     compactionMargin: 1000      # Minimum WAL entries retained after compaction (default: 1000)

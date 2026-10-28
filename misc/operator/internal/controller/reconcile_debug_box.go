@@ -86,6 +86,7 @@ func (r *ClusterReconciler) reconcileDebugBox(ctx context.Context, ledger *ledge
 		credentials.Annotations[annotationDebugBoxCluster] = ledger.Namespace + "/" + ledger.Name
 		credentials.Spec.Scopes = nil
 		credentials.Spec.Superuser = true
+		credentials.Spec.AdditionalNamespaces = nil
 		credentials.Spec.Selector = metav1.LabelSelector{MatchLabels: map[string]string{
 			labelDebugBoxCredential: selectorValue,
 		}}
