@@ -59,6 +59,7 @@ func buildNetworkPolicySpec(ledger *ledgerv1alpha1.Cluster) networkingv1.Network
 
 	raftPort := intstr.FromInt32(serviceRaftPort(ledger))
 	grpcPort := intstr.FromInt32(serviceGrpcPort(ledger))
+	grpcPeerPort := intstr.FromInt32(serviceGrpcPeerPort(ledger))
 	httpPort := intstr.FromInt32(serviceHttpPort(ledger))
 	dnsPort := intstr.FromInt32(53)
 	tcp := corev1.ProtocolTCP
@@ -77,6 +78,7 @@ func buildNetworkPolicySpec(ledger *ledgerv1alpha1.Cluster) networkingv1.Network
 			Ports: []networkingv1.NetworkPolicyPort{
 				{Port: &raftPort, Protocol: &tcp},
 				{Port: &grpcPort, Protocol: &tcp},
+				{Port: &grpcPeerPort, Protocol: &tcp},
 				{Port: &httpPort, Protocol: &tcp},
 			},
 		},

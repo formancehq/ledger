@@ -65,11 +65,17 @@ func queryProfileClockStreamInterceptor(logger logging.Logger, slowThreshold tim
 	}
 }
 
-func authUnaryInterceptor(cfg internalauth.AuthConfig) ggrpc.UnaryServerInterceptor {
+func authUnaryInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
-		ctx = peerForwardContext(ctx, info.FullMethod)
-		if err := rejectDirectClusterSecret(ctx, cfg, internalauth.IsPeerForward(ctx)); err != nil {
+		if peerOnly {
+			ctx = internalauth.WithPeerForward(ctx, true)
+		} else if err := rejectDirectClusterSecret(ctx, cfg); err != nil {
 			return nil, err
+		}
+		if peerOnly {
+			if err := requirePeerCredential(ctx, cfg); err != nil {
+				return nil, err
+			}
 		}
 		policy, protected, err := protectedRPCPolicy(info.FullMethod)
 		if err != nil {
@@ -92,7 +98,7 @@ func authUnaryInterceptor(cfg internalauth.AuthConfig) ggrpc.UnaryServerIntercep
 	}
 }
 
-func authStreamInterceptor(cfg internalauth.AuthConfig) ggrpc.StreamServerInterceptor {
+func authStreamInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.StreamServerInterceptor {
 	return func(srv any, stream ggrpc.ServerStream, info *ggrpc.StreamServerInfo, handler ggrpc.StreamHandler) error {
 		policy, protected, err := protectedRPCPolicy(info.FullMethod)
 		if err != nil {
@@ -101,8 +107,13 @@ func authStreamInterceptor(cfg internalauth.AuthConfig) ggrpc.StreamServerInterc
 		if !protected {
 			return handler(srv, stream)
 		}
-		ctx := peerForwardContext(stream.Context(), info.FullMethod)
-		if err := rejectDirectClusterSecret(ctx, cfg, internalauth.IsPeerForward(ctx)); err != nil {
+		ctx := stream.Context()
+		if peerOnly {
+			ctx = internalauth.WithPeerForward(ctx, true)
+			if err := requirePeerCredential(ctx, cfg); err != nil {
+				return err
+			}
+		} else if err := rejectDirectClusterSecret(ctx, cfg); err != nil {
 			return err
 		}
 
@@ -135,8 +146,8 @@ func authStreamInterceptor(cfg internalauth.AuthConfig) ggrpc.StreamServerInterc
 	}
 }
 
-func rejectDirectClusterSecret(ctx context.Context, cfg internalauth.AuthConfig, peerForward bool) error {
-	if cfg.ClusterSecret == "" || peerForward {
+func rejectDirectClusterSecret(ctx context.Context, cfg internalauth.AuthConfig) error {
+	if cfg.ClusterSecret == "" {
 		return nil
 	}
 	md, ok := metadata.FromIncomingContext(ctx)
@@ -157,16 +168,36 @@ func rejectDirectClusterSecret(ctx context.Context, cfg internalauth.AuthConfig,
 	return nil
 }
 
-func peerForwardContext(ctx context.Context, method string) context.Context {
-	if !strings.HasSuffix(method, "/Apply") {
-		return ctx
-	}
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok || len(md.Get("x-ledger-peer-forward")) != 1 || md.Get("x-ledger-peer-forward")[0] != "apply" {
-		return ctx
+func requirePeerCredential(ctx context.Context, cfg internalauth.AuthConfig) error {
+	// Auth-disabled clusters historically had no shared secret. They still get
+	// a dedicated peer listener, but there is no credential to validate in that
+	// mode. Authenticated clusters must present the cluster-secret here; a JWT
+	// is never accepted as a peer credential.
+	if cfg.ClusterSecret == "" && !cfg.Enabled {
+		return nil
 	}
 
-	return internalauth.WithPeerForward(ctx, true)
+	if cfg.ClusterSecret == "" {
+		return status.Error(codes.Unauthenticated, "cluster secret is required on the peer service")
+	}
+
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return status.Error(codes.Unauthenticated, "missing metadata on peer service")
+	}
+
+	for _, value := range md.Get("authorization") {
+		if !strings.HasPrefix(strings.ToLower(value), "bearer ") {
+			continue
+		}
+
+		token := strings.TrimSpace(value[len("Bearer "):])
+		if len(token) == len(cfg.ClusterSecret) && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
+			return nil
+		}
+	}
+
+	return status.Error(codes.Unauthenticated, "invalid cluster credentials on peer service")
 }
 
 func protectedRPCPolicy(method string) (*commonpb.MethodAuthPolicy, bool, error) {
