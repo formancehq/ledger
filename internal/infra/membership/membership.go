@@ -102,8 +102,9 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 }
 
 // NewMembershipWithServicePort is the production constructor for clusters
-// that use a dedicated peer service port. It migrates legacy membership rows
-// once, then preserves the explicit peer service port on every reload.
+// that use a dedicated peer service port. Legacy membership rows are migrated
+// by Rehydrate after WAL replay or snapshot installation, then explicit peer
+// service ports are preserved on every reload.
 func NewMembershipWithServicePort(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort int, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
 	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, servicePort, selfInstanceID, logger)
 }
@@ -112,10 +113,6 @@ func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 	if err := ValidateInstanceID(selfInstanceID); err != nil {
 		return nil, fmt.Errorf("invalid self identity: %w", err)
 	}
-	if err := store.migrateLegacyServiceAddresses(servicePort); err != nil {
-		return nil, fmt.Errorf("migrating membership format: %w", err)
-	}
-
 	addresses, err := store.LoadAll()
 	if err != nil {
 		return nil, fmt.Errorf("loading peers from pebble: %w", err)
@@ -486,6 +483,10 @@ func confStateContains(cs *raftpb.ConfState, nodeID uint64) bool {
 // atomic is more important than allowing concurrent membership reads during
 // that lifecycle reconciliation.
 func (m *Membership) Rehydrate() error {
+	if err := m.store.migrateLegacyServiceAddresses(m.servicePort); err != nil {
+		return fmt.Errorf("migrating membership format: %w", err)
+	}
+
 	fresh, err := m.store.LoadAll()
 	if err != nil {
 		return fmt.Errorf("loading peers from pebble: %w", err)
