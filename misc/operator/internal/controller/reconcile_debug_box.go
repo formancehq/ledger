@@ -36,7 +36,7 @@ func (r *ClusterReconciler) reconcileDebugBox(ctx context.Context, ledger *ledge
 		if err := r.Delete(ctx, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: ledger.Namespace}}); err != nil && !apierrors.IsNotFound(err) {
 			return false, err
 		}
-		if err := r.Delete(ctx, &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: credentialsName}}); err != nil && !apierrors.IsNotFound(err) {
+		if err := r.deleteManagedCredentials(ctx, ledger, credentialsName, annotationDebugBoxCluster); err != nil {
 			return false, err
 		}
 
@@ -53,7 +53,7 @@ func (r *ClusterReconciler) reconcileDebugBox(ctx context.Context, ledger *ledge
 				}
 			}
 		}
-		if err := r.Delete(ctx, &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: credentialsName}}); err != nil && !apierrors.IsNotFound(err) {
+		if err := r.deleteManagedCredentials(ctx, ledger, credentialsName, annotationDebugBoxCluster); err != nil {
 			return false, err
 		}
 		if err := r.reconcileDebugBoxPod(ctx, ledger, ""); err != nil {
@@ -75,6 +75,9 @@ func (r *ClusterReconciler) reconcileDebugBox(ctx context.Context, ledger *ledge
 	}
 
 	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: credentialsName}}
+	if _, _, err := r.managedCredentials(ctx, ledger, credentialsName, annotationDebugBoxCluster); err != nil {
+		return false, err
+	}
 	if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, credentials, func() error {
 		if credentials.Labels == nil {
 			credentials.Labels = make(map[string]string)
