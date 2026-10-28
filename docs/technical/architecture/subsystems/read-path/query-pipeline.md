@@ -185,20 +185,20 @@ The boolean combinators are **direction-parameterized, not duplicated**: each is
 
 The filter compiler turns a `QueryFilter` proto into a tree of these. `Seek` is an **absolute** reposition to the first entity at or after the target *in the iterator's direction* — `AndIterator.Seek` force-seeks *every* child to the target (EN-1597; a child left ahead would skip valid intersections), and the ahead-child leapfrog survives only inside `converge`'s merge loop. Exhausted leaves stay re-seekable; the `seekFloor`/`seekCeil` cache keeps repeated re-seeks of a proven-empty child O(1). See [iterator-seek-contract.md](iterator-seek-contract.md).
 
-### Current accounts and historical address matches
+### Current accounts and retained address mappings
 
-An exact address filter on TRANSACTIONS reads the selected ANY, SOURCE or
-DESTINATION mapping even when the account has no remaining primary-store
-volume or metadata attributes. These mappings describe historical postings,
-so purging an EPHEMERAL account's volume cells does not remove its funding or
-draining transactions from exact address search. Both hardcoded and
-parameterized exact matches follow this rule in either sort direction. The
-normal index readiness, projection alignment and main-store horizon gates
-still apply.
+Exact address filters on both ACCOUNTS and TRANSACTIONS require current
+primary-store account attributes. For a resident account, transaction filters
+read the selected ANY, SOURCE or DESTINATION mapping, including retained
+postings for purged EPHEMERAL cells. A partial asset/color purge or retained
+metadata must not hide funding and draining transactions. Both hardcoded and
+parameterized exact matches follow this rule in either sort direction. Once
+all current volume and metadata attributes disappear, exact address filters
+do not expose the account's transaction history. The normal index readiness,
+projection alignment and main-store horizon gates still apply.
 
-Exact address filters on ACCOUNTS continue checking current primary-store
-attributes. Prefix address filters on either target enumerate current accounts
-before consulting mappings; they do not expand over historical-only addresses.
+Prefix address filters on either target enumerate current accounts before
+consulting mappings; they do not expand over historical-only addresses.
 The exact transaction path still uses the materialized address union described
 below, with the existing construction cost and pagination behavior.
 

@@ -1078,3 +1078,60 @@ func TestGlobalState_MalformedPreparedQueryRefusedAtAdmission(t *testing.T) {
 	require.False(t, got.OK)
 	require.Equal(t, domain.ErrReasonFilterCompilation, got.Reason)
 }
+
+// Historical mappings survive a cell purge; only steady TRANSIENT cells lack
+// mappings. Current asset membership deliberately keeps its separate exclusions.
+func TestGlobalState_Apply_HistoricalAddressExclusions(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name        string
+		persistence commonpb.AccountTypePersistence
+		preexisting bool
+		wantIndexed bool
+	}{
+		{"ephemeral-wash", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, false, true},
+		{"ephemeral-drain", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, true, true},
+		{"steady-transient-wash", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, false, false},
+		{"grandfathered-transient-drain", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			gs := NewGlobalState()
+			if tc.preexisting {
+				res := gs.Apply(bulkOf(oracletest.TxReq("world", "a:1", "USD", 5)))
+				require.True(t, res.OK)
+				gs = res.State
+			}
+			setup := gs.Apply(bulkOf(
+				oracletest.AddTypeReqP("a", tc.persistence),
+				oracletest.AddAccountMetaReq("a:1", "resident", &commonpb.MetadataValue{Type: &commonpb.MetadataValue_BoolValue{BoolValue: true}}),
+			))
+			require.True(t, setup.OK)
+			firstNew := setup.State.Ledger("L").Txs().Len()
+			reqs := []*servicepb.Request{}
+			if !tc.preexisting {
+				reqs = append(reqs, oracletest.TxReq("world", "a:1", "USD", 5))
+			}
+			reqs = append(reqs, oracletest.TxReq("a:1", "world", "USD", 5))
+			res := setup.State.Apply(bulkOf(reqs...))
+			require.True(t, res.OK)
+			ls := res.State.Ledger("L")
+			require.True(t, ls.HasAccount("a:1"), "metadata keeps the account resident")
+			require.False(t, ls.volumes.Has(VolumeKey{Address: "a:1", Asset: "USD"}))
+			for i := firstNew; i < ls.Txs().Len(); i++ {
+				bits := ls.Txs().Get(i).IndexedAddrs()["a:1"]
+				want := uint8(0)
+				if tc.wantIndexed {
+					want = AddrIndexedSource
+					if !tc.preexisting && i == firstNew {
+						want = AddrIndexedDestination
+					}
+				}
+				require.Equal(t, want, bits, "transaction %d", i+1)
+			}
+			if !tc.preexisting {
+				require.False(t, ls.HasEverAsset("a:1", "USD", 0), "current asset exclusion remains unchanged")
+			}
+		})
+	}
+}

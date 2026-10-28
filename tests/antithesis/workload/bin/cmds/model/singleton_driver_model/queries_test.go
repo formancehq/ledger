@@ -502,11 +502,8 @@ func TestTxWindowMatches_OptionalRows(t *testing.T) {
 func TestMatchTxAddress_RolesAndExclusions(t *testing.T) {
 	t.Parallel()
 
-	// One bulk on purpose: an ephemeral wash on e:1 (its cell is zero, and so
-	// excluded, at end of bulk) and a normal funding of a:1. tx 1 is the wash,
-	// tx 2 the funding. Splitting the wash across bulks would index e:1 on the
-	// funding leg and exercise the universe drop instead — see
-	// buildGlobalSeparateBulks.
+	// One bulk washes an EPHEMERAL cell to zero. Its historical role mappings
+	// survive, but absent current account attributes keep address predicates empty.
 	gs := buildGlobal(t,
 		oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
 		oracletest.AddTypeReqP("a", commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
@@ -526,13 +523,10 @@ func TestMatchTxAddress_RolesAndExclusions(t *testing.T) {
 		return f.GetFilter().(*commonpb.QueryFilter_Address).Address
 	}
 
-	// The excluded ephemeral cell strips e:1 membership from both wash txs. The
-	// membership assertion is what separates this from the universe drop
-	// (TestMatchTxAddress_UniverseDrop), where the rows stay indexed and only
-	// the address match stops resolving — matchTxAddress alone would be false
-	// under either mechanism.
-	require.Zero(t, txs.Get(int(0)).IndexedAddrs()["e:1"], "same-bulk exclusion suppresses index membership")
-	require.Zero(t, txs.Get(int(1)).IndexedAddrs()["e:1"], "same-bulk exclusion suppresses index membership")
+	// Preserve historical memberships even though the account disappears. The
+	// predicate assertions below independently protect the current-account gate.
+	require.Equal(t, oracle.AddrIndexedDestination, txs.Get(int(0)).IndexedAddrs()["e:1"])
+	require.Equal(t, oracle.AddrIndexedSource, txs.Get(int(1)).IndexedAddrs()["e:1"])
 	require.False(t, matchTxAddress(ls, addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(0))))
 	require.False(t, matchTxAddress(ls, addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(1))))
 
@@ -915,4 +909,45 @@ func TestVolumeComparisons_RejectDuplicateRows(t *testing.T) {
 	})
 	require.False(t, pcvSnapshotMatches(rec.PostCommitVolumes(), snapshot),
 		"the second copy is never read, so it must not be tolerated")
+}
+
+func TestMatchTxAddress_ResidentPurgedCell(t *testing.T) {
+	t.Parallel()
+	for _, residency := range []string{"metadata", "asset", "color"} {
+		t.Run(residency, func(t *testing.T) {
+			t.Parallel()
+			setup := []*servicepb.Request{oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL)}
+			switch residency {
+			case "metadata":
+				setup = append(setup, oracletest.AddAccountMetaReq("e:1", "resident", &commonpb.MetadataValue{Type: &commonpb.MetadataValue_BoolValue{BoolValue: true}}))
+			case "asset":
+				setup = append(setup, oracletest.TxReqL("L", "world", "e:1", "EUR", 7))
+			case "color":
+				setup = append(setup, oracletest.TxReqColoredL("L", "world", "e:1", "USD", "blue", 7))
+			}
+			gs := buildGlobal(t, setup...)
+			firstNew := gs.Ledger("L").Txs().Len()
+			res := gs.Apply(oracle.Bulk{Requests: []*servicepb.Request{
+				oracletest.TxReqL("L", "world", "e:1", "USD", 5),
+				oracletest.TxReqL("L", "e:1", "world", "USD", 5),
+			}})
+			require.True(t, res.OK)
+			ls := res.State.Ledger("L")
+			require.True(t, ls.HasAccount("e:1"))
+			for _, prefix := range []bool{false, true} {
+				for _, role := range []commonpb.AddressRole{commonpb.AddressRole_ADDRESS_ROLE_ANY, commonpb.AddressRole_ADDRESS_ROLE_SOURCE, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION} {
+					filter := filterAddrExactRole("e:1", role)
+					if prefix {
+						filter = filterAddrPrefixRole("e:", role)
+					}
+					for offset := range 2 {
+						want := role == commonpb.AddressRole_ADDRESS_ROLE_ANY ||
+							(offset == 0 && role == commonpb.AddressRole_ADDRESS_ROLE_DESTINATION) ||
+							(offset == 1 && role == commonpb.AddressRole_ADDRESS_ROLE_SOURCE)
+						require.Equal(t, want, matchTxAddress(ls, filter.GetAddress(), ls.Txs().Get(firstNew+offset)), "prefix=%v role=%v transaction=%d", prefix, role, firstNew+offset+1)
+					}
+				}
+			}
+		})
+	}
 }

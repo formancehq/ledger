@@ -769,7 +769,8 @@ type txRecord struct {
 	// posting-side account, which role rows (AddrIndexedSource /
 	// AddrIndexedDestination bits) the index builder writes for this
 	// transaction. Stamped at end of bulk (recordIndexedAddrs) — a posting side
-	// whose cell lands in the exclusion projection gets no row. The any-role
+	// whose cell is steady-state TRANSIENT gets no row. Purged EPHEMERAL
+	// and grandfathered TRANSIENT cells retain mappings. The any-role
 	// index is the union of the two bits.
 	indexedAddrs map[string]uint8
 }
@@ -1827,11 +1828,22 @@ func (s *LedgerState) cellExcluded(base *LedgerState, key VolumeKey, compiled []
 	}
 }
 
+// historicalCellExcluded models the transient partition rather than the wider
+// current-state exclusion set. A persisted pre-bulk row is grandfathered and
+// follows the EPHEMERAL lifecycle, so its mappings survive a later drain.
+func (s *LedgerState) historicalCellExcluded(base *LedgerState, key VolumeKey, compiled []accounttype.CompiledType) bool {
+	t := s.match(key.Address, compiled)
+
+	return t != nil && t.Persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT && !base.volumes.Has(key)
+}
+
 // recordIndexedAddrs stamps every transaction this bulk appended (ids in
 // (firstNew-1, len(txs)]) with its account→tx index membership: for each
 // posting side, the (account, role) pair is indexed unless the posting's cell
-// is in the end-of-bulk exclusion projection — mirroring the index builder's
-// per-posting sourceExcluded/destinationExcluded skip. The any-role index is
+// is steady-state TRANSIENT at end of bulk — mirroring the builder's
+// AppliedProposal transient set. EPHEMERAL purges and grandfathered TRANSIENT
+// drains retain mappings; query predicates separately require current account
+// existence. The any-role index is
 // the union of the two sides, so only source/destination bits are stored.
 // Replacing the records is safe: they were allocated by this Apply, so no
 // older clone aliases them. Must run before purgeZeroBalance, like
@@ -1844,11 +1856,11 @@ func (s *LedgerState) recordIndexedAddrs(base *LedgerState, firstNew uint64) {
 		rec.indexedAddrs = map[string]uint8{}
 
 		for _, p := range rec.postings {
-			if !s.cellExcluded(base, VolumeKey{Address: p.GetSource(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
+			if !s.historicalCellExcluded(base, VolumeKey{Address: p.GetSource(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
 				rec.indexedAddrs[p.GetSource()] |= AddrIndexedSource
 			}
 
-			if !s.cellExcluded(base, VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
+			if !s.historicalCellExcluded(base, VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
 				rec.indexedAddrs[p.GetDestination()] |= AddrIndexedDestination
 			}
 		}

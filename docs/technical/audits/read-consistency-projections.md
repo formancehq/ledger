@@ -190,10 +190,14 @@ including partial asset/color purges, with independent expected role mappings.
 TRANSIENT negative controls must use source and destination addresses without
 valid postings sharing their historical or has-asset keys. Keep a valid colored
 posting on an otherwise excluded address as a positive control in each mode.
-This contract does not require complete current-account lifecycle cleanup.
+Retained mappings serve address queries only while current volume or metadata
+attributes keep the account resident; they do not define a historical query
+contract after full account disappearance. This contract does not require
+complete current-account lifecycle cleanup.
 
 For previously omitted mappings, seed non-empty READY indexes and drive supported
-drop/recreate/backfill. Require all configured affected role buckets, retained
+drop/recreate/backfill for accounts that remain resident. Require all configured
+affected role buckets, retained
 valid rows, failure without cursor advancement, successful retry and readiness
 only after completion. Restart or duplicate CreateIndex alone is not repair.
 Existing frozen query-checkpoint read stores remain unchanged by live repair;
@@ -203,5 +207,6 @@ repair procedure in `docs/ops/upgrades.md`.
 
 The nonempty checkpoint-plus-purge-delta fixture in
 `internal/infra/backup/historical_address_restore_test.go` also checks fresh
-read-store reconstruction against independently expected historical role IDs.
+read-store reconstruction against independently expected role IDs for resident
+accounts, with empty exact results after full account disappearance.
 Persistence-restore-replay owns the primary restore and retained-history evidence.

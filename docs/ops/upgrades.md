@@ -173,9 +173,10 @@ wire-compatible.
 
 ## Repairing historical transaction address indexes
 
-A builder fix can preserve transaction-address history for purged EPHEMERAL
-volume cells without changing primary business data, audit records, Raft entries,
-or the protocol revision. Existing READY address indexes may still omit rows
+A builder fix can preserve transaction-address mappings for purged EPHEMERAL
+volume cells while an account retains other current attributes, without changing
+primary business data, audit records, Raft entries, or the protocol revision.
+Existing READY address indexes may still omit rows
 written by an older builder. Restarting a server resumes its committed cursor;
 it does not revisit those rows. Repeating `CreateIndex` for an existing index
 returns a conflict and does not repair it.
@@ -183,8 +184,9 @@ returns a conflict and does not repair it.
 After upgrading **every replica** to the fixed binary, explicitly rebuild each
 configured transaction address index affected by the omission. An older replica
 would replay the same repair with the old exclusions and could still return
-incomplete results. Record the configured indexes before starting. For each
-configured type (`address`, `source-address`, `destination-address`), commit a
+incomplete results for resident accounts. This repair does not make accounts
+searchable after all current volume and metadata attributes disappear. Record
+the configured indexes before starting. For each configured type (`address`, `source-address`, `destination-address`), commit a
 drop and then a fresh create, for example:
 
 ```bash
@@ -196,8 +198,8 @@ ledgerctl indexes list --ledger my-ledger
 Use the same drop/create pair for the other affected configured types; do not
 create indexes that were deliberately absent. The committed drop removes the
 index definition; each replica removes local readiness when its builder folds
-that log, retaining the additive address-role buckets. Recreate allocates a fresh local version above the old high-water and
-replays retained transaction logs together with applied-proposal history to add
+that log, retaining the additive address-role buckets. Recreate allocates a fresh
+local version above the old high-water and replays retained transaction logs together with applied-proposal history to add
 missing rows. Each replica promotes its rebuilt index only after catch-up.
 Existing valid rows remain; this procedure repairs omissions and does not remove
 incorrect extra mappings.
@@ -205,8 +207,8 @@ incorrect extra mappings.
 Plan for query unavailability: address filters can fail while the index is
 absent or BUILDING, and replicas complete independently. Confirm READY on every
 replica that serves the workload, then verify representative funding and draining
-queries for all repaired roles. Writes may continue; normal catch-up includes
-new committed history. If interrupted after drop, the index remains absent until
+queries for all repaired roles on accounts with remaining current attributes.
+Writes may continue; normal catch-up includes new committed history. If interrupted after drop, the index remains absent until
 creation succeeds. If interrupted during backfill, startup resumes its persisted
 cursor; the index remains unavailable until local promotion completes.
 
@@ -219,6 +221,6 @@ race a manual drop/create against reconciliation. See
 Existing frozen query checkpoints keep their original physical read-index
 copies. Repairing live indexes does not add omitted historical mappings to those
 copies. Create fresh query checkpoints after repair when complete historical
-address search is required. A main-store backup restore into a fresh read store
-instead replays retained history with the installed builder; address mappings are
+address search for resident accounts is required. A main-store backup restore
+into a fresh read store instead replays retained history with the installed builder; address mappings are
 rebuildable local projections, not additional audit-bound business state.

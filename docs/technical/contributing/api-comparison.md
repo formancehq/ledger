@@ -619,21 +619,23 @@ The v2 schemaVersion/parallel options are not added to v3 by this correction.
 
 ### 6. Transaction Read
 
-Exact transaction address filters use retained historical mappings for any,
-source and destination roles, independently of current account existence. An
-EPHEMERAL volume purge must therefore preserve funding and draining transaction
-matches. Address prefixes continue enumerating current accounts; historical
-prefix expansion is not supported. Indexed transaction metadata and reference
-searches retain their existing behavior. Account-target exact lookup still
-requires current account existence.
+Exact transaction address filters use retained mappings for any, source and
+destination roles while the account has current volume or metadata attributes.
+An EPHEMERAL cell purge must preserve funding and draining matches for an account
+that remains resident through another asset/color or metadata. Once all current
+attributes disappear, exact address filters return no matches. Prefix filters
+also enumerate current accounts. Indexed transaction metadata and reference
+searches retain their existing behavior.
 
-This restores the historical-search principle of v2: `release/v2.4` at
+V2 differs at the current-account existence boundary: `release/v2.4` at
 `21d1e51378b4dbb6b9858313cafc2d8bab62f329`,
 `internal/storage/ledger/transactions.go`, records posting sources/destinations
 on transactions and filters those arrays without probing current accounts.
-V3 retains its existing routes, envelopes, filter syntax, index requirements,
-errors and pagination. No v2 EPHEMERAL lifecycle equivalence is implied. Existing
-omitted v3 mappings need the explicit repair described in
+V3 preserves its current-account existence gate and existing routes, envelopes,
+filter syntax, index requirements, errors and pagination. This correction repairs
+missing mappings for resident accounts; it does not add a query contract after
+full purge or imply v2 EPHEMERAL lifecycle equivalence. Existing omitted v3
+mappings need the explicit repair described in
 [Upgrades](../../ops/upgrades.md); restarting alone does not reconstruct them.
 
 **Endpoint:** `GET /v3/{ledgerName}/transactions/{transactionId}`

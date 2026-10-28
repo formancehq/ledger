@@ -6206,7 +6206,8 @@ type LedgerLog struct {
 	// commit. Purged is DISJOINT from ephemeral_volumes and new_kept_volumes.
 	// The index builder excludes purged and ephemeral cells from current
 	// has-asset memberships, but preserves their historical transaction
-	// address mappings. Only TRANSIENT cells are excluded from history. The usagebuilder
+	// address mappings. Queries still require current account attributes.
+	// Only TRANSIENT cells are excluded from history. The usagebuilder
 	// subtracts len(purged_volumes) from VolumeCount — a draining eviction
 	// decreases the live cardinality by one.
 	PurgedVolumes []*TouchedVolume `protobuf:"bytes,4,rep,name=purged_volumes,json=purgedVolumes,proto3" json:"purged_volumes,omitempty"`
@@ -6221,7 +6222,8 @@ type LedgerLog struct {
 	// commit. Contributes +0 to VolumeCount (was zero, is zero after commit)
 	// and is tracked separately so:
 	//   - the index builder can skip current has-asset memberships for them
-	//     (via purged_volumes ∪ ephemeral_volumes), while retaining history;
+	//     (via purged_volumes ∪ ephemeral_volumes), while retaining mappings
+	//     for queries on accounts with remaining current attributes;
 	//   - the log payload does not duplicate ephemeral tuples in two lists
 	//     (previous encoding carried them in both purged_volumes AND
 	//     new_volumes, doubling bytes on ephemeral-heavy workloads).

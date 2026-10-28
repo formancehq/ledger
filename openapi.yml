@@ -717,11 +717,13 @@ paths:
         `filter={"$match":{"reference":"..."}}`, URL-encoded). Requires
         `ledger:ReadTransaction` scope.
 
-        Exact address filters search retained transaction history for any,
-        source and destination roles even when the current account is absent.
-        Address prefixes enumerate current accounts. Purging an EPHEMERAL
-        volume does not remove exact historical address matches. Previously
-        omitted index mappings require an explicit address-index repair.
+        Exact address filters search retained transaction mappings for any,
+        source and destination roles while the account retains current volume
+        or metadata attributes. Purging an EPHEMERAL cell preserves matches
+        when another asset/color or metadata keeps the account resident. Once
+        all current attributes disappear, exact address filters return no
+        matches. Address prefixes also enumerate current accounts. Previously
+        omitted mappings for resident accounts require explicit index repair.
 
         This is a live read, linearizable by default. `X-Consistency: stale`
         reads the receiving node's local state, which may lag the leader. Every
