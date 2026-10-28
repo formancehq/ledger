@@ -333,7 +333,7 @@ func ledgerctlCommand(serverAddr, tlsMode string, args ...string) []string {
 		head, tail = args[:i], args[i:]
 	}
 
-	cmd := otelExecPrologue + `if [ -n "${OPERATOR_SIGNING_KEY:-}" ]; then OPERATOR_AUTH_TOKEN="$(./ledgerctl auth generate-token --signing-key "$OPERATOR_SIGNING_KEY" --key-id "$OPERATOR_SIGNING_KEY_ID" --subject ledger-operator --scopes ledger:ReadOps,ledger:WriteOps,ledger:ReadCluster,ledger:WriteCluster --expiration 5m)"; fi; ` + fmt.Sprintf(`./ledgerctl %s --server "%s" %s --auth-token "${OPERATOR_AUTH_TOKEN:-}"`,
+	cmd := otelExecPrologue + `if [ -n "${OPERATOR_SIGNING_KEY:-}" ]; then OPERATOR_AUTH_TOKEN="$(./ledgerctl auth generate-token --signing-key "$OPERATOR_SIGNING_KEY" --key-id "$OPERATOR_SIGNING_KEY_ID" --subject ledger-operator --scopes ledger:ReadLedger,ledger:WriteLedger,ledger:ReadOps,ledger:WriteOps,ledger:ReadCluster,ledger:WriteCluster --expiration 5m)"; fi; ` + fmt.Sprintf(`./ledgerctl %s --server "%s" %s --auth-token "${OPERATOR_AUTH_TOKEN:-}"`,
 		shellQuoteJoin(head), serverAddr, ledgerctlTLSFlag(tlsMode))
 	if len(tail) > 0 {
 		cmd += " " + shellQuoteJoin(tail)
