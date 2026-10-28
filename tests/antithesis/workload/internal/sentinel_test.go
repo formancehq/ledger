@@ -40,7 +40,10 @@ func (s *sentinelCommitServer) Apply(_ context.Context, req *servicepb.ApplyRequ
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
 			Apply: &commonpb.ApplyLedgerLog{LedgerName: "sentinel-ledger", Log: &commonpb.LedgerLog{
 				Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-					CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 42}},
+					CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{
+						Id:        42,
+						Reference: req.GetUnsigned().GetRequests()[0].GetApply().GetAction().GetCreateTransaction().GetReference(),
+					}},
 				}},
 			}},
 		}},
