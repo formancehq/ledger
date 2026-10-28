@@ -260,7 +260,7 @@ func runWorker(
 		}
 
 		runGeneration(func(src *generation.Source) {
-			// 1-in-5: a read this iteration, split across the whole-ledger read
+			// Nominal weight 1/5: a read this iteration, split across the whole-ledger read
 			// (chart + ledger metadata), a single-account read, a transaction read
 			// (id + postings + reverted + metadata), a metadata-schema read (declared
 			// field types), the list queries (filtered, paginated, ordered windows
