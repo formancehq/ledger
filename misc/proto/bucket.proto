@@ -951,9 +951,9 @@ enum CheckStoreErrorType {
   CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE = 23;
   // Historical result retained for wire compatibility. Operational cluster
   // policy is no longer compared against business audit history.
-  CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH = 24;
+  CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH = 24 [deprecated = true];
   // Historical result retained for wire compatibility; no longer emitted.
-  CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE = 25;
+  CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE = 25 [deprecated = true];
   // Emitted when the persisted query-checkpoint rows (SubGlobQueryCheckpoint)
   // diverge from the set the checker re-derived from chain-bound
   // CreatedQueryCheckpoint / DeletedQueryCheckpoint logs: a stored row the audit
