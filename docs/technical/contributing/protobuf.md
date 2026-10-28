@@ -85,7 +85,9 @@ change; review behavior changes separately for client impact.
 2. Preserve published service and method names, request and response types,
    field numbers, wire types, field identity, and enum numbers. Internal-only
    fields may change only when existing persisted data remains readable or has
-   a safe migration, and the RC rolling-upgrade contract remains satisfied.
+   a safe migration, and the release upgrade contract remains satisfied. The
+   RC.1 to RC.2 payload cutover requires a full stop and the corresponding
+   [operator support](../../ops/upgrades.md#proposal-payload-cutover).
    Reserve removed numbers and names when they must not be reused; a
    reservation does not replace migration.
 3. **Audit the hand-rolled wire sites** before changing a field's encoding or
