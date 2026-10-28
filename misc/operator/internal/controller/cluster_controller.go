@@ -196,6 +196,25 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 		return ctrl.Result{}, nil
 	}
+	if err := validatePeerPortImmutability(ledger, existingStatefulSet); err != nil {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               "PeerPortImmutable",
+			Status:             metav1.ConditionFalse,
+			Reason:             "PeerPortChanged",
+			Message:            err.Error(),
+			ObservedGeneration: ledger.Generation,
+		})
+		ledger.Status.Phase = "Error"
+
+		return ctrl.Result{}, nil
+	}
+	meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+		Type:               "PeerPortImmutable",
+		Status:             metav1.ConditionTrue,
+		Reason:             "Stable",
+		Message:            "grpcPeerPort matches the existing StatefulSet",
+		ObservedGeneration: ledger.Generation,
+	})
 
 	// Clear any previous validation failure.
 	meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -445,6 +464,31 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	return result, nil
+}
+
+func validatePeerPortImmutability(ledger *ledgerv1alpha1.Cluster, statefulSet *appsv1.StatefulSet) error {
+	if statefulSet == nil || len(statefulSet.Spec.Template.Spec.Containers) == 0 {
+		return nil
+	}
+
+	for _, env := range statefulSet.Spec.Template.Spec.Containers[0].Env {
+		if env.Name != "GRPC_PEER_PORT" {
+			continue
+		}
+		persistedPort, err := strconv.Atoi(env.Value)
+		if err != nil {
+			return fmt.Errorf("existing StatefulSet has invalid GRPC_PEER_PORT %q: %w", env.Value, err)
+		}
+		if int32(persistedPort) != grpcPeerPort(ledger) {
+			return fmt.Errorf("grpcPeerPort is immutable after initialization: StatefulSet uses %d, requested %d", persistedPort, grpcPeerPort(ledger))
+		}
+
+		return nil
+	}
+
+	// StatefulSets created before the peer-port split have no marker. Allow one
+	// reconciliation to add it; subsequent edits are rejected by this guard.
+	return nil
 }
 
 // reconcilePendingOperatorCredentials keeps volume deletion protection

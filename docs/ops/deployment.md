@@ -79,6 +79,8 @@ binary carry a per-peer format marker. On recovery, legacy rows are rewritten
 to `--grpc-peer-port`, while rows already written by replay keep their explicit
 peer port. The compatibility migration is temporary and is removed after the
 RC in which every supported node and operator writes the new format.
+Once the StatefulSet has recorded `GRPC_PEER_PORT`, the operator rejects changes
+to `grpcPeerPort`; changing it requires a dedicated membership migration.
 
 ### Configuration
 
