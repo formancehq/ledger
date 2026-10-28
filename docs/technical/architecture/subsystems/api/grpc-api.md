@@ -64,7 +64,7 @@ The gRPC service server listens on port `8888` by default (configurable via `--g
 
 > **Note**: There are two separate gRPC servers:
 > - **Service server** (port 8888): External client-facing API (BucketService, ClusterService, Health)
-> - **Peer service server** (port 8889): Authenticated follower-to-leader service forwarding; accepts the cluster secret only. It registers a reduced ClusterService surface containing only inter-node forwarding and health methods; node-local compaction, checkpoint, and query-checkpoint administration RPCs are not exposed there.
+> - **Peer service server** (port 8889): Authenticated follower-to-leader service forwarding; accepts the cluster secret only
 > - **Raft server** (port 7777): Internal inter-node communication (RaftTransport, SnapshotService)
 
 ### Connection Example
