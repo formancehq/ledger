@@ -67,6 +67,7 @@ func (r *ClusterReconciler) reconcileOperatorCredentials(ctx context.Context, le
 		credentials.Annotations[annotationOperatorCluster] = ledger.Namespace + "/" + ledger.Name
 		credentials.Spec.Scopes = append([]string(nil), operatorCredentialScopes...)
 		credentials.Spec.Superuser = false
+		credentials.Spec.AdditionalNamespaces = nil
 		credentials.Spec.Selector = metav1.LabelSelector{MatchLabels: map[string]string{
 			labelOperatorCredential: selectorValue,
 		}}
@@ -78,7 +79,7 @@ func (r *ClusterReconciler) reconcileOperatorCredentials(ctx context.Context, le
 	}
 
 	for _, ref := range credentials.Status.DistributedSecretRefs {
-		if ref.Namespace == ledger.Namespace && credentials.Status.Phase == "Ready" {
+		if ref.Namespace == ledger.Namespace && ref.Name == operatorCredentialsSecretName(credentialsName) && credentials.Status.Phase == "Ready" {
 			return true, nil
 		}
 	}
