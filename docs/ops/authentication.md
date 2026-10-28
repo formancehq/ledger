@@ -420,8 +420,9 @@ claim, and flag were removed before `v3.0.0-rc.1`.
 
 When service authentication is enabled on a managed Cluster, the operator
 creates a dedicated `Credentials` resource automatically. It is not part of
-the `Cluster` spec and cannot be selected or widened by the user. The operator
-assigns only the scopes needed by maintenance operations:
+the `Cluster` spec. The operator reconciles its selector and permissions and
+restores them if the resource is changed. It assigns only the scopes needed by
+maintenance operations:
 
 `ledger:ReadLedger`, `ledger:WriteLedger`, `ledger:ReadOps`, `ledger:WriteOps`,
 `ledger:ReadCluster`, and `ledger:WriteCluster`.
