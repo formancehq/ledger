@@ -18,6 +18,8 @@ const (
 	// operator can update the Pod template while retaining unknown metadata.
 	annotationPodConfigSpecHash = "ledger.formance.com/pod-config-spec-hash"
 	annotationAuthKeysHash      = "ledger.formance.com/auth-keys-hash"
+	annotationOperatorCluster = "ledger.formance.com/operator-cluster"
+	annotationDebugBoxCluster = "ledger.formance.com/debug-box-cluster"
 
 	// annotationKubectlRestartedAt is stamped on the pod template by
 	// `kubectl rollout restart`. It is user-owned state, not drift: the
