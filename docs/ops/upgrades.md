@@ -69,7 +69,9 @@ maintenance is visible, and waits until every voter reports maintenance active,
 normal sync and a durable FSM cursor at or beyond that index. This barrier
 ensures already committed business entries are applied under the source binary.
 While the workload is stopped, reconciliation still repairs the headless Service
-needed to reach voters and the TLS cluster Secret needed by replacement Pods.
+needed to reach voters, the ServiceAccount, and the TLS cluster Secret and
+auth-key ConfigMap needed by replacement Pods. It keeps an existing auth-key
+ConfigMap until normal workload reconciliation resumes.
 Keep `spec.headlessService.enabled` true for this upgrade. The operator rejects
 the transition if it is disabled and preserves the Service if it is switched off
 after the stopped upgrade starts.

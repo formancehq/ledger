@@ -268,6 +268,14 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
 		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
 	}
+	if ledger.Status.Upgrade != nil {
+		if err := r.reconcileServiceAccount(ctx, ledger); err != nil {
+			return ctrl.Result{}, fmt.Errorf("reconciling ServiceAccount during stopped upgrade: %w", err)
+		}
+		if _, _, err := r.reconcileAuthKeysWithDeletion(ctx, ledger, false); err != nil {
+			return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys during stopped upgrade: %w", err)
+		}
+	}
 
 	// The stop gate runs before any generic template mutation, including the
 	// scale-down and immutable claim-template recreation paths.

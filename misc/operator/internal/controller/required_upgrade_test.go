@@ -53,6 +53,9 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 	cluster.UID = types.UID("cluster-uid")
 	cluster.Spec.Image.Tag = "v3.0.0-rc.2"
 	cluster.Spec.TLS = &ledgerv1alpha1.TLSConfig{Enabled: true}
+	cluster.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: new(bool)}
+	*cluster.Spec.Auth.Enabled = true
+	cluster.Labels = map[string]string{"tier": "gold"}
 	cluster.Spec.Replicas = new(int32(1))
 	applyDefaults(cluster)
 	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{
@@ -63,7 +66,9 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
-	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster).WithObjects(cluster).Build()
+	cred := matchingCredentials("test-cred", cluster.Labels, true, cluster.Namespace, "test-cred-secret")
+	keySecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "test-cred-secret", Namespace: cluster.Namespace}, Data: map[string][]byte{"pubkey.hex": []byte("deadbeef"), "key-id": []byte("kid-123")}}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster).WithObjects(cluster, cred, keySecret).Build()
 	r := &ClusterReconciler{Client: c, Scheme: scheme}
 	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
 
@@ -77,12 +82,19 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 		secret := &corev1.Secret{}
 		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: clusterSecretName(cluster.Name), Namespace: cluster.Namespace}, secret))
 		require.NotEmpty(t, secret.Data[clusterSecretKey])
+		sa := &corev1.ServiceAccount{}
+		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: serviceAccountName(cluster), Namespace: cluster.Namespace}, sa))
+		cm := &corev1.ConfigMap{}
+		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: authKeysConfigMapName(cluster.Name), Namespace: cluster.Namespace}, cm))
+		require.Contains(t, cm.Data["auth-keys.json"], "kid-123")
 		sts := &appsv1.StatefulSet{}
 		require.True(t, apierrors.IsNotFound(c.Get(ctx, types.NamespacedName{Name: resourceName(cluster.Name), Namespace: cluster.Namespace}, sts)))
 
 		if attempt == 0 {
 			require.NoError(t, c.Delete(ctx, svc))
 			require.NoError(t, c.Delete(ctx, secret))
+			require.NoError(t, c.Delete(ctx, sa))
+			require.NoError(t, c.Delete(ctx, cm))
 		}
 	}
 
@@ -95,6 +107,15 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 	require.ErrorContains(t, err, "source StatefulSet disappeared before maintenance barrier")
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: headlessServiceName(cluster.Name), Namespace: cluster.Namespace}, &corev1.Service{}))
+
+	// An existing Pod may still mount the ConfigMap after Credentials stop
+	// matching. The stopped-upgrade repair pass must not delete it.
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cred.Name}, cred))
+	cred.Spec.Selector.MatchLabels = map[string]string{"tier": "silver"}
+	require.NoError(t, c.Update(ctx, cred))
+	_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+	require.ErrorContains(t, err, "source StatefulSet disappeared before maintenance barrier")
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: authKeysConfigMapName(cluster.Name), Namespace: cluster.Namespace}, &corev1.ConfigMap{}))
 }
 
 func TestStoppedUpgradeRequiresHeadlessService(t *testing.T) {
