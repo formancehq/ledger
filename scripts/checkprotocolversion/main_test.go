@@ -222,7 +222,7 @@ message GetResponse { string result = 1; }
 			runGit(t, repo, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "compact base")
 			writeFixture(t, repo, "misc/proto/api.proto", strings.Replace(baseProto, "string value = 1;", "int64 value = 1;", 1))
 
-			res, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}}.run()
+			res, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t)}.run()
 			require.NoError(t, err)
 			require.Len(t, res.clientFindings, tc.wantGated)
 			require.Equal(t, tc.wantInternal, res.otherFindings)
