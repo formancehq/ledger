@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	ggrpc "google.golang.org/grpc"
@@ -616,4 +617,41 @@ func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req
 
 func RegisterClusterService(registrar ggrpc.ServiceRegistrar, clusterServiceServer clusterpb.ClusterServiceServer) {
 	clusterpb.RegisterClusterServiceServer(registrar, clusterServiceServer)
+}
+
+// RegisterPeerClusterService registers only the ClusterService methods that
+// are used by inter-node forwarding and health checks. The public service keeps
+// the complete ClusterService contract; the peer listener deliberately has a
+// smaller surface so a cluster-secret holder cannot invoke node-local admin
+// operations such as compaction or checkpoint creation through the peer port.
+//
+// We retain the generated service name and handlers so existing internal
+// clients can continue to use clusterpb.NewClusterServiceClient. Filtering the
+// descriptor at registration time gives the peer endpoint a distinct method
+// surface without changing the public protobuf contract.
+func RegisterPeerClusterService(registrar ggrpc.ServiceRegistrar, clusterServiceServer clusterpb.ClusterServiceServer) {
+	const serviceName = "cluster.ClusterService"
+
+	allowedMethods := map[string]struct{}{
+		"GetClusterState":    {},
+		"GetDiskUsage":       {},
+		"GetNodeTime":        {},
+		"TransferLeadership": {},
+		"AddLearner":         {},
+		"PromoteLearner":     {},
+		"RemoveNode":         {},
+		"Backup":             {},
+		"IncrementalBackup":  {},
+	}
+
+	desc := clusterpb.ClusterService_ServiceDesc
+	desc.ServiceName = serviceName
+	desc.Methods = slices.DeleteFunc(slices.Clone(desc.Methods), func(method ggrpc.MethodDesc) bool {
+		_, ok := allowedMethods[method.MethodName]
+
+		return !ok
+	})
+	desc.Streams = slices.Clone(desc.Streams)
+
+	registrar.RegisterService(&desc, clusterServiceServer)
 }
