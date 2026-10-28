@@ -33,7 +33,7 @@ func (r *ClusterReconciler) reconcileDebugBox(ctx context.Context, ledger *ledge
 				}
 			}
 		}
-		if err := r.Delete(ctx, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: ledger.Namespace}}); err != nil && !apierrors.IsNotFound(err) {
+		if err := r.deleteManagedDebugBoxPod(ctx, ledger, podName); err != nil {
 			return false, err
 		}
 		if err := r.deleteManagedCredentials(ctx, ledger, credentialsName, annotationDebugBoxCluster); err != nil {
@@ -119,6 +119,27 @@ func (r *ClusterReconciler) reconcileDebugBox(ctx context.Context, ledger *ledge
 	}
 
 	return true, nil
+}
+
+func (r *ClusterReconciler) deleteManagedDebugBoxPod(ctx context.Context, ledger *ledgerv1alpha1.Cluster, podName string) error {
+	pod := &corev1.Pod{}
+	if err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: ledger.Namespace}, pod); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("getting debug box pod: %w", err)
+	}
+
+	controller := metav1.GetControllerOf(pod)
+	if controller == nil || controller.UID != ledger.UID {
+		return fmt.Errorf("debug box pod %s is owned by another controller", podName)
+	}
+	uid := pod.UID
+	if err := r.Delete(ctx, pod, &client.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &uid}}); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("deleting debug box pod: %w", err)
+	}
+
+	return nil
 }
 
 func (r *ClusterReconciler) reconcileDebugBoxPod(ctx context.Context, ledger *ledgerv1alpha1.Cluster, secretName string) error {
