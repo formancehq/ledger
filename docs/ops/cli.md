@@ -4283,6 +4283,10 @@ Configure in-memory caches used by the FSM and Numscript parser.
 
 The FSM attribute cache uses a two-generation scheme. After `cache-rotation-threshold` entries are applied, the active generation is rotated. Higher values use more memory but reduce cache misses. This is a mutable cluster-wide setting: change it with the [rolling upgrade procedure](./cluster-operations.md#cluster-configuration-updates) so the leader propagates the new value deterministically through Raft.
 
+Zero resolves to 1000 before the leader compares or proposes the desired
+configuration. See the [zero-default rollout restrictions](./cluster-operations.md#zero-default-rollout-and-existing-committed-zero-entries)
+when older binaries can still become leader or a zero value was already committed.
+
 ```bash
 # Default: rotate every 1000 entries
 ledger run [other flags...]
