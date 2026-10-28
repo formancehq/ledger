@@ -6,10 +6,27 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
+
+func TestValidatePeerPortImmutability(t *testing.T) {
+	cluster := newTestCluster("ledger", &ledgerv1alpha1.NetworkPolicySpec{})
+	cluster.Spec.GrpcPeerPort = 8890
+
+	statefulSet := &appsv1.StatefulSet{Spec: appsv1.StatefulSetSpec{Template: corev1.PodTemplateSpec{
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Env: []corev1.EnvVar{{Name: "GRPC_PEER_PORT", Value: "8891"}}}}},
+	}}}
+
+	err := validatePeerPortImmutability(cluster, statefulSet)
+	require.ErrorContains(t, err, "grpcPeerPort is immutable")
+
+	statefulSet.Spec.Template.Spec.Containers[0].Env[0].Value = "8890"
+	require.NoError(t, validatePeerPortImmutability(cluster, statefulSet))
+}
 
 func TestValidateSpec_NameLengthBoundary(t *testing.T) {
 	t.Parallel()
