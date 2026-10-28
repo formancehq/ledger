@@ -274,6 +274,9 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if err := verifyReplacementReplicaCount(sts, state); err != nil {
 			return false, ctrl.Result{}, err
 		}
+		if err := r.restoreUpgradeProgress(ctx, ledger, state); err != nil {
+			return false, ctrl.Result{}, err
+		}
 		if !replacementConverged(sts, state) {
 			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 		}
@@ -287,6 +290,9 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 			return r.resumeMissingUpgradeReplacement(ctx, ledger)
 		}
 		if err := verifyReplacementReplicaCount(sts, state); err != nil {
+			return false, ctrl.Result{}, err
+		}
+		if err := r.restoreUpgradeProgress(ctx, ledger, state); err != nil {
 			return false, ctrl.Result{}, err
 		}
 		if !replacementConverged(sts, state) {
@@ -319,6 +325,15 @@ func verifyReplacementReplicaCount(sts *appsv1.StatefulSet, state *ledgerv1alpha
 	}
 
 	return nil
+}
+
+func (r *ClusterReconciler) restoreUpgradeProgress(ctx context.Context, ledger *ledgerv1alpha1.Cluster, state *ledgerv1alpha1.ClusterUpgradeStatus) error {
+	condition := meta.FindStatusCondition(ledger.Status.Conditions, "Upgrade")
+	if condition == nil || condition.Status != metav1.ConditionFalse {
+		return nil
+	}
+
+	return r.persistUpgrade(ctx, ledger, state)
 }
 
 func (r *ClusterReconciler) resumeMissingUpgradeReplacement(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (bool, ctrl.Result, error) {

@@ -185,7 +185,15 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.False(t, proceed)
 	require.Equal(t, "Verifying", cluster.Status.Upgrade.Phase)
 	require.True(t, maintenance)
+	meta.SetStatusCondition(&cluster.Status.Conditions, metav1.Condition{Type: "Upgrade", Status: metav1.ConditionFalse, Reason: "Blocked", Message: "replica count differs"})
+	require.NoError(t, c.Status().Update(ctx, cluster))
 	replacement.Spec.Replicas = new(int32(1))
+	replacement.Status.ReadyReplicas, replacement.Status.UpdatedReplicas = 0, 0
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
+	require.NoError(t, err)
+	require.False(t, proceed)
+	require.Equal(t, "Verifying", cluster.Status.Upgrade.Phase)
+	require.Equal(t, metav1.ConditionTrue, meta.FindStatusCondition(cluster.Status.Conditions, "Upgrade").Status)
 	replacement.Status.ReadyReplicas, replacement.Status.UpdatedReplicas = 1, 1
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 	require.NoError(t, err)
