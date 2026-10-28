@@ -169,7 +169,7 @@ func TestCheckerClassifiesAgainstBase(t *testing.T) {
 			writeFixture(t, repo, "misc/proto/api.proto", tc.proto)
 			writeFixture(t, repo, protocolFile, protocolSource(tc.version))
 
-			res, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}}.run()
+			res, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t)}.run()
 			require.NoError(t, err)
 			require.Equal(t, 3, res.baseVersion)
 			require.Len(t, res.clientFindings, tc.wantGated)
@@ -191,7 +191,7 @@ func TestCheckerRejectsUnknownGatedService(t *testing.T) {
 
 	repo := newFixtureRepo(t)
 
-	_, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Missing"}}.run()
+	_, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Missing"}, pluginRoot: repoRoot(t)}.run()
 	require.ErrorContains(t, err, "gated service api.Missing is not declared")
 }
 
@@ -222,7 +222,7 @@ message GetResponse { string result = 1; }
 			runGit(t, repo, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "compact base")
 			writeFixture(t, repo, "misc/proto/api.proto", strings.Replace(baseProto, "string value = 1;", "int64 value = 1;", 1))
 
-			res, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}}.run()
+			res, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t)}.run()
 			require.NoError(t, err)
 			require.Len(t, res.clientFindings, tc.wantGated)
 			require.Equal(t, tc.wantInternal, res.otherFindings)
