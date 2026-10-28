@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -92,4 +94,40 @@ func tmpDirCommand(t *testing.T, repository, root, mode, tmpdir string) *exec.Cm
 	command.Env = testenv.Environment("HOME="+root, "LEDGER_AI_CACHE_ROOT="+filepath.Join(root, "shared-cache"), tmpdir)
 
 	return command
+}
+
+// Validation shares one TMPDIR across concurrent runs, and golangci-lint locks
+// $TMPDIR/golangci-lint.lock unless parallel runners are allowed. Without the
+// flag, a run gives up after 5s with "parallel golangci-lint is running".
+func TestLintRunsWhileAnotherRunHoldsTheTmpDirLock(t *testing.T) {
+	t.Parallel()
+
+	seed, repository, _, cacheRoot := newLintWorktrees(t)
+	sharedTmp := filepath.Join(filepath.Dir(seed), "shared-tmp")
+	require.NoError(t, os.MkdirAll(sharedTmp, 0o755))
+	lock, err := os.Create(filepath.Join(sharedTmp, "golangci-lint.lock"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = lock.Close() })
+	require.NoError(t, syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB))
+
+	command, output := lintCommand(t, repository, cacheRoot, filepath.Join(filepath.Dir(seed), "run"))
+	command.Env = append(command.Env, "TMPDIR="+sharedTmp)
+	require.NoError(t, command.Run(), output.String())
+	require.Contains(t, output.String(), "x.go:4:2: ineffectual assignment")
+}
+
+func TestJustfileLintAllowsParallelRunners(t *testing.T) {
+	t.Parallel()
+
+	justfile, err := os.ReadFile(filepath.Join("..", "..", "justfile"))
+	require.NoError(t, err)
+	var invocations int
+	for line := range strings.SplitSeq(string(justfile), "\n") {
+		if !strings.Contains(line, "golangci-lint run") {
+			continue
+		}
+		invocations++
+		require.Contains(t, line, "--allow-parallel-runners", "justfile lint invocation can fail on a shared TMPDIR: %s", strings.TrimSpace(line))
+	}
+	require.Equal(t, 3, invocations)
 }

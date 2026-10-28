@@ -680,7 +680,8 @@ func lintCommand(t *testing.T, repository, cacheRoot, runDirectory string, extra
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-	arguments := []string{validationEnvPath(t), runDirectory, "golangci-lint", "run", "-v", "--issues-exit-code", "0"}
+	// Mirror the justfile lint recipe, which allows parallel runners.
+	arguments := []string{validationEnvPath(t), runDirectory, "golangci-lint", "run", "--allow-parallel-runners", "-v", "--issues-exit-code", "0"}
 	arguments = append(arguments, extraArguments...)
 	arguments = append(arguments, "./...")
 	command := exec.CommandContext(ctx, "bash", arguments...)

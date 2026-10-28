@@ -69,6 +69,13 @@ runs can share one `TMPDIR`. The only thing given up is the guaranteed removal
 of temporary files leaked by a crashed or careless test. Those now stay in the
 system temporary directory until the OS cleans it.
 
+One tool did rely on a private `TMPDIR`. By default golangci-lint locks
+`$TMPDIR/golangci-lint.lock` and gives up after 5s with `parallel golangci-lint
+is running` when another run holds it. The `justfile` lint recipe therefore
+passes `--allow-parallel-runners`, so concurrent validations in different
+worktrees lint in parallel, as they did with per-run directories. See
+[golangci-lint cross-worktree safety](#golangci-lint-cross-worktree-safety).
+
 Test results still re-run in a fresh worktree whenever a package's tests open
 files from the checkout (fixtures, `testdata/`, or Go sources they parse). Go
 records each opened file's absolute path and modification time in the cache
@@ -129,6 +136,11 @@ share cache entries across worktrees; current-module issue positions are stored
 relative to the module and rebased to the consuming checkout on load. A
 payload-format salt excludes the unsafe v2.12.2 entries, which stored absolute
 producer paths ([upstream #6695](https://github.com/golangci/golangci-lint/issues/6695)).
+
+Concurrent runs share the lint cache: the `justfile` recipe passes
+`--allow-parallel-runners`, and
+`TestConcurrentLintRunsSafelyShareCacheAcrossWorktrees` exercises two
+simultaneous runs against one cache.
 
 Cached diagnostics must not reopen the producer's files after it is removed.
 Suggested fixes use the rebased issue filename and retain byte offsets; the
