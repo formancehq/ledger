@@ -85,7 +85,9 @@ The ledger policy pass verifies canonical `SubAttrLedger` and global
 successful verified audit proposals. It covers presence, embedded name, schema,
 account types, default enforcement, normal/mirror mode, complete mirror source
 and deletion timestamp, including retained tombstones. A partial chain or
-replay suppresses this final-state comparison. Creation timestamp and numeric
+replay suppresses this final-state comparison. Undecodable or typeless orders
+in successful verified entries emit `HASH_MISMATCH` so suppression cannot
+make an incomplete check appear healthy. Creation timestamp and numeric
 ledger ID remain outside that pass; read-time metadata and mirror progress
 are excluded enrichments. See [checker.md](checker.md) for errors and scope.
 

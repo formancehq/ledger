@@ -2561,6 +2561,11 @@ func (c *Checker) verifyAuditHashChain(
 			orders := make([]*raftcmdpb.Order, len(decoded))
 			for i, order := range decoded {
 				if order == nil || order.Type == nil {
+					callback(errorEvent(
+						servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
+						fmt.Sprintf("audit entry %d item %d has no decodable order type; final ledger policy and boundary verification is incomplete", entry.GetSequence(), items[i].GetOrderIndex()),
+						items[i].GetLogSequence(), "", "", "",
+					))
 					replaySound = false
 
 					break

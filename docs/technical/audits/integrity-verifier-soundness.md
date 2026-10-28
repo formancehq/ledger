@@ -135,6 +135,11 @@ the completed existing `AuditReplayer` store after successful chain-verified
 history. Stored logs, live boundaries and a separate unchecked serialized-order
 scan are not allocation oracles. An incomplete chain or replay suppresses final
 boundary comparison rather than comparing prefix state with the final store.
+A successful chain-verified entry with an undecodable or typeless order must
+report `HASH_MISMATCH` before suppressing ledger-policy and boundary checks.
+Probe empty, nonempty typeless and malformed serialized orders in a rehashed
+zero-log item with valid physical membership; coordinated boundary corruption
+must not leave the full check healthy.
 Canonical execution supplies mirror fill-gap, duplicate/no-op, rejected-order,
 deleted-ledger and checked sequence-exhaustion semantics; shared producer logic
 still does not independently prove accounting correctness.

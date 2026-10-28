@@ -176,3 +176,47 @@ func TestCheckAuditItemSurplusUnderParent(t *testing.T) {
 	require.NotContains(t, hashes[0].GetMessage(), "physical identity or parent membership")
 	require.Contains(t, hashes[0].GetMessage(), "audit hash chain broken at sequence 1")
 }
+
+func TestCheckAuditBoundaryIncompleteOrderReportsFinding(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name       string
+		serialized []byte
+	}{
+		{name: "empty"},
+		{name: "typeless", serialized: (&raftcmdpb.Order{Technical: &raftcmdpb.OrderTechnical{}}).MarshalDeterministicVT(nil)},
+		{name: "undecodable", serialized: []byte{0xff}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			machine, store, attrs := newFSMPurgeMachine(t)
+			applyFSMPurgeProposal(t, machine, store, attrs, 1, createMirrorLedgerOrder("mirror"))
+			require.Empty(t, runFSMPurgeCheck(t, store, attrs))
+
+			reader, err := store.NewReadHandle()
+			require.NoError(t, err)
+			previous, err := query.ReadAuditEntry(t.Context(), reader, 1)
+			require.NoError(t, err)
+			boundary, err := attrs.Boundary.Get(reader, domain.LedgerKey{Name: "mirror"}.Bytes())
+			require.NoError(t, err)
+			require.NoError(t, reader.Close())
+
+			// Keep a valid chain and physical membership, with no log whose
+			// replay could independently reveal the missing order type.
+			entry := &auditpb.AuditEntry{
+				Sequence: 2, ProposalId: 2, Timestamp: previous.GetTimestamp(),
+				OrderCount: 1, HashVersion: previous.GetHashVersion(),
+				Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+			}
+			persistAuditEntryAfter(t, store, entry, []*auditpb.AuditItem{{SerializedOrder: tc.serialized}}, "", previous.GetHash())
+			boundary.NextTransactionId = 100
+			writeBoundaries(t, store, attrs, "mirror", boundary)
+
+			findings := runFSMPurgeCheck(t, store, attrs)
+			hashes := errorsOfType(findings, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH)
+			require.Len(t, hashes, 1, "all findings: %v", findings)
+			require.Equal(t, "audit entry 2 item 0 has no decodable order type; final ledger policy and boundary verification is incomplete", hashes[0].GetMessage())
+			require.Len(t, findings, 1, "partial replay must not manufacture projection mismatches")
+		})
+	}
+}

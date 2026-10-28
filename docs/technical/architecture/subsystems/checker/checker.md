@@ -296,7 +296,11 @@ mismatches. Events identify the keyspace, ledger and field without printing
 mirror configuration, which may contain credentials. Invalid stored values or
 iterator failures return an execution error. The pass is suppressed when the
 verified chain or isolated replay is incomplete; the already reported audit or
-replay failure remains the evidence of an unhealthy check.
+replay failure remains the evidence of an unhealthy check. A successful
+chain-verified entry containing an undecodable or typeless order emits
+`HASH_MISMATCH` with the entry and item identity before suppressing final
+ledger-policy and allocation-boundary comparisons, including when the item
+produced no log. A valid hash alone does not establish replayable business intent.
 
 This policy pass deliberately excludes creation timestamps and numeric ledger
 IDs, whose projection verification remains a separate coverage gap. Read-time
