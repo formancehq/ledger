@@ -86,6 +86,7 @@ func TestDoMaintenanceRetainsEntriesUntilRaftApplyAcked(t *testing.T) {
 	transport.EXPECT().Unreachable().AnyTimes().Return((<-chan uint64)(nil))
 	node.transport = transport
 	node.localResponseCh = NewLocalResponses()
+	node.readies = make(chan raft.Ready, 8)
 
 	runDone := make(chan error, 1)
 	go func() { runDone <- setup.applier.Run(context.Background(), setup.stop) }()
@@ -116,13 +117,25 @@ func TestDoMaintenanceRetainsEntriesUntilRaftApplyAcked(t *testing.T) {
 	}
 	orchestrateStop := make(chan struct{})
 	orchestrateDone := make(chan error, 1)
+	readyDrainDone := make(chan struct{})
+	go func() {
+		defer close(readyDrainDone)
+		for {
+			select {
+			case <-node.readies:
+			case <-orchestrateStop:
+				return
+			}
+		}
+	}()
 	go func() { orchestrateDone <- node.orchestrate(context.Background(), orchestrateStop) }()
 	node.localResponseCh <- []*raftpb.Message{applyResp}
 	require.Eventually(t, func() bool {
-		return node.rawNode.Status().Applied == 4 && node.lastRaftApplied.Load() == 4
+		return node.lastRaftApplied.Load() == 4
 	}, time.Second, time.Millisecond)
 	close(orchestrateStop)
 	require.NoError(t, <-orchestrateDone)
+	<-readyDrainDone
 	require.Equal(t, uint64(4), node.rawNode.Status().Applied)
 	require.Equal(t, uint64(4), node.lastRaftApplied.Load())
 	require.NoError(t, node.doMaintenance())
