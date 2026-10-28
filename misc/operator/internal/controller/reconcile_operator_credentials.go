@@ -54,7 +54,7 @@ func (r *ClusterReconciler) reconcileOperatorCredentials(ctx context.Context, le
 		if credentials.Annotations == nil {
 			credentials.Annotations = make(map[string]string)
 		}
-		credentials.Annotations["ledger.formance.com/operator-cluster"] = ledger.Namespace + "/" + ledger.Name
+		credentials.Annotations[annotationOperatorCluster] = ledger.Namespace + "/" + ledger.Name
 		credentials.Spec.Scopes = append([]string(nil), operatorCredentialScopes...)
 		credentials.Spec.Superuser = false
 		credentials.Spec.Selector = metav1.LabelSelector{MatchLabels: map[string]string{

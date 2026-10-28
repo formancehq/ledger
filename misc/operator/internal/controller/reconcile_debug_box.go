@@ -12,8 +12,6 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-const debugBoxCredentialAnnotation = "ledger.formance.com/debug-box-cluster"
-
 // reconcileDebugBox manages the opt-in interactive ledgerctl pod and its
 // dedicated superuser Credentials resource. The pod is intentionally idle so
 // operators can exec into it without starting a second Ledger server.
@@ -55,7 +53,7 @@ func (r *ClusterReconciler) reconcileDebugBox(ctx context.Context, ledger *ledge
 		if credentials.Annotations == nil {
 			credentials.Annotations = make(map[string]string)
 		}
-		credentials.Annotations[debugBoxCredentialAnnotation] = ledger.Namespace + "/" + ledger.Name
+		credentials.Annotations[annotationDebugBoxCluster] = ledger.Namespace + "/" + ledger.Name
 		credentials.Spec.Scopes = nil
 		credentials.Spec.Superuser = true
 		credentials.Spec.Selector = metav1.LabelSelector{MatchLabels: map[string]string{
@@ -108,9 +106,12 @@ func (r *ClusterReconciler) reconcileDebugBoxPod(ctx context.Context, ledger *le
 		if ledger.Spec.TLS != nil && ledger.Spec.TLS.Enabled && ledger.Spec.TLS.SecretName != "" {
 			if ledger.Spec.TLS.CASecretKey != "" {
 				env = append(env, strEnv("LEDGERCTL_TLS_CA_CERT", "/tls/"+ledger.Spec.TLS.CASecretKey))
+				volumes = append(volumes, corev1.Volume{Name: "tls-ca", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
+					SecretName: ledger.Spec.TLS.SecretName,
+					Items:      []corev1.KeyToPath{{Key: ledger.Spec.TLS.CASecretKey, Path: ledger.Spec.TLS.CASecretKey}},
+				}}})
+				mounts = append(mounts, corev1.VolumeMount{Name: "tls-ca", MountPath: "/tls", ReadOnly: true})
 			}
-			volumes = append(volumes, corev1.Volume{Name: "tls-certs", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: ledger.Spec.TLS.SecretName}}})
-			mounts = append(mounts, corev1.VolumeMount{Name: "tls-certs", MountPath: "/tls", ReadOnly: true})
 		} else {
 			env = append(env, strEnv("LEDGERCTL_INSECURE", "true"))
 		}
