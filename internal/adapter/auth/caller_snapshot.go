@@ -26,6 +26,7 @@ func WithPeerForward(ctx context.Context, value bool) context.Context {
 
 func IsPeerForward(ctx context.Context) bool {
 	v, _ := ctx.Value(peerForwardKey{}).(bool)
+
 	return v
 }
 

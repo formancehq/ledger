@@ -151,6 +151,7 @@ func rejectDirectClusterSecret(ctx context.Context, cfg internalauth.AuthConfig,
 	if len(token) == len(cfg.ClusterSecret) && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
 		return status.Error(codes.Unauthenticated, "cluster secret is reserved for inter-node forwarding")
 	}
+
 	return nil
 }
 
@@ -162,6 +163,7 @@ func peerForwardContext(ctx context.Context, method string) context.Context {
 	if !ok || len(md.Get("x-ledger-peer-forward")) != 1 || md.Get("x-ledger-peer-forward")[0] != "apply" {
 		return ctx
 	}
+
 	return internalauth.WithPeerForward(ctx, true)
 }
 

@@ -102,6 +102,7 @@ func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Conte
 		effective := allScopes()
 		ctx = WithExpandedScopes(ctx, effective)
 		ctx = WithAuthPresented(ctx, true)
+
 		return withAuthenticationState(ctx, true, true, effective), nil
 	}
 
