@@ -307,5 +307,4 @@ func TestMigrationEnsureLogsBlocksCompositePrimaryKeyLockTimeout(t *testing.T) {
 	primaryKeyColumns = nil
 	require.NoError(t, db.NewRaw(primaryKeyQuery, schema+".logs_blocks").Scan(ctx, &primaryKeyColumns))
 	require.Equal(t, []string{"ledger", "previous"}, primaryKeyColumns)
-	require.ErrorIs(t, migrator.UpByOne(ctx), migrations.ErrAlreadyUpToDate)
 }
