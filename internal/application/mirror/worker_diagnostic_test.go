@@ -116,9 +116,9 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	proposed := 0
 	proposer.beforeApply = func(cmd *raftcmdpb.Proposal) {
 		proposed++
-		require.Empty(t, cmd.GetOrders())
-		require.Len(t, cmd.GetTechnicalUpdates(), 1)
-		update := cmd.GetTechnicalUpdates()[0].GetMirrorSync()
+		require.Empty(t, cmd.GetBatch().GetOrders())
+		require.Len(t, cmd.GetBatch().GetTechnicalUpdates(), 1)
+		update := cmd.GetBatch().GetTechnicalUpdates()[0].GetMirrorSync()
 		require.Equal(t, ledgerName, update.GetLedgerName())
 		require.Contains(t, update.GetError().GetMessage(), diagnostic)
 		encoded, err := cmd.MarshalVT()

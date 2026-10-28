@@ -127,7 +127,7 @@ func (s *stubProposer) Propose(_ context.Context, proposal *node.Proposal) (*fut
 	cmd := &raftcmdpb.Proposal{}
 	if err := cmd.UnmarshalVT(proposal.Data()); err == nil {
 		rec := recordedProposal{cmd: cmd}
-		for _, tu := range cmd.GetTechnicalUpdates() {
+		for _, tu := range cmd.GetBatch().GetTechnicalUpdates() {
 			if sync := tu.GetMirrorSync(); sync != nil {
 				rec.update = sync
 			}
