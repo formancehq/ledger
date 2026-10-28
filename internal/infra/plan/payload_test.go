@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func TestRunnerLowersPayloadAndRetriesInLegacyFormat(t *testing.T) {
+func TestRunnerSerializesPayloadOnEveryRetry(t *testing.T) {
 	t.Parallel()
 	for _, policy := range []bool{false, true} {
 		t.Run(map[bool]string{false: "technical", true: "policy"}[policy], func(t *testing.T) {
@@ -31,18 +31,21 @@ func TestRunnerLowersPayloadAndRetriesInLegacyFormat(t *testing.T) {
 			all := proposer.capturedProposals(t)
 			require.Len(t, all, 2)
 			for _, p := range all {
-				require.Nil(t, p.GetPayload(), "released nodes must receive only the old representation")
+				require.NotNil(t, p.GetPayload())
+				require.Empty(t, p.GetOrders())
+				require.Empty(t, p.GetTechnicalUpdates())
 				require.NotZero(t, p.GetPredictedIndex())
 				if policy {
-					require.Len(t, p.GetOrders(), 1)
-					require.Equal(t, uint64(2), p.GetOrders()[0].GetSystemScoped().GetSetClusterPolicy().GetPolicy().GetRevision())
+					require.NotNil(t, p.GetSetClusterPolicy())
+					require.Equal(t, uint64(2), p.GetSetClusterPolicy().GetPolicy().GetRevision())
 				} else {
-					require.Len(t, p.GetTechnicalUpdates(), 1)
-					require.Len(t, p.GetTechnicalUpdates()[0].GetAuditKey(), 32)
+					require.Len(t, p.GetBatch().GetTechnicalUpdates(), 1)
+					require.Len(t, p.GetBatch().GetTechnicalUpdates()[0].GetAuditKey(), 32)
 				}
 			}
 			require.NotEqual(t, all[0].GetId(), all[1].GetId())
-			require.NotNil(t, cmd.GetPayload(), "lowering must leave the logical proposal intact")
+			require.Greater(t, all[1].GetPredictedIndex(), all[0].GetPredictedIndex())
+			require.NotNil(t, cmd.GetPayload(), "serialization must leave the proposal intact")
 			require.Empty(t, cmd.GetOrders())
 			require.Empty(t, cmd.GetTechnicalUpdates())
 		})

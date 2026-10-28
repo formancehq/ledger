@@ -466,14 +466,6 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 	if err := ValidateCheckpointEntryPositionsDecoded(decoded); err != nil {
 		return nil, err
 	}
-	// Reject mixed legacy/payload encodings before advancing any in-memory state.
-	for _, item := range decoded {
-		if item.Proposal != nil {
-			if err := proposals.CheckLegacyFields(item.Proposal); err != nil {
-				return nil, fmt.Errorf("invalid proposal at raft index %d: %w", item.Entry.GetIndex(), err)
-			}
-		}
-	}
 
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()

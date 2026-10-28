@@ -4,8 +4,6 @@
 package proposals
 
 import (
-	"errors"
-
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -26,17 +24,6 @@ func TechnicalUpdates(p *raftcmdpb.Proposal) []*raftcmdpb.TechnicalUpdate {
 	}
 
 	return p.GetTechnicalUpdates()
-}
-
-// CheckLegacyFields rejects ambiguous proposals before adaptation can discard
-// legacy fields. Payload construction belongs to the internal producers.
-// TODO: Remove this compatibility check after the next RC.
-func CheckLegacyFields(p *raftcmdpb.Proposal) error {
-	if p.GetPayload() != nil && (len(p.GetOrders()) != 0 || len(p.GetTechnicalUpdates()) != 0) {
-		return errors.New("proposal mixes legacy fields and payload")
-	}
-
-	return nil
 }
 
 // header creates a borrowed view without copying protobuf runtime state or
@@ -60,9 +47,9 @@ func PolicyOrder(policy *commonpb.ClusterPolicy) *raftcmdpb.Order {
 	}}
 }
 
-// ExecutionView adapts an envelope checked by CheckLegacyFields to the existing
-// audited execution pipeline. Legacy input is returned unchanged. New input borrows
-// the payload and header and must not be returned to a protobuf pool.
+// ExecutionView adapts an envelope to the existing audited execution pipeline.
+// Legacy input is returned unchanged. New input borrows the payload and header
+// and must not be returned to a protobuf pool.
 func ExecutionView(p *raftcmdpb.Proposal) *raftcmdpb.Proposal {
 	if p.GetPayload() == nil {
 		return p
@@ -76,16 +63,4 @@ func ExecutionView(p *raftcmdpb.Proposal) *raftcmdpb.Proposal {
 	}
 
 	return view
-}
-
-// LegacyWire rejects mixed encodings and lowers a proposal to the released wire
-// representation. No producer emits payload-only entries during this expansion
-// stage: old and new replicas must execute the same committed bytes. The view
-// borrows payload objects so coverage targets survive plan rebuilds.
-func LegacyWire(p *raftcmdpb.Proposal) (*raftcmdpb.Proposal, error) {
-	if err := CheckLegacyFields(p); err != nil {
-		return nil, err
-	}
-
-	return ExecutionView(p), nil
 }

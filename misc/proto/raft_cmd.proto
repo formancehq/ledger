@@ -418,8 +418,8 @@ message SetClusterPolicyProposal {
 }
 
 // Proposal separates execution batches from audited cluster-policy controls.
-// During the expansion stage, producers lower payloads to the legacy wire form
-// before replication so released nodes can execute every committed command.
+// Producers write payloads directly after a full-stop upgrade. Legacy fields
+// remain readable for historical WAL replay; old binaries cannot read new writes.
 message Proposal {
   fixed64 id = 1;                    // Random proposal ID
   repeated Order orders = 2 [deprecated = true]; // Legacy persisted encoding.

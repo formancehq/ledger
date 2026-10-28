@@ -10,7 +10,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -132,24 +131,12 @@ func (p *Builder) Run(
 	// MirrorSync stages its effects in the business WriteSet, so it is the
 	// only update allowed alongside orders. Reject unsupported compositions
 	// before serialization or Raft submission; committed entries retain their
-	// existing interpreter during replay and mixed-version rollouts.
+	// existing interpreter during replay.
 	updates := cmd.GetTechnicalUpdates()
 	if len(updates) > 1 || (len(updates) == 1 && len(cmd.GetOrders()) > 0 && updates[0].GetMirrorSync() == nil) {
 		build.ReleaseLoaders()
 
 		return nil, ErrUnsupportedTechnicalComposition
-	}
-
-	// Keep the Raft wire format readable by released replicas. Rebuilds call
-	// this adapter again after refreshing the header and coverage bits.
-	marshalLogical := marshalFn
-	marshalFn = func(proposal *raftcmdpb.Proposal) ([]byte, error) {
-		wire, err := proposals.LegacyWire(proposal)
-		if err != nil {
-			return nil, err
-		}
-
-		return marshalLogical(wire)
 	}
 
 	// Guarantee a unique command ID. The applier keys FSM futures by

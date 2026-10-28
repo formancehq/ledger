@@ -15,37 +15,27 @@ Policy controls are audited. They are not technical updates. Technical updates
 remain inside an execution batch with their own coverage bits. Empty legacy
 proposals remain consensus barriers.
 
-## Need and migration decision
+## Upgrade boundary
 
-Separating policy controls makes their admission explicit
-without changing business execution or audit evidence. The supported RC baseline
-must still execute every committed entry identically during a rolling upgrade.
-An old protobuf decoder silently skips unknown payload fields; accepting those
-bytes is not equivalent to executing their intent.
+Producers serialize the oneof directly through the shared plan runner, including
+plan rebuilds and retries. A batch uses field 11 and a policy control uses field
+12. The deprecated fields remain available for reading historical proposals.
 
-This change is the **expand** phase. Application producers construct the oneof,
-and the shared plan runner calls `proposals.LegacyWire` immediately before each
-marshal, including plan rebuilds and retries. It emits only the released fields
-`Proposal.orders` (2) and `Proposal.technical_updates` (9). A policy control is
-lowered to the historical singleton `SystemScopedOrder.set_cluster_policy`
-order (11). Header values and borrowed payload objects remain unchanged.
+This format requires a **full-stop upgrade** from RC.1 to RC.2. Every source
+node must stop before any target node starts. An RC.1 decoder skips the unknown
+payload fields without executing their intent, so mixed binaries are unsafe,
+even when business writes are paused: startup can propose technical batches.
+The release depends on the operator's required-downtime transition in
+[PR #2410](https://github.com/formancehq/ledger/pull/2410).
+For deployments outside that operator, follow the coordinated restart procedure
+in [server upgrades](../../../../ops/upgrades.md).
 
-The new FSM understands both forms. Historical inputs retain their historical
-semantics. Proposals mixing legacy fields with a payload are rejected before
-any entry in a decoded batch mutates state, so adaptation cannot silently discard
-intent. The adapter then maps the proposal to the canonical execution and audit
-pipeline. It does not revalidate payload composition or caller metadata: internal
-producers own construction, and admission and processors own business validation.
-The decoded message retains ownership of its pooled buffers and is never
-mutated by this adaptation.
-
-There is no capability registry, membership advertisement, activation policy,
-startup toggle, or dependency on the capabilities change in this phase. There
-is also no dual write or historical-data rewrite. Emitting payload-only Raft
-entries is deliberately deferred: a separate cutover must prove that every
-participating binary understands the format and define its rollback boundary.
-Do not bypass the shared runner to serialize a logical payload directly into
-Raft. New decoder support alone does not authorize that cutover.
+The new FSM reads both forms. `proposals.ExecutionView` maps a payload to the
+canonical execution and audit pipeline. Historical input retains its historical
+semantics. The view borrows payload objects and leaves the decoded message and
+its pooled buffers unchanged. Internal producers own payload construction;
+admission and processors own business validation. There is no transitional
+shape check, old-format write adapter, capability registry, or activation flag.
 
 ## Execution and technical updates
 
@@ -63,46 +53,51 @@ handlers can write directly to the apply batch. Historical mixed proposals
 retain their existing replay rules.
 
 Checkpoint and rotation boundaries inspect batch contents before apply
-splitting. The adapter borrows order and technical-update objects, preserving
-coverage targets when the runner rebuilds its plan. The mixed-encoding check
-and adaptation take constant time and auxiliary space; the borrowed header adds
-constant allocation overhead. Wire and WAL size are unchanged: only one representation
-is serialized. `TestLegacyWireMatchesReleasedEncoding` pins exact byte parity;
-`BenchmarkLegacyWire` measures representative batch cardinalities.
+splitting. The view borrows order and technical-update objects, preserving
+coverage targets. Adaptation takes constant time and auxiliary space, with a
+constant allocation for the borrowed header. `TestExecutionViewMatchesReleasedEncoding`
+pins the canonical execution representation, not the new wire bytes.
 
 ## Persistence, restore, and rollback
 
-Existing WAL, snapshots, and backups need no migration job or backfill. The
-released field numbers and canonical audit representation remain intact.
-Cluster policy is preserved by a full checkpoint and rebuilt from existing
-policy audit logs in the incremental delta. The restore regression includes two
-post-checkpoint policy changes, checker validation, recovery, and a subsequent
-conflicting policy control.
+The migration reads both formats and writes the new format after the full stop.
+Existing WAL, snapshots, and backups need no rewrite or backfill. Released field
+numbers and canonical audit bytes remain intact. Cluster policy survives a full
+checkpoint and is reconstructed from existing policy audit logs in incremental
+deltas. The restore regression includes two post-checkpoint policy changes,
+checker validation, recovery, and a subsequent conflicting policy control.
 
-This expansion introduces no new persisted format on production paths, so it
-adds no new downgrade boundary. Rollback remains subject to the other changes
-in the release. Service gRPC revision remains 40. Payload-only replay fixtures
-exercise decoder readiness, not a format emitted by this release.
+Do not restart RC.1 on volumes used by the target binary. The first payload
+entry appended to the WAL closes the rollback window, including a technical
+entry emitted during startup. Maintenance mode does not delay this boundary.
+A return to RC.1 requires a separately validated recovery procedure using a
+pre-upgrade backup and accounting for later writes. Service gRPC revision stays
+at 40; this change affects the internal Raft format.
 
 ## Validation
 
-Unit tests cover exact legacy wire bytes, borrowed payload immutability,
-coverage targets, failed-then-successful retries, mixed-encoding rejection before
-batch mutation, old/new audit and recovery parity, technical-only HLC behavior,
-mirror success/failure, checkpoint boundaries, and incremental restore.
+Unit tests cover borrowed payload immutability, canonical execution bytes,
+coverage targets, actual payload serialization on failed-then-successful retries,
+old/new audit and recovery parity, technical-only HLC behavior, mirror rollback,
+checkpoint boundaries, and incremental restore.
 
-The three-node e2e test intercepts actual Raft traffic, verifies that no
-payload-only entry escapes the adapter, transfers leadership to a reconfigured
-node to produce a policy update, restarts nodes, and checks balances. All nodes
-in that test use the candidate binary.
+The three-node e2e test intercepts Raft log replication, requires batch and
+policy payloads without legacy fields, transfers leadership, restarts nodes,
+and checks balances. All nodes use the candidate binary.
 
 ```sh
 bash scripts/check-proposal-payload v3.0.0-rc.1
-go test ./internal/pkg/proposals -run '^$' -bench BenchmarkLegacyWire -benchmem
+go test ./internal/pkg/proposals -run '^$' -bench BenchmarkExecutionView -benchmem
 ```
 
-The compatibility script builds distinct RC.1 and candidate test binaries and
-compares exact FSM/audit results using numeric wire tags independent of the
-candidate codec. It does not replace the release requirement to validate a
-real mixed-version rolling upgrade, including snapshot catch-up, described in
-[server upgrades](../../../../ops/upgrades.md).
+The compatibility script builds distinct RC.1 and candidate test binaries.
+Numeric wire tags provide an oracle independent of the candidate codec. It
+compares audit entries, items, hashes, policy, applied index and HLC for both
+encodings, including a business rejection. It also closes an RC.1 Pebble store
+and WAL, opens them with the candidate, replays a committed legacy entry, writes
+new policy and business payloads, then reopens the result in another candidate
+process. The resulting report must equal the uninterrupted RC.1 reference.
+
+This probe validates persisted-format migration, not Kubernetes sequencing or
+snapshot catch-up. Release validation must also exercise the full-stop operator
+transition with the final server candidate and preserved volumes.
