@@ -24,6 +24,20 @@ presence, command flags, implementation comments and tests at the audited SHA.
 A stale table is not proof of a missing route. Conflicting sources or unspecified
 null/unknown-field/trailing-input policies become **questions**, not assumed bugs.
 
+For query-name validation, enumerate actual `/v3` route registrations and each
+operation's query parameters in `openapi.yml`. On every route, an unknown name
+or malformed query encoding must return `400 INVALID_REQUEST` before reaching
+the backend. Check the removed account `prefix` and transaction `reference`
+names for the `filter` hint, and `checkpointId` for the gRPC-only pinned-read
+hint. Preserve every declared query name at this boundary; value parsing has
+its own route-specific contract. The unversioned ops routes are outside this
+validation and retain their prior handling. Use the registered-router tests
+`TestQueryParameters_RejectUnknownAtRouter`,
+`TestQueryParameters_MatchOpenAPI`,
+`TestQueryParameters_LeaveOpsProbesUnchanged`, and
+`TestKnownQuery_AllowsDeclaredParameters` as the dynamic oracle, then inspect
+the route registrations and error body when diagnosing a failure.
+
 For Numscript source analysis, trace `POST /v3/numscripts/analyze` and
 `BucketService.AnalyzeNumscript` through their query-read guards into the shared
 analyser. The scope is `ledger:ReadQuery` when authentication is enabled;
