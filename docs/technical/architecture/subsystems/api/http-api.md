@@ -43,6 +43,25 @@ By default: `http://localhost:9000`
 
 All business routes are served under the `/v3/` prefix. Ops routes (`/health`, `/livez`, `/readyz`, `/clusterz`, `/_info`, `/debug/pprof/`) are unversioned and served at the root.
 
+### Query parameter validation
+
+Each `/v3` route accepts only the query parameter names declared for that
+operation in `openapi.yml`. An unknown name, including a misspelling or a
+retired option, returns HTTP 400 with `errorCode: "INVALID_REQUEST"` before
+the operation executes. The error names the rejected parameter. Malformed
+query encoding also returns 400. Unversioned ops routes retain their existing
+query handling; this validation applies to business routes under `/v3`.
+
+For migration from older APIs, use `filter` instead of the removed `prefix`
+parameter on account lists or `reference` parameter on transaction lists.
+Checkpoint-pinned reads are available through gRPC `ReadOptions.checkpoint_id`;
+`checkpointId` is not an HTTP query parameter, including on account, stats and
+audit reads. Sending it returns 400 rather than silently reading live data.
+
+This changes the response for requests that previously included ignored query
+parameters. Clients must remove unsupported parameters or use the documented
+replacement before upgrading to a server with this validation.
+
 ### Encoded metadata keys
 
 Metadata DELETE routes (account, transaction and ledger) and metadata-schema
