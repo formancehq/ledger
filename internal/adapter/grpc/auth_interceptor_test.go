@@ -58,6 +58,15 @@ type authInterceptorBucketServer struct {
 	applyFn          func(context.Context, *servicepb.ApplyRequest) (*domain.ApplyResult, error)
 }
 
+func TestRejectDirectClusterSecret(t *testing.T) {
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer peer"))
+	err := rejectDirectClusterSecret(ctx, internalauth.AuthConfig{ClusterSecret: "peer"}, false)
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+
+	forward := internalauth.WithPeerForward(ctx, true)
+	require.NoError(t, rejectDirectClusterSecret(forward, internalauth.AuthConfig{ClusterSecret: "peer"}, true))
+}
+
 func (s *authInterceptorBucketServer) Barrier(ctx context.Context, _ *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
 	s.barrierCalls.Add(1)
 	s.barrierHasScope.Store(internalauth.HasScope(internalauth.ExpandedScopesFromContext(ctx), internalauth.ScopeOpsRead))

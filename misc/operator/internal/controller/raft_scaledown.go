@@ -332,7 +332,7 @@ func ledgerctlCommand(serverAddr, tlsMode string, args ...string) []string {
 		head, tail = args[:i], args[i:]
 	}
 
-	cmd := otelExecPrologue + fmt.Sprintf(`./ledgerctl %s --server "%s" %s --auth-token "$CLUSTER_SECRET"`,
+	cmd := otelExecPrologue + fmt.Sprintf(`./ledgerctl %s --server "%s" %s --auth-token "$OPERATOR_SECRET"`,
 		shellQuoteJoin(head), serverAddr, ledgerctlTLSFlag(tlsMode))
 	if len(tail) > 0 {
 		cmd += " " + shellQuoteJoin(tail)

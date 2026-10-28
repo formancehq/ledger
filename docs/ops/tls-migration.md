@@ -132,6 +132,10 @@ at least partially active (`mode != disabled`). Sending a
 static token over plaintext is an anti-pattern, so the secret only exists
 when the wire is encrypted.
 
+The operator also provisions a distinct `operator-secret` key in the managed
+Secret. `ledgerctl` and backup Jobs use that credential; the Raft
+`cluster-secret` is never exposed as a direct client token.
+
 This means **authentication requires TLS**. Note the two guards differ in
 strictness:
 
