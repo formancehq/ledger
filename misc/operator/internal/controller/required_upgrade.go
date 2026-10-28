@@ -153,6 +153,21 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 	if err := r.verifyUpgradeClaims(ctx, ledger, state); err != nil {
 		return false, ctrl.Result{}, err
 	}
+	if sts != nil && string(sts.UID) != state.StatefulSetUID && (state.Phase == "Recreating" || state.Phase == "Verifying" || state.Phase == "Unblocking") {
+		policy := sts.Spec.PersistentVolumeClaimRetentionPolicy
+		if policy != nil && (policy.WhenDeleted == appsv1.DeletePersistentVolumeClaimRetentionPolicyType || policy.WhenScaled == appsv1.DeletePersistentVolumeClaimRetentionPolicyType) {
+			retained := sts.DeepCopy()
+			retained.Spec.PersistentVolumeClaimRetentionPolicy = &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{
+				WhenDeleted: appsv1.RetainPersistentVolumeClaimRetentionPolicyType,
+				WhenScaled:  appsv1.RetainPersistentVolumeClaimRetentionPolicyType,
+			}
+			if err := r.Update(ctx, retained); err != nil {
+				return false, ctrl.Result{}, fmt.Errorf("retaining replacement StatefulSet claims: %w", err)
+			}
+
+			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
+		}
+	}
 	switch state.Phase {
 	case "Maintenance":
 		if sts == nil {

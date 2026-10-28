@@ -375,6 +375,12 @@ func buildStatefulSetSpec(ledger *ledgerv1alpha1.Cluster, specHash string, crede
 func buildRetentionPolicy(ledger *ledgerv1alpha1.Cluster) *appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy {
 	whenScaled := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 	whenDeleted := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
+	// The replacement StatefulSet must not acquire PVC deletion ownership while
+	// recovery may still delete and recreate it. The requested policy is restored
+	// by the ordinary reconcile after status.upgrade has been cleared.
+	if ledger.Status.Upgrade != nil {
+		return &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{WhenScaled: whenScaled, WhenDeleted: whenDeleted}
+	}
 
 	if ledger.Spec.Persistence.RetentionPolicy != nil {
 		rp := ledger.Spec.Persistence.RetentionPolicy

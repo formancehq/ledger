@@ -117,6 +117,7 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	cluster.UID = types.UID("cluster-uid")
 	cluster.Spec.Image.Tag = "v3.0.0-rc.2"
 	cluster.Spec.Replicas = new(int32(1))
+	cluster.Spec.Persistence.RetentionPolicy = &ledgerv1alpha1.RetentionPolicySpec{WhenDeleted: "Delete", WhenScaled: "Delete"}
 	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.1", true)
 	sts.Name, sts.Namespace, sts.UID = resourceName(cluster.Name), cluster.Namespace, types.UID("old-sts")
 	sts.Generation = 1
@@ -226,6 +227,7 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.Equal(t, types.UID("claim-uid"), claim.UID)
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "pv-1"}, pv))
 	require.Equal(t, types.UID("pv-uid"), pv.UID)
+	require.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
 	// A replacement with the target image converges without deleting it again.
 	replacement := rcStatefulSet("ledger:v3.0.0-rc.2", true)
 	replacement.Name, replacement.Namespace, replacement.UID = sts.Name, sts.Namespace, types.UID("new-sts")
@@ -236,8 +238,21 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	replacement.Status.ObservedGeneration = 1
 	replacement.Status.UpdatedReplicas = 1
 	replacement.Status.ReadyReplicas = 1
+	// Simulate a replacement created with the requested Delete policy by an
+	// older controller. Repair it before progressing to verification.
+	replacement.Spec.PersistentVolumeClaimRetentionPolicy = &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{
+		WhenDeleted: appsv1.DeletePersistentVolumeClaimRetentionPolicyType,
+		WhenScaled:  appsv1.DeletePersistentVolumeClaimRetentionPolicyType,
+	}
 	require.NoError(t, c.Create(ctx, replacement))
 	require.NoError(t, c.Status().Update(ctx, replacement))
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
+	require.NoError(t, err)
+	require.False(t, proceed)
+	require.Equal(t, "Recreating", cluster.Status.Upgrade.Phase)
+	require.NoError(t, c.Get(ctx, key, replacement))
+	require.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, replacement.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
+	require.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, replacement.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 	require.NoError(t, err)
 	require.False(t, proceed)
@@ -305,6 +320,7 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, proceed)
 	require.Nil(t, cluster.Status.Upgrade)
+	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
 	require.False(t, maintenance)
 	require.Contains(t, commands[len(commands)-1], "'maintenance' 'disable'")
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)

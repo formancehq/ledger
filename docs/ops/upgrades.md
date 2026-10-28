@@ -83,7 +83,10 @@ The operator then deletes the StatefulSet with background propagation. It
 waits for the StatefulSet and **all old ordinal Pods** to disappear. A delete
 acknowledgement or elapsed time does not satisfy this condition. It does not
 force-delete a stuck Pod. Only then may it create the target StatefulSet and
-reuse the same PVC names. After all target replicas are ready, it disables
+reuse the same PVC names. The replacement keeps both PVC retention policies at
+`Retain` throughout the active upgrade, including recovery if the replacement
+disappears. After maintenance is released, normal reconciliation restores the
+requested retention policies. After all target replicas are ready, it disables
 maintenance. `status.upgrade` and the `Upgrade` condition show the
 phase or blocking error. The operator retries after API failures; do not remove
 the status record or create a replacement workload by hand while it is active.
