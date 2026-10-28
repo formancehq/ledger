@@ -41,7 +41,7 @@ per-request scope and superuser checks still use the successfully loaded policy.
 | gRPC | `metadata.FromIncomingContext(ctx)` → `authorization: Bearer <token>` |
 | HTTP | `r.Header.Get("Authorization")` |
 
-If no bearer is present, the request is treated as **anonymous** and given whatever scopes are configured via `--auth-anonymous-scopes` (CSV, default empty). A method requiring a scope not in the anonymous set returns `Unauthenticated` (gRPC) / `401` (HTTP).
+If no bearer is present, the request is treated as **anonymous** and given whatever scopes are configured via `--auth-anonymous-scopes` (CSV, default empty). For gRPC, this anonymous fallback applies when the authorization metadata is absent or contains a single non-Bearer value. Multiple `authorization` metadata values are rejected as ambiguous before anonymous evaluation. A method requiring a scope not in the anonymous set returns `Unauthenticated` (gRPC) / `401` (HTTP).
 
 ### Token validation
 
