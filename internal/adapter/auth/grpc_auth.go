@@ -82,8 +82,9 @@ func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Conte
 	// when lengths differ — a timing leak there is harmless because the
 	// expected length is a fixed configuration value (#339 / Review-2 M-25).
 	// The cluster secret is a peer credential, not a general service API
-	// credential. It is accepted on the service plane only for the explicit
-	// follower-to-leader Apply hop; Raft RPCs are guarded separately.
+	// credential. It is accepted on the dedicated peer service listener and on
+	// the Raft listener; the public service listener rejects it before this
+	// function is called.
 	if cfg.ClusterSecret != "" &&
 		len(token) == len(cfg.ClusterSecret) &&
 		subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {

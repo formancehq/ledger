@@ -57,6 +57,7 @@ Available flags for `run`:
 - `--cluster-id`: Cluster ID for inter-node communication and persisted configuration validation (required)
 - `--bind-addr`: Address to bind to for Raft transport (internal inter-node communication, default: `0.0.0.0:7777`)
 - `--grpc-port`: Port for gRPC service API (external client-facing, default: `8888`)
+- `--grpc-peer-port`: Port for authenticated inter-node service forwarding (default: `8889`)
 - `--advertise-addr`: Address to advertise to other nodes (defaults to bind-addr)
 - `--wal-dir`: WAL directory for Raft (default: `./wal`)
 - `--data-dir`: Data directory for application storage (default: `./data`)
@@ -68,11 +69,10 @@ Available flags for `run`:
 - `--health-wal-threshold`: WAL volume usage threshold, 0.0-1.0 (default: `0.8`)
 - `--health-data-threshold`: Data volume usage threshold, 0.0-1.0 (default: `0.8`)
 
-The service address published to peers uses the host from `--advertise-addr`
-and the port from `--grpc-port`. IPv6 hosts retain their brackets: for example,
-`--advertise-addr '[2001:db8::1]:7777' --grpc-port 8888` publishes
-`[2001:db8::1]:8888` for service RPCs while keeping `[2001:db8::1]:7777` for Raft.
-IPv4 addresses and hostnames use the same host with the configured service port.
+The public service address uses the host from `--advertise-addr` and the port
+from `--grpc-port`. Inter-node service forwarding uses the same host with
+`--grpc-peer-port`; Raft continues to use the port from `--bind-addr`.
+IPv6 hosts retain their brackets.
 
 ### Configuration
 

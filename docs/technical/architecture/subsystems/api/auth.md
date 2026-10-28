@@ -122,7 +122,7 @@ Raft transport uses a **shared cluster secret**, not JWT. `internal/adapter/grpc
 - Comparison uses `crypto/subtle.ConstantTimeCompare` to avoid timing attacks.
 - If `--cluster-secret` is empty, the legacy "no auth" mode is used (not recommended).
 
-The cluster secret is reserved for the Raft plane and the explicit follower-to-leader `Apply` forwarding hop. A service-API request carrying it for any other method is rejected; it is never a direct `ledgerctl` credential. Operator automation uses a scoped Ed25519 identity from the `Credentials` CRD, which is not marked cluster-internal and cannot provide forwarded attribution. Auth-disabled snapshots are derived locally. If a forwarded snapshot arrives without the peer-forward trust marker, the leader rejects it rather than silently dropping identity.
+The cluster secret is reserved for the Raft plane and the dedicated peer service listener used for follower-to-leader forwarding. The public service listener rejects it; it is never a direct `ledgerctl` credential. Operator automation uses a scoped Ed25519 identity from the `Credentials` CRD, which is not marked cluster-internal and cannot provide forwarded attribution. Auth-disabled snapshots are derived locally. Forwarding trust is derived from the listener on which the request arrived, not from client-controlled metadata.
 
 ## Caller identity in the audit chain
 

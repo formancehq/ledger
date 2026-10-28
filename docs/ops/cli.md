@@ -4541,11 +4541,11 @@ the value configured on the existing cluster nodes
 
 When `--cluster-secret` is set, every inter-node gRPC call (Raft transport,
 snapshot transfer, cluster bootstrap, and follower-to-leader forwarding on the
-service API) carries this shared secret as a bearer token. The value must be
+dedicated peer service API) carries this shared secret as a bearer token. The value must be
 the same on all nodes in the cluster.
 
-`--cluster-secret` is not a `ledgerctl` credential. Direct service-API calls
-with it are rejected; only the follower-to-leader write-forwarding hop may use
+`--cluster-secret` is not a `ledgerctl` credential. Calls to the public
+service API with it are rejected; only the dedicated peer service API may use
 it. Operator automation uses an Ed25519 credential from the `Credentials` CRD,
 with only the scopes required for maintenance operations, and is never treated
 as a cluster peer.

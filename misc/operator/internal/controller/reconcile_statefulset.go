@@ -350,6 +350,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 	ports := []corev1.ContainerPort{
 		{Name: "http", ContainerPort: spec.HttpPort, Protocol: corev1.ProtocolTCP},
 		{Name: "grpc", ContainerPort: spec.GrpcPort, Protocol: corev1.ProtocolTCP},
+		{Name: "grpc-peer", ContainerPort: spec.GrpcPort + 1, Protocol: corev1.ProtocolTCP},
 		{Name: "raft", ContainerPort: raftPortFromBindAddr(spec.BindAddr), Protocol: corev1.ProtocolTCP},
 	}
 

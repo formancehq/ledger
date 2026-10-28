@@ -119,7 +119,7 @@ func Module() fx.Option {
 					cfg.ClusterID,
 					cfg.RaftConfig.TransportBufferSize,
 					cfg.RaftConfig.AdvertiseAddr,
-					cfg.ServiceAdvertiseAddr(),
+					cfg.PeerServiceAdvertiseAddr(),
 				)
 			}, fx.ParamTags(``, ``, `name:"raft"`, ``)),
 			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*dal.Store, error) {
@@ -235,10 +235,11 @@ func Module() fx.Option {
 				defaultTransport *node.DefaultTransport,
 				servicePool *transport.ConnectionPool,
 				cfg node.NodeConfig,
+				appCfg Config,
 				logger logging.Logger,
 			) (*raftmembership.Membership, error) {
-				return raftmembership.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, logger)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
+				return raftmembership.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, appCfg.PeerServiceAdvertiseAddr(), cfg.InstanceID, logger)
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker
 			// mutex around its proposer.Propose call. Wrapping the node in a
@@ -421,6 +422,23 @@ func Module() fx.Option {
 				return grpcadp.NewServiceServer(grpcadp.ServiceAuthPolicyPublic, authCfg, "", cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(),
 					listenerOptions(bindings.Service)...)
 			},
+			fx.Annotate(func(cfg Config, lc fx.Lifecycle, logger logging.Logger, authCfg internalauth.AuthConfig, bindings network.Bindings) (*grpcadp.ServiceServer, error) {
+				tlsCfg, reloader, err := ServerTLSConfig(cfg.TLSConfig)
+				if err != nil {
+					return nil, fmt.Errorf("loading TLS config for peer service server: %w", err)
+				}
+
+				RegisterCertReloaderLifecycle(lc, reloader, logger)
+
+				peerPort := cfg.PeerGRPCPort()
+				// Tests that inject the public listener without a peer binding use
+				// an ephemeral peer port to avoid sharing the production default.
+				if bindings.Service != nil && bindings.Peer == nil {
+					peerPort = 0
+				}
+
+				return grpcadp.NewServiceServer(grpcadp.ServiceAuthPolicyPeer, authCfg, "", peerPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(), listenerOptions(bindings.Peer)...)
+			}, fx.ResultTags(`name:"peer"`)),
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
 			fx.Annotate(buildAuthConfig, fx.ParamTags(``, ``, `optional:"true"`)),
 			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, respSigner *signing.ResponseSigner, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
@@ -808,6 +826,16 @@ func Module() fx.Option {
 
 				return nil
 			},
+			fx.Annotate(func(serviceServer *grpcadp.ServiceServer, bucketServiceServer servicepb.BucketServiceServer) error {
+				grpcadp.RegisterBucketService(serviceServer.GetServer(), bucketServiceServer)
+
+				return nil
+			}, fx.ParamTags(`name:"peer"`, ``)),
+			fx.Annotate(func(serviceServer *grpcadp.ServiceServer, clusterServiceServer clusterpb.ClusterServiceServer) error {
+				grpcadp.RegisterClusterService(serviceServer.GetServer(), clusterServiceServer)
+
+				return nil
+			}, fx.ParamTags(`name:"peer"`, ``)),
 			// Backup cleanup loop: leader-only, fails stale jobs so a
 			// crashed executor doesn't permanently lock the destination.
 			// Run is leader-aware itself so this just needs lifecycle.
@@ -936,6 +964,19 @@ func Module() fx.Option {
 					RequestShutdown: shutdownRequester(shutdowner),
 				}))
 			},
+			fx.Annotate(func(
+				lc fx.Lifecycle,
+				serviceServer *grpcadp.ServiceServer,
+				logger logging.Logger,
+				shutdowner fx.Shutdowner,
+			) {
+				lc.Append(grpcServerHook(grpcServerHookConfig{
+					Server:          serviceServer,
+					Name:            "Peer service gRPC server",
+					Logger:          logger,
+					RequestShutdown: shutdownRequester(shutdowner),
+				}))
+			}, fx.ParamTags(``, `name:"peer"`, ``, ``)),
 			// Join mode preflight is registered EARLIER (before the Raft
 			// transport/server/node startup hooks) so it runs before any inbound
 			// Raft traffic can be stepped — see the joinPreflightHook closure
@@ -1233,7 +1274,7 @@ func joinPreflightHook(cfg Config, logger logging.Logger) fx.Hook {
 			logger.WithFields(map[string]any{
 				"nodeID":         cfg.RaftConfig.NodeID,
 				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
-				"serviceAddress": cfg.ServiceAdvertiseAddr(),
+				"serviceAddress": cfg.PeerServiceAdvertiseAddr(),
 			}).Infof("Join mode: requesting peer to add this node as learner (preflight, before Raft traffic)")
 
 			return tryAddLearner(ctx, cfg, cfg.TLSConfig, logger)
@@ -1266,7 +1307,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 	req := &clusterbootstrappb.JoinAsLearnerRequest{
 		NodeId:         cfg.RaftConfig.NodeID,
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
-		ServiceAddress: cfg.ServiceAdvertiseAddr(),
+		ServiceAddress: cfg.PeerServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
 	}
 

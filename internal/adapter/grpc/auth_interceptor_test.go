@@ -59,18 +59,18 @@ type authInterceptorBucketServer struct {
 }
 
 func TestRejectDirectClusterSecret(t *testing.T) {
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer peer"))
-	err := rejectDirectClusterSecret(ctx, internalauth.AuthConfig{ClusterSecret: "peer"}, false)
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		"authorization", "Bearer peer",
+		"x-ledger-peer-forward", "apply",
+	))
+	err := rejectDirectClusterSecret(ctx, internalauth.AuthConfig{ClusterSecret: "peer"})
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
-
-	forward := internalauth.WithPeerForward(ctx, true)
-	require.NoError(t, rejectDirectClusterSecret(forward, internalauth.AuthConfig{ClusterSecret: "peer"}, true))
 
 	duplicate := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
 		"authorization", "Bearer cluster-secret",
 		"authorization", "Bearer unrelated",
 	))
-	require.Equal(t, codes.Unauthenticated, status.Code(rejectDirectClusterSecret(duplicate, internalauth.AuthConfig{ClusterSecret: "cluster-secret"}, false)))
+	require.Equal(t, codes.Unauthenticated, status.Code(rejectDirectClusterSecret(duplicate, internalauth.AuthConfig{ClusterSecret: "cluster-secret"})))
 }
 
 func (s *authInterceptorBucketServer) Barrier(ctx context.Context, _ *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
