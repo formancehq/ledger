@@ -73,6 +73,16 @@ func TestRejectDirectClusterSecret(t *testing.T) {
 	require.Equal(t, codes.Unauthenticated, status.Code(rejectDirectClusterSecret(duplicate, internalauth.AuthConfig{ClusterSecret: "cluster-secret"})))
 }
 
+func TestBearerTokenFromGRPCContextRejectsAmbiguousAuthorization(t *testing.T) {
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		"authorization", "Bearer first",
+		"authorization", "Bearer second",
+	))
+
+	_, _, err := internalauth.BearerTokenFromGRPCContext(ctx)
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
 type authTestServerStream struct{ ctx context.Context }
 
 func (s *authTestServerStream) SetHeader(metadata.MD) error  { return nil }

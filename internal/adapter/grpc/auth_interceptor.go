@@ -3,12 +3,10 @@ package grpc
 import (
 	"context"
 	"crypto/subtle"
-	"strings"
 	"time"
 
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -67,10 +65,10 @@ func queryProfileClockStreamInterceptor(logger logging.Logger, slowThreshold tim
 
 func authUnaryInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
-		if peerOnly {
-			ctx = internalauth.WithPeerForward(ctx, true)
-		} else if err := rejectDirectClusterSecret(ctx, cfg); err != nil {
-			return nil, err
+		if !peerOnly {
+			if err := rejectDirectClusterSecret(ctx, cfg); err != nil {
+				return nil, err
+			}
 		}
 		if peerOnly {
 			if err := requirePeerCredential(ctx, cfg); err != nil {
@@ -102,7 +100,6 @@ func authStreamInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.Str
 	return func(srv any, stream ggrpc.ServerStream, info *ggrpc.StreamServerInfo, handler ggrpc.StreamHandler) error {
 		ctx := stream.Context()
 		if peerOnly {
-			ctx = internalauth.WithPeerForward(ctx, true)
 			if err := requirePeerCredential(ctx, cfg); err != nil {
 				return err
 			}
@@ -151,19 +148,12 @@ func rejectDirectClusterSecret(ctx context.Context, cfg internalauth.AuthConfig)
 	if cfg.ClusterSecret == "" {
 		return nil
 	}
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return nil
+	token, presented, err := internalauth.BearerTokenFromGRPCContext(ctx)
+	if err != nil {
+		return err
 	}
-	values := md.Get("authorization")
-	for _, value := range values {
-		if !strings.HasPrefix(strings.ToLower(value), "bearer ") {
-			continue
-		}
-		token := strings.TrimSpace(value[len("Bearer "):])
-		if len(token) == len(cfg.ClusterSecret) && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
-			return status.Error(codes.Unauthenticated, "cluster secret is reserved for inter-node forwarding")
-		}
+	if presented && len(token) == len(cfg.ClusterSecret) && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
+		return status.Error(codes.Unauthenticated, "cluster secret is reserved for inter-node forwarding")
 	}
 
 	return nil
@@ -182,20 +172,12 @@ func requirePeerCredential(ctx context.Context, cfg internalauth.AuthConfig) err
 		return status.Error(codes.Unauthenticated, "cluster secret is required on the peer service")
 	}
 
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return status.Error(codes.Unauthenticated, "missing metadata on peer service")
+	token, presented, err := internalauth.BearerTokenFromGRPCContext(ctx)
+	if err != nil {
+		return err
 	}
-
-	for _, value := range md.Get("authorization") {
-		if !strings.HasPrefix(strings.ToLower(value), "bearer ") {
-			continue
-		}
-
-		token := strings.TrimSpace(value[len("Bearer "):])
-		if len(token) == len(cfg.ClusterSecret) && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
-			return nil
-		}
+	if presented && len(token) == len(cfg.ClusterSecret) && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
+		return nil
 	}
 
 	return status.Error(codes.Unauthenticated, "invalid cluster credentials on peer service")
