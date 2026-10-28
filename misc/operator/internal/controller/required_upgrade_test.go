@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -43,6 +44,47 @@ func TestMandatoryStopVersionBoundary(t *testing.T) {
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.1", "latest"))
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.1", "3.0.0-rc.2"))
 	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest"))
+}
+
+func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cluster := newMinimalCluster()
+	cluster.UID = types.UID("cluster-uid")
+	cluster.Spec.Image.Tag = "v3.0.0-rc.2"
+	cluster.Spec.TLS = &ledgerv1alpha1.TLSConfig{Enabled: true}
+	cluster.Spec.Replicas = new(int32(1))
+	applyDefaults(cluster)
+	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{
+		Source: "v3.0.0-rc.1", Target: cluster.Spec.Image.Tag,
+		StatefulSetUID: "old-sts", TargetSpecHash: computeSpecHash(&cluster.Spec),
+		ExpectedReplicas: 1, Phase: "Maintenance",
+	}
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster).WithObjects(cluster).Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
+
+	for attempt := range 2 {
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		require.ErrorContains(t, err, "source StatefulSet disappeared before maintenance barrier")
+
+		svc := &corev1.Service{}
+		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: headlessServiceName(cluster.Name), Namespace: cluster.Namespace}, svc))
+		require.Equal(t, corev1.ClusterIPNone, svc.Spec.ClusterIP)
+		secret := &corev1.Secret{}
+		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: clusterSecretName(cluster.Name), Namespace: cluster.Namespace}, secret))
+		require.NotEmpty(t, secret.Data[clusterSecretKey])
+		sts := &appsv1.StatefulSet{}
+		require.True(t, apierrors.IsNotFound(c.Get(ctx, types.NamespacedName{Name: resourceName(cluster.Name), Namespace: cluster.Namespace}, sts)))
+
+		if attempt == 0 {
+			require.NoError(t, c.Delete(ctx, svc))
+			require.NoError(t, c.Delete(ctx, secret))
+		}
+	}
 }
 
 func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {

@@ -258,6 +258,17 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		}
 	}
 
+	// Keep dependencies needed by old and replacement pods available while the
+	// stop gate holds all workload mutations. A missing headless Service prevents
+	// ledgerctl from reaching the old voters; a missing TLS Secret prevents
+	// replacement pods from starting.
+	if err := r.reconcileHeadlessService(ctx, ledger); err != nil {
+		return ctrl.Result{}, fmt.Errorf("reconciling HeadlessService: %w", err)
+	}
+	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
+		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
+	}
+
 	// The stop gate runs before any generic template mutation, including the
 	// scale-down and immutable claim-template recreation paths.
 	proceed, upgradeResult, err := r.reconcileRequiredUpgrade(ctx, ledger, existingStatefulSet)
@@ -282,7 +293,6 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		fn   func(context.Context, *ledgerv1alpha1.Cluster) error
 	}{
 		{"ServiceAccount", r.reconcileServiceAccount},
-		{"HeadlessService", r.reconcileHeadlessService},
 		{"Service", r.reconcileService},
 		{"GrpcService", r.reconcileGrpcService},
 		{"Ingress", r.reconcileIngress},
@@ -305,22 +315,6 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		logger.Error(err, "failed to reconcile auth keys")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
-	}
-
-	// Reconcile the cluster-secret (TLS static bearer token) BEFORE the
-	// AuthKeysPending gate, but only its SAFE (create/update) side: mayDelete=false.
-	// Creating/keeping the Secret while any StatefulSet references it never mutates
-	// the pod template or triggers a rollout, so it is safe (and necessary) even
-	// while the auth-keys fail-safe holds the StatefulSet pass — otherwise a Secret
-	// that went missing during a long Credentials-non-distribution window would
-	// crash restarted pods referencing CLUSTER_SECRET via SecretKeyRef. Deletion
-	// (TLS-off) is deferred to AFTER reconcileStatefulSet on the non-pending path,
-	// so we never delete a Secret still referenced by a StatefulSet we cannot update
-	// (EN-1487; only the pod-template mutation may be frozen, not this).
-	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
-		logger.Error(err, "failed to reconcile cluster secret")
-
-		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
 	}
 
 	// Fail-safe (EN-1487): the auth-key set cannot be safely reconciled yet.

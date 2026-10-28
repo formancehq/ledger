@@ -68,6 +68,8 @@ change. It enables replicated maintenance, reads a leader commit index after
 maintenance is visible, and waits until every voter reports maintenance active,
 normal sync and a durable FSM cursor at or beyond that index. This barrier
 ensures already committed business entries are applied under the source binary.
+While the workload is stopped, reconciliation still repairs the headless Service
+needed to reach voters and the TLS cluster Secret needed by replacement Pods.
 The operator then changes `whenDeleted` and `whenScaled` PVC retention to
 `Retain`, waits for the StatefulSet controller to observe that generation,
 removes the existing claims' owner references, and verifies their UIDs and bound
