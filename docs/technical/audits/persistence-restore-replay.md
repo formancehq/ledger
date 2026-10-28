@@ -231,16 +231,15 @@ Does a restore with nonempty checkpoint files and a nonempty post-checkpoint cre
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 
-## Proposal payload expansion
+## Proposal payload cutover
 
-The proposal codec is part of this contract. During expansion, every production
-Raft writer lowers logical execution and policy payloads to the released wire
-fields; inspect the shared runner and all producers for bypasses. Decoder
-support must not silently enable payload-only writes. Historical and payload
-replay must preserve audit bytes, declared coverage, technical-only HLC behavior,
-and checkpoint boundaries. Reject proposals mixing legacy fields with a payload
-before any entry in a decoded batch mutates state. The compatibility adapter
-does not revalidate payload composition or caller metadata. Policy restore
-evidence must include a non-empty delta and the next policy outcome, not only
-a checkpoint round trip. See
-[proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md).
+The proposal codec is part of this contract. Production writers serialize the
+execution and policy oneof directly after a full-stop upgrade. All source nodes
+must stop before any target starts, and old binaries must never reopen a WAL
+containing new payloads, including technical entries written during startup.
+Historical and payload entries must have identical canonical audit intent,
+hashes, coverage, HLC semantics, and checkpoint boundaries. Internal producers
+own shape construction. Preserve historical decoding for replay and policy
+restore parity with a nonempty incremental delta. Test a released store/WAL
+opened by the candidate, retained legacy entry replay, new writes and restart.
+See [proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md).

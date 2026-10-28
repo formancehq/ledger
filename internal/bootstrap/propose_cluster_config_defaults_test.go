@@ -72,8 +72,8 @@ func TestProposeClusterConfig_DefaultThreshold(t *testing.T) {
 			require.NotEmpty(t, proposer.data)
 			captured := &raftcmdpb.Proposal{}
 			require.NoError(t, captured.UnmarshalVT(proposer.data))
-			require.Len(t, captured.GetTechnicalUpdates(), 1)
-			require.Equal(t, tc.want, captured.GetTechnicalUpdates()[0].GetClusterConfig().GetRotationThreshold())
+			require.Len(t, captured.GetBatch().GetTechnicalUpdates(), 1)
+			require.Equal(t, tc.want, captured.GetBatch().GetTechnicalUpdates()[0].GetClusterConfig().GetRotationThreshold())
 			require.Equal(t, tc.raw, cfg.RaftConfig.RotationThreshold, "defaulting must stay local to the desired proposal")
 			require.Zero(t, cfg.BloomConfig.GetRotationThreshold(), "shared Bloom config must remain untouched")
 

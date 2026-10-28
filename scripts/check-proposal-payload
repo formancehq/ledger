@@ -7,6 +7,13 @@ if [[ "${IN_NIX_SHELL:-}" == "" ]]; then
     exec env -u GOROOT nix develop --command bash "$0" "$@"
 fi
 
+compare_reports() {
+    if ! cmp "$1" "$2"; then
+        diff -u <(jq -S . "$1") <(jq -S . "$2")
+        return 1
+    fi
+}
+
 baseline=${1:-v3.0.0-rc.1}
 repo=$(git rev-parse --show-toplevel)
 mkdir -p "$repo/build"
@@ -26,6 +33,17 @@ LEDGER_PROPOSAL_PROBE_OUTPUT="$probe_dir/new-legacy.json" \
     "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
 LEDGER_PROPOSAL_PROBE_OUTPUT="$probe_dir/new-payload.json" LEDGER_PROPOSAL_PROBE_ENCODING=payload \
     "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
-cmp "$probe_dir/old.json" "$probe_dir/new-legacy.json"
-cmp "$probe_dir/old.json" "$probe_dir/new-payload.json"
-echo "PROPOSAL_PAYLOAD_COMPAT=PASS baseline=$baseline (two binaries, legacy and payload audit/state parity)"
+compare_reports "$probe_dir/old.json" "$probe_dir/new-legacy.json"
+compare_reports "$probe_dir/old.json" "$probe_dir/new-payload.json"
+# The source process exits and closes the real store/WAL before the candidate
+# opens them. The candidate replays the retained old entry, appends new payloads,
+# then another candidate process verifies recovery without replaying applied work.
+LEDGER_PROPOSAL_PROBE_OUTPUT="$probe_dir/seed.json" LEDGER_PROPOSAL_PROBE_DIR="$probe_dir/upgrade" LEDGER_PROPOSAL_PROBE_PHASE=seed \
+    "$probe_dir/old.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
+LEDGER_PROPOSAL_PROBE_OUTPUT="$probe_dir/upgraded.json" LEDGER_PROPOSAL_PROBE_DIR="$probe_dir/upgrade" LEDGER_PROPOSAL_PROBE_PHASE=resume LEDGER_PROPOSAL_PROBE_ENCODING=payload \
+    "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
+LEDGER_PROPOSAL_PROBE_OUTPUT="$probe_dir/restarted.json" LEDGER_PROPOSAL_PROBE_DIR="$probe_dir/upgrade" LEDGER_PROPOSAL_PROBE_PHASE=verify \
+    "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
+compare_reports "$probe_dir/old.json" "$probe_dir/upgraded.json"
+compare_reports "$probe_dir/upgraded.json" "$probe_dir/restarted.json"
+echo "PROPOSAL_PAYLOAD_COMPAT=PASS baseline=$baseline (audit/state parity, stopped store/WAL upgrade, new writes and restart)"

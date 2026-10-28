@@ -19,8 +19,8 @@ import (
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 
-var _ = Describe("Proposal payload legacy wire migration", func() {
-	It("keeps batches and policy controls readable by released nodes across transfer and restart", func() {
+var _ = Describe("Proposal payload replication", func() {
+	It("replicates batches and policy controls across transfer and restart", func() {
 		ctx, servers, gateway, leaderID := testutil.SetupMultiNodeCluster(3, testutil.WithGateway())
 		DeferCleanup(func() { testutil.StopServers(ctx, servers) })
 		var batches, policies atomic.Uint64
@@ -41,16 +41,14 @@ var _ = Describe("Proposal payload legacy wire migration", func() {
 
 					continue
 				}
-				if p.GetPayload() != nil {
+				if len(p.GetOrders()) != 0 || len(p.GetTechnicalUpdates()) != 0 {
 					invalid.Store(true)
 				}
-				if len(p.GetOrders()) > 0 {
+				if len(p.GetBatch().GetOrders()) > 0 {
 					batches.Add(1)
 				}
-				for _, order := range p.GetOrders() {
-					if order.GetSystemScoped().GetSetClusterPolicy().GetPolicy().GetRevision() == 100 {
-						policies.Add(1)
-					}
+				if p.GetSetClusterPolicy().GetPolicy().GetRevision() == 100 {
+					policies.Add(1)
 				}
 			}
 
@@ -64,7 +62,7 @@ var _ = Describe("Proposal payload legacy wire migration", func() {
 		createTxs(ctx, servers[*leaderID-1].Client, "payload", 2, 100)
 
 		// Reconfigure a follower, then make it leader so its reconciler emits a
-		// control through the same legacy wire adapter as business batches.
+		// control using the oneof wire format, alongside business batches.
 		oldLeader := *leaderID
 		target := oldLeader%3 + 1
 		instruments := append(slices.Clone(servers[target-1].Service.Instruments),

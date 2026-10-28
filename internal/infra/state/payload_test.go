@@ -125,24 +125,6 @@ func TestPayloadHistoryHasIdenticalAuditAndRecovery(t *testing.T) {
 	require.Equal(t, modern.State.LastAppliedTimestamp, recovered.State.LastAppliedTimestamp)
 }
 
-func TestMixedProposalEncodingRejectedBeforeStateMutation(t *testing.T) {
-	t.Parallel()
-	for _, legacyUpdates := range []bool{false, true} {
-		machine, store, _ := newTestMachine(t)
-		wire := payloadProposal(t, makeProposal(2, createLedgerOrder("rejected")))
-		if legacyUpdates {
-			wire.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_AuditKey{AuditKey: make([]byte, 32)}}}
-		} else {
-			wire.Orders = []*raftcmdpb.Order{createLedgerOrder("legacy")}
-		}
-		valid := payloadProposal(t, makeProposal(1, createLedgerOrder("must-not-apply")))
-		_, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, valid), makeEntry(t, 2, wire))
-		require.ErrorContains(t, err, "proposal mixes legacy fields and payload")
-		require.Zero(t, machine.State.LastAppliedIndex)
-		require.Equal(t, uint64(1), machine.State.NextAuditSequenceID)
-	}
-}
-
 func TestPolicyPayloadMaintenanceAndExhaustionGuards(t *testing.T) {
 	t.Parallel()
 	machine, store, _ := newTestMachine(t)

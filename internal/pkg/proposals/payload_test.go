@@ -13,13 +13,12 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
-func TestLegacyWirePreservesPayloadAndCoverageTargets(t *testing.T) {
+func TestExecutionViewPreservesPayloadAndCoverageTargets(t *testing.T) {
 	t.Parallel()
 	order := &raftcmdpb.Order{Technical: &raftcmdpb.OrderTechnical{}}
 	logical := &raftcmdpb.Proposal{Id: 3, PredictedIndex: 8, Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{order}}}}
 	before := logical.CloneVT()
-	wire, err := LegacyWire(logical)
-	require.NoError(t, err)
+	wire := ExecutionView(logical)
 	require.Nil(t, wire.GetPayload())
 	require.Same(t, order, wire.GetOrders()[0])
 	require.True(t, proto.Equal(before, logical), "encoding must not mutate the logical proposal")
@@ -35,40 +34,13 @@ func TestPolicyEncodingKeepsAuditIntent(t *testing.T) {
 		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterPolicy),
 		Payload:        &raftcmdpb.Proposal_SetClusterPolicy{SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: policy}},
 	}
-	legacy, err := LegacyWire(control)
-	require.NoError(t, err)
+	legacy := ExecutionView(control)
 	require.Nil(t, legacy.GetPayload())
 	require.True(t, proto.Equal(PolicyOrder(policy), legacy.GetOrders()[0]))
 }
 
-func TestLegacyWireRejectsMixedEncodings(t *testing.T) {
-	t.Parallel()
-	for _, policy := range []bool{false, true} {
-		for _, legacyUpdates := range []bool{false, true} {
-			t.Run(fmt.Sprintf("policy=%t/legacyUpdates=%t", policy, legacyUpdates), func(t *testing.T) {
-				t.Parallel()
-				proposal := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{{}}}}}
-				if policy {
-					proposal.Payload = &raftcmdpb.Proposal_SetClusterPolicy{SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: &commonpb.ClusterPolicy{Revision: 2}}}
-				}
-				if legacyUpdates {
-					proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{}}
-				} else {
-					proposal.Orders = []*raftcmdpb.Order{{}}
-				}
-				before := proposal.CloneVT()
-				wire, err := LegacyWire(proposal)
-				require.ErrorContains(t, err, "proposal mixes legacy fields and payload")
-				require.Nil(t, wire)
-				require.True(t, proto.Equal(before, proposal))
-			})
-		}
-	}
-}
-
-// Compare exact bytes, not only decoded fields: the expansion phase must not
-// change what an old replica receives, including the shared header.
-func TestLegacyWireMatchesReleasedEncoding(t *testing.T) {
+// The execution view preserves the historical audit input, including its header.
+func TestExecutionViewMatchesReleasedEncoding(t *testing.T) {
 	t.Parallel()
 	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "ledger", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}}}}, Technical: &raftcmdpb.OrderTechnical{CoverageBits: []byte{1}}}
 	update := &raftcmdpb.TechnicalUpdate{Kind: &raftcmdpb.TechnicalUpdate_EventsSink{EventsSink: &raftcmdpb.EventsSinkUpdate{SinkName: "sink", Cursor: 2}}}
@@ -94,8 +66,7 @@ func TestLegacyWireMatchesReleasedEncoding(t *testing.T) {
 				logical.Payload = &raftcmdpb.Proposal_SetClusterPolicy{SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: policy}}
 			}
 			before := logical.CloneVT()
-			wire, err := LegacyWire(logical)
-			require.NoError(t, err)
+			wire := ExecutionView(logical)
 			expected, err := legacy.MarshalVT()
 			require.NoError(t, err)
 			actual, err := wire.MarshalVT()
@@ -106,7 +77,7 @@ func TestLegacyWireMatchesReleasedEncoding(t *testing.T) {
 	}
 }
 
-func BenchmarkLegacyWire(b *testing.B) {
+func BenchmarkExecutionView(b *testing.B) {
 	for _, count := range []int{1, 100, 1000} {
 		b.Run(fmt.Sprintf("orders=%d", count), func(b *testing.B) {
 			orders := make([]*raftcmdpb.Order, count)
@@ -116,11 +87,8 @@ func BenchmarkLegacyWire(b *testing.B) {
 			logical := &raftcmdpb.Proposal{Id: 1, Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: orders}}}
 			b.ReportAllocs()
 			for b.Loop() {
-				wire, err := LegacyWire(logical)
-				if err != nil {
-					b.Fatal(err)
-				}
-				if _, err = wire.MarshalVT(); err != nil {
+				wire := ExecutionView(logical)
+				if _, err := wire.MarshalVT(); err != nil {
 					b.Fatal(err)
 				}
 			}
