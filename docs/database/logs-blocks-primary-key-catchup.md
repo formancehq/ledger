@@ -86,9 +86,11 @@ the old or the new primary key.
 - `column "ledger" of relation "logs_blocks" contains null values`: a block row
   has no ledger. `create_blocks` always sets it, so this means manual changes.
   Escalate; do not delete rows without review.
-- Rollback: no database rollback is needed. A previous v2.4 binary works with
-  the composite key. Do not restore the single-column key: it brings back the
-  collision.
+- Rollback: no database rollback is needed. Replicas already running a previous
+  v2.4 binary keep working with the composite key, but a previous binary cannot
+  start once the bucket is above its own migration count: driver initialization
+  rejects it as a downgrade. Do not restore the single-column key: it brings
+  back the collision.
 
 ## Success criteria
 
