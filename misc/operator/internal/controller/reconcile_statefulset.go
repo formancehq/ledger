@@ -382,7 +382,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 		volumes = append(volumes, corev1.Volume{
 			Name: "operator-credentials",
 			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
-			SecretName: operatorCredentialsSecretName(operatorCredentialsName(ledger)),
+				SecretName: operatorCredentialsSecretName(operatorCredentialsName(ledger)),
 			}},
 		})
 	}

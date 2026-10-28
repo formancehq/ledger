@@ -60,6 +60,7 @@ func (r *ClusterReconciler) reconcileOperatorCredentials(ctx context.Context, le
 		credentials.Spec.Selector = metav1.LabelSelector{MatchLabels: map[string]string{
 			labelOperatorCredential: selectorValue,
 		}}
+
 		return nil
 	})
 	if err != nil {

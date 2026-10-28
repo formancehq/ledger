@@ -77,6 +77,7 @@ func operatorCredentialsSecretName(credentialsName string) string {
 // namespaces containing same-named Clusters from sharing an identity.
 func operatorCredentialsName(ledger *ledgerv1alpha1.Cluster) string {
 	sum := sha256.Sum256([]byte(ledger.Namespace + "/" + ledger.Name))
+
 	return prefixedName("operator-" + hex.EncodeToString(sum[:])[:16])
 }
 
@@ -84,6 +85,7 @@ func operatorCredentialsName(ledger *ledgerv1alpha1.Cluster) string {
 // cluster-scoped Credentials selector matches exactly this Cluster.
 func operatorCredentialsSelectorValue(ledger *ledgerv1alpha1.Cluster) string {
 	sum := sha256.Sum256([]byte(ledger.Namespace + "/" + ledger.Name))
+
 	return hex.EncodeToString(sum[:])[:16]
 }
 
