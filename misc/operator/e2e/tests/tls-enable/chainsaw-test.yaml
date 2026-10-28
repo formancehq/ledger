@@ -32,7 +32,23 @@ spec:
               echo "OK: no cluster-secret while TLS is disabled"
             timeout: 15s
 
-    # 3. Provision data so we can verify it survives the migration.
+    # 3. Create the operator Credentials before enabling TLS/auth. The keypair
+    # is generated now, then distributed into the cluster namespace when the
+    # Cluster reconciles the matching selector.
+    - name: Create operator Credentials
+      try:
+        - apply:
+            file: credentials.yaml
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: Credentials
+              metadata:
+                name: tls-en-operator
+              status:
+                phase: Ready
+
+    # 4. Provision data so we can verify it survives the migration.
     - name: Provision data
       try:
         - script:
@@ -41,7 +57,7 @@ spec:
                 /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure'
             timeout: 120s
 
-    # 4. Generate certs and create the Secret the CR will reference.
+    # 5. Generate certs and create the Secret the CR will reference.
     - name: Generate TLS Secret
       try:
         - script:
@@ -74,13 +90,13 @@ spec:
                 --from-file=ca.crt=ca.crt
             timeout: 60s
 
-    # 5. Toggle TLS on.
+    # 6. Toggle TLS and auth on.
     - name: Enable TLS
       try:
         - apply:
             file: cluster-tls-enabled.yaml
 
-    # 6. Observe the migration walking through the "optional" phase. The
+    # 7. Observe the migration walking through the "optional" phase. The
     #    operator must drive TLS_MODE through optional before landing on
     #    required.
     - name: Observe optional phase
@@ -105,7 +121,7 @@ spec:
               [ "$SAW_OPTIONAL" = "1" ] || { echo "FAIL: migration never went through optional"; exit 1; }
             timeout: 8m
 
-    # 7. Final state: tlsMigrationPhase=required + cluster-secret present.
+    # 8. Final state: tlsMigrationPhase=required + cluster-secret present.
     - name: Assert final required phase
       try:
         - assert:
@@ -126,11 +142,47 @@ spec:
               echo "OK: cluster-secret created during TLS migration"
             timeout: 15s
 
-    # 8. Data survived.
+    # 9. Data survived and the public API requires the operator JWT.
     - name: Verify data integrity
       try:
         - script:
             content: |
+              set -e
+
+              SECRET_NAME=$(kubectl get credentials tls-en-operator \
+                -o jsonpath='{.status.distributedSecretRefs[0].name}')
+              SECRET_NAMESPACE=$(kubectl get credentials tls-en-operator \
+                -o jsonpath='{.status.distributedSecretRefs[0].namespace}')
+              [ -n "$SECRET_NAME" ] || { echo "FAIL: Credentials secret name is empty"; exit 1; }
+              [ -n "$SECRET_NAMESPACE" ] || { echo "FAIL: Credentials secret namespace is empty"; exit 1; }
+
+              KEY_ID=$(kubectl get secret "$SECRET_NAME" -n "$SECRET_NAMESPACE" \
+                -o jsonpath='{.data.key-id}' | base64 -d)
+              [ -n "$KEY_ID" ] || { echo "FAIL: Credentials key ID is empty"; exit 1; }
+
+              # The cluster-secret is only valid on the internal peer service;
+              # it must not authenticate against the public API anymore.
+              if kubectl exec ledger-tls-en-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --tls-ca-cert /tls/ca.crt --auth-token "$CLUSTER_SECRET"' >/dev/null 2>&1; then
+                echo "FAIL: cluster-secret must be rejected on the public API"
+                exit 1
+              fi
+
+              # Copy the generated Ed25519 seed into the pod only for token
+              # generation, then use the resulting JWT against the public TLS API.
+              kubectl get secret "$SECRET_NAME" -n "$SECRET_NAMESPACE" \
+                -o jsonpath='{.data.seed\.hex}' | base64 -d | \
+                kubectl exec -i ledger-tls-en-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c 'cat > /tmp/tls-en-operator-seed.hex'
+
+              TOKEN=$(kubectl exec ledger-tls-en-0 -n $NAMESPACE -c ledger -- \
+                env KEY_ID="$KEY_ID" /bin/sh -c \
+                './ledgerctl auth generate-token --signing-key /tmp/tls-en-operator-seed.hex --key-id "$KEY_ID" --subject tls-enable-e2e --scopes ledger:read')
+
               kubectl exec ledger-tls-en-0 -n $NAMESPACE -c ledger -- \
-                /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+                env AUTH_TOKEN="$TOKEN" /bin/sh -c \
+                './ledgerctl ledgers list --server 127.0.0.1:8888 --tls-ca-cert /tls/ca.crt --auth-token "$AUTH_TOKEN"'
+
+              kubectl exec ledger-tls-en-0 -n $NAMESPACE -c ledger -- \
+                rm -f /tmp/tls-en-operator-seed.hex
             timeout: 30s
