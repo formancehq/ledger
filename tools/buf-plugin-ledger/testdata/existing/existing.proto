@@ -1,0 +1,22 @@
+syntax = "proto3";
+package common;
+
+// Existing types may have gaps and reservations; never renumber them to lint.
+message Transaction {
+  reserved 2;
+  reserved "removed";
+  string id = 1;
+  string label = 3;
+
+  // A new nested type is still checked even inside an existing parent.
+  message NewNested {
+    string id = 2;
+  }
+}
+
+enum ErrorReason {
+  reserved 1;
+  reserved "REMOVED";
+  ERROR_REASON_UNSPECIFIED = 0;
+  ERROR_REASON_OTHER = 2;
+}
