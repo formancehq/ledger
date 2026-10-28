@@ -49,6 +49,7 @@ func TestReconcileDebugBoxCreatesSuperuserCredentialAndPod(t *testing.T) {
 	require.Equal(t, "ledgerctl", pod.Spec.Containers[0].Name)
 	require.Equal(t, operatorCredentialsSecretName(debugBoxCredentialsName(cluster)), pod.Spec.Volumes[0].Secret.SecretName)
 	require.Contains(t, pod.Spec.Containers[0].Args[0], "/ledgerctl-wrapper/ledgerctl")
+	require.Contains(t, pod.Spec.Containers[0].Args[0], "--superuser")
 	require.Contains(t, envValue(pod.Spec.Containers[0].Env, "PATH"), "/ledgerctl-wrapper")
 	require.NotNil(t, volumeByName(pod.Spec.Volumes, "ledgerctl-wrapper").EmptyDir)
 }
