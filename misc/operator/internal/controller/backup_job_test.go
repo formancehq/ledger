@@ -95,7 +95,7 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	require.Contains(t, shell, "./ledgerctl 'store' 'backup'")
 	require.Contains(t, shell, `--server "ledger-ledger.ledger-v3.svc.cluster.local:8888"`)
 	require.Contains(t, shell, `--tls-ca-cert "$TLS_CA_CERT_FILE"`)
-	require.Contains(t, shell, `--auth-token "$CLUSTER_SECRET"`)
+	require.Contains(t, shell, `--auth-token "$OPERATOR_SECRET"`)
 	require.Contains(t, shell, "'--driver' 's3'")
 	require.Contains(t, shell, "'--s3-bucket' 'my-bucket'")
 	require.Contains(t, shell, "'--s3-region' 'eu-west-1'")
@@ -131,11 +131,12 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, podNs.ValueFrom)
 
-	clusterSecret, ok := envByName("CLUSTER_SECRET")
-	require.True(t, ok, "CLUSTER_SECRET must be injected when TLS is active")
-	require.NotNil(t, clusterSecret.ValueFrom)
-	require.NotNil(t, clusterSecret.ValueFrom.SecretKeyRef)
-	require.Equal(t, "ledger-ledger-cluster-secret", clusterSecret.ValueFrom.SecretKeyRef.Name)
+	operatorSecret, ok := envByName("OPERATOR_SECRET")
+	require.True(t, ok, "OPERATOR_SECRET must be injected when TLS is active")
+	require.NotNil(t, operatorSecret.ValueFrom)
+	require.NotNil(t, operatorSecret.ValueFrom.SecretKeyRef)
+	require.Equal(t, "ledger-ledger-cluster-secret", operatorSecret.ValueFrom.SecretKeyRef.Name)
+	require.Equal(t, operatorSecretKey, operatorSecret.ValueFrom.SecretKeyRef.Key)
 }
 
 func TestBuildBackupJob_DisabledTLS_NoClusterSecret(t *testing.T) {
@@ -157,8 +158,8 @@ func TestBuildBackupJob_DisabledTLS_NoClusterSecret(t *testing.T) {
 	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
 	require.NoError(t, err)
 	for _, e := range job.Spec.Template.Spec.Containers[0].Env {
-		require.NotEqual(t, "CLUSTER_SECRET", e.Name,
-			"CLUSTER_SECRET must not be injected when TLS is disabled — the operator deletes the Secret in that mode")
+		require.NotEqual(t, "OPERATOR_SECRET", e.Name,
+			"OPERATOR_SECRET must not be injected when TLS is disabled — the operator deletes the Secret in that mode")
 	}
 }
 
