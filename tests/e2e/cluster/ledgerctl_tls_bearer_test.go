@@ -27,17 +27,17 @@ import (
 )
 
 // Pins the expected behavior of a ledgerctl-style TLS client (no client cert,
-// cluster-secret bearer) against a tls-mode=required server with CAFile set
+// operator-secret bearer) against a tls-mode=required server with CAFile set
 // (mTLS opt-in) — the exact transport shape the operator-driven backup Job and
 // raft scale-down ledgerctl invocations use. The RPC must succeed; if a
 // regression ever makes this start failing with "error reading server preface",
 // we want to catch it in CI instead of in production.
 var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func() {
 	var (
-		certs      *testserver.TestCerts
-		lease      *testserver.NodeLease
-		ports      testserver.NodePorts
-		clusterTok = "test-cluster-secret-840bef"
+		certs       *testserver.TestCerts
+		lease       *testserver.NodeLease
+		ports       testserver.NodePorts
+		operatorTok = "test-operator-secret-840bef"
 	)
 
 	BeforeAll(func() {
@@ -73,7 +73,7 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 			testserver.WithTLSCACertFile(certs.CACertFile), // mTLS opt-in, matches operator setup
 			testservice.InstrumentationFunc(func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-				cfg.AppendArgs("--cluster-secret", clusterTok)
+				cfg.AppendArgs("--operator-secret", operatorTok)
 				return nil
 			}),
 		)
@@ -87,7 +87,7 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 		})
 	})
 
-	It("connects with TLS + cluster-secret bearer and gets a non-preface RPC error", func() {
+	It("connects with TLS + operator-secret bearer and gets a successful RPC", func() {
 		caPEM, err := os.ReadFile(certs.CACertFile)
 		Expect(err).To(Succeed())
 		pool := x509.NewCertPool()
@@ -107,7 +107,7 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+clusterTok)
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+operatorTok)
 
 		c := clusterpb.NewClusterServiceClient(conn)
 		Eventually(func(g Gomega) {
