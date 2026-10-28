@@ -181,7 +181,7 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	replacement.Spec.Replicas = new(int32(2))
 	replacement.Status.ReadyReplicas, replacement.Status.UpdatedReplicas = 2, 2
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
-	require.NoError(t, err)
+	require.ErrorContains(t, err, "restore the expected count")
 	require.False(t, proceed)
 	require.Equal(t, "Verifying", cluster.Status.Upgrade.Phase)
 	require.True(t, maintenance)

@@ -271,6 +271,9 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if err != nil || tag != state.Target {
 			return false, ctrl.Result{}, fmt.Errorf("replacement StatefulSet has unexpected image: %w (%s)", err, tag)
 		}
+		if err := verifyReplacementReplicaCount(sts, state); err != nil {
+			return false, ctrl.Result{}, err
+		}
 		if !replacementConverged(sts, state) {
 			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 		}
@@ -282,6 +285,9 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 	case "Unblocking":
 		if sts == nil {
 			return r.resumeMissingUpgradeReplacement(ctx, ledger)
+		}
+		if err := verifyReplacementReplicaCount(sts, state); err != nil {
+			return false, ctrl.Result{}, err
 		}
 		if !replacementConverged(sts, state) {
 			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
@@ -305,6 +311,14 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 
 func replacementConverged(sts *appsv1.StatefulSet, state *ledgerv1alpha1.ClusterUpgradeStatus) bool {
 	return sts != nil && sts.Spec.Replicas != nil && *sts.Spec.Replicas == state.ExpectedReplicas && rolloutConverged(sts)
+}
+
+func verifyReplacementReplicaCount(sts *appsv1.StatefulSet, state *ledgerv1alpha1.ClusterUpgradeStatus) error {
+	if sts.Spec.Replicas == nil || *sts.Spec.Replicas != state.ExpectedReplicas {
+		return fmt.Errorf("replacement StatefulSet replica count differs from the pinned upgrade count %d; restore the expected count before retrying", state.ExpectedReplicas)
+	}
+
+	return nil
 }
 
 func (r *ClusterReconciler) resumeMissingUpgradeReplacement(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (bool, ctrl.Result, error) {

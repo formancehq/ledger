@@ -87,7 +87,9 @@ operator waits for its Pods to terminate, verifies the original PVC/PV identitie
 and recreates it while keeping maintenance active.
 
 Keep the requested target tag, workload spec and replica count fixed until
-`status.upgrade` clears. An edit during the operation is rejected. If a Pod will not terminate, diagnose its
+`status.upgrade` clears. An edit during the operation is rejected. A direct
+replica-count edit to the replacement StatefulSet reports `Upgrade=Blocked`
+until the pinned count is restored. If a Pod will not terminate, diagnose its
 node and storage attachment, then let Kubernetes finish termination; the
 operator keeps the cluster unavailable. Verify the replacement is fully ready,
 then check cluster status, representative reads and writes, audit verification
