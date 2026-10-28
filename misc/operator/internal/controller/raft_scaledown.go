@@ -474,9 +474,9 @@ func isAlreadyLeader(stderr string) bool {
 
 // deleteScaledDownPVCs deletes PVCs for pod ordinals that no longer exist after
 // a scale-down. Only PVC-backed volumes are considered; hostPath volumes have
-// no PVC to clean up. This must be called after the StatefulSet replica update
-// requests termination of the removed pods; that write does not wait for Pod
-// termination to complete.
+// no PVC to clean up. Call only for an explicit WhenScaled=Delete policy after
+// persisting the replica reduction. The update requests termination; Kubernetes
+// PVC protection, rather than that update, gates removal of in-use claims.
 func deleteScaledDownPVCs(ctx context.Context, clientset kubernetes.Interface,
 	namespace, stsName string, previousReplicas, currentReplicas int32,
 	volumeNames []string,

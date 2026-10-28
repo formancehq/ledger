@@ -211,9 +211,24 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 				desired.Template = preserveExistingStorageWiring(existing.Spec.Template, desired.Template)
 			} else {
 				logger.Info("VolumeClaimTemplates changed, recreating StatefulSet with orphan propagation")
-				// Pinned to the inspected UID: a StatefulSet replaced under the
-				// name since the ownership check above is never deleted.
-				if err := deleteInspected(ctx, r.Client, existing, client.PropagationPolicy(metav1.DeletePropagationOrphan)); err != nil {
+				// A cached name is not deletion authority. Revalidate the exact
+				// owned incarnation through the API, then fence the remaining
+				// read/delete race with both identity and version preconditions.
+				if existing.UID == "" || existing.ResourceVersion == "" || !metav1.IsControlledBy(existing, ledger) {
+					return ctrl.Result{}, fmt.Errorf("StatefulSet %s has no owned deletion identity", name)
+				}
+				live := &appsv1.StatefulSet{}
+				if err := r.storageAPIReader().Get(ctx, client.ObjectKeyFromObject(existing), live); err != nil {
+					return ctrl.Result{}, fmt.Errorf("reading StatefulSet before layout deletion: %w", err)
+				}
+				if live.UID != existing.UID || live.ResourceVersion != existing.ResourceVersion || !metav1.IsControlledBy(live, ledger) || !live.DeletionTimestamp.IsZero() {
+					return ctrl.Result{}, fmt.Errorf("StatefulSet %s changed before layout deletion", name)
+				}
+				orphan := metav1.DeletePropagationOrphan
+				if err := r.Delete(ctx, live, &client.DeleteOptions{
+					PropagationPolicy: &orphan,
+					Preconditions:     &metav1.Preconditions{UID: &live.UID, ResourceVersion: &live.ResourceVersion},
+				}); err != nil {
 					return ctrl.Result{}, fmt.Errorf("deleting StatefulSet for VolumeClaimTemplate change: %w", err)
 				}
 				// Returning here requeues via the owned-StatefulSet delete event — the next
