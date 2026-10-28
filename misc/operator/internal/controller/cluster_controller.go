@@ -399,6 +399,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 			Message:            "waiting for the operator-managed Credentials keypair to be distributed",
 			ObservedGeneration: ledger.Generation,
 		})
+
 		return ctrl.Result{RequeueAfter: authKeysPendingRequeueInterval}, nil
 	}
 	meta.RemoveStatusCondition(&ledger.Status.Conditions, "OperatorCredentialsPending")
