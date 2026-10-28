@@ -459,9 +459,11 @@ func callsImportedFunction(
 // bubble's own t, which runs before the bubble ends. Any other callback
 // argument may be retained by its callee, so it counts as escaping.
 func escapingFuncLits(bubble *ast.FuncLit) []ast.Node {
-	bubbleT := ""
+	// Compare resolved objects, not names: a nested block may shadow the
+	// bubble's t with the enclosing test, whose cleanups run after the bubble.
+	var bubbleT *ast.Ident
 	if params := bubble.Type.Params.List; len(params) == 1 && len(params[0].Names) == 1 {
-		bubbleT = params[0].Names[0].Name
+		bubbleT = params[0].Names[0]
 	}
 	runsInBubble := func(literal *ast.FuncLit, parent ast.Node) bool {
 		call, ok := parent.(*ast.CallExpr)
@@ -477,7 +479,7 @@ func escapingFuncLits(bubble *ast.FuncLit) []ast.Node {
 		}
 		receiver, ok := selector.X.(*ast.Ident)
 
-		return ok && bubbleT != "" && bubbleT != "_" && receiver.Name == bubbleT
+		return ok && bubbleT != nil && bubbleT.Obj != nil && receiver.Obj == bubbleT.Obj
 	}
 
 	var escaping []ast.Node

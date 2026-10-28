@@ -55,6 +55,10 @@ func TestExample(t *testing.T) {
 		escaped = func() { time.Sleep(1) }
 		register(func() { time.Sleep(1) })
 		outer.Cleanup(func() { time.Sleep(1) })
+		{
+			t := outer
+			t.Cleanup(func() { time.Sleep(1) })
+		}
 	})
 	escaped()
 	time.Sleep(1)
@@ -72,7 +76,8 @@ func TestExample(t *testing.T) {
 		24, // a stored closure may run after the bubble returns
 		25, // a callee may retain its callback and run it after the bubble
 		26, // the outer t runs its cleanups after the bubble returns
-		29, // a sleep after the bubble returns uses the real clock
+		29, // a t shadowed by the outer test is not the bubble's t
+		33, // a sleep after the bubble returns uses the real clock
 	}, lines)
 }
 
