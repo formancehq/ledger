@@ -167,6 +167,38 @@ func TestReconcileDebugBoxIgnoresKubernetesPodDefaults(t *testing.T) {
 	assert.Equal(t, corev1.DefaultSchedulerName, stable.Spec.SchedulerName)
 }
 
+func TestReconcileDebugBoxReplacesPodWithUnexpectedOwner(t *testing.T) {
+	scheme := authKeysScheme(t)
+	cluster := authEnabledCluster("ledger", "tenant-a", nil)
+	cluster.Spec.DebugBox = &ledgerv1alpha1.DebugBoxSpec{Enabled: true}
+	r := &ClusterReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster).Build(),
+		Scheme: scheme,
+	}
+
+	_, err := r.reconcileDebugBox(context.Background(), cluster)
+	require.NoError(t, err)
+	credentials := &ledgerv1alpha1.Credentials{}
+	require.NoError(t, r.Get(context.Background(), types.NamespacedName{Name: debugBoxCredentialsName(cluster)}, credentials))
+	credentials.Status.Phase = "Ready"
+	credentials.Status.DistributedSecretRefs = []ledgerv1alpha1.SecretReference{{
+		Namespace: cluster.Namespace,
+		Name:      operatorCredentialsSecretName(debugBoxCredentialsName(cluster)),
+	}}
+	require.NoError(t, r.Update(context.Background(), credentials))
+	_, err = r.reconcileDebugBox(context.Background(), cluster)
+	require.NoError(t, err)
+
+	pod := &corev1.Pod{}
+	require.NoError(t, r.Get(context.Background(), types.NamespacedName{Name: debugBoxPodName(cluster), Namespace: cluster.Namespace}, pod))
+	pod.OwnerReferences = []metav1.OwnerReference{{UID: types.UID("old-cluster")}}
+	require.NoError(t, r.Update(context.Background(), pod))
+
+	_, err = r.reconcileDebugBox(context.Background(), cluster)
+	require.NoError(t, err)
+	require.Error(t, r.Get(context.Background(), types.NamespacedName{Name: debugBoxPodName(cluster), Namespace: cluster.Namespace}, &corev1.Pod{}))
+}
+
 func TestReconcileDebugBoxSupportsNoAuth(t *testing.T) {
 	scheme := authKeysScheme(t)
 	authEnabled := false
