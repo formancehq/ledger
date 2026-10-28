@@ -37,6 +37,7 @@ type AuthFlagConfig struct {
 	// operator-controlled ceiling. 0 leaves them unbounded; the default (set in
 	// cmd/server/server.go) is 10s.
 	OIDCDiscoveryTimeout time.Duration
+	OperatorSecret       string
 }
 
 // TrustedIssuers returns the singular Issuer followed by Issuers, without
@@ -273,6 +274,9 @@ func (c Config) redactedCopy() configAlias {
 	if redacted.ClusterSecret != "" {
 		redacted.ClusterSecret = RedactedSecretPlaceholder
 	}
+	if redacted.AuthConfig.OperatorSecret != "" {
+		redacted.AuthConfig.OperatorSecret = RedactedSecretPlaceholder
+	}
 
 	// PoolConfig.AuthToken carries the inter-node bearer token (set to the
 	// cluster secret); redact it too even though it is populated after startup.
@@ -312,6 +316,9 @@ func (c Config) Validate() error {
 	// Reject cluster-secret without TLS — the secret would be sent in plaintext.
 	if c.ClusterSecret != "" && c.TLSConfig.Mode == TLSModeDisabled {
 		return errors.New("--cluster-secret requires TLS (set --tls-mode to optional or required and provide --tls-cert-file / --tls-key-file); the secret would be sent in plaintext otherwise")
+	}
+	if c.AuthConfig.OperatorSecret != "" && c.TLSConfig.Mode == TLSModeDisabled {
+		return errors.New("--operator-secret requires TLS; the secret would be sent in plaintext otherwise")
 	}
 
 	if err := c.validateAuthConfig(); err != nil {

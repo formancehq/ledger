@@ -11,9 +11,23 @@ import (
 
 type (
 	clusterInternalKey   struct{}
+	peerForwardKey       struct{}
 	forwardedSnapshotKey struct{}
 	systemActorKey       struct{}
 )
+
+// WithPeerForward marks the only service-API request that may use the
+// cluster secret: a follower forwarding an Apply to the leader. It is set by
+// the server interceptor after validating the method and metadata, never by
+// application handlers.
+func WithPeerForward(ctx context.Context, value bool) context.Context {
+	return context.WithValue(ctx, peerForwardKey{}, value)
+}
+
+func IsPeerForward(ctx context.Context) bool {
+	v, _ := ctx.Value(peerForwardKey{}).(bool)
+	return v
+}
 
 // WithClusterInternal marks the context as belonging to a request that
 // authenticated via the cluster-secret (peer-to-peer trust boundary).
