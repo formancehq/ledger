@@ -21,9 +21,10 @@ The current rules are:
    directly to `synctest.Test`, where it advances the bubble's fake clock. A
    helper function called from a bubble is still flagged, because the checker
    cannot prove that the helper runs inside a bubble. A nested function literal
-   is exempt only when it is invoked in place, as the function or an argument
-   of a call (including `go`, `defer`, and `t.Cleanup`). A literal that is
-   assigned, returned, or stored is flagged, because it may run after the
+   is exempt only when it is invoked in place (directly or through `go` or
+   `defer`) or registered with `Cleanup` on the bubble's own `t`, whose
+   cleanups run before the bubble ends. A literal that is assigned, returned,
+   or passed to any other function is flagged, because it may run after the
    bubble returns.
 2. Production Go files under the deterministic FSM boundary must not call
    `os.Getenv`, `os.LookupEnv`, or `os.Environ`. Node-local configuration may

@@ -41,7 +41,10 @@ func sleepHelper() {
 	time.Sleep(1)
 }
 
+func register(callback func()) {}
+
 func TestExample(t *testing.T) {
+	outer := t
 	var escaped func()
 	bubble.Test(t, func(t *testing.T) {
 		time.Sleep(1)
@@ -50,6 +53,8 @@ func TestExample(t *testing.T) {
 		t.Cleanup(func() { time.Sleep(1) })
 		sleepHelper()
 		escaped = func() { time.Sleep(1) }
+		register(func() { time.Sleep(1) })
+		outer.Cleanup(func() { time.Sleep(1) })
 	})
 	escaped()
 	time.Sleep(1)
@@ -58,10 +63,17 @@ func TestExample(t *testing.T) {
 
 	findings, err := checkGoSource("sample_test.go", source)
 	require.NoError(t, err)
-	require.Len(t, findings, 3)
-	require.Equal(t, 10, findings[0].line, "a helper is not provably inside a bubble")
-	require.Equal(t, 21, findings[1].line, "a stored closure may run after the bubble returns")
-	require.Equal(t, 24, findings[2].line, "a sleep after the bubble returns uses the real clock")
+	lines := make([]int, 0, len(findings))
+	for _, finding := range findings {
+		lines = append(lines, finding.line)
+	}
+	require.Equal(t, []int{
+		10, // a helper is not provably inside a bubble
+		24, // a stored closure may run after the bubble returns
+		25, // a callee may retain its callback and run it after the bubble
+		26, // the outer t runs its cleanups after the bubble returns
+		29, // a sleep after the bubble returns uses the real clock
+	}, lines)
 }
 
 func TestCheckGoSourceDetectsDotImportedEnvironmentReads(t *testing.T) {

@@ -453,10 +453,33 @@ func callsImportedFunction(
 	}
 }
 
-// escapingFuncLits returns the function literals nested in a bubble that are
-// not invoked in place: a literal that is a call's function or argument (which
-// covers go and defer statements) stays in the bubble, any other may escape it.
+// escapingFuncLits returns the function literals nested in a bubble that may
+// run after it returns. A literal stays in the bubble only when it is invoked
+// in place (including through go and defer) or registered with Cleanup on the
+// bubble's own t, which runs before the bubble ends. Any other callback
+// argument may be retained by its callee, so it counts as escaping.
 func escapingFuncLits(bubble *ast.FuncLit) []ast.Node {
+	bubbleT := ""
+	if params := bubble.Type.Params.List; len(params) == 1 && len(params[0].Names) == 1 {
+		bubbleT = params[0].Names[0].Name
+	}
+	runsInBubble := func(literal *ast.FuncLit, parent ast.Node) bool {
+		call, ok := parent.(*ast.CallExpr)
+		if !ok {
+			return false
+		}
+		if call.Fun == literal {
+			return true
+		}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != "Cleanup" {
+			return false
+		}
+		receiver, ok := selector.X.(*ast.Ident)
+
+		return ok && bubbleT != "" && bubbleT != "_" && receiver.Name == bubbleT
+	}
+
 	var escaping []ast.Node
 	stack := []ast.Node{bubble}
 	ast.Inspect(bubble.Body, func(node ast.Node) bool {
@@ -465,10 +488,8 @@ func escapingFuncLits(bubble *ast.FuncLit) []ast.Node {
 
 			return true
 		}
-		if literal, ok := node.(*ast.FuncLit); ok {
-			if _, called := stack[len(stack)-1].(*ast.CallExpr); !called {
-				escaping = append(escaping, literal)
-			}
+		if literal, ok := node.(*ast.FuncLit); ok && !runsInBubble(literal, stack[len(stack)-1]) {
+			escaping = append(escaping, literal)
 		}
 		stack = append(stack, node)
 
