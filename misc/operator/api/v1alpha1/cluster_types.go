@@ -449,10 +449,6 @@ type AuthorizationConfig struct {
 	// +optional
 	AnonymousScopes []string `json:"anonymousScopes,omitempty"`
 
-	// OperatorCredentialsRef names a cluster-scoped Credentials resource whose
-	// Ed25519 seed is used by operator-issued ledgerctl JWTs.
-	// +optional
-	OperatorCredentialsRef string `json:"operatorCredentialsRef,omitempty"`
 }
 
 // PebbleConfig holds Pebble storage engine configuration.
