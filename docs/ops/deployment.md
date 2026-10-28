@@ -409,13 +409,16 @@ The injected `LEDGERCTL_SERVER` uses the pod DNS name covered by the TLS
 certificate rather than `localhost` or `127.0.0.1`. For TLS clusters the
 operator injects `LEDGERCTL_TLS_CA_CERT` when `tls.caSecretKey` is configured;
 for a plaintext cluster it injects `LEDGERCTL_INSECURE=true`. The regular
-Ledger pods do not receive a long-lived `LEDGERCTL_AUTH_TOKEN`, and an
-interactive shell in an authenticated Ledger pod cannot mint a service token
-from its operator signing inputs. Operator maintenance commands generate
-short-lived tokens only for the specific commands they execute. For interactive
-authenticated troubleshooting, use the opt-in debug box described in
+Ledger pods do not receive a long-lived `LEDGERCTL_AUTH_TOKEN`. When
+authentication is enabled, however, they mount the operator signing seed so
+operator maintenance commands can generate short-lived tokens with the
+operator credential's scoped Ledger and cluster-admin permissions. Anyone with
+`exec` access to such a pod can therefore use that mounted seed to mint tokens
+with those same scopes. For interactive authenticated troubleshooting, use the
+opt-in debug box described in
 [Authentication](./authentication.md#interactive-debug-box), which has a
-dedicated short-lived superuser-token wrapper.
+dedicated short-lived superuser-token wrapper; `exec` access to that box exposes
+the superuser credential by design.
 These values follow TLS mode transitions through StatefulSet rollouts. If
 `headlessService.enabled` is `false`, `spec.extraEnv` must override
 `LEDGERCTL_SERVER` with a resolvable address. `spec.extraEnv` can also override
