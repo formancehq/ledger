@@ -16,7 +16,6 @@ import (
 )
 
 const clusterSecretKey = "cluster-secret"
-const operatorSecretKey = "operator-secret"
 
 // reconcileClusterSecret ensures a Secret exists with a random cluster
 // secret for inter-node authentication. The caller is expected to invoke
@@ -50,14 +49,7 @@ func (r *ClusterReconciler) reconcileClusterSecret(ctx context.Context, ledger *
 			}
 			secret.Data[clusterSecretKey] = []byte(token)
 		}
-		if len(secret.Data[operatorSecretKey]) == 0 {
-			operatorToken, err := generateRandomToken(32)
-			if err != nil {
-				return fmt.Errorf("generating operator secret: %w", err)
-			}
-			secret.Data[operatorSecretKey] = []byte(operatorToken)
-		}
-
+<<<<<<< HEAD
 		return setOwnedControllerReference(ledger, secret, r.Scheme, "Secret")
 	})
 

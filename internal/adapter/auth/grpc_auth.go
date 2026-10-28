@@ -33,7 +33,6 @@ type AuthConfig struct {
 	Ed25519AllowedScopes map[string][]string // keyID -> allowed scopes (nil = no Ed25519 auth)
 	Ed25519SuperuserKeys map[string]bool     // keyID -> true if the key can emit superuser-mode tokens
 	ClusterSecret        string              // shared secret for inter-node auth bypass (empty = disabled)
-	OperatorSecret       string              // distinct operator credential (empty = disabled)
 }
 
 // EvaluateGRPCCredentials validates the JWT from gRPC metadata and stores an
@@ -93,15 +92,6 @@ func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Conte
 		ctx = WithExpandedScopes(ctx, effective)
 		ctx = WithAuthPresented(ctx, true)
 		ctx = WithClusterInternal(ctx, true)
-
-		return withAuthenticationState(ctx, true, true, effective), nil
-	}
-
-	if cfg.OperatorSecret != "" && len(token) == len(cfg.OperatorSecret) &&
-		subtle.ConstantTimeCompare([]byte(token), []byte(cfg.OperatorSecret)) == 1 {
-		effective := allScopes()
-		ctx = WithExpandedScopes(ctx, effective)
-		ctx = WithAuthPresented(ctx, true)
 
 		return withAuthenticationState(ctx, true, true, effective), nil
 	}
