@@ -3730,6 +3730,9 @@ Displays each query's name, target, and filter in human-readable DSL format.
 Update the filter of an existing prepared query. Omit `--filter` to remove the
 stored filter and make the query match all entities in its target. Supplying an
 empty or whitespace-only `--filter` is invalid.
+For a LOGS query, `--filter 'id == 7'` or its structured JSON equivalent
+selects log ID 7. The command reads the stored query target when the new filter
+uses `id`; other filters keep the existing direct update path.
 
 ```bash
 ledgerctl queries update <name> --ledger <ledger-name> [--filter "<new-filter>"] [flags]

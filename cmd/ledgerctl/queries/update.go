@@ -73,16 +73,18 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
-	// The update carries only the new filter, not the target — the target is
-	// immutable and lives on the stored prepared query (the FSM re-validates the
-	// filter against it). DecodeDualFormatStructuralOnly is the shared "target not
-	// known here" entry point: it resolves bare fields with a non-audit target
-	// (prepared queries are never audit) and defers the per-target validity gate
-	// to the server (EN-1549). Every non-audit target resolves every bare field
-	// identically (TestDecodeDualFormatStructuralOnly_NonAuditResolutionIsTargetIndependent),
-	// so the hard-coded TRANSACTIONS target never changes the decoded filter.
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
+	if filterexpr.HasTransactionIDCondition(filter) {
+		queries, listErr := actions.ListPreparedQueries(ctx, client, ledgerName)
+		if listErr != nil {
+			return cmdutil.FormatGRPCError("failed to read prepared query target", listErr)
+		}
+		filter, err = resolveUpdateIDFilter([]byte(filterExpr), queries, name)
+		if err != nil {
+			return err
+		}
+	}
 
 	applyReq, err := cmdutil.BuildApplyRequest(cmd, actions.UpdatePreparedQueryAction(ledgerName, name, filter))
 	if err != nil {
@@ -101,4 +103,22 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	pterm.Success.Printfln("Prepared query %q updated", name)
 
 	return nil
+}
+
+// resolveUpdateIDFilter re-decodes public id against the immutable target of
+// the stored query. The server still validates that target on apply.
+func resolveUpdateIDFilter(raw []byte, queries []*commonpb.PreparedQuery, name string) (*commonpb.QueryFilter, error) {
+	for _, query := range queries {
+		if query.GetName() != name {
+			continue
+		}
+		filter, err := filterexpr.DecodeDualFormatStructuralOnly(raw, query.GetTarget())
+		if err != nil {
+			return nil, fmt.Errorf("invalid filter expression: %w", err)
+		}
+
+		return filter, nil
+	}
+
+	return nil, fmt.Errorf("prepared query %q not found", name)
 }
