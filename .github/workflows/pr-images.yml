@@ -80,7 +80,6 @@ jobs:
         env:
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
       - name: Summarize image digests
-        id: digests
         run: |
           image='${{ steps.tag.outputs.image }}'
           operator_image='${{ steps.tag.outputs.operator_image }}'
@@ -88,7 +87,6 @@ jobs:
           operator_digest=$(docker buildx imagetools inspect "$operator_image" --format '{{ .Manifest.Digest }}')
           test -n "$digest"
           test -n "$operator_digest"
-          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
           {
             echo "## PR docker images"
             echo ""
@@ -97,17 +95,3 @@ jobs:
             echo "| \`${image}\` | \`${digest}\` |"
             echo "| \`${operator_image}\` | \`${operator_digest}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Record immutable benchmark image identity
-        run: nix develop .#ci --command just perf-ci image-metadata
-        env:
-          PERF_SHA: ${{ github.event.pull_request.head.sha }}
-          PERF_PR: ${{ github.event.pull_request.number }}
-          PERF_IMAGE: ${{ steps.tag.outputs.image }}
-          PERF_DIGEST: ${{ steps.digests.outputs.digest }}
-      - name: Publish benchmark image identity
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: perf-image-${{ github.run_attempt }}
-          path: build/perf-image/image-metadata.json
-          retention-days: 7
-          if-no-files-found: error
