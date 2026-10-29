@@ -37,7 +37,15 @@ substrings.
 Only after all removed ordinals satisfy that postcondition does the operator
 persist the reduced StatefulSet replica count and issue PVC deletions. The
 StatefulSet update requests Pod termination; it does not wait for termination to
-finish. If a membership check or removal fails, replicas and PVCs are retained,
+finish. Before removing membership, the operator records the previous replica
+count in a StatefulSet annotation. A failed membership removal leaves that
+annotation and the old replica count in place. Once the lower replica count is
+persisted, each reconciliation uses the annotation and the StatefulSet's claim
+templates to retry deletion of removed ordinals, including after an operator
+restart. The annotation is cleared only after every deletion is accepted or its
+PVC is already absent. A failed PVC deletion leaves the lower replica count and
+annotation in place; cleanup runs before any later scale-up can reuse the old
+claims. If a membership check or removal fails, replicas and PVCs are retained,
 although the template update and earlier membership removals may already have
 succeeded. A later reconciliation checks membership again and skips ordinals
 already removed.

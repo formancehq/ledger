@@ -113,6 +113,19 @@ as the availability/data oracle in the TLS-disable Chainsaw fixture. Fake
 clients establish API-write ordering, not StatefulSet adoption, admission,
 rolling-update behavior or real peer/CLI connectivity; disclose those limits.
 
+## Scale-down PVC cleanup boundary
+
+The StatefulSet annotation recording the previous replica count is written
+before Raft membership removal. A failed membership step leaves the old
+StatefulSet replica count intact. After the lower replica count is persisted,
+the annotation and the StatefulSet claim templates identify removed-ordinal
+PVCs on a fresh reconcile. Cleanup must run before a later scale-up can reuse
+them. A failed deletion or marker-clear write leaves retryable state; a
+successful deletion of an already-absent PVC is idempotent. Verify the marker
+survives a failed DELETE after the replica write and disappears only after all
+removed PVC deletions are accepted. Distinguish API acceptance from eventual
+Kubernetes garbage collection and check the actual PVC identities after retry.
+
 ## Sequential RC and storage transition boundary
 
 For an RC target, trace the running image rather than assuming the desired CR
