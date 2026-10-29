@@ -388,6 +388,8 @@ type Node struct {
 	// rejects releases its slot; an accepted marker keeps the gate closed while
 	// consensus and FSM application are still pending.
 	drainOutstanding uint64 // guarded by proposalAdmissionMu
+	drainReleaseSeen uint64 // guarded by proposalAdmissionMu
+	drainGeneration  uint64 // guarded by proposalAdmissionMu
 	// membership owns the Raft peer-address state (Pebble + in-memory
 	// cache) and the OnSnapshotInstalled / WriteConfChange callbacks
 	// wired into Applier and Machine. EN-1413.
@@ -2276,7 +2278,12 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 	if err := node.terminalError(); err != nil {
 		return nil, err
 	}
-	if !proposal.drainMarker {
+	if released := node.fsm.DrainReleaseIndex(); released > node.drainReleaseSeen {
+		node.drainReleaseSeen = released
+		node.drainGeneration++
+		node.drainOutstanding = 0
+	}
+	if !proposal.drainMarker && !proposal.releaseMarker {
 		if _, index := node.fsm.Drain(); index != 0 || node.drainOutstanding != 0 {
 			return nil, domain.ErrMaintenanceMode
 		}
@@ -2294,7 +2301,12 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 	// term has been APPLIED locally, which is unambiguous evidence the
 	// proposal was truncated.
 	proposalTerm := node.lastObservedTerm.Load()
-	node.applier.StoreFuture(proposal.commandID, proposalTerm, fsmFuture)
+	if proposal.drainMarker {
+		generation := node.drainGeneration
+		node.applier.StoreFutureWithDrop(proposal.commandID, proposalTerm, fsmFuture, func() { node.releaseDroppedDrain(generation) })
+	} else {
+		node.applier.StoreFuture(proposal.commandID, proposalTerm, fsmFuture)
+	}
 
 	// Pre-increment before the channel send. All callers hold the tracker's
 	// mutex, so this is serialized with other proposals and with Decrement.
@@ -2325,18 +2337,15 @@ func (node *Node) rejectQueuedProposal(proposal *Proposal, err error) {
 	node.indexTracker.Decrement(1)
 	node.applier.ResolveDroppedFuture(proposal.commandID, err)
 	proposal.Resolve(nil, err)
-	if proposal.drainMarker {
-		node.releaseDroppedDrain()
-	}
 }
 
 // releaseDroppedDrain runs only when a marker was rejected before append or
 // definitively truncated by a later term. A lost response is not evidence
 // that the cutoff was not committed, so it retains its slot.
-func (node *Node) releaseDroppedDrain() {
+func (node *Node) releaseDroppedDrain(generation uint64) {
 	node.proposalAdmissionMu.Lock()
 	defer node.proposalAdmissionMu.Unlock()
-	if node.drainOutstanding > 0 {
+	if generation == node.drainGeneration && node.drainOutstanding > 0 {
 		node.drainOutstanding--
 	}
 }
@@ -2363,9 +2372,6 @@ func (node *Node) handleProposal(p *Proposal) {
 		// it immediately so the caller's fsmFuture.Wait() unblocks with the
 		// drop error.
 		node.applier.ResolveDroppedFuture(p.commandID, err)
-		if p.drainMarker {
-			node.releaseDroppedDrain()
-		}
 	}
 	p.Resolve(nil, err)
 }

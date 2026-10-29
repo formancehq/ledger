@@ -23,9 +23,14 @@ service ClusterService {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
   }
 
+  // EndDrain reopens admission through a Raft-ordered release of the active epoch.
+  rpc EndDrain(EndDrainRequest) returns (EndDrainResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
+
   // GetDrainStatus reads only the responding node's local cursor. When its
-  // nonzero drain index is at or below last_persisted_index, the response
-  // follows a Pebble WAL fsync and certifies that cursor as durable.
+  // active drain index or last release index is nonzero and covered by
+  // last_persisted_index, the response follows a Pebble WAL fsync.
   rpc GetDrainStatus(GetDrainStatusRequest) returns (DrainStatus) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
   }
@@ -127,6 +132,15 @@ message BeginDrainResponse {
   repeated uint64 members = 2;
 }
 
+message EndDrainRequest {
+  string epoch = 1; // Must match the active drain epoch.
+}
+
+message EndDrainResponse {
+  fixed64 release_index = 1;
+  repeated uint64 members = 2;
+}
+
 message GetDrainStatusRequest {}
 
 message DrainStatus {
@@ -136,6 +150,8 @@ message DrainStatus {
   fixed64 drain_index = 4;
   fixed64 last_persisted_index = 5;
   string sync_status = 6;
+  fixed64 release_index = 7; // Durable only when covered by last_persisted_index in this response.
+  bool supports_release = 8; // Required before proposing an EndDrain marker.
 }
 
 // ============================================================================

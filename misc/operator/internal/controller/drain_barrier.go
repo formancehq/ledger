@@ -12,6 +12,8 @@ type drainNodeStatus struct {
 	NodeID             uint64
 	DrainEpoch         string
 	DrainIndex         uint64
+	ReleaseIndex       uint64
+	SupportsRelease    bool
 	LastPersistedIndex uint64
 	SyncStatus         string
 }
@@ -22,8 +24,20 @@ type drainDecision struct {
 	Members []uint64
 }
 
+type drainReleaseDecision struct {
+	Epoch   string
+	Index   uint64
+	Members []uint64
+}
+
 type drainCluster interface {
 	BeginDrain(context.Context, string) (drainDecision, error)
+	CurrentDrain(context.Context) (drainDecision, error)
+	NodeStatus(context.Context, uint64) (drainNodeStatus, error)
+}
+
+type drainReleaseCluster interface {
+	EndDrain(context.Context, string) (drainReleaseDecision, error)
 	CurrentDrain(context.Context) (drainDecision, error)
 	NodeStatus(context.Context, uint64) (drainNodeStatus, error)
 }
@@ -56,6 +70,42 @@ func ensureDrain(ctx context.Context, cluster drainCluster, epoch string) (bool,
 		}
 		if status.NodeID != id || status.DrainEpoch != epoch || status.DrainIndex != decision.Index {
 			return false, fmt.Errorf("node %d has not applied the expected drain marker", id)
+		}
+		if status.SyncStatus != "normal" || status.LastPersistedIndex < decision.Index {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+// ensureDrainReleased waits for every original member to durably apply the
+// release marker before the operator reports that admission is open again.
+func ensureDrainReleased(ctx context.Context, cluster drainReleaseCluster, epoch string) (bool, error) {
+	if epoch == "" {
+		return false, errors.New("drain epoch is required")
+	}
+	decision, err := cluster.EndDrain(ctx, epoch)
+	if err != nil {
+		return false, fmt.Errorf("ending drain: %w", err)
+	}
+	if err := validateDrainDecision(drainDecision(decision), epoch); err != nil {
+		return false, fmt.Errorf("invalid drain release decision: %w", err)
+	}
+	current, err := cluster.CurrentDrain(ctx)
+	if err != nil {
+		return false, fmt.Errorf("reading current membership after drain release: %w", err)
+	}
+	if current.Epoch != "" || current.Index != 0 || !sameMembers(current.Members, decision.Members) {
+		return false, errors.New("drain release or cluster membership changed")
+	}
+	for _, id := range decision.Members {
+		status, err := cluster.NodeStatus(ctx, id)
+		if err != nil {
+			return false, fmt.Errorf("reading release status of node %d: %w", id, err)
+		}
+		if status.NodeID != id || !status.SupportsRelease || status.DrainEpoch != "" || status.DrainIndex != 0 || status.ReleaseIndex != decision.Index {
+			return false, fmt.Errorf("node %d has not applied the expected drain release", id)
 		}
 		if status.SyncStatus != "normal" || status.LastPersistedIndex < decision.Index {
 			return false, nil

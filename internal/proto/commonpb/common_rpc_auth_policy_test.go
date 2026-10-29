@@ -74,6 +74,7 @@ func expectedFixedRPCAuthPolicies() map[string]commonpb.AuthScope {
 		"/cluster.ClusterService/AddLearner":                 commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
 		"/cluster.ClusterService/Backup":                     commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
 		"/cluster.ClusterService/BeginDrain":                 commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
+		"/cluster.ClusterService/EndDrain":                   commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
 		"/cluster.ClusterService/CompactPrimary":             commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
 		"/cluster.ClusterService/CompactSecondary":           commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
 		"/cluster.ClusterService/CreateCheckpoint":           commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,

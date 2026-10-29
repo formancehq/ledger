@@ -29,8 +29,8 @@ type FSMState struct {
 	LastAppliedIndex     uint64
 	LastAppliedTimestamp uint64
 	SnapshotIndex        uint64
-	// DrainState is the first applied shutdown marker. It is monotone and
-	// recovered from the main store before admission can reopen after restart.
+	// DrainState is the active or most recently released shutdown epoch. It
+	// is recovered from the main store before admission can reopen after restart.
 	DrainState *raftcmdpb.DrainState
 
 	// LastIdempotencyEvictionCutoff is the monotonic high-water scan horizon

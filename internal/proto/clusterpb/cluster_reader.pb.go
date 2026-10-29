@@ -215,6 +215,145 @@ func NewBeginDrainResponseListReader(s []*BeginDrainResponse) BeginDrainResponse
 	return beginDrainResponseListReadonly(s)
 }
 
+// EndDrainRequestReader provides read-only access to EndDrainRequest.
+// Call Mutate() to obtain a mutable clone.
+type EndDrainRequestReader interface {
+	GetEpoch() string
+	Mutate() *EndDrainRequest
+}
+
+type endDrainRequestReadonly EndDrainRequest
+
+func (r *endDrainRequestReadonly) GetEpoch() string {
+	return (*EndDrainRequest)(r).GetEpoch()
+}
+
+func (r *endDrainRequestReadonly) Mutate() *EndDrainRequest {
+	return (*EndDrainRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this EndDrainRequest.
+func (m *EndDrainRequest) AsReader() EndDrainRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*endDrainRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this EndDrainRequest.
+func (m *EndDrainRequest) Mutate() *EndDrainRequest {
+	return m.CloneVT()
+}
+
+// EndDrainRequestListReader provides read-only iteration over []*EndDrainRequest.
+type EndDrainRequestListReader interface {
+	Len() int
+	Get(i int) EndDrainRequestReader
+	Range(yield func(int, EndDrainRequestReader) bool)
+}
+
+type endDrainRequestListReadonly []*EndDrainRequest
+
+func (l endDrainRequestListReadonly) Len() int { return len(l) }
+
+func (l endDrainRequestListReadonly) Get(i int) EndDrainRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l endDrainRequestListReadonly) Range(yield func(int, EndDrainRequestReader) bool) {
+	for i, v := range l {
+		var r EndDrainRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewEndDrainRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewEndDrainRequestListReader(s []*EndDrainRequest) EndDrainRequestListReader {
+	return endDrainRequestListReadonly(s)
+}
+
+// EndDrainResponseReader provides read-only access to EndDrainResponse.
+// Call Mutate() to obtain a mutable clone.
+type EndDrainResponseReader interface {
+	GetReleaseIndex() uint64
+	GetMembers() []uint64
+	Mutate() *EndDrainResponse
+}
+
+type endDrainResponseReadonly EndDrainResponse
+
+func (r *endDrainResponseReadonly) GetReleaseIndex() uint64 {
+	return (*EndDrainResponse)(r).GetReleaseIndex()
+}
+
+func (r *endDrainResponseReadonly) GetMembers() []uint64 {
+	return slices.Clone((*EndDrainResponse)(r).GetMembers())
+}
+
+func (r *endDrainResponseReadonly) Mutate() *EndDrainResponse {
+	return (*EndDrainResponse)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this EndDrainResponse.
+func (m *EndDrainResponse) AsReader() EndDrainResponseReader {
+	if m == nil {
+		return nil
+	}
+	return (*endDrainResponseReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this EndDrainResponse.
+func (m *EndDrainResponse) Mutate() *EndDrainResponse {
+	return m.CloneVT()
+}
+
+// EndDrainResponseListReader provides read-only iteration over []*EndDrainResponse.
+type EndDrainResponseListReader interface {
+	Len() int
+	Get(i int) EndDrainResponseReader
+	Range(yield func(int, EndDrainResponseReader) bool)
+}
+
+type endDrainResponseListReadonly []*EndDrainResponse
+
+func (l endDrainResponseListReadonly) Len() int { return len(l) }
+
+func (l endDrainResponseListReadonly) Get(i int) EndDrainResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l endDrainResponseListReadonly) Range(yield func(int, EndDrainResponseReader) bool) {
+	for i, v := range l {
+		var r EndDrainResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewEndDrainResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewEndDrainResponseListReader(s []*EndDrainResponse) EndDrainResponseListReader {
+	return endDrainResponseListReadonly(s)
+}
+
 // GetDrainStatusRequestReader provides read-only access to GetDrainStatusRequest.
 // Call Mutate() to obtain a mutable clone.
 type GetDrainStatusRequestReader interface {
@@ -286,6 +425,8 @@ type DrainStatusReader interface {
 	GetDrainIndex() uint64
 	GetLastPersistedIndex() uint64
 	GetSyncStatus() string
+	GetReleaseIndex() uint64
+	GetSupportsRelease() bool
 	Mutate() *DrainStatus
 }
 
@@ -313,6 +454,14 @@ func (r *drainStatusReadonly) GetLastPersistedIndex() uint64 {
 
 func (r *drainStatusReadonly) GetSyncStatus() string {
 	return (*DrainStatus)(r).GetSyncStatus()
+}
+
+func (r *drainStatusReadonly) GetReleaseIndex() uint64 {
+	return (*DrainStatus)(r).GetReleaseIndex()
+}
+
+func (r *drainStatusReadonly) GetSupportsRelease() bool {
+	return (*DrainStatus)(r).GetSupportsRelease()
 }
 
 func (r *drainStatusReadonly) Mutate() *DrainStatus {

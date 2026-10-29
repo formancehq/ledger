@@ -8,14 +8,23 @@ operator, not a user-facing shutdown workflow. The operator's
 has confirmed local durable application. No upgrade or user trigger calls
 this method yet.
 
+If the shutdown is canceled or the Pods restart with their existing volumes,
+the operator calls `ClusterService.EndDrain` with the same epoch. The hidden
+`ledgerctl cluster end-drain` command is its transport. The release is another
+Raft-ordered technical update; it clears the admission gate on each member
+only when applied. `EnsureDrainReleased` waits for every captured member to
+durably apply the release before reporting completion. A later shutdown uses
+a new epoch.
+
 ## Ordering and admission
 
 Before proposing the marker, the leader asks every current member for its
 local `GetDrainStatus`. An old binary returns `Unimplemented`, so the request
 fails closed during a rolling upgrade. The first `DrainMarker(epoch, members)`
 technical update committed through Raft fixes the epoch and cutoff index.
-Later markers cannot move the cutoff. A retry with the same epoch returns the
-first decision; a different epoch is rejected.
+Later markers cannot move the active cutoff. A retry with the same epoch
+returns the first decision; a different epoch is rejected until the active
+drain is released. A released epoch cannot be reused.
 
 The leader serializes marker enqueue with the final `Node.Propose` step used
 by ordinary writes. Its local gate closes at enqueue, before any later
@@ -34,6 +43,10 @@ On restart or in-cluster snapshot sync, recovery reloads the marker before
 admission resumes. A cross-cluster restore clears the transient zone, so a
 restored backup does not inherit an operational shutdown request.
 
+The release decision persists with its Raft index. A restart after a durable
+release reopens admission; one before the release is durable can retry the
+same epoch. Old, delayed release markers cannot lift a newer epoch.
+
 ## Operator completion test
 
 The operator retries `BeginDrain` with the same epoch, reads current leader
@@ -46,6 +59,12 @@ the Pebble WAL before returning. Only that qualifying response certifies the
 reported index as durable. An unreachable, replaced, syncing,
 or lagging member blocks shutdown. Raft's leader `Match` index is insufficient:
 it does not prove the follower's Pebble batch committed.
+
+For release, the operator verifies current membership, then checks every
+original member's own Pod for an empty active drain, the same release index,
+normal sync status, and a persisted index at or beyond the release. This
+qualifying status response fsyncs the Pebble WAL as well. Missing members
+prevent a successful all-member release acknowledgment.
 
 The epoch must be stable across operator retries and restarts. The caller of
 `EnsureDrainBarrier` owns this epoch and must leave Pods running on `false` or
@@ -66,4 +85,4 @@ operator continues from the persisted marker. A lost member prevents a
 successful all-member completion until it recovers and catches up. The
 durability claim is the configured Pebble/WAL contract after the status fsync;
 it does not cover destruction of the volume or storage that lies about sync.
-There is no resume/un-drain operation: this barrier is for terminal shutdown.
+Without a committed release, the barrier remains active after a restart.

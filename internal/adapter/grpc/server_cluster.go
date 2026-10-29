@@ -221,6 +221,52 @@ func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clust
 
 		return &clusterpb.BeginDrainResponse{CutoffIndex: decision.GetIndex(), Members: decision.GetMembers()}, nil
 	}
+	members, err := impl.preflightDrainMembers(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	decision, err := impl.node.BeginDrain(ctx, req.GetEpoch(), members)
+	if err != nil {
+		return nil, drainBeginError(err)
+	}
+	impl.logger.WithFields(map[string]any{
+		"epoch": decision.GetEpoch(), "cutoffIndex": decision.GetIndex(),
+		"members": decision.GetMembers(), "actor": "cluster-write caller",
+	}).Infof("controlled shutdown barrier committed")
+
+	return &clusterpb.BeginDrainResponse{CutoffIndex: decision.GetIndex(), Members: decision.GetMembers()}, nil
+}
+
+// EndDrain lifts the active epoch only after every current member confirms
+// that it can apply the Raft-ordered release marker.
+func (impl *ClusterServiceServerImpl) EndDrain(ctx context.Context, req *clusterpb.EndDrainRequest) (*clusterpb.EndDrainResponse, error) {
+	if req.GetEpoch() == "" || len(req.GetEpoch()) > 128 {
+		return nil, status.Error(codes.InvalidArgument, "drain epoch must contain 1 to 128 bytes")
+	}
+	if !impl.node.IsLeader() {
+		leader, err := impl.leaderClient()
+		if err != nil {
+			return nil, err
+		}
+
+		return leader.EndDrain(ctx, req)
+	}
+	if _, err := impl.preflightDrainMembers(ctx, true); err != nil {
+		return nil, err
+	}
+	decision, err := impl.node.EndDrain(ctx, req.GetEpoch())
+	if err != nil {
+		return nil, drainBeginError(err)
+	}
+	impl.logger.WithFields(map[string]any{
+		"epoch": decision.GetEpoch(), "releaseIndex": decision.GetReleasedIndex(),
+		"members": decision.GetMembers(), "actor": "cluster-write caller",
+	}).Infof("controlled shutdown barrier released")
+
+	return &clusterpb.EndDrainResponse{ReleaseIndex: decision.GetReleasedIndex(), Members: decision.GetMembers()}, nil
+}
+
+func (impl *ClusterServiceServerImpl) preflightDrainMembers(ctx context.Context, requireRelease bool) ([]uint64, error) {
 	state, err := impl.node.GetClusterState(ctx)
 	if err != nil {
 		return nil, err
@@ -252,19 +298,14 @@ func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clust
 			if peer.GetLocalNode() != id || !peer.GetSupportsDrain() {
 				return nil, status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain support", id)
 			}
+			if requireRelease && !peer.GetSupportsRelease() {
+				return nil, status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain release support", id)
+			}
 		}
 		members = append(members, id)
 	}
-	decision, err := impl.node.BeginDrain(ctx, req.GetEpoch(), members)
-	if err != nil {
-		return nil, drainBeginError(err)
-	}
-	impl.logger.WithFields(map[string]any{
-		"epoch": decision.GetEpoch(), "cutoffIndex": decision.GetIndex(),
-		"members": decision.GetMembers(), "actor": "cluster-write caller",
-	}).Infof("controlled shutdown barrier committed")
 
-	return &clusterpb.BeginDrainResponse{CutoffIndex: decision.GetIndex(), Members: decision.GetMembers()}, nil
+	return members, nil
 }
 
 func drainBeginError(err error) error {
@@ -273,7 +314,7 @@ func drainBeginError(err error) error {
 		return status.Error(codes.Canceled, err.Error())
 	case errors.Is(err, context.DeadlineExceeded):
 		return status.Error(codes.DeadlineExceeded, err.Error())
-	case errors.Is(err, node.ErrDrainEpochConflict):
+	case errors.Is(err, node.ErrDrainEpochConflict), errors.Is(err, node.ErrDrainEpochReused), errors.Is(err, node.ErrNoActiveDrain):
 		return status.Error(codes.FailedPrecondition, err.Error())
 	default:
 		return status.Error(codes.Unavailable, err.Error())
@@ -285,17 +326,17 @@ func (impl *ClusterServiceServerImpl) GetDrainStatus(ctx context.Context, _ *clu
 	if err != nil {
 		return nil, err
 	}
-	epoch, index := impl.sharedState.Drain()
+	epoch, index, releaseIndex := impl.sharedState.DrainSnapshot()
 	persisted := local.GetRaftStatus().GetLastPersistedIndex()
-	if index != 0 && persisted >= index {
+	if target := max(index, releaseIndex); target != 0 && persisted >= target {
 		if err := impl.node.SyncDrainWAL(); err != nil {
 			return nil, status.Errorf(codes.Unavailable, "syncing drain marker WAL: %v", err)
 		}
 	}
 
 	return &clusterpb.DrainStatus{
-		LocalNode: local.GetLocalNode(), SupportsDrain: true,
-		DrainEpoch: epoch, DrainIndex: index,
+		LocalNode: local.GetLocalNode(), SupportsDrain: true, SupportsRelease: true,
+		DrainEpoch: epoch, DrainIndex: index, ReleaseIndex: releaseIndex,
 		LastPersistedIndex: persisted,
 		SyncStatus:         local.GetSyncProgress().GetStatus(),
 	}, nil

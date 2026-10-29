@@ -26,9 +26,9 @@ membership already changed. Success still requires local durable FSM apply;
 distinct calls keep their existing admission and cancellation semantics. This
 correction changes no route, message, field, status schema or protocol revision.
 
-The additive `ClusterService.BeginDrain` and local `GetDrainStatus` RPCs support
+The additive `ClusterService.BeginDrain`, `EndDrain`, and local `GetDrainStatus` RPCs support
 an operator-controlled shutdown barrier. They have no v2 business endpoint
-equivalent. `BeginDrain` requires `ledger:WriteCluster` and becomes effective
+equivalent. `BeginDrain` and `EndDrain` require `ledger:WriteCluster` and become effective
 only after every current member confirms the new capability; an older server
 returns `Unimplemented` for `GetDrainStatus`. The new `ClusterState` drain fields
 are additive and absent on older binaries. The service protocol revision stays

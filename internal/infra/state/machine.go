@@ -275,6 +275,11 @@ func (fsm *Machine) Drain() (string, uint64) {
 	return fsm.sharedState.Drain()
 }
 
+// DrainReleaseIndex reports the last applied admission reopening.
+func (fsm *Machine) DrainReleaseIndex() uint64 {
+	return fsm.sharedState.DrainReleaseIndex()
+}
+
 // DrainDecision returns a copy of the persisted first-marker decision.
 func (fsm *Machine) DrainDecision() *raftcmdpb.DrainState {
 	fsm.mu.Lock()
@@ -1165,9 +1170,28 @@ func drainMarkerOnly(proposal *raftcmdpb.Proposal) bool {
 	return ok
 }
 
+func drainReleaseOnly(proposal *raftcmdpb.Proposal) bool {
+	if len(proposal.GetOrders()) != 0 || len(proposal.GetTechnicalUpdates()) != 1 {
+		return false
+	}
+	_, ok := proposal.GetTechnicalUpdates()[0].GetKind().(*raftcmdpb.TechnicalUpdate_DrainRelease)
+
+	return ok
+}
+
 func containsDrainMarker(proposal *raftcmdpb.Proposal) bool {
 	for _, update := range proposal.GetTechnicalUpdates() {
 		if _, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_DrainMarker); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+func containsDrainRelease(proposal *raftcmdpb.Proposal) bool {
+	for _, update := range proposal.GetTechnicalUpdates() {
+		if _, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_DrainRelease); ok {
 			return true
 		}
 	}
@@ -1299,13 +1323,13 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// writes. For technical-only proposals the result is the only thing
 	// returned anyway.
 	result := &ApplyResult{ProposalID: proposal.GetId()}
-	if containsDrainMarker(proposal) && !drainMarkerOnly(proposal) {
+	if containsDrainMarker(proposal) && !drainMarkerOnly(proposal) || containsDrainRelease(proposal) && !drainReleaseOnly(proposal) {
 		result.Error = &domain.BusinessError{Err: domain.ErrMaintenanceMode}
 
 		return result, nil
 	}
-	if drain := fsm.State.DrainState; drain != nil && raftIndex > drain.GetIndex() &&
-		(len(proposal.GetOrders()) > 0 || len(proposal.GetTechnicalUpdates()) > 0) && !drainMarkerOnly(proposal) {
+	if drain := fsm.State.DrainState; drain != nil && drain.GetReleasedIndex() == 0 && raftIndex > drain.GetIndex() &&
+		(len(proposal.GetOrders()) > 0 || len(proposal.GetTechnicalUpdates()) > 0) && !drainMarkerOnly(proposal) && !drainReleaseOnly(proposal) {
 		result.Error = &domain.BusinessError{Err: domain.ErrMaintenanceMode}
 
 		return result, nil

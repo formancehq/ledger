@@ -39,7 +39,7 @@ func runDrainStatus(cmd *cobra.Command, _ []string) error {
 	if handled, err := cmdutil.EncodeStructured(cmd, response); handled || err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(cmd.OutOrStdout(), "Node %d drain index %d, persisted index %d\n", response.GetLocalNode(), response.GetDrainIndex(), response.GetLastPersistedIndex())
+	_, err = fmt.Fprintf(cmd.OutOrStdout(), "Node %d drain index %d, release index %d, persisted index %d\n", response.GetLocalNode(), response.GetDrainIndex(), response.GetReleaseIndex(), response.GetLastPersistedIndex())
 
 	return err
 }

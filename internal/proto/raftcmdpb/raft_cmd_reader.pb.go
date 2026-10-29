@@ -3981,12 +3981,80 @@ func NewDrainMarkerListReader(s []*DrainMarker) DrainMarkerListReader {
 	return drainMarkerListReadonly(s)
 }
 
+// DrainReleaseReader provides read-only access to DrainRelease.
+// Call Mutate() to obtain a mutable clone.
+type DrainReleaseReader interface {
+	GetEpoch() string
+	Mutate() *DrainRelease
+}
+
+type drainReleaseReadonly DrainRelease
+
+func (r *drainReleaseReadonly) GetEpoch() string {
+	return (*DrainRelease)(r).GetEpoch()
+}
+
+func (r *drainReleaseReadonly) Mutate() *DrainRelease {
+	return (*DrainRelease)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this DrainRelease.
+func (m *DrainRelease) AsReader() DrainReleaseReader {
+	if m == nil {
+		return nil
+	}
+	return (*drainReleaseReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this DrainRelease.
+func (m *DrainRelease) Mutate() *DrainRelease {
+	return m.CloneVT()
+}
+
+// DrainReleaseListReader provides read-only iteration over []*DrainRelease.
+type DrainReleaseListReader interface {
+	Len() int
+	Get(i int) DrainReleaseReader
+	Range(yield func(int, DrainReleaseReader) bool)
+}
+
+type drainReleaseListReadonly []*DrainRelease
+
+func (l drainReleaseListReadonly) Len() int { return len(l) }
+
+func (l drainReleaseListReadonly) Get(i int) DrainReleaseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l drainReleaseListReadonly) Range(yield func(int, DrainReleaseReader) bool) {
+	for i, v := range l {
+		var r DrainReleaseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDrainReleaseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDrainReleaseListReader(s []*DrainRelease) DrainReleaseListReader {
+	return drainReleaseListReadonly(s)
+}
+
 // DrainStateReader provides read-only access to DrainState.
 // Call Mutate() to obtain a mutable clone.
 type DrainStateReader interface {
 	GetEpoch() string
 	GetIndex() uint64
 	GetMembers() []uint64
+	GetReleasedIndex() uint64
 	Mutate() *DrainState
 }
 
@@ -4002,6 +4070,10 @@ func (r *drainStateReadonly) GetIndex() uint64 {
 
 func (r *drainStateReadonly) GetMembers() []uint64 {
 	return slices.Clone((*DrainState)(r).GetMembers())
+}
+
+func (r *drainStateReadonly) GetReleasedIndex() uint64 {
+	return (*DrainState)(r).GetReleasedIndex()
 }
 
 func (r *drainStateReadonly) Mutate() *DrainState {

@@ -69,15 +69,28 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 				}
 				seen[id] = struct{}{}
 			}
-			// The first marker wins. Later requests cannot reopen admission or
-			// move the cutoff, including after a leader change or client retry.
-			if fsm.State.DrainState == nil {
+			// The first marker of an active epoch wins. A new epoch may start
+			// only after a Raft-ordered release of the previous one.
+			if previous := fsm.State.DrainState; previous == nil || previous.GetReleasedIndex() != 0 && previous.GetEpoch() != kind.DrainMarker.GetEpoch() {
 				decision := &raftcmdpb.DrainState{Epoch: kind.DrainMarker.GetEpoch(), Index: raftIndex, Members: append([]uint64(nil), kind.DrainMarker.GetMembers()...)}
 				if err := batch.SetProto([]byte{dal.ZoneClusterTransient, dal.SubTransientDrainState}, decision); err != nil {
 					return fmt.Errorf("persisting drain state: %w", err)
 				}
 				fsm.State.DrainState = decision
 				fsm.sharedState.SetDrain(decision.GetEpoch(), decision.GetIndex())
+			}
+		case *raftcmdpb.TechnicalUpdate_DrainRelease:
+			if kind.DrainRelease == nil || kind.DrainRelease.GetEpoch() == "" || len(kind.DrainRelease.GetEpoch()) > 128 {
+				return fmt.Errorf("technical_updates[%d]: invalid drain release epoch", i)
+			}
+			if current := fsm.State.DrainState; current != nil && current.GetEpoch() == kind.DrainRelease.GetEpoch() && current.GetReleasedIndex() == 0 {
+				released := current.CloneVT()
+				released.ReleasedIndex = raftIndex
+				if err := batch.SetProto([]byte{dal.ZoneClusterTransient, dal.SubTransientDrainState}, released); err != nil {
+					return fmt.Errorf("persisting drain release: %w", err)
+				}
+				fsm.State.DrainState = released
+				fsm.sharedState.SetDrainReleased(raftIndex)
 			}
 		case *raftcmdpb.TechnicalUpdate_ClusterConfig:
 			if err := fsm.applyClusterConfig(batch, raftIndex, kind.ClusterConfig); err != nil {

@@ -24,6 +24,15 @@ func drainProposal(id uint64, epoch string) *raftcmdpb.Proposal {
 	return p
 }
 
+func drainReleaseProposal(id uint64, epoch string) *raftcmdpb.Proposal {
+	p := makeProposal(id)
+	p.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+		Kind: &raftcmdpb.TechnicalUpdate_DrainRelease{DrainRelease: &raftcmdpb.DrainRelease{Epoch: epoch}},
+	}}
+
+	return p
+}
+
 func TestDrainMarkerClearedForCrossClusterRestore(t *testing.T) {
 	t.Parallel()
 	machine, store, _ := newTestMachine(t)
@@ -86,6 +95,40 @@ func TestDrainMarkerOrdersWritesAndSurvivesRecovery(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, decision, stored)
 			require.Equal(t, beforeAudit, machine.State.NextAuditSequenceID)
+
+			released, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 7, drainReleaseProposal(7, "epoch-one")))
+			require.NoError(t, err)
+			require.NoError(t, released.Results[0].Error)
+			stored, err = query.ReadDrainState(store)
+			require.NoError(t, err)
+			require.Equal(t, uint64(7), stored.GetReleasedIndex())
+			epoch, index = machine.Drain()
+			require.Empty(t, epoch)
+			require.Zero(t, index)
+			require.Equal(t, uint64(7), machine.DrainReleaseIndex())
+			resumed, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 8, makeProposal(8, createLedgerOrder("after-release"))))
+			require.NoError(t, err)
+			require.NoError(t, resumed.Results[0].Error)
+
+			machine = recoverMachineOnStore(t, store)
+			installTestClusterPolicy(machine)
+			epoch, index = machine.Drain()
+			require.Empty(t, epoch)
+			require.Zero(t, index)
+			require.Equal(t, uint64(7), machine.DrainReleaseIndex())
+			newDrain, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 9, drainProposal(9, "epoch-two")))
+			require.NoError(t, err)
+			require.NoError(t, newDrain.Results[0].Error)
+			stored, err = query.ReadDrainState(store)
+			require.NoError(t, err)
+			require.Equal(t, "epoch-two", stored.GetEpoch())
+			require.Zero(t, stored.GetReleasedIndex())
+			staleRelease, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 10, drainReleaseProposal(10, "epoch-one")))
+			require.NoError(t, err)
+			require.NoError(t, staleRelease.Results[0].Error)
+			epoch, index = machine.Drain()
+			require.Equal(t, "epoch-two", epoch)
+			require.Equal(t, uint64(9), index)
 		})
 	}
 }

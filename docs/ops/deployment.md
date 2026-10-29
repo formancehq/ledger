@@ -916,6 +916,9 @@ requires a stable epoch and a completed rollout of drain-capable Ledger
 binaries; it is not wired to an upgrade or a user-triggered command. See
 [controlled shutdown](../technical/architecture/subsystems/consensus/controlled-shutdown.md)
 for the failure and recovery contract.
+If shutdown is canceled, the operator calls `EnsureDrainReleased` with the
+same epoch and waits for every original member to persist the Raft release
+before reporting admission restored.
 
 ### Cluster State Verification
 

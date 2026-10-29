@@ -94,6 +94,7 @@ type testApplierSetup struct {
 	walDir       string
 	spool        *spool.Default
 	fsm          *state.Machine
+	sharedState  *state.SharedState
 	stop         chan struct{}
 	confState    *raftpb.ConfState
 	responseSink LocalResponses
@@ -161,9 +162,10 @@ func newTestApplierSetupWithHandlers(t *testing.T, sink LocalResponses, notifier
 
 	nodeRegistry := state.NewStateRegistry(nodeCache, nodeAttrs)
 	nodeSnapshotter := state.NewCacheSnapshotter(logger, nodeRegistry, nil)
+	sharedState := state.NewSharedState()
 	fsm, err := state.NewMachine(
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,
-		nil, state.NewSharedState(), notifier, nil, "test-cluster", 0,
+		nil, sharedState, notifier, nil, "test-cluster", 0,
 		handler,
 	)
 	require.NoError(t, err)
@@ -196,6 +198,7 @@ func newTestApplierSetupWithHandlers(t *testing.T, sink LocalResponses, notifier
 		walDir:       walDir,
 		spool:        defaultSpool,
 		fsm:          fsm,
+		sharedState:  sharedState,
 		stop:         stop,
 		confState:    confState,
 		responseSink: sink,

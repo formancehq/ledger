@@ -2747,11 +2747,14 @@ ledgerctl cluster status --node-id 2
 - **Cluster Nodes**: List of all nodes with ID, address, suffrage, and status
 - **Replication Progress**: Replication status for each follower (only shown when querying leader)
 
-The operator uses two hidden transport commands: `cluster begin-drain <epoch>
---json` calls the authenticated Raft marker RPC, and `cluster drain-status
---json` reads the current Pod's local cursor. A drain status response certifies
-durability only when its nonzero drain index is at or below the reported
-persisted index; that response includes a Pebble WAL fsync. These commands are not a
+The operator uses three hidden transport commands: `cluster begin-drain <epoch>
+--json` calls the authenticated Raft cutoff RPC, `cluster end-drain <epoch>
+--json` releases the same epoch through Raft after a canceled shutdown, and
+`cluster drain-status --json` reads the current Pod's local cursor. A status
+response certifies durability only when its active drain index, or its last
+release index when there is no active drain, is nonzero and at or below the
+reported persisted index; that response includes a Pebble WAL
+fsync. These commands are not a
 user-facing shutdown workflow. See [controlled shutdown](../technical/architecture/subsystems/consensus/controlled-shutdown.md).
 
 #### cluster watch

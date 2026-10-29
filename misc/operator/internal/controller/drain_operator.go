@@ -21,3 +21,15 @@ func (r *ClusterReconciler) EnsureDrainBarrier(ctx context.Context, cluster *led
 		exec:      podExecWithTimeout,
 	}, epoch)
 }
+
+// EnsureDrainReleased reverses a canceled shutdown. It returns true only
+// after every original member has durably applied the Raft release marker.
+func (r *ClusterReconciler) EnsureDrainReleased(ctx context.Context, cluster *ledgerv1alpha1.Cluster, epoch, tlsMode string) (bool, error) {
+	return ensureDrainReleased(ctx, &ledgerctlDrainCluster{
+		cluster:   cluster,
+		tlsMode:   tlsMode,
+		config:    r.Config,
+		clientset: r.Clientset,
+		exec:      podExecWithTimeout,
+	}, epoch)
+}

@@ -45,7 +45,8 @@ func ReadDrainState(reader dal.PebbleGetter) (*raftcmdpb.DrainState, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading drain state: %w", err)
 	}
-	if state != nil && (state.GetEpoch() == "" || state.GetIndex() == 0 || len(state.GetMembers()) == 0) {
+	if state != nil && (state.GetEpoch() == "" || state.GetIndex() == 0 || len(state.GetMembers()) == 0 ||
+		state.GetReleasedIndex() != 0 && state.GetReleasedIndex() <= state.GetIndex()) {
 		return nil, errors.New("invalid persisted drain state")
 	}
 

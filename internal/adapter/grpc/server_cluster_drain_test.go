@@ -25,6 +25,7 @@ func TestDrainBeginErrorPreservesRetryableStatus(t *testing.T) {
 		{"leadership lost", fmt.Errorf("waiting: %w", node.ErrLeadershipLost), codes.Unavailable},
 		{"queue failure", errors.New("proposal queue full"), codes.Unavailable},
 		{"epoch conflict", node.ErrDrainEpochConflict, codes.FailedPrecondition},
+		{"epoch reused", node.ErrDrainEpochReused, codes.FailedPrecondition},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -10,9 +10,18 @@ import (
 
 type testDrainCluster struct {
 	decision drainDecision
+	release  drainReleaseDecision
 	current  drainDecision
 	status   map[uint64]drainNodeStatus
 	failed   uint64
+}
+
+func (c *testDrainCluster) EndDrain(_ context.Context, epoch string) (drainReleaseDecision, error) {
+	if c.release.Epoch != epoch {
+		return drainReleaseDecision{}, errors.New("wrong release epoch")
+	}
+
+	return c.release, nil
 }
 
 func (c *testDrainCluster) BeginDrain(_ context.Context, epoch string) (drainDecision, error) {
@@ -75,4 +84,26 @@ func TestEnsureDrainRejectsDriftAndUnsyncedMember(t *testing.T) {
 	c.current.Members = []uint64{1, 2}
 	_, err = ensureDrain(t.Context(), c, "e1")
 	require.ErrorContains(t, err, "membership changed")
+}
+
+func TestEnsureDrainReleasedRequiresEveryMemberDurableApply(t *testing.T) {
+	t.Parallel()
+	c := &testDrainCluster{
+		release: drainReleaseDecision{Epoch: "e1", Index: 51, Members: []uint64{1, 2}},
+		current: drainDecision{Members: []uint64{2, 1}},
+		status: map[uint64]drainNodeStatus{
+			1: {NodeID: 1, SupportsRelease: true, ReleaseIndex: 51, LastPersistedIndex: 51, SyncStatus: "normal"},
+			2: {NodeID: 2, SupportsRelease: true, ReleaseIndex: 51, LastPersistedIndex: 50, SyncStatus: "normal"},
+		},
+	}
+	ready, err := ensureDrainReleased(t.Context(), c, "e1")
+	require.NoError(t, err)
+	require.False(t, ready)
+	c.status[2] = drainNodeStatus{NodeID: 2, SupportsRelease: true, ReleaseIndex: 51, LastPersistedIndex: 51, SyncStatus: "normal"}
+	ready, err = ensureDrainReleased(t.Context(), c, "e1")
+	require.NoError(t, err)
+	require.True(t, ready)
+	c.status[2] = drainNodeStatus{NodeID: 2, SupportsRelease: true, DrainEpoch: "e1", DrainIndex: 52, ReleaseIndex: 51, LastPersistedIndex: 52, SyncStatus: "normal"}
+	_, err = ensureDrainReleased(t.Context(), c, "e1")
+	require.ErrorContains(t, err, "expected drain release")
 }

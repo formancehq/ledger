@@ -149,6 +149,7 @@ type pendingFuture struct {
 type pendingApplyFuture struct {
 	term   uint64
 	future *futures.Future[state.ApplyResult]
+	onDrop func()
 }
 
 type commitWork struct {
@@ -367,6 +368,13 @@ func (a *Applier) StoreFuture(commandID, term uint64, future *futures.Future[sta
 	a.futures.Store(commandID, &pendingApplyFuture{term: term, future: future})
 }
 
+// StoreFutureWithDrop registers a proposal whose local admission latch must
+// be released if Raft definitively drops or truncates it. The callback runs
+// once because every resolution path takes ownership with LoadAndDelete.
+func (a *Applier) StoreFutureWithDrop(commandID, term uint64, future *futures.Future[state.ApplyResult], onDrop func()) {
+	a.futures.Store(commandID, &pendingApplyFuture{term: term, future: future, onDrop: onDrop})
+}
+
 // DeleteFuture removes the future for a given command ID.
 func (a *Applier) DeleteFuture(commandID uint64) {
 	a.futures.Delete(commandID)
@@ -380,6 +388,9 @@ func (a *Applier) DeleteFuture(commandID uint64) {
 func (a *Applier) ResolveDroppedFuture(commandID uint64, err error) {
 	if paf, ok := a.futures.LoadAndDelete(commandID); ok {
 		paf.future.Resolve(state.ApplyResult{}, err)
+		if paf.onDrop != nil {
+			paf.onDrop()
+		}
 	}
 }
 
@@ -410,6 +421,9 @@ func (a *Applier) FailFuturesBelowTerm(threshold uint64, err error) {
 		}
 
 		paf.future.Resolve(state.ApplyResult{}, err)
+		if paf.onDrop != nil {
+			paf.onDrop()
+		}
 		resolved++
 
 		// Coverage anchor for the leadership-lost error taxonomy: proves the
