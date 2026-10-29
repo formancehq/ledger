@@ -3732,7 +3732,7 @@ stored filter and make the query match all entities in its target. Supplying an
 empty or whitespace-only `--filter` is invalid.
 For a LOGS query, `--filter 'id == 7'` or its structured JSON equivalent
 selects log ID 7. The server resolves `id` against the stored query target
-during the update; the command needs only query-write permission.
+before committing the update; the command needs only query-write permission.
 
 ```bash
 ledgerctl queries update <name> --ledger <ledger-name> [--filter "<new-filter>"] [flags]

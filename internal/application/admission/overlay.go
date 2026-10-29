@@ -80,6 +80,7 @@ type bulkOverlay struct {
 	numscriptEntries *overlay[numscriptEntryKey, string]
 	numscriptLatest  *overlay[numscriptNameKey, string]
 	sinks            *overlay[string, *commonpb.SinkConfig]
+	preparedTargets  *overlay[domain.PreparedQueryKey, commonpb.QueryTarget]
 	// What admission observed of each revert target, resolved once at
 	// order-build time from the transaction attribute and reused by the preload
 	// and intra-bulk effect passes. The postings stay off the wire order: the
@@ -194,6 +195,7 @@ func newBulkOverlay() *bulkOverlay {
 		numscriptEntries: newOverlay[numscriptEntryKey, string](),
 		numscriptLatest:  newOverlay[numscriptNameKey, string](),
 		sinks:            newOverlay[string, *commonpb.SinkConfig](),
+		preparedTargets:  newOverlay[domain.PreparedQueryKey, commonpb.QueryTarget](),
 		revertTargets:    make(map[domain.TransactionKey]revertTargetObservation),
 	}
 }

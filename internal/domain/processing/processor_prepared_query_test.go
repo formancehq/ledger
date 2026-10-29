@@ -146,36 +146,6 @@ func TestProcessUpdatePreparedQuery_NilFilterClears(t *testing.T) {
 	require.Nil(t, payload.GetUpdatedPreparedQuery().GetNewFilter())
 }
 
-func TestProcessUpdatePreparedQuery_ResolvesIDAgainstStoredLogsTarget(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := NewMockScope(ctrl)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
-
-	pq := setupPreparedQueriesStub(mockStore)
-	pq.onGet(func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
-		return (&commonpb.PreparedQuery{Name: "q1", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS}).AsReader(), nil
-	})
-	pq.onPut(func(_ domain.PreparedQueryKey, query *commonpb.PreparedQuery) {
-		require.Len(t, query.GetFilter().GetOr().GetFilters(), 2)
-		for _, child := range query.GetFilter().GetOr().GetFilters() {
-			require.NotNil(t, child.GetLogId())
-		}
-	})
-
-	filter := &commonpb.QueryFilter{}
-	require.NoError(t, json.Unmarshal([]byte(`{"$or":[{"$match":{"id":"7"}},{"$match":{"id":"8"}}]}`), filter))
-	require.NotNil(t, filter.GetOr().GetFilters()[0].GetBuiltinUint())
-
-	payload, derr := processUpdatePreparedQuery("test-ledger", &raftcmdpb.UpdatePreparedQueryOrder{Name: "q1", Filter: filter}, &Context{Scope: mockStore})
-	require.Nil(t, derr)
-	require.NotNil(t, filter.GetOr().GetFilters()[0].GetBuiltinUint(), "the request filter must not be mutated")
-	require.NotNil(t, payload.GetUpdatedPreparedQuery().GetNewFilter().GetOr().GetFilters()[0].GetLogId())
-}
-
 // TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget covers a
 // legacy escape hatch: CLI/gRPC creation used to accept non-executable targets
 // (e.g. AUDIT) before EN-1504, so such a query can already sit in storage. An
