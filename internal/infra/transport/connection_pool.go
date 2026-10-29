@@ -113,7 +113,7 @@ func (c staticTokenCredentials) GetRequestMetadata(ctx context.Context, _ ...str
 }
 
 func (c staticTokenCredentials) RequireTransportSecurity() bool {
-	return false
+	return true
 }
 
 // BearerTokenDialOption returns a gRPC DialOption that injects a static bearer token
@@ -289,6 +289,10 @@ func (p *ConnectionPool) dialPeer(id uint64, addr string) (*peerEntry, error) {
 // falls back to plaintext, whereas a network-level failure is returned to
 // the caller (which will retry later).
 func (p *ConnectionPool) decideTLS(addr string) (bool, error) {
+	if p.config.AuthToken != "" && (!p.policy.AllowsTLS() || !p.policy.Strict) {
+		return false, fmt.Errorf("peer authentication requires strict TLS for %s", addr)
+	}
+
 	switch {
 	case !p.policy.AllowsTLS():
 		return false, nil
