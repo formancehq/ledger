@@ -101,5 +101,8 @@ monitor. It does not submit a Benchmark or contact Kubernetes.
 The same Go suite executes the workflow's image-verification Bash against fake
 registry responses, including wrong source/revision, missing platform labels and
 invalid digests, and checks the exact reference handed to Pulumi.
+Node.js, already pinned by the repository, executes the workflow's JavaScript
+against fake GitHub API responses for build-attempt admission and the final PR
+recheck. These are offline tests; no submission helper is introduced.
 Root `scripts/agent-check` remains required. Live CI access, snapshot capture and CSI
 volume cleanup require separate verification; local tests do not prove them.

@@ -162,7 +162,8 @@
           ];
 
           # tests/perf Pulumi deployments, k6 load tests and benchstat comparisons.
-          perf = mkTaskShell [ pkgs.k6 pulumi pkgs.kubectl pkgs.awscli2 pkgs.docker-client pkgs-unstable.goperf ];
+          # Node executes the workflow's github-script code in offline Go tests.
+          perf = mkTaskShell [ pkgs.k6 pulumi pkgs.kubectl pkgs.awscli2 pkgs.docker-client pkgs.nodejs_22 pkgs-unstable.goperf ];
 
           # API-server admission regressions for the operator, without Docker.
           operator-tests = mkTaskShell [ pkgs-unstable.setup-envtest ];

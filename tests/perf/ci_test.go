@@ -26,6 +26,7 @@ func TestWorkflowImageVerification(t *testing.T) {
 				Name string
 				Run  string
 				Env  map[string]string
+				If   string
 			}
 		}
 	}
@@ -37,8 +38,12 @@ func TestWorkflowImageVerification(t *testing.T) {
 		t.Fatal(err)
 	}
 	var script string
+	foundSubmission := false
 	for _, step := range workflow.Jobs["Submit"].Steps {
 		if step.Name == "Resolve the image built by this run" {
+			if step.Env["IMAGE_TAG"] != "${{ steps.run.outputs.tag }}" {
+				t.Fatal("registry lookup must use the triggering build-attempt tag")
+			}
 			_, body, found := strings.Cut(step.Run, "<<'IMAGE'\n")
 			if !found || !strings.HasSuffix(body, "IMAGE\n") {
 				t.Fatal("image verification block not found")
@@ -46,13 +51,17 @@ func TestWorkflowImageVerification(t *testing.T) {
 			script = strings.TrimSuffix(body, "IMAGE\n")
 		}
 		if step.Name == "Pulumi up with a local backend" {
+			foundSubmission = true
+			if step.If != "steps.current.outputs.enabled == 'true'" {
+				t.Fatal("final PR eligibility must gate submission")
+			}
 			if step.Env["IMAGE"] != "${{ steps.image.outputs.image }}" || !strings.Contains(step.Run, "perf:image=$IMAGE") {
 				t.Fatal("Pulumi must consume the verified digest-pinned output")
 			}
 		}
 	}
-	if script == "" {
-		t.Fatal("missing workflow image verification")
+	if script == "" || !foundSubmission {
+		t.Fatal("missing workflow image verification or submission")
 	}
 	sha := strings.Repeat("a", 40)
 	digest := "sha256:" + strings.Repeat("b", 64)
@@ -76,7 +85,18 @@ func TestWorkflowImageVerification(t *testing.T) {
 			dir := t.TempDir()
 			// The workflow's real Bash runs against a registry process fixture.
 			// No persistent helper, registry access or Kubernetes call is needed.
-			fake := "#!/bin/sh\ncase \"$*\" in\n  *'.Manifest.Digest'*) printf '%s\\n' \"$REGISTRY_DIGEST\" ;;\n  *'.Image'*) printf '%s\\n' \"$REGISTRY_CONFIG\" ;;\n  *) exit 2 ;;\nesac\n"
+			fake := `#!/bin/sh
+test "$#" -eq 6 && test "$1 $2 $3 $5" = "buildx imagetools inspect --format" || exit 2
+case "$6" in
+  '{{ .Manifest.Digest }}')
+    test "$4" = "$EXPECTED_TAG" || exit 3
+    printf '%s\n' "$REGISTRY_DIGEST" ;;
+  '{{json .Image}}')
+    test "$4" = "$EXPECTED_TAG@$REGISTRY_DIGEST" || exit 4
+    printf '%s\n' "$REGISTRY_CONFIG" ;;
+  *) exit 2 ;;
+esac
+`
 			if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(fake), 0o700); err != nil {
 				t.Fatal(err)
 			}
@@ -85,6 +105,7 @@ func TestWorkflowImageVerification(t *testing.T) {
 			cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
 				"SHA="+sha, "IMAGE_REPOSITORY=ghcr.io/formancehq/ledger", "IMAGE_TAG=pr-42-aaaaaaa-run-123-2",
 				"GITHUB_REPOSITORY=formancehq/ledger", "GITHUB_OUTPUT="+output,
+				"EXPECTED_TAG=ghcr.io/formancehq/ledger:pr-42-aaaaaaa-run-123-2",
 				"REGISTRY_DIGEST="+tt.digest, "REGISTRY_CONFIG="+tt.config)
 			logs, err := cmd.CombinedOutput()
 			if tt.valid && err != nil {
@@ -101,6 +122,108 @@ func TestWorkflowImageVerification(t *testing.T) {
 				}
 			} else if len(result) != 0 {
 				t.Fatal("rejected image produced a submission reference")
+			}
+		})
+	}
+}
+
+func TestWorkflowPRAdmission(t *testing.T) {
+	t.Parallel()
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string
+				With struct{ Script string }
+			}
+		}
+	}
+	data, err := os.ReadFile("../../.github/workflows/perf.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := yaml.Unmarshal(data, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	scripts := map[string]string{}
+	for _, step := range workflow.Jobs["Submit"].Steps {
+		scripts[step.Name] = step.With.Script
+	}
+	const selectStep = "Select the successfully built revision"
+	const recheckStep = "Recheck the PR before submission"
+	sha := strings.Repeat("a", 40)
+	// Execute the actual github-script block. Only its GitHub API is simulated.
+	const driver = `const fs = require('node:fs');
+const assert = require('node:assert/strict');
+const f = JSON.parse(fs.readFileSync(0, 'utf8'));
+const outputs = {};
+const context = {eventName:'workflow_run',repo:{owner:'formancehq',repo:'ledger'},payload:{workflow_run:{id:123,run_attempt:2}}};
+const github = {rest:{actions:{
+  getWorkflowRun: async a => {assert.equal(a.run_id,123);return {data:f.run};},
+  listJobsForWorkflowRunAttempt: async a => {assert.equal(a.run_id,123);assert.equal(a.attempt_number,2);return {data:{jobs:f.jobs}};}
+},pulls:{get: async a => {assert.equal(a.pull_number,42);return {data:f.pull};}}}};
+const core = {setOutput:(k,v)=>{outputs[k]=v;}};
+const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+new AsyncFunction('context','github','core',f.script)(context,github,core)
+  .then(()=>process.stdout.write(JSON.stringify(outputs)))
+  .catch(e=>{console.error(e);process.exitCode=1;});`
+	for _, tt := range []struct {
+		name, step string
+		change     func(map[string]any)
+		enabled    bool
+	}{
+		{"successful-image-job", selectStep, nil, true},
+		{"stale-attempt", selectStep, func(f map[string]any) { f["run"].(map[string]any)["run_attempt"] = 3 }, false},
+		{"skipped-image-job", selectStep, func(f map[string]any) {
+			f["jobs"] = []any{map[string]any{"name": "Build-PR-Image", "conclusion": "skipped"}}
+		}, false},
+		{"failed-image-job", selectStep, func(f map[string]any) {
+			f["jobs"] = []any{map[string]any{"name": "Build-PR-Image", "conclusion": "failure"}}
+		}, false},
+		{"missing-image-job", selectStep, func(f map[string]any) { f["jobs"] = []any{} }, false},
+		{"eligible-before-submit", recheckStep, nil, true},
+		{"head-changed", recheckStep, func(f map[string]any) {
+			f["pull"].(map[string]any)["head"].(map[string]any)["sha"] = strings.Repeat("b", 40)
+		}, false},
+		{"closed-pr", recheckStep, func(f map[string]any) { f["pull"].(map[string]any)["state"] = "closed" }, false},
+		{"removed-label", recheckStep, func(f map[string]any) { f["pull"].(map[string]any)["labels"] = []any{} }, false},
+		{"changed-label", recheckStep, func(f map[string]any) {
+			f["pull"].(map[string]any)["labels"] = []any{map[string]any{"name": "perf-10m"}}
+		}, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if scripts[tt.step] == "" {
+				t.Fatalf("missing workflow script %q", tt.step)
+			}
+			fixture := map[string]any{
+				"script": scripts[tt.step],
+				"run":    map[string]any{"id": 123, "run_attempt": 2, "event": "pull_request", "path": ".github/workflows/pr-images.yml", "head_repository": map[string]any{"full_name": "formancehq/ledger"}, "pull_requests": []any{map[string]any{"number": 42}}, "head_sha": sha},
+				"jobs":   []any{map[string]any{"name": "Build-PR-Image", "conclusion": "success"}},
+				"pull":   map[string]any{"number": 42, "state": "open", "head": map[string]any{"sha": sha, "repo": map[string]any{"full_name": "formancehq/ledger"}}, "labels": []any{map[string]any{"name": "perf-5m"}}},
+			}
+			if tt.change != nil {
+				tt.change(fixture)
+			}
+			input, err := json.Marshal(fixture)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.CommandContext(t.Context(), "node", "-e", driver)
+			cmd.Stdin = strings.NewReader(string(input))
+			cmd.Env = append(os.Environ(), "PR=42", "SHA="+sha, "PROFILE=smoke-5m")
+			result, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("workflow script failed: %v: %s", err, result)
+			}
+			var output map[string]any
+			if err := json.Unmarshal(result, &output); err != nil {
+				t.Fatal(err)
+			}
+			if (output["enabled"] == true) != tt.enabled {
+				t.Fatalf("unexpected admission result: %s", result)
+			}
+			if tt.enabled && tt.step == selectStep && output["tag"] != "pr-42-aaaaaaa-run-123-2" {
+				t.Fatalf("incorrect build attempt identity: %s", result)
 			}
 		})
 	}
