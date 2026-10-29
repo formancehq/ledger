@@ -62,7 +62,7 @@ ledger run \
 
 ### Join Sequence
 
-The join process has four phases: peer discovery, node initialization, startup, and learner registration. Both discovery and registration go through the inter-node `ClusterBootstrapService` exposed on the RaftServer — gated by cluster-id metadata (and cluster-secret bearer when configured), without the user-JWT auth pipeline.
+The join process has four phases: peer discovery, node initialization, learner registration preflight, and startup of inbound Raft traffic. Both discovery and registration go through the inter-node `ClusterBootstrapService` exposed on the RaftServer — gated by cluster-id metadata (and cluster-secret bearer when configured), without the user-JWT auth pipeline.
 
 #### Phase 1: Peer Discovery
 
@@ -124,15 +124,7 @@ RawNode starts with this configuration
 
 The joining node sees the existing members as voters and itself as a learner.
 
-#### Phase 3: Startup
-
-The fx lifecycle starts all components:
-- Raft transport and service pool register the discovered peers
-- gRPC servers start (Raft transport + service API)
-- The Raft node `Run()` begins the orchestrate loop
-- The ConfChange observer is wired to handle cluster membership changes
-
-#### Phase 4: Learner Registration
+#### Phase 3: Learner Registration Preflight
 
 An fx `OnStart` hook detects this is a fresh start (empty WAL before `NewNode` modified it) with `--join`:
 
@@ -152,9 +144,22 @@ Leader proposes ConfChangeAddLearnerNode
 ConfChange committed → all nodes update transport & service pool
 ```
 
-The registration loop has no deadline of its own: it retries `Unavailable` with backoff until it succeeds or the process is terminated, and every other status is final.
+The registration loop has no deadline of its own: it retries `Unavailable` with backoff until it succeeds or the process is terminated. `AlreadyExists` is accepted as idempotent success; other statuses are final, including stale-progress rejection.
 
 On **restart** (WAL not empty), this registration step is **skipped** because the node is already a cluster member.
+
+This preflight completes before the local Raft listener and processing loop
+start, preserving the stale-progress admission check before any inbound Raft
+message can be applied. The current voter quorum can commit a learner addition
+while its listener is still closed. If optional-TLS probing fails at that point,
+the voter retains the committed endpoint and its outbound retry loop.
+
+#### Phase 4: Startup of Inbound Raft Traffic
+
+After preflight, the remaining fx lifecycle hooks start the listeners, wire
+discovered peers, and run the Raft node. The existing voter's retry loop can
+then establish streams to the learner and deliver replication without another
+registration or a voter restart. Normal catch-up and automatic promotion follow.
 
 ### ConfChange Observer
 
