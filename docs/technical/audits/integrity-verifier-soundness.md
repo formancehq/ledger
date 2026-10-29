@@ -128,6 +128,52 @@ read-time metadata and mirror progress are excluded enrichments. Its coverage
 must not be described as verification of every LedgerInfo field. The pass
 changes verification only, with no persisted format or apply-semantic change.
 
+## Allocation-boundary and audit-item evidence
+
+`compareBoundaries` must receive `nextTransactionId` and `nextLogId` solely from
+the completed existing `AuditReplayer` store after successful chain-verified
+history. Stored logs, live boundaries and a separate unchecked serialized-order
+scan are not allocation oracles. An incomplete chain or replay suppresses final
+boundary comparison rather than comparing prefix state with the final store.
+A successful chain-verified entry with an undecodable or typeless order must
+report `HASH_MISMATCH` before suppressing ledger-policy and boundary checks.
+Probe empty, nonempty typeless and malformed serialized orders in a rehashed
+zero-log item with valid physical membership; coordinated boundary corruption
+must not leave the full check healthy.
+Canonical execution supplies mirror fill-gap, duplicate/no-op, rejected-order,
+deleted-ledger and checked sequence-exhaustion semantics; shared producer logic
+still does not independently prove accounting correctness.
+
+Inventory the independent entire-prefix `AuditItem` scan as well as the chain
+walk. Every retained item, including a zero-log item, needs an exact 14-byte key,
+a nonzero parent sequence, an existing parent whose key and payload sequences
+agree, and agreement between the item's key index and payload `OrderIndex`.
+Membership is structural evidence, never authorization to influence replay.
+Surplus items under a real parent remain subject to hash verification. Physical
+validation remains applicable even when the chain is incomplete. Inspect existing
+`HASH_MISMATCH` aggregation, bounded diagnostic samples, cancellation and
+iterator/read/decode errors; zero corruption callbacks plus a nil method return
+are required for a healthy control.
+
+Use a real FSM-produced mirror ledger with initial `nextTransactionId=1`, retain
+its verified history, and compare independent boundary corruption to `100`, an
+orphan item carrying skipped transaction ID `99`, and the coordinated pair.
+Preserve `nextLogId` and `lastMirrorV2LogId` so the assertions identify the
+intended branch. Require all typed callbacks and terminal status, not merely any
+finding. Probe zero-log items, malformed and zero/maximal parent-sequence keys,
+parent payload disagreement, item index disagreement, surplus items under an
+existing parent, legitimate gap/no-op/rejected orders, deletion, exhaustion,
+incomplete replay and cancellation.
+
+The operational budget is one linear retained-item traversal, with one parent
+lookup per distinct encountered sequence and only the previous parent cached,
+plus `O(ledgers)` boundary export from the existing replay. Check deterministic
+cost shape and representative benchmark evidence; an extreme sparse parent
+sequence must not induce absent-sequence enumeration. No additional business
+replay, persisted/wire/hash change or migration is authorized, and protocol
+revision remains `40`. Bare-prefix boundary-row coverage and stream send-error
+handling remain separate scope limitations rather than claimed protections.
+
 ## Ownership and deduplication
 
 Choose the owner by the missing protection and required correction. Shared

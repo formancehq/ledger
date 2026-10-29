@@ -208,6 +208,27 @@ func successRangeAuditItems(minSeq, maxSeq uint64) []*auditpb.AuditItem {
 	return items
 }
 
+// requireIncompleteAuditOrders separates the exact expected malformed-order
+// findings from these synthetic range fixtures. Their hashes are valid, but
+// their deliberately empty orders cannot substantiate a full business replay.
+// Keep every original log-bound assertion on the remaining complete event set.
+func requireIncompleteAuditOrders(t *testing.T, findings []*servicepb.CheckStoreError, sequences ...uint64) []*servicepb.CheckStoreError {
+	t.Helper()
+	hashes := errorsOfType(findings, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH)
+	require.Len(t, hashes, len(sequences), "all findings: %v", findings)
+	for i, sequence := range sequences {
+		require.Equal(t, fmt.Sprintf("audit entry %d item 0 has no decodable order type; final ledger policy and boundary verification is incomplete", sequence), hashes[i].GetMessage())
+	}
+	var remaining []*servicepb.CheckStoreError
+	for _, finding := range findings {
+		if finding.GetErrorType() != servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH {
+			remaining = append(remaining, finding)
+		}
+	}
+
+	return remaining
+}
+
 // engineAuditEntry is the input of appendEngineAuditEntry.
 type engineAuditEntry struct {
 	engine *testEngine
@@ -510,7 +531,8 @@ func TestCheck_LogBounds_DeletedTailReportsOneGap(t *testing.T) {
 // surviving prefix, so volumes, transaction states and boundaries all agree
 // with the logs that are left. The audit chain still accounts for the lost
 // range, and it is the ONLY thing that does: the assertion below is that the
-// tail gap is the single finding of the whole run.
+// tail gap is the only remaining finding after the synthetic malformed-order
+// findings are asserted and removed by requireIncompleteAuditOrders.
 func TestCheck_LogBounds_RestoreLostTailIsOtherwiseInvisible(t *testing.T) {
 	t.Parallel()
 
@@ -547,6 +569,7 @@ func TestCheck_LogBounds_RestoreLostTailIsOtherwiseInvisible(t *testing.T) {
 	}
 
 	errs := collectCheckErrors(t, engine.store, engine.attrs)
+	errs = requireIncompleteAuditOrders(t, errs, 4, 5, 6)
 
 	require.Len(t, errs, 1,
 		"the lost tail must be reported, and by this pass alone: every other projection agrees "+
@@ -709,7 +732,7 @@ func TestCheck_LogBounds_ReservedSequenceZeroIsUnaudited(t *testing.T) {
 		rows      int
 	}{
 		{
-			name: "alongside a healthy audited history",
+			name: "alongside a chain-valid synthetic history",
 			setup: func(t *testing.T, store *dal.Store) {
 				writeRawLogRows(t, store, 1, 4)
 				persistSuccessAuditEntries(t, store, [][2]uint64{{1, 4}})
@@ -746,6 +769,9 @@ func TestCheck_LogBounds_ReservedSequenceZeroIsUnaudited(t *testing.T) {
 			require.Equal(t, tc.rows, rows, "the forged row must be present in the store")
 
 			errs := collectCheckErrors(t, store, attributes.New())
+			if tc.storedMax > 0 {
+				errs = requireIncompleteAuditOrders(t, errs, 1)
+			}
 
 			require.Len(t, errs, 1, "the forged row is the only divergence in either fixture, got %v", errs)
 
@@ -805,6 +831,7 @@ func TestCheck_LogBounds_DiscontinuousSuccessRangesFailLoudly(t *testing.T) {
 	persistSuccessAuditEntries(t, store, [][2]uint64{{1, 2}, {4, 5}})
 
 	errs := collectCheckErrors(t, store, attributes.New())
+	errs = requireIncompleteAuditOrders(t, errs, 1, 2)
 
 	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH),
 		"the fixture's chain is valid, got %v", errs)
@@ -877,6 +904,7 @@ func TestCheck_LogBounds_InvertedSuccessRangeFailsLoudly(t *testing.T) {
 			require.Equal(t, 2, rows)
 
 			errs := collectCheckErrors(t, store, attributes.New())
+			errs = requireIncompleteAuditOrders(t, errs, 1)
 
 			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH),
 				"the fixture's chain is valid, got %v", errs)
@@ -1194,6 +1222,9 @@ func TestCheck_LogBounds_SuccessRangeWithoutItemsIsNotAnOracle(t *testing.T) {
 			rewriteAuditEntry(t, store, entry, tc.items)
 
 			errs := collectCheckErrors(t, store, attributes.New())
+			if len(tc.items) > 0 {
+				errs = requireIncompleteAuditOrders(t, errs, 1)
+			}
 
 			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH),
 				"the fixture's chain must be valid, or the finding under test is not the one being pinned: %v", errs)
