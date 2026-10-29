@@ -2219,6 +2219,9 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 	} else if !a.ledgerRequestToOrder(order, req, overlay) && !a.systemRequestToOrder(order, req, batchSig, overlay) {
 		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
 	}
+	if err := a.resolvePreparedQueryIDOrder(ctx, order, overlay); err != nil {
+		return nil, err
+	}
 
 	// Validate storage-safety invariants (null bytes in ledger names, metadata keys, etc.)
 	if err := validateOrder(order); err != nil {
