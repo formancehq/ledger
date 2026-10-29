@@ -208,7 +208,7 @@ func newHookCommitDrainNode(t *testing.T, notifier state.Notifier) (*observedDra
 		1, "node-1:7000", "node-1:8000", instanceID, logger)
 	require.NoError(t, err)
 	responses := node.NewLocalResponses()
-	applier, err := node.NewApplier(machine, recovery, synchronizer, sp, store, w, logger, meter, 1000, 1000, nil, member.OnSnapshotInstalled, responses)
+	applier, err := node.NewApplier(machine, recovery, synchronizer, sp, store, w, logger, meter, 1000, 1000, nil, member, responses)
 	require.NoError(t, err)
 	raftNode, err := node.NewNode(node.NodeConfig{
 		NodeID: 1, AdvertiseAddr: "node-1:7000", ServiceAdvertiseAddr: "node-1:8000", InstanceID: instanceID,
