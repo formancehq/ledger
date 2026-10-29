@@ -99,27 +99,58 @@ probe_write_rejection() {
 		return 1
 	}
 }
+wait_write_rejection() {
+	local i="$1" label="$2" deadline result
+	deadline=$(( $(date +%s) + 30 ))
+	while [ "$(date +%s)" -lt "$deadline" ]; do
+		if probe_write_rejection "$i" "$label"; then
+			return 0
+		else
+			result="$?"
+		fi
+		[ "$result" -ne 2 ] || return 2
+		sleep 0.5
+	done
+	echo "no conclusive maintenance rejection from node $((i+1)) during $label" >&2
+	return 1
+}
 probe_live_voters() {
-	local replacing="$1" label="$2" i actual result confirmed=0
+	local replacing="$1" label="$2" i actual result confirmed=0 inconclusive=0
 	for i in 0 1 2; do
 		[ "$i" -eq "$replacing" ] && continue
 		k wait --for=condition=Ready "pod/$(pod_name "$i")" --timeout=1s >/dev/null 2>&1 || continue
 		if probe_write_rejection "$i" "$label"; then
-			actual="$(account "$i")" || continue
+			actual="$(account "$i")" || { inconclusive=1; continue; }
 			[ "$actual" = "$before" ] || { echo "account changed on node $((i+1)) during replacement" >&2; return 2; }
 			confirmed=$((confirmed+1))
 		else
 			result="$?"
 			[ "$result" -ne 2 ] || return 2
+			inconclusive=1
 		fi
 	done
-	[ "$confirmed" -gt 0 ]
+	[ "$confirmed" -gt 0 ] && [ "$inconclusive" -eq 0 ]
+}
+wait_probe_live_voters() {
+	local replacing="$1" label="$2" deadline result
+	deadline=$(( $(date +%s) + 30 ))
+	while [ "$(date +%s)" -lt "$deadline" ]; do
+		if probe_live_voters "$replacing" "$label"; then
+			return 0
+		else
+			result="$?"
+		fi
+		[ "$result" -ne 2 ] || return 2
+		sleep 0.5
+	done
+	echo "no conclusive maintenance rejection from every ready live voter during $label" >&2
+	return 1
 }
 replacement_probe_loop() {
 	local replacing="$1" log="$2" attempt=0 result
 	while :; do
 		if probe_live_voters "$replacing" "replacement-$replacing-$attempt"; then
-			printf 'confirmed maintenance rejection and unchanged data on a live voter at attempt %s\n' "$attempt" >> "$log"
+			printf 'confirmed maintenance rejection and unchanged data on every ready live voter at attempt %s\n' "$attempt" >> "$log"
 		else
 			result="$?"
 			[ "$result" -ne 2 ] || return 2
@@ -143,7 +174,7 @@ replace_pod() {
 	k wait --for=delete "pod/$name" --timeout=120s
 	assert_probe_alive
 	# The target Pod is absent here; this is a confirmed probe in the deletion gap.
-	probe_live_voters "$i" "deleted-$i"
+	wait_probe_live_voters "$i" "deleted-$i"
 	create_pod "$i" "$UPGRADE_TARGET_IMAGE" rejoin
 	assert_probe_alive
 	new_uid="$(k get pod "$name" -o jsonpath='{.metadata.uid}')"
@@ -171,7 +202,7 @@ check_maintenance() {
 	while [ "$(date +%s)" -lt "$deadline" ]; do
 		wait_consistent true
 		for i in 0 1 2; do
-			probe_write_rejection "$i" "$label" || return 1
+			wait_write_rejection "$i" "$label" || return 1
 		done
 		check_data "$before"
 	done
