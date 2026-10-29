@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       max-age-days:
-        description: Delete Go build and golangci-lint entries unused for this many days
+        description: Delete Go build and golangci-lint entries unused for this many days (1-30)
         required: true
         default: "3"
 
@@ -41,4 +41,4 @@ jobs:
       - name: Setup Env
         uses: ./.github/actions/default
       - name: Expire stale cache entries
-        run: nix develop .#ci --command bash scripts/ci-expire-caches
+        run: nix develop .#ci --command just ci-expire-caches

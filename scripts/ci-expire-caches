@@ -3,8 +3,8 @@
 # the runner profile's cache size. A generation that grows past that size is
 # committed but not cloned, and every job on its lineage then starts empty.
 #
-# The Cache Expiry workflow runs this inside `nix develop .#ci` after Setup Env
-# has mounted /nix and the Go caches:
+# The Cache Expiry workflow runs this through `just ci-expire-caches` inside
+# `nix develop .#ci`, after Setup Env has mounted /nix and the Go caches:
 #   - Go build and golangci-lint entries unused for CACHE_MAX_AGE_DAYS are
 #     deleted. Both caches refresh an entry's mtime when they use it (at most
 #     once an hour), so mtime is the last use within an hour.
@@ -22,7 +22,11 @@
 #     budget warns rather than fails: a failed job commits nothing, which
 #     would also discard the trimming done so far.
 #
-# DRY_RUN=1 reports what would be deleted without deleting anything.
+# DRY_RUN=1 reports what the first pass would delete and the total against
+# the budget, without deleting anything. It does not simulate the lower age
+# limits a real run applies when the total stays over budget. Outside GitHub
+# Actions the script only runs with DRY_RUN=1, because a real run would wipe
+# the local Go module cache and garbage-collect the local Nix store.
 set -euo pipefail
 
 max_age_days=${CACHE_MAX_AGE_DAYS:-3}
@@ -32,12 +36,24 @@ dry_run=${DRY_RUN:-0}
 # Dev shells entered by .github/workflows; keep in sync when a job adds one.
 ci_shells=(ci operator-tests)
 
-for setting in "CACHE_MAX_AGE_DAYS=$max_age_days" "CACHE_BUDGET_GB=$budget_gb"; do
-    if ! [[ ${setting#*=} =~ ^[1-9][0-9]*$ ]]; then
-        echo "${setting%%=*} must be a positive integer, got '${setting#*=}'" >&2
+if [[ $dry_run != 1 && ${GITHUB_ACTIONS:-} != true ]]; then
+    echo "ci-expire-caches deletes from the caches of the machine it runs on;" \
+        "outside GitHub Actions run it with DRY_RUN=1" >&2
+    exit 1
+fi
+
+# Upper bounds keep the cutoff arithmetic far from overflow and the budget
+# loop short; Go trims its own cache after five days anyway.
+check_range() {
+    local name=$1 value=$2 max=$3
+    if ! [[ $value =~ ^[1-9][0-9]{0,3}$ ]] || ((value > max)); then
+        # %q keeps a crafted value from injecting workflow commands.
+        printf '%s must be an integer from 1 to %s, got %q\n' "$name" "$max" "$value" >&2
         exit 1
     fi
-done
+}
+check_range CACHE_MAX_AGE_DAYS "$max_age_days" 30
+check_range CACHE_BUDGET_GB "$budget_gb" 1000
 
 cd "$(git rev-parse --show-toplevel)"
 go_cache=$(go env GOCACHE)

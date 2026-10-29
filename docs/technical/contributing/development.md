@@ -296,6 +296,8 @@ CI jobs share one Namespace cache volume that holds `/nix`, the Go build and mod
 
 The trimmed copy becomes the base for the next jobs because it is the newest commit, so a CI job that overlaps the trim and finishes after it commits its untrimmed copy over the trimmed one on its node. When a job starts entering a new dev shell, add it to `ci_shells` in `scripts/ci-expire-caches`.
 
+The workflow runs `just ci-expire-caches`. On your machine, the recipe only runs as a preview, because a real run would wipe your Go module cache and garbage-collect your Nix store: `DRY_RUN=1 just ci-expire-caches` reports what the first pass would delete, without the lower age limits a real run applies when the caches stay over budget.
+
 ### Debugging
 
 #### Logs

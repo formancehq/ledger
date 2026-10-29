@@ -91,6 +91,12 @@ go-mod-download:
     echo "==> controller-gen (download and build)"
     {{controller-gen}} --version
 
+# Trim the shared Namespace CI cache volume; run nightly by the Cache Expiry
+# workflow. Outside GitHub Actions it only runs as a preview:
+# DRY_RUN=1 just ci-expire-caches
+ci-expire-caches:
+    bash scripts/ci-expire-caches
+
 # All optional feature build tags
 all_tags := "kafka,nats,clickhouse,databricks,s3,azure,pyroscope"
 
