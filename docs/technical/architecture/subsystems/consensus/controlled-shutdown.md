@@ -24,8 +24,10 @@ release is in progress, the operator completes the old release and persists a
 new epoch immediately. Writes may be admitted until the new epoch reaches
 `Drained`, as during any initial annotation request.
 
-If the shutdown is canceled or the Pods restart with their existing volumes,
-the operator calls `ClusterService.EndDrain` with the same epoch. The hidden
+Removing the annotation cancels the drain and causes the operator to call
+`ClusterService.EndDrain` with the same epoch. Restarting Pods with their
+existing volumes preserves the active drain; remove the annotation to reopen
+write admission. The hidden
 `ledgerctl cluster end-drain` command is its transport. The release is another
 Raft-ordered technical update; it clears the admission gate on each member
 only when applied. `EnsureDrainReleased` waits for every captured member to
