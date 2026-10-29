@@ -98,7 +98,7 @@ retried forever:
   the target cluster's. Discovery aborts immediately with a
   `JoinClusterIDError` that names the `--join` address and the rejected value.
 
-Learner registration (Phase 4) applies the same rules.
+Learner registration (Phase 3) applies the same rules.
 
 #### Phase 2: Node Initialization
 
