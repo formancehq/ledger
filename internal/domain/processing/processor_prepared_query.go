@@ -123,15 +123,24 @@ func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQu
 		return nil, domain.ErrPreparedQueryTargetUnsupported
 	}
 
+	// The update request has no target. Public id is provisionally decoded as a
+	// transaction ID by targetless clients; resolve it against the stored LOGS
+	// target here, where a query-write caller is already authorized to apply.
+	filter := order.GetFilter()
+	if updated.GetTarget() == commonpb.QueryTarget_QUERY_TARGET_LOGS {
+		filter = filter.CloneVT()
+		resolveLogIDFilter(filter)
+	}
+
 	// Validate the new filter against that stored target so an update cannot
 	// smuggle in a condition invalid for the query's target — the case admission
 	// cannot catch because the update request has no target field.
-	if err := domain.ValidateFilterForTarget(order.GetFilter(), updated.GetTarget()); err != nil {
+	if err := domain.ValidateFilterForTarget(filter, updated.GetTarget()); err != nil {
 		return nil, err
 	}
 
 	previousFilter := updated.GetFilter().CloneVT()
-	updated.Filter = order.GetFilter()
+	updated.Filter = filter
 	s.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: updated.GetName()}, updated)
 
 	return &commonpb.LogPayload{
@@ -140,10 +149,34 @@ func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQu
 				Ledger:         ledger,
 				Name:           order.GetName(),
 				PreviousFilter: previousFilter,
-				NewFilter:      order.GetFilter(),
+				NewFilter:      filter,
 			},
 		},
 	}, nil
+}
+
+// resolveLogIDFilter maps a provisional transaction ID condition to the log
+// ID condition in a LOGS prepared query, including nested boolean filters.
+func resolveLogIDFilter(filter *commonpb.QueryFilter) {
+	if filter == nil {
+		return
+	}
+	switch arm := filter.GetFilter().(type) {
+	case *commonpb.QueryFilter_BuiltinUint:
+		if arm.BuiltinUint.GetField() == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID {
+			filter.Filter = &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{Cond: arm.BuiltinUint.GetCond()}}
+		}
+	case *commonpb.QueryFilter_And:
+		for _, child := range arm.And.GetFilters() {
+			resolveLogIDFilter(child)
+		}
+	case *commonpb.QueryFilter_Or:
+		for _, child := range arm.Or.GetFilters() {
+			resolveLogIDFilter(child)
+		}
+	case *commonpb.QueryFilter_Not:
+		resolveLogIDFilter(arm.Not.GetFilter())
+	}
 }
 
 func processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {

@@ -78,9 +78,11 @@ func DecodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryF
 //     against it — see handlers_update_prepared_query.go). It passes a non-audit
 //     target for resolution, which is sound because prepared queries are only
 //     ever ACCOUNTS/TRANSACTIONS/LOGS (audit is never a prepared-query target
-//     — see http.preparedQueryTargets). HTTP and ledgerctl update paths initially
-//     decode as TRANSACTIONS, then read the stored target and re-decode ID
-//     filters for LOGS. The FSM remains the authoritative validity gate;
+//     — see http.preparedQueryTargets). HTTP re-decodes ID filters against the
+//     stored target. For gRPC clients such as ledgerctl, the FSM resolves
+//     provisional transaction ID conditions against a stored LOGS target, so
+//     updates require query-write but not query-read permission. The FSM
+//     remains the authoritative validity gate;
 //   - the ledgerctl list and `queries create` commands, which know their target
 //     and pass it (audit list passes QUERY_TARGET_AUDIT so bare audit fields
 //     resolve to the audit arm) but let the server run the validity gate.
