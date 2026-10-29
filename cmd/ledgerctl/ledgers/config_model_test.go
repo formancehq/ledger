@@ -10,8 +10,36 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+func TestConfigIDFilterExportApplyRoundTrip(t *testing.T) {
+	t.Parallel()
+	ledger := &commonpb.LedgerInfo{Name: "ledger1"}
+	for _, target := range []commonpb.QueryTarget{
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		commonpb.QueryTarget_QUERY_TARGET_LOGS,
+	} {
+		filter, err := filterexpr.Parse("id > $min and id < $max", target)
+		require.NoError(t, err)
+		query := &commonpb.PreparedQuery{Name: "by-id", Target: target, Filter: filter}
+		exported := ConfigFromProto(ledger, nil, []*commonpb.PreparedQuery{query}, nil)
+		var buf bytes.Buffer
+		require.NoError(t, exported.WriteJSON(&buf))
+		path := filepath.Join(t.TempDir(), "config.json")
+		require.NoError(t, os.WriteFile(path, buf.Bytes(), 0o600))
+		parsed, err := ReadConfigFile(path)
+		require.NoError(t, err)
+		current := ConfigFromProto(ledger, nil, nil, nil)
+		actions, err := ComputeDiff(ledger.GetName(), current, parsed)
+		require.NoError(t, err)
+		require.Len(t, actions, 1)
+		created := actions[0].Request.GetCreatePreparedQuery().GetQuery()
+		require.Equal(t, target, created.GetTarget())
+		require.True(t, proto.Equal(filter, created.GetFilter()))
+	}
+}
 
 // TestConfigStructuredRoundTrip is the regression test for #493: exporting a
 // configuration as YAML/JSON (the shape produced by `ledgers configuration
