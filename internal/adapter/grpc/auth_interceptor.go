@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"crypto/subtle"
+	"strings"
 	"time"
 
 	ggrpc "google.golang.org/grpc"
@@ -181,8 +182,11 @@ func requirePeerCredential(ctx context.Context, cfg internalauth.AuthConfig) err
 		return status.Error(codes.Unauthenticated, "peer transport credential is required")
 	}
 	values := md.Get(transport.PeerAuthMetadataKey)
-	if len(values) == 1 && len(values[0]) >= len("Bearer ") {
-		token := values[0][len("Bearer "):]
+	if len(values) == 1 && strings.HasPrefix(values[0], "Bearer ") {
+		token := strings.TrimPrefix(values[0], "Bearer ")
+		if token == "" || strings.ContainsAny(token, " \t\r\n") {
+			return status.Error(codes.Unauthenticated, "invalid peer transport credential")
+		}
 		if len(token) == len(cfg.ClusterSecret) && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
 			return nil
 		}
