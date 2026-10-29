@@ -100,10 +100,23 @@ test-helm-render:
     # New cluster (capability present): 2 policies + 2 bindings.
     new=$(helm template t helm/operator --set pvcProtection.enabled=true --api-versions "$vap" \
         | grep -c "^kind: ValidatingAdmissionPolicy" || true)
+    # rbac.scope=namespaced: the operator ClusterRole must be bound with a RoleBinding in
+    # watchNamespace instead of a ClusterRoleBinding; only the -cluster-scoped and
+    # pre-delete ClusterRoleBindings may remain.
+    namespaced=$(helm template t helm/operator --set rbac.scope=namespaced --set watchNamespace=ledger)
+    crb=$(printf '%s\n' "$namespaced" | grep -c "^kind: ClusterRoleBinding" || true)
+    rb=$(printf '%s\n' "$namespaced" | grep -c "^kind: RoleBinding" || true)
+    # rbac.scope=namespaced without watchNamespace must fail the render.
+    if helm template t helm/operator --set rbac.scope=namespaced >/dev/null 2>&1; then
+        rm -rf helm/operator/charts
+        echo "FAIL: rbac.scope=namespaced without watchNamespace must fail the render"; exit 1
+    fi
     rm -rf helm/operator/charts
     if [ "$old" -ne 0 ]; then echo "FAIL: expected 0 VAP objects on a pre-1.30 cluster, got $old"; exit 1; fi
     if [ "$new" -ne 4 ]; then echo "FAIL: expected 4 VAP objects on a >=1.30 cluster, got $new"; exit 1; fi
+    if [ "$crb" -ne 2 ] || [ "$rb" -ne 2 ]; then echo "FAIL: rbac.scope=namespaced expected 2 ClusterRoleBindings (cluster-scoped, pre-delete) and 2 RoleBindings, got $crb/$rb"; exit 1; fi
     echo "OK: VAP gated by ValidatingAdmissionPolicy capability (old=$old, new=$new)"
+    echo "OK: rbac.scope=namespaced binds the ClusterRole per namespace (ClusterRoleBindings=$crb, RoleBindings=$rb)"
 
 helm-package version='' suffix='':
     #!/bin/bash

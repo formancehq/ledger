@@ -182,6 +182,26 @@ helm install ledger-operator misc/operator/helm/operator \
   --create-namespace
 ```
 
+By default the operator ServiceAccount is bound cluster-wide so it can manage
+ledgers in any namespace. To confine it to a single namespace, set
+`watchNamespace` together with `rbac.scope=namespaced`:
+
+```bash
+helm install ledger-operator misc/operator/helm/operator \
+  --namespace ledger-system \
+  --create-namespace \
+  --set watchNamespace=ledger \
+  --set rbac.scope=namespaced
+```
+
+In this mode the generated ClusterRole is bound with a `RoleBinding` in
+`watchNamespace` (so Secrets, `pods/exec`, StatefulSets and the other namespaced
+grants only apply there), leader election gets a `Role` in the release namespace,
+and a small `<release>-cluster-scoped` ClusterRole covers the kinds that have no
+namespace: `Credentials` (a cluster-scoped CRD), `PersistentVolumes`,
+`StorageClasses` and `ValidatingAdmissionPolicyBindings`. The `watchNamespace`
+must already exist when the chart is installed.
+
 ### Deploy a Ledger Cluster
 
 If `spec.clusterID` is omitted, the operator writes a random UUID into the
@@ -300,6 +320,7 @@ storage.
 | `replicaCount` | `1` | Operator replicas |
 | `leaderElection` | `true` | Enable HA leader election |
 | `watchNamespace` | `""` | Namespace to watch (empty = all) |
+| `rbac.scope` | `cluster` | `cluster` binds the ClusterRole cluster-wide. `namespaced` (requires `watchNamespace`) binds it only in `watchNamespace` and grants cluster-wide access solely to Credentials, PersistentVolumes, StorageClasses and ValidatingAdmissionPolicyBindings |
 | `pvcProtection.enabled` | `true` | Install the cluster-scoped ValidatingAdmissionPolicy that blocks accidental deletion of ledger PVCs/PVs (requires Kubernetes >= 1.30). On by default; set `false` to opt the cluster out. Arming only — a ledger is selected via `spec.persistence.deletionProtection` (also on by default) |
 | `pvcProtection.allowDeletionAnnotation` | `formance.com/allow-deletion` | Annotation key whose value `true` opts a volume out of deletion protection |
 | `pvcProtection.additionalExemptServiceAccounts` | `[]` | Extra ServiceAccount usernames (`system:serviceaccount:<ns>:<name>`) exempt from the policies — sibling operator releases managing protected ledgers, or managed workload/GitOps controllers |
