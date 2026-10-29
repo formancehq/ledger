@@ -61,6 +61,9 @@ type Admission struct {
 	attrs           *attributes.Attributes
 	numscriptCache  *numscript.NumscriptCache
 	waitLeaderReady func(context.Context) error
+	// readBarrier makes the rare direct idempotency replay linearizable with
+	// writes already committed before its outcome snapshot is opened.
+	readBarrier func(context.Context) error
 	// auditProjectionState is node-local admission state. It may reject a
 	// checkpoint proposal before Raft, but never affects deterministic apply.
 	auditProjectionState func() (disabled, rebuilding bool)
@@ -160,6 +163,15 @@ func NewAdmission(
 		attrs:           attrs,
 		numscriptCache:  numscriptCache,
 		waitLeaderReady: waitLeaderReady,
+	}
+	if reader, ok := proposer.(interface {
+		ReadIndexAndWait(context.Context) (*node.ReadBarrierInfo, error)
+	}); ok {
+		a.readBarrier = func(ctx context.Context) error {
+			_, err := reader.ReadIndexAndWait(ctx)
+
+			return err
+		}
 	}
 	for _, opt := range opts {
 		opt(a)
