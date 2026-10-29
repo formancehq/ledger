@@ -3,6 +3,28 @@
 
 package snapshotpb
 
+func (m *CheckSnapshotReadinessRequest) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *CheckSnapshotReadinessResponse) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
 func (m *PrepareSnapshotRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
