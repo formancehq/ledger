@@ -41,6 +41,8 @@
 #   MODEL_DEBUG       set to enable driver debug logging
 #   MODEL_FAIL_FAST   stop on the first finding (default on); 0/off runs the full duration; a substring stops only on a matching one
 #   KEEP_WORKDIR      if set, don't delete the temp work dir on exit (for debugging)
+#   UPGRADE_SOURCE_BIN  rc.1 server binary; enables a three-node rolling binary upgrade
+#   UPGRADE_PHASE_SECONDS  minimum model-verified soak before and after each replacement (default: 15)
 
 set -uo pipefail
 
@@ -95,6 +97,16 @@ fi
 
 RESTART_INTERVAL="${RESTART_INTERVAL:-15}"
 RECOVER_TIMEOUT="${RECOVER_TIMEOUT:-90}"
+UPGRADE_SOURCE_BIN="${UPGRADE_SOURCE_BIN:-}"
+UPGRADE_PHASE_SECONDS="${UPGRADE_PHASE_SECONDS:-15}"
+if [ -n "$UPGRADE_SOURCE_BIN" ]; then
+	[ "$NODES" -eq 3 ] && [ "$RESTORE" -eq 0 ] && [ -x "$UPGRADE_SOURCE_BIN" ] || {
+		echo "ERROR: rolling upgrade requires three nodes, no restore, and an executable UPGRADE_SOURCE_BIN" >&2; exit 2;
+	}
+	case "$UPGRADE_PHASE_SECONDS" in ''|*[!0-9]*) echo "ERROR: UPGRADE_PHASE_SECONDS must be a positive integer" >&2; exit 2 ;; esac
+	[ "$UPGRADE_PHASE_SECONDS" -gt 0 ] || { echo "ERROR: UPGRADE_PHASE_SECONDS must be positive" >&2; exit 2; }
+	RESTART_INTERVAL=0
+fi
 # A killed node stays down DEAD_TIME seconds (N>1). Combined with a low
 # COMPACTION_MARGIN and a short MAINTENANCE_INTERVAL, the leader snapshots and
 # compacts its Raft log past the dead node's last index during the outage, so
@@ -160,7 +172,7 @@ S3_FLAGS=(
 	--bucket-id "$CLUSTER_ID"
 )
 
-GRPC_PORTS=() RAFT_PORTS=() HTTP_PORTS=() NODE_DIRS=() SERVER_LOGS=() SERVER_PIDS=()
+GRPC_PORTS=() RAFT_PORTS=() HTTP_PORTS=() NODE_DIRS=() SERVER_LOGS=() SERVER_PIDS=() NODE_BINS=()
 for i in $(seq 0 $(( NODES - 1 ))); do
 	GRPC_PORTS+=( $(( GRPC_BASE + i )) )
 	RAFT_PORTS+=( $(( RAFT_BASE + i )) )
@@ -168,6 +180,7 @@ for i in $(seq 0 $(( NODES - 1 ))); do
 	NODE_DIRS+=( "$WORKDIR/n$i" )
 	SERVER_LOGS+=( "$WORKDIR/server-$i.log" )
 	SERVER_PIDS+=( "" )
+	NODE_BINS+=( "${UPGRADE_SOURCE_BIN:-$SERVER_BIN}" )
 done
 
 log() { echo "[run_model_test] $*"; }
@@ -291,7 +304,7 @@ start_node() {
 		join)      flags+=( --join "127.0.0.1:${RAFT_PORTS[0]}" ) ;;
 		rejoin)    ;;
 	esac
-	"$SERVER_BIN" run \
+	"${NODE_BINS[$i]}" run \
 		--node-id "$(( i + 1 ))" \
 		--cluster-id "$CLUSTER_ID" \
 		--bind-addr "127.0.0.1:${RAFT_PORTS[$i]}" \
@@ -317,7 +330,7 @@ start_node() {
 wait_leader() {
 	local i="$1" offset="${2:-0}"
 	for _ in $(seq 1 60); do
-		if tail -c +"$(( offset + 1 ))" "${SERVER_LOGS[$i]}" 2>/dev/null | grep -q "Leader ready"; then return 0; fi
+		if tail -c +"$(( offset + 1 ))" "${SERVER_LOGS[$i]}" 2>/dev/null | grep -qE "Leader ready|Became leader|became leader at term"; then return 0; fi
 		if ! kill -0 "${SERVER_PIDS[$i]}" 2>/dev/null; then
 			echo "ERROR: node $(( i + 1 )) exited during startup:" >&2
 			tail -20 "${SERVER_LOGS[$i]}" >&2
@@ -363,6 +376,146 @@ wait_healthy() {
 		sleep 1
 	done
 	return 1
+}
+
+# Query a particular node through any live gRPC endpoint. --node-id selects
+# the local Raft/FSM cursors rather than the leader's view of that node.
+node_status() {
+	local node_id="$1" i output
+	for i in 0 1 2; do
+		[ -n "${SERVER_PIDS[$i]}" ] && kill -0 "${SERVER_PIDS[$i]}" 2>/dev/null || continue
+		output="$("$LEDGERCTL_BIN" cluster status --insecure --server "127.0.0.1:${GRPC_PORTS[$i]}" \
+			--node-id "$node_id" --json --timeout 3s 2>/dev/null)" || continue
+		jq -e '.raftStatus != null' <<<"$output" >/dev/null 2>&1 || continue
+		printf '%s\n' "$output"
+		return 0
+	done
+	return 1
+}
+
+# Pin one leader commit index, then require every node's durable FSM cursor to
+# pass it. This remains achievable if background cluster work advances the log.
+wait_upgrade_consistent() {
+	local expected_maintenance="$1" deadline leader voters leader_state horizon state i all_ready
+	deadline=$(( $(date +%s) + RECOVER_TIMEOUT ))
+	while [ "$(date +%s)" -lt "$deadline" ]; do
+		for i in 0 1 2; do
+			[ -n "${SERVER_PIDS[$i]}" ] && kill -0 "${SERVER_PIDS[$i]}" 2>/dev/null || {
+				log "node $((i+1)) exited while waiting for upgrade catch-up"; return 1;
+			}
+		done
+		read -r leader voters < <(cluster_health)
+		if [ "$leader" != 0 ] && [ "$voters" -eq 3 ]; then
+			leader_state="$(node_status "$leader")" || { sleep 1; continue; }
+			horizon="$(jq -r '.raftStatus.commit // 0' <<<"$leader_state")"
+			if [ "$horizon" != 0 ]; then
+				all_ready=1
+				for i in 1 2 3; do
+					state="$(node_status "$i")" || { all_ready=0; break; }
+					jq -e --argjson leader "$leader" --argjson node "$i" --argjson horizon "$horizon" --argjson maintenance "$expected_maintenance" \
+						'(.leader | tonumber) == $leader and (.localNode | tonumber) == $node and (.raftStatus.state == "Leader" or .raftStatus.state == "Follower") and (.raftStatus.lastPersistedIndex | tonumber) >= $horizon and ((.syncProgress.status // "normal") == "normal") and ((.maintenanceMode // false) == $maintenance)' \
+						<<<"$state" >/dev/null || { all_ready=0; break; }
+					curl -fsS --max-time 3 "http://127.0.0.1:${HTTP_PORTS[$((i-1))]}/clusterz" >/dev/null 2>&1 || { all_ready=0; break; }
+				done
+				if [ "$all_ready" -eq 1 ]; then log "all voters normal and durably past commit $horizon (leader=$leader)"; return 0; fi
+			fi
+		fi
+		sleep 1
+	done
+	return 1
+}
+
+upgrade_cli() {
+	local i="$1"; shift
+	"$LEDGERCTL_BIN" "$@" --insecure --server "127.0.0.1:${GRPC_PORTS[$i]}" --timeout 15s
+}
+
+check_upgrade_data() {
+	local expected="$1" i actual
+	for i in 0 1 2; do
+		actual="$(upgrade_cli "$i" accounts get bank --ledger "$UPGRADE_LEDGER" --json \
+			| jq -cS '{address,volumes,metadata}')" || return 1
+		[ "$actual" = "$expected" ] || { log "node $((i+1)) account differs from expected snapshot"; return 1; }
+	done
+}
+
+check_maintenance_window() {
+	local label="$1" end i output
+	end=$(( $(date +%s) + UPGRADE_PHASE_SECONDS ))
+	log "testing maintenance rejection: $label"
+	while [ "$(date +%s)" -lt "$end" ]; do
+		wait_upgrade_consistent true || return 1
+		for i in 0 1 2; do
+			if output="$(upgrade_cli "$i" ledgers create "blocked-$label-$i" 2>&1)"; then
+				log "write unexpectedly succeeded on node $((i+1)) during $label"; return 1
+			fi
+			grep -Eiq 'MAINTENANCE_MODE|maintenance mode' <<<"$output" || { log "unexpected write error: $output"; return 1; }
+		done
+		check_upgrade_data "$UPGRADE_BEFORE" || return 1
+	done
+}
+
+upgrade_node() {
+	local i="$1"
+	log "replacing node $((i+1)) with target binary"
+	kill "${SERVER_PIDS[$i]}" || return 1
+	wait "${SERVER_PIDS[$i]}" 2>/dev/null || true
+	SERVER_PIDS[$i]=""
+	NODE_BINS[$i]="$SERVER_BIN"
+	start_node "$i" rejoin
+	wait_upgrade_consistent true
+}
+
+run_rolling_upgrade() {
+	local original_leader current_leader transferee i output
+	UPGRADE_LEDGER="upgrade-proof-$$"
+	wait_upgrade_consistent false || { log "source cluster not caught up"; return 1; }
+	read -r original_leader _ < <(cluster_health)
+	log "source leader=$original_leader; creating durable business state"
+	upgrade_cli 0 ledgers create "$UPGRADE_LEDGER" --idempotency-key "$UPGRADE_LEDGER-create" >>"$WORKDIR/upgrade.log" 2>&1 || return 1
+	upgrade_cli 0 transactions create --ledger "$UPGRADE_LEDGER" --posting 'world,bank,100,USD' --reference before-upgrade >>"$WORKDIR/upgrade.log" 2>&1 || return 1
+	wait_upgrade_consistent false || return 1
+	UPGRADE_BEFORE="$(upgrade_cli 0 accounts get bank --ledger "$UPGRADE_LEDGER" --json | jq -cS '{address,volumes,metadata}')" || return 1
+	jq -e '.address == "bank" and any(.volumes[]; .asset == "USD" and .color == "" and .volumes.balance == "100")' \
+		<<<"$UPGRADE_BEFORE" >/dev/null || return 1
+	check_upgrade_data "$UPGRADE_BEFORE" || return 1
+
+	log "enabling maintenance before any mixed-binary state"
+	upgrade_cli "$((original_leader-1))" cluster maintenance enable >>"$WORKDIR/upgrade.log" 2>&1 || return 1
+	wait_upgrade_consistent true || return 1
+	check_maintenance_window baseline || return 1
+	for i in 0 1 2; do
+		[ "$((i+1))" -eq "$original_leader" ] && continue
+		read -r current_leader _ < <(cluster_health)
+		[ "$current_leader" = "$original_leader" ] || { log "unexpected leader change before follower replacement"; return 1; }
+		upgrade_node "$i" || return 1
+		check_maintenance_window "follower-$((i+1))" || return 1
+		transferee="$((i+1))"
+	done
+	log "transferring leadership from $original_leader to upgraded voter $transferee"
+	upgrade_cli "$((original_leader-1))" cluster transfer-leader "$transferee" >>"$WORKDIR/upgrade.log" 2>&1 || return 1
+	wait_upgrade_consistent true || return 1
+	read -r current_leader _ < <(cluster_health)
+	[ "$current_leader" = "$transferee" ] || return 1
+	check_maintenance_window transfer || return 1
+	upgrade_node "$((original_leader-1))" || return 1
+	wait_upgrade_consistent true || return 1
+	log "all nodes upgraded; disabling maintenance"
+	upgrade_cli "$((transferee-1))" cluster maintenance disable >>"$WORKDIR/upgrade.log" 2>&1 || return 1
+	wait_upgrade_consistent false || return 1
+	check_upgrade_data "$UPGRADE_BEFORE" || return 1
+	upgrade_cli "$((transferee-1))" transactions create --ledger "$UPGRADE_LEDGER" --posting 'world,bank,50,USD' --reference after-upgrade >>"$WORKDIR/upgrade.log" 2>&1 || return 1
+	wait_upgrade_consistent false || return 1
+	output="$(upgrade_cli 0 accounts get bank --ledger "$UPGRADE_LEDGER" --json | jq -cS '{address,volumes,metadata}')" || return 1
+	jq -e '.address == "bank" and any(.volumes[]; .asset == "USD" and .color == "" and .volumes.balance == "150")' \
+		<<<"$output" >/dev/null || { log "post-upgrade account balance is not 150 USD"; return 1; }
+	check_upgrade_data "$output" || return 1
+	for i in 0 1 2; do
+		log "checking audit and derived store on node $((i+1))"
+		upgrade_cli "$i" store check >>"$WORKDIR/upgrade.log" 2>&1 || return 1
+	done
+	wait_upgrade_consistent false || return 1
+	log "rolling upgrade passed: source data survived, maintenance held, post-upgrade write verified"
 }
 
 # The assertions that count as findings, by assertion class. Shared by the
@@ -460,7 +613,11 @@ build_cmd="go build $server_tags -o '$SERVER_BIN' . && "
 if [ "$NODES" -gt 1 ] || [ "$RESTORE" = 1 ]; then
 	build_cmd="${build_cmd}go build $server_tags -o '$LEDGERCTL_BIN' ./cmd/ledgerctl && "
 fi
-build_cmd="${build_cmd}cd '$MODEL_HARNESS_REPO/tests/antithesis/workload' && go build -tags enable_antithesis_sdk -o '$DRIVER_BIN' ./bin/cmds/model/singleton_driver_model"
+if [ -z "$UPGRADE_SOURCE_BIN" ]; then
+	build_cmd="${build_cmd}cd '$MODEL_HARNESS_REPO/tests/antithesis/workload' && go build -tags enable_antithesis_sdk -o '$DRIVER_BIN' ./bin/cmds/model/singleton_driver_model"
+else
+	build_cmd="${build_cmd% && }"
+fi
 
 # Build inside the nix dev shell for a reproducible toolchain — unless we are
 # already in one (CI runs this as `nix develop .#ci --command just test-model-cluster`), in
@@ -502,6 +659,18 @@ if [ "$NODES" -gt 1 ]; then
 	log "cluster ready: leader=$leader voters=$voters"
 else
 	log "server ready"
+fi
+
+if [ -n "$UPGRADE_SOURCE_BIN" ]; then
+	log "target binary sha256: $(shasum -a 256 "$SERVER_BIN")"
+	if run_rolling_upgrade; then
+		echo "RESULT: PASS (rc.1 to pinned target rolling upgrade)"
+		exit 0
+	fi
+	echo "RESULT: FAIL (rolling upgrade; $WORKDIR/upgrade.log)" >&2
+	for i in 0 1 2; do tail -20 "${SERVER_LOGS[$i]}" >&2; done
+	[ -f "$WORKDIR/upgrade.log" ] && tail -30 "$WORKDIR/upgrade.log" >&2
+	exit 1
 fi
 
 # ---------------------------------------------------------------------------
@@ -696,7 +865,6 @@ if [ "$RECOVERY_FAILED" -ne 0 ]; then
 	echo "CLUSTER RECOVERY FAILURE: did not return to $NODES voters after a restart"
 	findings=$((findings + 1))
 fi
-
 # 5. Classify the supervised exit, not the time the restart loop noticed it.
 # Recovery can finish after MODEL_MAX_SECONDS, when a clean watchdog exit is
 # expected. A genuine early exit or unsuccessful late exit must still fail.

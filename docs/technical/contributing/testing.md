@@ -601,6 +601,19 @@ default. A successful run also requires at least one
 after a definitive server outcome reaches model validation. Driver liveness,
 assertion registration, and ledger-setup assertions do not satisfy that gate.
 
+For the rc.1 binary upgrade gate after `main` is integrated into
+`release/v2.0`, run `just test-rc1-rolling-upgrade`. Its launcher builds the
+published rc.1 commit and the fetched, pinned release branch HEAD in separate
+temporary source trees. The runner reuses the three-node cluster setup and
+health checks but uses explicit gRPC operations instead of the stochastic
+model driver: the current model driver toggles maintenance by design, whereas
+this upgrade must hold the maintenance barrier throughout mixed binaries. The
+test requires source and target writes, reads from all three voters, rejection
+of writes during every mixed window, durable Raft catch-up, leadership transfer,
+and per-voter store checks. `UPGRADE_PHASE_SECONDS` controls the minimum mixed
+window per stage (default 15 seconds). The upgrade path is completion based
+and uses bounded catch-up and phase waits.
+
 It reports coverage probes that were not satisfied in the sampled trajectory
 without turning those stochastic gaps into correctness failures (see below).
 
