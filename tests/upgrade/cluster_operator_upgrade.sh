@@ -77,7 +77,13 @@ check_data() {
 check_blocked() {
   local ordinal="$1" label="$2" output
   if output="$(cli "$ordinal" ledgers create "blocked-$label-$ordinal" 2>&1)"; then
-    echo "business write succeeded on node $((ordinal+1)) during maintenance" >&2
+    echo "ledger creation succeeded on node $((ordinal+1)) during maintenance" >&2
+    exit 1
+  fi
+  grep -Eiq 'MAINTENANCE_MODE|maintenance mode' <<<"$output" || return 1
+  if output="$(cli "$ordinal" transactions create --ledger "$ledger" --posting world,bank,1,USD \
+    --reference "blocked-$label-$ordinal" 2>&1)"; then
+    echo "transaction succeeded on node $((ordinal+1)) during maintenance" >&2
     exit 1
   fi
   grep -Eiq 'MAINTENANCE_MODE|maintenance mode' <<<"$output"

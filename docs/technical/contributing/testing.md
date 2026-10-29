@@ -898,7 +898,8 @@ commit SHAs, builds Linux images from those revisions, and runs the Chainsaw
 scenario in a dedicated kind cluster. Its three Pods use separate persistent
 WAL and data claims; Chainsaw replaces followers and then the old leader while
 maintenance remains active. The test checks source and target transactions,
-reads on every voter, mixed-window write rejection, durable Raft cursors,
+reads on every voter, rejected ledger creation and transaction posting during
+mixed windows and replacement, durable Raft cursors,
 leadership transfer, and each voter’s audit/derived-store checker.
 
 The `.#upgrade` Nix shell provides Chainsaw, kind, kubectl, gh, and Docker client;
@@ -916,7 +917,8 @@ launcher selects the latest published stable or RC release tag reachable from
 the branch HEAD, pulls its published image, builds the operator and target
 Ledger from the exact HEAD, and runs Chainsaw in an isolated kind cluster.
 The target Pod image tag is its full local image ID. The test checks a real
-operator-driven StatefulSet rollout, mixed-version maintenance rejection,
+operator-driven StatefulSet rollout, mixed-version ledger creation and
+transaction rejection,
 retained PVC identities, data before and after, and every voter's store check.
 The workflow saves the evidence under `build/upgrade-operator/` and uploads it
 even on failure. A Docker daemon and access to the published GHCR image are

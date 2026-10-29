@@ -4,7 +4,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$script_dir/../.." && pwd)"
-if [ -z "${IN_NIX_SHELL:-}" ]; then
+if [ "${LEDGER_UPGRADE_SHELL:-}" != 1 ]; then
 	exec nix develop "$repo#upgrade" --command "$script_dir/run_operator.sh" "$@"
 fi
 [ "$#" -eq 1 ] || { echo "usage: tests/upgrade/run_operator.sh release/vX.Y" >&2; exit 2; }

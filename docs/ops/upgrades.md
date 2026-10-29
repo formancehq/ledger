@@ -248,11 +248,13 @@ mount separate persistent WAL and data claims and boot from an image containing
 the compiled rc.1 binary. It creates a ledger and transaction through gRPC,
 then verifies the account on every voter. At the
 maintenance barrier it requires each voter to be normal and durably past the
-leader's recorded commit index. It replaces each follower separately, checks
-rejected business writes and unchanged account data on every voter throughout
-coexistence, transfers leadership to an upgraded voter, and replaces the old
-leader. After all three
-voters run the target binary, it disables maintenance, verifies the original
+leader's recorded commit index. It replaces each follower separately, probes
+ledger creation and transaction posting against the existing ledger on live
+voters during deletion, rejoin, and catch-up, and checks both rejections and
+unchanged account data on every voter in stable maintenance windows. It
+transfers leadership to an upgraded voter and replaces the old leader. After
+all three voters run the target binary, it completes a final maintenance
+window, disables maintenance, and verifies the original
 account, commits another transaction, checks its readback on every voter, and
 runs the audit and derived-state checker on each voter. Missing observations or
 an unexpected write success fail the run.
@@ -286,7 +288,8 @@ revision, image, Chainsaw, Kubernetes, and operator logs as evidence.
 Chainsaw creates a three-voter operator-managed Cluster on the published image
 and records the Pod and PVC identities. It commits data, enables maintenance,
 and updates `spec.image` to the built HEAD image. It observes old and new Pods
-coexisting, checks rejected business writes on both image versions, waits for
+coexisting, checks rejected ledger creation and transaction posting on both
+image versions, waits for
 the operator's StatefulSet rollout, and checks that all Pods changed while PVCs
 did not. After disabling maintenance, it commits another transaction, checks
 the account on all voters, and runs each voter's audit/derived-store checker.
