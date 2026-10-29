@@ -22897,3 +22897,101 @@ func (l listOptionsListReadonly) Range(yield func(int, ListOptionsReader) bool) 
 func NewListOptionsListReader(s []*ListOptions) ListOptionsListReader {
 	return listOptionsListReadonly(s)
 }
+
+// AccountMetadataUpdatedReader provides read-only access to AccountMetadataUpdated.
+// Call Mutate() to obtain a mutable clone.
+type AccountMetadataUpdatedReader interface {
+	GetAccountMetadata() AccountMetadataUpdated_AccountMetadataMapReader
+	Mutate() *AccountMetadataUpdated
+}
+
+type accountMetadataUpdatedReadonly AccountMetadataUpdated
+
+func (r *accountMetadataUpdatedReadonly) GetAccountMetadata() AccountMetadataUpdated_AccountMetadataMapReader {
+	return accountMetadataUpdated_accountMetadataMapReadonly((*AccountMetadataUpdated)(r).GetAccountMetadata())
+}
+
+func (r *accountMetadataUpdatedReadonly) Mutate() *AccountMetadataUpdated {
+	return (*AccountMetadataUpdated)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AccountMetadataUpdated.
+func (m *AccountMetadataUpdated) AsReader() AccountMetadataUpdatedReader {
+	if m == nil {
+		return nil
+	}
+	return (*accountMetadataUpdatedReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AccountMetadataUpdated.
+func (m *AccountMetadataUpdated) Mutate() *AccountMetadataUpdated {
+	return m.CloneVT()
+}
+
+// AccountMetadataUpdatedListReader provides read-only iteration over []*AccountMetadataUpdated.
+type AccountMetadataUpdatedListReader interface {
+	Len() int
+	Get(i int) AccountMetadataUpdatedReader
+	Range(yield func(int, AccountMetadataUpdatedReader) bool)
+}
+
+type accountMetadataUpdatedListReadonly []*AccountMetadataUpdated
+
+func (l accountMetadataUpdatedListReadonly) Len() int { return len(l) }
+
+func (l accountMetadataUpdatedListReadonly) Get(i int) AccountMetadataUpdatedReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountMetadataUpdatedListReadonly) Range(yield func(int, AccountMetadataUpdatedReader) bool) {
+	for i, v := range l {
+		var r AccountMetadataUpdatedReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountMetadataUpdatedListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountMetadataUpdatedListReader(s []*AccountMetadataUpdated) AccountMetadataUpdatedListReader {
+	return accountMetadataUpdatedListReadonly(s)
+}
+
+// AccountMetadataUpdated_AccountMetadataMapReader provides read-only access to AccountMetadataUpdated.AccountMetadata.
+type AccountMetadataUpdated_AccountMetadataMapReader interface {
+	Len() int
+	Get(k string) (MetadataMapReader, bool)
+	Range(yield func(string, MetadataMapReader) bool)
+}
+
+type accountMetadataUpdated_accountMetadataMapReadonly map[string]*MetadataMap
+
+func (m accountMetadataUpdated_accountMetadataMapReadonly) Len() int { return len(m) }
+
+func (m accountMetadataUpdated_accountMetadataMapReadonly) Get(k string) (MetadataMapReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m accountMetadataUpdated_accountMetadataMapReadonly) Range(yield func(string, MetadataMapReader) bool) {
+	for k, v := range m {
+		var r MetadataMapReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
