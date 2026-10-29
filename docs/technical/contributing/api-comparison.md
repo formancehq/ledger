@@ -180,7 +180,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Create transaction with `force` | ✅ | ✅ | Bypasses balance checks |
 | **Transactions (Read)** |
 | Get transaction by ID | ✅ | ✅ | |
-| List transactions | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/transactions` and gRPC stream: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (`source`/`destination`/`address`, `reference`, `id`, metadata) |
+| List transactions | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/transactions` and gRPC stream: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (`source`/`destination`/`address`, `reference`, exact/range `id`, metadata) |
 | **Metadata** |
 | Save account metadata | ✅ | ✅ | |
 | Delete account metadata | ✅ | ✅ | |
@@ -216,7 +216,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Aggregate volumes | ✅ | ✅ | Per-asset aggregated volumes for filtered accounts (direct RPC, no prepared query needed) |
 | Account date fields (`firstUsage`/`insertionDate`/`updatedAt`) | ❌ | ✅ | Intentionally removed — not returned, not filterable, not paginatable. Replacement: typed `datetime` account metadata + index ([details](#6--account-date-fields-first_usage-insertion_date-updated_at)) |
 | **Logs** |
-| List logs | ✅ | ✅ | gRPC stream, supports `--filter 'ledger == "foo"'` for per-ledger listing (opt-in index) |
+| List logs | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/logs` and gRPC stream: exact/range `id` in text and JSON, plus `ledger == "foo"` for per-ledger listing (opt-in index) |
 | **Import/Export** |
 | Import logs | ⚠️ | ✅ | Interface defined but not implemented |
 | Export logs | ⚠️ | ✅ | Interface defined but not implemented |

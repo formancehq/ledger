@@ -6458,6 +6458,8 @@ components:
         `log_seq`, `caller_subject`, `order_type`, `idempotency_key`) replace the
         `ledger`/`timestamp` meanings above: `$match` on any of them, range
         operators on the numeric ones, no `$param` values.
+        The public `id` field selects transaction or log IDs by query target.
+        The legacy `logId` spelling remains accepted for log ID ranges.
         The log-only fields (`logId`, `date`, `ledger`) are valid only when the
         prepared query targets `LOGS`; they are rejected on `ACCOUNTS` and
         `TRANSACTIONS` targets.

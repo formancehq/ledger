@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
@@ -56,21 +57,52 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 	}
 
 	// The update request carries only the new filter, not the target: the target
-	// is immutable and lives on the stored prepared query, which this handler
-	// does not read. Per-target filter validity is therefore enforced against the
-	// stored target by the FSM (processUpdatePreparedQuery →
+	// is immutable and lives on the stored prepared query. Per-target filter
+	// validity is enforced against the stored target by the FSM (processUpdatePreparedQuery →
 	// domain.ValidateFilterForTarget), the only layer that sees it — so an update
 	// cannot smuggle in a condition invalid for the query's target (EN-1504).
 	// This handler stays purely structural: it accepts either the structured v2
 	// JSON DSL or a JSON-quoted textual filterexpr expression (EN-1511) and defers
 	// the target gate to the FSM. Bare-field resolution uses a non-audit target
-	// (EN-1549): prepared queries are only ever ACCOUNTS/TRANSACTIONS/LOGS, all of
-	// which resolve the bare intrinsic fields identically.
+	// (EN-1549). For id, the handler reads the stored target below and re-decodes
+	// LOGS filters so the public field maps to LogIdCondition.
 	filter, err := filterexpr.DecodeDualFormatStructuralOnly(body.Filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 
 		return
+	}
+	if hasTransactionIDFilter(filter) {
+		// The update payload has no target. Resolve the public id field against
+		// the immutable target of the stored query before submitting it.
+		queries, listErr := s.backend.ListPreparedQueries(r.Context(), ledgerName)
+		if listErr != nil {
+			handleError(w, r, listErr)
+
+			return
+		}
+		found := false
+		for _, query := range queries {
+			if query.GetName() != queryName {
+				continue
+			}
+			found = true
+			if query.GetTarget() == commonpb.QueryTarget_QUERY_TARGET_LOGS {
+				filter, err = filterexpr.DecodeDualFormatStructuralOnly(body.Filter, query.GetTarget())
+				if err != nil {
+					writeBadRequest(w, "INVALID_REQUEST", err)
+
+					return
+				}
+			}
+
+			break
+		}
+		if !found {
+			handleError(w, r, &domain.ErrPreparedQueryNotFound{Ledger: ledgerName, Name: queryName})
+
+			return
+		}
 	}
 
 	if filter == nil && !bytes.Equal(filterInput, []byte("null")) {
@@ -95,4 +127,26 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func hasTransactionIDFilter(filter *commonpb.QueryFilter) bool {
+	if filter == nil {
+		return false
+	}
+	switch arm := filter.GetFilter().(type) {
+	case *commonpb.QueryFilter_BuiltinUint:
+		return arm.BuiltinUint.GetField() == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID
+	case *commonpb.QueryFilter_And:
+		if slices.ContainsFunc(arm.And.GetFilters(), hasTransactionIDFilter) {
+			return true
+		}
+	case *commonpb.QueryFilter_Or:
+		if slices.ContainsFunc(arm.Or.GetFilters(), hasTransactionIDFilter) {
+			return true
+		}
+	case *commonpb.QueryFilter_Not:
+		return hasTransactionIDFilter(arm.Not.GetFilter())
+	}
+
+	return false
 }

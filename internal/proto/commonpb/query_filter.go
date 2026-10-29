@@ -299,7 +299,7 @@ func marshalLeaf(x *QueryFilter) (map[string]any, error) {
 
 		return kv(opExists, "asset", v), nil
 	case *QueryFilter_LogId:
-		return marshalUintRange("logId", f.LogId.GetCond())
+		return marshalUintRange("id", f.LogId.GetCond())
 	case *QueryFilter_BuiltinUint:
 		field, ok := txBuiltinFieldToJSON[f.BuiltinUint.GetField()]
 		if !ok {
@@ -613,7 +613,7 @@ func (x *QueryFilter) UnmarshalJSON(data []byte) error {
 // target-independent one of UnmarshalJSON. It does not run the per-target
 // validity gate (domain.ValidateFilterForTarget); callers do.
 func DecodeQueryFilterJSON(data []byte, target QueryTarget) (*QueryFilter, error) {
-	return filterDecoder{audit: target == QueryTarget_QUERY_TARGET_AUDIT}.decode(data)
+	return filterDecoder{audit: target == QueryTarget_QUERY_TARGET_AUDIT, target: target}.decode(data)
 }
 
 // filterDecoder carries the target-dependent field resolution through the
@@ -621,7 +621,8 @@ func DecodeQueryFilterJSON(data []byte, target QueryTarget) (*QueryFilter, error
 // decoder.
 type filterDecoder struct {
 	// audit resolves the bare audit field names to the AuditCondition arm.
-	audit bool
+	audit  bool
+	target QueryTarget
 }
 
 // decode decodes one DSL node (a JSON object with a single operator key).
@@ -990,7 +991,18 @@ func (d filterDecoder) buildRange(field string, bounds []bound) (*QueryFilter, e
 	coerce := boundUintCoercer(field)
 
 	switch field {
-	case "id", "timestamp", "insertedAt", "revertedAt":
+	case "id":
+		uc, err := uintConditionFromBounds(bounds, coerce)
+		if err != nil {
+			return nil, err
+		}
+		if d.target == QueryTarget_QUERY_TARGET_LOGS {
+			return &QueryFilter{Filter: &QueryFilter_LogId{LogId: &LogIdCondition{Cond: uc}}}, nil
+		}
+		return &QueryFilter{Filter: &QueryFilter_BuiltinUint{BuiltinUint: &BuiltinUintCondition{
+			Field: TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, Cond: uc,
+		}}}, nil
+	case "timestamp", "insertedAt", "revertedAt":
 		uc, err := uintConditionFromBounds(bounds, coerce)
 		if err != nil {
 			return nil, err

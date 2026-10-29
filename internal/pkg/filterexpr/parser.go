@@ -394,7 +394,7 @@ func (a *FieldCond) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter,
 		return a.auditToProto()
 	}
 
-	return a.intrinsicToProto()
+	return a.intrinsicToProto(target)
 }
 
 // auditToProto resolves a bare field on the AUDIT target into the matching
@@ -436,12 +436,12 @@ func (a *FieldCond) auditToProto() (*commonpb.QueryFilter, error) {
 // structured JSON DSL does. The resolution itself never depends on which
 // non-audit target is queried, which is what lets the prepared-query update
 // path parse without knowing the stored target.
-func (a *FieldCond) intrinsicToProto() (*commonpb.QueryFilter, error) {
+func (a *FieldCond) intrinsicToProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
 	switch a.Field {
 	case "timestamp", "date", "insertedAt", "revertedAt":
 		return a.dateToProto()
 	case "id", "logId":
-		return a.idToProto()
+		return a.idToProto(target)
 	case "reference":
 		return a.referenceToProto()
 	case "reverted":
@@ -700,7 +700,7 @@ func txBuiltinQF(field commonpb.TransactionBuiltinIndex, uc *commonpb.UintCondit
 // (logs) range filter. Ids are plain counters: the operand is a raw unsigned
 // integer, never an RFC3339 timestamp. Like the date fields, a bound may be a
 // $param, resolved when a prepared query executes.
-func (d *FieldCond) idToProto() (*commonpb.QueryFilter, error) {
+func (d *FieldCond) idToProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
 	parse := func(v *Value) (uint64, error) {
 		n, err := strconv.ParseUint(v.resolve(), 10, 64)
 		if err != nil {
@@ -717,6 +717,11 @@ func (d *FieldCond) idToProto() (*commonpb.QueryFilter, error) {
 
 	switch d.Field {
 	case "id":
+		if target == commonpb.QueryTarget_QUERY_TARGET_LOGS {
+			return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
+				LogId: &commonpb.LogIdCondition{Cond: uc},
+			}}, nil
+		}
 		return txBuiltinQF(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, uc), nil
 	case "logId":
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{

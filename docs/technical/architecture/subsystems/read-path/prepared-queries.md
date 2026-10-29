@@ -177,7 +177,7 @@ The canonical shape (each node has **exactly one** top-level `$`-operator key):
     `BASE/PRECISION`, e.g. `USD/2`); this is how `AccountHasAssetCondition` is expressed.
 
 Fields: `metadata[<key>]`, `address`/`source`/`destination`, `reference`,
-`reverted` (bool), `ledger`, `id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`,
+`reverted` (bool), `ledger`, `id`, `timestamp`, `insertedAt`, `revertedAt`,
 `date`. A value is a JSON literal or a parameter reference `{"$param": "<name>"}`
 (prepared-query parameters). An address prefix is expressed with a trailing `:` under
 `$match` (e.g. `{"$match": {"address": "users:"}}`); a parameterised prefix has no
@@ -186,7 +186,11 @@ DSL form (a param value cannot carry the trailing `:` marker), and the byte-leve
 the JSON/REST surface. uint64 fields are carried as decimal strings to stay lossless
 above 2^53.
 
-The codec is bidirectional and lossless. It fails loudly on an unknown operator, an
+The codec is bidirectional and lossless when decoded with its query target;
+`id` means the log ID on `LOGS` and the transaction ID on `TRANSACTIONS`.
+`{"$match":{"id":"7"}}` selects one entity, including inside `$or`.
+The legacy `logId` range spelling remains accepted for existing Console clients.
+The codec fails loudly on an unknown operator, an
 empty `$and`/`$or`, an operator body without exactly one field, an unsupported field,
 an empty `$param` name, and a proto oneof arm it does not recognise — so a new proto
 arm cannot silently drop a filter. The full DSL is documented under `QueryFilter` in
@@ -230,12 +234,12 @@ field: `account_data`, `transaction_data` or `log_data`. The LOGS path reuses th
 direct `ListLogs` machinery — the compiled LOGS iterator yields per-ledger logIDs,
 `ReadLedgerLogsCompiled` resolves them to global sequences through the log read-index
 and reads the log payloads from Pebble (`query.EnrichLogs`). Consequently the
-log-only filter fields (`logId`, `date`, `ledger`) are valid only when the target is
+log-only filter fields (`date`, `ledger`) are valid only when the target is
 `LOGS`; the REST create decode rejects them for `ACCOUNTS`/`TRANSACTIONS`, and the
 compile layer is the backstop (it rejects those conditions on non-LOGS targets at
 execute time). The update path carries only the new filter (the target is immutable
-and not read by the handler), so it defers the log-only check to the compile
-backstop.
+and read by the handler only when `id` needs target resolution), so the
+authoritative stored-target validation still runs on apply.
 
 ## Recent changes
 
