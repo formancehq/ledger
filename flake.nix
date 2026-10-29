@@ -94,6 +94,14 @@
           # Mock generation must understand the root module Go version.
           buildGoModule = pkgs.buildGo127Module;
 
+          # The SDK includes language runtimes; resource plugins are installed
+          # on demand at the versions required by the Pulumi program.
+          pulumi = pkgs.pulumi-bin.overrideAttrs (old: {
+            srcs = builtins.filter (src: pkgs.lib.hasPrefix "pulumi-v" src.name) old.srcs;
+            # A single SDK archive already unpacks into the pulumi directory.
+            postUnpack = "";
+          });
+
           # Tools invoked by CI jobs. Every CI job downloads this closure on a
           # cold Nix cache, so a tool belongs here only if a workflow step,
           # or a recipe/script a workflow step runs, executes it.
@@ -153,8 +161,8 @@
             self.packages.${system}.speakeasy
           ];
 
-          # tests/perf k6 load tests and benchstat comparisons.
-          perf = mkTaskShell [ pkgs.k6 pkgs-unstable.goperf ];
+          # tests/perf Pulumi deployments, k6 load tests and benchstat comparisons.
+          perf = mkTaskShell [ pkgs.k6 pulumi pkgs.kubectl pkgs.awscli2 pkgs.docker-client pkgs-unstable.goperf ];
 
           # API-server admission regressions for the operator, without Docker.
           operator-tests = mkTaskShell [ pkgs-unstable.setup-envtest ];

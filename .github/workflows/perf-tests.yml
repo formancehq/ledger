@@ -1,0 +1,42 @@
+name: Performance tooling tests
+
+on:
+  pull_request:
+    paths:
+      - tests/perf/**
+      - scripts/perfci/**
+      - .github/workflows/perf*.yml
+      - .github/workflows/pr-images.yml
+      - flake.nix
+      - flake.lock
+      - justfile
+  push:
+    branches: [main]
+    paths:
+      - tests/perf/**
+      - scripts/perfci/**
+      - .github/workflows/perf*.yml
+      - .github/workflows/pr-images.yml
+      - flake.nix
+      - flake.lock
+      - justfile
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  Test:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    timeout-minutes: 30
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/default
+      # Unit tests and k6 archive creation only: no cluster authentication,
+      # Pulumi deployment, k6 run or network load is performed by this recipe.
+      - run: nix develop .#perf --command just test-perf

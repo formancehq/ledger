@@ -2,7 +2,7 @@ name: perf
 runtime:
   name: go
   options:
-    buildTarget: ./bin/pulumi
+    buildTarget: ../../build/perf/pulumi
 description: k6 performance benchmark runner (ConfigMap + Benchmark CR)
 x-plr-config:
   k8s-context:

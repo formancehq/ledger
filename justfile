@@ -38,7 +38,7 @@ lint:
     (cd tests/antithesis/workload && golangci-lint run --fix --build-tags enable_antithesis_sdk --timeout 5m)
 
 # Go modules kept tidy by `just tidy` (and checked by the Dirty CI job).
-tidy_modules := ". misc/operator tests/antithesis/workload"
+tidy_modules := ". misc/operator tests/antithesis/workload tests/perf"
 
 tidy:
     #!/usr/bin/env bash
@@ -52,8 +52,7 @@ tidy:
 # GOMODCACHE without modifying any file. CI runs this in Setup Env so every job
 # commits the full module set to the shared Namespace cache volume: the last
 # job to commit on a node decides what the next job forks, so modules only one
-# job needs would otherwise be lost. tests/perf is excluded because no CI job
-# builds it.
+# job needs would otherwise be lost.
 go-mod-download:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -103,6 +102,24 @@ image_repository := env_var_or_default("IMAGE_REPOSITORY", "ghcr.io/formancehq/l
 # to push to a different GHCR location. Default targets the canonical
 # `formancehq/ledger-operator` published image.
 operator_image_repository := env_var_or_default("OPERATOR_IMAGE_REPOSITORY", "ghcr.io/formancehq/ledger-operator")
+
+# These commands use the dedicated perf shell locally and in CI.
+perf-submit profile sha image run_id attempt pr="0":
+    python3 tests/perf/submit.py submit {{quote(profile)}} {{quote(sha)}} {{quote(image)}} {{quote(run_id)}} {{quote(attempt)}} {{quote(pr)}}
+
+perf-cancel name uid:
+    python3 tests/perf/submit.py cancel {{quote(name)}} {{quote(uid)}}
+
+perf-ci command:
+    python3 scripts/perfci/main.py {{quote(command)}}
+
+test-perf-ci:
+    PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s scripts/perfci -v
+    PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s tests/perf -p 'test_*.py' -v
+
+test-perf:
+    go -C tests/perf test -race ./...
+    just test-perf-ci
 
 # Build the server application (light: no optional deps)
 build:

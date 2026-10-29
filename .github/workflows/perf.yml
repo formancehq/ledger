@@ -1,0 +1,201 @@
+name: Performance benchmarks
+
+on:
+  workflow_run:
+    workflows: [PR Images]
+    types: [completed]
+  schedule:
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Submit a new run or cancel one exact Benchmark
+        type: choice
+        options: [submit, cancel]
+        default: submit
+      profile:
+        description: Load duration (provisioning and snapshots are additional)
+        type: choice
+        options: [smoke-5m, smoke-10m, soak-24h]
+        default: smoke-5m
+      benchmark_name:
+        description: Exact Benchmark name, required for cancellation
+        type: string
+      benchmark_uid:
+        description: Exact Benchmark UID, required for cancellation
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || 'ghcr.io/formancehq/ledger' }}
+
+jobs:
+  Admit-PR:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      enabled: ${{ steps.admission.outputs.enabled }}
+      profile: ${{ steps.admission.outputs.profile }}
+      sha: ${{ steps.admission.outputs.sha }}
+      image: ${{ steps.admission.outputs.image }}
+      pr: ${{ steps.admission.outputs.pr }}
+    steps:
+      # Never check out the PR or execute its scripts in a job with cluster access.
+      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: ./.github/actions/default
+      - name: Admit exact successful PR image build
+        id: admission
+        run: nix develop .#ci --command just perf-ci prepare-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  Build-Baseline:
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.action == 'submit' &&
+       github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    env:
+      GOPATH: /tmp/go
+    outputs:
+      profile: ${{ steps.identity.outputs.profile }}
+      sha: ${{ steps.identity.outputs.sha }}
+      image: ${{ steps.digest.outputs.image }}
+      pr: '0'
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          dissociate: true
+          persist-credentials: false
+      - uses: ./.github/actions/default
+      - name: Resolve current default branch commit
+        id: identity
+        run: nix develop .#ci --command just perf-ci prepare-main
+      - uses: namespacelabs/nscloud-setup-buildx-action@d059ed7184f0bc7c8b27e8810cea153d02bcc6dd # v0.0.23
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: NumaryBot
+          password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - name: Build the exact baseline with the canonical PR image recipe
+        # PR zero is reserved for main benchmarks. This never moves latest/nightly.
+        run: nix develop .#perf --command just docker-build-pr "$PERF_IMAGE"
+        env:
+          PERF_IMAGE: ${{ steps.identity.outputs.image }}
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+      - name: Pin the published image digest
+        id: digest
+        run: nix develop .#perf --command just perf-ci capture-digest
+        env:
+          PERF_SHA: ${{ steps.identity.outputs.sha }}
+          PERF_IMAGE: ${{ steps.identity.outputs.image }}
+
+  Submit-or-Cancel:
+    needs: [Admit-PR, Build-Baseline]
+    if: >-
+      always() && !cancelled() &&
+      ((needs.Admit-PR.result == 'success' && needs.Admit-PR.outputs.enabled == 'true') ||
+       needs.Build-Baseline.result == 'success' ||
+       (github.event_name == 'workflow_dispatch' && inputs.action == 'cancel' &&
+        github.ref == format('refs/heads/{0}', github.event.repository.default_branch)))
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    timeout-minutes: 20
+    environment: acme-perf
+    # This only serializes short submissions. The operator owns the durable
+    # execution-group lock for the complete Kubernetes run and volume cleanup.
+    concurrency:
+      group: perf-submission-${{ needs.Admit-PR.outputs.pr || 'main' }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: read
+      id-token: write
+    env:
+      PERF_PROFILE: ${{ needs.Admit-PR.outputs.profile || needs.Build-Baseline.outputs.profile }}
+      PERF_SHA: ${{ needs.Admit-PR.outputs.sha || needs.Build-Baseline.outputs.sha }}
+      PERF_IMAGE: ${{ needs.Admit-PR.outputs.image || needs.Build-Baseline.outputs.image }}
+      PERF_PR: ${{ needs.Admit-PR.outputs.pr || '0' }}
+      PERF_WHEN_BUSY: ${{ github.event_name == 'schedule' && 'Skip' || 'Queue' }}
+      PERF_AWS_ROLE_ARN: ${{ vars.PERF_AWS_ROLE_ARN }}
+      PERF_AWS_REGION: ${{ vars.PERF_AWS_REGION || 'eu-west-1' }}
+      PERF_TS_OAUTH_CLIENT_ID: ${{ vars.PERF_TS_OAUTH_CLIENT_ID }}
+      PERF_TS_TAGS: ${{ vars.PERF_TS_TAGS || 'tag:github-actions-ledger-perf' }}
+      PERF_KUBE_CONTEXT: eks-acme-dev-euw1-01
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: ./.github/actions/default
+      - name: Validate required access configuration
+        run: nix develop .#perf --command just perf-ci check-access
+        env:
+          PERF_TS_OAUTH_SECRET: ${{ secrets.PERF_TS_OAUTH_SECRET }}
+      - name: Validate targeted cancellation
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'cancel'
+        id: cancel
+        run: nix develop .#ci --command just perf-ci check-cancel
+      - uses: namespacelabs/nscloud-setup-buildx-action@d059ed7184f0bc7c8b27e8810cea153d02bcc6dd # v0.0.23
+        if: inputs.action != 'cancel'
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        if: inputs.action != 'cancel'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify immutable image source and revision
+        if: inputs.action != 'cancel'
+        run: nix develop .#perf --command just perf-ci verify-image
+      - name: Join the acme-dev network
+        uses: tailscale/github-action@99a8333667fff04fdd6cffb46dfd409f8329a7bf # v4.3.0
+        with:
+          oauth-client-id: ${{ vars.PERF_TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.PERF_TS_OAUTH_SECRET }}
+          tags: ${{ vars.PERF_TS_TAGS || 'tag:github-actions-ledger-perf' }}
+      - name: Authenticate to EKS with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.PERF_AWS_ROLE_ARN }}
+          role-session-name: ledger-perf-${{ github.run_id }}
+          aws-region: ${{ vars.PERF_AWS_REGION || 'eu-west-1' }}
+          role-duration-seconds: 1800
+      - name: Configure the fixed acme-dev Kubernetes context
+        run: nix develop .#perf --command just perf-ci kubeconfig
+      - name: Recheck PR head and label before submission
+        if: inputs.action != 'cancel'
+        id: current
+        run: nix develop .#ci --command just perf-ci recheck-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Submit the asynchronous benchmark with a local Pulumi backend
+        if: inputs.action != 'cancel' && steps.current.outputs.enabled == 'true'
+        run: >-
+          nix develop .#perf --command just perf-submit
+          "$PERF_PROFILE" "$PERF_SHA" "$PERF_IMAGE"
+          "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$PERF_PR"
+      - name: Request cancellation of the exact Benchmark UID
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'cancel'
+        run: nix develop .#perf --command just perf-cancel "$PERF_CANCEL_NAME" "$PERF_CANCEL_UID"
+        env:
+          PERF_CANCEL_NAME: ${{ steps.cancel.outputs.name }}
+          PERF_CANCEL_UID: ${{ steps.cancel.outputs.uid }}
+      - name: Remove ephemeral kubeconfig
+        if: always()
+        run: rm -f -- "$RUNNER_TEMP/perf-kubeconfig"
