@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -66,6 +67,7 @@ func (a *Admission) resolvePreparedQueryIDOrder(ctx context.Context, order *raft
 		if target == commonpb.QueryTarget_QUERY_TARGET_LOGS {
 			update.Filter = update.GetFilter().CloneVT()
 			resolveLogIDFilter(update.GetFilter())
+			update.IdResolvedToLog = true
 		}
 	}
 
@@ -135,65 +137,73 @@ func (a *Admission) replayPreparedQueryIDRetry(ctx context.Context, key string, 
 		return nil, nil
 	}
 
-	// Audit timestamps are monotonic. Locate the frozen timestamp by sequence
-	// instead of scanning every later proposal for a long-lived key.
+	// The FSM HLC strictly increases for every committed audit entry. Locate
+	// the frozen timestamp in logarithmic reads, independent of key age.
 	last, err := query.ReadLastAuditSequence(handle)
 	if err != nil || last == 0 {
 		return nil, err
 	}
+	entry, err := locateRetryAuditEntry(ctx, last, stored.GetCreatedAt(), func(seq uint64) (*auditpb.AuditEntry, error) {
+		return query.ReadAuditEntry(ctx, handle, seq)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("locating retry audit entry: %w", err)
+	}
+	if entry != nil && entry.GetIdempotency().GetKey() == key {
+		items, readErr := query.ReadAuditItems(ctx, handle, entry.GetSequence())
+		if readErr != nil {
+			return nil, fmt.Errorf("reading retry audit orders: %w", readErr)
+		}
+		original := make([]*raftcmdpb.Order, len(items))
+		for i, item := range items {
+			original[i] = &raftcmdpb.Order{}
+			if err := original[i].UnmarshalVT(item.GetSerializedOrder()); err != nil {
+				return nil, fmt.Errorf("decoding retry audit order: %w", err)
+			}
+		}
+		if bytes.Equal(processing.HashOrders(original), stored.GetHash()) {
+			candidate := make([]*raftcmdpb.Order, len(orders))
+			for i, order := range orders {
+				candidate[i] = order.CloneVT()
+			}
+			if restoreEquivalentIDFilters(candidate, original, stored.GetHash()) &&
+				!preparedQueryRetryExpired(stored, lastApplied) {
+				return replayPreparedQueryOutcome(ctx, handle, stored)
+			}
+
+			return nil, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func locateRetryAuditEntry(ctx context.Context, last, createdAt uint64, read func(uint64) (*auditpb.AuditEntry, error)) (*auditpb.AuditEntry, error) {
 	lo, hi := uint64(1), last
 	for lo < hi {
-		mid := lo + (hi-lo)/2
-		entry, err := query.ReadAuditEntry(ctx, handle, mid)
-		if err != nil {
-			return nil, fmt.Errorf("locating retry audit entry: %w", err)
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
-		if entry.GetTimestamp().GetData() < stored.GetCreatedAt() {
+		mid := lo + (hi-lo)/2
+		entry, err := read(mid)
+		if err != nil {
+			return nil, err
+		}
+		if entry.GetTimestamp().GetData() < createdAt {
 			lo = mid + 1
 		} else {
 			hi = mid
 		}
 	}
-	for seq := lo; ; seq++ {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		entry, err := query.ReadAuditEntry(ctx, handle, seq)
-		if err != nil {
-			return nil, fmt.Errorf("reading retry audit entry: %w", err)
-		}
-		if entry.GetTimestamp().GetData() > stored.GetCreatedAt() {
-			return nil, nil
-		}
-		if entry.GetTimestamp().GetData() == stored.GetCreatedAt() && entry.GetIdempotency().GetKey() == key {
-			items, readErr := query.ReadAuditItems(ctx, handle, entry.GetSequence())
-			if readErr != nil {
-				return nil, fmt.Errorf("reading retry audit orders: %w", readErr)
-			}
-			original := make([]*raftcmdpb.Order, len(items))
-			for i, item := range items {
-				original[i] = &raftcmdpb.Order{}
-				if err := original[i].UnmarshalVT(item.GetSerializedOrder()); err != nil {
-					return nil, fmt.Errorf("decoding retry audit order: %w", err)
-				}
-			}
-			if bytes.Equal(processing.HashOrders(original), stored.GetHash()) {
-				candidate := make([]*raftcmdpb.Order, len(orders))
-				for i, order := range orders {
-					candidate[i] = order.CloneVT()
-				}
-				if restoreEquivalentIDFilters(candidate, original, stored.GetHash()) &&
-					!preparedQueryRetryExpired(stored, lastApplied) {
-					return replayPreparedQueryOutcome(ctx, handle, stored)
-				}
-
-				return nil, nil
-			}
-		}
-		if seq == last {
-			return nil, nil
-		}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
+	entry, err := read(lo)
+	if err != nil || entry.GetTimestamp().GetData() != createdAt {
+		return nil, err
+	}
+
+	return entry, nil
 }
 
 func preparedQueryRetryExpired(stored *commonpb.IdempotencyKeyValue, lastApplied uint64) bool {
@@ -261,25 +271,35 @@ func restoreEquivalentIDFilters(orders, original []*raftcmdpb.Order, hash []byte
 		if update == nil || prior == nil || update.GetFilter() == nil || prior.GetFilter() == nil {
 			continue
 		}
-		candidate := update.GetFilter().CloneVT()
-		resolveLogIDFilter(candidate)
-		if candidate.EqualVT(prior.GetFilter()) {
+		if prior.GetIdResolvedToLog() && !update.GetIdResolvedToLog() && hasTransactionIDCondition(update.GetFilter()) {
+			candidate := update.GetFilter().CloneVT()
+			resolveLogIDFilter(candidate)
+			if !candidate.EqualVT(prior.GetFilter()) {
+				continue
+			}
 			previous[i] = update.GetFilter()
 			update.Filter = candidate
+			update.IdResolvedToLog = true
 
 			continue
 		}
-		candidate = prior.GetFilter().CloneVT()
-		resolveLogIDFilter(candidate)
-		if candidate.EqualVT(update.GetFilter()) {
+		if !prior.GetIdResolvedToLog() && update.GetIdResolvedToLog() && hasTransactionIDCondition(prior.GetFilter()) {
+			candidate := prior.GetFilter().CloneVT()
+			resolveLogIDFilter(candidate)
+			if !candidate.EqualVT(update.GetFilter()) {
+				continue
+			}
 			previous[i] = update.GetFilter()
 			update.Filter = prior.GetFilter().CloneVT()
+			update.IdResolvedToLog = false
 		}
 	}
 	if !bytes.Equal(processing.HashOrders(orders), hash) {
 		for i, filter := range previous {
 			if filter != nil {
-				orders[i].GetLedgerScoped().GetUpdatePreparedQuery().Filter = filter
+				update := orders[i].GetLedgerScoped().GetUpdatePreparedQuery()
+				update.Filter = filter
+				update.IdResolvedToLog = !update.GetIdResolvedToLog()
 			}
 		}
 

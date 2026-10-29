@@ -866,11 +866,14 @@ func (x *CreatePreparedQueryOrder) GetQuery() *commonpb.PreparedQuery {
 }
 
 type UpdatePreparedQueryOrder struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Filter        *commonpb.QueryFilter  `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Name   string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Filter *commonpb.QueryFilter  `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
+	// Admission converted a public id condition for a LOGS target. This is
+	// business-intent provenance for keyed retries across target changes.
+	IdResolvedToLog bool `protobuf:"varint,3,opt,name=id_resolved_to_log,json=idResolvedToLog,proto3" json:"id_resolved_to_log,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *UpdatePreparedQueryOrder) Reset() {
@@ -915,6 +918,13 @@ func (x *UpdatePreparedQueryOrder) GetFilter() *commonpb.QueryFilter {
 		return x.Filter
 	}
 	return nil
+}
+
+func (x *UpdatePreparedQueryOrder) GetIdResolvedToLog() bool {
+	if x != nil {
+		return x.IdResolvedToLog
+	}
+	return false
 }
 
 type DeletePreparedQueryOrder struct {
@@ -5636,10 +5646,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x12set_cluster_policy\x18\v \x01(\v2\x1b.raft.SetClusterPolicyOrderH\x00R\x10setClusterPolicyB\t\n" +
 	"\apayload\"G\n" +
 	"\x18CreatePreparedQueryOrder\x12+\n" +
-	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryR\x05query\"[\n" +
+	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryR\x05query\"\x88\x01\n" +
 	"\x18UpdatePreparedQueryOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12+\n" +
-	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\".\n" +
+	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x12+\n" +
+	"\x12id_resolved_to_log\x18\x03 \x01(\bR\x0fidResolvedToLog\".\n" +
 	"\x18DeletePreparedQueryOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"@\n" +
 	"\x12AddEventsSinkOrder\x12*\n" +

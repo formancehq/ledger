@@ -381,6 +381,7 @@ func NewCreatePreparedQueryOrderListReader(s []*CreatePreparedQueryOrder) Create
 type UpdatePreparedQueryOrderReader interface {
 	GetName() string
 	GetFilter() commonpb.QueryFilterReader
+	GetIdResolvedToLog() bool
 	Mutate() *UpdatePreparedQueryOrder
 }
 
@@ -396,6 +397,10 @@ func (r *updatePreparedQueryOrderReadonly) GetFilter() commonpb.QueryFilterReade
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *updatePreparedQueryOrderReadonly) GetIdResolvedToLog() bool {
+	return (*UpdatePreparedQueryOrder)(r).GetIdResolvedToLog()
 }
 
 func (r *updatePreparedQueryOrderReadonly) Mutate() *UpdatePreparedQueryOrder {

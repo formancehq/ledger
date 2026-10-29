@@ -456,9 +456,12 @@ func HashOrders(orders []*raftcmdpb.Order) []byte {
 // (AuditItem.serialized_order) and the idempotency hash (hashOrder) bind — so a
 // new technical field can never silently diverge the two.
 //
-// All admission-derived fields live on OrderTechnical, which is excluded so the
+// Execution-only admission-derived fields live on OrderTechnical, which is excluded so the
 // SAME logical request always serializes identically (idempotency dedup / replay
 // must match across retries, and the audit proves only accepted intent).
+// UpdatePreparedQueryOrder.id_resolved_to_log is different: it records whether
+// the client sent public id or explicit logId, a business-intent distinction
+// that must be bound by the hash even after target-specific conversion.
 // OrderTechnical carries:
 //
 //   - coverage_bits: admission rebuilds it from the proposal-wide ExecutionPlan,

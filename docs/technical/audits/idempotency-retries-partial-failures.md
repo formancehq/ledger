@@ -13,6 +13,24 @@ the branch is reached. Evidence must distinguish those cases and show that a
 same-key retry after repair can establish one definitive outcome, while a
 same-key retry of an earlier committed outcome does not execute it again.
 
+## Prepared-query ID target changes (EN-2601)
+
+Admission resolves public `id` for a prepared-query update before Raft apply.
+If a keyed retry sees a different target after query deletion or recreation,
+its resolved order hash may differ although the client repeated the same
+request. A linearizable barrier and fresh snapshot let admission inspect the
+stored key and original audit orders. The accepted order records whether
+admission converted public `id` to a log ID, so explicit legacy `logId` cannot
+be mistaken for the same intent. Only a proven match within the key's TTL
+returns the original frozen outcome without another proposal. Different
+conditions continue to the FSM conflict check; an expired or evicted key is a
+new operation. `TestRestorePreparedQueryIDRetryAfterDeletion` covers mixed
+targets in one batch, changed IDs, explicit `logId`, expiry, a barrier race,
+and store closure during the barrier. The logarithmic audit-read bound is
+tested by `TestLocateRetryAuditEntryCostShape` and measured by the in-memory
+and warm-Pebble `BenchmarkLocateRetryAuditEntry` variants. See the admission
+pipeline cost budget for measured latency and excluded barrier/log work.
+
 ## Peer closure followed by maintenance (EN-2212)
 
 The Antithesis `NewGRPCConn` factory retries in interceptors after EN-1627; a

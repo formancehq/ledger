@@ -96,6 +96,12 @@ If `RequireSignatures()` is true cluster-wide, an unsigned batch is rejected her
 
 `requestsToOrders()` walks every `Request` in the batch. `requestToOrder()` routes Apply through its admission checks and action converter, ledger-scoped requests through `ledgerRequestToOrder()`, and cluster-wide requests through `systemRequestToOrder()`. Each family retains an explicit protobuf request-to-order mapping. The common final `validateOrder()` checks storage safety for every converted order. SaveNumscript and events-sink requests also update the intra-batch overlay; signing-key registration takes its parent key ID from the batch signature. Orders are the FSM's input language; requests are the wire language. Revert conversion observes the target transaction locally so admission can declare coverage and bind an observation digest; the FSM still makes the authoritative business decision.
 
+For a prepared-query update, admission resolves public `id` against the stored
+query target before proposing. A LOGS target converts it to the internal log ID
+condition and marks that conversion on the accepted order; an explicit legacy
+`logId` is never marked. This keeps all voters on the same filter arm and lets
+keyed retries distinguish two different client conditions with the same number.
+
 ### 5. Preload coverage extraction
 
 `extractPreloadNeeds()` — the function name kept the older word; the type it returns is `*plan.Coverage` — aggregates the per-order coverage declared by each order's converter, returning both the proposal-wide aggregate and the per-order slice the `coverage_bits` computation needs. **Each component owns its own declaration** (per [invariant #6](../../../../../AGENTS.md)): there is no central helper that introspects orders to compute what they read — the order's producer declares it upfront. Admission, the mirror worker, the events emitter and the idempotency-eviction scheduler each declare their own.
@@ -167,10 +173,48 @@ PR.
 
 Two-stage check:
 
-- **Admission**: the idempotency key's *shape* is validated (UTF-8, length ≤ 256). The key becomes part of the proposal's `plan.Coverage` — on its separate `IdempotencyKeys` channel, not as a cache attribute — so the FSM can look it up.
+- **Admission**: the idempotency key's *shape* is validated (UTF-8, length ≤ 256). The key becomes part of the proposal's `plan.Coverage` — on its separate `IdempotencyKeys` channel, not as a cache attribute — so the FSM can look it up. A narrow prepared-query update retry may also return a previously frozen outcome directly, as described below.
 - **FSM**: `processProposal` consults the replay cache (`SubIdempKeys` in Pebble). A hit returns the stored outcome reference (sequence + outcome) without re-executing the orders. A miss falls through to normal processing, and the outcome gets recorded under the same key on the way out.
 
-This split exists because the *uniqueness* check requires committed state — admission can only validate that the key is well-formed.
+The ordinary uniqueness check requires committed state. The exceptional
+admission replay uses a linearizable read barrier and a fresh Pebble snapshot
+to inspect that state before deciding.
+
+### Prepared-query ID retry after a target change
+
+This path runs only for a keyed prepared-query ID update whose admitted order
+hash differs from the stored key hash. An unchanged hash, an unkeyed request,
+and other order types avoid the audit lookup. A retry can differ because the
+same public `id` was resolved against a different prepared-query target after
+deletion or recreation. Admission first releases its candidate snapshot, waits
+for a Raft read barrier, then opens a fresh snapshot. It compares the recorded
+hash to the original audit orders and uses the conversion marker to prove the
+same client intent. An explicit `logId` cannot be treated as a public `id`.
+On proof, it returns the frozen success or failure without proposing a new
+order. Otherwise the request continues to the FSM, which reports a normal
+idempotency-key conflict for different content. An expired or evicted key is
+treated as a fresh request. Barrier or storage errors fail the request; they
+never authorize replay. The snapshot closes before returning and is never held
+while waiting for the barrier or a proposal future.
+
+The extra work is one key lookup and barrier, at most
+`ceil(log2(audit_entries)) + 1` audit point reads, one read per original order,
+and one read per frozen result log. The FSM HLC makes audit timestamps strictly
+increasing, so there is no history scan; even the full `uint64` sequence space
+requires at most 65 point reads. The snapshot holds the store lifecycle read
+lock during those point reads. This path adds no proposal, WAL entry, preload
+coverage, or cache mutation. Persisting a second raw-request hash would make
+the retry lookup constant time but would add write/storage amplification to
+every keyed update; the audit-backed lookup confines the extra reads to rare
+target-change retries. `TestLocateRetryAuditEntryCostShape` enforces the read
+bound. On an Apple M5 Pro, three runs of the in-memory
+`BenchmarkLocateRetryAuditEntry` measured 569–593 ns at 1,000 entries and
+1.13–1.19 µs at 1,000,000 entries. A warm Pebble snapshot with real audit
+rows (`BenchmarkLocateRetryAuditEntryPebble`, 250 ms) measured 6.5 µs at
+1,000 entries and 9.6 µs at 100,000 entries. These figures cover the audit
+lookup, not the network read barrier or frozen-result log loading. Revisit
+this budget if retry volume or batch/log cardinality makes snapshot lock time
+material.
 
 ## Validation: structural vs behavioural
 
