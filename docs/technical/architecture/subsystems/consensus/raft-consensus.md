@@ -177,6 +177,30 @@ process-failure behavior.
 
 #### Leader readiness generations
 
+Raft leadership, FSM leader readiness, and readiness to perform a particular
+leader-only operation are different signals. A Raft `LeadershipChangeEvent(true)`
+establishes protocol authority but is emitted before the new leader's FSM has
+caught up. `LeaderReadyEvent` follows application of the current-term no-op and
+means the local FSM and store include all preceding committed entries. It does
+not certify external sinks, mirror sources, backup storage, or the disk and clock
+write gate. Consumers must use the barrier required by the state they read.
+
+| Capability | Minimum activation condition | Loss, cancellation, and stale-signal protection |
+| --- | --- | --- |
+| Admission and membership changes | `WaitLeaderReady` before admission pre-reads or membership proposals; admission also requires a current-epoch disk/clock write-gate verdict before waiting. | The readiness generation wakes pending waiters with `ErrNotLeader` on loss. Admission's later Raft proposal remains subject to normal leadership checks. |
+| Event emitters and mirror workers | Bootstrap records a gain only on `LeaderReadyEvent`; their managers then reconcile persisted configuration on their own loops. Each sink/source must also initialize successfully before its worker runs. | Bootstrap records loss inline. Manager generations fence obsolete scans and startup; generation contexts cancel initialization, and manager shutdown prevents late worker creation. See [events and mirror](../events-mirror/). |
+| Cluster configuration reconciliation | `LeaderReadyEvent` before reading persisted cluster state and proposing the desired technical update. | The proposal timeout derives from the readiness generation context; loss or shutdown cancels the blocking proposal wait. |
+| Backup execution | Raw Raft leadership installs the orchestrator's leader context. The backup request still needs its Raft `Start` order and a live executor registration; `LeaderReadyEvent` is not its activation signal. | Loss cancels the leader context and in-flight upload context. The new leader's cleanup loop handles inherited jobs without a local executor. See [backup](../backup/). |
+| Backup orphan cleanup | A periodic tick checks `IsLeader`, then compares FSM `RUNNING` jobs with the leader-local executor registry. There is no `WaitLeaderReady` gate on this loop. | Follower ticks do nothing. The tick's proposal is still checked by Raft; the loop stops with its lifecycle context. Do not infer FSM readiness from its `IsLeader` check. |
+| Disk/clock write gate | Raw leadership starts a new evidence epoch; `LeaderReadyEvent` requests the first prompt poll. A write requires a verdict from fresh local evidence in the current epoch. | Every leadership transition invalidates the old verdict synchronously. A late poll from an older epoch cannot authorize writes in the new epoch. |
+
+The HTTP probes report different, narrower conditions: `/readyz` means the
+local Raft loop has started; `/health` means the local Raft state is connected;
+`/clusterz` additionally requires an elected leader. None waits for
+`LeaderReadyEvent` or reports that every leader-bound capability is usable.
+Disk and clock evidence gates writes through admission, not `/clusterz`.
+See [deployment health checks](../../../../ops/deployment.md#health-checks).
+
 Leadership acquisition does not admit writes immediately. The node first
 drains previously submitted apply work and waits until the FSM has applied the
 new leader's current-term no-op entry. Applying that entry proves that every
