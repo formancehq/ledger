@@ -377,6 +377,16 @@ every driver's generation boundary. The Hegel dependency stays in the workload
 module; scenario blocks expose a dependency-free typed randomness interface.
 Root-module tests do not execute these nested-module property tests.
 
+### Launch tooling
+
+The manual `Run Antithesis` workflow and the launch recipes accept an optional
+comma-separated `test_templates` selection. An empty selection runs all
+templates. Compose `just run` takes minutes and sends `antithesis.duration`;
+convert older hour-based invocations to minutes. Deploy compatible Antithesis
+launchers before using the updated parameters. See the
+[launch selection guide](../../../tests/antithesis/README.md#launch-selection)
+for recipe examples and workflow compatibility with older source refs.
+
 ### Drivers and templates
 
 A **driver** is a standalone workload binary under

@@ -88,6 +88,12 @@ jobs:
             echo "${SOURCE_REF} does not provide the required k8s-launch-minutes recipe" >&2
             exit 1
           fi
+          if [[ -n "$TEST_TEMPLATES" ]] &&
+            ! nix develop .#ci --command just --justfile tests/antithesis/Justfile --dry-run \
+              k8s-launch-minutes "$RUN_DURATION_MINUTES" "$RUN_DESCRIPTION" "$TEST_TEMPLATES" >/dev/null 2>&1; then
+            echo "${SOURCE_REF} does not support test_templates; select a newer source_ref or leave test_templates empty" >&2
+            exit 1
+          fi
 
       - name: Login to the Antithesis registry
         shell: bash
@@ -125,10 +131,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          launch_args=("$RUN_DURATION_MINUTES" "$RUN_DESCRIPTION")
+          if [[ -n "$TEST_TEMPLATES" ]]; then
+            launch_args+=("$TEST_TEMPLATES")
+          fi
           response_file="$RUNNER_TEMP/antithesis-launch-response"
           nix develop .#ci --command just --quiet \
             tag='${{ steps.image.outputs.tag }}' \
-            k8s-launch-minutes "$RUN_DURATION_MINUTES" "$RUN_DESCRIPTION" "$TEST_TEMPLATES" \
+            k8s-launch-minutes "${launch_args[@]}" \
             > "$response_file"
 
           response="$(cat "$response_file")"
