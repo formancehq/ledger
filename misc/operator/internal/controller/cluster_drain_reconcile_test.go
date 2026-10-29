@@ -1,0 +1,98 @@
+package controller
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
+)
+
+func TestAnnotatedDrainPersistsEpochAndReleaseIntentAcrossReconcile(t *testing.T) {
+	t.Parallel()
+	scheme := runtime.NewScheme()
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	require.NoError(t, appsv1.AddToScheme(scheme))
+	cluster := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "annotated", Namespace: "test", Annotations: map[string]string{ClusterDrainAnnotation: "true"}},
+		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: new(int32(1))},
+	}
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: cluster.Namespace},
+		Spec:       appsv1.StatefulSetSpec{Replicas: new(int32(1)), Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Env: []corev1.EnvVar{{Name: "TLS_MODE", Value: tlsModeDisabled}}}}}}},
+		Status:     appsv1.StatefulSetStatus{ReadyReplicas: 1},
+	}
+	r := &ClusterReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()}
+	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
+	load := func() *ledgerv1alpha1.Cluster {
+		fresh := &ledgerv1alpha1.Cluster{}
+		require.NoError(t, r.Get(t.Context(), key, fresh))
+
+		return fresh
+	}
+	barrierCalls, releaseCalls := 0, 0
+	barrier := func(ctx context.Context, c *ledgerv1alpha1.Cluster, epoch, tlsMode string) (bool, error) {
+		barrierCalls++
+		require.Equal(t, tlsModeDisabled, tlsMode)
+		persisted := load()
+		require.Equal(t, epoch, persisted.Status.Drain.Epoch, "epoch must be durable before BeginDrain")
+
+		return true, nil
+	}
+	release := func(ctx context.Context, c *ledgerv1alpha1.Cluster, epoch, tlsMode string) (bool, error) {
+		releaseCalls++
+		persisted := load()
+		require.Equal(t, drainPhaseReleasing, persisted.Status.Drain.Phase, "release intent must be durable before EndDrain")
+		require.Equal(t, epoch, persisted.Status.Drain.Epoch)
+
+		return true, nil
+	}
+
+	first := load()
+	result, err := r.reconcileAnnotatedDrain(t.Context(), first, barrier, release)
+	require.NoError(t, err)
+	require.True(t, result.Requeue)
+	require.Zero(t, barrierCalls)
+	first = load()
+	firstEpoch := first.Status.Drain.Epoch
+	require.NotEmpty(t, firstEpoch)
+	require.Equal(t, drainPhaseDraining, first.Status.Drain.Phase)
+
+	result, err = r.reconcileAnnotatedDrain(t.Context(), first, barrier, release)
+	require.NoError(t, err)
+	require.False(t, result.Requeue)
+	require.Equal(t, drainPhaseDrained, first.Status.Drain.Phase)
+	require.Equal(t, 1, barrierCalls)
+	require.Equal(t, drainPhaseDrained, load().Status.Drain.Phase)
+
+	removed := load()
+	delete(removed.Annotations, ClusterDrainAnnotation)
+	require.NoError(t, r.Update(t.Context(), removed))
+	removed = load()
+	result, err = r.reconcileAnnotatedDrain(t.Context(), removed, barrier, release)
+	require.NoError(t, err)
+	require.True(t, result.Requeue)
+	require.Zero(t, releaseCalls)
+	require.Equal(t, drainPhaseReleasing, load().Status.Drain.Phase)
+
+	result, err = r.reconcileAnnotatedDrain(t.Context(), load(), barrier, release)
+	require.NoError(t, err)
+	require.False(t, result.Requeue)
+	require.Equal(t, 1, releaseCalls)
+	require.Nil(t, load().Status.Drain)
+
+	readded := load()
+	readded.Annotations = map[string]string{ClusterDrainAnnotation: "true"}
+	require.NoError(t, r.Update(t.Context(), readded))
+	result, err = r.reconcileAnnotatedDrain(t.Context(), load(), barrier, release)
+	require.NoError(t, err)
+	require.True(t, result.Requeue)
+	require.NotEqual(t, firstEpoch, load().Status.Drain.Epoch)
+}

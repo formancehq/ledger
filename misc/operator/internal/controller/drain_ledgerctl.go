@@ -113,16 +113,35 @@ func (c *ledgerctlDrainCluster) EndDrain(ctx context.Context, epoch string) (dra
 }
 
 func (c *ledgerctlDrainCluster) CurrentDrain(ctx context.Context) (drainDecision, error) {
-	output, err := c.run(ctx, 0, "cluster", "status", "--json")
-	if err != nil {
-		return drainDecision{}, err
+	replicas := int32(3)
+	if c.cluster.Spec.Replicas != nil {
+		replicas = *c.cluster.Spec.Replicas
 	}
 	var state ledgerctlDrainState
-	if err := json.Unmarshal([]byte(output), &state); err != nil {
-		return drainDecision{}, fmt.Errorf("decoding cluster status: %w", err)
+	var lastErr error
+	for ordinal := range int(replicas) {
+		output, err := c.run(ctx, ordinal, "cluster", "status", "--json")
+		if err != nil {
+			if ctx.Err() != nil {
+				return drainDecision{}, ctx.Err()
+			}
+			lastErr = err
+
+			continue
+		}
+		if err := json.Unmarshal([]byte(output), &state); err != nil {
+			return drainDecision{}, fmt.Errorf("decoding cluster status on pod %d: %w", ordinal, err)
+		}
+		if strings.EqualFold(state.State, "leader") {
+			break
+		}
 	}
 	if !strings.EqualFold(state.State, "leader") {
-		return drainDecision{}, errors.New("cluster status did not come from leader")
+		if lastErr == nil {
+			return drainDecision{}, errors.New("cluster status did not come from leader")
+		}
+
+		return drainDecision{}, fmt.Errorf("no leader status available: %w", lastErr)
 	}
 	index, err := parseOptionalUint64(state.DrainIndex)
 	if err != nil {

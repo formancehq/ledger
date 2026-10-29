@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -43,6 +44,26 @@ func TestLedgerctlDrainReadsLocalDurableCursors(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), status.LastPersistedIndex)
 	require.Equal(t, uint64(2), status.NodeID)
+}
+
+func TestLedgerctlCurrentDrainFindsLeaderBeyondPodZero(t *testing.T) {
+	t.Parallel()
+	c := &ledgerctlDrainCluster{
+		cluster: &ledgerv1alpha1.Cluster{Spec: ledgerv1alpha1.ClusterSpec{Replicas: new(int32(3))}},
+		exec: func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, pod, _ string, _ []string) (*execResult, error) {
+			if pod == podName("", 0) {
+				return &execResult{Stdout: `{"state":"Follower"}`}, nil
+			}
+			if pod == podName("", 1) {
+				return &execResult{Stdout: `{"state":"Leader","drainEpoch":"e1","drainIndex":"42","nodes":[{"id":"1"},{"id":"2"},{"id":"3"}]}`}, nil
+			}
+
+			return nil, errors.New("unexpected pod")
+		},
+	}
+	decision, err := c.CurrentDrain(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, drainDecision{Epoch: "e1", Index: 42, Members: []uint64{1, 2, 3}}, decision)
 }
 
 func TestLedgerctlEndDrainReadsReleaseIndex(t *testing.T) {

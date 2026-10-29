@@ -1,12 +1,14 @@
 # Controlled shutdown barrier
 
-The operator calls `ClusterService.BeginDrain` with a stable epoch before it
-stops any Pod. The RPC requires `AUTH_SCOPE_CLUSTER_WRITE` and is routed to the
-leader. `ledgerctl cluster begin-drain` is a hidden transport command for the
-operator, not a user-facing shutdown workflow. The operator's
-`EnsureDrainBarrier` method returns `true` only after every captured member
-has confirmed local durable application. No upgrade or user trigger calls
-this method yet.
+Add the `ledger.formance.com/drain` annotation to a `Cluster` to close write
+admission while its Pods keep running. The operator persists a fresh epoch in
+`status.drain` before calling `ClusterService.BeginDrain`. It reports
+`status.drain.phase: Drained` and a `Drained=True` condition only after every
+captured member has confirmed durable application. Removing the annotation
+causes the operator to release the same epoch; it clears `status.drain` after
+every member durably applies that release. The RPCs require
+`AUTH_SCOPE_CLUSTER_WRITE` and route to the leader. The hidden `ledgerctl`
+commands are the operator's transport.
 
 If the shutdown is canceled or the Pods restart with their existing volumes,
 the operator calls `ClusterService.EndDrain` with the same epoch. The hidden
@@ -28,6 +30,10 @@ technical update committed through Raft fixes the epoch and cutoff index.
 Later markers cannot move the active cutoff. A retry with the same epoch
 returns the first decision; a different epoch is rejected until the active
 drain is released. A released epoch cannot be reused.
+
+If the caller times out after enqueuing a marker, the local membership fence
+stays closed until the marker applies or Raft definitively drops it. A timeout
+alone never reopens membership admission.
 
 The leader serializes marker enqueue with the final `Node.Propose` step used
 by ordinary writes. Its local gate closes at enqueue, before any later
@@ -70,11 +76,10 @@ normal sync status, and a persisted index at or beyond the release. This
 qualifying status response fsyncs the Pebble WAL as well. Missing members
 prevent a successful all-member release acknowledgment.
 
-The epoch must be stable across operator retries and restarts. The caller of
-`EnsureDrainBarrier` owns this epoch and must leave Pods running on `false` or
-error. Because the present change does not add a shutdown trigger, the
-operator's future workflow must persist that intent and epoch before calling
-the method. The leader serializes preflight with membership operations through
+The epoch stays in Cluster status across operator retries and restarts. The
+operator keeps Pods running on `false` or error. It persists the `Releasing`
+phase before proposing release, so a restart cannot accidentally reuse the
+epoch. The leader serializes preflight with membership operations through
 marker application. An emergency force removal can still change the captured
 set and cause the operator's completion check to fail.
 
