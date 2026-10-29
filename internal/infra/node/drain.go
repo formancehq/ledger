@@ -20,6 +20,15 @@ var ErrDrainEpochReused = errors.New("drain epoch has already been released")
 // ErrNoActiveDrain means there is no active marker with the supplied epoch.
 var ErrNoActiveDrain = errors.New("no active drain with the supplied epoch")
 
+func (node *Node) drainActive() bool {
+	// Lightweight membership tests construct a Node without an FSM.
+	if node.fsm == nil {
+		return false
+	}
+	_, index := node.fsm.Drain()
+	return index != 0
+}
+
 func (node *Node) waitForPriorMembership(ctx context.Context) error {
 	if err := node.WaitLeaderReady(ctx); err != nil {
 		return err

@@ -3113,6 +3113,9 @@ func (node *Node) addLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 			case existingLearnerAlreadyInCluster:
 				return ErrNodeAlreadyInCluster
 			case existingLearnerNeedsRefresh:
+				if node.drainActive() {
+					return domain.ErrMaintenanceMode
+				}
 				return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
 					Changes: []*raftpb.ConfChangeSingle{{
 						Type:   new(raftpb.ConfChangeUpdateNode),
@@ -3122,7 +3125,7 @@ func (node *Node) addLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 				})
 			}
 		}
-		if _, drainIndex := node.fsm.Drain(); drainIndex != 0 {
+		if node.drainActive() {
 			return domain.ErrMaintenanceMode
 		}
 
@@ -3146,6 +3149,9 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 	return node.retryConfChange(ctx, proposalID, nodeID, "PromoteLearner", []raftpb.ConfChangeType{
 		raftpb.ConfChangeAddNode,
 	}, func() error {
+		if node.drainActive() {
+			return domain.ErrMaintenanceMode
+		}
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
@@ -3213,6 +3219,9 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 	var capturedInstanceID []byte
 
 	proposeFn := func() error {
+		if node.drainActive() {
+			return domain.ErrMaintenanceMode
+		}
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
@@ -3568,7 +3577,7 @@ func (node *Node) checkAndPromoteLearners() error {
 	if !node.confChangeMu.TryLock() {
 		return nil
 	}
-	node.confChangeMu.Unlock()
+	defer node.confChangeMu.Unlock()
 
 	status := node.rawNode.Status()
 	if status.RaftState != raft.StateLeader {
@@ -3578,6 +3587,9 @@ func (node *Node) checkAndPromoteLearners() error {
 	// The registry and identity checks below read the store, which a leader
 	// elected while out of sync restores only once its FSM has caught up.
 	if !node.isLeaderReady() {
+		return nil
+	}
+	if node.drainActive() {
 		return nil
 	}
 

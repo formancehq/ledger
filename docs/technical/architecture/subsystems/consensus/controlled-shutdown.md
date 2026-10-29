@@ -22,8 +22,8 @@ Before proposing the marker, the leader asks every current member for its
 local `GetDrainStatus`. An old binary returns `Unimplemented`, so the request
 fails closed during a rolling upgrade. The leader fences previously accepted
 membership changes through Raft and holds the membership operation lock from
-capability preflight until marker application. A new learner cannot join
-while a drain is active. The first `DrainMarker(epoch, members)`
+capability preflight until marker application. Additions, promotions, and
+normal removals are blocked while a drain is active. The first `DrainMarker(epoch, members)`
 technical update committed through Raft fixes the epoch and cutoff index.
 Later markers cannot move the active cutoff. A retry with the same epoch
 returns the first decision; a different epoch is rejected until the active
@@ -75,8 +75,8 @@ The epoch must be stable across operator retries and restarts. The caller of
 error. Because the present change does not add a shutdown trigger, the
 operator's future workflow must persist that intent and epoch before calling
 the method. The leader serializes preflight with membership operations through
-marker application. A later membership removal changes the captured set and
-causes the operator's completion check to fail.
+marker application. An emergency force removal can still change the captured
+set and cause the operator's completion check to fail.
 
 ## Limits
 
