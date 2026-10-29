@@ -5,7 +5,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$script_dir/../.." && pwd)"
-if [ -z "${IN_NIX_SHELL:-}" ]; then
+if [ "${LEDGER_UPGRADE_SHELL:-}" != 1 ]; then
 	exec nix develop "$repo#upgrade" --command "$script_dir/run.sh" "$@"
 fi
 target_ref="${TARGET_REF:-refs/remotes/origin/release/v3.0}"

@@ -79,16 +79,82 @@ create_pod() {
 	k wait --for=condition=Ready "pod/$name" --timeout=180s
 	[ "$(k get pod "$name" -o jsonpath='{.spec.containers[0].image}')" = "$image" ] || return 1
 }
+probe_write_rejection() {
+	local i="$1" label="$2" output
+	if output="$(cli "$i" ledgers create "blocked-$label-$i" 2>&1)"; then
+		echo "ledger creation succeeded on node $((i+1)) during maintenance" >&2
+		return 2
+	fi
+	grep -Eiq 'MAINTENANCE_MODE|maintenance mode' <<<"$output" || {
+		echo "ledger creation did not return maintenance rejection: $output" >&2
+		return 1
+	}
+	if output="$(cli "$i" transactions create --ledger "$ledger" --posting world,bank,1,USD \
+		--reference "blocked-$label-$i" 2>&1)"; then
+		echo "transaction succeeded on node $((i+1)) during maintenance" >&2
+		return 2
+	fi
+	grep -Eiq 'MAINTENANCE_MODE|maintenance mode' <<<"$output" || {
+		echo "transaction did not return maintenance rejection: $output" >&2
+		return 1
+	}
+}
+probe_live_voters() {
+	local replacing="$1" label="$2" i actual result confirmed=0
+	for i in 0 1 2; do
+		[ "$i" -eq "$replacing" ] && continue
+		k wait --for=condition=Ready "pod/$(pod_name "$i")" --timeout=1s >/dev/null 2>&1 || continue
+		if probe_write_rejection "$i" "$label"; then
+			actual="$(account "$i")" || continue
+			[ "$actual" = "$before" ] || { echo "account changed on node $((i+1)) during replacement" >&2; return 2; }
+			confirmed=$((confirmed+1))
+		else
+			result="$?"
+			[ "$result" -ne 2 ] || return 2
+		fi
+	done
+	[ "$confirmed" -gt 0 ]
+}
+replacement_probe_loop() {
+	local replacing="$1" log="$2" attempt=0 result
+	while :; do
+		if probe_live_voters "$replacing" "replacement-$replacing-$attempt"; then
+			printf 'confirmed maintenance rejection and unchanged data on a live voter at attempt %s\n' "$attempt" >> "$log"
+		else
+			result="$?"
+			[ "$result" -ne 2 ] || return 2
+		fi
+		attempt=$((attempt+1))
+		sleep 0.5
+	done
+}
+assert_probe_alive() {
+	kill -0 "$probe_pid" 2>/dev/null || { echo 'replacement probe stopped unexpectedly' >&2; wait "$probe_pid" || true; return 1; }
+}
 replace_pod() {
-	local i="$1" name old_uid new_uid
+	local i="$1" name old_uid new_uid probe_log
 	name="$(pod_name "$i")"
 	old_uid="$(k get pod "$name" -o jsonpath='{.metadata.uid}')"
 	echo "replacing $name with target image"
-	k delete pod "$name" --wait=true --timeout=120s
+	probe_log="${UPGRADE_EVIDENCE_DIR:-/tmp}/replacement-$i-probes.log"
+	k delete pod "$name" --wait=false
+	replacement_probe_loop "$i" "$probe_log" &
+	probe_pid="$!"
+	k wait --for=delete "pod/$name" --timeout=120s
+	assert_probe_alive
+	# The target Pod is absent here; this is a confirmed probe in the deletion gap.
+	probe_live_voters "$i" "deleted-$i"
 	create_pod "$i" "$UPGRADE_TARGET_IMAGE" rejoin
+	assert_probe_alive
 	new_uid="$(k get pod "$name" -o jsonpath='{.metadata.uid}')"
 	[ -n "$new_uid" ] && [ "$new_uid" != "$old_uid" ] || { echo "pod UID unchanged: $name" >&2; return 1; }
 	wait_consistent true
+	assert_probe_alive
+	kill "$probe_pid"
+	# SIGTERM is the expected way to stop the continuous probe after catch-up.
+	wait "$probe_pid" || true
+	probe_pid=""
+	[ -s "$probe_log" ] || { echo 'no confirmed maintenance rejection during replacement' >&2; return 1; }
 }
 account() { cli "$1" accounts get bank --ledger "$ledger" --json | jq -cS '{address,volumes,metadata}'; }
 check_data() {
@@ -99,16 +165,13 @@ check_data() {
 	done
 }
 check_maintenance() {
-	local label="$1" deadline i output
+	local label="$1" deadline i
 	deadline=$(( $(date +%s) + phase_seconds ))
 	echo "testing maintenance window: $label"
 	while [ "$(date +%s)" -lt "$deadline" ]; do
 		wait_consistent true
 		for i in 0 1 2; do
-			if output="$(cli "$i" ledgers create "blocked-$label-$i" 2>&1)"; then
-				echo "business write succeeded on node $((i+1))" >&2; return 1
-			fi
-			grep -Eiq 'MAINTENANCE_MODE|maintenance mode' <<<"$output" || { echo "unexpected write error: $output" >&2; return 1; }
+			probe_write_rejection "$i" "$label" || return 1
 		done
 		check_data "$before"
 	done
@@ -116,6 +179,10 @@ check_maintenance() {
 
 on_exit() {
 	local result="$?" i
+	if [ -n "${probe_pid:-}" ]; then
+		kill "$probe_pid" 2>/dev/null || true
+		wait "$probe_pid" 2>/dev/null || true
+	fi
 	if [ "$result" -ne 0 ]; then
 		for i in 0 1 2; do
 			k logs "$(pod_name "$i")" -c ledger >"${UPGRADE_EVIDENCE_DIR:-/tmp}/pod-$i.log" 2>&1 || true
@@ -200,6 +267,7 @@ read -r current_leader _ < <(cluster_health)
 check_maintenance transfer
 replace_pod "$((original_leader-1))"
 wait_consistent true
+check_maintenance all-target
 cli "$((transferee-1))" cluster maintenance disable
 wait_consistent false
 check_data "$before"
