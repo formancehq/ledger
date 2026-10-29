@@ -23,7 +23,9 @@ service ClusterService {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
   }
 
-  // GetDrainStatus reads only the responding node's local durable cursor.
+  // GetDrainStatus reads only the responding node's local cursor. When its
+  // nonzero drain index is at or below last_persisted_index, the response
+  // follows a Pebble WAL fsync and certifies that cursor as durable.
   rpc GetDrainStatus(GetDrainStatusRequest) returns (DrainStatus) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
   }

@@ -384,7 +384,10 @@ type Node struct {
 	// proposalAdmissionMu makes the terminal check plus proposeCh enqueue
 	// atomic with terminal publication and its queued-proposal drain.
 	proposalAdmissionMu sync.Mutex
-	drainEnqueued       bool // guarded by proposalAdmissionMu; closes leader admission at marker enqueue
+	// Every queued marker closes admission. A marker that Raft definitively
+	// rejects releases its slot; an accepted marker keeps the gate closed while
+	// consensus and FSM application are still pending.
+	drainOutstanding uint64 // guarded by proposalAdmissionMu
 	// membership owns the Raft peer-address state (Pebble + in-memory
 	// cache) and the OnSnapshotInstalled / WriteConfChange callbacks
 	// wired into Applier and Machine. EN-1413.
@@ -2274,7 +2277,7 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 		return nil, err
 	}
 	if !proposal.drainMarker {
-		if _, index := node.fsm.Drain(); index != 0 || node.drainEnqueued {
+		if _, index := node.fsm.Drain(); index != 0 || node.drainOutstanding != 0 {
 			return nil, domain.ErrMaintenanceMode
 		}
 	}
@@ -2300,7 +2303,7 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 	select {
 	case node.proposeCh <- proposal:
 		if proposal.drainMarker {
-			node.drainEnqueued = true
+			node.drainOutstanding++
 		}
 
 		return fsmFuture, nil
@@ -2322,6 +2325,20 @@ func (node *Node) rejectQueuedProposal(proposal *Proposal, err error) {
 	node.indexTracker.Decrement(1)
 	node.applier.ResolveDroppedFuture(proposal.commandID, err)
 	proposal.Resolve(nil, err)
+	if proposal.drainMarker {
+		node.releaseDroppedDrain()
+	}
+}
+
+// releaseDroppedDrain runs only when a marker was rejected before append or
+// definitively truncated by a later term. A lost response is not evidence
+// that the cutoff was not committed, so it retains its slot.
+func (node *Node) releaseDroppedDrain() {
+	node.proposalAdmissionMu.Lock()
+	defer node.proposalAdmissionMu.Unlock()
+	if node.drainOutstanding > 0 {
+		node.drainOutstanding--
+	}
 }
 
 // handleProposal sends a proposal to rawNode and rolls back the IndexTracker
@@ -2346,6 +2363,9 @@ func (node *Node) handleProposal(p *Proposal) {
 		// it immediately so the caller's fsmFuture.Wait() unblocks with the
 		// drop error.
 		node.applier.ResolveDroppedFuture(p.commandID, err)
+		if p.drainMarker {
+			node.releaseDroppedDrain()
+		}
 	}
 	p.Resolve(nil, err)
 }

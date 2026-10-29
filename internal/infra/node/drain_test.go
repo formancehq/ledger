@@ -11,9 +11,25 @@ import (
 func TestProposeRejectsAfterDrainEnqueue(t *testing.T) {
 	t.Parallel()
 	n, _ := newTestMaintenanceNode(t)
-	n.drainEnqueued = true
+	n.drainOutstanding = 1
 	_, err := n.Propose(t.Context(), NewProposal(1, []byte("business")))
 	require.ErrorIs(t, err, domain.ErrMaintenanceMode)
+}
+
+func TestDroppedDrainMarkerReopensAdmission(t *testing.T) {
+	t.Parallel()
+	n, _ := newTestMaintenanceNode(t)
+	n.proposeCh = make(chan *Proposal, 2)
+	n.indexTracker = NewIndexTracker(1)
+	n.drainOutstanding = 2
+	n.releaseDroppedDrain()
+	_, err := n.Propose(t.Context(), NewProposal(1, []byte("still blocked")))
+	require.ErrorIs(t, err, domain.ErrMaintenanceMode)
+	n.releaseDroppedDrain()
+	n.indexTracker.Lock()
+	_, err = n.Propose(t.Context(), NewProposal(2, []byte("admitted after definitive drops")))
+	n.indexTracker.Unlock()
+	require.NoError(t, err)
 }
 
 func TestDrainEnqueueOrdersInFlightProposals(t *testing.T) {

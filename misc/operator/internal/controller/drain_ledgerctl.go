@@ -64,7 +64,7 @@ func (c *ledgerctlDrainCluster) run(ctx context.Context, ordinal int, args ...st
 }
 
 func (c *ledgerctlDrainCluster) BeginDrain(ctx context.Context, epoch string) (drainDecision, error) {
-	output, err := c.run(ctx, 0, "cluster", "begin-drain", epoch, "--json")
+	output, err := c.run(ctx, 0, "cluster", "begin-drain", "--json", "--", epoch)
 	if err != nil {
 		return drainDecision{}, err
 	}

@@ -49,7 +49,9 @@ type ClusterServiceClient interface {
 	// BeginDrain closes write admission at a Raft-ordered marker. The operator
 	// waits for each reported member to persist cutoff_index before stopping Pods.
 	BeginDrain(ctx context.Context, in *BeginDrainRequest, opts ...grpc.CallOption) (*BeginDrainResponse, error)
-	// GetDrainStatus reads only the responding node's local durable cursor.
+	// GetDrainStatus reads only the responding node's local cursor. When its
+	// nonzero drain index is at or below last_persisted_index, the response
+	// follows a Pebble WAL fsync and certifies that cursor as durable.
 	GetDrainStatus(ctx context.Context, in *GetDrainStatusRequest, opts ...grpc.CallOption) (*DrainStatus, error)
 	// GetDiskUsage returns the disk usage of the local node
 	GetDiskUsage(ctx context.Context, in *GetDiskUsageRequest, opts ...grpc.CallOption) (*DiskUsage, error)
@@ -282,7 +284,9 @@ type ClusterServiceServer interface {
 	// BeginDrain closes write admission at a Raft-ordered marker. The operator
 	// waits for each reported member to persist cutoff_index before stopping Pods.
 	BeginDrain(context.Context, *BeginDrainRequest) (*BeginDrainResponse, error)
-	// GetDrainStatus reads only the responding node's local durable cursor.
+	// GetDrainStatus reads only the responding node's local cursor. When its
+	// nonzero drain index is at or below last_persisted_index, the response
+	// follows a Pebble WAL fsync and certifies that cursor as durable.
 	GetDrainStatus(context.Context, *GetDrainStatusRequest) (*DrainStatus, error)
 	// GetDiskUsage returns the disk usage of the local node
 	GetDiskUsage(context.Context, *GetDiskUsageRequest) (*DiskUsage, error)

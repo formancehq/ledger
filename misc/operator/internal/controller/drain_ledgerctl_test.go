@@ -45,6 +45,21 @@ func TestLedgerctlDrainReadsLocalDurableCursors(t *testing.T) {
 	require.Equal(t, uint64(2), status.NodeID)
 }
 
+func TestLedgerctlDrainEpochBeginningWithDash(t *testing.T) {
+	t.Parallel()
+	c := &ledgerctlDrainCluster{
+		cluster: &ledgerv1alpha1.Cluster{},
+		exec: func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, _, _ string, command []string) (*execResult, error) {
+			require.Equal(t, []string{"/bin/sh", "-c"}, command[:2])
+			require.Contains(t, command[2], "'cluster' 'begin-drain' '--json'")
+			require.Contains(t, command[2], "'--' '-shutdown'")
+			return &execResult{Stdout: `{"cutoffIndex":"42","members":["1"]}`}, nil
+		},
+	}
+	_, err := c.BeginDrain(t.Context(), "-shutdown")
+	require.NoError(t, err)
+}
+
 func TestLedgerctlDrainRejectsWrongLocalNode(t *testing.T) {
 	t.Parallel()
 	c := &ledgerctlDrainCluster{

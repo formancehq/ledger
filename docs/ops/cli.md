@@ -2749,7 +2749,9 @@ ledgerctl cluster status --node-id 2
 
 The operator uses two hidden transport commands: `cluster begin-drain <epoch>
 --json` calls the authenticated Raft marker RPC, and `cluster drain-status
---json` reads the current Pod's local durable cursor. They are not a
+--json` reads the current Pod's local cursor. A drain status response certifies
+durability only when its nonzero drain index is at or below the reported
+persisted index; that response includes a Pebble WAL fsync. These commands are not a
 user-facing shutdown workflow. See [controlled shutdown](../technical/architecture/subsystems/consensus/controlled-shutdown.md).
 
 #### cluster watch

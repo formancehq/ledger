@@ -40,9 +40,10 @@ The operator retries `BeginDrain` with the same epoch, reads current leader
 membership, and queries each original member's own Pod with `GetDrainStatus`.
 It returns ready only when the current membership still matches the captured
 set and every member reports the same epoch and cutoff, `sync_status=normal`,
-and `last_persisted_index >= cutoff_index`. Each successful local status call
-fsyncs the Pebble WAL after capturing its persisted index; the reported index
-is therefore covered by that fsync. An unreachable, replaced, syncing,
+and `last_persisted_index >= cutoff_index`. When the reported nonzero drain
+index is covered by the captured persisted index, the local status call fsyncs
+the Pebble WAL before returning. Only that qualifying response certifies the
+reported index as durable. An unreachable, replaced, syncing,
 or lagging member blocks shutdown. Raft's leader `Match` index is insufficient:
 it does not prove the follower's Pebble batch committed.
 

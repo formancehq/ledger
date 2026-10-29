@@ -216,7 +216,7 @@ func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clust
 		}
 		decision, err := impl.node.BeginDrain(ctx, req.GetEpoch(), nil)
 		if err != nil {
-			return nil, err
+			return nil, drainBeginError(err)
 		}
 
 		return &clusterpb.BeginDrainResponse{CutoffIndex: decision.GetIndex(), Members: decision.GetMembers()}, nil
@@ -237,12 +237,18 @@ func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clust
 		if id != impl.node.GetNodeID() {
 			conn := impl.servicePool.GetConnection(id)
 			if conn == nil {
-				return nil, status.Errorf(codes.FailedPrecondition, "member %d is unreachable", id)
+				return nil, status.Errorf(codes.Unavailable, "member %d is unreachable", id)
 			}
 			peerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			peer, err := clusterpb.NewClusterServiceClient(conn).GetDrainStatus(peerCtx, &clusterpb.GetDrainStatusRequest{})
 			cancel()
-			if err != nil || peer.GetLocalNode() != id || !peer.GetSupportsDrain() {
+			if err != nil {
+				if status.Code(err) == codes.Unimplemented {
+					return nil, status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain support", id)
+				}
+				return nil, status.Errorf(codes.Unavailable, "member %d drain preflight: %v", id, err)
+			}
+			if peer.GetLocalNode() != id || !peer.GetSupportsDrain() {
 				return nil, status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain support", id)
 			}
 		}
@@ -250,7 +256,7 @@ func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clust
 	}
 	decision, err := impl.node.BeginDrain(ctx, req.GetEpoch(), members)
 	if err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "begin drain: %v", err)
+		return nil, drainBeginError(err)
 	}
 	impl.logger.WithFields(map[string]any{
 		"epoch": decision.GetEpoch(), "cutoffIndex": decision.GetIndex(),
@@ -258,6 +264,19 @@ func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clust
 	}).Infof("controlled shutdown barrier committed")
 
 	return &clusterpb.BeginDrainResponse{CutoffIndex: decision.GetIndex(), Members: decision.GetMembers()}, nil
+}
+
+func drainBeginError(err error) error {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return status.Error(codes.Canceled, err.Error())
+	case errors.Is(err, context.DeadlineExceeded):
+		return status.Error(codes.DeadlineExceeded, err.Error())
+	case errors.Is(err, node.ErrDrainEpochConflict):
+		return status.Error(codes.FailedPrecondition, err.Error())
+	default:
+		return status.Error(codes.Unavailable, err.Error())
+	}
 }
 
 func (impl *ClusterServiceServerImpl) GetDrainStatus(ctx context.Context, _ *clusterpb.GetDrainStatusRequest) (*clusterpb.DrainStatus, error) {

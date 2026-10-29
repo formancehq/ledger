@@ -9,6 +9,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
+// ErrDrainEpochConflict means the first committed marker belongs to another
+// shutdown attempt and cannot be replaced.
+var ErrDrainEpochConflict = errors.New("cluster is already draining under another epoch")
+
 // BeginDrain proposes the Raft-ordered admission cutoff. All proposals that
 // cross Propose before this marker are ahead of it in the local queue. The
 // FSM enforces the cutoff by Raft index even after a leadership change.
@@ -21,7 +25,7 @@ func (node *Node) BeginDrain(ctx context.Context, epoch string, members []uint64
 	}
 	if current := node.fsm.DrainDecision(); current != nil {
 		if current.GetEpoch() != epoch {
-			return nil, errors.New("cluster is already draining under another epoch")
+			return nil, ErrDrainEpochConflict
 		}
 		if err := node.fsm.WaitForApplied(ctx, current.GetIndex()); err != nil {
 			return nil, fmt.Errorf("waiting for persisted drain marker: %w", err)
@@ -59,6 +63,11 @@ func (node *Node) BeginDrain(ctx context.Context, epoch string, members []uint64
 	}
 	result, err := future.Wait(ctx)
 	if err != nil {
+		if errors.Is(err, ErrLeadershipLost) {
+			// A later term applied without this marker, so its accepted Raft
+			// proposal was definitively truncated. A timeout is not equivalent.
+			node.releaseDroppedDrain()
+		}
 		return nil, fmt.Errorf("waiting for drain apply: %w", err)
 	}
 	if result.Error != nil {
@@ -66,7 +75,7 @@ func (node *Node) BeginDrain(ctx context.Context, epoch string, members []uint64
 	}
 	decision := node.fsm.DrainDecision()
 	if decision == nil || decision.GetEpoch() != epoch || decision.GetIndex() == 0 {
-		return nil, errors.New("drain marker applied under another epoch")
+		return nil, ErrDrainEpochConflict
 	}
 
 	return decision, nil
