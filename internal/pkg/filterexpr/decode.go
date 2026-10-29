@@ -21,7 +21,9 @@ import (
 // The two representations are:
 //
 //   - structured — the v2 QueryFilter JSON DSL ($and/$or/$not + $match/$gt/…),
-//     decoded by commonpb.DecodeQueryFilterJSON (query_filter.go);
+//     decoded by commonpb.DecodeQueryFilterJSON (query_filter.go). The target
+//     distinguishes log `id` from transaction `id`; context-free
+//     QueryFilter.UnmarshalJSON uses transaction semantics;
 //   - textual    — the human-readable filterexpr grammar (metadata[k] == v,
 //     outcome == failure, …), parsed by Parse.
 //
@@ -74,15 +76,13 @@ func DecodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryF
 //     is immutable and lives on the stored query, so the FSM applies the gate
 //     against it — see handlers_update_prepared_query.go). It passes a non-audit
 //     target for resolution, which is sound because prepared queries are only
-//     ever ACCOUNTS/TRANSACTIONS/LOGS (audit is never a prepared-query
-//     target — see http.preparedQueryTargets) and every non-audit target resolves
-//     the bare intrinsic fields identically (`timestamp` → transaction range,
-//     `date` → log range, `ledger` → LedgerCondition, …; locked by
-//     TestDecodeDualFormatStructuralOnly_NonAuditResolutionIsTargetIndependent);
-//   - the ledgerctl list and `queries create` commands, which DO know their
-//     target and pass it (audit list passes QUERY_TARGET_AUDIT so bare audit
-//     fields resolve to the audit arm) but let the server run the authoritative
-//     validity gate.
+//     ever ACCOUNTS/TRANSACTIONS/LOGS (audit is never a prepared-query target
+//     — see http.preparedQueryTargets). The update handler initially decodes as
+//     TRANSACTIONS, then reads the stored target and re-decodes ID filters for
+//     LOGS. The FSM remains the authoritative per-target validity gate;
+//   - the ledgerctl list and `queries create` commands, which know their target
+//     and pass it (audit list passes QUERY_TARGET_AUDIT so bare audit fields
+//     resolve to the audit arm) but let the server run the validity gate.
 //
 // Every server-side list handler MUST use DecodeDualFormat instead, so form and
 // validity are checked in one place.
