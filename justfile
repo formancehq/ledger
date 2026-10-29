@@ -30,12 +30,15 @@ test-dashboards: generate-dashboards
 lint:
     #!/usr/bin/env bash
     set -euo pipefail
+    # golangci-lint otherwise takes a lock in $TMPDIR and fails after 5s when
+    # another run holds it. Validation shares one TMPDIR across concurrent
+    # worktrees, and the shared lint cache is safe for parallel runners.
     echo "==> golangci-lint (.)"
-    golangci-lint run --fix --build-tags it,local,enable_antithesis_sdk,{{all_tags}} --timeout 5m
+    golangci-lint run --allow-parallel-runners --fix --build-tags it,local,enable_antithesis_sdk,{{all_tags}} --timeout 5m
     echo "==> golangci-lint (operator)"
-    (cd misc/operator && golangci-lint run --fix --timeout 5m)
+    (cd misc/operator && golangci-lint run --allow-parallel-runners --fix --timeout 5m)
     echo "==> golangci-lint (model workload)"
-    (cd tests/antithesis/workload && golangci-lint run --fix --build-tags enable_antithesis_sdk --timeout 5m)
+    (cd tests/antithesis/workload && golangci-lint run --allow-parallel-runners --fix --build-tags enable_antithesis_sdk --timeout 5m)
 
 # Go modules kept tidy by `just tidy` (and checked by the Dirty CI job).
 tidy_modules := ". misc/operator tests/antithesis/workload"

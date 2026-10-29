@@ -14,9 +14,26 @@ while [[ "${1:-}" == --* ]]; do
     shift
 done
 
+candidate_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+if [[ -n "$candidate_root" ]]; then
+    candidate_root=$(cd "$candidate_root" && pwd -P)
+fi
+
+# TMPDIR is inherited unchanged. Go keys a cached test result on the
+# environment the test read, and t.TempDir reads TMPDIR, so a per-run path
+# would re-execute every TempDir-using package on each run. Temporary entries
+# are uniquely named, so concurrent runs can share the directory. It is checked
+# before the ephemeral run directory is created inside it.
+TMPDIR=${TMPDIR:-/tmp}
+validation_tmpdir_valid "$TMPDIR" "$candidate_root" || {
+    echo "agent-validation-env: TMPDIR must be an absolute existing directory outside the candidate worktree: $TMPDIR" >&2
+    exit 2
+}
+export TMPDIR
+
 if [[ "$ephemeral" == true ]]; then
     [[ $# -ge 1 ]] || { echo "Usage: agent-validation-env [--clean-cache] --ephemeral COMMAND [ARGS...]" >&2; exit 2; }
-    run_dir=$(mktemp -d "${TMPDIR:-/tmp}/ledger-agent-validation.XXXXXX")
+    run_dir=$(mktemp -d "$TMPDIR/ledger-agent-validation.XXXXXX")
 else
     [[ $# -ge 2 ]] || { echo "Usage: agent-validation-env [--clean-cache] RUN_DIR COMMAND [ARGS...]" >&2; exit 2; }
     run_dir=$1
@@ -34,8 +51,8 @@ mkdir -p "$run_dir"
 run_dir=$(cd "$run_dir" && pwd -P)
 
 # Cooperative local runs share stable caches. They remain outside every Git
-# worktree and outside the disposable run directory; only temporary files stay
-# run-local. Set LEDGER_AI_CACHE_ROOT to select another external location.
+# worktree and outside the disposable run directory, which holds only per-run
+# state. Set LEDGER_AI_CACHE_ROOT to select another external location.
 cache_root=${LEDGER_AI_CACHE_ROOT:-${HOME:?HOME must be set}/.cache/ledger-ai}
 [[ "$cache_root" = /* ]] || {
     echo "agent-validation-env: LEDGER_AI_CACHE_ROOT must be absolute" >&2
@@ -65,9 +82,7 @@ reject_contained_cache() {
 }
 
 reject_contained_cache "$run_dir" "VALIDATION_RUN_DIR"
-candidate_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
 if [[ -n "$candidate_root" ]]; then
-    candidate_root=$(cd "$candidate_root" && pwd -P)
     reject_contained_cache "$candidate_root" "candidate worktree"
 fi
 cache_marker="$cache_root/.ledger-ai-cache"
@@ -86,7 +101,6 @@ mv -f -- "$cache_marker.$$" "$cache_marker"
 for name in go-mod go-path golangci-lint xdg; do
     mkdir -p "$cache_root/$name"
 done
-mkdir -p "$run_dir/tmp"
 
 # GOCACHE has much higher cardinality than the module and tool caches: build
 # tags, race instrumentation, coverage and changing candidate SHAs all produce
@@ -339,7 +353,6 @@ export LEDGER_AI_CACHE_ROOT="$cache_root"
 export GOCACHE="$go_cache_path"
 export GOMODCACHE="$cache_root/go-mod"
 export GOPATH="$cache_root/go-path"
-export TMPDIR="$run_dir/tmp"
 export XDG_CACHE_HOME="$cache_root/xdg"
 export GOLANGCI_LINT_CACHE="$cache_root/golangci-lint"
 
