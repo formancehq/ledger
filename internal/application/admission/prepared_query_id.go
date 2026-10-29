@@ -103,7 +103,7 @@ func (a *Admission) restorePreparedQueryIDRetry(ctx context.Context, key string,
 	// already-expired outcome is a fresh request against the current target.
 	now := uint64(time.Now().UnixMicro())
 	if stored.GetExpiresAt() != 0 &&
-		(stored.GetExpiresAt() <= now || stored.GetExpiresAt() <= lastApplied) {
+		(stored.GetExpiresAt() <= now || lastApplied >= stored.GetExpiresAt()-1) {
 		return nil
 	}
 
