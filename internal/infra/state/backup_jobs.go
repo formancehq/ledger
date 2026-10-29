@@ -201,11 +201,35 @@ func (s *BackupJobsState) Start(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	job, created, err := newBackupJob(s.active, raftIndex, kind, start)
-	if err != nil {
-		return job, created, err
+	key := CanonicalDestinationKey(start.GetDestination())
+	if existing, ok := s.active[string(key)]; ok {
+		return existing, false, ErrBackupInProgress
 	}
-	key := job.GetDestinationKey()
+
+	// job_id must be unique across all active destinations: the lifecycle
+	// orders (Complete / Fail) address by job_id and a collision would let
+	// two destinations contend for the same lookup. See ErrBackupJobIDCollision.
+	if collision := s.findActiveByJobID(start.GetJobId()); collision != nil {
+		return collision, false, ErrBackupJobIDCollision
+	}
+
+	// Clone the destination: start.GetDestination() points into the
+	// pooled Proposal that machine.ApplyEntries returns to the
+	// vtprotobuf pool after this apply. Without the clone, a future
+	// reuse of that pooled object would overwrite the Destination
+	// fields we just stored in long-lived FSM state, corrupting
+	// history records and CanonicalDestinationKey re-derivation. The
+	// other proposal fields we copy (JobId, kind, ExecutorNodeId)
+	// are scalars, no aliasing concern.
+	job := &raftcmdpb.BackupJob{
+		JobId:                 start.GetJobId(),
+		Kind:                  kind,
+		Status:                raftcmdpb.BackupJobStatus_BACKUP_JOB_STATUS_RUNNING,
+		Destination:           start.GetDestination().CloneVT(),
+		DestinationKey:        key,
+		ExecutorNodeId:        start.GetExecutorNodeId(),
+		StartedAtAppliedIndex: raftIndex,
+	}
 
 	if err := writeBackupJob(batch, key, job); err != nil {
 		return nil, false, err
@@ -236,7 +260,13 @@ func (s *BackupJobsState) Complete(
 		return nil, ErrBackupJobNotFound
 	}
 
-	applyBackupJobComplete(job, raftIndex, complete)
+	job.Status = raftcmdpb.BackupJobStatus_BACKUP_JOB_STATUS_COMPLETE
+	job.CompletedAtAppliedIndex = raftIndex
+	job.LastLogSequence = complete.GetLastLogSequence()
+	job.LastAuditSequence = complete.GetLastAuditSequence()
+	job.LastAppliedIndex = complete.GetLastAppliedIndex()
+	job.FilesUploaded = complete.GetFilesUploaded()
+	job.SegmentsUploaded = complete.GetSegmentsUploaded()
 
 	if err := s.terminate(batch, job); err != nil {
 		return nil, err
@@ -259,7 +289,9 @@ func (s *BackupJobsState) Fail(
 		return nil, ErrBackupJobNotFound
 	}
 
-	applyBackupJobFail(job, raftIndex, fail)
+	job.Status = raftcmdpb.BackupJobStatus_BACKUP_JOB_STATUS_FAILED
+	job.CompletedAtAppliedIndex = raftIndex
+	job.FailureMessage = fail.GetMessage()
 
 	if err := s.terminate(batch, job); err != nil {
 		return nil, err
@@ -288,7 +320,13 @@ func (s *BackupJobsState) terminate(batch *dal.WriteSession, job *raftcmdpb.Back
 // handful of entries in practice (one per destination), so an explicit
 // secondary index would be premature.
 func (s *BackupJobsState) findActiveByJobID(jobID uint64) *raftcmdpb.BackupJob {
-	return findBackupJobByID(s.active, jobID)
+	for _, job := range s.active {
+		if job.GetJobId() == jobID {
+			return job
+		}
+	}
+
+	return nil
 }
 
 // ActiveByDestination returns a clone of the active job for a
@@ -321,14 +359,6 @@ func (s *BackupJobsState) Snapshot() map[string]*raftcmdpb.BackupJob {
 	}
 
 	return out
-}
-
-// Prepare deep-clones active jobs once for a backup-bearing proposal. Its cost
-// is linear in active destinations; proposals without backup updates need not
-// create a preparation. Source state and proposal-owned destinations never alias
-// the preparation's mutable lifecycle state.
-func (s *BackupJobsState) Prepare() *BackupJobsPreparation {
-	return &BackupJobsPreparation{active: s.Snapshot()}
 }
 
 // ForEachActive invokes fn for every active job under the read lock.
@@ -479,113 +509,4 @@ func writeBackupJobHistory(batch *dal.WriteSession, job *raftcmdpb.BackupJob) er
 	}
 
 	return batch.SetBytes(backupJobHistoryKey(job.GetCompletedAtAppliedIndex(), job.GetDestinationKey()), data)
-}
-
-// applyBackupJobComplete changes only the supplied job; callers own its lifetime.
-func applyBackupJobComplete(job *raftcmdpb.BackupJob, raftIndex uint64, complete *raftcmdpb.BackupOrderComplete) {
-	job.Status = raftcmdpb.BackupJobStatus_BACKUP_JOB_STATUS_COMPLETE
-	job.CompletedAtAppliedIndex = raftIndex
-	job.LastLogSequence = complete.GetLastLogSequence()
-	job.LastAuditSequence = complete.GetLastAuditSequence()
-	job.LastAppliedIndex = complete.GetLastAppliedIndex()
-	job.FilesUploaded = complete.GetFilesUploaded()
-	job.SegmentsUploaded = complete.GetSegmentsUploaded()
-}
-
-// applyBackupJobFail changes only the supplied job; callers own its lifetime.
-func applyBackupJobFail(job *raftcmdpb.BackupJob, raftIndex uint64, fail *raftcmdpb.BackupOrderFail) {
-	job.Status = raftcmdpb.BackupJobStatus_BACKUP_JOB_STATUS_FAILED
-	job.CompletedAtAppliedIndex = raftIndex
-	job.FailureMessage = fail.GetMessage()
-}
-
-// newBackupJob validates a start and constructs its owned state without changing
-// the active map. Both historical apply and proposal preparation use this rule.
-func newBackupJob(active map[string]*raftcmdpb.BackupJob, raftIndex uint64, kind raftcmdpb.BackupKind, start *raftcmdpb.BackupOrderStart) (*raftcmdpb.BackupJob, bool, error) {
-	key := CanonicalDestinationKey(start.GetDestination())
-	if existing, ok := active[string(key)]; ok {
-		return existing, false, ErrBackupInProgress
-	}
-
-	// job_id must be unique across all active destinations: the lifecycle
-	// orders (Complete / Fail) address by job_id and a collision would let
-	// two destinations contend for the same lookup. See ErrBackupJobIDCollision.
-	if collision := findBackupJobByID(active, start.GetJobId()); collision != nil {
-		return collision, false, ErrBackupJobIDCollision
-	}
-
-	// Clone the destination: start.GetDestination() points into the
-	// pooled Proposal that machine.ApplyEntries returns to the
-	// vtprotobuf pool after this apply. Without the clone, a future
-	// reuse of that pooled object would overwrite the Destination
-	// fields we just stored in long-lived FSM state, corrupting
-	// history records and CanonicalDestinationKey re-derivation. The
-	// other proposal fields we copy (JobId, kind, ExecutorNodeId)
-	// are scalars, no aliasing concern.
-	job := &raftcmdpb.BackupJob{
-		JobId:                 start.GetJobId(),
-		Kind:                  kind,
-		Status:                raftcmdpb.BackupJobStatus_BACKUP_JOB_STATUS_RUNNING,
-		Destination:           start.GetDestination().CloneVT(),
-		DestinationKey:        key,
-		ExecutorNodeId:        start.GetExecutorNodeId(),
-		StartedAtAppliedIndex: raftIndex,
-	}
-
-	return job, true, nil
-}
-
-func findBackupJobByID(active map[string]*raftcmdpb.BackupJob, jobID uint64) *raftcmdpb.BackupJob {
-	for _, job := range active {
-		if job.GetJobId() == jobID {
-			return job
-		}
-	}
-
-	return nil
-}
-
-// BackupJobsPreparation is a private proposal's backup lifecycle view. It has
-// no storage capability and does not publish mutations. Discard it when any
-// update or order rejects; on success, publish the validated lifecycle updates
-// in their original order through BackupJobsState. The FSM serializes prepare
-// and publication, so no competing apply can invalidate these decisions.
-type BackupJobsPreparation struct {
-	active map[string]*raftcmdpb.BackupJob
-}
-
-// Start simulates a start without writing or mutating the live backup state.
-func (p *BackupJobsPreparation) Start(raftIndex uint64, kind raftcmdpb.BackupKind, start *raftcmdpb.BackupOrderStart) (*raftcmdpb.BackupJob, bool, error) {
-	job, created, err := newBackupJob(p.active, raftIndex, kind, start)
-	if err != nil {
-		return job, created, err
-	}
-	p.active[string(job.GetDestinationKey())] = job
-
-	return job, true, nil
-}
-
-// Complete simulates completion and releases its destination for later updates
-// in this proposal. The shared transformation preserves historical job bytes.
-func (p *BackupJobsPreparation) Complete(raftIndex uint64, complete *raftcmdpb.BackupOrderComplete) (*raftcmdpb.BackupJob, error) {
-	job := findBackupJobByID(p.active, complete.GetJobId())
-	if job == nil {
-		return nil, ErrBackupJobNotFound
-	}
-	applyBackupJobComplete(job, raftIndex, complete)
-	delete(p.active, string(job.GetDestinationKey()))
-
-	return job, nil
-}
-
-// Fail simulates failure and releases its destination for later updates.
-func (p *BackupJobsPreparation) Fail(raftIndex uint64, fail *raftcmdpb.BackupOrderFail) (*raftcmdpb.BackupJob, error) {
-	job := findBackupJobByID(p.active, fail.GetJobId())
-	if job == nil {
-		return nil, ErrBackupJobNotFound
-	}
-	applyBackupJobFail(job, raftIndex, fail)
-	delete(p.active, string(job.GetDestinationKey()))
-
-	return job, nil
 }

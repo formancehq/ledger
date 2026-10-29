@@ -1514,16 +1514,6 @@ func (m *Proposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.AtomicTechnicalUpdates {
-		i--
-		if m.AtomicTechnicalUpdates {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x50
-	}
 	if len(m.TechnicalUpdates) > 0 {
 		for iNdEx := len(m.TechnicalUpdates) - 1; iNdEx >= 0; iNdEx-- {
 			size, _ := m.TechnicalUpdates[iNdEx].MarshalToSizedBufferVT(dAtA[:i])

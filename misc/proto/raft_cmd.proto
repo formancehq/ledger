@@ -433,11 +433,6 @@ message Proposal {
   // coverage_bits so the FSM applies per-update isolation, exactly like
   // Order.coverage_bits.
   repeated TechnicalUpdate technical_updates = 9;
-  // Selects whole-proposal staging for technical updates. Absent/false keeps
-  // historical apply semantics, including during WAL replay. Bridge-release
-  // producers emit false; activation requires the adjacent-RC rollout described
-  // in docs/ops/upgrades.md. Never select this behavior from local apply config.
-  bool atomic_technical_updates = 10;
 }
 
 // TechnicalUpdate is the per-update envelope that carries the coverage
