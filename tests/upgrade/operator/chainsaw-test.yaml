@@ -1,0 +1,12 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: published-release-to-branch-head
+spec:
+  steps:
+    - name: Upgrade an operator-managed Ledger cluster
+      try:
+        - script:
+            content: |
+              bash "$UPGRADE_CLUSTER_SCRIPT" "$NAMESPACE"
+            timeout: 25m

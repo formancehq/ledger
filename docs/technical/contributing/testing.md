@@ -891,7 +891,7 @@ this suite. A failure blocks the existing `Tests` release and image gates.
 
 #### Pinned RC binary upgrade (Chainsaw)
 
-After `main` is integrated into `release/v2.0`, run
+After the harness is integrated into `release/v3.0`, run
 `just test-rc1-rolling-upgrade` from a clean checkout of the integrated
 revision. `tests/upgrade/run.sh` fetches the target branch, records both exact
 commit SHAs, builds Linux images from those revisions, and runs the Chainsaw
@@ -901,11 +901,26 @@ maintenance remains active. The test checks source and target transactions,
 reads on every voter, mixed-window write rejection, durable Raft cursors,
 leadership transfer, and each voter’s audit/derived-store checker.
 
-The `.#upgrade` Nix shell provides Chainsaw, kind, kubectl, and Docker client;
+The `.#upgrade` Nix shell provides Chainsaw, kind, kubectl, gh, and Docker client;
 a local Docker daemon is still required. `UPGRADE_PHASE_SECONDS` sets the
 minimum mixed-window soak (default 15 seconds). Use `KEEP_WORKDIR=1` to retain
 revision and image hashes and failed Pod logs. The runner is separate from the
 Antithesis model suite because that driver intentionally toggles maintenance.
+
+#### Published release to branch HEAD (operator)
+
+Dispatch `.github/workflows/release-operator-upgrade.yml` with a
+`release/vX.Y` branch, or run
+`RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade` locally. The
+launcher selects the latest published stable or RC release tag reachable from
+the branch HEAD, pulls its published image, builds the operator and target
+Ledger from the exact HEAD, and runs Chainsaw in an isolated kind cluster.
+The target Pod image tag is its full local image ID. The test checks a real
+operator-driven StatefulSet rollout, mixed-version maintenance rejection,
+retained PVC identities, data before and after, and every voter's store check.
+The workflow saves the evidence under `build/upgrade-operator/` and uploads it
+even on failure. A Docker daemon and access to the published GHCR image are
+required. The image-ID tag does not exercise adjacent-RC tag admission.
 
 ```bash
 # With Ginkgo

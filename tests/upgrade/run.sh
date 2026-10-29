@@ -8,15 +8,15 @@ repo="$(cd "$script_dir/../.." && pwd)"
 if [ -z "${IN_NIX_SHELL:-}" ]; then
 	exec nix develop "$repo#upgrade" --command "$script_dir/run.sh" "$@"
 fi
-target_ref="${TARGET_REF:-refs/remotes/origin/release/v2.0}"
+target_ref="${TARGET_REF:-refs/remotes/origin/release/v3.0}"
 source_ref=v3.0.0-rc.1
 [ "$#" -eq 0 ] || { echo "usage: tests/upgrade/run.sh" >&2; exit 2; }
 [ -z "$(git -C "$repo" status --porcelain)" ] || {
 	echo "the harness checkout must be clean so its recorded SHA identifies the test code" >&2
 	exit 2
 }
-if [ "$target_ref" = refs/remotes/origin/release/v2.0 ]; then
-	git -C "$repo" fetch origin +refs/heads/release/v2.0:refs/remotes/origin/release/v2.0
+if [ "$target_ref" = refs/remotes/origin/release/v3.0 ]; then
+	git -C "$repo" fetch origin +refs/heads/release/v3.0:refs/remotes/origin/release/v3.0
 fi
 source_sha="$(git -C "$repo" rev-parse --verify "$source_ref^{commit}")"
 target_sha="$(git -C "$repo" rev-parse --verify "$target_ref^{commit}")"
