@@ -30,6 +30,19 @@ check_operator() {
   ' <<<"$output" >/dev/null || return 1
   jq -r '.items[0].metadata.uid' <<<"$output"
 }
+wait_operator() {
+  local image="$1" id="$2" deadline uid
+  deadline=$(( $(date +%s) + 60 ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if uid="$(check_operator "$image" "$id")"; then
+      printf '%s\n' "$uid"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "operator Pod did not converge to $image" >&2
+  return 1
+}
 pod() { printf '%s-%s' "$statefulset" "$1"; }
 cli() {
   local ordinal="$1"; shift
@@ -126,13 +139,13 @@ before="$(account 0)"
 jq -e '.address == "bank" and any(.volumes[]; .asset == "USD" and .volumes.balance == "100")' <<<"$before" >/dev/null
 check_data "$before"
 
-old_operator_uid="$(check_operator "$UPGRADE_SOURCE_OPERATOR_IMAGE" "$UPGRADE_SOURCE_OPERATOR_IMAGE_ID")"
+old_operator_uid="$(wait_operator "$UPGRADE_SOURCE_OPERATOR_IMAGE" "$UPGRADE_SOURCE_OPERATOR_IMAGE_ID")"
 helm upgrade ledger-operator "$UPGRADE_TARGET_OPERATOR_CHART" --namespace ledger-system \
   --kubeconfig "$UPGRADE_KUBECONFIG" --kube-context "$UPGRADE_KUBE_CONTEXT" \
   --set image.repository=ledger-operator --set "image.tag=${UPGRADE_TARGET_OPERATOR_IMAGE#*:}" \
   --set image.pullPolicy=Never --set leaderElection=false \
   --set pvcProtection.enabled=false --wait --timeout 5m
-new_operator_uid="$(check_operator "$UPGRADE_TARGET_OPERATOR_IMAGE" "$UPGRADE_TARGET_OPERATOR_IMAGE_ID")"
+new_operator_uid="$(wait_operator "$UPGRADE_TARGET_OPERATOR_IMAGE" "$UPGRADE_TARGET_OPERATOR_IMAGE_ID")"
 [ "$new_operator_uid" != "$old_operator_uid" ] || { echo 'operator Pod was not replaced' >&2; exit 1; }
 echo "operator upgraded before Ledger: $old_operator_uid -> $new_operator_uid"
 wait_consistent
