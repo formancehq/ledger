@@ -18,6 +18,103 @@ func testIdentity() runIdentity {
 	return runIdentity{Commit: strings.Repeat("a", 40), Image: "ghcr.io/formancehq/ledger:pr-42-aaaaaaa@sha256:" + strings.Repeat("b", 64), RunID: "123456", Attempt: "1", PR: "42"}
 }
 
+func TestWorkflowImageSummary(t *testing.T) {
+	t.Parallel()
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name, Run string
+				Env       map[string]string
+			}
+		}
+	}
+	data, err := os.ReadFile("../../.github/workflows/pr-images.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := yaml.Unmarshal(data, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	var script string
+	for _, step := range workflow.Jobs["Build-PR-Image"].Steps {
+		if step.Name != "Summarize image digests" {
+			continue
+		}
+		for _, name := range []string{"image", "build_image", "operator_image"} {
+			if step.Env[name] != "${{ steps.tag.outputs."+name+" }}" {
+				t.Fatalf("incorrect %s output wiring", name)
+			}
+		}
+		const prefix = "nix develop .#perf --command bash -euo pipefail <<'IMAGES'\n"
+		if !strings.HasPrefix(step.Run, prefix) || !strings.HasSuffix(step.Run, "IMAGES\n") {
+			t.Fatal("summary must use the pinned Nix client and strict Bash")
+		}
+		script = strings.TrimSuffix(strings.TrimPrefix(step.Run, prefix), "IMAGES\n")
+	}
+	if script == "" {
+		t.Fatal("missing image summary script")
+	}
+	digest := "sha256:" + strings.Repeat("b", 64)
+	for _, tt := range []struct{ name, ledger, operator string }{
+		{"valid", digest, digest},
+		{"ledger-report", "Name: ledger\nDigest: " + digest, digest},
+		{"operator-report", digest, "Name: operator\nDigest: " + digest},
+		{"empty", "", digest},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			fake := `#!/bin/sh
+case "$1 $2 $3" in
+  'buildx imagetools inspect')
+    test "$#" -eq 6 && test "$5" = --format && test "$6" = '{{json .Manifest}}' || exit 2
+    case "$4" in
+      "$build_image") value=$LEDGER_DIGEST ;;
+      "$operator_image") value=$OPERATOR_DIGEST ;;
+      *) exit 3 ;;
+    esac
+    case "$value" in
+      Name:*) printf '%s\n' "$value" ;;
+      *) printf '{"digest":"%s"}\n' "$value" ;;
+    esac ;;
+  'buildx imagetools create')
+    test "$#" -eq 6 && test "$4" = --tag && test "$5" = "$image" && test "$6" = "$build_image@$LEDGER_DIGEST" || exit 4
+    touch "$ALIAS_CREATED" ;;
+  *) exit 2 ;;
+esac
+`
+			if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(fake), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			summary, alias := filepath.Join(dir, "summary"), filepath.Join(dir, "alias")
+			cmd := exec.CommandContext(t.Context(), "bash", "-euo", "pipefail", "-c", script)
+			cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
+				"image=ghcr.io/formancehq/ledger:pr-42-aaaaaaa", "build_image=ghcr.io/formancehq/ledger:pr-42-aaaaaaa-run-123-2",
+				"operator_image=ghcr.io/formancehq/ledger-operator:pr-42-aaaaaaa", "GITHUB_STEP_SUMMARY="+summary,
+				"ALIAS_CREATED="+alias, "LEDGER_DIGEST="+tt.ledger, "OPERATOR_DIGEST="+tt.operator)
+			logs, err := cmd.CombinedOutput()
+			if tt.name == "valid" {
+				if err != nil {
+					t.Fatalf("summary failed: %v: %s", err, logs)
+				}
+				if _, err := os.Stat(alias); err != nil {
+					t.Fatal("PR alias not created", err)
+				}
+				if data, err := os.ReadFile(summary); err != nil || !strings.Contains(string(data), digest) {
+					t.Fatal("missing digest summary", err)
+				}
+			} else {
+				if err == nil || (!strings.Contains(string(logs), "Invalid ") && !strings.Contains(string(logs), "parse error")) {
+					t.Fatalf("invalid registry output was not rejected by digest validation: %v: %s", err, logs)
+				}
+				if _, err := os.Stat(alias); !os.IsNotExist(err) {
+					t.Fatal("invalid digest reached alias creation", err)
+				}
+			}
+		})
+	}
+}
+
 func TestWorkflowImageVerification(t *testing.T) {
 	t.Parallel()
 	var workflow struct {
@@ -88,9 +185,9 @@ func TestWorkflowImageVerification(t *testing.T) {
 			fake := `#!/bin/sh
 test "$#" -eq 6 && test "$1 $2 $3 $5" = "buildx imagetools inspect --format" || exit 2
 case "$6" in
-  '{{ .Manifest.Digest }}')
+  '{{json .Manifest}}')
     test "$4" = "$EXPECTED_TAG" || exit 3
-    printf '%s\n' "$REGISTRY_DIGEST" ;;
+    printf '{"digest":"%s"}\n' "$REGISTRY_DIGEST" ;;
   '{{json .Image}}')
     test "$4" = "$EXPECTED_TAG@$REGISTRY_DIGEST" || exit 4
     printf '%s\n' "$REGISTRY_CONFIG" ;;

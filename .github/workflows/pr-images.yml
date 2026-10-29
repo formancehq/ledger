@@ -82,14 +82,16 @@ jobs:
         env:
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
       - name: Summarize image digests
+        env:
+          image: ${{ steps.tag.outputs.image }}
+          build_image: ${{ steps.tag.outputs.build_image }}
+          operator_image: ${{ steps.tag.outputs.operator_image }}
         run: |
-          image='${{ steps.tag.outputs.image }}'
-          build_image='${{ steps.tag.outputs.build_image }}'
-          operator_image='${{ steps.tag.outputs.operator_image }}'
-          digest=$(docker buildx imagetools inspect "$build_image" --format '{{ .Manifest.Digest }}')
-          operator_digest=$(docker buildx imagetools inspect "$operator_image" --format '{{ .Manifest.Digest }}')
-          test -n "$digest"
-          test -n "$operator_digest"
+          nix develop .#perf --command bash -euo pipefail <<'IMAGES'
+          digest=$(docker buildx imagetools inspect "$build_image" --format '{{json .Manifest}}' | jq -er '.digest')
+          operator_digest=$(docker buildx imagetools inspect "$operator_image" --format '{{json .Manifest}}' | jq -er '.digest')
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'Invalid Ledger image digest' >&2; exit 1; }
+          [[ "$operator_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'Invalid Operator image digest' >&2; exit 1; }
           # Keep the existing human-facing PR tag; perf uses build_image directly.
           docker buildx imagetools create --tag "$image" "$build_image@$digest"
           {
@@ -101,3 +103,4 @@ jobs:
             echo "| \`${build_image}\` | \`${digest}\` |"
             echo "| \`${operator_image}\` | \`${operator_digest}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
+          IMAGES

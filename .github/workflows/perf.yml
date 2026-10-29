@@ -143,7 +143,7 @@ jobs:
         run: |
           nix develop .#perf --command bash -euo pipefail <<'IMAGE'
             image="${IMAGE_REPOSITORY}:$IMAGE_TAG"
-            digest=$(docker buildx imagetools inspect "$image" --format "{{ .Manifest.Digest }}")
+            digest=$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}' | jq -er '.digest')
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
             image="$image@$digest"
             docker buildx imagetools inspect "$image" --format "{{json .Image}}" |
