@@ -350,6 +350,10 @@ const (
 	// index.
 	// [ZoneClusterTransient][SubTransientBackupJobHistory][completed_at_index BE 8][destination_key] → BackupJob proto.
 	SubTransientBackupJobHistory byte = 0x02
+	// SubTransientDrainState is the first Raft-ordered shutdown barrier.
+	// It survives in-cluster recovery/snapshot sync and is cleared when a
+	// backup is restored into a different cluster.
+	SubTransientDrainState byte = 0x03
 )
 
 // ---------------------------------------------------------------------------

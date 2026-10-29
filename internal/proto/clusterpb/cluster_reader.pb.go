@@ -6,6 +6,7 @@ package clusterpb
 import (
 	bytes "bytes"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	slices "slices"
 )
 
 // GetClusterStateRequestReader provides read-only access to GetClusterStateRequest.
@@ -73,6 +74,299 @@ func (l getClusterStateRequestListReadonly) Range(yield func(int, GetClusterStat
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewGetClusterStateRequestListReader(s []*GetClusterStateRequest) GetClusterStateRequestListReader {
 	return getClusterStateRequestListReadonly(s)
+}
+
+// BeginDrainRequestReader provides read-only access to BeginDrainRequest.
+// Call Mutate() to obtain a mutable clone.
+type BeginDrainRequestReader interface {
+	GetEpoch() string
+	Mutate() *BeginDrainRequest
+}
+
+type beginDrainRequestReadonly BeginDrainRequest
+
+func (r *beginDrainRequestReadonly) GetEpoch() string {
+	return (*BeginDrainRequest)(r).GetEpoch()
+}
+
+func (r *beginDrainRequestReadonly) Mutate() *BeginDrainRequest {
+	return (*BeginDrainRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this BeginDrainRequest.
+func (m *BeginDrainRequest) AsReader() BeginDrainRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*beginDrainRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this BeginDrainRequest.
+func (m *BeginDrainRequest) Mutate() *BeginDrainRequest {
+	return m.CloneVT()
+}
+
+// BeginDrainRequestListReader provides read-only iteration over []*BeginDrainRequest.
+type BeginDrainRequestListReader interface {
+	Len() int
+	Get(i int) BeginDrainRequestReader
+	Range(yield func(int, BeginDrainRequestReader) bool)
+}
+
+type beginDrainRequestListReadonly []*BeginDrainRequest
+
+func (l beginDrainRequestListReadonly) Len() int { return len(l) }
+
+func (l beginDrainRequestListReadonly) Get(i int) BeginDrainRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l beginDrainRequestListReadonly) Range(yield func(int, BeginDrainRequestReader) bool) {
+	for i, v := range l {
+		var r BeginDrainRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewBeginDrainRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewBeginDrainRequestListReader(s []*BeginDrainRequest) BeginDrainRequestListReader {
+	return beginDrainRequestListReadonly(s)
+}
+
+// BeginDrainResponseReader provides read-only access to BeginDrainResponse.
+// Call Mutate() to obtain a mutable clone.
+type BeginDrainResponseReader interface {
+	GetCutoffIndex() uint64
+	GetMembers() []uint64
+	Mutate() *BeginDrainResponse
+}
+
+type beginDrainResponseReadonly BeginDrainResponse
+
+func (r *beginDrainResponseReadonly) GetCutoffIndex() uint64 {
+	return (*BeginDrainResponse)(r).GetCutoffIndex()
+}
+
+func (r *beginDrainResponseReadonly) GetMembers() []uint64 {
+	return slices.Clone((*BeginDrainResponse)(r).GetMembers())
+}
+
+func (r *beginDrainResponseReadonly) Mutate() *BeginDrainResponse {
+	return (*BeginDrainResponse)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this BeginDrainResponse.
+func (m *BeginDrainResponse) AsReader() BeginDrainResponseReader {
+	if m == nil {
+		return nil
+	}
+	return (*beginDrainResponseReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this BeginDrainResponse.
+func (m *BeginDrainResponse) Mutate() *BeginDrainResponse {
+	return m.CloneVT()
+}
+
+// BeginDrainResponseListReader provides read-only iteration over []*BeginDrainResponse.
+type BeginDrainResponseListReader interface {
+	Len() int
+	Get(i int) BeginDrainResponseReader
+	Range(yield func(int, BeginDrainResponseReader) bool)
+}
+
+type beginDrainResponseListReadonly []*BeginDrainResponse
+
+func (l beginDrainResponseListReadonly) Len() int { return len(l) }
+
+func (l beginDrainResponseListReadonly) Get(i int) BeginDrainResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l beginDrainResponseListReadonly) Range(yield func(int, BeginDrainResponseReader) bool) {
+	for i, v := range l {
+		var r BeginDrainResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewBeginDrainResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewBeginDrainResponseListReader(s []*BeginDrainResponse) BeginDrainResponseListReader {
+	return beginDrainResponseListReadonly(s)
+}
+
+// GetDrainStatusRequestReader provides read-only access to GetDrainStatusRequest.
+// Call Mutate() to obtain a mutable clone.
+type GetDrainStatusRequestReader interface {
+	Mutate() *GetDrainStatusRequest
+}
+
+type getDrainStatusRequestReadonly GetDrainStatusRequest
+
+func (r *getDrainStatusRequestReadonly) Mutate() *GetDrainStatusRequest {
+	return (*GetDrainStatusRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GetDrainStatusRequest.
+func (m *GetDrainStatusRequest) AsReader() GetDrainStatusRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*getDrainStatusRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GetDrainStatusRequest.
+func (m *GetDrainStatusRequest) Mutate() *GetDrainStatusRequest {
+	return m.CloneVT()
+}
+
+// GetDrainStatusRequestListReader provides read-only iteration over []*GetDrainStatusRequest.
+type GetDrainStatusRequestListReader interface {
+	Len() int
+	Get(i int) GetDrainStatusRequestReader
+	Range(yield func(int, GetDrainStatusRequestReader) bool)
+}
+
+type getDrainStatusRequestListReadonly []*GetDrainStatusRequest
+
+func (l getDrainStatusRequestListReadonly) Len() int { return len(l) }
+
+func (l getDrainStatusRequestListReadonly) Get(i int) GetDrainStatusRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getDrainStatusRequestListReadonly) Range(yield func(int, GetDrainStatusRequestReader) bool) {
+	for i, v := range l {
+		var r GetDrainStatusRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetDrainStatusRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetDrainStatusRequestListReader(s []*GetDrainStatusRequest) GetDrainStatusRequestListReader {
+	return getDrainStatusRequestListReadonly(s)
+}
+
+// DrainStatusReader provides read-only access to DrainStatus.
+// Call Mutate() to obtain a mutable clone.
+type DrainStatusReader interface {
+	GetLocalNode() uint64
+	GetSupportsDrain() bool
+	GetDrainEpoch() string
+	GetDrainIndex() uint64
+	GetLastPersistedIndex() uint64
+	GetSyncStatus() string
+	Mutate() *DrainStatus
+}
+
+type drainStatusReadonly DrainStatus
+
+func (r *drainStatusReadonly) GetLocalNode() uint64 {
+	return (*DrainStatus)(r).GetLocalNode()
+}
+
+func (r *drainStatusReadonly) GetSupportsDrain() bool {
+	return (*DrainStatus)(r).GetSupportsDrain()
+}
+
+func (r *drainStatusReadonly) GetDrainEpoch() string {
+	return (*DrainStatus)(r).GetDrainEpoch()
+}
+
+func (r *drainStatusReadonly) GetDrainIndex() uint64 {
+	return (*DrainStatus)(r).GetDrainIndex()
+}
+
+func (r *drainStatusReadonly) GetLastPersistedIndex() uint64 {
+	return (*DrainStatus)(r).GetLastPersistedIndex()
+}
+
+func (r *drainStatusReadonly) GetSyncStatus() string {
+	return (*DrainStatus)(r).GetSyncStatus()
+}
+
+func (r *drainStatusReadonly) Mutate() *DrainStatus {
+	return (*DrainStatus)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this DrainStatus.
+func (m *DrainStatus) AsReader() DrainStatusReader {
+	if m == nil {
+		return nil
+	}
+	return (*drainStatusReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this DrainStatus.
+func (m *DrainStatus) Mutate() *DrainStatus {
+	return m.CloneVT()
+}
+
+// DrainStatusListReader provides read-only iteration over []*DrainStatus.
+type DrainStatusListReader interface {
+	Len() int
+	Get(i int) DrainStatusReader
+	Range(yield func(int, DrainStatusReader) bool)
+}
+
+type drainStatusListReadonly []*DrainStatus
+
+func (l drainStatusListReadonly) Len() int { return len(l) }
+
+func (l drainStatusListReadonly) Get(i int) DrainStatusReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l drainStatusListReadonly) Range(yield func(int, DrainStatusReader) bool) {
+	for i, v := range l {
+		var r DrainStatusReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDrainStatusListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDrainStatusListReader(s []*DrainStatus) DrainStatusListReader {
+	return drainStatusListReadonly(s)
 }
 
 // NodeInfoReader provides read-only access to NodeInfo.
@@ -438,6 +732,9 @@ type ClusterStateReader interface {
 	GetIndexProgress() IndexProgressReader
 	GetClusterConfig() commonpb.ClusterConfigReader
 	GetNodeVersion() string
+	GetSupportsDrain() bool
+	GetDrainEpoch() string
+	GetDrainIndex() uint64
 	Mutate() *ClusterState
 }
 
@@ -497,6 +794,18 @@ func (r *clusterStateReadonly) GetClusterConfig() commonpb.ClusterConfigReader {
 
 func (r *clusterStateReadonly) GetNodeVersion() string {
 	return (*ClusterState)(r).GetNodeVersion()
+}
+
+func (r *clusterStateReadonly) GetSupportsDrain() bool {
+	return (*ClusterState)(r).GetSupportsDrain()
+}
+
+func (r *clusterStateReadonly) GetDrainEpoch() string {
+	return (*ClusterState)(r).GetDrainEpoch()
+}
+
+func (r *clusterStateReadonly) GetDrainIndex() uint64 {
+	return (*ClusterState)(r).GetDrainIndex()
 }
 
 func (r *clusterStateReadonly) Mutate() *ClusterState {

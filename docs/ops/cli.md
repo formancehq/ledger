@@ -2747,6 +2747,11 @@ ledgerctl cluster status --node-id 2
 - **Cluster Nodes**: List of all nodes with ID, address, suffrage, and status
 - **Replication Progress**: Replication status for each follower (only shown when querying leader)
 
+The operator uses two hidden transport commands: `cluster begin-drain <epoch>
+--json` calls the authenticated Raft marker RPC, and `cluster drain-status
+--json` reads the current Pod's local durable cursor. They are not a
+user-facing shutdown workflow. See [controlled shutdown](../technical/architecture/subsystems/consensus/controlled-shutdown.md).
+
 #### cluster watch
 
 `--node-id` accepts the same unsigned 64-bit IDs as `cluster status`.

@@ -7,6 +7,8 @@ import "sync"
 type SharedState struct {
 	mu                sync.RWMutex
 	maintenanceMode   bool
+	drainEpoch        string
+	drainIndex        uint64
 	requireSignatures bool
 }
 
@@ -31,6 +33,21 @@ func (s *SharedState) SetMaintenanceMode(enabled bool) {
 	s.maintenanceMode = enabled
 }
 
+// Drain returns the applied shutdown marker. Zero index means no drain.
+func (s *SharedState) Drain() (string, uint64) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.drainEpoch, s.drainIndex
+}
+
+// SetDrain publishes the marker for admission and cluster status.
+func (s *SharedState) SetDrain(epoch string, index uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.drainEpoch, s.drainIndex = epoch, index
+}
+
 // RequireSignatures returns whether all requests must be signed.
 func (s *SharedState) RequireSignatures() bool {
 	s.mu.RLock()
@@ -53,5 +70,6 @@ func (s *SharedState) Reset() {
 	defer s.mu.Unlock()
 
 	s.maintenanceMode = false
+	s.drainEpoch, s.drainIndex = "", 0
 	s.requireSignatures = false
 }

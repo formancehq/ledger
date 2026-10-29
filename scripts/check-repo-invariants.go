@@ -392,13 +392,16 @@ func attributionConstructorAllowed(path string) bool {
 }
 
 func systemProducerAllowed(path string) bool {
+	// node/drain.go is reached only through the authenticated ClusterService
+	// BeginDrain RPC; it submits the operator's internal Raft marker.
 	switch path {
 	case "internal/application/backup/cleanup.go",
 		"internal/application/backup/orchestrator.go",
 		"internal/application/events/emitter.go",
 		"internal/application/mirror/worker.go",
 		"internal/adapter/auth/caller_snapshot.go",
-		"internal/bootstrap/module.go":
+		"internal/bootstrap/module.go",
+		"internal/infra/node/drain.go":
 		return true
 	default:
 		return false

@@ -25,6 +25,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
@@ -383,6 +384,7 @@ type Node struct {
 	// proposalAdmissionMu makes the terminal check plus proposeCh enqueue
 	// atomic with terminal publication and its queued-proposal drain.
 	proposalAdmissionMu sync.Mutex
+	drainEnqueued       bool // guarded by proposalAdmissionMu; closes leader admission at marker enqueue
 	// membership owns the Raft peer-address state (Pebble + in-memory
 	// cache) and the OnSnapshotInstalled / WriteConfChange callbacks
 	// wired into Applier and Machine. EN-1413.
@@ -2271,6 +2273,11 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 	if err := node.terminalError(); err != nil {
 		return nil, err
 	}
+	if !proposal.drainMarker {
+		if _, index := node.fsm.Drain(); index != 0 || node.drainEnqueued {
+			return nil, domain.ErrMaintenanceMode
+		}
+	}
 
 	// Create a separate future for Machine results.
 	// The proposal's embedded Future is for Raft consensus (resolved by rawNode.Propose).
@@ -2292,6 +2299,10 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 
 	select {
 	case node.proposeCh <- proposal:
+		if proposal.drainMarker {
+			node.drainEnqueued = true
+		}
+
 		return fsmFuture, nil
 	case <-ctx.Done():
 		// Roll back the pre-increment. Use RollbackIncrement (no mutex)

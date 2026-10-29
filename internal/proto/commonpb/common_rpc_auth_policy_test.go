@@ -73,11 +73,13 @@ func expectedFixedRPCAuthPolicies() map[string]commonpb.AuthScope {
 	return map[string]commonpb.AuthScope{
 		"/cluster.ClusterService/AddLearner":                 commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
 		"/cluster.ClusterService/Backup":                     commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
+		"/cluster.ClusterService/BeginDrain":                 commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
 		"/cluster.ClusterService/CompactPrimary":             commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
 		"/cluster.ClusterService/CompactSecondary":           commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
 		"/cluster.ClusterService/CreateCheckpoint":           commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
 		"/cluster.ClusterService/GetClusterState":            commonpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
 		"/cluster.ClusterService/GetDiskUsage":               commonpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
+		"/cluster.ClusterService/GetDrainStatus":             commonpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
 		"/cluster.ClusterService/GetNodeTime":                commonpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
 		"/cluster.ClusterService/GetQueryCheckpointInfo":     commonpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
 		"/cluster.ClusterService/GetQueryCheckpointSchedule": commonpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,

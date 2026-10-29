@@ -3909,6 +3909,153 @@ func NewTechnicalUpdateListReader(s []*TechnicalUpdate) TechnicalUpdateListReade
 	return technicalUpdateListReadonly(s)
 }
 
+// DrainMarkerReader provides read-only access to DrainMarker.
+// Call Mutate() to obtain a mutable clone.
+type DrainMarkerReader interface {
+	GetEpoch() string
+	GetMembers() []uint64
+	Mutate() *DrainMarker
+}
+
+type drainMarkerReadonly DrainMarker
+
+func (r *drainMarkerReadonly) GetEpoch() string {
+	return (*DrainMarker)(r).GetEpoch()
+}
+
+func (r *drainMarkerReadonly) GetMembers() []uint64 {
+	return slices.Clone((*DrainMarker)(r).GetMembers())
+}
+
+func (r *drainMarkerReadonly) Mutate() *DrainMarker {
+	return (*DrainMarker)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this DrainMarker.
+func (m *DrainMarker) AsReader() DrainMarkerReader {
+	if m == nil {
+		return nil
+	}
+	return (*drainMarkerReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this DrainMarker.
+func (m *DrainMarker) Mutate() *DrainMarker {
+	return m.CloneVT()
+}
+
+// DrainMarkerListReader provides read-only iteration over []*DrainMarker.
+type DrainMarkerListReader interface {
+	Len() int
+	Get(i int) DrainMarkerReader
+	Range(yield func(int, DrainMarkerReader) bool)
+}
+
+type drainMarkerListReadonly []*DrainMarker
+
+func (l drainMarkerListReadonly) Len() int { return len(l) }
+
+func (l drainMarkerListReadonly) Get(i int) DrainMarkerReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l drainMarkerListReadonly) Range(yield func(int, DrainMarkerReader) bool) {
+	for i, v := range l {
+		var r DrainMarkerReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDrainMarkerListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDrainMarkerListReader(s []*DrainMarker) DrainMarkerListReader {
+	return drainMarkerListReadonly(s)
+}
+
+// DrainStateReader provides read-only access to DrainState.
+// Call Mutate() to obtain a mutable clone.
+type DrainStateReader interface {
+	GetEpoch() string
+	GetIndex() uint64
+	GetMembers() []uint64
+	Mutate() *DrainState
+}
+
+type drainStateReadonly DrainState
+
+func (r *drainStateReadonly) GetEpoch() string {
+	return (*DrainState)(r).GetEpoch()
+}
+
+func (r *drainStateReadonly) GetIndex() uint64 {
+	return (*DrainState)(r).GetIndex()
+}
+
+func (r *drainStateReadonly) GetMembers() []uint64 {
+	return slices.Clone((*DrainState)(r).GetMembers())
+}
+
+func (r *drainStateReadonly) Mutate() *DrainState {
+	return (*DrainState)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this DrainState.
+func (m *DrainState) AsReader() DrainStateReader {
+	if m == nil {
+		return nil
+	}
+	return (*drainStateReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this DrainState.
+func (m *DrainState) Mutate() *DrainState {
+	return m.CloneVT()
+}
+
+// DrainStateListReader provides read-only iteration over []*DrainState.
+type DrainStateListReader interface {
+	Len() int
+	Get(i int) DrainStateReader
+	Range(yield func(int, DrainStateReader) bool)
+}
+
+type drainStateListReadonly []*DrainState
+
+func (l drainStateListReadonly) Len() int { return len(l) }
+
+func (l drainStateListReadonly) Get(i int) DrainStateReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l drainStateListReadonly) Range(yield func(int, DrainStateReader) bool) {
+	for i, v := range l {
+		var r DrainStateReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDrainStateListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDrainStateListReader(s []*DrainState) DrainStateListReader { return drainStateListReadonly(s) }
+
 // BackupDestinationReader provides read-only access to BackupDestination.
 // Call Mutate() to obtain a mutable clone.
 type BackupDestinationReader interface {

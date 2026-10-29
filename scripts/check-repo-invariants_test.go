@@ -257,6 +257,22 @@ func attach(ctx any, capability any) { _ = auth.WithForwardedAttribution(ctx, ca
 	require.Contains(t, findings[0].message, "cluster-peer authentication")
 }
 
+func TestCheckGoSourceAllowsOnlyNamedDrainProducer(t *testing.T) {
+	t.Parallel()
+	source := []byte(`package sample
+import "github.com/formancehq/ledger/v3/internal/pkg/commands"
+func build() {
+    cmd := commands.NewCommand()
+    cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPeer)
+}`)
+	allowed, err := checkGoSource("internal/infra/node/drain.go", source)
+	require.NoError(t, err)
+	require.Empty(t, allowed)
+	rejected, err := checkGoSource("internal/infra/node/other.go", source)
+	require.NoError(t, err)
+	require.Len(t, rejected, 3)
+}
+
 func TestCheckGoSourceRestrictsDotImportedAttributionSites(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

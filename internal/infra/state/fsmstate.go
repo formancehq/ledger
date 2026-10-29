@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -28,6 +29,9 @@ type FSMState struct {
 	LastAppliedIndex     uint64
 	LastAppliedTimestamp uint64
 	SnapshotIndex        uint64
+	// DrainState is the first applied shutdown marker. It is monotone and
+	// recovered from the main store before admission can reopen after restart.
+	DrainState *raftcmdpb.DrainState
 
 	// LastIdempotencyEvictionCutoff is the monotonic high-water scan horizon
 	// (wall-clock microseconds — the leader's eviction cutoff, not an HLC
@@ -183,6 +187,11 @@ func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle) (*
 	}
 
 	s.LastAppliedIndex = lastAppliedIndex
+	drainState, err := query.ReadDrainState(reader)
+	if err != nil {
+		return nil, fmt.Errorf("reading drain state: %w", err)
+	}
+	s.DrainState = drainState
 
 	lastSeq, err := query.ReadLastSequence(handle)
 	if err != nil {

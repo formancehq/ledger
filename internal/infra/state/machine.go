@@ -270,6 +270,22 @@ func (fsm *Machine) LastPersistedIndex() uint64 {
 	return fsm.lastPersistedIndex.Load()
 }
 
+// Drain reports the replicated shutdown marker visible to admission.
+func (fsm *Machine) Drain() (string, uint64) {
+	return fsm.sharedState.Drain()
+}
+
+// DrainDecision returns a copy of the persisted first-marker decision.
+func (fsm *Machine) DrainDecision() *raftcmdpb.DrainState {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+	if fsm.State.DrainState == nil {
+		return nil
+	}
+
+	return fsm.State.DrainState.CloneVT()
+}
+
 // LastAppliedIndex returns the FSM's in-memory "currently being applied"
 // cursor. It is seeded from Pebble in RecoverState at boot and advanced by
 // `fsm.State.LastAppliedIndex++` during PrepareEntries (under fsm.mu),
@@ -1140,6 +1156,25 @@ func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 	return true
 }
 
+func drainMarkerOnly(proposal *raftcmdpb.Proposal) bool {
+	if len(proposal.GetOrders()) != 0 || len(proposal.GetTechnicalUpdates()) != 1 {
+		return false
+	}
+	_, ok := proposal.GetTechnicalUpdates()[0].GetKind().(*raftcmdpb.TechnicalUpdate_DrainMarker)
+
+	return ok
+}
+
+func containsDrainMarker(proposal *raftcmdpb.Proposal) bool {
+	for _, update := range proposal.GetTechnicalUpdates() {
+		if _, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_DrainMarker); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
 // checkStaleProposal rejects proposals whose predicted index or cache epoch
 // doesn't match the current state. This detects stale proposals admitted with
 // an inflated IndexTracker or before a cache reset.
@@ -1264,6 +1299,17 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// writes. For technical-only proposals the result is the only thing
 	// returned anyway.
 	result := &ApplyResult{ProposalID: proposal.GetId()}
+	if containsDrainMarker(proposal) && !drainMarkerOnly(proposal) {
+		result.Error = &domain.BusinessError{Err: domain.ErrMaintenanceMode}
+
+		return result, nil
+	}
+	if drain := fsm.State.DrainState; drain != nil && raftIndex > drain.GetIndex() &&
+		(len(proposal.GetOrders()) > 0 || len(proposal.GetTechnicalUpdates()) > 0) && !drainMarkerOnly(proposal) {
+		result.Error = &domain.BusinessError{Err: domain.ErrMaintenanceMode}
+
+		return result, nil
+	}
 
 	// checkStaleProposal is a no-op when PredictedIndex and CacheEpoch
 	// are both unset, so legacy technical-only proposals (none today

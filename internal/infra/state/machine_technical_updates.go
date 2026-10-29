@@ -55,6 +55,30 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 				}
 				fsm.State.InstallAuditKey(kind.AuditKey)
 			}
+		case *raftcmdpb.TechnicalUpdate_DrainMarker:
+			if kind.DrainMarker == nil || kind.DrainMarker.GetEpoch() == "" || len(kind.DrainMarker.GetEpoch()) > 128 || len(kind.DrainMarker.GetMembers()) == 0 {
+				return fmt.Errorf("technical_updates[%d]: invalid drain epoch", i)
+			}
+			seen := make(map[uint64]struct{}, len(kind.DrainMarker.GetMembers()))
+			for _, id := range kind.DrainMarker.GetMembers() {
+				if id == 0 {
+					return fmt.Errorf("technical_updates[%d]: drain member zero", i)
+				}
+				if _, exists := seen[id]; exists {
+					return fmt.Errorf("technical_updates[%d]: duplicate drain member %d", i, id)
+				}
+				seen[id] = struct{}{}
+			}
+			// The first marker wins. Later requests cannot reopen admission or
+			// move the cutoff, including after a leader change or client retry.
+			if fsm.State.DrainState == nil {
+				decision := &raftcmdpb.DrainState{Epoch: kind.DrainMarker.GetEpoch(), Index: raftIndex, Members: append([]uint64(nil), kind.DrainMarker.GetMembers()...)}
+				if err := batch.SetProto([]byte{dal.ZoneClusterTransient, dal.SubTransientDrainState}, decision); err != nil {
+					return fmt.Errorf("persisting drain state: %w", err)
+				}
+				fsm.State.DrainState = decision
+				fsm.sharedState.SetDrain(decision.GetEpoch(), decision.GetIndex())
+			}
 		case *raftcmdpb.TechnicalUpdate_ClusterConfig:
 			if err := fsm.applyClusterConfig(batch, raftIndex, kind.ClusterConfig); err != nil {
 				return fmt.Errorf("applying technical_updates[%d] cluster config: %w", i, err)

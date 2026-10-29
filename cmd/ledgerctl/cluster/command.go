@@ -17,6 +17,8 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewTransferLeaderCommand())
 	cmd.AddCommand(NewRemoveNodeCommand())
 	cmd.AddCommand(NewMaintenanceCommand())
+	cmd.AddCommand(NewBeginDrainCommand())
+	cmd.AddCommand(NewDrainStatusCommand())
 
 	return cmd
 }

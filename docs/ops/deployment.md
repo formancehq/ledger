@@ -909,6 +909,14 @@ ledgerctl cluster maintenance disable
 
 The maintenance mode flag is replicated through Raft consensus and enforced at both the admission layer and the FSM level. Clients receive gRPC `UNAVAILABLE` errors during maintenance.
 
+The operator also has a separate controlled-shutdown barrier. Its internal
+`EnsureDrainBarrier` entry point proposes a Raft marker and waits for each
+member's local Pebble persistence cursor before allowing Pods to stop. It
+requires a stable epoch and a completed rollout of drain-capable Ledger
+binaries; it is not wired to an upgrade or a user-triggered command. See
+[controlled shutdown](../technical/architecture/subsystems/consensus/controlled-shutdown.md)
+for the failure and recovery contract.
+
 ### Cluster State Verification
 
 ```bash

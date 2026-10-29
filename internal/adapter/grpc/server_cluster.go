@@ -148,6 +148,8 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 	// Populate maintenance mode from shared state
 	clusterState.MaintenanceMode = impl.sharedState.MaintenanceMode()
 	clusterState.NodeVersion = impl.info.Version
+	clusterState.SupportsDrain = true
+	clusterState.DrainEpoch, clusterState.DrainIndex = impl.sharedState.Drain()
 	// Read the full persisted cluster config (includes bloom filter settings).
 	// Fall back to a minimal config with just the rotation threshold if not yet persisted.
 	if persistedState, err := query.ReadClusterState(impl.store); err == nil && persistedState != nil {
@@ -191,6 +193,92 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 	}
 
 	return clusterState, nil
+}
+
+// BeginDrain is accepted only after every current member confirms support for
+// the marker semantics. An older binary cannot apply the new technical update
+// deterministically, so mixed-version clusters fail closed until rollout ends.
+func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clusterpb.BeginDrainRequest) (*clusterpb.BeginDrainResponse, error) {
+	if req.GetEpoch() == "" || len(req.GetEpoch()) > 128 {
+		return nil, status.Error(codes.InvalidArgument, "drain epoch must contain 1 to 128 bytes")
+	}
+	if !impl.node.IsLeader() {
+		leader, err := impl.leaderClient()
+		if err != nil {
+			return nil, err
+		}
+
+		return leader.BeginDrain(ctx, req)
+	}
+	if currentEpoch, index := impl.sharedState.Drain(); index != 0 {
+		if currentEpoch != req.GetEpoch() {
+			return nil, status.Error(codes.FailedPrecondition, "cluster is already draining under another epoch")
+		}
+		decision, err := impl.node.BeginDrain(ctx, req.GetEpoch(), nil)
+		if err != nil {
+			return nil, err
+		}
+
+		return &clusterpb.BeginDrainResponse{CutoffIndex: decision.GetIndex(), Members: decision.GetMembers()}, nil
+	}
+	state, err := impl.node.GetClusterState(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if state.GetState() != "Leader" || len(state.GetNodes()) == 0 {
+		return nil, status.Error(codes.FailedPrecondition, "cluster membership unavailable")
+	}
+	members := make([]uint64, 0, len(state.GetNodes()))
+	for _, member := range state.GetNodes() {
+		id := member.GetId()
+		if id == 0 {
+			return nil, status.Error(codes.FailedPrecondition, "cluster membership contains node zero")
+		}
+		if id != impl.node.GetNodeID() {
+			conn := impl.servicePool.GetConnection(id)
+			if conn == nil {
+				return nil, status.Errorf(codes.FailedPrecondition, "member %d is unreachable", id)
+			}
+			peerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			peer, err := clusterpb.NewClusterServiceClient(conn).GetDrainStatus(peerCtx, &clusterpb.GetDrainStatusRequest{})
+			cancel()
+			if err != nil || peer.GetLocalNode() != id || !peer.GetSupportsDrain() {
+				return nil, status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain support", id)
+			}
+		}
+		members = append(members, id)
+	}
+	decision, err := impl.node.BeginDrain(ctx, req.GetEpoch(), members)
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "begin drain: %v", err)
+	}
+	impl.logger.WithFields(map[string]any{
+		"epoch": decision.GetEpoch(), "cutoffIndex": decision.GetIndex(),
+		"members": decision.GetMembers(), "actor": "cluster-write caller",
+	}).Infof("controlled shutdown barrier committed")
+
+	return &clusterpb.BeginDrainResponse{CutoffIndex: decision.GetIndex(), Members: decision.GetMembers()}, nil
+}
+
+func (impl *ClusterServiceServerImpl) GetDrainStatus(ctx context.Context, _ *clusterpb.GetDrainStatusRequest) (*clusterpb.DrainStatus, error) {
+	local, err := impl.node.GetClusterState(ctx)
+	if err != nil {
+		return nil, err
+	}
+	epoch, index := impl.sharedState.Drain()
+	persisted := local.GetRaftStatus().GetLastPersistedIndex()
+	if index != 0 && persisted >= index {
+		if err := impl.node.SyncDrainWAL(); err != nil {
+			return nil, status.Errorf(codes.Unavailable, "syncing drain marker WAL: %v", err)
+		}
+	}
+
+	return &clusterpb.DrainStatus{
+		LocalNode: local.GetLocalNode(), SupportsDrain: true,
+		DrainEpoch: epoch, DrainIndex: index,
+		LastPersistedIndex: persisted,
+		SyncStatus:         local.GetSyncProgress().GetStatus(),
+	}, nil
 }
 
 // fetchPeerState queries a peer node for its local cluster state (sync progress, index progress, etc).
