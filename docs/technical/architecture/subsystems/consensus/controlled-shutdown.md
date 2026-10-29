@@ -20,7 +20,10 @@ a new epoch.
 
 Before proposing the marker, the leader asks every current member for its
 local `GetDrainStatus`. An old binary returns `Unimplemented`, so the request
-fails closed during a rolling upgrade. The first `DrainMarker(epoch, members)`
+fails closed during a rolling upgrade. The leader fences previously accepted
+membership changes through Raft and holds the membership operation lock from
+capability preflight until marker application. A new learner cannot join
+while a drain is active. The first `DrainMarker(epoch, members)`
 technical update committed through Raft fixes the epoch and cutoff index.
 Later markers cannot move the active cutoff. A retry with the same epoch
 returns the first decision; a different epoch is rejected until the active
@@ -43,9 +46,10 @@ On restart or in-cluster snapshot sync, recovery reloads the marker before
 admission resumes. A cross-cluster restore clears the transient zone, so a
 restored backup does not inherit an operational shutdown request.
 
-The release decision persists with its Raft index. A restart after a durable
-release reopens admission; one before the release is durable can retry the
-same epoch. Old, delayed release markers cannot lift a newer epoch.
+The release decision persists with its Raft index and prior epoch history. A
+restart after a durable release reopens admission. A caller whose release
+was not durably applied can retry the same epoch. Old, delayed release
+markers cannot lift a newer epoch.
 
 ## Operator completion test
 
@@ -70,12 +74,9 @@ The epoch must be stable across operator retries and restarts. The caller of
 `EnsureDrainBarrier` owns this epoch and must leave Pods running on `false` or
 error. Because the present change does not add a shutdown trigger, the
 operator's future workflow must persist that intent and epoch before calling
-the method. It must also keep membership changes serialized with drain
-activation. The preflight proves the capabilities of the observed members;
-it cannot make an unrelated, concurrent membership addition safe. An old
-member introduced between preflight and marker proposal could receive a
-command it cannot apply. The operator must not add or remove members while a
-drain activation is in progress.
+the method. The leader serializes preflight with membership operations through
+marker application. A later membership removal changes the captured set and
+causes the operator's completion check to fail.
 
 ## Limits
 
