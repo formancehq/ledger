@@ -1088,11 +1088,14 @@ func TestGlobalState_Apply_HistoricalAddressExclusions(t *testing.T) {
 		persistence commonpb.AccountTypePersistence
 		preexisting bool
 		wantIndexed bool
+		metadata    bool
 	}{
-		{"ephemeral-wash", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, false, true},
-		{"ephemeral-drain", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, true, true},
-		{"steady-transient-wash", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, false, false},
-		{"grandfathered-transient-drain", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, true, true},
+		{"ephemeral-wash-absent", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, false, true, false},
+		{"ephemeral-drain-absent", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, true, true, false},
+		{"ephemeral-wash", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, false, true, true},
+		{"ephemeral-drain", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, true, true, true},
+		{"steady-transient-wash", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, false, false, true},
+		{"grandfathered-transient-drain", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, true, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -1102,10 +1105,11 @@ func TestGlobalState_Apply_HistoricalAddressExclusions(t *testing.T) {
 				require.True(t, res.OK)
 				gs = res.State
 			}
-			setup := gs.Apply(bulkOf(
-				oracletest.AddTypeReqP("a", tc.persistence),
-				oracletest.AddAccountMetaReq("a:1", "resident", &commonpb.MetadataValue{Type: &commonpb.MetadataValue_BoolValue{BoolValue: true}}),
-			))
+			setupReqs := []*servicepb.Request{oracletest.AddTypeReqP("a", tc.persistence)}
+			if tc.metadata {
+				setupReqs = append(setupReqs, oracletest.AddAccountMetaReq("a:1", "resident", &commonpb.MetadataValue{Type: &commonpb.MetadataValue_BoolValue{BoolValue: true}}))
+			}
+			setup := gs.Apply(bulkOf(setupReqs...))
 			require.True(t, setup.OK)
 			firstNew := setup.State.Ledger("L").Txs().Len()
 			reqs := []*servicepb.Request{}
@@ -1116,7 +1120,7 @@ func TestGlobalState_Apply_HistoricalAddressExclusions(t *testing.T) {
 			res := setup.State.Apply(bulkOf(reqs...))
 			require.True(t, res.OK)
 			ls := res.State.Ledger("L")
-			require.True(t, ls.HasAccount("a:1"), "metadata keeps the account resident")
+			require.Equal(t, tc.metadata, ls.HasAccount("a:1"), "only metadata keeps the drained account resident")
 			require.False(t, ls.volumes.Has(VolumeKey{Address: "a:1", Asset: "USD"}))
 			for i := firstNew; i < ls.Txs().Len(); i++ {
 				bits := ls.Txs().Get(i).IndexedAddrs()["a:1"]

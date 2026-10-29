@@ -15,14 +15,14 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Exact address search with current ephemeral account attributes", func() {
+var _ = Describe("Historical exact address search after ephemeral purge", func() {
 	for _, withMetadata := range []bool{false, true} {
 		name, ledger := "without account metadata", "history-no-metadata"
 		if withMetadata {
 			name, ledger = "with account metadata", "history-with-metadata"
 		}
 
-		It("requires current account attributes "+name, func() {
+		It("retains transaction history "+name, func() {
 			const address = "clearing:1"
 			setupHistoricalAddressLedger(ledger)
 			if withMetadata {
@@ -61,31 +61,21 @@ var _ = Describe("Exact address search with current ephemeral account attributes
 			if withMetadata {
 				Expect(account.GetMetadata()).To(HaveKey("owner"))
 				Expect(account.GetMetadata()["owner"].GetStringValue()).To(Equal("customer"))
-				assertHistoricalAddressRoles(ledger, address)
-			} else {
-				assertAbsentHistoricalAddressRoles(ledger, address)
 			}
+			assertHistoricalAddressRoles(ledger, address)
 			for _, reverse := range []bool{false, true} {
 				Expect(historicalAddressTransactionIDs(ledger, actions.ReferenceFilter("draining"), reverse)).To(Equal([]uint64{2}))
 				Expect(historicalAddressTransactionIDs(ledger, actions.StringMetadataFilter("phase", "draining"), reverse)).To(Equal([]uint64{2}))
 				matching := historicalAddressTransactionIDs(ledger, actions.AndFilter(
 					actions.AddressExactFilter(address), actions.StringMetadataFilter("phase", "draining")), reverse)
-				if withMetadata {
-					Expect(matching).To(Equal([]uint64{2}))
-				} else {
-					Expect(matching).To(BeEmpty())
-				}
+				Expect(matching).To(Equal([]uint64{2}))
 				union := historicalAddressTransactionIDs(ledger, actions.OrFilter(
 					actions.AddressExactFilter(address), actions.ReferenceFilter("draining")), reverse)
-				if withMetadata {
-					want := []uint64{2, 1}
-					if reverse {
-						slices.Reverse(want)
-					}
-					Expect(union).To(Equal(want))
-				} else {
-					Expect(union).To(Equal([]uint64{2}))
+				want := []uint64{2, 1}
+				if reverse {
+					slices.Reverse(want)
 				}
+				Expect(union).To(Equal(want))
 				if !withMetadata {
 					Expect(historicalAddressTransactionIDs(ledger, actions.AddressPrefixFilter("clearing:"), reverse)).To(BeEmpty())
 				}
@@ -140,24 +130,6 @@ func setupHistoricalAddressLedger(ledger string) {
 	}
 	Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "phase")).To(Succeed())
 	Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)).To(Succeed())
-}
-
-func assertAbsentHistoricalAddressRoles(ledger, address string) {
-	for _, reverse := range []bool{false, true} {
-		for _, role := range []commonpb.AddressRole{
-			commonpb.AddressRole_ADDRESS_ROLE_ANY,
-			commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
-			commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
-		} {
-			filter := actions.AddressExactRoleFilter(address, role)
-			Expect(historicalAddressTransactionIDs(ledger, filter, reverse)).To(BeEmpty(),
-				"ledger %s role %s reverse %t", ledger, role, reverse)
-			Expect(historicalAddressTransactionIDs(ledger, actions.AndFilter(
-				filter, actions.StringMetadataFilter("phase", "draining")), reverse)).To(BeEmpty())
-			Expect(historicalAddressTransactionIDs(ledger, actions.OrFilter(
-				filter, actions.ReferenceFilter("draining")), reverse)).To(Equal([]uint64{2}))
-		}
-	}
 }
 
 func assertHistoricalAddressRoles(ledger, address string) {
