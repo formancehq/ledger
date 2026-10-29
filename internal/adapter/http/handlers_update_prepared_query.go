@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
@@ -72,7 +71,7 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 
 		return
 	}
-	if hasTransactionIDFilter(filter) {
+	if filterexpr.HasTransactionIDCondition(filter) {
 		// The update payload has no target. Resolve the public id field against
 		// the immutable target of the stored query before submitting it.
 		queries, listErr := s.backend.ListPreparedQueries(r.Context(), ledgerName)
@@ -127,26 +126,4 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func hasTransactionIDFilter(filter *commonpb.QueryFilter) bool {
-	if filter == nil {
-		return false
-	}
-	switch arm := filter.GetFilter().(type) {
-	case *commonpb.QueryFilter_BuiltinUint:
-		return arm.BuiltinUint.GetField() == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID
-	case *commonpb.QueryFilter_And:
-		if slices.ContainsFunc(arm.And.GetFilters(), hasTransactionIDFilter) {
-			return true
-		}
-	case *commonpb.QueryFilter_Or:
-		if slices.ContainsFunc(arm.Or.GetFilters(), hasTransactionIDFilter) {
-			return true
-		}
-	case *commonpb.QueryFilter_Not:
-		return hasTransactionIDFilter(arm.Not.GetFilter())
-	}
-
-	return false
 }

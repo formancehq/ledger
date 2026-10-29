@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -77,9 +78,9 @@ func DecodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryF
 //     against it — see handlers_update_prepared_query.go). It passes a non-audit
 //     target for resolution, which is sound because prepared queries are only
 //     ever ACCOUNTS/TRANSACTIONS/LOGS (audit is never a prepared-query target
-//     — see http.preparedQueryTargets). The update handler initially decodes as
-//     TRANSACTIONS, then reads the stored target and re-decodes ID filters for
-//     LOGS. The FSM remains the authoritative per-target validity gate;
+//     — see http.preparedQueryTargets). HTTP and ledgerctl update paths initially
+//     decode as TRANSACTIONS, then read the stored target and re-decode ID
+//     filters for LOGS. The FSM remains the authoritative validity gate;
 //   - the ledgerctl list and `queries create` commands, which know their target
 //     and pass it (audit list passes QUERY_TARGET_AUDIT so bare audit fields
 //     resolve to the audit arm) but let the server run the validity gate.
@@ -146,4 +147,28 @@ func parseTextual(expr string, target commonpb.QueryTarget) (*commonpb.QueryFilt
 	}
 
 	return filter, nil
+}
+
+// HasTransactionIDCondition reports whether a filter provisionally decoded for
+// TRANSACTIONS contains the public id field and may need LOGS target resolution.
+func HasTransactionIDCondition(filter *commonpb.QueryFilter) bool {
+	if filter == nil {
+		return false
+	}
+	switch arm := filter.GetFilter().(type) {
+	case *commonpb.QueryFilter_BuiltinUint:
+		return arm.BuiltinUint.GetField() == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID
+	case *commonpb.QueryFilter_And:
+		if slices.ContainsFunc(arm.And.GetFilters(), HasTransactionIDCondition) {
+			return true
+		}
+	case *commonpb.QueryFilter_Or:
+		if slices.ContainsFunc(arm.Or.GetFilters(), HasTransactionIDCondition) {
+			return true
+		}
+	case *commonpb.QueryFilter_Not:
+		return HasTransactionIDCondition(arm.Not.GetFilter())
+	}
+
+	return false
 }
