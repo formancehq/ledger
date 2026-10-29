@@ -1,0 +1,12 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: rc1-binary-rolling-upgrade
+spec:
+  steps:
+    - name: Upgrade three persistent voters from rc.1 to the pinned target
+      try:
+        - script:
+            content: |
+              bash "$UPGRADE_CLUSTER_SCRIPT" "$NAMESPACE"
+            timeout: 20m

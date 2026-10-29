@@ -601,19 +601,6 @@ default. A successful run also requires at least one
 after a definitive server outcome reaches model validation. Driver liveness,
 assertion registration, and ledger-setup assertions do not satisfy that gate.
 
-For the rc.1 binary upgrade gate after `main` is integrated into
-`release/v2.0`, run `just test-rc1-rolling-upgrade`. Its launcher builds the
-published rc.1 commit and the fetched, pinned release branch HEAD in separate
-temporary source trees. The runner reuses the three-node cluster setup and
-health checks but uses explicit gRPC operations instead of the stochastic
-model driver: the current model driver toggles maintenance by design, whereas
-this upgrade must hold the maintenance barrier throughout mixed binaries. The
-test requires source and target writes, reads from all three voters, rejection
-of writes during every mixed window, durable Raft catch-up, leadership transfer,
-and per-voter store checks. `UPGRADE_PHASE_SECONDS` controls the minimum mixed
-window per stage (default 15 seconds). The upgrade path is completion based
-and uses bounded catch-up and phase waits.
-
 It reports coverage probes that were not satisfied in the sampled trajectory
 without turning those stochastic gaps into correctness failures (see below).
 
@@ -901,6 +888,24 @@ merging requires the internal profile, and `just coverage-all` also includes
 this suite. A failure blocks the existing `Tests` release and image gates.
 
 ### E2E Tests
+
+#### Pinned RC binary upgrade (Chainsaw)
+
+After `main` is integrated into `release/v2.0`, run
+`just test-rc1-rolling-upgrade` from a clean checkout of the integrated
+revision. `tests/upgrade/run.sh` fetches the target branch, records both exact
+commit SHAs, builds Linux images from those revisions, and runs the Chainsaw
+scenario in a dedicated kind cluster. Its three Pods use separate persistent
+WAL and data claims; Chainsaw replaces followers and then the old leader while
+maintenance remains active. The test checks source and target transactions,
+reads on every voter, mixed-window write rejection, durable Raft cursors,
+leadership transfer, and each voter’s audit/derived-store checker.
+
+The `.#upgrade` Nix shell provides Chainsaw, kind, kubectl, and Docker client;
+a local Docker daemon is still required. `UPGRADE_PHASE_SECONDS` sets the
+minimum mixed-window soak (default 15 seconds). Use `KEEP_WORKDIR=1` to retain
+revision and image hashes and failed Pod logs. The runner is separate from the
+Antithesis model suite because that driver intentionally toggles maintenance.
 
 ```bash
 # With Ginkgo

@@ -232,29 +232,35 @@ After integrating `main` into `release/v2.0`, run from that revision:
 just test-rc1-rolling-upgrade
 ```
 
-The launcher fetches `origin/release/v2.0` once, resolves both it and
-`v3.0.0-rc.1` to commit SHAs, and prints those SHAs and the source binary hash.
+The Chainsaw launcher in `tests/upgrade/` fetches `origin/release/v2.0` once,
+resolves both it and `v3.0.0-rc.1` to commit SHAs, and records those SHAs,
+Linux binary hashes, and local image IDs.
 It requires a clean harness checkout, the target to contain its commit, and the
 target to descend from rc.1; it never merges or moves a local branch.
 `KEEP_WORKDIR=1` retains the extracted
-trees, binary, server logs, and revision record for an incident or release
+trees, binaries, image IDs, failed Pod logs, and revision record for the release
 validation report. `TARGET_REF=<sha> just test-rc1-rolling-upgrade` rehearses a
 specific local commit without fetching the release branch. The default command
 refuses to run while `release/v2.0` lacks the integrated harness.
 
-The test boots three voters with the compiled rc.1 binary and creates a ledger
-and transaction through gRPC. It verifies the account on every voter. At the
+The test creates a dedicated kind cluster and Chainsaw namespace. Three Pods
+mount separate persistent WAL and data claims and boot from an image containing
+the compiled rc.1 binary. It creates a ledger and transaction through gRPC,
+then verifies the account on every voter. At the
 maintenance barrier it requires each voter to be normal and durably past the
 leader's recorded commit index. It replaces each follower separately, checks
 rejected business writes and unchanged account data on every voter throughout
-coexistence, transfers leadership to an upgraded voter, and replaces the old leader. After all three
+coexistence, transfers leadership to an upgraded voter, and replaces the old
+leader. After all three
 voters run the target binary, it disables maintenance, verifies the original
 account, commits another transaction, checks its readback on every voter, and
 runs the audit and derived-state checker on each voter. Missing observations or
 an unexpected write success fail the run.
 
 This local test does not cover backup restore, snapshot installation, operator
-rollout, or every business operation and persisted record type. The existing
+rollout, or every business operation and persisted record type. It requires
+Docker and Nix; the `.#upgrade` shell supplies kind, kubectl, Chainsaw, and jq.
+The existing
 model and restore suites and release-specific migration tests remain separate
 gates. It also does not authorize rollback onto storage opened by the target.
 

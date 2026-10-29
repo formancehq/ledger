@@ -207,7 +207,7 @@ test-model-cluster duration="180":
 # Run after main is integrated into release/v2.0. Fetch and pin the target HEAD,
 # build both exact revisions, then exercise the maintenance-gated rc.1 upgrade.
 test-rc1-rolling-upgrade:
-    tests/antithesis/run_rolling_upgrade.sh
+    tests/upgrade/run.sh
 
 # Run all fuzz tests (seed corpus replay, no active fuzzing — fast CI check)
 fuzz-check:
