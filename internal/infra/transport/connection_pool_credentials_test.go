@@ -31,6 +31,18 @@ func TestStaticTokenCredentials_GetRequestMetadata_WithURI(t *testing.T) {
 	require.Equal(t, "Bearer token123", md["authorization"])
 }
 
+func TestStaticTokenCredentials_SeparatesPeerAndCallerCredentials(t *testing.T) {
+	t.Parallel()
+
+	creds := staticTokenCredentials{token: "cluster-secret", header: PeerAuthMetadataKey}
+	ctx := WithForwardedBearerToken(context.Background(), "user-jwt")
+
+	md, err := creds.GetRequestMetadata(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "Bearer cluster-secret", md[PeerAuthMetadataKey])
+	require.Equal(t, "Bearer user-jwt", md["authorization"])
+}
+
 func TestStaticTokenCredentials_RequireTransportSecurity(t *testing.T) {
 	t.Parallel()
 

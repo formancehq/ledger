@@ -16,15 +16,15 @@ type (
 )
 
 // WithClusterInternal marks the context as belonging to a request that
-// authenticated via the cluster-secret (peer-to-peer trust boundary).
+// arrived through the authenticated peer transport boundary.
 // It allows downstream handlers to distinguish forwarded requests from
 // direct user requests when deciding which fields to trust.
 func WithClusterInternal(ctx context.Context, internal bool) context.Context {
 	return context.WithValue(ctx, clusterInternalKey{}, internal)
 }
 
-// IsClusterInternal reports whether the request authenticated via the
-// cluster-secret fast path. False when the marker is absent.
+// IsClusterInternal reports whether the request arrived through the
+// authenticated peer transport boundary. False when the marker is absent.
 func IsClusterInternal(ctx context.Context) bool {
 	v, _ := ctx.Value(clusterInternalKey{}).(bool)
 
@@ -95,7 +95,7 @@ func ResolveCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 		return forwarded
 	}
 
-	// The cluster secret authenticates the peer, not an anonymous user. When a
+	// The peer transport credential authenticates the node, not an anonymous user. When a
 	// request carries no forwarded caller (for example ledgerctl or a reconcile
 	// RPC), preserve that distinction instead of fabricating an anonymous caller
 	// holding every scope granted to the peer transport.
