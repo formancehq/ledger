@@ -90,14 +90,16 @@ func TestHTTPSource_CloseIdleOwnership(t *testing.T) {
 	t.Parallel()
 
 	shared := &closeCountingTransport{RoundTripper: http.DefaultTransport}
-	source := NewHTTPSource("http://example.com", "default", nil)
-	source.httpClient.Transport, source.closeIdle = shared, false
+	source := newHTTPSource("http://example.com", "default", nil, shared)
+	require.Same(t, shared, source.httpClient.Transport, "an uncloneable default must be used as-is")
 	require.NoError(t, source.Close())
 	require.Zero(t, shared.closes)
 
+	unused := &closeCountingTransport{RoundTripper: http.DefaultTransport}
 	supplied := &closeCountingTransport{RoundTripper: http.DefaultTransport}
-	require.NoError(t, NewHTTPSource("http://example.com", "default", &http.Client{Transport: supplied}).Close())
+	require.NoError(t, newHTTPSource("http://example.com", "default", &http.Client{Transport: supplied}, unused).Close())
 	require.Equal(t, 1, supplied.closes)
+	require.Zero(t, unused.closes)
 }
 
 func TestHTTPSource_FetchLogs_WithAfterID(t *testing.T) {

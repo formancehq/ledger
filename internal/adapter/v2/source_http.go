@@ -28,10 +28,15 @@ type HTTPSource struct {
 // so Close does not drop connections of other clients sharing
 // http.DefaultTransport.
 func NewHTTPSource(baseURL, ledgerName string, httpClient *http.Client) *HTTPSource {
+	return newHTTPSource(baseURL, ledgerName, httpClient, http.DefaultTransport)
+}
+
+// newHTTPSource derives the nil-client default from defaultTransport.
+func newHTTPSource(baseURL, ledgerName string, httpClient *http.Client, defaultTransport http.RoundTripper) *HTTPSource {
 	closeIdle := true
 	if httpClient == nil {
 		var transport http.RoundTripper
-		transport, closeIdle = httptransport.CloneDefault()
+		transport, closeIdle = httptransport.Clone(defaultTransport)
 		httpClient = &http.Client{Transport: transport}
 	}
 

@@ -9,10 +9,10 @@ import (
 
 type wrappedTransport struct{ http.RoundTripper }
 
-func TestCloneDefaultReturnsPrivateTransport(t *testing.T) {
+func TestCloneReturnsPrivateTransport(t *testing.T) {
 	t.Parallel()
 
-	rt, owned := CloneDefault()
+	rt, owned := Clone(http.DefaultTransport)
 	require.True(t, owned)
 	require.IsType(t, &http.Transport{}, rt)
 	require.NotSame(t, http.DefaultTransport, rt)
@@ -22,7 +22,7 @@ func TestCloneKeepsUncloneableRoundTripperShared(t *testing.T) {
 	t.Parallel()
 
 	shared := wrappedTransport{RoundTripper: http.DefaultTransport}
-	rt, owned := clone(shared)
+	rt, owned := Clone(shared)
 	require.False(t, owned)
 	require.Equal(t, shared, rt)
 }

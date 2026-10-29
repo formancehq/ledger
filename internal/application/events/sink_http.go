@@ -42,7 +42,12 @@ type HTTPSink struct {
 }
 
 // NewHTTPSink creates a new HTTP webhook sink.
-func NewHTTPSink(cfg HTTPSinkConfig) (_ *HTTPSink, retErr error) {
+func NewHTTPSink(cfg HTTPSinkConfig) (*HTTPSink, error) {
+	return newHTTPSink(cfg, http.DefaultTransport)
+}
+
+// newHTTPSink builds the sink on a transport derived from defaultTransport.
+func newHTTPSink(cfg HTTPSinkConfig, defaultTransport http.RoundTripper) (_ *HTTPSink, retErr error) {
 	sanitizer := newSinkErrorSanitizer([]string{cfg.Endpoint}, cfg.Secret)
 	defer sanitizer.sanitizeReturned(&retErr)
 	if cfg.Endpoint == "" {
@@ -50,8 +55,8 @@ func NewHTTPSink(cfg HTTPSinkConfig) (_ *HTTPSink, retErr error) {
 	}
 
 	// Own the transport when possible: Close must not drop connections of
-	// other sinks or of any other client sharing http.DefaultTransport.
-	transport, ownsTransport := httptransport.CloneDefault()
+	// other sinks or of any other client sharing the default transport.
+	transport, ownsTransport := httptransport.Clone(defaultTransport)
 
 	return &HTTPSink{
 		errors:        sanitizer,

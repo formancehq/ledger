@@ -227,9 +227,9 @@ func TestHTTPSink_CloseLeavesSharedTransportOpen(t *testing.T) {
 	t.Parallel()
 
 	shared := &closeCountingTransport{RoundTripper: http.DefaultTransport}
-	sink, err := NewHTTPSink(HTTPSinkConfig{Endpoint: "https://example.com/webhook", Format: FormatJSON})
+	sink, err := newHTTPSink(HTTPSinkConfig{Endpoint: "https://example.com/webhook", Format: FormatJSON}, shared)
 	require.NoError(t, err)
-	sink.client.Transport, sink.ownsTransport = shared, false
+	require.Same(t, shared, sink.client.Transport, "an uncloneable default must be used as-is")
 
 	require.NoError(t, sink.Close())
 	require.Zero(t, shared.closes)

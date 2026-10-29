@@ -4,18 +4,14 @@ package httptransport
 
 import "net/http"
 
-// CloneDefault returns a private copy of http.DefaultTransport and true.
+// Clone returns a private copy of rt and true when rt is an *http.Transport.
 //
-// http.DefaultTransport is an assignable global: when something replaced it
-// with a RoundTripper that is not an *http.Transport (a tracing or policy
-// wrapper, for example), it cannot be cloned. CloneDefault then returns that
-// shared RoundTripper and false; the caller must not close its idle
-// connections, because they belong to every other user of the default.
-func CloneDefault() (http.RoundTripper, bool) {
-	return clone(http.DefaultTransport)
-}
-
-func clone(rt http.RoundTripper) (http.RoundTripper, bool) {
+// Callers pass http.DefaultTransport, which is an assignable global: when
+// something replaced it with another RoundTripper (a tracing or policy
+// wrapper, for example), it cannot be cloned. Clone then returns rt itself and
+// false; the caller shares it and must not close its idle connections, because
+// they belong to every other user of the default.
+func Clone(rt http.RoundTripper) (http.RoundTripper, bool) {
 	if t, ok := rt.(*http.Transport); ok {
 		return t.Clone(), true
 	}
