@@ -472,12 +472,14 @@ message DrainRelease {
 
 // DrainState is the persisted decision for the active or most recently
 // released epoch. It survives snapshots and node restarts. A new epoch may
-// replace a released decision, but never an active one.
+// replace a released decision, but never an active one. prior_epochs keeps
+// released epoch IDs from being reused after later drains.
 message DrainState {
   string epoch = 1;
   fixed64 index = 2;
   repeated uint64 members = 3;
   fixed64 released_index = 4; // Zero while admission is closed.
+  repeated string prior_epochs = 5;
 }
 
 // ============================================================================

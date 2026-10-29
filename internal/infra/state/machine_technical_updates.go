@@ -3,6 +3,7 @@ package state
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
@@ -71,8 +72,11 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 			}
 			// The first marker of an active epoch wins. A new epoch may start
 			// only after a Raft-ordered release of the previous one.
-			if previous := fsm.State.DrainState; previous == nil || previous.GetReleasedIndex() != 0 && previous.GetEpoch() != kind.DrainMarker.GetEpoch() {
+			if previous := fsm.State.DrainState; previous == nil || previous.GetReleasedIndex() != 0 && previous.GetEpoch() != kind.DrainMarker.GetEpoch() && !slices.Contains(previous.GetPriorEpochs(), kind.DrainMarker.GetEpoch()) {
 				decision := &raftcmdpb.DrainState{Epoch: kind.DrainMarker.GetEpoch(), Index: raftIndex, Members: append([]uint64(nil), kind.DrainMarker.GetMembers()...)}
+				if previous != nil {
+					decision.PriorEpochs = append(append([]string(nil), previous.GetPriorEpochs()...), previous.GetEpoch())
+				}
 				if err := batch.SetProto([]byte{dal.ZoneClusterTransient, dal.SubTransientDrainState}, decision); err != nil {
 					return fmt.Errorf("persisting drain state: %w", err)
 				}

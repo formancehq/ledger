@@ -1530,6 +1530,11 @@ func (m *DrainState) CloneVT() *DrainState {
 		copy(tmpContainer, rhs)
 		r.Members = tmpContainer
 	}
+	if rhs := m.PriorEpochs; rhs != nil {
+		tmpContainer := make([]string, len(rhs))
+		copy(tmpContainer, rhs)
+		r.PriorEpochs = tmpContainer
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4843,6 +4848,15 @@ func (this *DrainState) EqualVT(that *DrainState) bool {
 	}
 	if this.ReleasedIndex != that.ReleasedIndex {
 		return false
+	}
+	if len(this.PriorEpochs) != len(that.PriorEpochs) {
+		return false
+	}
+	for i, vx := range this.PriorEpochs {
+		vy := that.PriorEpochs[i]
+		if vx != vy {
+			return false
+		}
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -9422,6 +9436,15 @@ func (m *DrainState) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.PriorEpochs) > 0 {
+		for iNdEx := len(m.PriorEpochs) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.PriorEpochs[iNdEx])
+			copy(dAtA[i:], m.PriorEpochs[iNdEx])
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.PriorEpochs[iNdEx])))
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
 	if m.ReleasedIndex != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ReleasedIndex))
@@ -12755,6 +12778,12 @@ func (m *DrainState) SizeVT() (n int) {
 	}
 	if m.ReleasedIndex != 0 {
 		n += 9
+	}
+	if len(m.PriorEpochs) > 0 {
+		for _, s := range m.PriorEpochs {
+			l = len(s)
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
 	}
 	n += len(m.unknownFields)
 	return n
@@ -22258,6 +22287,38 @@ func (m *DrainState) UnmarshalVT(dAtA []byte) error {
 			}
 			m.ReleasedIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PriorEpochs", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.PriorEpochs = append(m.PriorEpochs, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

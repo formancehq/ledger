@@ -4055,6 +4055,7 @@ type DrainStateReader interface {
 	GetIndex() uint64
 	GetMembers() []uint64
 	GetReleasedIndex() uint64
+	GetPriorEpochs() []string
 	Mutate() *DrainState
 }
 
@@ -4074,6 +4075,10 @@ func (r *drainStateReadonly) GetMembers() []uint64 {
 
 func (r *drainStateReadonly) GetReleasedIndex() uint64 {
 	return (*DrainState)(r).GetReleasedIndex()
+}
+
+func (r *drainStateReadonly) GetPriorEpochs() []string {
+	return slices.Clone((*DrainState)(r).GetPriorEpochs())
 }
 
 func (r *drainStateReadonly) Mutate() *DrainState {

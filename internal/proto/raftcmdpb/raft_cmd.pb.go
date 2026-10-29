@@ -3726,13 +3726,15 @@ func (x *DrainRelease) GetEpoch() string {
 
 // DrainState is the persisted decision for the active or most recently
 // released epoch. It survives snapshots and node restarts. A new epoch may
-// replace a released decision, but never an active one.
+// replace a released decision, but never an active one. prior_epochs keeps
+// released epoch IDs from being reused after later drains.
 type DrainState struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Epoch         string                 `protobuf:"bytes,1,opt,name=epoch,proto3" json:"epoch,omitempty"`
 	Index         uint64                 `protobuf:"fixed64,2,opt,name=index,proto3" json:"index,omitempty"`
 	Members       []uint64               `protobuf:"varint,3,rep,packed,name=members,proto3" json:"members,omitempty"`
 	ReleasedIndex uint64                 `protobuf:"fixed64,4,opt,name=released_index,json=releasedIndex,proto3" json:"released_index,omitempty"` // Zero while admission is closed.
+	PriorEpochs   []string               `protobuf:"bytes,5,rep,name=prior_epochs,json=priorEpochs,proto3" json:"prior_epochs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3793,6 +3795,13 @@ func (x *DrainState) GetReleasedIndex() uint64 {
 		return x.ReleasedIndex
 	}
 	return 0
+}
+
+func (x *DrainState) GetPriorEpochs() []string {
+	if x != nil {
+		return x.PriorEpochs
+	}
+	return nil
 }
 
 // BackupDestination is the deterministic identification of where a backup
@@ -5838,13 +5847,14 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x05epoch\x18\x01 \x01(\tR\x05epoch\x12\x18\n" +
 	"\amembers\x18\x02 \x03(\x04R\amembers\"$\n" +
 	"\fDrainRelease\x12\x14\n" +
-	"\x05epoch\x18\x01 \x01(\tR\x05epoch\"y\n" +
+	"\x05epoch\x18\x01 \x01(\tR\x05epoch\"\x9c\x01\n" +
 	"\n" +
 	"DrainState\x12\x14\n" +
 	"\x05epoch\x18\x01 \x01(\tR\x05epoch\x12\x14\n" +
 	"\x05index\x18\x02 \x01(\x06R\x05index\x12\x18\n" +
 	"\amembers\x18\x03 \x03(\x04R\amembers\x12%\n" +
-	"\x0ereleased_index\x18\x04 \x01(\x06R\rreleasedIndex\"\xb0\x01\n" +
+	"\x0ereleased_index\x18\x04 \x01(\x06R\rreleasedIndex\x12!\n" +
+	"\fprior_epochs\x18\x05 \x03(\tR\vpriorEpochs\"\xb0\x01\n" +
 	"\x11BackupDestination\x12\x1b\n" +
 	"\tbase_path\x18\x01 \x01(\tR\bbasePath\x12\x1b\n" +
 	"\tbucket_id\x18\x02 \x01(\tR\bbucketId\x12&\n" +

@@ -287,6 +287,9 @@ func (impl *ClusterServiceServerImpl) preflightDrainMembers(ctx context.Context,
 	}
 	members := make([]uint64, 0, len(state.GetNodes()))
 	for _, member := range state.GetNodes() {
+		if err := ctx.Err(); err != nil {
+			return nil, status.FromContextError(err).Err()
+		}
 		id := member.GetId()
 		if id == 0 {
 			return nil, status.Error(codes.FailedPrecondition, "cluster membership contains node zero")
@@ -300,11 +303,7 @@ func (impl *ClusterServiceServerImpl) preflightDrainMembers(ctx context.Context,
 			peer, err := clusterpb.NewClusterServiceClient(conn).GetDrainStatus(peerCtx, &clusterpb.GetDrainStatusRequest{})
 			cancel()
 			if err != nil {
-				if status.Code(err) == codes.Unimplemented {
-					return nil, status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain support", id)
-				}
-
-				return nil, status.Errorf(codes.Unavailable, "member %d drain preflight: %v", id, err)
+				return nil, drainPeerPreflightError(ctx, id, err)
 			}
 			if peer.GetLocalNode() != id || !peer.GetSupportsDrain() {
 				return nil, status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain support", id)
@@ -317,6 +316,17 @@ func (impl *ClusterServiceServerImpl) preflightDrainMembers(ctx context.Context,
 	}
 
 	return members, nil
+}
+
+func drainPeerPreflightError(ctx context.Context, id uint64, err error) error {
+	if ctx.Err() != nil {
+		return status.FromContextError(ctx.Err()).Err()
+	}
+	if status.Code(err) == codes.Unimplemented {
+		return status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain support", id)
+	}
+
+	return status.Errorf(codes.Unavailable, "member %d drain preflight: %v", id, err)
 }
 
 func drainBeginError(err error) error {

@@ -28,7 +28,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -3045,44 +3044,6 @@ func (node *Node) WithStableDrainMembership(ctx context.Context, fn func() error
 	}
 
 	return fn()
-}
-
-func (node *Node) waitForPriorMembership(ctx context.Context) error {
-	if err := node.WaitLeaderReady(ctx); err != nil {
-		return err
-	}
-	// A canceled membership call may leave an admitted command in the
-	// orchestrator's queue. Fence that queue first; the Raft entry below then
-	// waits for any ConfChange that command proposed to apply.
-	if err := node.execClusterCommand(ctx, true, func() error { return nil }); err != nil {
-		return fmt.Errorf("fencing membership commands: %w", err)
-	}
-	cmd := commands.NewCommand()
-	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPeer)
-	data, err := cmd.MarshalVT()
-	if err != nil {
-		return fmt.Errorf("marshaling membership barrier: %w", err)
-	}
-	proposal := NewProposal(cmd.GetId(), data)
-	proposal.membershipBarrier = true
-	node.indexTracker.Lock()
-	future, err := node.Propose(ctx, proposal)
-	node.indexTracker.Unlock()
-	if err != nil {
-		return fmt.Errorf("proposing membership barrier: %w", err)
-	}
-	if _, err := proposal.Wait(ctx); err != nil {
-		return fmt.Errorf("waiting for membership barrier consensus: %w", err)
-	}
-	result, err := future.Wait(ctx)
-	if err != nil {
-		return fmt.Errorf("waiting for membership barrier apply: %w", err)
-	}
-	if result.Error != nil {
-		return fmt.Errorf("applying membership barrier: %w", result.Error)
-	}
-
-	return nil
 }
 
 // JoinAsLearner is the bootstrap admission path for a process with an empty
