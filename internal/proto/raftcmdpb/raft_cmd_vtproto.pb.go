@@ -358,7 +358,11 @@ func (m *UpdatePreparedQueryOrder) CloneVT() *UpdatePreparedQueryOrder {
 	r := new(UpdatePreparedQueryOrder)
 	r.Name = m.Name
 	r.Filter = m.Filter.CloneVT()
-	r.IdResolvedToLog = m.IdResolvedToLog
+	if rhs := m.IdResolvedToLogPaths; rhs != nil {
+		tmpContainer := make([]string, len(rhs))
+		copy(tmpContainer, rhs)
+		r.IdResolvedToLogPaths = tmpContainer
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2901,8 +2905,14 @@ func (this *UpdatePreparedQueryOrder) EqualVT(that *UpdatePreparedQueryOrder) bo
 	if !this.Filter.EqualVT(that.Filter) {
 		return false
 	}
-	if this.IdResolvedToLog != that.IdResolvedToLog {
+	if len(this.IdResolvedToLogPaths) != len(that.IdResolvedToLogPaths) {
 		return false
+	}
+	for i, vx := range this.IdResolvedToLogPaths {
+		vy := that.IdResolvedToLogPaths[i]
+		if vx != vy {
+			return false
+		}
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -6527,15 +6537,14 @@ func (m *UpdatePreparedQueryOrder) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.IdResolvedToLog {
-		i--
-		if m.IdResolvedToLog {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
+	if len(m.IdResolvedToLogPaths) > 0 {
+		for iNdEx := len(m.IdResolvedToLogPaths) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.IdResolvedToLogPaths[iNdEx])
+			copy(dAtA[i:], m.IdResolvedToLogPaths[iNdEx])
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.IdResolvedToLogPaths[iNdEx])))
+			i--
+			dAtA[i] = 0x1a
 		}
-		i--
-		dAtA[i] = 0x18
 	}
 	if m.Filter != nil {
 		size, err := m.Filter.MarshalToSizedBufferVT(dAtA[:i])
@@ -11565,8 +11574,11 @@ func (m *UpdatePreparedQueryOrder) SizeVT() (n int) {
 		l = m.Filter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.IdResolvedToLog {
-		n += 2
+	if len(m.IdResolvedToLogPaths) > 0 {
+		for _, s := range m.IdResolvedToLogPaths {
+			l = len(s)
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
 	}
 	n += len(m.unknownFields)
 	return n
@@ -14991,10 +15003,10 @@ func (m *UpdatePreparedQueryOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IdResolvedToLog", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IdResolvedToLogPaths", wireType)
 			}
-			var v int
+			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -15004,12 +15016,24 @@ func (m *UpdatePreparedQueryOrder) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= int(b&0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.IdResolvedToLog = bool(v != 0)
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.IdResolvedToLogPaths = append(m.IdResolvedToLogPaths, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -133,9 +133,9 @@ message CreatePreparedQueryOrder {
 message UpdatePreparedQueryOrder {
   string name = 1;
   common.QueryFilter filter = 2;
-  // Admission converted a public id condition for a LOGS target. This is
-  // business-intent provenance for keyed retries across target changes.
-  bool id_resolved_to_log = 3;
+  // Paths of public id leaves converted for a LOGS target. Per-leaf
+  // business-intent provenance distinguishes them from explicit logId leaves.
+  repeated string id_resolved_to_log_paths = 3;
 }
 
 message DeletePreparedQueryOrder {

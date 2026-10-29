@@ -67,7 +67,7 @@ type IdempotencyKeyValue struct {
 
 The same-content row includes a narrow prepared-query update case: the same
 public `id` can produce a different internal order after its query target
-changes. Admission proves that equivalence from the accepted conversion marker
+changes. Admission proves that equivalence from the accepted converted-leaf paths
 and the original audit order under a fresh, post-barrier snapshot, then returns
 the frozen outcome directly. An explicit `logId` or any other changed content
 keeps the conflict result. See the [admission pipeline](pipeline.md#prepared-query-id-retry-after-a-target-change)

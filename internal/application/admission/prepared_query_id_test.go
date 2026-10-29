@@ -59,6 +59,14 @@ func TestRequestToOrder_ResolvesPreparedQueryIDBeforeCommit(t *testing.T) {
 }
 
 func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
+	for _, operator := range []string{"$match", "$gte"} {
+		t.Run(operator, func(t *testing.T) {
+			testRestorePreparedQueryIDRetryAfterDeletion(t, operator)
+		})
+	}
+}
+
+func testRestorePreparedQueryIDRetryAfterDeletion(t *testing.T, operator string) {
 	store := createTestStoreWithoutPolicy(t)
 	adm := &Admission{store: store, attrs: attributes.New(), readBarrier: func(context.Context) error { return nil }}
 	ctx := context.Background()
@@ -66,7 +74,7 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 
 	request := func(name, id string) *servicepb.Request {
 		filter := &commonpb.QueryFilter{}
-		require.NoError(t, json.Unmarshal([]byte(`{"$gte":{"id":"`+id+`"}}`), filter))
+		require.NoError(t, json.Unmarshal([]byte(`{"`+operator+`":{"id":"`+id+`"}}`), filter))
 
 		return &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{
 			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{Ledger: testLedgerName, Name: name, Filter: filter},
@@ -125,7 +133,7 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 	changedTarget.preparedTargets.Put(domain.PreparedQueryKey{LedgerName: testLedgerName, Name: "transactions"}, commonpb.QueryTarget_QUERY_TARGET_LOGS)
 	toLogs, err := adm.requestToOrder(ctx, requests[1], nil, changedTarget)
 	require.NoError(t, err)
-	require.True(t, toLogs.GetLedgerScoped().GetUpdatePreparedQuery().GetIdResolvedToLog())
+	require.Equal(t, []string{"$"}, toLogs.GetLedgerScoped().GetUpdatePreparedQuery().GetIdResolvedToLogPaths())
 	replay, err = adm.replayPreparedQueryIDRetry(ctx, key, []*raftcmdpb.Order{original[0].CloneVT(), toLogs})
 	require.NoError(t, err)
 	require.True(t, replay.Replayed, "public id also replays after TRANSACTIONS changes to LOGS")
@@ -242,6 +250,60 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 	replay, err = adm.replayPreparedQueryIDRetry(ctx, key, current)
 	require.Nil(t, replay)
 	require.ErrorIs(t, err, dal.ErrStoreClosed)
+}
+
+func TestMixedIDProvenanceRejectsChangedRetry(t *testing.T) {
+	store := createTestStoreWithoutPolicy(t)
+	adm := &Admission{store: store, attrs: attributes.New(), readBarrier: func(context.Context) error { return nil }}
+	ctx := context.Background()
+	const key = "mixed-id-retry"
+	request := func(raw string) *servicepb.Request {
+		filter := &commonpb.QueryFilter{}
+		require.NoError(t, json.Unmarshal([]byte(raw), filter))
+
+		return &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{
+			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{Ledger: testLedgerName, Name: "mixed", Filter: filter},
+		}}
+	}
+	mixed := request(`{"$or":[{"$gte":{"id":"7"}},{"$gte":{"logId":"8"}}]}`)
+	allPublic := request(`{"$or":[{"$gte":{"id":"7"}},{"$gte":{"id":"8"}}]}`)
+	logsTarget := func() *bulkOverlay {
+		overlay := newBulkOverlay()
+		overlay.preparedTargets.Put(domain.PreparedQueryKey{LedgerName: testLedgerName, Name: "mixed"}, commonpb.QueryTarget_QUERY_TARGET_LOGS)
+
+		return overlay
+	}
+	original, err := adm.requestToOrder(ctx, mixed, nil, logsTarget())
+	require.NoError(t, err)
+	require.Equal(t, []string{"$/0"}, original.GetLedgerScoped().GetUpdatePreparedQuery().GetIdResolvedToLogPaths())
+	hash := processing.HashOrders([]*raftcmdpb.Order{original})
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveIdempotencyKey(batch, key, &commonpb.IdempotencyKeyValue{Hash: hash, CreatedAt: 100}))
+	entry := &auditpb.AuditEntry{Sequence: 1, Timestamp: &commonpb.Timestamp{Data: 100}, Idempotency: &commonpb.Idempotency{Key: key}}
+	batch.KeyBuilder.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(1)
+	require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), entry))
+	batch.KeyBuilder.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(1).PutUint32(0)
+	require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), &auditpb.AuditItem{
+		SerializedOrder: processing.MarshalOrderBusinessIntent(original, nil),
+	}))
+	require.NoError(t, batch.Commit())
+
+	// After deletion, the same raw mixed filter is still provably identical.
+	sameAfterDeletion, err := adm.requestToOrder(ctx, mixed, nil, newBulkOverlay())
+	require.NoError(t, err)
+	replay, err := adm.replayPreparedQueryIDRetry(ctx, key, []*raftcmdpb.Order{sameAfterDeletion})
+	require.NoError(t, err)
+	require.True(t, replay.Replayed)
+
+	// Changing the explicit logId leaf into public id must conflict, whether
+	// the query is now missing or has been recreated with a LOGS target.
+	for _, overlay := range []*bulkOverlay{newBulkOverlay(), logsTarget()} {
+		changed, err := adm.requestToOrder(ctx, allPublic, nil, overlay)
+		require.NoError(t, err)
+		replay, err := adm.replayPreparedQueryIDRetry(ctx, key, []*raftcmdpb.Order{changed})
+		require.NoError(t, err)
+		require.Nil(t, replay)
+	}
 }
 
 func TestLocateRetryAuditEntryCostShape(t *testing.T) {

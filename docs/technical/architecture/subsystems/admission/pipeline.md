@@ -98,9 +98,9 @@ If `RequireSignatures()` is true cluster-wide, an unsigned batch is rejected her
 
 For a prepared-query update, admission resolves public `id` against the stored
 query target before proposing. A LOGS target converts it to the internal log ID
-condition and marks that conversion on the accepted order; an explicit legacy
-`logId` is never marked. This keeps all voters on the same filter arm and lets
-keyed retries distinguish two different client conditions with the same number.
+condition and records the path of each converted leaf on the accepted order;
+an explicit legacy `logId` leaf is never marked. This keeps all voters on the
+same filter arm and lets keyed retries distinguish mixed client conditions.
 
 ### 5. Preload coverage extraction
 
@@ -188,8 +188,9 @@ and other order types avoid the audit lookup. A retry can differ because the
 same public `id` was resolved against a different prepared-query target after
 deletion or recreation. Admission first releases its candidate snapshot, waits
 for a Raft read barrier, then opens a fresh snapshot. It compares the recorded
-hash to the original audit orders and uses the conversion marker to prove the
-same client intent. An explicit `logId` cannot be treated as a public `id`.
+hash to the original audit orders and compares the converted-leaf paths to
+prove the same client intent. An explicit `logId` cannot be treated as public
+`id`, even when both occur in one filter.
 On proof, it returns the frozen success or failure without proposing a new
 order. Otherwise the request continues to the FSM, which reports a normal
 idempotency-key conflict for different content. An expired or evicted key is
@@ -202,8 +203,10 @@ The extra work is one key lookup and barrier, at most
 and one read per frozen result log. The FSM HLC makes audit timestamps strictly
 increasing, so there is no history scan; even the full `uint64` sequence space
 requires at most 65 point reads. The snapshot holds the store lifecycle read
-lock during those point reads. This path adds no proposal, WAL entry, preload
-coverage, or cache mutation. Persisting a second raw-request hash would make
+lock during those point reads. The converted-leaf paths add bytes proportional
+to converted leaf count and filter depth to the accepted order, Raft/WAL
+payload, and audit item; they add no extra entry, preload coverage, or cache
+mutation. Persisting a second raw-request hash would make
 the retry lookup constant time but would add write/storage amplification to
 every keyed update; the audit-backed lookup confines the extra reads to rare
 target-change retries. `TestLocateRetryAuditEntryCostShape` enforces the read

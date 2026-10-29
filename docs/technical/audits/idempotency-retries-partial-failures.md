@@ -19,13 +19,15 @@ Admission resolves public `id` for a prepared-query update before Raft apply.
 If a keyed retry sees a different target after query deletion or recreation,
 its resolved order hash may differ although the client repeated the same
 request. A linearizable barrier and fresh snapshot let admission inspect the
-stored key and original audit orders. The accepted order records whether
-admission converted public `id` to a log ID, so explicit legacy `logId` cannot
-be mistaken for the same intent. Only a proven match within the key's TTL
+stored key and original audit orders. The accepted order records which leaves
+admission converted from public `id` to log ID, so explicit legacy `logId`
+cannot be mistaken for the same intent in a mixed filter. Only a proven match
+within the key's TTL
 returns the original frozen outcome without another proposal. Different
 conditions continue to the FSM conflict check; an expired or evicted key is a
 new operation. `TestRestorePreparedQueryIDRetryAfterDeletion` covers mixed
-targets in one batch, changed IDs, explicit `logId`, expiry, a barrier race,
+targets in one batch with both exact and range ID conditions, changed IDs,
+explicit and mixed `logId`, expiry, a barrier race,
 and store closure during the barrier. The logarithmic audit-read bound is
 tested by `TestLocateRetryAuditEntryCostShape` and measured by the in-memory
 and warm-Pebble `BenchmarkLocateRetryAuditEntry` variants. See the admission

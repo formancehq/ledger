@@ -869,11 +869,11 @@ type UpdatePreparedQueryOrder struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Name   string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Filter *commonpb.QueryFilter  `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
-	// Admission converted a public id condition for a LOGS target. This is
-	// business-intent provenance for keyed retries across target changes.
-	IdResolvedToLog bool `protobuf:"varint,3,opt,name=id_resolved_to_log,json=idResolvedToLog,proto3" json:"id_resolved_to_log,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Paths of public id leaves converted for a LOGS target. Per-leaf
+	// business-intent provenance distinguishes them from explicit logId leaves.
+	IdResolvedToLogPaths []string `protobuf:"bytes,3,rep,name=id_resolved_to_log_paths,json=idResolvedToLogPaths,proto3" json:"id_resolved_to_log_paths,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *UpdatePreparedQueryOrder) Reset() {
@@ -920,11 +920,11 @@ func (x *UpdatePreparedQueryOrder) GetFilter() *commonpb.QueryFilter {
 	return nil
 }
 
-func (x *UpdatePreparedQueryOrder) GetIdResolvedToLog() bool {
+func (x *UpdatePreparedQueryOrder) GetIdResolvedToLogPaths() []string {
 	if x != nil {
-		return x.IdResolvedToLog
+		return x.IdResolvedToLogPaths
 	}
-	return false
+	return nil
 }
 
 type DeletePreparedQueryOrder struct {
@@ -5646,11 +5646,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x12set_cluster_policy\x18\v \x01(\v2\x1b.raft.SetClusterPolicyOrderH\x00R\x10setClusterPolicyB\t\n" +
 	"\apayload\"G\n" +
 	"\x18CreatePreparedQueryOrder\x12+\n" +
-	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryR\x05query\"\x88\x01\n" +
+	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryR\x05query\"\x93\x01\n" +
 	"\x18UpdatePreparedQueryOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12+\n" +
-	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x12+\n" +
-	"\x12id_resolved_to_log\x18\x03 \x01(\bR\x0fidResolvedToLog\".\n" +
+	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x126\n" +
+	"\x18id_resolved_to_log_paths\x18\x03 \x03(\tR\x14idResolvedToLogPaths\".\n" +
 	"\x18DeletePreparedQueryOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"@\n" +
 	"\x12AddEventsSinkOrder\x12*\n" +
