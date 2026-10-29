@@ -179,6 +179,28 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, replay)
 	require.Equal(t, 1, barrierCalls)
+
+	// Store closure needs the exclusive DB lock. It must complete while the
+	// barrier runs, and a failed snapshot reopen must return without panicking.
+	batch = store.OpenWriteSession()
+	require.NoError(t, state.SaveIdempotencyKey(batch, key, &commonpb.IdempotencyKeyValue{
+		Hash: hash, CreatedAt: 100, FirstLogSequence: 1, LogCount: 2,
+	}))
+	require.NoError(t, state.StoreLastAppliedTimestamp(batch, 101))
+	require.NoError(t, batch.Commit())
+	adm.readBarrier = func(context.Context) error {
+		closed := make(chan error, 1)
+		go func() { closed <- store.Close() }()
+		select {
+		case err := <-closed:
+			return err
+		case <-time.After(2 * time.Second):
+			return context.DeadlineExceeded
+		}
+	}
+	replay, err = adm.replayPreparedQueryIDRetry(ctx, key, current)
+	require.Nil(t, replay)
+	require.ErrorIs(t, err, dal.ErrStoreClosed)
 }
 
 func TestRequestToOrder_ResolvesStoredLogQueryIDBeforeCommit(t *testing.T) {

@@ -87,7 +87,11 @@ func (a *Admission) replayPreparedQueryIDRetry(ctx context.Context, key string, 
 	if err != nil {
 		return nil, fmt.Errorf("opening retry read handle: %w", err)
 	}
-	defer func() { _ = handle.Close() }()
+	defer func() {
+		if handle != nil {
+			_ = handle.Close()
+		}
+	}()
 
 	stored, err := state.LoadIdempotencyKey(handle, key)
 	if err != nil || stored == nil {
@@ -99,12 +103,19 @@ func (a *Admission) replayPreparedQueryIDRetry(ctx context.Context, key string, 
 	if a.readBarrier == nil {
 		return nil, errors.New("linearizable idempotency replay barrier unavailable")
 	}
+	// Release the candidate snapshot before waiting: the barrier may need an
+	// exclusive store lifecycle lock (for example during checkpoint restore).
+	if err := handle.Close(); err != nil {
+		handle = nil
+
+		return nil, fmt.Errorf("closing retry read handle: %w", err)
+	}
+	handle = nil
 	if err := a.readBarrier(ctx); err != nil {
 		return nil, fmt.Errorf("waiting for idempotency replay barrier: %w", err)
 	}
 	// The initial lookup is only a cheap candidate check. Reopen the snapshot
 	// after the barrier so an overwritten or evicted key cannot be replayed.
-	_ = handle.Close()
 	handle, err = a.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("opening replay snapshot: %w", err)
