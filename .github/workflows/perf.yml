@@ -30,6 +30,7 @@ jobs:
       packages: write
     outputs:
       sha: ${{ steps.image.outputs.sha }}
+      tag: ${{ steps.image.outputs.tag }}
     steps:
       - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
         with:
@@ -46,9 +47,14 @@ jobs:
       - name: Build and push the default-branch image
         id: image
         run: |
-          sha=$(git rev-parse HEAD)
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          nix develop .#perf --command just docker-build-pr "${IMAGE_REPOSITORY}:pr-0-${sha:0:7}"
+          nix develop .#perf --command bash -euo pipefail <<'BUILD'
+            sha=$(git rev-parse HEAD)
+            tag="pr-0-${sha:0:7}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            image="${IMAGE_REPOSITORY}:$tag"
+            just docker-build-pr "$image"
+            echo "sha=$sha" >> "$GITHUB_OUTPUT"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          BUILD
         env:
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
 
@@ -74,16 +80,22 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           BASELINE_SHA: ${{ needs.Build.outputs.sha }}
+          BASELINE_TAG: ${{ needs.Build.outputs.tag }}
           PROFILE: ${{ inputs.profile || 'soak-24h' }}
         with:
           script: |
-            let sha = process.env.BASELINE_SHA, pr = 0, profile = process.env.PROFILE;
+            let sha = process.env.BASELINE_SHA, tag = process.env.BASELINE_TAG, pr = 0, profile = process.env.PROFILE;
             if (context.eventName === 'workflow_run') {
               const {data: run} = await github.rest.actions.getWorkflowRun({
                 ...context.repo, run_id: context.payload.workflow_run.id
               });
               if (run.event !== 'pull_request' || run.path !== '.github/workflows/pr-images.yml' ||
+                  run.run_attempt !== context.payload.workflow_run.run_attempt ||
                   run.head_repository.full_name !== `${context.repo.owner}/${context.repo.repo}`) return;
+              const {data: jobs} = await github.rest.actions.listJobsForWorkflowRunAttempt({
+                ...context.repo, run_id: run.id, attempt_number: run.run_attempt
+              });
+              if (!jobs.jobs.some(job => job.name === 'Build-PR-Image' && job.conclusion === 'success')) return;
               const number = run.pull_requests[0]?.number;
               if (!number) return;
               const {data: pull} = await github.rest.pulls.get({...context.repo, pull_number: number});
@@ -91,9 +103,10 @@ jobs:
               if (pull.state !== 'open' || pull.head.sha !== run.head_sha || labels.length !== 1 ||
                   pull.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`) return;
               sha = pull.head.sha; pr = pull.number;
+              tag = `pr-${pr}-${sha.slice(0, 7)}-run-${run.id}-${run.run_attempt}`;
               profile = labels[0].name === 'perf-5m' ? 'smoke-5m' : 'smoke-10m';
             }
-            for (const [key, value] of Object.entries({sha, pr, profile, enabled: true})) core.setOutput(key, value);
+            for (const [key, value] of Object.entries({sha, tag, pr, profile, enabled: true})) core.setOutput(key, value);
       - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
         if: steps.run.outputs.enabled == 'true'
         with:
@@ -121,20 +134,15 @@ jobs:
         with:
           role-to-assume: ${{ vars.PERF_AWS_ROLE_ARN }}
           aws-region: ${{ vars.PERF_AWS_REGION || 'eu-west-1' }}
-      - name: Pulumi up with a local backend
+      - name: Resolve the image built by this run
+        id: image
         if: steps.run.outputs.enabled == 'true'
         env:
           SHA: ${{ steps.run.outputs.sha }}
-          PR: ${{ steps.run.outputs.pr }}
-          PROFILE: ${{ steps.run.outputs.profile }}
-          WHEN_BUSY: ${{ github.event_name == 'schedule' && 'Skip' || 'Queue' }}
-          AWS_REGION: ${{ vars.PERF_AWS_REGION || 'eu-west-1' }}
-          PULUMI_HOME: ${{ runner.temp }}/pulumi-home
-          PULUMI_BACKEND_URL: file://${{ runner.temp }}/pulumi-state
-          KUBECONFIG: ${{ runner.temp }}/perf-kubeconfig
+          IMAGE_TAG: ${{ steps.run.outputs.tag }}
         run: |
-          nix develop .#perf --command bash -euo pipefail <<'PULUMI'
-            image="${IMAGE_REPOSITORY}:pr-${PR}-${SHA:0:7}"
+          nix develop .#perf --command bash -euo pipefail <<'IMAGE'
+            image="${IMAGE_REPOSITORY}:$IMAGE_TAG"
             digest=$(docker buildx imagetools inspect "$image" --format "{{ .Manifest.Digest }}")
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
             image="$image@$digest"
@@ -143,6 +151,39 @@ jobs:
                 (if has("config") then [.] else [.[]] end) |
                 length > 0 and all(.[]; .config.Labels["org.opencontainers.image.revision"] == $sha and
                   .config.Labels["org.opencontainers.image.source"] == $source)' > /dev/null
+            echo "image=$image" >> "$GITHUB_OUTPUT"
+          IMAGE
+      - name: Recheck the PR before submission
+        id: current
+        if: steps.run.outputs.enabled == 'true'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          PR: ${{ steps.run.outputs.pr }}
+          SHA: ${{ steps.run.outputs.sha }}
+          PROFILE: ${{ steps.run.outputs.profile }}
+        with:
+          script: |
+            if (process.env.PR === '0') { core.setOutput('enabled', true); return; }
+            const {data: pull} = await github.rest.pulls.get({...context.repo, pull_number: Number(process.env.PR)});
+            const labels = pull.labels.filter(l => ['perf-5m', 'perf-10m'].includes(l.name));
+            const label = process.env.PROFILE === 'smoke-5m' ? 'perf-5m' : 'perf-10m';
+            core.setOutput('enabled', pull.state === 'open' && pull.head.sha === process.env.SHA &&
+              pull.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}` &&
+              labels.length === 1 && labels[0].name === label);
+      - name: Pulumi up with a local backend
+        if: steps.current.outputs.enabled == 'true'
+        env:
+          SHA: ${{ steps.run.outputs.sha }}
+          PR: ${{ steps.run.outputs.pr }}
+          PROFILE: ${{ steps.run.outputs.profile }}
+          IMAGE: ${{ steps.image.outputs.image }}
+          WHEN_BUSY: ${{ github.event_name == 'schedule' && 'Skip' || 'Queue' }}
+          AWS_REGION: ${{ vars.PERF_AWS_REGION || 'eu-west-1' }}
+          PULUMI_HOME: ${{ runner.temp }}/pulumi-home
+          PULUMI_BACKEND_URL: file://${{ runner.temp }}/pulumi-state
+          KUBECONFIG: ${{ runner.temp }}/perf-kubeconfig
+        run: |
+          nix develop .#perf --command bash -euo pipefail <<'PULUMI'
             aws eks update-kubeconfig --name eks-acme-dev-euw1-01 --region "$AWS_REGION" --alias eks-acme-dev-euw1-01
             kubectl --context eks-acme-dev-euw1-01 get crd benchmarks.benchmark.formance.com -o json |
               jq -e '.spec.versions[] | select(.name == "v1alpha1") | .schema.openAPIV3Schema.properties.spec.properties |
@@ -157,7 +198,7 @@ jobs:
             pulumi stack init "$stack" --non-interactive
             pulumi up --yes --skip-preview --non-interactive \
               --config "perf:k8s-context=eks-acme-dev-euw1-01" \
-              --config "perf:profile=$PROFILE" --config "perf:commit=$SHA" --config "perf:image=$image" \
+              --config "perf:profile=$PROFILE" --config "perf:commit=$SHA" --config "perf:image=$IMAGE" \
               --config "perf:run-id=$GITHUB_RUN_ID" --config "perf:run-attempt=$GITHUB_RUN_ATTEMPT" \
               --config "perf:pr=$PR" --config "perf:when-busy=$WHEN_BUSY" --config "perf:workload-commit=$workload"
           PULUMI

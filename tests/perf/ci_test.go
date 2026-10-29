@@ -5,14 +5,105 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func testIdentity() runIdentity {
 	return runIdentity{Commit: strings.Repeat("a", 40), Image: "ghcr.io/formancehq/ledger:pr-42-aaaaaaa@sha256:" + strings.Repeat("b", 64), RunID: "123456", Attempt: "1", PR: "42"}
+}
+
+func TestWorkflowImageVerification(t *testing.T) {
+	t.Parallel()
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string
+				Run  string
+				Env  map[string]string
+			}
+		}
+	}
+	data, err := os.ReadFile("../../.github/workflows/perf.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := yaml.Unmarshal(data, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	var script string
+	for _, step := range workflow.Jobs["Submit"].Steps {
+		if step.Name == "Resolve the image built by this run" {
+			_, body, found := strings.Cut(step.Run, "<<'IMAGE'\n")
+			if !found || !strings.HasSuffix(body, "IMAGE\n") {
+				t.Fatal("image verification block not found")
+			}
+			script = strings.TrimSuffix(body, "IMAGE\n")
+		}
+		if step.Name == "Pulumi up with a local backend" {
+			if step.Env["IMAGE"] != "${{ steps.image.outputs.image }}" || !strings.Contains(step.Run, "perf:image=$IMAGE") {
+				t.Fatal("Pulumi must consume the verified digest-pinned output")
+			}
+		}
+	}
+	if script == "" {
+		t.Fatal("missing workflow image verification")
+	}
+	sha := strings.Repeat("a", 40)
+	digest := "sha256:" + strings.Repeat("b", 64)
+	config := `{"config":{"Labels":{"org.opencontainers.image.revision":"` + sha + `","org.opencontainers.image.source":"https://github.com/formancehq/ledger"}}}`
+	for _, tt := range []struct {
+		name, digest, config string
+		valid                bool
+	}{
+		{"valid", digest, config, true},
+		{"all-platforms-valid", digest, `{"linux/amd64":` + config + `,"linux/arm64":` + config + `}`, true},
+		{"wrong-commit", digest, strings.ReplaceAll(config, sha, strings.Repeat("c", 40)), false},
+		{"wrong-source", digest, strings.ReplaceAll(config, "formancehq/ledger", "other/repo"), false},
+		{"missing-platform-labels", digest, `{"linux/amd64":{},"linux/arm64":` + config + `}`, false},
+		{"missing-labels", digest, `{"config":{}}`, false},
+		{"bad-json", digest, "invalid-json", false},
+		{"bad-digest", "sha256:bad", config, false},
+		{"missing-digest", "", config, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			// The workflow's real Bash runs against a registry process fixture.
+			// No persistent helper, registry access or Kubernetes call is needed.
+			fake := "#!/bin/sh\ncase \"$*\" in\n  *'.Manifest.Digest'*) printf '%s\\n' \"$REGISTRY_DIGEST\" ;;\n  *'.Image'*) printf '%s\\n' \"$REGISTRY_CONFIG\" ;;\n  *) exit 2 ;;\nesac\n"
+			if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(fake), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			output := filepath.Join(dir, "output")
+			cmd := exec.CommandContext(t.Context(), "bash", "-euo", "pipefail", "-c", script)
+			cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
+				"SHA="+sha, "IMAGE_REPOSITORY=ghcr.io/formancehq/ledger", "IMAGE_TAG=pr-42-aaaaaaa-run-123-2",
+				"GITHUB_REPOSITORY=formancehq/ledger", "GITHUB_OUTPUT="+output,
+				"REGISTRY_DIGEST="+tt.digest, "REGISTRY_CONFIG="+tt.config)
+			logs, err := cmd.CombinedOutput()
+			if tt.valid && err != nil {
+				t.Fatalf("valid image rejected: %v: %s", err, logs)
+			}
+			if !tt.valid && err == nil {
+				t.Fatal("invalid image accepted")
+			}
+			result, readErr := os.ReadFile(output)
+			if tt.valid {
+				want := "image=ghcr.io/formancehq/ledger:pr-42-aaaaaaa-run-123-2@" + digest + "\n"
+				if readErr != nil || string(result) != want {
+					t.Fatalf("wrong submitted reference: %q (%v)", result, readErr)
+				}
+			} else if len(result) != 0 {
+				t.Fatal("rejected image produced a submission reference")
+			}
+		})
+	}
 }
 
 func TestCIProfiles(t *testing.T) {

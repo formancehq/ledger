@@ -527,7 +527,7 @@ docker-build *ARGS:
     docker buildx build -t '{{ image_repository }}' --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,nats,clickhouse,s3,azure,pyroscope {{ARGS}} .
 
 # Build and push the PR docker image with GoReleaser under a single explicit
-# `<repository>:pr-<num>-<sha7>` tag. It never touches `:latest`, `:nightly`, a
+# `<repository>:pr-<num>-<sha7>[-run-<id>-<attempt>]` tag. It never touches `:latest`, `:nightly`, a
 # GitHub release or the Helm charts. Needs GORELEASER_KEY and a Docker login to
 # the registry. Used by the `Build-PR-Image` workflow job.
 #
@@ -546,7 +546,7 @@ docker-build-pr image: (_assert-pr-image image)
     env -u GITHUB_TOKEN -u GH_TOKEN \
         goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive
 
-# Refuse any PR image reference that is not `<repository>:pr-<num>-<sha7>`, so a
+# Accept PR image tags with an optional build-attempt suffix, so a
 # PR build cannot move `latest`, `nightly` or a release tag.
 [private]
 _assert-pr-image image:
@@ -555,8 +555,8 @@ _assert-pr-image image:
     image='{{ image }}'
     last="${image##*/}"
     tag="${last#*:}"
-    if [[ "$last" != *:* ]] || ! [[ "$tag" =~ ^pr-[0-9]+-[0-9a-f]{7}$ ]]; then
-        echo "error: '$image' is not <repository>:pr-<num>-<sha7>" >&2
+    if [[ "$last" != *:* ]] || ! [[ "$tag" =~ ^pr-[0-9]+-[0-9a-f]{7}(-run-[1-9][0-9]*-[1-9][0-9]*)?$ ]]; then
+        echo "error: '$image' is not <repository>:pr-<num>-<sha7>[-run-<id>-<attempt>]" >&2
         exit 1
     fi
 

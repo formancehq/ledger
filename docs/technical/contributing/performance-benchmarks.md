@@ -16,14 +16,23 @@ creates the Grafana snapshots; GitHub does not collect results or wait for load.
   default branch. Manual runs queue when busy.
 
 The submission job checks out only the trusted default branch. PR code never
-executes with cluster credentials. The image tag is resolved to a digest and its
-OCI commit/source labels are verified before `pulumi up`.
+executes with cluster credentials. Admission requires the actual image-build job
+to succeed in the triggering attempt, not just a successful workflow with a
+skipped job. The build publishes directly to
+`pr-<number>-<sha7>-run-<build-run-id>-<attempt>`; another build attempt uses a
+different tag. Submission resolves that
+attempt-specific tag, verifies its OCI commit/source labels, and passes only the
+digest-pinned reference to Pulumi. The PR head, open state and selected label are
+checked again immediately before the submission step.
 
 ## Pulumi configuration
 
 CI uses a fresh local backend under `RUNNER_TEMP`, not Pulumi Cloud or S3.
 The workflow calls `pulumi login`, `pulumi stack init` and `pulumi up` directly.
 There are no submission helpers or result collectors.
+GitHub admission and authentication stay in the workflow. Local and CI execution
+share the same Pulumi Go program and pinned Nix shell, without a submission
+wrapper or an additional orchestration recipe.
 
 The program accepts `perf:profile`, `perf:commit`, `perf:image`, `perf:run-id`,
 `perf:run-attempt`, `perf:pr`, `perf:when-busy`, `perf:workload-commit` and
@@ -54,8 +63,16 @@ Deploy the matching benchmark-operator lifecycle CRD, RBAC and controller before
 enabling the workflow. CI checks the required lifecycle schema. The operator
 owns execution-group exclusivity, deadlines and cleanup after the runner exits.
 Its lock remains held while workloads, PVCs or PVs remain. Reports and snapshots
-are retained. Cancelling a GitHub job does not cancel an already submitted run;
-request `spec.cancel: true` on the exact Benchmark when interruption is needed.
+are retained. Manual workflow dispatch selects a profile only; it does not expose
+a cancellation action. Cancelling a GitHub job does not stop an admitted run.
+To interrupt one, read its UID and request `spec.cancel: true` with an atomic UID
+test on that exact Benchmark:
+
+```bash
+kubectl --context eks-acme-dev-euw1-01 -n ledger-v3 get benchmark <name> -o jsonpath='{.metadata.uid}'
+kubectl --context eks-acme-dev-euw1-01 -n ledger-v3 patch benchmark <name> --type=json \
+  -p '[{"op":"test","path":"/metadata/uid","value":"<uid>"},{"op":"add","path":"/spec/cancel","value":true}]'
+```
 
 Configure the GitHub environment `acme-perf`, restricted to the default branch:
 
@@ -80,6 +97,9 @@ used for later teardown; the operator owns that lifecycle.
 
 `nix develop .#perf --command just test-perf` runs Go race tests, creates an
 archive without running k6, and checks Pulumi resource serialization with a mock
-monitor. It does not submit a Benchmark or contact Kubernetes. Root
-`scripts/agent-check` remains required. Live CI access, snapshot capture and CSI
+monitor. It does not submit a Benchmark or contact Kubernetes.
+The same Go suite executes the workflow's image-verification Bash against fake
+registry responses, including wrong source/revision, missing platform labels and
+invalid digests, and checks the exact reference handed to Pulumi.
+Root `scripts/agent-check` remains required. Live CI access, snapshot capture and CSI
 volume cleanup require separate verification; local tests do not prove them.
