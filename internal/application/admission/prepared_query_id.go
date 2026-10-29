@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -66,8 +67,7 @@ func (a *Admission) resolvePreparedQueryIDOrder(ctx context.Context, order *raft
 		}
 		if target == commonpb.QueryTarget_QUERY_TARGET_LOGS {
 			update.Filter = update.GetFilter().CloneVT()
-			resolveLogIDFilter(update.GetFilter())
-			update.IdResolvedToLog = true
+			update.IdResolvedToLogPaths = resolveLogIDFilter(update.GetFilter())
 		}
 	}
 
@@ -265,33 +265,36 @@ func restoreEquivalentIDFilters(orders, original []*raftcmdpb.Order, hash []byte
 		return false
 	}
 	previous := make([]*commonpb.QueryFilter, len(orders))
+	previousPaths := make([][]string, len(orders))
 	for i, order := range orders {
 		update := order.GetLedgerScoped().GetUpdatePreparedQuery()
 		prior := original[i].GetLedgerScoped().GetUpdatePreparedQuery()
 		if update == nil || prior == nil || update.GetFilter() == nil || prior.GetFilter() == nil {
 			continue
 		}
-		if prior.GetIdResolvedToLog() && !update.GetIdResolvedToLog() && hasTransactionIDCondition(update.GetFilter()) {
+		if len(prior.GetIdResolvedToLogPaths()) > 0 && len(update.GetIdResolvedToLogPaths()) == 0 && hasTransactionIDCondition(update.GetFilter()) {
 			candidate := update.GetFilter().CloneVT()
-			resolveLogIDFilter(candidate)
-			if !candidate.EqualVT(prior.GetFilter()) {
+			paths := resolveLogIDFilter(candidate)
+			if !slices.Equal(paths, prior.GetIdResolvedToLogPaths()) || !candidate.EqualVT(prior.GetFilter()) {
 				continue
 			}
 			previous[i] = update.GetFilter()
+			previousPaths[i] = update.GetIdResolvedToLogPaths()
 			update.Filter = candidate
-			update.IdResolvedToLog = true
+			update.IdResolvedToLogPaths = paths
 
 			continue
 		}
-		if !prior.GetIdResolvedToLog() && update.GetIdResolvedToLog() && hasTransactionIDCondition(prior.GetFilter()) {
+		if len(prior.GetIdResolvedToLogPaths()) == 0 && len(update.GetIdResolvedToLogPaths()) > 0 && hasTransactionIDCondition(prior.GetFilter()) {
 			candidate := prior.GetFilter().CloneVT()
-			resolveLogIDFilter(candidate)
-			if !candidate.EqualVT(update.GetFilter()) {
+			paths := resolveLogIDFilter(candidate)
+			if !slices.Equal(paths, update.GetIdResolvedToLogPaths()) || !candidate.EqualVT(update.GetFilter()) {
 				continue
 			}
 			previous[i] = update.GetFilter()
+			previousPaths[i] = update.GetIdResolvedToLogPaths()
 			update.Filter = prior.GetFilter().CloneVT()
-			update.IdResolvedToLog = false
+			update.IdResolvedToLogPaths = nil
 		}
 	}
 	if !bytes.Equal(processing.HashOrders(orders), hash) {
@@ -299,7 +302,7 @@ func restoreEquivalentIDFilters(orders, original []*raftcmdpb.Order, hash []byte
 			if filter != nil {
 				update := orders[i].GetLedgerScoped().GetUpdatePreparedQuery()
 				update.Filter = filter
-				update.IdResolvedToLog = !update.GetIdResolvedToLog()
+				update.IdResolvedToLogPaths = previousPaths[i]
 			}
 		}
 
@@ -331,7 +334,14 @@ func hasTransactionIDCondition(filter *commonpb.QueryFilter) bool {
 	return false
 }
 
-func resolveLogIDFilter(filter *commonpb.QueryFilter) {
+func resolveLogIDFilter(filter *commonpb.QueryFilter) []string {
+	var paths []string
+	resolveLogIDFilterAtPath(filter, "$", &paths)
+
+	return paths
+}
+
+func resolveLogIDFilterAtPath(filter *commonpb.QueryFilter, path string, paths *[]string) {
 	if filter == nil {
 		return
 	}
@@ -339,16 +349,17 @@ func resolveLogIDFilter(filter *commonpb.QueryFilter) {
 	case *commonpb.QueryFilter_BuiltinUint:
 		if arm.BuiltinUint.GetField() == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID {
 			filter.Filter = &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{Cond: arm.BuiltinUint.GetCond()}}
+			*paths = append(*paths, path)
 		}
 	case *commonpb.QueryFilter_And:
-		for _, child := range arm.And.GetFilters() {
-			resolveLogIDFilter(child)
+		for i, child := range arm.And.GetFilters() {
+			resolveLogIDFilterAtPath(child, path+"/"+strconv.Itoa(i), paths)
 		}
 	case *commonpb.QueryFilter_Or:
-		for _, child := range arm.Or.GetFilters() {
-			resolveLogIDFilter(child)
+		for i, child := range arm.Or.GetFilters() {
+			resolveLogIDFilterAtPath(child, path+"/"+strconv.Itoa(i), paths)
 		}
 	case *commonpb.QueryFilter_Not:
-		resolveLogIDFilter(arm.Not.GetFilter())
+		resolveLogIDFilterAtPath(arm.Not.GetFilter(), path+"/not", paths)
 	}
 }
