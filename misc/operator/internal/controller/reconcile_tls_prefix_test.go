@@ -94,7 +94,7 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 				WithObjects(makeSTS(tt.stsName), backupClusterService(ls)).
 				Build()
 
-			r := &BackupRunReconciler{Client: c, Scheme: scheme}
+			r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: scheme}
 
 			job, err := r.ensureBackupJob(context.Background(), run, backup, ls)
 			if tt.wantMissing {
@@ -162,7 +162,7 @@ func TestEnsureBackupJobWorkloadRecovery(t *testing.T) {
 				}
 				require.NoError(t, c.Create(ctx, sts))
 			}
-			r := &BackupRunReconciler{Client: c, Scheme: c.Scheme()}
+			r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
 			job, err := r.ensureBackupJob(ctx, run, backup, cluster)
 			if owner == "missing" {
 				require.True(t, apierrors.IsNotFound(err), "missing workload must retry: %v", err)
@@ -179,7 +179,7 @@ func TestEnsureBackupJobWorkloadRecovery(t *testing.T) {
 			require.NoError(t, c.Create(ctx, backupTLSWorkload(cluster, tlsModeDisabled)))
 			// A replacement controller observes the recovered workload and creates
 			// exactly one owned Job rather than retaining the transient failure.
-			r = &BackupRunReconciler{Client: c, Scheme: c.Scheme()}
+			r = &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
 			job, err = r.ensureBackupJob(ctx, run, backup, cluster)
 			require.NoError(t, err)
 			require.True(t, metav1.IsControlledBy(job, run))
@@ -207,7 +207,7 @@ func TestEnsureBackupJobUsesCurrentTLSReferences(t *testing.T) {
 			sts.Spec = backupTLSWorkload(rendered, mode).Spec
 			require.NoError(t, c.Update(ctx, sts))
 			require.Nil(t, cluster.Spec.TLS, "desired spec has already removed TLS")
-			r := &BackupRunReconciler{Client: c, Scheme: c.Scheme()}
+			r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
 			job, err := r.ensureBackupJob(ctx, run, backup, cluster)
 			require.NoError(t, err)
 			shell := job.Spec.Template.Spec.Containers[0].Command[2]

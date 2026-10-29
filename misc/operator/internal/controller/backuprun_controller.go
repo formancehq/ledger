@@ -46,6 +46,9 @@ import (
 type BackupRunReconciler struct {
 	client.Client
 
+	// APIReader reads the Cluster Service directly from the API server, so a
+	// Service replaced before Job creation is not hidden by a stale cache.
+	APIReader client.Reader
 	Scheme    *runtime.Scheme
 	Clientset kubernetes.Interface
 }
@@ -234,9 +237,13 @@ func (r *BackupRunReconciler) ensureBackupJob(
 	// StatefulSet, so that Service must be the Cluster's too. Checking it,
 	// rather than dialing a pod address, keeps the Service's routing to any pod
 	// (the leader proxies the backup) and its certificate SAN; the ownership of
-	// its endpoints follows from the operator writing its selector. A Service
+	// its endpoints follows from the operator writing its selector. The read is
+	// uncached so a replacement that already happened is seen; a Service
 	// replaced after this check, while the Job starts, is not detected.
-	if err := requireClusterService(ctx, r.Client, ls); err != nil {
+	if r.APIReader == nil {
+		return nil, errors.New("APIReader not configured")
+	}
+	if err := requireClusterService(ctx, r.APIReader, ls); err != nil {
 		return nil, fmt.Errorf("resolving the Service of Cluster %q: %w", ls.Name, err)
 	}
 	tlsMode := currentTLSModeFromStatefulSet(sts)

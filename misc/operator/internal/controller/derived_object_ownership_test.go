@@ -777,7 +777,7 @@ func TestBackupRunRequiresClusterService(t *testing.T) {
 			if tc.service != nil {
 				require.NoError(t, c.Create(ctx, tc.service(cluster)))
 			}
-			r := &BackupRunReconciler{Client: c, Scheme: c.Scheme()}
+			r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
 
 			job, err := r.ensureBackupJob(ctx, run, backup, cluster)
 			if tc.wantConflict {
@@ -791,4 +791,29 @@ func TestBackupRunRequiresClusterService(t *testing.T) {
 			require.Empty(t, jobs.Items)
 		})
 	}
+}
+
+// TestBackupRunReadsClusterServiceUncached proves the Service check reads the
+// API server, not the informer cache: when the cache still holds the owned
+// Service but another Cluster's Service has already taken its name, no Job is
+// created.
+func TestBackupRunReadsClusterServiceUncached(t *testing.T) {
+	t.Parallel()
+	cache, run := backupRunRecoveryFixture(t)
+	live, _ := backupRunRecoveryFixture(t)
+	ctx := t.Context()
+	cluster := &ledgerv1alpha1.Cluster{}
+	backup := &ledgerv1alpha1.Backup{}
+	require.NoError(t, cache.Get(ctx, types.NamespacedName{Name: "cluster", Namespace: run.Namespace}, cluster))
+	require.NoError(t, cache.Get(ctx, types.NamespacedName{Name: run.Spec.BackupRef, Namespace: run.Namespace}, backup))
+	require.NoError(t, live.Delete(ctx, backupClusterService(cluster)))
+	require.NoError(t, live.Create(ctx, controlledByOtherCluster(&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: cluster.Namespace}})))
+	r := &BackupRunReconciler{Client: cache, APIReader: live, Scheme: cache.Scheme()}
+
+	job, err := r.ensureBackupJob(ctx, run, backup, cluster)
+	require.ErrorIs(t, err, errResourceNameConflict)
+	require.Nil(t, job)
+	var jobs batchv1.JobList
+	require.NoError(t, cache.List(ctx, &jobs))
+	require.Empty(t, jobs.Items)
 }

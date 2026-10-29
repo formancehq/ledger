@@ -70,7 +70,7 @@ func TestBackupRunCredentialsStayInSecrets(t *testing.T) {
 					Data: map[string][]byte{"access": []byte(accessKey), "secret": []byte(secretKey)}}
 				c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(run).
 					WithObjects(cluster, backup, run, sts, backupClusterService(cluster), secret).Build()
-				r := &BackupRunReconciler{Client: c, Scheme: scheme}
+				r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: scheme}
 				_, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)})
 				require.NoError(t, err)
 				job := &batchv1.Job{}

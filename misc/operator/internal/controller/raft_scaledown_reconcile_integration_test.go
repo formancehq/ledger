@@ -190,7 +190,7 @@ func createScaleDownReconcilePod(t *testing.T, clientset kubernetes.Interface, o
 			Name:            name,
 			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(owner, appsv1.SchemeGroupVersion.WithKind("StatefulSet"))},
 		},
-		Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Image: "ledger:test"}}},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Image: "ledger:test"}}},
 	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 	pod.Status.Phase = phase

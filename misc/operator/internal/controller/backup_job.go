@@ -98,7 +98,7 @@ var errClusterServiceAbsent = errors.New("cluster Service does not exist")
 // errClusterServiceAbsent when it does not exist and errResourceNameConflict
 // when it is not controlled by the Cluster (no controller reference, or
 // another one).
-func requireClusterService(ctx context.Context, c client.Client, ls *ledgerv1alpha1.Cluster) error {
+func requireClusterService(ctx context.Context, c client.Reader, ls *ledgerv1alpha1.Cluster) error {
 	svc := &corev1.Service{}
 	key := types.NamespacedName{Name: resourceName(ls.Name), Namespace: ls.Namespace}
 	if err := c.Get(ctx, key, svc); err != nil {

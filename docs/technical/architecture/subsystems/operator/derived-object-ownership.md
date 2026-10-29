@@ -34,7 +34,7 @@ The helpers live in `misc/operator/internal/controller/derived_object_ownership.
 | Ledger, ledger-index and EventSink `ledgerctl` execs | `fetchClusterStatefulSet` (StatefulSet controlled by the Cluster UID), then `ownedPodExec` (pod-0 controlled by that StatefulSet UID) | `errClusterRuntimeAbsent`, `errResourceNameConflict` or `errPodNotOwned`; nothing executed |
 | Raft scale-down execs | `ownedPodExec` on the StatefulSet just written by the guarded mutate function | `errPodNotOwned`; replicas are not reduced |
 | Volume-expansion disk probe | StatefulSet ownership, then `ownedPodExec` per pod | Expansion refused (`ResourceNameConflict` reason) or the measurement fails for that pod |
-| BackupRun Job creation | StatefulSet ownership (TLS mode) and ClusterIP Service ownership (`requireClusterService`, the address the Job dials) | No Job created; the run retries |
+| BackupRun Job creation | StatefulSet ownership (TLS mode) and ClusterIP Service ownership (`requireClusterService`, an uncached read of the address the Job dials) | No Job created; the run retries |
 
 Ownership is checked per object, not inherited. A StatefulSet the Cluster
 controls does not make every `ledger-<name>-<ordinal>` pod its own: during
@@ -88,8 +88,10 @@ way.
 - **Exec target.** The exec API has no UID precondition. A pod replaced between
   `ownedPodExec`'s uncached read and the exec stream is not detected; the window
   is one API round trip.
-- **Backup Service.** A Service replaced after `requireClusterService` and
-  before the Job dials it is not detected.
+- **Backup Service.** `requireClusterService` reads the Service uncached, so a
+  replacement that happened before Job creation is refused even when the
+  informer cache still holds the old object. A Service replaced after that
+  read and before the Job dials it is not detected.
 
 ## Behaviour changes for existing deployments
 

@@ -95,7 +95,7 @@ func testBackupRunCommittedCreateLostResponse(t *testing.T, dependency string) {
 		},
 	})
 	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
-	r := &BackupRunReconciler{Client: wrapped, Scheme: c.Scheme()}
+	r := &BackupRunReconciler{Client: wrapped, APIReader: wrapped, Scheme: c.Scheme()}
 	_, err := r.Reconcile(ctx, req)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.NoError(t, c.Get(ctx, req.NamespacedName, run))
@@ -120,7 +120,7 @@ func testBackupRunCommittedCreateLostResponse(t *testing.T, dependency string) {
 		ObjectMeta: metav1.ObjectMeta{Name: "result", Namespace: run.Namespace, Labels: map[string]string{"batch.kubernetes.io/job-name": job.Name}},
 		Status:     corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{Name: backupJobContainerName, State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{Message: `{"filesUploaded":7,"totalFiles":7,"lastAppliedIndex":42}`}}}}},
 	})
-	r = &BackupRunReconciler{Client: wrapped, Scheme: c.Scheme(), Clientset: pods}
+	r = &BackupRunReconciler{Client: wrapped, APIReader: wrapped, Scheme: c.Scheme(), Clientset: pods}
 	_, err = r.Reconcile(ctx, req)
 	require.NoError(t, err)
 	require.NoError(t, c.Get(ctx, req.NamespacedName, run))
@@ -162,7 +162,7 @@ func TestBackupRunCreateFailureClassification(t *testing.T) {
 
 				return c.Create(ctx, obj, opts...)
 			}})
-			r := &BackupRunReconciler{Client: wrapped, Scheme: c.Scheme()}
+			r := &BackupRunReconciler{Client: wrapped, APIReader: wrapped, Scheme: c.Scheme()}
 			req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
 			_, err := r.Reconcile(ctx, req)
 			if tt.terminal {
@@ -207,7 +207,7 @@ func TestBackupRunReservationMustPersistBeforeCreate(t *testing.T) {
 
 		return c.SubResource(name).Update(ctx, obj, opts...)
 	}})
-	r := &BackupRunReconciler{Client: wrapped, Scheme: c.Scheme()}
+	r := &BackupRunReconciler{Client: wrapped, APIReader: wrapped, Scheme: c.Scheme()}
 	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
 	_, err := r.Reconcile(ctx, req)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
@@ -236,7 +236,7 @@ func TestBackupRunRejectsForeignJob(t *testing.T) {
 			}
 			job.Status.Conditions = []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}}
 			require.NoError(t, c.Create(ctx, job))
-			r := &BackupRunReconciler{Client: c, Scheme: c.Scheme()}
+			r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
 			_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)})
 			require.ErrorContains(t, err, "is not controlled by BackupRun")
 			require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(run), run))
@@ -276,7 +276,7 @@ func TestBackupRunInvalidTypeIsTerminal(t *testing.T) {
 	c, run := backupRunRecoveryFixture(t)
 	run.Spec.Type = "invalid"
 	require.NoError(t, c.Update(ctx, run))
-	r := &BackupRunReconciler{Client: c, Scheme: c.Scheme()}
+	r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
 	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)})
 	require.NoError(t, err)
 	require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(run), run))
@@ -319,7 +319,7 @@ func TestBackupRunCommittedCreateCacheLag(t *testing.T) {
 			return nil
 		},
 	})
-	r := &BackupRunReconciler{Client: wrapped, Scheme: c.Scheme()}
+	r := &BackupRunReconciler{Client: wrapped, APIReader: wrapped, Scheme: c.Scheme()}
 	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
 	_, err := r.Reconcile(ctx, req)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
@@ -364,7 +364,7 @@ func TestBackupRunProvisioningMessageWriteRetry(t *testing.T) {
 			return c.SubResource(name).Update(ctx, obj, opts...)
 		},
 	})
-	r := &BackupRunReconciler{Client: wrapped, Scheme: c.Scheme()}
+	r := &BackupRunReconciler{Client: wrapped, APIReader: wrapped, Scheme: c.Scheme()}
 	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
 	_, err := r.Reconcile(ctx, req)
 	require.ErrorContains(t, err, "is not controlled by BackupRun")
