@@ -457,6 +457,10 @@ func (c Config) validateAuthConfig() error {
 			return errors.New("--auth-enabled requires --tls-mode=required (with --tls-cert-file / --tls-key-file); bearer tokens would otherwise be exposed to plaintext interception (--tls-mode=optional still accepts plaintext connections)")
 		}
 
+		if c.ClusterSecret == "" {
+			return errors.New("--auth-enabled requires --cluster-secret; peer forwarding requires the cluster secret")
+		}
+
 		return nil
 	}
 

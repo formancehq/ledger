@@ -4555,17 +4555,15 @@ The cluster secret and `--auth-enabled` are separate mechanisms:
 
 - `--auth-enabled` authenticates external clients on the service API with
   JWT or Ed25519 tokens.
-- `--cluster-secret` authenticates nodes to each other. The server does not
-  require it when `--auth-enabled` is set, and `--auth-enabled` does not
-  protect the Raft port.
+- `--cluster-secret` authenticates nodes to each other. It is required when
+  `--auth-enabled` is set, and `--auth-enabled` does not protect the Raft port.
 
 The two flags interact in one place. When `--auth-enabled` is set, a follower
 forwards writes to the leader with the original caller's identity. The leader
 accepts that identity only from a peer that presents the cluster secret on the
-service API. In a multi-node cluster with `--auth-enabled` and no cluster
-secret, writes sent to a follower fail with `PermissionDenied`.
-
-The server does not check at startup that a multi-node cluster has a secret.
+service API. Authentication therefore fails at startup if `--auth-enabled` is
+set without `--cluster-secret`, rather than allowing a partially configured
+multi-node cluster to start.
 The Kubernetes operator creates a random secret and injects `CLUSTER_SECRET`
 into every pod whenever TLS is active (`optional` or `required`), whether
 authentication is enabled or not. Manual deployments must set the flag
