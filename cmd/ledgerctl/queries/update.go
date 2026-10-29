@@ -75,17 +75,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
-	if filterexpr.HasTransactionIDCondition(filter) {
-		queries, listErr := actions.ListPreparedQueries(ctx, client, ledgerName)
-		if listErr != nil {
-			return cmdutil.FormatGRPCError("failed to read prepared query target", listErr)
-		}
-		filter, err = resolveUpdateIDFilter([]byte(filterExpr), queries, name)
-		if err != nil {
-			return err
-		}
-	}
-
 	applyReq, err := cmdutil.BuildApplyRequest(cmd, actions.UpdatePreparedQueryAction(ledgerName, name, filter))
 	if err != nil {
 		return cmdutil.Displayed(err)
@@ -103,22 +92,4 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	pterm.Success.Printfln("Prepared query %q updated", name)
 
 	return nil
-}
-
-// resolveUpdateIDFilter re-decodes public id against the immutable target of
-// the stored query. The server still validates that target on apply.
-func resolveUpdateIDFilter(raw []byte, queries []*commonpb.PreparedQuery, name string) (*commonpb.QueryFilter, error) {
-	for _, query := range queries {
-		if query.GetName() != name {
-			continue
-		}
-		filter, err := filterexpr.DecodeDualFormatStructuralOnly(raw, query.GetTarget())
-		if err != nil {
-			return nil, fmt.Errorf("invalid filter expression: %w", err)
-		}
-
-		return filter, nil
-	}
-
-	return nil, fmt.Errorf("prepared query %q not found", name)
 }
