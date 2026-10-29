@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
@@ -92,6 +93,17 @@ func (a *Admission) restorePreparedQueryIDRetry(ctx context.Context, key string,
 		return err
 	}
 	if bytes.Equal(processing.HashOrders(orders), stored.GetHash()) {
+		return nil
+	}
+	lastApplied, err := query.ReadLastAppliedTimestamp(handle)
+	if err != nil {
+		return fmt.Errorf("reading retry HLC: %w", err)
+	}
+	// The FSM compares expiry with max(proposal date, last HLC + 1). An
+	// already-expired outcome is a fresh request against the current target.
+	now := uint64(time.Now().UnixMicro())
+	if stored.GetExpiresAt() != 0 &&
+		(stored.GetExpiresAt() <= now || stored.GetExpiresAt() <= lastApplied) {
 		return nil
 	}
 
