@@ -262,6 +262,14 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		return true, ctrl.Result{}, nil
 	case "Recreating":
 		if sts == nil {
+			gone, err := r.upgradeOrdinalPodsGone(ctx, ledger)
+			if err != nil {
+				return false, ctrl.Result{}, err
+			}
+			if !gone {
+				return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
+			}
+
 			return true, ctrl.Result{}, nil
 		}
 		if err := r.advanceUpgrade(ctx, ledger, "Verifying"); err != nil {
@@ -349,20 +357,32 @@ func (r *ClusterReconciler) restoreUpgradeProgress(ctx context.Context, ledger *
 }
 
 func (r *ClusterReconciler) resumeMissingUpgradeReplacement(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (bool, ctrl.Result, error) {
-	pods := &corev1.PodList{}
-	if err := r.List(ctx, pods, client.InNamespace(ledger.Namespace)); err != nil {
-		return false, ctrl.Result{}, fmt.Errorf("listing Pods after replacement StatefulSet disappeared: %w", err)
+	gone, err := r.upgradeOrdinalPodsGone(ctx, ledger)
+	if err != nil {
+		return false, ctrl.Result{}, err
 	}
-	for _, pod := range pods.Items {
-		if hasStatefulSetOrdinal(pod.Name, resourceName(ledger.Name)) {
-			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
-		}
+	if !gone {
+		return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 	}
 	if err := r.advanceUpgrade(ctx, ledger, "Recreating"); err != nil {
 		return false, ctrl.Result{}, err
 	}
 
 	return true, ctrl.Result{}, nil
+}
+
+func (r *ClusterReconciler) upgradeOrdinalPodsGone(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (bool, error) {
+	pods := &corev1.PodList{}
+	if err := r.List(ctx, pods, client.InNamespace(ledger.Namespace)); err != nil {
+		return false, fmt.Errorf("listing Pods during stopped upgrade: %w", err)
+	}
+	for _, pod := range pods.Items {
+		if hasStatefulSetOrdinal(pod.Name, resourceName(ledger.Name)) {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 func (r *ClusterReconciler) persistUpgrade(ctx context.Context, ledger *ledgerv1alpha1.Cluster, state *ledgerv1alpha1.ClusterUpgradeStatus) error {

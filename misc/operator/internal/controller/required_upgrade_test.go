@@ -349,6 +349,18 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.True(t, proceed)
 	require.Equal(t, "Recreating", cluster.Status.Upgrade.Phase)
 	require.True(t, maintenance)
+	// A replacement Pod can outlive its StatefulSet after the phase was
+	// persisted. A restart in Recreating must not create over that Pod.
+	leftoverPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: sts.Name + "-0", Namespace: cluster.Namespace}}
+	require.NoError(t, c.Create(ctx, leftoverPod))
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, nil, exec)
+	require.NoError(t, err)
+	require.False(t, proceed)
+	require.Equal(t, "Recreating", cluster.Status.Upgrade.Phase)
+	require.NoError(t, c.Delete(ctx, leftoverPod))
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, nil, exec)
+	require.NoError(t, err)
+	require.True(t, proceed)
 	replacement.ResourceVersion = ""
 	replacement.UID = types.UID("newer-sts")
 	require.NoError(t, c.Create(ctx, replacement))
