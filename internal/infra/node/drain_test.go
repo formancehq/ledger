@@ -81,6 +81,25 @@ func TestDroppedDrainMarkerReopensAdmission(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestRejectedQueuedDrainMarkerReopensAdmission(t *testing.T) {
+	t.Parallel()
+	n, _ := newTestMaintenanceNode(t)
+	n.proposeCh = make(chan *Proposal, 2)
+	n.indexTracker = NewIndexTracker(1)
+	marker := NewProposal(1, []byte("drain marker"))
+	marker.drainMarker = true
+	n.indexTracker.Lock()
+	_, err := n.Propose(t.Context(), marker)
+	n.indexTracker.Unlock()
+	require.NoError(t, err)
+	require.Same(t, marker, <-n.proposeCh)
+	n.rejectQueuedProposal(marker, ErrNotLeader)
+	n.indexTracker.Lock()
+	_, err = n.Propose(t.Context(), NewProposal(2, []byte("business after drop")))
+	n.indexTracker.Unlock()
+	require.NoError(t, err)
+}
+
 func TestDrainEnqueueOrdersInFlightProposals(t *testing.T) {
 	t.Parallel()
 	n, _ := newTestMaintenanceNode(t)
