@@ -440,6 +440,21 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 		})
 	}
 
+	if spec.Auth != nil && spec.Auth.Enabled != nil && *spec.Auth.Enabled && targetTLSMode != tlsModeDisabled {
+		credentialsName := operatorCredentialsName(ledger)
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "operator-credentials",
+			MountPath: "/operator-credentials",
+			ReadOnly:  true,
+		})
+		volumes = append(volumes, corev1.Volume{
+			Name: "operator-credentials",
+			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
+				SecretName: operatorCredentialsSecretName(credentialsName),
+			}},
+		})
+	}
+
 	if len(credentials) > 0 {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      "auth-keys",

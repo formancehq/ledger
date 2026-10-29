@@ -54,19 +54,19 @@ func TestLedgerctlCommand_TLSModes(t *testing.T) {
 		{
 			name:           "disabled emits --insecure",
 			tlsMode:        tlsModeDisabled,
-			wantContains:   []string{"--insecure", `--auth-token "$CLUSTER_SECRET"`, `--server "` + serverAddr + `"`},
+			wantContains:   []string{"--insecure", `--auth-token "${OPERATOR_AUTH_TOKEN:-}"`, `--server "` + serverAddr + `"`},
 			wantNotContain: []string{"--tls-ca-cert"},
 		},
 		{
 			name:           "required emits --tls-ca-cert and no --insecure",
 			tlsMode:        tlsModeRequired,
-			wantContains:   []string{`--tls-ca-cert "$TLS_CA_CERT_FILE"`, `--auth-token "$CLUSTER_SECRET"`, `--server "` + serverAddr + `"`},
+			wantContains:   []string{`--tls-ca-cert "$TLS_CA_CERT_FILE"`, `--auth-token "${OPERATOR_AUTH_TOKEN:-}"`, `--server "` + serverAddr + `"`},
 			wantNotContain: []string{"--insecure"},
 		},
 		{
 			name:           "optional emits --tls-ca-cert and no --insecure",
 			tlsMode:        tlsModeOptional,
-			wantContains:   []string{`--tls-ca-cert "$TLS_CA_CERT_FILE"`, `--auth-token "$CLUSTER_SECRET"`},
+			wantContains:   []string{`--tls-ca-cert "$TLS_CA_CERT_FILE"`, `--auth-token "${OPERATOR_AUTH_TOKEN:-}"`},
 			wantNotContain: []string{"--insecure"},
 		},
 	}

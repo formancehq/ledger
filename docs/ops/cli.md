@@ -4610,9 +4610,9 @@ the value configured on the existing cluster nodes (and --tls-mode, which
 
 If the joining node *does* pass a secret but it does not match, the hint
 instead tells you to verify the secret against the existing cluster nodes. The
-Kubernetes operator injects `CLUSTER_SECRET` into every pod whenever TLS is
-active, so this failure surfaces only in manual/non-operator deployments where
-one node's secret drifted from the rest of the cluster.
+Kubernetes operator injects the cluster secret for inter-node transport and
+keeps it separate from user-facing `ledgerctl` credentials. Operator
+maintenance commands use a scoped `Credentials` JWT instead.
 
 ```bash
 ledger run --cluster-secret "my-cluster-secret" --auth-enabled \
