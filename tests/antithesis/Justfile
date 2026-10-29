@@ -29,14 +29,15 @@ workload-build-check image_tag='ledger-antithesis-workload-ci:local':
 # in the workload image. Empty ships every driver (the default). Use the
 # filtered mode for dev-loop runs where the Antithesis composer should focus
 # on a specific subset (e.g. "main/parallel_driver_bulk,main/first_default_ledger").
-run duration description='ledger-v3 manual run' include='' *ARGS:
+run duration_minutes description='ledger-v3 manual run' include='' test_templates='' *ARGS:
     just tag={{tag}} push-images {{quote(include)}} {{ARGS}}
     curl --fail --silent --show-error \
         --header "Authorization: Bearer $ANTITHESIS_API_KEY" \
         --header "Content-Type: application/json" \
         -X POST "https://$ANTITHESIS_TENANT.antithesis.com/api/v1/launch/basic_test" -d '{ \
             "params": { \
-                "custom.duration": "{{duration}}", \
+                "antithesis.duration": "{{duration_minutes}}", \
+                "custom.test_templates": "{{test_templates}}", \
                 "custom.containers_to_exclude_from_network_faults":"etcd-0 etcd-1 etcd-2 workload", \
                 "antithesis.report.recipients": "'"$ANTITHESIS_REPORT_RECIPIENT"'", \
                 "antithesis.config_image": "'"antithesis-config-ledger-v3:{{tag}}"'", \
@@ -85,21 +86,21 @@ deploy-local: build-images
 # in the workload image. Empty ships every driver. Use the filtered mode for
 # dev-loop runs where the composer should focus on a specific subset (e.g.
 # "main/parallel_driver_bulk,main/first_default_ledger").
-k8s-run duration_hours description='ledger-v3 k8s run' include='' *ARGS:
+k8s-run duration_hours description='ledger-v3 k8s run' include='' test_templates='' *ARGS:
     just tag={{tag}} k8s-push-images {{quote(include)}} {{ARGS}}
     just tag={{tag}} check-k8s-image-freshness
-    just tag={{tag}} k8s-launch-minutes "$(echo "{{duration_hours}} * 60" | bc | cut -d. -f1)" {{quote(description)}}
+    just tag={{tag}} k8s-launch-minutes "$(echo "{{duration_hours}} * 60" | bc | cut -d. -f1)" {{quote(description)}} {{quote(test_templates)}}
 
 # Launch an already-built k8s suite with a duration expressed in minutes.
 # This is the convenient entrypoint for short validation runs such as 20m.
-k8s-run-minutes duration_minutes description='ledger-v3 k8s run' include='' *ARGS:
+k8s-run-minutes duration_minutes description='ledger-v3 k8s run' include='' test_templates='' *ARGS:
     just tag={{tag}} k8s-push-images {{quote(include)}} {{ARGS}}
     just tag={{tag}} check-k8s-image-freshness
-    just tag={{tag}} k8s-launch-minutes {{quote(duration_minutes)}} {{quote(description)}}
+    just tag={{tag}} k8s-launch-minutes {{quote(duration_minutes)}} {{quote(description)}} {{quote(test_templates)}}
 
 # Launch an already-published k8s suite. The request returns as soon as
 # Antithesis accepts it; the platform run continues independently.
-k8s-launch-minutes duration_minutes description:
+k8s-launch-minutes duration_minutes description test_templates='':
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -118,12 +119,14 @@ k8s-launch-minutes duration_minutes description:
         --arg config_image "antithesis-config-ledger-v3-k8s:{{tag}}" \
         --arg description {{quote(description)}} \
         --arg images "workload-ledger-v3:{{tag}};{{ledger_image_name}}:{{tag}};ledger-operator:{{tag}};minio:{{tag}}" \
+        --arg test_templates {{quote(test_templates)}} \
         '{params: {
             "antithesis.duration": $duration,
             "antithesis.report.recipients": $recipients,
             "antithesis.config_image": $config_image,
             "antithesis.description": $description,
-            "antithesis.images": $images
+            "antithesis.images": $images,
+            "custom.test_templates": $test_templates
         }}')"
 
     curl --fail --silent --show-error \

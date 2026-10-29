@@ -159,9 +159,17 @@ snouty launch \
   --description "<sanitised description>" \
   --duration "<minutes>" \
   --recipients "$ANTITHESIS_REPORT_RECIPIENT" \
-  --param custom.duration="<minutes>" \
-  --param custom.containers_to_exclude_from_network_faults="etcd-0 etcd-1 etcd-2 workload"
+  --param custom.test_templates="<templates>" \
+  --param custom.excluded_faults="<fault types>"
 ```
+
+Optional launcher params (omit them to run every template with every fault):
+- `custom.test_templates`: comma-separated test templates to run, e.g. `main` or `main,model` (both modes). Empty runs all of them.
+- `custom.excluded_faults` (compose only): comma-separated fault types to turn off, no spaces: `kill`, `stop`, `pause`, `cpu_max`, `clock_skew`, `thread_pause`, `network`, or `all` for no faults.
+
+In k8s mode pass `--param custom.test_templates="<templates>"` the same way.
+
+`--duration` sets `antithesis.duration`, in minutes. Do not pass `custom.duration`; the launchers no longer read it.
 
 Snouty streams its progress to stderr; the resulting POST body (and run identifier, if any) lands on stdout. Pass `--verbose` if the launch errors out and you need to see the raw API request/response.
 
