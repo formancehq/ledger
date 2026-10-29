@@ -100,25 +100,6 @@ record. Do not silently default a missing fact. Prefer a shared, pure decoder fo
 authoritative replay facts, while retaining a test oracle independent of the
 restore writer so a shared mistake cannot make both sides agree incorrectly.
 
-## Technical-update interpreter and rejected effects
-
-The internal `Proposal.atomic_technical_updates` marker selects WAL replay
-semantics, not a new exported business projection. Absent/false entries retain
-legacy technical-prefix behavior forever. True-marked rejected proposals publish
-no prepared technical effects; definitive business failures still export their
-existing failure audit and advance the audited HLC. Uncommitted rejections and
-keyed replays add no new audit or frozen outcome.
-
-Operational cursor/job/configuration state keeps its existing restore lifecycle;
-the marker does not add technical updates to audit exports or turn them into
-business truth. Pair a post-checkpoint rejection or replay with a later
-definitive proposal to obtain a non-empty delta, then compare restored and live
-business projections, history, HLC and next-keyed-attempt behavior. Compare only
-retained state: transient jobs and cluster cache state are deliberately discarded
-on cross-cluster restore. Audit-key initialization remains checkpoint-preserved.
-See [the FSM contract](../fsm/technical-update-atomicity.md) for mutation order
-and fatal-error boundaries.
-
 ## Required tests
 
 A change with restore impact is not complete with an isolated `RebuildDelta`

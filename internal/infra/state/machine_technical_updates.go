@@ -20,11 +20,11 @@ import (
 // IdempotencyEviction, ClusterConfig, BackupOrder, IncrementalBackupOrder)
 // ship with empty bits and never consult their scope.
 //
-// This is the legacy interpreter for absent/false atomic_technical_updates.
-// MirrorSync queues in the WriteSet, but other handlers write directly to the
-// shared batch or mutate live state. A later soft rejection historically retains
-// those prefix effects. Preserve that interpretation for released WAL entries;
-// marked proposals use prepareTechnicalUpdates instead.
+// MirrorSync stages its writes in the same WriteSet as ProcessOrders and
+// publishes only at Merge. Other updates write directly to batch and may
+// mutate in-memory operational state. Builder.Run therefore admits at most
+// one technical update, and only MirrorSync may accompany orders. Historical
+// committed compositions retain their existing interpretation during replay.
 //
 // Backup lifecycle handlers (BackupOrder / IncrementalBackupOrder) return
 // the typed sentinels ErrBackupInProgress / ErrBackupJobNotFound /

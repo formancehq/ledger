@@ -470,12 +470,6 @@ Then:
 - update absolute volumes in place (increase Output for sources, Input for destinations)
 - touch accounts into `gen0`
 
-Internal `Proposal.atomic_technical_updates` selects either the permanent legacy
-interpreter (absent/false) or whole-proposal preparation (true). The bridge
-producer stamps false; apply and recovery never select behavior from a binary
-default. See [technical-update atomicity](technical-update-atomicity.md) for
-publication order, rejection effects, and the adjacent-release activation rule.
-
 ### 8.2 Rejections
 
 Business rejection (e.g., insufficient funds) is a deterministic outcome of apply and must be encoded as a deterministic result of the command execution (response semantics outside scope).

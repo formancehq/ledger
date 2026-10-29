@@ -54,27 +54,14 @@ After a keyed creation carrying metadata, does replay preserve the original meta
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 
-## Command-selected technical-update atomicity
+## Technical-update submission boundary
 
-For true-marked Proposal.atomic_technical_updates, technical effects publish only
-after whole-proposal success. Deduplication observes pre-proposal committed
-outcomes; a same-proposal eviction cannot force re-execution. Replay, conflict,
-uncommitted failure and definitive business rejection discard prepared technical
-effects while preserving their existing distinct audit, frozen-outcome and HLC
-contracts. Absent/false historical entries retain legacy behavior.
-
-Required adversarial probe: Can a technical prefix leak on a later order failure,
-or can a same-proposal eviction bypass a committed success/failure and execute it
-again? Does retry distinguish uncommitted absence, frozen failure, replay and
-conflict while keeping every marked rejected technical effect unpublished?
-
-Evidence: Exercise marked mixed technical/business proposals with keyed success
-replay, frozen-failure replay, conflict and fail-then-repair; include
-same-proposal eviction, assert full technical state and exact
-audit/idempotency/HLC disposition, then recover and retry. Retain absent/false
-legacy controls.
-
-The [FSM contract](../architecture/subsystems/fsm/technical-update-atomicity.md)
-records the publication order and adjacent-RC bridge/activation boundary. Treat
-same-binary regression tests and identified released-binary mixed-version
-validation as separate evidence; neither implies that the other passed.
+Production submission through `plan.Builder.Run` rejects more than one technical
+update and permits a technical update alongside orders only for MirrorSync.
+Verify rejection before serialization/Raft submission, loader cleanup on both
+preload paths, and unchanged standalone operational updates. Historical committed
+compositions keep their interpreter; this admission guard must never become a
+replay-time semantic change. Pair MirrorSync with real ingestion and a concurrent
+ledger promotion: rejected ingestion must preserve the prior source head and
+applied position through recovery; successful ingestion advances both.
+See [the composition contract](../architecture/subsystems/fsm/technical-update-atomicity.md).

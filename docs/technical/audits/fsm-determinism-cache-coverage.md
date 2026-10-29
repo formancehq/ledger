@@ -448,29 +448,14 @@ gate, not a real mixed-binary deployment. Release validation must prove that
 deployment separately. Historical audit failures and frozen outcomes retain
 their stored details; already-diverged audit chains are not repaired by this fix.
 
-## Command-selected technical-update atomicity
+## Technical-update submission boundary
 
-The internal Proposal.atomic_technical_updates marker alone selects legacy
-(absent/false, permanently) versus whole-proposal (true) interpretation. Bridge
-producers explicitly emit false on every Builder.Run path. Marked proposals
-validate per-update scopes and stage Mirror effects, defer direct effects until
-whole-proposal success, publish non-config effects before Merge and configuration
-resets after Merge; every rejection or replay drops prepared technical effects.
-Fatal publication/Merge failures do not promise in-memory rollback.
-
-Required adversarial probe: Can identical marked bytes disagree across replicas or
-WAL replay, or can an unmarked historical command silently acquire new semantics?
-Do a later technical/order rejection, same-proposal eviction and replay, or
-configuration reset leak a prepared prefix, bypass scoped pre-reset cache reads,
-or leave stale post-reset cache-mirror rows?
-
-Evidence: Compare absent, false and true command transitions through live apply
-and WAL replay; cover every technical-update variant, later scope/backup/order
-failure, same-proposal eviction plus replay/conflict, and
-configuration-before/after-Mirror through durable restart. Verify both production
-Builder.Run paths overwrite a supplied true marker with false in the bridge.
-
-The [FSM contract](../architecture/subsystems/fsm/technical-update-atomicity.md)
-records the publication order and adjacent-RC bridge/activation boundary. Treat
-same-binary regression tests and identified released-binary mixed-version
-validation as separate evidence; neither implies that the other passed.
+Production submission through `plan.Builder.Run` rejects more than one technical
+update and permits a technical update alongside orders only for MirrorSync.
+Verify rejection before serialization/Raft submission, loader cleanup on both
+preload paths, and unchanged standalone operational updates. Historical committed
+compositions keep their interpreter; this admission guard must never become a
+replay-time semantic change. Pair MirrorSync with real ingestion and a concurrent
+ledger promotion: rejected ingestion must preserve the prior source head and
+applied position through recovery; successful ingestion advances both.
+See [the composition contract](../architecture/subsystems/fsm/technical-update-atomicity.md).

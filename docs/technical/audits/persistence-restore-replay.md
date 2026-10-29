@@ -201,30 +201,3 @@ CreatedLedgerLog carries initial metadata so post-checkpoint creation reconstruc
 Does a restore with nonempty checkpoint files and a nonempty post-checkpoint creation delta reproduce typed initial metadata for normal and mirror ledgers, including explicit protobuf null and a schema type mismatch?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
-
-## Command-selected technical-update atomicity
-
-WAL replay selects technical-update atomicity from stored
-Proposal.atomic_technical_updates bytes: absent/false retains legacy effects, true
-discards all prepared technical effects on rejection/replay. The marker adds no
-exported business projection or new checker exemption. Existing operational
-discard, audit-key preservation, and business projection rebuild classifications
-remain in force.
-
-Required adversarial probe: Can recovery reinterpret an old unmarked proposal,
-resurrect a rejected marked technical prefix, or leave configuration-reset mirror
-rows inconsistent after restart? Does a non-empty post-checkpoint delta preserve
-the absence of rejected business effects, definitive failure audit/HLC and the
-next keyed retry without inventing exports for operational updates?
-
-Evidence: Replay durable legacy and marked command histories and compare cache
-mirrors plus operational state; restore a real checkpoint with a non-empty delta
-containing a later definitive proposal after a marked rejection/replay, compare
-retained logical projections, audit/HLC and next-keyed-attempt behavior, and
-require clean CheckStore. Exclude deliberately discarded cluster-local jobs from
-cross-cluster equality.
-
-The [FSM contract](../architecture/subsystems/fsm/technical-update-atomicity.md)
-records the publication order and adjacent-RC bridge/activation boundary. Treat
-same-binary regression tests and identified released-binary mixed-version
-validation as separate evidence; neither implies that the other passed.
