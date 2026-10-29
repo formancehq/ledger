@@ -440,6 +440,23 @@ For normal and mirror creation, do rejection, proposal rollback and idempotent r
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 
+## Controlled drain apply boundary
+
+`DrainMarker` and `DrainRelease` are Raft-ordered technical updates. For the
+same prior state, proposal bytes and index, every voter must select the same
+first marker decision, captured member set, cutoff and release outcome. A
+duplicate marker cannot move the cutoff; a released epoch cannot be reused.
+After an active cutoff, applying a later business order or non-drain technical
+update must reject it deterministically, including when that proposal was
+accepted before local admission closed. The local write gate and status fsync
+are outside FSM determinism and belong to the runtime and persistence audits.
+
+Compare identical marker, duplicate, post-cutoff order and release proposals
+on equivalent FSMs with cold and recovered state. Verify decision bytes, applied
+indexes and business/audit effects, then repeat across the supported rolling
+upgrade boundary. Preflight must reject an old member that cannot decode or
+apply these entries; the Raft audit owns that cluster admission gate.
+
 ## Transaction account metadata address failures
 
 Caller metadata and merged script metadata must use the same deterministic

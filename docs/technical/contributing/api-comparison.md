@@ -26,6 +26,16 @@ membership already changed. Success still requires local durable FSM apply;
 distinct calls keep their existing admission and cancellation semantics. This
 correction changes no route, message, field, status schema or protocol revision.
 
+The additive `ClusterService.BeginDrain`, `EndDrain`, and local `GetDrainStatus` RPCs support
+an operator-controlled shutdown barrier. They have no v2 business endpoint
+equivalent. `BeginDrain` and `EndDrain` require `ledger:WriteCluster` and become effective
+only after every current member confirms the new capability; an older server
+returns `Unimplemented` for `GetDrainStatus`. The new `ClusterState` drain fields
+are additive and absent on older binaries. The service protocol revision stays
+at 40. A committed marker adds internal Raft and cluster-transient state but
+does not change audit or business data formats. See
+[controlled shutdown](../architecture/subsystems/consensus/controlled-shutdown.md).
+
 HTTP typed metadata preserves exact integer values, including signed 64-bit
 bounds and values above 2^53, for metadata writes, transaction creation and
 reversal (unitary and bulk). Integral decimal/exponent spellings are accepted;

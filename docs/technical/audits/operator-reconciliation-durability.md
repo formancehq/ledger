@@ -49,6 +49,29 @@ Ledger process restart and cluster-level availability from recovery of the
 intended PVC/node. Record inspected areas and untested boundaries in residual
 risk rather than claiming exhaustive coverage.
 
+## Annotated drain and release boundary
+
+`ledger.formance.com/drain` is an intent on the Cluster CR. The persisted
+`status.drain` epoch and phase, not an in-memory reconcile invocation, identify
+the transition across retries and controller replacement. `Preflighting` can be
+cancelled before a marker is proposed. Once a marker may have been committed,
+removing the annotation requires release of the same epoch; `Releasing` must be
+persisted before the release call. A re-added annotation after release needs a
+new epoch. `Drained=True` requires a matching current membership and a durable
+cutoff acknowledgement from every captured member. A missing or syncing member
+keeps the phase incomplete and the Pods running.
+
+Trace the actual status-write, Ledger-RPC and annotation-observation order,
+including a lost RPC response and restart after each durable prefix. During a
+transition, the live owned StatefulSet supplies replica count, gRPC port and
+TLS mode. A simultaneous desired storage-backend edit remains a separate
+operator transition risk tracked in EN-3230; do not assume the live transport
+snapshot makes the StatefulSet recreation safe. Use the annotated-drain
+Chainsaw test for the admission/release path, and a fresh reconciler after
+interrupted phase writes for recovery evidence. The Ledger consensus audit owns
+the marker and member durability semantics; this domain owns the controller's
+decision and truthful status.
+
 ## Ledger target admission boundary
 
 Ledger `spec.name` and `spec.clusterRef` are immutable from CR creation through
