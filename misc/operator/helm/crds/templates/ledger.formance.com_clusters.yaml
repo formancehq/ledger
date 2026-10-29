@@ -1217,17 +1217,6 @@ spec:
                   LogLevel takes precedence when both are set; prefer LogLevel for new
                   manifests since it also unlocks the trace level.
                 type: boolean
-              debugBox:
-                description: |-
-                  DebugBox configures an optional interactive ledgerctl pod. When enabled,
-                  the operator creates a dedicated superuser credential and mounts it only
-                  in this pod. The pod does not start the Ledger server.
-                properties:
-                  enabled:
-                    description: Enabled creates the debug box and its dedicated superuser
-                      credential.
-                    type: boolean
-                type: object
               dnsEndpoints:
                 description: |-
                   DNSEndpoints configures one or more ExternalDNS DNSEndpoint resources.
