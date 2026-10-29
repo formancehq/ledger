@@ -120,7 +120,9 @@ Raft transport uses a **shared cluster secret**, not JWT. `internal/adapter/grpc
 
 - Each Raft RPC carries `authorization: Bearer <clusterSecret>` in metadata.
 - Comparison uses `crypto/subtle.ConstantTimeCompare` to avoid timing attacks.
-- If `--cluster-secret` is empty, the legacy "no auth" mode is used (not recommended).
+- If `--cluster-secret` is empty, the legacy "no auth" mode is used. This mode
+  is incompatible with `--auth-enabled`, which requires a peer transport
+  secret for forwarding.
 
 The cluster secret is reserved for the Raft plane and the dedicated peer service listener used for follower-to-leader forwarding. On the peer listener it is carried in `x-ledger-peer-auth`, separate from the user's `authorization` metadata. The public service listener rejects it; it is never a direct `ledgerctl` credential. Forwarded user tokens are evaluated at the terminal node, while calls without a user token are treated as node-system actions. Auth-disabled snapshots are derived locally. Forwarding trust is derived from the authenticated listener, not from client-controlled request fields.
 
