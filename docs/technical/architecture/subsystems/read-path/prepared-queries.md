@@ -237,9 +237,10 @@ and reads the log payloads from Pebble (`query.EnrichLogs`). Consequently the
 log-only filter fields (`date`, `ledger`) are valid only when the target is
 `LOGS`; the REST create decode rejects them for `ACCOUNTS`/`TRANSACTIONS`, and the
 compile layer is the backstop (it rejects those conditions on non-LOGS targets at
-execute time). The update path carries only the new filter (the target is immutable
-and read by the handler only when `id` needs target resolution), so the
-authoritative stored-target validation still runs on apply.
+execute time). The update path carries only the new filter; the target is immutable.
+Admission reads the stored target through the write-authorized path when `id`
+needs resolution and commits the target-specific condition to Raft. The FSM
+still performs authoritative stored-target validation on apply.
 
 ## Recent changes
 
