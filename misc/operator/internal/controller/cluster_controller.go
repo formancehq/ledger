@@ -109,7 +109,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// also lets annotation removal reopen admission even if a later spec edit
 	// is invalid or a rollout would otherwise start.
 	if ledger.Status.Drain != nil {
-		return r.reconcileAnnotatedDrain(ctx, ledger, r.EnsureDrainBarrier, r.EnsureDrainReleased)
+		return r.reconcileAnnotatedDrain(ctx, ledger, r.PreflightDrainBarrier, r.EnsureDrainBarrier, r.EnsureDrainReleased)
 	}
 
 	// Validate spec — report errors via status condition instead of retrying.
@@ -357,7 +357,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret after StatefulSet: %w", err)
 	}
 
-	drainResult, err := r.reconcileAnnotatedDrain(ctx, ledger, r.EnsureDrainBarrier, r.EnsureDrainReleased)
+	drainResult, err := r.reconcileAnnotatedDrain(ctx, ledger, r.PreflightDrainBarrier, r.EnsureDrainBarrier, r.EnsureDrainReleased)
 	if err != nil || drainResult.Requeue || drainResult.RequeueAfter > 0 {
 		return drainResult, err
 	}

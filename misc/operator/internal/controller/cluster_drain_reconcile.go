@@ -20,6 +20,7 @@ import (
 const (
 	// ClusterDrainAnnotation requests a live, write-blocked Ledger cluster.
 	ClusterDrainAnnotation = "ledger.formance.com/drain"
+	drainPhasePreflighting = "Preflighting"
 	drainPhaseDraining     = "Draining"
 	drainPhaseDrained      = "Drained"
 	drainPhaseReleasing    = "Releasing"
@@ -27,6 +28,7 @@ const (
 )
 
 type ensureClusterDrain func(context.Context, *ledgerv1alpha1.Cluster, string, string) (bool, error)
+type preflightClusterDrain func(context.Context, *ledgerv1alpha1.Cluster, string) error
 
 // reconcileAnnotatedDrain keeps the epoch in status before sending a marker,
 // and persists the release intent before sending a release. Both transitions
@@ -34,6 +36,7 @@ type ensureClusterDrain func(context.Context, *ledgerv1alpha1.Cluster, string, s
 func (r *ClusterReconciler) reconcileAnnotatedDrain(
 	ctx context.Context,
 	cluster *ledgerv1alpha1.Cluster,
+	preflight preflightClusterDrain,
 	ensureBarrier, ensureRelease ensureClusterDrain,
 ) (ctrl.Result, error) {
 	_, requested := cluster.Annotations[ClusterDrainAnnotation]
@@ -44,8 +47,8 @@ func (r *ClusterReconciler) reconcileAnnotatedDrain(
 
 			return ctrl.Result{}, nil
 		}
-		cluster.Status.Drain = &ledgerv1alpha1.DrainStatus{Epoch: uuid.NewString(), Phase: drainPhaseDraining}
-		setDrainCondition(cluster, metav1.ConditionFalse, "Draining", "Waiting for the cluster-wide drain barrier")
+		cluster.Status.Drain = &ledgerv1alpha1.DrainStatus{Epoch: uuid.NewString(), Phase: drainPhasePreflighting}
+		setDrainCondition(cluster, metav1.ConditionFalse, "Preflighting", "Checking drain support on every cluster member")
 		if err := r.Status().Update(ctx, cluster); err != nil {
 			return ctrl.Result{}, fmt.Errorf("persisting drain intent: %w", err)
 		}
@@ -54,6 +57,18 @@ func (r *ClusterReconciler) reconcileAnnotatedDrain(
 	}
 	if state.Epoch == "" {
 		return ctrl.Result{}, errors.New("drain status has no epoch")
+	}
+	if state.Phase == drainPhasePreflighting && !requested {
+		// BeginDrain has never been called for this epoch, so no marker can
+		// arrive after cancellation. In particular, an unsupported member
+		// must not keep the operator stuck in a drain intent forever.
+		cluster.Status.Drain = nil
+		meta.RemoveStatusCondition(&cluster.Status.Conditions, "Drained")
+		if err := r.Status().Update(ctx, cluster); err != nil {
+			return ctrl.Result{}, fmt.Errorf("clearing canceled drain preflight: %w", err)
+		}
+
+		return ctrl.Result{Requeue: true}, nil
 	}
 	if state.Phase == drainPhaseDrained && !requested {
 		state.Phase = drainPhaseReleasing
@@ -64,7 +79,7 @@ func (r *ClusterReconciler) reconcileAnnotatedDrain(
 
 		return ctrl.Result{Requeue: true}, nil
 	}
-	if state.Phase != drainPhaseDraining && state.Phase != drainPhaseDrained && state.Phase != drainPhaseReleasing {
+	if state.Phase != drainPhasePreflighting && state.Phase != drainPhaseDraining && state.Phase != drainPhaseDrained && state.Phase != drainPhaseReleasing {
 		return ctrl.Result{}, fmt.Errorf("unknown drain phase %q", state.Phase)
 	}
 	if state.Phase == drainPhaseDrained {
@@ -85,6 +100,18 @@ func (r *ClusterReconciler) reconcileAnnotatedDrain(
 		return ctrl.Result{RequeueAfter: drainRequeueInterval}, nil
 	}
 	tlsMode := currentTLSModeFromStatefulSet(sts)
+	if state.Phase == drainPhasePreflighting {
+		if err := preflight(ctx, cluster, tlsMode); err != nil {
+			return ctrl.Result{}, fmt.Errorf("preflighting annotated drain: %w", err)
+		}
+		state.Phase = drainPhaseDraining
+		setDrainCondition(cluster, metav1.ConditionFalse, "Draining", "Waiting for the cluster-wide drain barrier")
+		if err := r.Status().Update(ctx, cluster); err != nil {
+			return ctrl.Result{}, fmt.Errorf("persisting completed drain preflight: %w", err)
+		}
+
+		return ctrl.Result{Requeue: true}, nil
+	}
 	if state.Phase == drainPhaseReleasing {
 		setDrainCondition(cluster, metav1.ConditionFalse, "Releasing", "Waiting for the cluster-wide drain release")
 		ready, err := ensureRelease(ctx, cluster, state.Epoch, tlsMode)
@@ -97,8 +124,8 @@ func (r *ClusterReconciler) reconcileAnnotatedDrain(
 		if requested {
 			// A re-added annotation is a new request. Persist its fresh epoch
 			// immediately after the old release so a retry cannot reuse it.
-			cluster.Status.Drain = &ledgerv1alpha1.DrainStatus{Epoch: uuid.NewString(), Phase: drainPhaseDraining}
-			setDrainCondition(cluster, metav1.ConditionFalse, "Draining", "Waiting for the cluster-wide drain barrier")
+			cluster.Status.Drain = &ledgerv1alpha1.DrainStatus{Epoch: uuid.NewString(), Phase: drainPhasePreflighting}
+			setDrainCondition(cluster, metav1.ConditionFalse, "Preflighting", "Checking drain support on every cluster member")
 		} else {
 			cluster.Status.Drain = nil
 			meta.RemoveStatusCondition(&cluster.Status.Conditions, "Drained")

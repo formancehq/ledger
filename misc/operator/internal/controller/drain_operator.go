@@ -6,6 +6,16 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
+func (r *ClusterReconciler) PreflightDrainBarrier(ctx context.Context, cluster *ledgerv1alpha1.Cluster, tlsMode string) error {
+	return preflightDrain(ctx, &ledgerctlDrainCluster{
+		cluster:   cluster,
+		tlsMode:   tlsMode,
+		config:    r.Config,
+		clientset: r.Clientset,
+		exec:      podExecWithTimeout,
+	})
+}
+
 // EnsureDrainBarrier is the operator's controlled-shutdown gate. Call it with
 // a stable epoch before reducing the StatefulSet replica count. A true result
 // certifies that every member captured by the marker has locally applied and

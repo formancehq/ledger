@@ -42,6 +42,30 @@ type drainReleaseCluster interface {
 	NodeStatus(context.Context, uint64) (drainNodeStatus, error)
 }
 
+// preflightDrain only reads the current membership and member capabilities.
+// The operator persists the next phase before it may call BeginDrain, so a
+// canceled preflight can be discarded without risking a late Raft marker.
+func preflightDrain(ctx context.Context, cluster drainReleaseCluster) error {
+	current, err := cluster.CurrentDrain(ctx)
+	if err != nil {
+		return fmt.Errorf("reading drain membership: %w", err)
+	}
+	if current.Epoch != "" || current.Index != 0 || len(current.Members) == 0 {
+		return errors.New("cluster is already draining or has no members")
+	}
+	for _, id := range current.Members {
+		status, err := cluster.NodeStatus(ctx, id)
+		if err != nil {
+			return fmt.Errorf("checking drain support of node %d: %w", id, err)
+		}
+		if status.NodeID != id || !status.SupportsRelease {
+			return fmt.Errorf("node %d has not confirmed drain release support", id)
+		}
+	}
+
+	return nil
+}
+
 // ensureDrain is idempotent across operator restarts. The first Raft marker
 // fixes its cutoff and original membership; retries return that same decision.
 // The caller must keep the epoch stable for the lifetime of this shutdown.

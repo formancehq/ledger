@@ -42,6 +42,20 @@ func (c *testDrainCluster) NodeStatus(_ context.Context, id uint64) (drainNodeSt
 	return c.status[id], nil
 }
 
+func TestPreflightDrainRequiresReleaseSupportBeforeMarker(t *testing.T) {
+	t.Parallel()
+	c := &testDrainCluster{
+		current: drainDecision{Members: []uint64{1, 2}},
+		status: map[uint64]drainNodeStatus{
+			1: {NodeID: 1, SupportsRelease: true},
+			2: {NodeID: 2},
+		},
+	}
+	require.ErrorContains(t, preflightDrain(t.Context(), c), "node 2 has not confirmed drain release support")
+	c.status[2] = drainNodeStatus{NodeID: 2, SupportsRelease: true}
+	require.NoError(t, preflightDrain(t.Context(), c))
+}
+
 func TestEnsureDrainRequiresEveryOriginalMemberDurableApply(t *testing.T) {
 	t.Parallel()
 	c := &testDrainCluster{

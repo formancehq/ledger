@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -37,6 +38,7 @@ func TestAnnotatedDrainPersistsEpochAndReleaseIntentAcrossReconcile(t *testing.T
 
 		return fresh
 	}
+	preflight := func(context.Context, *ledgerv1alpha1.Cluster, string) error { return nil }
 	barrierCalls, releaseCalls := 0, 0
 	barrier := func(ctx context.Context, c *ledgerv1alpha1.Cluster, epoch, tlsMode string) (bool, error) {
 		barrierCalls++
@@ -56,19 +58,25 @@ func TestAnnotatedDrainPersistsEpochAndReleaseIntentAcrossReconcile(t *testing.T
 	}
 
 	first := load()
-	result, err := r.reconcileAnnotatedDrain(t.Context(), first, barrier, release)
+	result, err := r.reconcileAnnotatedDrain(t.Context(), first, preflight, barrier, release)
 	require.NoError(t, err)
 	require.True(t, result.Requeue)
 	require.Zero(t, barrierCalls)
 	first = load()
 	firstEpoch := first.Status.Drain.Epoch
 	require.NotEmpty(t, firstEpoch)
-	require.Equal(t, drainPhaseDraining, first.Status.Drain.Phase)
+	require.Equal(t, drainPhasePreflighting, first.Status.Drain.Phase)
 
-	result, err = r.reconcileAnnotatedDrain(t.Context(), first, barrier, release)
+	result, err = r.reconcileAnnotatedDrain(t.Context(), first, preflight, barrier, release)
+	require.NoError(t, err)
+	require.True(t, result.Requeue)
+	require.Zero(t, barrierCalls)
+	require.Equal(t, drainPhaseDraining, load().Status.Drain.Phase)
+
+	result, err = r.reconcileAnnotatedDrain(t.Context(), load(), preflight, barrier, release)
 	require.NoError(t, err)
 	require.False(t, result.Requeue)
-	require.Equal(t, drainPhaseDrained, first.Status.Drain.Phase)
+	require.Equal(t, drainPhaseDrained, load().Status.Drain.Phase)
 	require.Equal(t, 1, barrierCalls)
 	require.Equal(t, drainPhaseDrained, load().Status.Drain.Phase)
 
@@ -76,13 +84,13 @@ func TestAnnotatedDrainPersistsEpochAndReleaseIntentAcrossReconcile(t *testing.T
 	delete(removed.Annotations, ClusterDrainAnnotation)
 	require.NoError(t, r.Update(t.Context(), removed))
 	removed = load()
-	result, err = r.reconcileAnnotatedDrain(t.Context(), removed, barrier, release)
+	result, err = r.reconcileAnnotatedDrain(t.Context(), removed, preflight, barrier, release)
 	require.NoError(t, err)
 	require.True(t, result.Requeue)
 	require.Zero(t, releaseCalls)
 	require.Equal(t, drainPhaseReleasing, load().Status.Drain.Phase)
 
-	result, err = r.reconcileAnnotatedDrain(t.Context(), load(), barrier, release)
+	result, err = r.reconcileAnnotatedDrain(t.Context(), load(), preflight, barrier, release)
 	require.NoError(t, err)
 	require.False(t, result.Requeue)
 	require.Equal(t, 1, releaseCalls)
@@ -91,10 +99,56 @@ func TestAnnotatedDrainPersistsEpochAndReleaseIntentAcrossReconcile(t *testing.T
 	readded := load()
 	readded.Annotations = map[string]string{ClusterDrainAnnotation: "true"}
 	require.NoError(t, r.Update(t.Context(), readded))
-	result, err = r.reconcileAnnotatedDrain(t.Context(), load(), barrier, release)
+	result, err = r.reconcileAnnotatedDrain(t.Context(), load(), preflight, barrier, release)
 	require.NoError(t, err)
 	require.True(t, result.Requeue)
 	require.NotEqual(t, firstEpoch, load().Status.Drain.Epoch)
+}
+
+func TestAnnotatedDrainCancellationAfterFailedPreflight(t *testing.T) {
+	t.Parallel()
+	scheme := runtime.NewScheme()
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	require.NoError(t, appsv1.AddToScheme(scheme))
+	cluster := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "unsupported", Namespace: "test", Annotations: map[string]string{ClusterDrainAnnotation: "true"}},
+		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: new(int32(1))},
+	}
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: cluster.Namespace},
+		Spec:       appsv1.StatefulSetSpec{Replicas: new(int32(1))},
+		Status:     appsv1.StatefulSetStatus{ReadyReplicas: 1},
+	}
+	r := &ClusterReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()}
+	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
+	load := func() *ledgerv1alpha1.Cluster {
+		fresh := &ledgerv1alpha1.Cluster{}
+		require.NoError(t, r.Get(t.Context(), key, fresh))
+		return fresh
+	}
+	preflight := func(context.Context, *ledgerv1alpha1.Cluster, string) error {
+		return errors.New("member lacks drain support")
+	}
+	barrier := func(context.Context, *ledgerv1alpha1.Cluster, string, string) (bool, error) {
+		t.Fatal("BeginDrain must not run before preflight succeeds")
+		return false, nil
+	}
+	release := func(context.Context, *ledgerv1alpha1.Cluster, string, string) (bool, error) {
+		t.Fatal("EndDrain must not run when no marker was proposed")
+		return false, nil
+	}
+	_, err := r.reconcileAnnotatedDrain(t.Context(), load(), preflight, barrier, release)
+	require.NoError(t, err)
+	require.Equal(t, drainPhasePreflighting, load().Status.Drain.Phase)
+	_, err = r.reconcileAnnotatedDrain(t.Context(), load(), preflight, barrier, release)
+	require.ErrorContains(t, err, "member lacks drain support")
+	removed := load()
+	delete(removed.Annotations, ClusterDrainAnnotation)
+	require.NoError(t, r.Update(t.Context(), removed))
+	result, err := r.reconcileAnnotatedDrain(t.Context(), load(), preflight, barrier, release)
+	require.NoError(t, err)
+	require.True(t, result.Requeue)
+	require.Nil(t, load().Status.Drain)
 }
 
 func TestAnnotatedDrainReaddedDuringReleaseStartsNewEpoch(t *testing.T) {
@@ -114,6 +168,7 @@ func TestAnnotatedDrainReaddedDuringReleaseStartsNewEpoch(t *testing.T) {
 	}
 	r := &ClusterReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()}
 	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
+	preflight := func(context.Context, *ledgerv1alpha1.Cluster, string) error { return nil }
 	barrierCalls, releaseCalls := 0, 0
 	barrier := func(context.Context, *ledgerv1alpha1.Cluster, string, string) (bool, error) {
 		barrierCalls++
@@ -126,16 +181,21 @@ func TestAnnotatedDrainReaddedDuringReleaseStartsNewEpoch(t *testing.T) {
 
 		return true, nil
 	}
-	result, err := r.reconcileAnnotatedDrain(t.Context(), cluster, barrier, release)
+	result, err := r.reconcileAnnotatedDrain(t.Context(), cluster, preflight, barrier, release)
 	require.NoError(t, err)
 	require.True(t, result.Requeue)
 	require.Equal(t, 1, releaseCalls)
 	require.Zero(t, barrierCalls)
 	fresh := &ledgerv1alpha1.Cluster{}
 	require.NoError(t, r.Get(t.Context(), key, fresh))
-	require.Equal(t, drainPhaseDraining, fresh.Status.Drain.Phase)
+	require.Equal(t, drainPhasePreflighting, fresh.Status.Drain.Phase)
 	require.NotEqual(t, "old-epoch", fresh.Status.Drain.Epoch)
-	_, err = r.reconcileAnnotatedDrain(t.Context(), fresh, barrier, release)
+	_, err = r.reconcileAnnotatedDrain(t.Context(), fresh, preflight, barrier, release)
+	require.NoError(t, err)
+	require.Zero(t, barrierCalls)
+	fresh = &ledgerv1alpha1.Cluster{}
+	require.NoError(t, r.Get(t.Context(), key, fresh))
+	_, err = r.reconcileAnnotatedDrain(t.Context(), fresh, preflight, barrier, release)
 	require.NoError(t, err)
 	require.Equal(t, 1, barrierCalls)
 }

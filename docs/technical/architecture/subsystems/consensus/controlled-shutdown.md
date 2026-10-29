@@ -2,7 +2,10 @@
 
 Add the `ledger.formance.com/drain` annotation to a `Cluster` to close write
 admission while its Pods keep running. The operator persists a fresh epoch in
-`status.drain` before calling `ClusterService.BeginDrain`. It reports
+`status.drain.phase: Preflighting`, checks every member's drain and release
+support, then persists `Draining` before calling `ClusterService.BeginDrain`.
+Removing the annotation during `Preflighting` clears the intent without a
+release RPC because no marker has been proposed. It reports
 `status.drain.phase: Drained` and a `Drained=True` condition only after every
 captured member has confirmed durable application. Removing the annotation
 causes the operator to release the same epoch; it clears `status.drain` after
