@@ -89,12 +89,10 @@ func TestHandleUpdatePreparedQuery_NestedOneofs(t *testing.T) {
 	}
 }
 
-func TestHandleUpdatePreparedQuery_ExactLogID(t *testing.T) {
+func TestHandleUpdatePreparedQuery_IDDoesNotRequireQueryRead(t *testing.T) {
 	t.Parallel()
 	var captured *commonpb.QueryFilter
 	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListPreparedQueries(gomock.Any(), "ledger1").Return(
-		[]*commonpb.PreparedQuery{{Name: "my-query", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS}}, nil)
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, reqs *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			captured = reqs.GetUnsigned().GetRequests()[0].GetUpdatePreparedQuery().GetFilter()
@@ -110,7 +108,8 @@ func TestHandleUpdatePreparedQuery_ExactLogID(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, w.Code)
 	require.NotNil(t, captured)
 	for _, child := range captured.GetOr().GetFilters() {
-		require.NotNil(t, child.GetLogId())
+		require.NotNil(t, child.GetBuiltinUint())
+		require.Equal(t, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, child.GetBuiltinUint().GetField())
 	}
 }
 

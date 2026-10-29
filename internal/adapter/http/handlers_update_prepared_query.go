@@ -63,45 +63,14 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 	// This handler stays purely structural: it accepts either the structured v2
 	// JSON DSL or a JSON-quoted textual filterexpr expression (EN-1511) and defers
 	// the target gate to the FSM. Bare-field resolution uses a non-audit target
-	// (EN-1549). For id, the handler reads the stored target below and re-decodes
-	// LOGS filters so the public field maps to LogIdCondition.
+	// (EN-1549). Admission resolves provisional transaction ID conditions against
+	// the stored LOGS target before commitment, without requiring query-read
+	// authorization from the caller.
 	filter, err := filterexpr.DecodeDualFormatStructuralOnly(body.Filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 
 		return
-	}
-	if filterexpr.HasTransactionIDCondition(filter) {
-		// The update payload has no target. Resolve the public id field against
-		// the immutable target of the stored query before submitting it.
-		queries, listErr := s.backend.ListPreparedQueries(r.Context(), ledgerName)
-		if listErr != nil {
-			handleError(w, r, listErr)
-
-			return
-		}
-		found := false
-		for _, query := range queries {
-			if query.GetName() != queryName {
-				continue
-			}
-			found = true
-			if query.GetTarget() == commonpb.QueryTarget_QUERY_TARGET_LOGS {
-				filter, err = filterexpr.DecodeDualFormatStructuralOnly(body.Filter, query.GetTarget())
-				if err != nil {
-					writeBadRequest(w, "INVALID_REQUEST", err)
-
-					return
-				}
-			}
-
-			break
-		}
-		if !found {
-			handleError(w, r, &domain.ErrPreparedQueryNotFound{Ledger: ledgerName, Name: queryName})
-
-			return
-		}
 	}
 
 	if filter == nil && !bytes.Equal(filterInput, []byte("null")) {
