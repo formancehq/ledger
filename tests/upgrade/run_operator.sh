@@ -65,12 +65,18 @@ printf 'branch=%s\nsourceTag=%s\nsourceSHA=%s\ntargetSHA=%s\nharnessSHA=%s\n' \
 	"$branch" "$source_tag" "$source_sha" "$target_sha" "$harness_sha" | tee "$workdir/revisions.txt"
 
 target_tree="$workdir/target"
-mkdir -p "$target_tree"
+source_tree="$workdir/source"
+mkdir -p "$source_tree" "$target_tree"
+git -C "$repo" archive "$source_sha" | tar -x -C "$source_tree"
 git -C "$repo" archive "$target_sha" | tar -x -C "$target_tree"
+source_operator_image="${UPGRADE_OPERATOR_IMAGE_REPOSITORY:-ghcr.io/formancehq/ledger-operator}:$source_tag"
 operator_image="ledger-operator:head-${target_sha:0:12}"
 docker build -q -t "$operator_image" "$target_tree/misc/operator" | tee "$workdir/operator-build.txt"
 docker pull "$source_image" | tee "$workdir/source-pull.txt"
+docker pull "$source_operator_image" | tee "$workdir/source-operator-pull.txt"
 source_id="$(docker image inspect "$source_image" --format '{{.Id}}')"
+source_operator_id="$(docker image inspect "$source_operator_image" --format '{{.Id}}')"
+target_operator_id="$(docker image inspect "$operator_image" --format '{{.Id}}')"
 build_tag="ledger-upgrade:build-${target_sha:0:12}"
 docker build -q -t "$build_tag" "$target_tree" | tee "$workdir/target-build.txt"
 target_id="$(docker image inspect "$build_tag" --format '{{.Id}}')"
@@ -78,22 +84,27 @@ target_repository=ledger-upgrade
 target_tag="sha-${target_id#sha256:}"
 target_image="$target_repository:$target_tag"
 docker tag "$build_tag" "$target_image"
-printf 'sourceImage=%s\nsourceImageID=%s\ntargetImage=%s\ntargetImageID=%s\noperatorImage=%s\n' \
-	"$source_image" "$source_id" "$target_image" "$target_id" "$operator_image" | tee -a "$workdir/revisions.txt"
+printf 'sourceImage=%s\nsourceImageID=%s\ntargetImage=%s\ntargetImageID=%s\nsourceOperatorImage=%s\nsourceOperatorImageID=%s\ntargetOperatorImage=%s\ntargetOperatorImageID=%s\n' \
+	"$source_image" "$source_id" "$target_image" "$target_id" "$source_operator_image" "$source_operator_id" "$operator_image" "$target_operator_id" | tee -a "$workdir/revisions.txt"
 
 kind create cluster --name "$cluster"
 kind get kubeconfig --name "$cluster" > "$workdir/kubeconfig"
-kind load docker-image "$source_image" "$target_image" "$operator_image" --name "$cluster"
-chart="$target_tree/misc/operator/helm/operator"
-helm dependency build "$chart"
-helm upgrade --install ledger-operator "$chart" --namespace ledger-system --create-namespace \
+kind load docker-image "$source_image" "$target_image" "$source_operator_image" "$operator_image" --name "$cluster"
+source_chart="$source_tree/misc/operator/helm/operator"
+target_chart="$target_tree/misc/operator/helm/operator"
+helm dependency build "$source_chart"
+helm dependency build "$target_chart"
+helm upgrade --install ledger-operator "$source_chart" --namespace ledger-system --create-namespace \
 	--kubeconfig "$workdir/kubeconfig" --kube-context "kind-$cluster" \
-	--set image.repository=ledger-operator --set "image.tag=${operator_image#*:}" \
+	--set "image.repository=${source_operator_image%:*}" --set "image.tag=${source_operator_image##*:}" \
 	--set image.pullPolicy=Never --set leaderElection=false \
 	--set pvcProtection.enabled=false --wait --timeout 5m
 
 UPGRADE_CLUSTER_SCRIPT="$script_dir/cluster_operator_upgrade.sh" \
 UPGRADE_KUBECONFIG="$workdir/kubeconfig" UPGRADE_KUBE_CONTEXT="kind-$cluster" \
+UPGRADE_TARGET_OPERATOR_CHART="$target_chart" UPGRADE_TARGET_OPERATOR_IMAGE="$operator_image" \
+UPGRADE_TARGET_OPERATOR_IMAGE_ID="$target_operator_id" \
+UPGRADE_SOURCE_OPERATOR_IMAGE="$source_operator_image" UPGRADE_SOURCE_OPERATOR_IMAGE_ID="$source_operator_id" \
 UPGRADE_SOURCE_REPOSITORY="$source_repository" UPGRADE_SOURCE_TAG="$source_tag" \
 UPGRADE_TARGET_REPOSITORY="$target_repository" UPGRADE_TARGET_TAG="$target_tag" \
 UPGRADE_TARGET_IMAGE_ID="$target_id" \

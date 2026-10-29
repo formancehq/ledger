@@ -58,6 +58,7 @@ jobs:
           path: |
             build/upgrade-operator/run.*/revisions.txt
             build/upgrade-operator/run.*/source-pull.txt
+            build/upgrade-operator/run.*/source-operator-pull.txt
             build/upgrade-operator/run.*/operator-build.txt
             build/upgrade-operator/run.*/target-build.txt
             build/upgrade-operator/run.*/kubernetes.yaml

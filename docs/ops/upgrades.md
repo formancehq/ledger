@@ -278,21 +278,25 @@ RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
 The launcher fetches the named release branch, selects the highest published
 stable or RC tag on that branch's history and release line, and records both
 the release commit and the branch HEAD. It refuses an empty upgrade or a
-branch outside `release/vX.Y`. It pulls the published Ledger image, builds the
-operator and target Ledger images from the exact branch HEAD, and loads all
-three into an isolated kind cluster. The target image is tagged with its full
-local image ID, so the Cluster CR refers to immutable build content and each
-restarted Pod can be checked against that ID. The workflow uploads the
+branch outside `release/vX.Y`. It pulls the published Ledger and operator
+images for that release, builds the target operator and Ledger images from the
+exact branch HEAD, and loads all four into an isolated kind cluster. The target
+Ledger image is tagged with its full local image ID, so the Cluster CR refers
+to immutable build content and each restarted Pod can be checked against that
+ID. The workflow uploads the
 revision, image, Chainsaw, Kubernetes, and operator logs as evidence.
 
-Chainsaw creates a three-voter operator-managed Cluster on the published image
-and records the Pod and PVC identities. It commits data, enables maintenance,
-and updates `spec.image` to the built HEAD image. It observes old and new Pods
-coexisting, checks rejected ledger creation and transaction posting on both
-image versions, waits for
-the operator's StatefulSet rollout, and checks that all Pods changed while PVCs
-did not. After disabling maintenance, it commits another transaction, checks
-the account on all voters, and runs each voter's audit/derived-store checker.
+Chainsaw creates a three-voter Cluster with the published operator and Ledger
+images, then commits data and records the Pod and PVC identities. It upgrades
+the operator through Helm to the HEAD image first, verifies its Pod and image
+changed, and checks that Ledger data remained intact. Only then does it update
+`spec.image` to the built Ledger HEAD image. It observes old and new Ledger Pods
+coexisting, waits for the StatefulSet rollout, and checks that all Pods changed
+while PVCs did not. It commits another transaction, checks the account on all
+voters, and runs each voter's audit/derived-store checker. The test makes no
+business writes during mixed Ledger versions and does not establish that such
+writes are safe; the maintenance-gated binary test above covers the specific
+rc.1 metadata-validation change separately.
 
 The image-ID tag is deliberately not a published RC tag. This exercise tests
 the operator rollout and binary compatibility with the latest release; it does

@@ -914,12 +914,12 @@ Dispatch `.github/workflows/release-operator-upgrade.yml` with a
 `release/vX.Y` branch, or run
 `RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade` locally. The
 launcher selects the latest published stable or RC release tag reachable from
-the branch HEAD, pulls its published image, builds the operator and target
-Ledger from the exact HEAD, and runs Chainsaw in an isolated kind cluster.
+the branch HEAD, pulls its published Ledger and operator images, builds both
+target images from the exact HEAD, and runs Chainsaw in an isolated kind cluster.
 The target Pod image tag is its full local image ID. The test checks a real
-operator-driven StatefulSet rollout, mixed-version ledger creation and
-transaction rejection,
-retained PVC identities, data before and after, and every voter's store check.
+operator upgrade before the Ledger StatefulSet rollout, retained PVC identities,
+data before and after, and every voter's store check. It does not write during
+the mixed-Ledger-version interval or test maintenance-mode rejection.
 The workflow saves the evidence under `build/upgrade-operator/` and uploads it
 even on failure. A Docker daemon and access to the published GHCR image are
 required. The image-ID tag does not exercise adjacent-RC tag admission.
