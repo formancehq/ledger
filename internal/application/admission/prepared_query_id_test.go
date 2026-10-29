@@ -1,6 +1,7 @@
 package admission
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
@@ -8,9 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 func TestRequestToOrder_ResolvesPreparedQueryIDBeforeCommit(t *testing.T) {
@@ -43,6 +49,72 @@ func TestRequestToOrder_ResolvesPreparedQueryIDBeforeCommit(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
+	store := createTestStoreWithoutPolicy(t)
+	adm := &Admission{store: store, attrs: attributes.New()}
+	ctx := context.Background()
+	const key = "prepared-query-retry"
+
+	request := func(name, id string) *servicepb.Request {
+		filter := &commonpb.QueryFilter{}
+		require.NoError(t, json.Unmarshal([]byte(`{"$match":{"id":"`+id+`"}}`), filter))
+
+		return &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{
+			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{Ledger: testLedgerName, Name: name, Filter: filter},
+		}}
+	}
+	requests := []*servicepb.Request{request("logs", "7"), request("transactions", "8")}
+	originalOverlay := newBulkOverlay()
+	originalOverlay.preparedTargets.Put(domain.PreparedQueryKey{LedgerName: testLedgerName, Name: "logs"}, commonpb.QueryTarget_QUERY_TARGET_LOGS)
+	originalOverlay.preparedTargets.Put(domain.PreparedQueryKey{LedgerName: testLedgerName, Name: "transactions"}, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	original := make([]*raftcmdpb.Order, len(requests))
+	for i, req := range requests {
+		var err error
+		original[i], err = adm.requestToOrder(ctx, req, nil, originalOverlay)
+		require.NoError(t, err)
+	}
+	hash := processing.HashOrders(original)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveIdempotencyKey(batch, key, &commonpb.IdempotencyKeyValue{Hash: hash, CreatedAt: 100, FirstLogSequence: 1, LogCount: 2}))
+	entry := &auditpb.AuditEntry{Sequence: 1, Timestamp: &commonpb.Timestamp{Data: 100}, Idempotency: &commonpb.Idempotency{Key: key}}
+	batch.KeyBuilder.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(1)
+	require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), entry))
+	for i, order := range original {
+		item := &auditpb.AuditItem{OrderIndex: uint32(i), SerializedOrder: processing.MarshalOrderBusinessIntent(order, nil)}
+		batch.KeyBuilder.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(1).PutUint32(uint32(i))
+		require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), item))
+	}
+	// A later conflicting use of the same key must not hide its frozen entry.
+	batch.KeyBuilder.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(2)
+	require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), &auditpb.AuditEntry{
+		Sequence: 2, Timestamp: &commonpb.Timestamp{Data: 101}, Idempotency: &commonpb.Idempotency{Key: key},
+	}))
+	require.NoError(t, batch.Commit())
+
+	// Both queries have disappeared. The first filter must recover its LOGS
+	// target while the second stays a transaction id, even in one batch.
+	retry := make([]*raftcmdpb.Order, len(requests))
+	for i, req := range requests {
+		var err error
+		retry[i], err = adm.requestToOrder(ctx, req, nil, newBulkOverlay())
+		require.NoError(t, err)
+	}
+	require.False(t, bytes.Equal(hash, processing.HashOrders(retry)))
+	require.NoError(t, adm.restorePreparedQueryIDRetry(ctx, key, retry))
+	require.Equal(t, hash, processing.HashOrders(retry))
+	require.NotNil(t, retry[0].GetLedgerScoped().GetUpdatePreparedQuery().GetFilter().GetLogId())
+	require.NotNil(t, retry[1].GetLedgerScoped().GetUpdatePreparedQuery().GetFilter().GetBuiltinUint())
+
+	// A different body with the same key must remain different for the FSM's
+	// normal IDEMPOTENCY_KEY_CONFLICT check.
+	changed, err := adm.requestToOrder(ctx, request("logs", "9"), nil, newBulkOverlay())
+	require.NoError(t, err)
+	other := []*raftcmdpb.Order{changed, retry[1].CloneVT()}
+	require.NoError(t, adm.restorePreparedQueryIDRetry(ctx, key, other))
+	require.NotEqual(t, hash, processing.HashOrders(other))
 }
 
 func TestRequestToOrder_ResolvesStoredLogQueryIDBeforeCommit(t *testing.T) {
