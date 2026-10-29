@@ -13,6 +13,11 @@ every member durably applies that release. The RPCs require
 `AUTH_SCOPE_CLUSTER_WRITE` and route to the leader. The hidden `ledgerctl`
 commands are the operator's transport.
 
+While an annotation transition is active, the operator addresses the running
+StatefulSet using its live replica count, gRPC container port, and TLS mode.
+Changes to the desired `Cluster` spec therefore do not redirect a release to
+Pods that have not yet been updated.
+
 The annotation requests a transition; write rejection is certified only by
 `status.drain.phase: Drained`. If the annotation is removed and re-added while
 release is in progress, the operator completes the old release and persists a

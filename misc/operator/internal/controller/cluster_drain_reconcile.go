@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -99,9 +100,13 @@ func (r *ClusterReconciler) reconcileAnnotatedDrain(
 	if sts.Spec.Replicas == nil || sts.Status.ReadyReplicas != *sts.Spec.Replicas || *sts.Spec.Replicas == 0 {
 		return ctrl.Result{RequeueAfter: drainRequeueInterval}, nil
 	}
+	liveCluster, err := drainClusterFromWorkload(cluster, sts)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	tlsMode := currentTLSModeFromStatefulSet(sts)
 	if state.Phase == drainPhasePreflighting {
-		if err := preflight(ctx, cluster, tlsMode); err != nil {
+		if err := preflight(ctx, liveCluster, tlsMode); err != nil {
 			return ctrl.Result{}, fmt.Errorf("preflighting annotated drain: %w", err)
 		}
 		state.Phase = drainPhaseDraining
@@ -114,7 +119,7 @@ func (r *ClusterReconciler) reconcileAnnotatedDrain(
 	}
 	if state.Phase == drainPhaseReleasing {
 		setDrainCondition(cluster, metav1.ConditionFalse, "Releasing", "Waiting for the cluster-wide drain release")
-		ready, err := ensureRelease(ctx, cluster, state.Epoch, tlsMode)
+		ready, err := ensureRelease(ctx, liveCluster, state.Epoch, tlsMode)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("releasing annotated drain: %w", err)
 		}
@@ -138,7 +143,7 @@ func (r *ClusterReconciler) reconcileAnnotatedDrain(
 	}
 
 	setDrainCondition(cluster, metav1.ConditionFalse, "Draining", "Waiting for the cluster-wide drain barrier")
-	ready, err := ensureBarrier(ctx, cluster, state.Epoch, tlsMode)
+	ready, err := ensureBarrier(ctx, liveCluster, state.Epoch, tlsMode)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("applying annotated drain: %w", err)
 	}
@@ -161,6 +166,36 @@ func (r *ClusterReconciler) reconcileAnnotatedDrain(
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// Drain reconciliation freezes normal StatefulSet updates, so transport must
+// address the Pods that are actually running, even if the desired spec changes.
+func drainClusterFromWorkload(cluster *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (*ledgerv1alpha1.Cluster, error) {
+	if sts.Spec.Replicas == nil || *sts.Spec.Replicas == 0 {
+		return nil, errors.New("drain workload has no replicas")
+	}
+	var grpcPort int32
+	for _, container := range sts.Spec.Template.Spec.Containers {
+		if container.Name != ledgerContainer {
+			continue
+		}
+		for _, port := range container.Ports {
+			if port.Name == "grpc" && port.Protocol == corev1.ProtocolTCP {
+				grpcPort = port.ContainerPort
+
+				break
+			}
+		}
+	}
+	if grpcPort <= 0 {
+		return nil, errors.New("drain workload has no gRPC container port")
+	}
+	live := cluster.DeepCopy()
+	replicas := *sts.Spec.Replicas
+	live.Spec.Replicas = &replicas
+	live.Spec.GrpcPort = grpcPort
+
+	return live, nil
 }
 
 func setDrainCondition(cluster *ledgerv1alpha1.Cluster, status metav1.ConditionStatus, reason, message string) {

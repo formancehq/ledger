@@ -23,11 +23,11 @@ func TestAnnotatedDrainPersistsEpochAndReleaseIntentAcrossReconcile(t *testing.T
 	require.NoError(t, appsv1.AddToScheme(scheme))
 	cluster := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "annotated", Namespace: "test", Annotations: map[string]string{ClusterDrainAnnotation: "true"}},
-		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: new(int32(1))},
+		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: new(int32(1)), GrpcPort: 8888},
 	}
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: cluster.Namespace},
-		Spec:       appsv1.StatefulSetSpec{Replicas: new(int32(1)), Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Env: []corev1.EnvVar{{Name: "TLS_MODE", Value: tlsModeDisabled}}}}}}},
+		Spec:       appsv1.StatefulSetSpec{Replicas: new(int32(1)), Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Ports: []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888, Protocol: corev1.ProtocolTCP}}, Env: []corev1.EnvVar{{Name: "TLS_MODE", Value: tlsModeDisabled}}}}}}},
 		Status:     appsv1.StatefulSetStatus{ReadyReplicas: 1},
 	}
 	r := &ClusterReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()}
@@ -43,6 +43,8 @@ func TestAnnotatedDrainPersistsEpochAndReleaseIntentAcrossReconcile(t *testing.T
 	barrier := func(ctx context.Context, c *ledgerv1alpha1.Cluster, epoch, tlsMode string) (bool, error) {
 		barrierCalls++
 		require.Equal(t, tlsModeDisabled, tlsMode)
+		require.Equal(t, int32(8888), c.Spec.GrpcPort)
+		require.Equal(t, int32(1), *c.Spec.Replicas)
 		persisted := load()
 		require.Equal(t, epoch, persisted.Status.Drain.Epoch, "epoch must be durable before BeginDrain")
 
@@ -50,6 +52,8 @@ func TestAnnotatedDrainPersistsEpochAndReleaseIntentAcrossReconcile(t *testing.T
 	}
 	release := func(ctx context.Context, c *ledgerv1alpha1.Cluster, epoch, tlsMode string) (bool, error) {
 		releaseCalls++
+		require.Equal(t, int32(8888), c.Spec.GrpcPort, "release must use the live Pod port")
+		require.Equal(t, int32(1), *c.Spec.Replicas, "leader discovery must use the live replica count")
 		persisted := load()
 		require.Equal(t, drainPhaseReleasing, persisted.Status.Drain.Phase, "release intent must be durable before EndDrain")
 		require.Equal(t, epoch, persisted.Status.Drain.Epoch)
@@ -82,6 +86,8 @@ func TestAnnotatedDrainPersistsEpochAndReleaseIntentAcrossReconcile(t *testing.T
 
 	removed := load()
 	delete(removed.Annotations, ClusterDrainAnnotation)
+	removed.Spec.GrpcPort = 9999
+	removed.Spec.Replicas = new(int32(0))
 	require.NoError(t, r.Update(t.Context(), removed))
 	removed = load()
 	result, err = r.reconcileAnnotatedDrain(t.Context(), removed, preflight, barrier, release)
@@ -112,11 +118,11 @@ func TestAnnotatedDrainCancellationAfterFailedPreflight(t *testing.T) {
 	require.NoError(t, appsv1.AddToScheme(scheme))
 	cluster := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "unsupported", Namespace: "test", Annotations: map[string]string{ClusterDrainAnnotation: "true"}},
-		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: new(int32(1))},
+		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: new(int32(1)), GrpcPort: 8888},
 	}
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: cluster.Namespace},
-		Spec:       appsv1.StatefulSetSpec{Replicas: new(int32(1))},
+		Spec:       appsv1.StatefulSetSpec{Replicas: new(int32(1)), Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Ports: []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888, Protocol: corev1.ProtocolTCP}}}}}}},
 		Status:     appsv1.StatefulSetStatus{ReadyReplicas: 1},
 	}
 	r := &ClusterReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()}
@@ -161,12 +167,12 @@ func TestAnnotatedDrainReaddedDuringReleaseStartsNewEpoch(t *testing.T) {
 	require.NoError(t, appsv1.AddToScheme(scheme))
 	cluster := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "readded", Namespace: "test", Annotations: map[string]string{ClusterDrainAnnotation: "true"}},
-		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: new(int32(1))},
+		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: new(int32(1)), GrpcPort: 8888},
 		Status:     ledgerv1alpha1.ClusterStatus{Drain: &ledgerv1alpha1.DrainStatus{Epoch: "old-epoch", Phase: drainPhaseReleasing}},
 	}
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: cluster.Namespace},
-		Spec:       appsv1.StatefulSetSpec{Replicas: new(int32(1))},
+		Spec:       appsv1.StatefulSetSpec{Replicas: new(int32(1)), Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Ports: []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888, Protocol: corev1.ProtocolTCP}}}}}}},
 		Status:     appsv1.StatefulSetStatus{ReadyReplicas: 1},
 	}
 	r := &ClusterReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()}
