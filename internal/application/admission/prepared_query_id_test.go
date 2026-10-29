@@ -80,6 +80,7 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.SaveIdempotencyKey(batch, key, &commonpb.IdempotencyKeyValue{Hash: hash, CreatedAt: 100, FirstLogSequence: 1, LogCount: 2}))
+	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{Sequence: 1}, {Sequence: 2}}))
 	entry := &auditpb.AuditEntry{Sequence: 1, Timestamp: &commonpb.Timestamp{Data: 100}, Idempotency: &commonpb.Idempotency{Key: key}}
 	batch.KeyBuilder.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(1)
 	require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), entry))
@@ -95,8 +96,8 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	// Both queries have disappeared. The first filter must recover its LOGS
-	// target while the second stays a transaction id, even in one batch.
+	// Both queries have disappeared. The first filter matched a LOGS target
+	// while the second was a transaction id, even in one batch.
 	retry := make([]*raftcmdpb.Order, len(requests))
 	for i, req := range requests {
 		var err error
@@ -104,17 +105,33 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 		require.NoError(t, err)
 	}
 	require.False(t, bytes.Equal(hash, processing.HashOrders(retry)))
-	require.NoError(t, adm.restorePreparedQueryIDRetry(ctx, key, retry))
-	require.Equal(t, hash, processing.HashOrders(retry))
-	require.NotNil(t, retry[0].GetLedgerScoped().GetUpdatePreparedQuery().GetFilter().GetLogId())
+	replay, err := adm.replayPreparedQueryIDRetry(ctx, key, retry)
+	require.NoError(t, err)
+	require.True(t, replay.Replayed)
+	require.Len(t, replay.Logs, 2)
+	require.False(t, bytes.Equal(hash, processing.HashOrders(retry)), "replay must not rewrite a future fresh order")
+	require.NotNil(t, retry[0].GetLedgerScoped().GetUpdatePreparedQuery().GetFilter().GetBuiltinUint())
 	require.NotNil(t, retry[1].GetLedgerScoped().GetUpdatePreparedQuery().GetFilter().GetBuiltinUint())
+	candidate := []*raftcmdpb.Order{retry[0].CloneVT(), retry[1].CloneVT()}
+	require.True(t, restoreEquivalentIDFilters(candidate, original, hash))
+	require.Equal(t, hash, processing.HashOrders(candidate))
+	readyAdmission, _ := createTestAdmission(t, store)
+	plan := &admissionPlan{key: key, buildOrders: func(context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error) {
+		return retry, newBulkOverlay(), nil
+	}}
+	proposed, _, _, err := readyAdmission.prepareOrders(ctx, plan)
+	require.NoError(t, err)
+	require.Nil(t, proposed, "historical filter must not be proposed to Raft")
+	require.True(t, plan.replay.Replayed)
 
 	// A different body with the same key must remain different for the FSM's
 	// normal IDEMPOTENCY_KEY_CONFLICT check.
 	changed, err := adm.requestToOrder(ctx, request("logs", "9"), nil, newBulkOverlay())
 	require.NoError(t, err)
 	other := []*raftcmdpb.Order{changed, retry[1].CloneVT()}
-	require.NoError(t, adm.restorePreparedQueryIDRetry(ctx, key, other))
+	replay, err = adm.replayPreparedQueryIDRetry(ctx, key, other)
+	require.NoError(t, err)
+	require.Nil(t, replay)
 	require.NotEqual(t, hash, processing.HashOrders(other))
 
 	// An expired record is no longer a replay candidate. The FSM advances the
@@ -132,7 +149,9 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 	fresh, err := adm.requestToOrder(ctx, requests[0], nil, newBulkOverlay())
 	require.NoError(t, err)
 	current := []*raftcmdpb.Order{fresh, retry[1].CloneVT()}
-	require.NoError(t, adm.restorePreparedQueryIDRetry(ctx, key, current))
+	replay, err = adm.replayPreparedQueryIDRetry(ctx, key, current)
+	require.NoError(t, err)
+	require.Nil(t, replay)
 	require.NotEqual(t, hash, processing.HashOrders(current))
 	require.NotNil(t, current[0].GetLedgerScoped().GetUpdatePreparedQuery().GetFilter().GetBuiltinUint())
 }

@@ -510,6 +510,7 @@ type admissionPlan struct {
 	businessBatch         bool
 	checkAfterMaintenance func() error
 	buildOrders           func(context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error)
+	replay                *domain.ApplyResult
 }
 
 func (a *Admission) buildApplyAdmissionPlan(ctx context.Context, req *servicepb.ApplyRequest) (*admissionPlan, error) {
@@ -586,6 +587,9 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 	}
 
 	orders, needs, perOrder, err := a.prepareOrders(ctx, admPlan)
+	if admPlan.replay != nil {
+		return admPlan.replay, nil
+	}
 	if orders != nil {
 		// Every built order shares the atomic batch outcome, including preparation failures.
 		defer a.recordActionOutcome(ctx, orders, &err)
@@ -666,8 +670,14 @@ func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) (
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
-	if err := a.restorePreparedQueryIDRetry(ctx, admPlan.key, orders); err != nil {
+	replay, err := a.replayPreparedQueryIDRetry(ctx, admPlan.key, orders)
+	if err != nil {
 		return nil, nil, nil, fmt.Errorf("resolving prepared query idempotency retry: %w", err)
+	}
+	if replay != nil {
+		admPlan.replay = replay
+
+		return nil, nil, nil, nil
 	}
 
 	// Enforce the metadata size contract over the whole command. It runs here,
