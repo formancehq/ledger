@@ -19,10 +19,11 @@ type HTTPSource struct {
 }
 
 // NewHTTPSource creates a new HTTP-based v2 log source.
-// If httpClient is nil, a default http.Client is used.
+// If httpClient is nil, a client with its own transport is used, so Close
+// does not drop connections of other clients sharing http.DefaultTransport.
 func NewHTTPSource(baseURL, ledgerName string, httpClient *http.Client) *HTTPSource {
 	if httpClient == nil {
-		httpClient = &http.Client{}
+		httpClient = &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
 	}
 
 	return &HTTPSource{

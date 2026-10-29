@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -182,6 +183,34 @@ func TestHTTPSink_Close(t *testing.T) {
 
 	err = sink.Close()
 	require.NoError(t, err)
+}
+
+// Closing one sink must not drop another sink's idle connections: with a
+// shared http.DefaultTransport, Close broke in-flight publishes elsewhere.
+func TestHTTPSink_CloseDoesNotAffectOtherSinks(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	active, err := NewHTTPSink(HTTPSinkConfig{Endpoint: server.URL, Format: FormatJSON})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, active.Close()) }()
+	closed, err := NewHTTPSink(HTTPSinkConfig{Endpoint: server.URL, Format: FormatJSON})
+	require.NoError(t, err)
+
+	events := []*eventspb.Event{{LogSequence: 1}}
+	require.NoError(t, active.Publish(context.Background(), events))
+	require.NoError(t, closed.Close())
+
+	var reused bool
+	ctx := httptrace.WithClientTrace(context.Background(), &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) { reused = info.Reused },
+	})
+	require.NoError(t, active.Publish(ctx, events))
+	require.True(t, reused, "the active sink's idle connection must survive another sink's Close")
 }
 
 func TestHTTPSinkTransportErrorIsPublishable(t *testing.T) {

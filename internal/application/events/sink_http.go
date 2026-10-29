@@ -48,7 +48,10 @@ func NewHTTPSink(cfg HTTPSinkConfig) (_ *HTTPSink, retErr error) {
 	return &HTTPSink{
 		errors: sanitizer,
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			// Own the transport: Close must not drop connections of other sinks
+			// or of any other client sharing http.DefaultTransport.
+			Transport: http.DefaultTransport.(*http.Transport).Clone(),
+			Timeout:   30 * time.Second,
 			// Return every redirect response to post, which reports it as a failure.
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return http.ErrUseLastResponse
