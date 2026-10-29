@@ -918,7 +918,8 @@ launcher selects the latest published stable or RC release tag reachable from
 the branch HEAD, pulls its published Ledger and operator images, builds both
 target images from the exact HEAD, and runs Chainsaw in an isolated kind cluster.
 The target Pod image tag is its full local image ID. The test checks a real
-operator upgrade before the Ledger StatefulSet rollout, retained PVC identities,
+operator upgrade before the Ledger StatefulSet rollout, a ready old/new Ledger
+Pod coexistence window, retained PVC identities,
 data before and after, and every voter's store check. It does not write during
 the mixed-Ledger-version interval or test maintenance-mode rejection.
 The workflow saves the evidence under `build/upgrade-operator/` and uploads it

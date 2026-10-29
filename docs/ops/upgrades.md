@@ -291,9 +291,10 @@ Chainsaw creates a three-voter Cluster with the published operator and Ledger
 images, then commits data and records the Pod and PVC identities. It upgrades
 the operator through Helm to the HEAD image first, verifies its Pod and image
 changed, and checks that Ledger data remained intact. Only then does it update
-`spec.image` to the built Ledger HEAD image. It observes old and new Ledger Pods
-coexisting, waits for the StatefulSet rollout, and checks that all Pods changed
-while PVCs did not. It commits another transaction, checks the account on all
+`spec.image` to the built Ledger HEAD image. It observes ready, non-terminating
+old and new Ledger Pods coexisting, waits for the StatefulSet rollout, and
+checks that all Pods changed while PVCs did not. It commits another transaction,
+checks the account on all
 voters, and runs each voter's audit/derived-store checker. The test makes no
 business writes during mixed Ledger versions and does not establish that such
 writes are safe; the maintenance-gated binary test above covers the specific

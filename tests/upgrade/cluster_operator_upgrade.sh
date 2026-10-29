@@ -22,12 +22,12 @@ operator_pod() {
 }
 check_operator() {
   local image="$1" id="$2" output
-  output="$(operator_pod)"
+  output="$(operator_pod)" || return 1
   jq -e --arg image "$image" --arg id "$id" '
     (.items | length) == 1 and
     (.items[0].spec.containers | any(.name == "operator" and .image == $image)) and
     (.items[0].status.containerStatuses | any(.name == "operator" and (.imageID | contains($id)) and .ready))
-  ' <<<"$output" >/dev/null
+  ' <<<"$output" >/dev/null || return 1
   jq -r '.items[0].metadata.uid' <<<"$output"
 }
 pod() { printf '%s-%s' "$statefulset" "$1"; }
@@ -152,13 +152,13 @@ mixed_seen=0
 while [ "$(date +%s)" -lt "$deadline" ]; do
   pods="$(k get pods -o json)"
   counts="$(jq -r --arg prefix "$statefulset-" --arg source "$source_image" --arg target "$target_image" '
-    [.items[] | select(.metadata.name | startswith($prefix)) |
+    [.items[] | select((.metadata.name | startswith($prefix)) and .metadata.deletionTimestamp == null) |
       {image:([.spec.containers[] | select(.name == "ledger") | .image][0]),
        ready:([.status.conditions[]? | select(.type == "Ready") | .status][0] == "True"),
        ordinal:(.metadata.name | split("-")[-1] | tonumber)}] as $pods |
-    "\($pods | length) \([$pods[] | select(.image == $source)] | length) \([$pods[] | select(.image == $target)] | length) \([$pods[] | select(.image == $target and .ready)] | length)"' <<<"$pods")"
-  read -r total old new new_ready <<<"$counts"
-  if [ "$old" -gt 0 ] && [ "$new" -gt 0 ]; then mixed_seen=1; fi
+    "\($pods | length) \([$pods[] | select(.image == $source)] | length) \([$pods[] | select(.image == $target)] | length) \([$pods[] | select(.image == $source and .ready)] | length) \([$pods[] | select(.image == $target and .ready)] | length)"' <<<"$pods")"
+  read -r total old new old_ready new_ready <<<"$counts"
+  if [ "$old_ready" -gt 0 ] && [ "$new_ready" -gt 0 ]; then mixed_seen=1; fi
   if [ "$total" -eq 3 ] && [ "$old" -eq 0 ] && [ "$new" -eq 3 ] && [ "$new_ready" -eq 3 ]; then break; fi
   sleep 2
 done
