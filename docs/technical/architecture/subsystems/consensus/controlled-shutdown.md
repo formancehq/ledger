@@ -10,6 +10,12 @@ every member durably applies that release. The RPCs require
 `AUTH_SCOPE_CLUSTER_WRITE` and route to the leader. The hidden `ledgerctl`
 commands are the operator's transport.
 
+The annotation requests a transition; write rejection is certified only by
+`status.drain.phase: Drained`. If the annotation is removed and re-added while
+release is in progress, the operator completes the old release and persists a
+new epoch immediately. Writes may be admitted until the new epoch reaches
+`Drained`, as during any initial annotation request.
+
 If the shutdown is canceled or the Pods restart with their existing volumes,
 the operator calls `ClusterService.EndDrain` with the same epoch. The hidden
 `ledgerctl cluster end-drain` command is its transport. The release is another

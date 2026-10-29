@@ -96,3 +96,46 @@ func TestAnnotatedDrainPersistsEpochAndReleaseIntentAcrossReconcile(t *testing.T
 	require.True(t, result.Requeue)
 	require.NotEqual(t, firstEpoch, load().Status.Drain.Epoch)
 }
+
+func TestAnnotatedDrainReaddedDuringReleaseStartsNewEpoch(t *testing.T) {
+	t.Parallel()
+	scheme := runtime.NewScheme()
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	require.NoError(t, appsv1.AddToScheme(scheme))
+	cluster := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "readded", Namespace: "test", Annotations: map[string]string{ClusterDrainAnnotation: "true"}},
+		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: new(int32(1))},
+		Status:     ledgerv1alpha1.ClusterStatus{Drain: &ledgerv1alpha1.DrainStatus{Epoch: "old-epoch", Phase: drainPhaseReleasing}},
+	}
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: cluster.Namespace},
+		Spec:       appsv1.StatefulSetSpec{Replicas: new(int32(1))},
+		Status:     appsv1.StatefulSetStatus{ReadyReplicas: 1},
+	}
+	r := &ClusterReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()}
+	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
+	barrierCalls, releaseCalls := 0, 0
+	barrier := func(context.Context, *ledgerv1alpha1.Cluster, string, string) (bool, error) {
+		barrierCalls++
+
+		return true, nil
+	}
+	release := func(_ context.Context, _ *ledgerv1alpha1.Cluster, epoch, _ string) (bool, error) {
+		releaseCalls++
+		require.Equal(t, "old-epoch", epoch)
+
+		return true, nil
+	}
+	result, err := r.reconcileAnnotatedDrain(t.Context(), cluster, barrier, release)
+	require.NoError(t, err)
+	require.True(t, result.Requeue)
+	require.Equal(t, 1, releaseCalls)
+	require.Zero(t, barrierCalls)
+	fresh := &ledgerv1alpha1.Cluster{}
+	require.NoError(t, r.Get(t.Context(), key, fresh))
+	require.Equal(t, drainPhaseDraining, fresh.Status.Drain.Phase)
+	require.NotEqual(t, "old-epoch", fresh.Status.Drain.Epoch)
+	_, err = r.reconcileAnnotatedDrain(t.Context(), fresh, barrier, release)
+	require.NoError(t, err)
+	require.Equal(t, 1, barrierCalls)
+}

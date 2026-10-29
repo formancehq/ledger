@@ -94,10 +94,17 @@ func (r *ClusterReconciler) reconcileAnnotatedDrain(
 		if !ready {
 			return ctrl.Result{RequeueAfter: drainRequeueInterval}, nil
 		}
-		cluster.Status.Drain = nil
-		meta.RemoveStatusCondition(&cluster.Status.Conditions, "Drained")
+		if requested {
+			// A re-added annotation is a new request. Persist its fresh epoch
+			// immediately after the old release so a retry cannot reuse it.
+			cluster.Status.Drain = &ledgerv1alpha1.DrainStatus{Epoch: uuid.NewString(), Phase: drainPhaseDraining}
+			setDrainCondition(cluster, metav1.ConditionFalse, "Draining", "Waiting for the cluster-wide drain barrier")
+		} else {
+			cluster.Status.Drain = nil
+			meta.RemoveStatusCondition(&cluster.Status.Conditions, "Drained")
+		}
 		if err := r.Status().Update(ctx, cluster); err != nil {
-			return ctrl.Result{}, fmt.Errorf("clearing released drain status: %w", err)
+			return ctrl.Result{}, fmt.Errorf("persisting released drain status: %w", err)
 		}
 
 		return ctrl.Result{Requeue: requested}, nil
