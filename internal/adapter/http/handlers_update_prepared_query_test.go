@@ -89,6 +89,31 @@ func TestHandleUpdatePreparedQuery_NestedOneofs(t *testing.T) {
 	}
 }
 
+func TestHandleUpdatePreparedQuery_ExactLogID(t *testing.T) {
+	t.Parallel()
+	var captured *commonpb.QueryFilter
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListPreparedQueries(gomock.Any(), "ledger1").Return(
+		[]*commonpb.PreparedQuery{{Name: "my-query", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS}}, nil)
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, reqs *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+			captured = reqs.GetUnsigned().GetRequests()[0].GetUpdatePreparedQuery().GetFilter()
+
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+		})
+	srv := newTestServer(t, backend)
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPut, "/ledger1/prepared-queries/my-query",
+		strings.NewReader(`{"filter":{"$or":[{"$match":{"id":"7"}},{"$match":{"id":"8"}}]}}`),
+		map[string]string{"ledgerName": "ledger1", "queryName": "my-query"})
+	srv.handleUpdatePreparedQuery(w, r)
+	require.Equal(t, http.StatusNoContent, w.Code)
+	require.NotNil(t, captured)
+	for _, child := range captured.GetOr().GetFilters() {
+		require.NotNil(t, child.GetLogId())
+	}
+}
+
 func TestHandleUpdatePreparedQuery_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
