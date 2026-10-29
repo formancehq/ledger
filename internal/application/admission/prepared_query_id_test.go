@@ -117,14 +117,14 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 	require.NoError(t, adm.restorePreparedQueryIDRetry(ctx, key, other))
 	require.NotEqual(t, hash, processing.HashOrders(other))
 
-	// An expired record is no longer a replay candidate. Even if the HLC is
-	// ahead of wall time, the fresh update must keep the current target arm.
+	// An expired record is no longer a replay candidate. The FSM advances the
+	// HLC by one before expiry comparison, so the E-1 boundary must be skipped.
 	expiresAt := uint64(time.Now().Add(time.Hour).UnixMicro())
 	batch = store.OpenWriteSession()
 	require.NoError(t, state.SaveIdempotencyKey(batch, key, &commonpb.IdempotencyKeyValue{
 		Hash: hash, CreatedAt: 100, ExpiresAt: expiresAt, FirstLogSequence: 1, LogCount: 2,
 	}))
-	require.NoError(t, state.StoreLastAppliedTimestamp(batch, expiresAt))
+	require.NoError(t, state.StoreLastAppliedTimestamp(batch, expiresAt-1))
 	_, err = adm.attrs.PreparedQuery.Set(batch, domain.PreparedQueryKey{LedgerName: testLedgerName, Name: "logs"}.Bytes(),
 		&commonpb.PreparedQuery{Name: "logs", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS})
 	require.NoError(t, err)
