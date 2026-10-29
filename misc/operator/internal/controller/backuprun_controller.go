@@ -230,6 +230,15 @@ func (r *BackupRunReconciler) ensureBackupJob(
 	if !metav1.IsControlledBy(sts, ls) {
 		return nil, fmt.Errorf("StatefulSet %q is not controlled by Cluster %q (UID %s)", sts.Name, ls.Name, ls.UID)
 	}
+	// The Job dials the ClusterIP Service backupServerAddr names, not the
+	// StatefulSet, so that Service must be the Cluster's too. Checking it,
+	// rather than dialing a pod address, keeps the Service's routing to any pod
+	// (the leader proxies the backup) and its certificate SAN; the ownership of
+	// its endpoints follows from the operator writing its selector. A Service
+	// replaced after this check, while the Job starts, is not detected.
+	if err := requireClusterService(ctx, r.Client, ls); err != nil {
+		return nil, fmt.Errorf("resolving the Service of Cluster %q: %w", ls.Name, err)
+	}
 	tlsMode := currentTLSModeFromStatefulSet(sts)
 	effective := ls.DeepCopy()
 	if tlsMode == tlsModeRequired || tlsMode == tlsModeOptional {

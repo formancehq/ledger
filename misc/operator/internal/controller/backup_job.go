@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -10,8 +11,11 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -83,6 +87,32 @@ func backupServerAddr(ls *ledgerv1alpha1.Cluster) string {
 	}
 
 	return fmt.Sprintf("%s.%s.svc.cluster.local:%d", resourceName(ls.Name), ls.Namespace, port)
+}
+
+// errClusterServiceAbsent signals that the Cluster has no ClusterIP Service
+// yet, so a backup Job has nothing of this Cluster's to dial.
+var errClusterServiceAbsent = errors.New("cluster Service does not exist")
+
+// requireClusterService checks that the ClusterIP Service backupServerAddr
+// dials exists and is controlled by the Cluster. It returns
+// errClusterServiceAbsent when it does not exist and errResourceNameConflict
+// when it is not controlled by the Cluster (no controller reference, or
+// another one).
+func requireClusterService(ctx context.Context, c client.Client, ls *ledgerv1alpha1.Cluster) error {
+	svc := &corev1.Service{}
+	key := types.NamespacedName{Name: resourceName(ls.Name), Namespace: ls.Namespace}
+	if err := c.Get(ctx, key, svc); err != nil {
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf("%w: %s", errClusterServiceAbsent, key)
+		}
+
+		return fmt.Errorf("getting Service %s: %w", key, err)
+	}
+	if notControlledBy(svc, ls) {
+		return nameConflictError("Service", svc, ls)
+	}
+
+	return nil
 }
 
 // backupJobName returns the Job name for a given BackupRun.

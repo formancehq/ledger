@@ -14,7 +14,7 @@ import (
 func (r *ClusterReconciler) reconcileHeadlessService(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	enabled := ledger.Spec.HeadlessService.Enabled
 	if enabled != nil && !*enabled {
-		return r.deleteIfExists(ctx, &corev1.Service{
+		return r.deleteIfExists(ctx, ledger, &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      headlessServiceName(ledger.Name),
 				Namespace: ledger.Namespace,
@@ -58,7 +58,7 @@ func (r *ClusterReconciler) reconcileHeadlessService(ctx context.Context, ledger
 			Selector:                 selectorLabels(ledger),
 		}
 
-		return controllerutil.SetControllerReference(ledger, svc, r.Scheme)
+		return setOwnedControllerReference(ledger, svc, r.Scheme, "Service")
 	})
 
 	return err

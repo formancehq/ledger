@@ -26,16 +26,16 @@ func TestValidateSelectorImmutability(t *testing.T) {
 	)
 
 	makeService := func(name string, selector map[string]string) *corev1.Service {
-		return &corev1.Service{
+		return controlledByCluster(&corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
 			Spec:       corev1.ServiceSpec{Selector: selector},
-		}
+		}, clusterNamed(crName))
 	}
 	makeSTS := func(selector map[string]string) *appsv1.StatefulSet {
-		return &appsv1.StatefulSet{
+		return controlledByCluster(&appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{Name: resourceName(crName), Namespace: namespace},
 			Spec:       appsv1.StatefulSetSpec{Selector: &metav1.LabelSelector{MatchLabels: selector}},
-		}
+		}, clusterNamed(crName))
 	}
 
 	baselineSelector := map[string]string{
@@ -171,13 +171,13 @@ func TestPruneDisabledOptionalServices_RunsBeforeDriftGuard(t *testing.T) {
 	require.NoError(t, appsv1.AddToScheme(scheme))
 	require.NoError(t, networkingv1.AddToScheme(scheme))
 
-	headlessSvc := &corev1.Service{
+	headlessSvc := controlledByCluster(&corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{Name: headlessServiceName(crName), Namespace: namespace},
 		Spec: corev1.ServiceSpec{Selector: map[string]string{
 			"app.kubernetes.io/name":     "ledger",
 			"app.kubernetes.io/instance": crName,
 		}},
-	}
+	}, clusterNamed(crName))
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(headlessSvc).Build()
 	r := &ClusterReconciler{Client: c, Scheme: scheme}
 
@@ -217,12 +217,12 @@ func TestPruneDisabledOptionalServices_PrunesGrpcIngress(t *testing.T) {
 	require.NoError(t, appsv1.AddToScheme(scheme))
 	require.NoError(t, networkingv1.AddToScheme(scheme))
 
-	grpcSvc := &corev1.Service{
+	grpcSvc := controlledByCluster(&corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{Name: grpcServiceName(crName), Namespace: namespace},
-	}
-	grpcIngress := &networkingv1.Ingress{
+	}, clusterNamed(crName))
+	grpcIngress := controlledByCluster(&networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{Name: grpcIngressName(crName), Namespace: namespace},
-	}
+	}, clusterNamed(crName))
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(grpcSvc, grpcIngress).Build()
 	r := &ClusterReconciler{Client: c, Scheme: scheme}
 

@@ -80,6 +80,27 @@ when endpoint resolution or execution fails; the external ledger may remain.
 This change does not add controller binding state or alter Ledger storage,
 audit records, backup formats, or service APIs.
 
+## Derived object ownership
+
+Every object the operator derives from a Cluster name belongs to that Cluster
+only through a controller reference carrying its UID; a name match is never
+proof of ownership. The operator refuses to adopt or update an existing object
+it does not control, skips it when pruning a disabled feature, pins every
+name-based delete to the UID it inspected, and execs only into a pod
+controlled by the Cluster's own StatefulSet. Backup Jobs also require the
+ClusterIP Service they dial to be the Cluster's. A refused object is reported
+as `ResourceNamesAvailable=False` with reason `NameConflict`, phase `Error`, a
+`ResourceNameConflict` event and a one-minute requeue.
+
+Upgrading the operator changes nothing for objects it created, which already
+carry the controller reference. Two situations that were silently adopted now
+stop the Cluster until resolved: objects left by `kubectl delete --cascade=orphan`
+when the Cluster is recreated (delete them, keeping the PVCs, or restore their
+owner references), and a pre-existing ServiceAccount named `ledger-<name>`
+(set `serviceAccount.create: false` and `serviceAccount.name`). See
+[derived object ownership](../../docs/technical/architecture/subsystems/operator/derived-object-ownership.md)
+for each guarded path and the accepted races.
+
 ## Declarative ledger indexes
 
 For a Ledger with `spec.indexes`, reconciliation creates missing indexes in

@@ -91,7 +91,7 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 
 			c := fake.NewClientBuilder().
 				WithScheme(scheme).
-				WithObjects(makeSTS(tt.stsName)).
+				WithObjects(makeSTS(tt.stsName), backupClusterService(ls)).
 				Build()
 
 			r := &BackupRunReconciler{Client: c, Scheme: scheme}
@@ -129,6 +129,14 @@ func backupTLSWorkload(cluster *ledgerv1alpha1.Cluster, mode string) *appsv1.Sta
 		},
 		Spec: buildStatefulSetSpec(cluster, "backup-fixture", nil, mode),
 	}
+}
+
+// backupClusterService is the Cluster's own ClusterIP Service, which the
+// backup Job dials and ensureBackupJob requires to be controlled by the Cluster.
+func backupClusterService(cluster *ledgerv1alpha1.Cluster) *corev1.Service {
+	return controlledByCluster(&corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: cluster.Namespace},
+	}, cluster)
 }
 
 func TestEnsureBackupJobWorkloadRecovery(t *testing.T) {

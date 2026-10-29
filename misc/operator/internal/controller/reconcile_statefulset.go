@@ -120,7 +120,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 					sts.Spec.MinReadySeconds = desired.MinReadySeconds
 				}
 
-				return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
+				return setOwnedControllerReference(ledger, sts, r.Scheme, "StatefulSet")
 			})
 			effective.Spec.Replicas = savedReplicas
 			if err != nil {
@@ -135,7 +135,10 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			// taken before the CreateOrUpdate above): the rolling update has not yet
 			// started, so pod-0's gRPC server is still on the old TLS_MODE.
 			runningTLSMode := currentTLSModeFromStatefulSet(existingForTLS)
-			if err := raftScaleDown(ctx, r.Config, r.Clientset, ledger, previousReplicas, desiredReplicas, runningTLSMode, exec); err != nil {
+			// sts is now the live StatefulSet the Cluster controls (the mutate
+			// function refused any other): every exec into a pod first checks
+			// that this StatefulSet controls it.
+			if err := raftScaleDown(ctx, r.Config, r.Clientset, ledger, previousReplicas, desiredReplicas, runningTLSMode, ownedPodExec(sts, exec)); err != nil {
 				return ctrl.Result{}, fmt.Errorf("removing Raft nodes before scale-down: %w", err)
 			}
 		}
@@ -154,16 +157,18 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	// VCTs are immutable — we must delete-recreate with orphan propagation.
 	existing := &appsv1.StatefulSet{}
 	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, existing); err == nil {
+		if notControlledBy(existing, ledger) {
+			return ctrl.Result{}, nameConflictError("StatefulSet", existing, ledger)
+		}
 		if volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
 			if scalingDown || deferRCVolumeClaimRecreation(ledger.Spec.Image.Tag, existing) {
 				logger.Info("deferring StatefulSet recreation until RC rollout converges")
 				desired.Template = preserveExistingStorageWiring(existing.Spec.Template, desired.Template)
 			} else {
 				logger.Info("VolumeClaimTemplates changed, recreating StatefulSet with orphan propagation")
-				orphan := metav1.DeletePropagationOrphan
-				if err := r.Delete(ctx, existing, &client.DeleteOptions{
-					PropagationPolicy: &orphan,
-				}); err != nil {
+				// Pinned to the inspected UID: a StatefulSet replaced under the
+				// name since the ownership check above is never deleted.
+				if err := deleteInspected(ctx, r.Client, existing, client.PropagationPolicy(metav1.DeletePropagationOrphan)); err != nil {
 					return ctrl.Result{}, fmt.Errorf("deleting StatefulSet for VolumeClaimTemplate change: %w", err)
 				}
 				// Returning here requeues via the owned-StatefulSet delete event — the next
@@ -190,7 +195,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			sts.Spec.MinReadySeconds = desired.MinReadySeconds
 		}
 
-		return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
+		return setOwnedControllerReference(ledger, sts, r.Scheme, "StatefulSet")
 	})
 	if err != nil {
 		return ctrl.Result{}, err

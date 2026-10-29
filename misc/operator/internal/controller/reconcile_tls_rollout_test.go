@@ -34,13 +34,13 @@ func tlsDisableFixture(t *testing.T) (client.WithWatch, *ledgerv1alpha1.Cluster)
 	applyDefaults(cluster)
 	cluster.Spec.Persistence.DeletionProtection = new(false)
 	sts := &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: cluster.Namespace, Generation: 1, CreationTimestamp: metav1.Now()},
+		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: cluster.Namespace, UID: "tls-disable-sts", Generation: 1, CreationTimestamp: metav1.Now()},
 		Spec:       buildStatefulSetSpec(cluster, "initial", nil, tlsModeRequired),
 		Status:     appsv1.StatefulSetStatus{ObservedGeneration: 1, UpdatedReplicas: 1, ReadyReplicas: 1},
 	}
 	sts.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(cluster, ledgerv1alpha1.GroupVersion.WithKind("Cluster"))}
 
-	return fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build(), cluster
+	return fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts, backupClusterService(cluster)).Build(), cluster
 }
 
 func tlsReconcile(t *testing.T, c client.Client, key client.ObjectKey) *appsv1.StatefulSet {
@@ -166,7 +166,7 @@ func TestTLSDisableResumesAfterStatefulSetRecreation(t *testing.T) {
 	require.Equal(t, tlsModeOptional, latest.Status.TLSRollout.Mode)
 	// Cluster-secret reconciliation runs before workload recreation. It must not
 	// interpret the absent StatefulSet as a fresh plaintext bootstrap.
-	token := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: clusterSecretName(cluster.Name), Namespace: cluster.Namespace}, Data: map[string][]byte{clusterSecretKey: []byte("original-token")}}
+	token := controlledByCluster(&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: clusterSecretName(cluster.Name), Namespace: cluster.Namespace}, Data: map[string][]byte{clusterSecretKey: []byte("original-token")}}, cluster)
 	require.NoError(t, c.Create(context.Background(), token))
 	r = &ClusterReconciler{Client: c, Scheme: c.Scheme()}
 	require.NoError(t, r.reconcileClusterSecretForTLSState(context.Background(), latest, true))
