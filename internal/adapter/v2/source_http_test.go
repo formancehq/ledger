@@ -75,6 +75,31 @@ func TestHTTPSource_CloseDoesNotAffectOtherSources(t *testing.T) {
 	require.True(t, reused, "the active source's idle connection must survive another source's Close")
 }
 
+type closeCountingTransport struct {
+	http.RoundTripper
+
+	closes int
+}
+
+func (c *closeCountingTransport) CloseIdleConnections() { c.closes++ }
+
+// A default-client source sharing an uncloneable http.DefaultTransport must
+// leave its idle connections alone on Close; a caller-supplied client keeps
+// being closed as before.
+func TestHTTPSource_CloseIdleOwnership(t *testing.T) {
+	t.Parallel()
+
+	shared := &closeCountingTransport{RoundTripper: http.DefaultTransport}
+	source := NewHTTPSource("http://example.com", "default", nil)
+	source.httpClient.Transport, source.closeIdle = shared, false
+	require.NoError(t, source.Close())
+	require.Zero(t, shared.closes)
+
+	supplied := &closeCountingTransport{RoundTripper: http.DefaultTransport}
+	require.NoError(t, NewHTTPSource("http://example.com", "default", &http.Client{Transport: supplied}).Close())
+	require.Equal(t, 1, supplied.closes)
+}
+
 func TestHTTPSource_FetchLogs_WithAfterID(t *testing.T) {
 	t.Parallel()
 

@@ -213,6 +213,28 @@ func TestHTTPSink_CloseDoesNotAffectOtherSinks(t *testing.T) {
 	require.True(t, reused, "the active sink's idle connection must survive another sink's Close")
 }
 
+type closeCountingTransport struct {
+	http.RoundTripper
+
+	closes int
+}
+
+func (c *closeCountingTransport) CloseIdleConnections() { c.closes++ }
+
+// A sink sharing an uncloneable http.DefaultTransport must leave its idle
+// connections alone on Close.
+func TestHTTPSink_CloseLeavesSharedTransportOpen(t *testing.T) {
+	t.Parallel()
+
+	shared := &closeCountingTransport{RoundTripper: http.DefaultTransport}
+	sink, err := NewHTTPSink(HTTPSinkConfig{Endpoint: "https://example.com/webhook", Format: FormatJSON})
+	require.NoError(t, err)
+	sink.client.Transport, sink.ownsTransport = shared, false
+
+	require.NoError(t, sink.Close())
+	require.Zero(t, shared.closes)
+}
+
 func TestHTTPSinkTransportErrorIsPublishable(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {

@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+
+	"github.com/formancehq/ledger/v3/internal/pkg/httptransport"
 )
 
 // HTTPSource is a Source that fetches logs from a v2 ledger HTTP API.
@@ -16,20 +18,28 @@ type HTTPSource struct {
 	baseURL    string
 	ledgerName string
 	httpClient *http.Client
+	// closeIdle is false when the default client shares an uncloneable
+	// http.DefaultTransport, whose idle connections Close must leave alone.
+	closeIdle bool
 }
 
 // NewHTTPSource creates a new HTTP-based v2 log source.
-// If httpClient is nil, a client with its own transport is used, so Close
-// does not drop connections of other clients sharing http.DefaultTransport.
+// If httpClient is nil, a client with its own transport is used when possible,
+// so Close does not drop connections of other clients sharing
+// http.DefaultTransport.
 func NewHTTPSource(baseURL, ledgerName string, httpClient *http.Client) *HTTPSource {
+	closeIdle := true
 	if httpClient == nil {
-		httpClient = &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
+		var transport http.RoundTripper
+		transport, closeIdle = httptransport.CloneDefault()
+		httpClient = &http.Client{Transport: transport}
 	}
 
 	return &HTTPSource{
 		baseURL:    baseURL,
 		ledgerName: ledgerName,
 		httpClient: httpClient,
+		closeIdle:  closeIdle,
 	}
 }
 
@@ -121,7 +131,9 @@ func (s *HTTPSource) GetLatestLogID(ctx context.Context) (uint64, error) {
 
 // Close closes idle connections in the underlying HTTP transport.
 func (s *HTTPSource) Close() error {
-	s.httpClient.CloseIdleConnections()
+	if s.closeIdle {
+		s.httpClient.CloseIdleConnections()
+	}
 
 	return nil
 }
