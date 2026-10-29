@@ -198,7 +198,7 @@ func Module() fx.Option {
 					cfg.CompactionMargin,
 					cfg.ReplayBatchSize,
 					snapshotFetcherProvider,
-					membership.OnSnapshotInstalled,
+					membership,
 					localResponses,
 				)
 			},
@@ -226,9 +226,8 @@ func Module() fx.Option {
 			// PeerStore persists Raft cluster membership in Pebble under
 			// [ZoneClusterPersistent][SubGlobPeers] (EN-1413). Membership wraps it
 			// with the in-memory cache, owns the transport / service-pool
-			// wiring, and exposes the OnSnapshotInstalled /
-			// WriteConfChange callbacks injected into Applier and Machine
-			// via constructor.
+			// wiring, and is injected into Applier and Machine via their
+			// constructors.
 			raftmembership.NewPeerStore,
 			fx.Annotate(func(
 				store *raftmembership.PeerStore,
@@ -427,7 +426,7 @@ func Module() fx.Option {
 				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, respSigner, cfg.QueryProfileThreshold, cfg.ClusterID, meterProvider, n, servicePool, info)
 			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`, ``)),
 			func(cfg Config, logger logging.Logger, s *dal.Store, applier *node.Applier) snapshotpb.SnapshotServiceServer {
-				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, applier.WaitForCheckpointable)
+				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, applier)
 			},
 			func(cfg Config, meterProvider metric.MeterProvider) *diskusage.Collector {
 				return diskusage.NewCollector(

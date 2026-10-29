@@ -323,6 +323,24 @@ build a single real `*node.Node` over real storage in temporary directories:
   calls `Membership.Start`, so registering a learner commits the ConfChange
   without dialing the learner's address, and the tests run in a synctest
   bubble.
+- **Small WAL segments:** etcd preallocates each Raft WAL segment, plus one
+  spare, at 64 MB. On APFS a test binary that opens many WALs turns that into
+  GBs of physical writes and temporary space. In the default untagged
+  root-module suite (`go test ./...`, which local validation runs), every test
+  binary that opens a WAL, directly or in a process it re-executes, calls
+  `waltest.UseSmallSegments()` (`internal/storage/wal/waltest`) from its
+  `TestMain` before `m.Run`. The tagged `e2e` and `scenario` suites and the
+  separate Antithesis workload module do not call it yet, so they still
+  allocate production-size segments. A binary that imports `cmd/server` does
+  not inherit its `TestMain`. It sets etcd's process-wide
+  `wal.SegmentSizeBytes` to 1 MiB, except under `-test.bench`. Set it only
+  there: etcd reads the value on every append, so changing it while a WAL is
+  open races with parallel tests. The binaries that set it today are the root
+  package, `cmd/server`, `internal/bootstrap`, `internal/infra/node`,
+  `internal/storage/wal` and `internal/application/membership`. Add a new
+  binary to this list when its tests start opening WALs. Size segment-boundary
+  fixtures from the live `wal.SegmentSizeBytes`, never from a hard-coded size.
+  The `waltest` package's own binary keeps the production size and covers it.
 
 Multi-node behavior is covered in three places:
 

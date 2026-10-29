@@ -148,7 +148,7 @@ func newJoinRecoveryNode(t *testing.T, id uint64, addr string, peers []node.Peer
 	require.NoError(t, recovery.RecoverState())
 	synchronizer := state.NewSynchronizer(machine, recovery, dal.NewIncomingRestoreFactory(store))
 	responses := node.NewLocalResponses()
-	applier, err := node.NewApplier(machine, recovery, synchronizer, sp, store, w, logger, meter, 1000, 1000, nil, member.OnSnapshotInstalled, responses)
+	applier, err := node.NewApplier(machine, recovery, synchronizer, sp, store, w, logger, meter, 1000, 1000, nil, member, responses)
 	require.NoError(t, err)
 	cfg := node.NodeConfig{NodeID: id, Peers: peers, Bootstrap: len(peers) == 0, WalDir: waldir, AdvertiseAddr: addr, ServiceAdvertiseAddr: addr, InstanceID: instanceID, TickInterval: 10 * time.Millisecond, ProcessingTickInterval: time.Millisecond, MaintenanceInterval: time.Hour, AutoPromoteThreshold: 1}
 	n, err := node.NewNode(cfg, tr, applier, logger, meter, w, machine, recovery, synchronizer, member, responses)
