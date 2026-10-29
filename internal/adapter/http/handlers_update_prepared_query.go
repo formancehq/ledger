@@ -59,7 +59,7 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 	// The update request carries only the new filter, not the target: the target
 	// is immutable and lives on the stored prepared query. Per-target filter
 	// validity is enforced against the stored target by the FSM (processUpdatePreparedQuery →
-	// domain.ValidateFilterForTarget), the only layer that sees it — so an update
+	// domain.ValidateFilterForTarget), which is authoritative on apply. An update
 	// cannot smuggle in a condition invalid for the query's target (EN-1504).
 	// This handler stays purely structural: it accepts either the structured v2
 	// JSON DSL or a JSON-quoted textual filterexpr expression (EN-1511) and defers
