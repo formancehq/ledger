@@ -160,7 +160,7 @@
           operator-tests = mkTaskShell [ pkgs-unstable.setup-envtest ];
 
           # Three-voter rc.1 binary upgrade in an isolated kind cluster.
-          upgrade = mkTaskShell (with pkgs; [ kyverno-chainsaw kind kubectl docker-client ]);
+          upgrade = mkTaskShell (with pkgs; [ kyverno-chainsaw kind kubectl docker-client gh ]);
 
           default = pkgs.mkShell {
             packages = ciPackages ++ localPackages;
