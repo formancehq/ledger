@@ -2039,14 +2039,28 @@ func preparedQueryPayloadReason(q *commonpb.PreparedQuery) string {
 }
 
 // preparedQueryAdmissionReason mirrors admission's validateOrderPreparedQuery:
-// a create's whole payload, and only the name of an update or delete. Empty
-// when admission lets the request through.
+// a create's whole payload plus the admission-only filter shape gate, and the
+// name and admission-only filter shape gate of an update; only the name of a
+// delete. Empty when admission lets the request through.
+//
+// domain.ValidateFilterAdmissionShape is deliberately absent from
+// preparedQueryPayloadReason, which also mirrors the FSM: the FSM does not run it.
 func preparedQueryAdmissionReason(req *servicepb.Request) string {
 	switch r := req.GetType().(type) {
 	case *servicepb.Request_CreatePreparedQuery:
-		return preparedQueryPayloadReason(r.CreatePreparedQuery.GetQuery())
+		if reason := preparedQueryPayloadReason(r.CreatePreparedQuery.GetQuery()); reason != "" {
+			return reason
+		}
+
+		if err := domain.ValidateFilterAdmissionShape(r.CreatePreparedQuery.GetQuery().GetFilter()); err != nil {
+			return err.Reason()
+		}
 	case *servicepb.Request_UpdatePreparedQuery:
 		if err := domain.ValidatePreparedQueryName(r.UpdatePreparedQuery.GetName()); err != nil {
+			return err.Reason()
+		}
+
+		if err := domain.ValidateFilterAdmissionShape(r.UpdatePreparedQuery.GetFilter()); err != nil {
 			return err.Reason()
 		}
 	case *servicepb.Request_DeletePreparedQuery:

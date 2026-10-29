@@ -28,6 +28,8 @@ through the complete transition:
   log alone and have no store gate;
 - for snapshot catch-up, the snapshot term/index/ConfState, FSM snapshot horizon,
   spooled committed suffix, and main-store synchronization horizon.
+- for controlled drain, the epoch, captured member IDs, marker index, cutoff
+  index, local persisted index and release index on each member.
 
 Supported entries include bootstrap and join, explicit learner add/promotion,
 automatic promotion, normal removal, emergency force removal, leadership
@@ -120,6 +122,29 @@ election, commit, ReadIndex, and transfer. A partition experiment must record
 which voters acknowledged the relevant term/index. Availability loss on a
 minority side is expected CP behavior; success without the required majority is
 the violation.
+
+### Controlled drain membership fence
+
+Trace capability preflight on every current member, the membership operation
+lock, the Raft fence for already accepted changes, marker enqueue and apply,
+and a concurrent add, promotion or normal removal. An old member that lacks
+the drain RPC must make preflight fail closed during a rolling upgrade. After
+preflight, a loss and regain of leadership must reject the old-term marker
+before Raft append, even if the new leader changed membership in between.
+The same term fence applies to a release preflight. After
+enqueue, a timed-out caller cannot lift the pending membership fence until
+the marker applies or Raft definitively drops it. The first applied marker
+fixes the captured set and cutoff; retries with its epoch cannot move them,
+and an already released epoch cannot be reused.
+
+Require the operator's `Drained` certificate to match current membership and
+each captured member's locally persisted cutoff. Leader `Match` is insufficient
+to prove follower Pebble durability. A lost or replaced member prevents the
+all-member certificate; emergency force removal can change the set and must
+not silently satisfy the old certificate. Repeat with leader transfer, member
+restart, retained-log catch-up and snapshot catch-up. The operator audit owns
+phase persistence and retry decisions, and the persistence audit owns local
+drain-state reconstruction and the cross-cluster restore discard rule.
 
 ### Force removal
 
@@ -234,6 +259,29 @@ restart out of sync, elect among themselves, resynchronize from a peer, and
 run a sink created inside the checkpoint. `TestSyncDonor`,
 `TestAddLearnerWaitsForLeaderReady`, `TestCheckAndPromoteLearnersWaitsForLeaderReady`,
 and `TestManagerLeadership` pin the donor rotation and the gates.
+
+Permanent donor loss is an independent recovery trigger. In
+`tests/e2e/cluster/checkpoint_donor_loss_test.go`, hold the recovering voter's
+real `PrepareSnapshot`, keep another checkpointable voter alive, and stop the
+original donor without restarting it. Prevent the healthy voter from initiating
+an election so the syncing voter must win, verify its store-dependent reads
+remain gated, then release preparation and require recovery plus a new
+acknowledged write. Compare literal balances on both surviving stores, including
+business data committed while synchronization was held. This proves survival of
+that committed suffix, but does not distinguish whether the later donor
+checkpoint contains it or spool replay supplies it; retain the existing
+out-of-sync restart regression separately.
+
+`internal/application/ctrl/snapshot_fetcher_donor_loss_test.go` isolates donor
+loss during preparation and after partial file bytes reach the real staging
+file. The RPC boundary is mocked, while the session, file verification and
+filesystem machinery execute normally. Require exact RPC attempts and distinct
+session identities, cleanup of the failed temporary file even when closing the
+dead donor's session fails, and removal of completed files from the abandoned
+session before the surviving donor starts. The winning session must produce
+literal final bytes and progress counters without accumulating abandoned data.
+These tests establish recovery after an explicit transport failure; they do not
+establish a recovery latency bound or detect an indefinitely stalled stream.
 
 After real snapshot catch-up, `tests/e2e/cluster/raft_test.go` restarts the
 recovered voter again and verifies retained business state through a

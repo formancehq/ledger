@@ -432,8 +432,10 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 }
 
 // downloadBootstrapCheckpoint stages untrusted manifest filenames through a root
-// capability. Staging must be a real directory because later Pebble/finalization
-// operations use its pathname. Failed downloads may leave partial staging files.
+// capability. Every attempt discards old staging, including WALs containing
+// previously rebuilt projections, before downloading the checkpoint seed.
+// Staging must be a real directory because later Pebble/finalization operations
+// use its pathname. Failed attempts may leave staging; the next attempt resets it.
 func downloadBootstrapCheckpoint(ctx context.Context, storage backup.Storage, dataDir string, files map[string]backup.CheckpointFile) (_ uint64, retErr error) {
 	// dataDir is selected by the local operator, not by the backup manifest.
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
@@ -445,10 +447,22 @@ func downloadBootstrapCheckpoint(ctx context.Context, storage backup.Storage, da
 	}
 	defer func() { retErr = errors.Join(retErr, dataRoot.Close()) }()
 
-	if err := dataRoot.Mkdir("restore-staging", 0o755); err != nil && !errors.Is(err, os.ErrExist) {
-		return 0, fmt.Errorf("creating staging directory: %w", err)
-	}
 	info, err := dataRoot.Lstat("restore-staging")
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return 0, fmt.Errorf("checking previous staging directory: %w", err)
+	}
+	if err == nil {
+		if !info.IsDir() {
+			return 0, errors.New("staging must be a real directory")
+		}
+		if err := dataRoot.RemoveAll("restore-staging"); err != nil {
+			return 0, fmt.Errorf("discarding previous staging directory: %w", err)
+		}
+	}
+	if err := dataRoot.Mkdir("restore-staging", 0o755); err != nil {
+		return 0, fmt.Errorf("creating fresh staging directory: %w", err)
+	}
+	info, err = dataRoot.Lstat("restore-staging")
 	if err != nil {
 		return 0, fmt.Errorf("checking staging directory: %w", err)
 	}

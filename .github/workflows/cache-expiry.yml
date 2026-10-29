@@ -1,0 +1,44 @@
+name: Cache Expiry
+
+# Namespace keeps one copy of the CI cache volume per node and never merges
+# them: each successful job commits its copy as the newest generation, which
+# then spreads to the other nodes. A generation larger than the runner
+# profile's cache size is committed but not cloned, so the next job starts
+# from an empty volume. This job runs while CI is idle, deletes stale entries
+# (scripts/ci-expire-caches), and commits the smaller copy as the base the
+# next working day forks from. This is best effort: a CI job that overlaps it
+# and commits later replaces the trimmed copy on its node.
+on:
+  schedule:
+    # CI is idle between 03:00 and 07:00 UTC. Off the hour, because GitHub
+    # delays scheduled runs most at minute zero.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      max-age-days:
+        description: Delete Go build and golangci-lint entries unused for this many days (1-30)
+        required: true
+        default: "3"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  Expire:
+    # Must match the profile of the jobs whose cache volume this trims.
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    env:
+      # Same GOPATH as every other job, so Setup Env mounts the same
+      # GOMODCACHE path in the volume.
+      GOPATH: /tmp/go
+      CACHE_MAX_AGE_DAYS: ${{ inputs.max-age-days || '3' }}
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Expire stale cache entries
+        run: nix develop .#ci --command just ci-expire-caches

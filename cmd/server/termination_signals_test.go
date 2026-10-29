@@ -17,6 +17,8 @@ func TestTerminationDuringStartupQueuesGracefulShutdown(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
+	termination := newServerTermination(ctx, 5*time.Second)
+	defer termination.close()
 	signals := make(chan os.Signal, 1)
 	done := make(chan struct{})
 	defer close(done)
@@ -27,7 +29,7 @@ func TestTerminationDuringStartupQueuesGracefulShutdown(t *testing.T) {
 	app := fx.New(
 		fx.NopLogger,
 		fx.Supply(fx.Annotate(logging.NewDefaultLogger(io.Discard, false, false, false), fx.As(new(logging.Logger)))),
-		terminationSignals(signals, done),
+		terminationSignals(signals, done, termination),
 		fx.Invoke(func(lifecycle fx.Lifecycle) {
 			lifecycle.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
@@ -48,7 +50,7 @@ func TestTerminationDuringStartupQueuesGracefulShutdown(t *testing.T) {
 		}),
 	)
 	started := make(chan error, 1)
-	go func() { started <- app.Start(ctx) }()
+	go func() { started <- app.Start(termination.startup) }()
 	select {
 	case <-ready:
 	case <-ctx.Done():

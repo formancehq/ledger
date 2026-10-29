@@ -65,7 +65,7 @@ for command in git gh jq; do
 done
 
 invocation_checkout=$(git rev-parse --show-toplevel)
-trusted_root_checkout=$(git -C "$invocation_checkout" worktree list --porcelain | sed -n 's/^worktree //p;q')
+trusted_root_checkout=$(git -C "$invocation_checkout" worktree list --porcelain | awk '/^worktree / && !found { print substr($0, 10); found = 1 }')
 trusted_root_checkout=$(cd "$trusted_root_checkout" && pwd -P)
 repo_root=$trusted_root_checkout
 cd "$trusted_root_checkout"

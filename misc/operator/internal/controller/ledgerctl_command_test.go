@@ -14,7 +14,10 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 func TestLedgerctlTLSFlag(t *testing.T) {
@@ -216,20 +219,26 @@ func TestPodSelfServerAddr(t *testing.T) {
 	require.Equal(t, "$POD_NAME.ledger-headless.$POD_NAMESPACE.svc.cluster.local:8888", got)
 }
 
-func TestFetchTLSMode(t *testing.T) {
+// tlsModeTestCluster is the Cluster the TLS-mode tests resolve: its
+// StatefulSet is resourceName("example").
+func tlsModeTestCluster() *ledgerv1alpha1.Cluster {
+	return &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "example", Namespace: "ns", UID: "cluster-uid"}}
+}
+
+func TestFetchClusterStatefulSet(t *testing.T) {
 	t.Parallel()
 
 	scheme := runtime.NewScheme()
 	require.NoError(t, appsv1.AddToScheme(scheme))
 
-	makeSTS := func(name, namespace, tlsMode string) *appsv1.StatefulSet {
+	makeSTS := func(tlsMode string, controllerUID types.UID) *appsv1.StatefulSet {
 		env := []corev1.EnvVar{{Name: "OTHER", Value: "x"}}
 		if tlsMode != "" {
 			env = append(env, corev1.EnvVar{Name: "TLS_MODE", Value: tlsMode})
 		}
 
-		return &appsv1.StatefulSet{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		sts := &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{Name: resourceName("example"), Namespace: "ns"},
 			Spec: appsv1.StatefulSetSpec{
 				Template: corev1.PodTemplateSpec{
 					Spec: corev1.PodSpec{
@@ -238,36 +247,48 @@ func TestFetchTLSMode(t *testing.T) {
 				},
 			},
 		}
+		if controllerUID != "" {
+			sts.OwnerReferences = []metav1.OwnerReference{{
+				APIVersion: ledgerv1alpha1.GroupVersion.String(), Kind: "Cluster",
+				Name: "example", UID: controllerUID, Controller: new(true),
+			}}
+		}
+
+		return sts
 	}
 
 	tests := []struct {
-		name    string
-		objects []*appsv1.StatefulSet
-		nsName  string
-		stsName string
-		want    string
-		wantErr bool
+		name         string
+		objects      []*appsv1.StatefulSet
+		want         string
+		wantAbsent   bool
+		wantConflict bool
 	}{
 		{
-			name:    "missing StatefulSet returns retryable lookup error",
-			wantErr: true,
-			nsName:  "ns",
-			stsName: "ledger",
-			want:    "",
+			name:       "missing StatefulSet returns retryable lookup error",
+			wantAbsent: true,
 		},
 		{
 			name:    "reads TLS_MODE=required from running StatefulSet",
-			objects: []*appsv1.StatefulSet{makeSTS("ledger", "ns", tlsModeRequired)},
-			nsName:  "ns",
-			stsName: "ledger",
+			objects: []*appsv1.StatefulSet{makeSTS(tlsModeRequired, "cluster-uid")},
 			want:    tlsModeRequired,
 		},
 		{
 			name:    "TLS_MODE unset returns empty",
-			objects: []*appsv1.StatefulSet{makeSTS("ledger", "ns", "")},
-			nsName:  "ns",
-			stsName: "ledger",
+			objects: []*appsv1.StatefulSet{makeSTS("", "cluster-uid")},
 			want:    "",
+		},
+		{
+			name:         "StatefulSet without controller reference is a name conflict",
+			objects:      []*appsv1.StatefulSet{makeSTS(tlsModeRequired, "")},
+			wantConflict: true,
+		},
+		{
+			// A deleted Cluster recreated under the same name: the old
+			// StatefulSet is still controlled by the old UID until GC.
+			name:         "StatefulSet controlled by another Cluster UID is a name conflict",
+			objects:      []*appsv1.StatefulSet{makeSTS(tlsModeRequired, "old-cluster-uid")},
+			wantConflict: true,
 		},
 	}
 
@@ -280,14 +301,18 @@ func TestFetchTLSMode(t *testing.T) {
 			}
 			c := builder.Build()
 
-			got, err := fetchTLSMode(context.Background(), c, tt.nsName, tt.stsName)
-			if tt.wantErr {
+			sts, err := fetchClusterStatefulSet(context.Background(), c, tlsModeTestCluster())
+			switch {
+			case tt.wantAbsent:
+				require.ErrorIs(t, err, errClusterRuntimeAbsent)
 				require.True(t, apierrors.IsNotFound(err), "got %v", err)
-
-				return
+			case tt.wantConflict:
+				require.ErrorIs(t, err, errResourceNameConflict)
+				require.Nil(t, sts)
+			default:
+				require.NoError(t, err)
+				require.Equal(t, tt.want, currentTLSModeFromStatefulSet(sts))
 			}
-			require.NoError(t, err)
-			require.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -307,12 +332,13 @@ func TestLedgerctlExecOutputMissingTLSWorkload(t *testing.T) {
 			// No exec configuration is provided: lookup must fail before reaching exec.
 			if caller == "ledger" {
 				r := &LedgerReconciler{Client: c}
-				output, err = r.ledgerctlExecOutput(context.Background(), "ns", "example", "ledger-example-0", 8888, "status")
+				output, err = r.ledgerctlExecOutput(context.Background(), tlsModeTestCluster(), 8888, "status")
 			} else {
 				r := &ClusterReconciler{Client: c}
-				output, err = r.ledgerctlExecOutput(context.Background(), "ns", "example", "ledger-example-0", 8888, "status")
+				output, err = r.ledgerctlExecOutput(context.Background(), tlsModeTestCluster(), 8888, "status")
 			}
-			require.ErrorContains(t, err, "resolving TLS mode for Cluster")
+			require.ErrorContains(t, err, "resolving the StatefulSet of Cluster")
+			require.ErrorIs(t, err, errClusterRuntimeAbsent)
 			require.True(t, apierrors.IsNotFound(err), "got %v", err)
 			require.Empty(t, output)
 		})
@@ -328,19 +354,26 @@ func TestFetchTLSModeRecoversAfterWorkloadRecreation(t *testing.T) {
 			scheme := runtime.NewScheme()
 			require.NoError(t, appsv1.AddToScheme(scheme))
 			c := fake.NewClientBuilder().WithScheme(scheme).Build()
-			got, err := fetchTLSMode(ctx, c, "ns", resourceName("example"))
+			cluster := tlsModeTestCluster()
+			got, err := fetchClusterStatefulSet(ctx, c, cluster)
 			require.True(t, apierrors.IsNotFound(err), "got %v", err)
-			require.Empty(t, got)
+			require.Nil(t, got)
 			sts := &appsv1.StatefulSet{
-				ObjectMeta: metav1.ObjectMeta{Name: resourceName("example"), Namespace: "ns"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: resourceName("example"), Namespace: "ns",
+					OwnerReferences: []metav1.OwnerReference{{
+						APIVersion: ledgerv1alpha1.GroupVersion.String(), Kind: "Cluster",
+						Name: cluster.Name, UID: cluster.UID, Controller: new(true),
+					}},
+				},
 				Spec: appsv1.StatefulSetSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{Name: "ledger", Env: []corev1.EnvVar{{Name: "TLS_MODE", Value: mode}}}},
 				}}},
 			}
 			require.NoError(t, c.Create(ctx, sts))
-			got, err = fetchTLSMode(ctx, c, "ns", resourceName("example"))
+			got, err = fetchClusterStatefulSet(ctx, c, cluster)
 			require.NoError(t, err)
-			require.Equal(t, mode, got)
+			require.Equal(t, mode, currentTLSModeFromStatefulSet(got))
 		})
 	}
 }

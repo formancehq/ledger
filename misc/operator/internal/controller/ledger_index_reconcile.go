@@ -18,7 +18,7 @@ import (
 // baseResult is returned when indexes are already in sync, preserving the
 // caller's own requeue decision. When indexes are unmanaged (spec.Indexes ==
 // nil) the condition is cleared and baseResult is returned unchanged.
-func (r *LedgerReconciler) handleIndexReconcile(ctx context.Context, ledger *ledgerv1alpha1.Ledger, grpcPort int32, baseResult ctrl.Result) ctrl.Result {
+func (r *LedgerReconciler) handleIndexReconcile(ctx context.Context, ledger *ledgerv1alpha1.Ledger, cluster *ledgerv1alpha1.Cluster, grpcPort int32, baseResult ctrl.Result) ctrl.Result {
 	log := ctrl.LoggerFrom(ctx)
 
 	if ledger.Spec.Indexes == nil {
@@ -27,7 +27,7 @@ func (r *LedgerReconciler) handleIndexReconcile(ctx context.Context, ledger *led
 		return baseResult
 	}
 
-	synced, err := r.reconcileIndexes(ctx, ledger, grpcPort)
+	synced, err := r.reconcileIndexes(ctx, ledger, cluster, grpcPort)
 	if err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 			Type:               conditionIndexesSynced,
@@ -81,16 +81,12 @@ func (r *LedgerReconciler) handleIndexReconcile(ctx context.Context, ledger *led
 //
 // Each ledgerctl invocation runs under its own exec timeout (ledgerExecTimeout)
 // since the reconcile issues several sequential commands.
-func (r *LedgerReconciler) reconcileIndexes(ctx context.Context, ledger *ledgerv1alpha1.Ledger, grpcPort int32) (bool, error) {
-	ns := ledger.Namespace
-	svc := ledger.Spec.ClusterRef
-	pod0 := podName(svc, 0)
-
+func (r *LedgerReconciler) reconcileIndexes(ctx context.Context, ledger *ledgerv1alpha1.Ledger, cluster *ledgerv1alpha1.Cluster, grpcPort int32) (bool, error) {
 	exec := func(args ...string) (string, error) {
 		execCtx, cancel := context.WithTimeout(ctx, ledgerExecTimeout)
 		defer cancel()
 
-		return r.ledgerctlExecOutput(execCtx, ns, svc, pod0, grpcPort, args...)
+		return r.ledgerctlExecOutput(execCtx, cluster, grpcPort, args...)
 	}
 
 	return reconcileIndexesWithExec(ctx, ledger, exec)

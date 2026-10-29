@@ -108,3 +108,17 @@ func TestAdmitRejectsMaintenanceBeforeCheckpointProjectionReadiness(t *testing.T
 
 	require.ErrorIs(t, err, ErrMaintenanceMode)
 }
+
+func TestAdmitRejectsAppliedDrainBeforePreload(t *testing.T) {
+	t.Parallel()
+	store := createTestStore(t)
+	a, _ := createTestAdmissionWithReader(t, store, nil)
+	a.sharedState.SetDrain("epoch-one", 42)
+	WithAuditProjectionState(func() (bool, bool) { return false, true })(a)
+	_, err := a.Admit(attributedTestContext(t.Context()), &servicepb.ApplyRequest{
+		Variant: &servicepb.ApplyRequest_Unsigned{Unsigned: &servicepb.ApplyBatch{Requests: []*servicepb.Request{{
+			Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}},
+		}}}},
+	})
+	require.ErrorIs(t, err, ErrMaintenanceMode)
+}

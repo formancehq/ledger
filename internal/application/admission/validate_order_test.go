@@ -1428,3 +1428,97 @@ func TestValidateOrderSigningKey(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateOrder_PreparedQueryRejectsLogIdWithoutCondition pins that
+// admission refuses a logId leaf with no range on both create and update,
+// at the top level and nested under a combinator. The FSM gate deliberately
+// does not (see domain.ValidateFilterAdmissionShape).
+func TestValidateOrder_PreparedQueryRejectsLogIdWithoutCondition(t *testing.T) {
+	t.Parallel()
+
+	bare := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{}}}
+	nested := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{
+		Filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{
+			Filters: []*commonpb.QueryFilter{bare},
+		}}},
+	}}}
+
+	for name, filter := range map[string]*commonpb.QueryFilter{"bare": bare, "nested": nested} {
+		create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+				CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
+					Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
+				}},
+			},
+		}}}
+		require.ErrorContains(t, validateOrder(create), "logId condition has no value", "create %s", name)
+
+		update := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery{
+				UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{Name: "q", Filter: filter},
+			},
+		}}}
+		require.ErrorContains(t, validateOrder(update), "logId condition has no value", "update %s", name)
+	}
+}
+
+// TestValidateOrder_PreparedQueryRejectsNonTextualParamName pins that admission
+// refuses a parameter name the textual grammar cannot read back, on create and
+// update, for each condition kind that carries one.
+func TestValidateOrder_PreparedQueryRejectsNonTextualParamName(t *testing.T) {
+	t.Parallel()
+
+	bad := "n or reverted == true"
+	filters := map[string]*commonpb.QueryFilter{
+		"uint range": {Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
+			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+			Cond:  &commonpb.UintCondition{ParamMin: bad},
+		}}},
+		"reference": {Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
+			Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: bad}},
+		}}},
+		"keyword": {Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
+			Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: "true"}},
+		}}},
+		"empty string param": {Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
+			Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: ""}},
+		}}},
+		"empty bool param": {Filter: &commonpb.QueryFilter_Field{Field: &commonpb.FieldCondition{
+			Field:     &commonpb.FieldRef{Metadata: "k"},
+			Condition: &commonpb.FieldCondition_BoolCond{BoolCond: &commonpb.BoolCondition{Value: &commonpb.BoolCondition_Param{Param: ""}}},
+		}}},
+		"empty address param": {Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
+			Match: &commonpb.AddressMatch_ParamExact{ParamExact: ""},
+		}}},
+	}
+
+	for name, filter := range filters {
+		create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+				CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
+					Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: filter,
+				}},
+			},
+		}}}
+		require.ErrorContains(t, validateOrder(create), "must be an identifier", "create %s", name)
+
+		update := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery{
+				UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{Name: "q", Filter: filter},
+			},
+		}}}
+		require.ErrorContains(t, validateOrder(update), "must be an identifier", "update %s", name)
+	}
+
+	ok := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
+				Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+				Filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
+					Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: "ref_1"}},
+				}}},
+			}},
+		},
+	}}}
+	require.NoError(t, validateOrder(ok))
+}

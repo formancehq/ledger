@@ -40,6 +40,50 @@ func (m *MockSnapshotServiceClient) EXPECT() *MockSnapshotServiceClientMockRecor
 	return m.recorder
 }
 
+// CheckSnapshotReadiness mocks base method.
+func (m *MockSnapshotServiceClient) CheckSnapshotReadiness(ctx context.Context, in *snapshotpb.CheckSnapshotReadinessRequest, opts ...grpc.CallOption) (*snapshotpb.CheckSnapshotReadinessResponse, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, in}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CheckSnapshotReadiness", varargs...)
+	ret0, _ := ret[0].(*snapshotpb.CheckSnapshotReadinessResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CheckSnapshotReadiness indicates an expected call of CheckSnapshotReadiness.
+func (mr *MockSnapshotServiceClientMockRecorder) CheckSnapshotReadiness(ctx, in any, opts ...any) *MockSnapshotServiceClientCheckSnapshotReadinessCall {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, in}, opts...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckSnapshotReadiness", reflect.TypeOf((*MockSnapshotServiceClient)(nil).CheckSnapshotReadiness), varargs...)
+	return &MockSnapshotServiceClientCheckSnapshotReadinessCall{Call: call}
+}
+
+// MockSnapshotServiceClientCheckSnapshotReadinessCall wrap *gomock.Call
+type MockSnapshotServiceClientCheckSnapshotReadinessCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockSnapshotServiceClientCheckSnapshotReadinessCall) Return(arg0 *snapshotpb.CheckSnapshotReadinessResponse, arg1 error) *MockSnapshotServiceClientCheckSnapshotReadinessCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockSnapshotServiceClientCheckSnapshotReadinessCall) Do(f func(context.Context, *snapshotpb.CheckSnapshotReadinessRequest, ...grpc.CallOption) (*snapshotpb.CheckSnapshotReadinessResponse, error)) *MockSnapshotServiceClientCheckSnapshotReadinessCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockSnapshotServiceClientCheckSnapshotReadinessCall) DoAndReturn(f func(context.Context, *snapshotpb.CheckSnapshotReadinessRequest, ...grpc.CallOption) (*snapshotpb.CheckSnapshotReadinessResponse, error)) *MockSnapshotServiceClientCheckSnapshotReadinessCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // CloseSession mocks base method.
 func (m *MockSnapshotServiceClient) CloseSession(ctx context.Context, in *snapshotpb.CloseSessionRequest, opts ...grpc.CallOption) (*snapshotpb.CloseSessionResponse, error) {
 	m.ctrl.T.Helper()

@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -244,26 +245,38 @@ func newRealIndexHarness(t *testing.T) *realIndexHarness {
 	return h
 }
 
-func (h *realIndexHarness) client(funcs interceptor.Funcs) client.Client {
-	// The exec boundary resolves transport from the live workload before invoking
-	// the real CLI. Keep that workload present independently of desired TLS.
+const realIndexClusterUID = "index-test-cluster"
+
+// statefulSet is the referenced Cluster's own StatefulSet. The exec boundary
+// resolves transport from this live workload before invoking the real CLI, and
+// execs only into a pod-0 it controls (ownedPodExec), so keep it present
+// independently of desired TLS.
+func (h *realIndexHarness) statefulSet() *appsv1.StatefulSet {
 	cluster := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
-		Name: h.ledger.Spec.ClusterRef, Namespace: h.ledger.Namespace, UID: "index-test-cluster",
+		Name: h.ledger.Spec.ClusterRef, Namespace: h.ledger.Namespace, UID: realIndexClusterUID,
 	}}
 	applyDefaults(cluster)
 	sts := backupTLSWorkload(cluster, tlsModeDisabled)
+	sts.UID = "index-test-statefulset"
 
-	return fake.NewClientBuilder().WithScheme(h.scheme).WithObjects(h.ledger, sts).WithStatusSubresource(h.ledger).WithInterceptorFuncs(funcs).Build()
+	return sts
+}
+
+func (h *realIndexHarness) client(funcs interceptor.Funcs) client.Client {
+	return fake.NewClientBuilder().WithScheme(h.scheme).WithObjects(h.ledger, h.statefulSet()).WithStatusSubresource(h.ledger).WithInterceptorFuncs(funcs).Build()
 }
 
 func (h *realIndexHarness) controller(c client.Client) *LedgerReconciler {
 	cluster := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "ledger.formance.com/v1alpha1", "kind": "Cluster",
-		"metadata": map[string]any{"name": "test-cluster", "namespace": "test"},
+		"metadata": map[string]any{"name": "test-cluster", "namespace": "test", "uid": realIndexClusterUID},
 		"status":   map[string]any{"phase": "Running"},
 	}}
 
-	return &LedgerReconciler{Client: c, Scheme: h.scheme, Dynamic: dynamicfake.NewSimpleDynamicClient(h.scheme, cluster), exec: h.podExec}
+	return &LedgerReconciler{
+		Client: c, Scheme: h.scheme, Clientset: k8sfake.NewClientset(ownedPod(h.statefulSet(), 0)),
+		Dynamic: dynamicfake.NewSimpleDynamicClient(h.scheme, cluster), exec: h.podExec,
+	}
 }
 
 func (h *realIndexHarness) request() ctrl.Request {

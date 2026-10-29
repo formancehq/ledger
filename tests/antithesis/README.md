@@ -76,6 +76,24 @@ nix develop .#ci --command just --justfile tests/antithesis/Justfile workload-bu
   uniqueness and acknowledged-row coverage after a complete traversal. It does
   not require a snapshot across pages under concurrent writes.
 
+## Launch selection
+
+From this directory, use `just run 60 'Compose run' '' model` for a 60-minute
+Compose run or `just k8s-run-minutes 60 'Kubernetes run' '' main,model` for a
+Kubernetes run. The optional `test_templates` argument selects comma-separated
+templates; an empty value runs all templates. `include` still filters which
+driver binaries are shipped in the workload image.
+
+Compose `just run` now takes minutes and sends `antithesis.duration` instead of
+`custom.duration`. Convert existing hour-based invocations to minutes. These
+parameters require launchers that support `antithesis.duration` and
+`custom.test_templates`; coordinate rollout with the Antithesis team.
+
+The manual workflow also accepts `test_templates`. With an empty selection,
+it can still launch source refs whose `k8s-launch-minutes` recipe accepts only
+two arguments. A nonempty selection requires a compatible recipe; the workflow
+checks that before building or publishing images.
+
 The manual `Run Antithesis` workflow reports acceptance only when its launch
 step succeeds. A failed, skipped, cancelled or unknown launch outcome does not
 confirm acceptance. Workflow completion is not a campaign result.

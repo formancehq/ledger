@@ -613,6 +613,9 @@ func (a *Admission) prepareAdmission(ctx context.Context, buildPlan func(context
 	if err != nil {
 		return nil, err
 	}
+	if _, index := a.sharedState.Drain(); index != 0 {
+		return nil, ErrMaintenanceMode
+	}
 
 	// Check maintenance mode: block all requests except SetMaintenanceMode.
 	if a.sharedState.MaintenanceMode() && !admPlan.allowInMaintenance {

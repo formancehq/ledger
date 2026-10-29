@@ -198,7 +198,7 @@ func Module() fx.Option {
 					cfg.CompactionMargin,
 					cfg.ReplayBatchSize,
 					snapshotFetcherProvider,
-					membership.OnSnapshotInstalled,
+					membership,
 					localResponses,
 				)
 			},
@@ -226,9 +226,8 @@ func Module() fx.Option {
 			// PeerStore persists Raft cluster membership in Pebble under
 			// [ZoneClusterPersistent][SubGlobPeers] (EN-1413). Membership wraps it
 			// with the in-memory cache, owns the transport / service-pool
-			// wiring, and exposes the OnSnapshotInstalled /
-			// WriteConfChange callbacks injected into Applier and Machine
-			// via constructor.
+			// wiring, and is injected into Applier and Machine via their
+			// constructors.
 			raftmembership.NewPeerStore,
 			fx.Annotate(func(
 				store *raftmembership.PeerStore,
@@ -427,7 +426,7 @@ func Module() fx.Option {
 				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, respSigner, cfg.QueryProfileThreshold, cfg.ClusterID, meterProvider, n, servicePool, info)
 			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`, ``)),
 			func(cfg Config, logger logging.Logger, s *dal.Store, applier *node.Applier) snapshotpb.SnapshotServiceServer {
-				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, applier.WaitForCheckpointable)
+				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, applier)
 			},
 			func(cfg Config, meterProvider metric.MeterProvider) *diskusage.Collector {
 				return diskusage.NewCollector(
@@ -741,12 +740,17 @@ func Module() fx.Option {
 				lc fx.Lifecycle,
 				cfg Config,
 				logger logging.Logger,
+				termination startupTerminationParams,
 			) {
 				if !shouldRunJoinPreflight(cfg, logger) {
 					return
 				}
 
-				lc.Append(joinPreflightHook(cfg, logger))
+				hook := joinPreflightHook(cfg, logger)
+				if termination.Termination != nil {
+					hook = termination.Termination.hook(hook)
+				}
+				lc.Append(hook)
 			},
 			func(
 				lc fx.Lifecycle,
@@ -1302,7 +1306,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 			}
 
 			client := clusterbootstrappb.NewClusterBootstrapServiceClient(conn)
-			_, err = client.JoinAsLearner(ctx, req)
+			err = registerLearner(ctx, client, req)
 			_ = conn.Close()
 
 			if err == nil {
@@ -1318,6 +1322,9 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 			}
 
 			st, ok := status.FromError(err)
+			if errors.Is(err, ErrStartupTerminated) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
 			// EN-1436: the leader detected this nodeID in its raft Progress
 			// with a non-zero Match but we (the caller) have no CLUSTER_JOINED
 			// marker on our WAL. The leader's Match for us points at state we
@@ -1412,7 +1419,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return joinCancellation(ctx)
 		case <-time.After(backoff):
 		}
 

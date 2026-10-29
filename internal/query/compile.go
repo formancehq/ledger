@@ -81,67 +81,15 @@ type metadataCtx struct {
 	version uint32
 }
 
-// Compile translates a QueryFilter proto into an EntityIterator tree.
-// The params map resolves parameterized conditions at execution time.
-// The schema map validates condition types against declared metadata field types;
-// a nil schema causes ErrIndexNotFound for any metadata field condition.
-// The indexRegistry argument resolves the bucket-scoped Index registry: each
-// indexed-read condition (metadata, address role, builtin field) verifies that
-// the required Index entry exists and is READY. Pass nil only when no
-// index-bound filter is expected (the compiler returns ErrIndexNotFound on the
-// first such filter encountered).
-// When profile is non-nil, each iterator is wrapped in a TrackedIterator and
-// profile.Root is set to the root of the iterator stats tree.
-func Compile(
-	indexReader dal.PebbleReader,
-	kb *dal.KeyBuilder,
-	filter *commonpb.QueryFilter,
-	target commonpb.QueryTarget,
-	ledgerName string,
-	params map[string]*commonpb.ParameterValue,
-	schema map[string]*commonpb.MetadataFieldSchema,
-	info *commonpb.LedgerInfo,
-	indexRegistry indexes.Lookup,
-	indexVersionFor readstore.IndexVersionResolver,
-	profile *QueryProfile,
-	pebbleReader dal.PebbleReader,
-	pin uint64,
-) (readstore.EntityIterator, error) {
-	// Reject an unsupported/unknown target at the earliest point. Without this
-	// guard compileUniverse's default arm returns an empty iterator, which the
-	// caller (executeList) turns into an empty-but-successful page BEFORE its own
-	// fail-loud switch — so a stored prepared query with a bad target (gRPC
-	// create validates only the name) would silently succeed with an empty
-	// result instead of surfacing the invariant violation.
-	if !isSupportedTarget(target) {
-		return nil, domain.NewFilterCompilationError("unsupported query target %v", target)
+// Compile translates a QueryFilter proto into an EntityIterator tree using the
+// borrowed inputs in options. A non-nil Profile tracks the iterator tree.
+func Compile(filter *commonpb.QueryFilter, options CompileOptions) (readstore.EntityIterator, error) {
+	// Reject unsupported targets before constructing or reading any iterator.
+	if !isSupportedTarget(options.Target) {
+		return nil, domain.NewFilterCompilationError("unsupported query target %v", options.Target)
 	}
 
-	if indexVersionFor == nil {
-		// A nil resolver means "every index is at v=1" — only safe in
-		// tests that pre-date EN-1323 versioning. Production wiring
-		// always supplies a resolver backed by readstore.
-		indexVersionFor = func(string) (readstore.ResolvedIndexVersion, bool, error) {
-			return readstore.ResolvedIndexVersion{Version: 1}, true, nil
-		}
-	}
-
-	ctx := &compileCtx{
-		kb:              kb,
-		pebbleReader:    pebbleReader,
-		indexReader:     indexReader,
-		target:          target,
-		ledgerName:      ledgerName,
-		params:          params,
-		schema:          schema,
-		info:            info,
-		indexRegistry:   indexRegistry,
-		pin:             pin,
-		indexVersionFor: indexVersionFor,
-		profile:         profile,
-	}
-
-	return compile(ctx, filter)
+	return compile(newCompileCtx(options), filter)
 }
 
 // compile is the internal recursive entry point. The depth counter

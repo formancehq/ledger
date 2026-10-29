@@ -182,7 +182,7 @@ func newSentinelApplier(t *testing.T, dir string, sentinelMode bool) (*testAppli
 	}
 	sink := make(LocalResponses, 10)
 	applier, err := NewApplier(fsm, recovery, state.NewSynchronizer(fsm, recovery, dal.NewIncomingRestoreFactory(s)),
-		sp, s, w, logger, meter, 0, 1000, nil, func() {}, sink)
+		sp, s, w, logger, meter, 0, 1000, nil, noopSnapshotMembership{}, sink)
 	require.NoError(t, err)
 
 	return &testApplierSetup{applier: applier, store: s, wal: w, spool: sp, fsm: fsm,

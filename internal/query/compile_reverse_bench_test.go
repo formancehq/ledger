@@ -73,10 +73,18 @@ func drainPage(b *testing.B, store *readstore.Store, after []byte) (rowsVisited,
 
 	reader := store.DB()
 
-	iter, err := query.Compile(
-		reader, dal.NewKeyBuilder(), stringFieldFilter("colour", "red"),
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
-		nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
+	iter, err := query.Compile(stringFieldFilter("colour", "red"), query.CompileOptions{
+		IndexReader:     reader,
+		KeyBuilder:      dal.NewKeyBuilder(),
+		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		LedgerName:      parityLedger,
+		Schema:          paritySchema(),
+		LedgerInfo:      parityInfo(),
+		IndexRegistry:   parityRegistry(),
+		IndexVersionFor: parityResolver(),
+		MainReader:      reader,
+		Pin:             parityPin,
+	})
 	require.NoError(b, err)
 
 	defer iter.Close()
@@ -125,10 +133,19 @@ func streamPage(b *testing.B, store *readstore.Store, before []byte) (rowsVisite
 	reader := store.DB()
 	profile := &query.QueryProfile{}
 
-	iter, err := query.CompileReverse(
-		reader, dal.NewKeyBuilder(), stringFieldFilter("colour", "red"),
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
-		nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), profile, reader, parityPin)
+	iter, err := query.CompileReverse(stringFieldFilter("colour", "red"), query.CompileOptions{
+		IndexReader:     reader,
+		KeyBuilder:      dal.NewKeyBuilder(),
+		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		LedgerName:      parityLedger,
+		Schema:          paritySchema(),
+		LedgerInfo:      parityInfo(),
+		IndexRegistry:   parityRegistry(),
+		IndexVersionFor: parityResolver(),
+		Profile:         profile,
+		MainReader:      reader,
+		Pin:             parityPin,
+	})
 	require.NoError(b, err)
 
 	defer iter.Close()

@@ -7,6 +7,9 @@ import "sync"
 type SharedState struct {
 	mu                sync.RWMutex
 	maintenanceMode   bool
+	drainEpoch        string
+	drainIndex        uint64
+	drainReleaseIndex uint64
 	requireSignatures bool
 }
 
@@ -31,6 +34,46 @@ func (s *SharedState) SetMaintenanceMode(enabled bool) {
 	s.maintenanceMode = enabled
 }
 
+// Drain returns the applied shutdown marker. Zero index means no drain.
+func (s *SharedState) Drain() (string, uint64) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.drainEpoch, s.drainIndex
+}
+
+// DrainSnapshot captures the active cutoff and last release atomically.
+func (s *SharedState) DrainSnapshot() (string, uint64, uint64) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.drainEpoch, s.drainIndex, s.drainReleaseIndex
+}
+
+// SetDrain publishes the marker for admission and cluster status.
+func (s *SharedState) SetDrain(epoch string, index uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.drainEpoch, s.drainIndex = epoch, index
+}
+
+// DrainReleaseIndex is the most recent Raft-ordered admission reopening.
+func (s *SharedState) DrainReleaseIndex() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.drainReleaseIndex
+}
+
+// SetDrainReleased publishes an applied release after its persisted decision
+// has been written into the FSM batch.
+func (s *SharedState) SetDrainReleased(index uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.drainEpoch, s.drainIndex = "", 0
+	s.drainReleaseIndex = index
+}
+
 // RequireSignatures returns whether all requests must be signed.
 func (s *SharedState) RequireSignatures() bool {
 	s.mu.RLock()
@@ -53,5 +96,7 @@ func (s *SharedState) Reset() {
 	defer s.mu.Unlock()
 
 	s.maintenanceMode = false
+	s.drainEpoch, s.drainIndex = "", 0
+	s.drainReleaseIndex = 0
 	s.requireSignatures = false
 }

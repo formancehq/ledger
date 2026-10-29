@@ -1,6 +1,7 @@
 package ctrl
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -13,7 +14,7 @@ import (
 // requested or written.
 func validateSnapshotManifest(manifest *snapshotpb.SnapshotManifest) error {
 	if manifest == nil {
-		return nil
+		return errors.New("snapshot manifest is missing")
 	}
 
 	files := manifest.GetFiles()

@@ -323,6 +323,24 @@ build a single real `*node.Node` over real storage in temporary directories:
   calls `Membership.Start`, so registering a learner commits the ConfChange
   without dialing the learner's address, and the tests run in a synctest
   bubble.
+- **Small WAL segments:** etcd preallocates each Raft WAL segment, plus one
+  spare, at 64 MB. On APFS a test binary that opens many WALs turns that into
+  GBs of physical writes and temporary space. In the default untagged
+  root-module suite (`go test ./...`, which local validation runs), every test
+  binary that opens a WAL, directly or in a process it re-executes, calls
+  `waltest.UseSmallSegments()` (`internal/storage/wal/waltest`) from its
+  `TestMain` before `m.Run`. The tagged `e2e` and `scenario` suites and the
+  separate Antithesis workload module do not call it yet, so they still
+  allocate production-size segments. A binary that imports `cmd/server` does
+  not inherit its `TestMain`. It sets etcd's process-wide
+  `wal.SegmentSizeBytes` to 1 MiB, except under `-test.bench`. Set it only
+  there: etcd reads the value on every append, so changing it while a WAL is
+  open races with parallel tests. The binaries that set it today are the root
+  package, `cmd/server`, `internal/bootstrap`, `internal/infra/node`,
+  `internal/storage/wal` and `internal/application/membership`. Add a new
+  binary to this list when its tests start opening WALs. Size segment-boundary
+  fixtures from the live `wal.SegmentSizeBytes`, never from a hard-coded size.
+  The `waltest` package's own binary keeps the production size and covers it.
 
 Multi-node behavior is covered in three places:
 
@@ -358,6 +376,16 @@ contract, native Linux checks and local commands, and
 every driver's generation boundary. The Hegel dependency stays in the workload
 module; scenario blocks expose a dependency-free typed randomness interface.
 Root-module tests do not execute these nested-module property tests.
+
+### Launch tooling
+
+The manual `Run Antithesis` workflow and the launch recipes accept an optional
+comma-separated `test_templates` selection. An empty selection runs all
+templates. Compose `just run` takes minutes and sends `antithesis.duration`;
+convert older hour-based invocations to minutes. Deploy compatible Antithesis
+launchers before using the updated parameters. See the
+[launch selection guide](../../../tests/antithesis/README.md#launch-selection)
+for recipe examples and workflow compatibility with older source refs.
 
 ### Drivers and templates
 
@@ -444,6 +472,9 @@ restart. It catches:
 - **Illegal business outcomes** — a failure the model can't reproduce under any
   serialization, or a linearizable read returning state outside the candidate
   set.
+- **Incomplete direct audit reads** — `GetAuditEntry` must return one
+  `AuditItem` per order for a modeled, committed success. `ListAuditEntries`
+  omits item bodies, so the model checks its entries without this count rule.
 
 It exercises the chart of accounts, STRICT/AUDIT enforcement switches through
 both setter forms, transactions and reverts (with post-commit volumes), color
@@ -825,12 +856,44 @@ Tests built with event-sink feature tags such as `kafka` or `clickhouse` start T
 
 ### Optional-feature internal tests
 
-CI's `Tests` job runs `just test-internal-coverage` after light unit coverage.
-It selects `./internal/...` with every optional feature tag from `all_tags` and
-the race detector. This executes Kafka, NATS, ClickHouse and Databricks event
-tests, S3 and Azure backup tests, and the S3 bootstrap lifecycle regression.
+CI includes the offline bootstrap command tests in the optional-feature coverage
+recipe below. Run just these command tests with the `s3` tag:
+
+```bash
+nix develop .#ci --command go test -race -tags s3 ./cmd/ledgerctl/store -count=1 -timeout 5m
+```
+
+These command tests use an in-process object-store HTTP endpoint, without Docker
+or cloud credentials. The retry regression creates a real full checkpoint and
+nonempty incremental delta, interrupts after completed or partially committed
+rebuild, then checks exact volumes/balances and Checker health after retry.
+
+CI runs `Tests-Unit` (light unit coverage), `Tests-Internal` (all `./internal/...`
+packages with every optional feature tag), and `Tests-Store`
+(`./cmd/ledgerctl/store` with the same tags) in parallel. The optional-feature
+jobs use the race detector. Together they execute Kafka, NATS, ClickHouse and
+Databricks event tests, S3 and Azure backup tests, and the S3 bootstrap
+lifecycle regression.
 Full-tag E2E runs select different packages and do not execute these assertions.
-The separate `integration` tag is not enabled by this recipe.
+The separate `integration` tag is not enabled by these recipes.
+
+On 2026-10-29, the former sequential `Tests` job in
+[run 40921999115](https://github.com/formancehq/ledger/actions/runs/40921999115/job/123617430871)
+took 15m39s: setup 29s, unit coverage 4m44s, optional-feature internal coverage
+8m19s, PostgreSQL mirror 48s, and Antithesis assertions 1m14s. Within the
+internal step, `cmd/ledgerctl/store` alone reported 6m14s of test time (6m03s
+in [run 40922047881](https://github.com/formancehq/ledger/actions/runs/40922047881)).
+Five other successful jobs on that date took 11m15s–16m01s; unit coverage
+ranged from 2m56s to 5m35s and optional-feature internal coverage from 5m20s
+to 8m46s. These are observed times, not a before/after benchmark.
+
+With the five suites running concurrently, the expected completion of the
+`Tests` aggregate is roughly 8–11 minutes from runner start, dominated by the
+store suite. This assumes enough Namespace runners to start the jobs together,
+similar Go/Nix cache warmth, and unchanged test work. Each job repeats checkout
+and setup (about 30s in the reference run), and a cold cache or runner queue can
+erase part of the gain. Measure the actual after time in CI before treating this
+estimate as a regression threshold.
 
 Kafka, ClickHouse and S3 tests require Docker for their Testcontainers; NATS
 runs in-process, and the current internal Azure and Databricks tests require
@@ -838,11 +901,15 @@ no cloud credentials. Reproduce the CI step with:
 
 ```bash
 nix develop .#ci --command just test-internal-coverage
+nix develop .#ci --command just test-store-coverage
 ```
 
-The job uploads `build/coverage/internal.out` alongside `unit.out`. CI coverage
-merging requires the internal profile, and `just coverage-all` also includes
-this suite. A failure blocks the existing `Tests` release and image gates.
+The jobs upload `unit.out`, `internal.out`, and `store.out` separately. The
+`Tests-Postgres-Mirror` and `Tests-Antithesis-Assertions` jobs similarly upload
+`postgres-mirror.out` and `antithesis.out`. CI coverage merging requires all
+five profiles, and `just coverage-all` includes all five recipes. Each job is
+an explicit input to the existing `Tests` status check and release gate; a
+failure cannot be hidden by another job's profile.
 
 ### E2E Tests
 
@@ -870,7 +937,7 @@ plain `-tags e2e` run neither builds nor runs them:
 
 The bootstrap regression `TestRestoreDownloadStopsWithFxApplication` also needs
 the `s3` tag to compile the production S3 backend, but uses an in-process HTTP
-server and requires no MinIO or Docker when run alone. CI's `Tests` job includes
+server and requires no MinIO or Docker when run alone. CI's `Tests-Internal` job includes
 it in the optional-feature internal suite. Run just this regression with:
 
 ```bash
@@ -942,6 +1009,7 @@ go tool cover -html=coverage.out
 ```
 
 The `just` coverage recipes (`test-coverage`, `test-internal-coverage`,
+`test-store-coverage`,
 `test-postgres-mirror-coverage`,
 `test-antithesis-assertions`, `test-e2e-coverage`, `test-scenarios-coverage`,
 `fuzz-check-coverage`) run through `scripts/go-test-coverage` rather than

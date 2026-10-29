@@ -1,9 +1,11 @@
 package query
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -35,6 +37,20 @@ func ReadMaintenanceMode(reader dal.PebbleGetter) (bool, error) {
 	}
 
 	return v, nil
+}
+
+// ReadDrainState loads the first committed shutdown barrier, if present.
+func ReadDrainState(reader dal.PebbleGetter) (*raftcmdpb.DrainState, error) {
+	state, err := dal.ReadProto[*raftcmdpb.DrainState](reader, []byte{dal.ZoneClusterTransient, dal.SubTransientDrainState})
+	if err != nil {
+		return nil, fmt.Errorf("loading drain state: %w", err)
+	}
+	if state != nil && (state.GetEpoch() == "" || state.GetIndex() == 0 || len(state.GetMembers()) == 0 ||
+		state.GetReleasedIndex() != 0 && state.GetReleasedIndex() <= state.GetIndex()) {
+		return nil, errors.New("invalid persisted drain state")
+	}
+
+	return state, nil
 }
 
 // ReadClusterState loads the persisted cluster state from the given reader.

@@ -21,14 +21,19 @@ import (
 // The two representations are:
 //
 //   - structured — the v2 QueryFilter JSON DSL ($and/$or/$not + $match/$gt/…),
-//     decoded by commonpb.QueryFilter.UnmarshalJSON (query_filter.go);
+//     decoded by commonpb.DecodeQueryFilterJSON (query_filter.go);
 //   - textual    — the human-readable filterexpr grammar (metadata[k] == v,
-//     outcome == failure, …), parsed by Parse. The textual grammar resolves a
-//     handful of bare fields against `target` (EN-1549): on QUERY_TARGET_AUDIT
-//     the bare audit fields (outcome, ledger, seq, timestamp, …) resolve to the
-//     audit arm, so the target must be threaded into the parse — a bare
-//     `timestamp`/`ledger` means the audit condition here, but the transaction
-//     timestamp / ledger condition on the other targets.
+//     outcome == failure, …), parsed by Parse.
+//
+// Both resolve the same bare field names against `target` (EN-1549): on
+// QUERY_TARGET_AUDIT the bare audit fields (outcome, ledger, seq, timestamp, …)
+// resolve to the audit arm, so the target must be threaded into the decode — a
+// bare `timestamp`/`ledger` means the audit condition there, but the
+// transaction timestamp / ledger condition on the other targets. The two forms
+// cover the same fields (TestDualFormatFieldParity); the remaining asymmetries
+// are operator-level only — a byte-level `address ^=` prefix not ending in `:`
+// and the audit `idempotency_key ^=` prefix are textual-only, because the JSON
+// DSL has no prefix operator (EN-1465).
 //
 // Form detection is purely structural and does not depend on the transport: the
 // first non-whitespace byte of the raw value decides. A leading '{' is the
@@ -39,16 +44,6 @@ import (
 // filterexpr, which is how a query-string value (`?filter=metadata[k]==v`)
 // arrives. A caller passing the structured form over a query string simply
 // URL-encodes the JSON object as the value.
-//
-// AUDIT is text-only: an audit condition has no structured JSON representation
-// (the field-dispatched DSL cannot round-trip audit field names — ledger,
-// timestamp, … — without colliding with the transaction/log conditions that
-// already claim them; see commonpb/query_filter.go, EN-1241). This is not a
-// special case here: the structured decoder rejects audit conditions on its own,
-// so a structured-form audit filter fails with that codec's error, while the
-// textual form parses the audit arm natively (the bare audit fields resolve to
-// the audit arm precisely because `target` is QUERY_TARGET_AUDIT). Callers that
-// read AUDIT should document the textual form as the canonical one.
 //
 // A nil/empty raw value yields (nil, nil): "no filter" is a valid unfiltered
 // read for the list endpoints. Callers that require a filter (prepared queries)
@@ -79,13 +74,15 @@ func DecodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryF
 //     is immutable and lives on the stored query, so the FSM applies the gate
 //     against it — see handlers_update_prepared_query.go). It passes a non-audit
 //     target for resolution, which is sound because prepared queries are only
-//     ever ACCOUNTS/TRANSACTIONS/LOGS (audit is gRPC-only, never a prepared-query
+//     ever ACCOUNTS/TRANSACTIONS/LOGS (audit is never a prepared-query
 //     target — see http.preparedQueryTargets) and every non-audit target resolves
 //     the bare intrinsic fields identically (`timestamp` → transaction range,
-//     `date` → log range, `ledger` → LedgerCondition);
-//   - the ledgerctl list commands, which DO know their endpoint's target and pass
-//     it (audit list passes QUERY_TARGET_AUDIT so bare audit fields resolve to the
-//     audit arm) but let the server run the authoritative validity gate.
+//     `date` → log range, `ledger` → LedgerCondition, …; locked by
+//     TestDecodeDualFormatStructuralOnly_NonAuditResolutionIsTargetIndependent);
+//   - the ledgerctl list and `queries create` commands, which DO know their
+//     target and pass it (audit list passes QUERY_TARGET_AUDIT so bare audit
+//     fields resolve to the audit arm) but let the server run the authoritative
+//     validity gate.
 //
 // Every server-side list handler MUST use DecodeDualFormat instead, so form and
 // validity are checked in one place.
@@ -103,8 +100,8 @@ func decodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryF
 	switch trimmed[0] {
 	case '{':
 		// Structured v2 QueryFilter JSON DSL.
-		filter := &commonpb.QueryFilter{}
-		if err := json.Unmarshal(trimmed, filter); err != nil {
+		filter, err := commonpb.DecodeQueryFilterJSON(trimmed, target)
+		if err != nil {
 			return nil, fmt.Errorf("filter: %w", err)
 		}
 
