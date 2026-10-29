@@ -1,6 +1,6 @@
 # Authentication & Authorization
 
-The ledger supports optional JWT/OIDC authentication with scope-based authorization. When enabled, all API requests (HTTP and gRPC) must carry a valid Bearer token issued by a trusted OIDC provider.
+The ledger supports optional JWT/OIDC authentication with scope-based authorization. When enabled, public HTTP and gRPC API requests must carry a valid Bearer token issued by a trusted OIDC provider. Authenticated node-to-node forwarding uses the separate peer transport credential described below.
 
 ## Quick Start
 
@@ -161,6 +161,12 @@ gRPC clients must include the JWT token in the `authorization` metadata:
 md := metadata.Pairs("authorization", "Bearer <token>")
 ctx := metadata.NewOutgoingContext(ctx, md)
 ```
+
+Ledger's internal peer listener uses a separate `x-ledger-peer-auth` metadata
+value for node-to-node transport authentication. It is not a user credential
+and is never accepted as a JWT on the public gRPC listener. Forwarded requests
+carry the original user JWT in `authorization`, which is evaluated by the node
+that executes the operation.
 
 ## HTTP Authentication
 
@@ -416,50 +422,13 @@ use `superuser` as well. Update Credentials manifests, auth key JSON, OIDC claim
 mappings, and token-generation commands together. The previous privileged field,
 claim, and flag were removed before `v3.0.0-rc.1`.
 
-### Operator maintenance credentials
 
-When service authentication is enabled on a managed Cluster, the operator
-creates a dedicated `Credentials` resource automatically. It is not part of
-the `Cluster` spec. The operator reconciles its selector and permissions and
-restores them if the resource is changed. It assigns only the scopes needed by
-maintenance operations:
-
-`ledger:ReadLedger`, `ledger:WriteLedger`, `ledger:ReadOps`, `ledger:WriteOps`,
-`ledger:ReadCluster`, and `ledger:WriteCluster`.
-
-```yaml
-apiVersion: ledger.formance.com/v1alpha1
-kind: Cluster
-metadata:
-  name: my-cluster
-spec:
-  auth:
-    enabled: true
-```
-
-The operator-created credential gets a deterministic, cluster-unique name,
-the generated seed is mounted only in the managed Ledger and backup pods, and
-short-lived JWTs are signed for its `ledgerctl` calls. The Ledger receives the
-public key through its auth-key configuration. The credential is scoped and is
-not a superuser; the Raft `cluster-secret` remains reserved for peer
-authentication and is never used as a service-API token.
-
-### Interactive debug box
-
-For interactive troubleshooting, opt into a dedicated `ledgerctl` pod:
-
-```yaml
-spec:
-  debugBox:
-    enabled: true
-```
-
-The operator creates a pod using the Ledger image with its server entrypoint
-overridden by an idle shell. When authentication is enabled, it also creates a
-separate `Credentials` resource with `superuser: true`, mounts its seed only in
-that pod, and exposes a `ledgerctl` wrapper that mints a five-minute token for
-each command. When authentication is disabled, no Credentials resource is
-created and the wrapper invokes `ledgerctl` directly. Disabling the option or
-deleting the Cluster removes the pod and any generated credential. Because the
-authenticated mode grants full service access, keep the option disabled outside
-an explicitly controlled debugging window.
+The injected `LEDGERCTL_SERVER` uses the pod DNS name covered by the TLS
+certificate rather than `localhost` or `127.0.0.1`. For TLS clusters the
+operator injects `LEDGERCTL_AUTH_TOKEN` and, when `tls.caSecretKey` is
+configured, `LEDGERCTL_TLS_CA_CERT`; for a plaintext cluster it injects
+`LEDGERCTL_INSECURE=true`. These values follow TLS mode transitions through
+StatefulSet rollouts. If `headlessService.enabled` is `false`, `spec.extraEnv`
+must override `LEDGERCTL_SERVER` with a resolvable address. `spec.extraEnv` can
+also override any other injected `LEDGERCTL_*` value when a deployment needs
+custom client behavior.

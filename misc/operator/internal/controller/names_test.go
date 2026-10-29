@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestNameHelpers(t *testing.T) {
@@ -26,19 +25,6 @@ func TestNameHelpers(t *testing.T) {
 		if tt.got != tt.want {
 			t.Errorf("%s = %q, want %q", tt.name, tt.got, tt.want)
 		}
-	}
-}
-
-func TestCredentialSelectorValuesIncludeClusterUID(t *testing.T) {
-	first := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Namespace: "tenant", Name: "ledger", UID: "uid-a"}}
-	second := first.DeepCopy()
-	second.UID = "uid-b"
-
-	if got, other := operatorCredentialsSelectorValue(first), operatorCredentialsSelectorValue(second); got == other {
-		t.Fatalf("operator credential selector must differ for different Cluster UIDs: %q", got)
-	}
-	if got, other := debugBoxCredentialsSelectorValue(first), debugBoxCredentialsSelectorValue(second); got == other {
-		t.Fatalf("debug-box credential selector must differ for different Cluster UIDs: %q", got)
 	}
 }
 

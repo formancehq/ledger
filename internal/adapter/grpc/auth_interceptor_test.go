@@ -36,6 +36,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -73,6 +74,22 @@ func TestRejectDirectClusterSecret(t *testing.T) {
 	require.Equal(t, codes.Unauthenticated, status.Code(rejectDirectClusterSecret(duplicate, internalauth.AuthConfig{ClusterSecret: "cluster-secret"})))
 }
 
+func TestPeerCredentialUsesDedicatedTransportMetadata(t *testing.T) {
+	t.Parallel()
+
+	cfg := internalauth.AuthConfig{Enabled: true, ClusterSecret: "cluster-secret"}
+
+	legacy := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		"authorization", "Bearer cluster-secret",
+	))
+	require.Equal(t, codes.Unauthenticated, status.Code(requirePeerCredential(legacy, cfg)))
+
+	peer := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		transport.PeerAuthMetadataKey, "Bearer cluster-secret",
+	))
+	require.NoError(t, requirePeerCredential(peer, cfg))
+}
+
 func TestBearerTokenFromGRPCContextRejectsAmbiguousAuthorization(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
 		"authorization", "Bearer first",
@@ -105,7 +122,7 @@ func TestAuthStreamInterceptorGuardsInfrastructureMethodsOnPeerListener(t *testi
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
 	require.False(t, called)
 
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer cluster-secret"))
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(transport.PeerAuthMetadataKey, "Bearer cluster-secret"))
 	err = interceptor(nil, &authTestServerStream{ctx: ctx}, info, handler)
 	require.NoError(t, err)
 	require.True(t, called)

@@ -26,7 +26,7 @@ func TestConnectionPoolAdvertisesProtocolWithBearerToken(t *testing.T) {
 		md, _ := metadata.FromIncomingContext(ctx)
 		headers := metadata.MD{
 			grpcprotocol.MetadataKey: md.Get(grpcprotocol.MetadataKey),
-			"authorization":          md.Get("authorization"),
+			PeerAuthMetadataKey:       md.Get(PeerAuthMetadataKey),
 		}
 		if err := grpc.SendHeader(ctx, headers); err != nil {
 			return nil, err
@@ -50,5 +50,5 @@ func TestConnectionPoolAdvertisesProtocolWithBearerToken(t *testing.T) {
 	_, err = healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{}, grpc.Header(&headers))
 	require.NoError(t, err)
 	require.Equal(t, []string{grpcprotocol.Version}, headers.Get(grpcprotocol.MetadataKey))
-	require.Equal(t, []string{"Bearer test-cluster-secret"}, headers.Get("authorization"))
+	require.Equal(t, []string{"Bearer test-cluster-secret"}, headers.Get(PeerAuthMetadataKey))
 }

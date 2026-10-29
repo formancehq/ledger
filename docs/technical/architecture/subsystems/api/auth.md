@@ -122,7 +122,7 @@ Raft transport uses a **shared cluster secret**, not JWT. `internal/adapter/grpc
 - Comparison uses `crypto/subtle.ConstantTimeCompare` to avoid timing attacks.
 - If `--cluster-secret` is empty, the legacy "no auth" mode is used (not recommended).
 
-The cluster secret is reserved for the Raft plane and the dedicated peer service listener used for follower-to-leader forwarding. The public service listener rejects it; it is never a direct `ledgerctl` credential. Operator automation uses a scoped Ed25519 identity from the `Credentials` CRD, which is not marked cluster-internal and cannot provide forwarded attribution. Auth-disabled snapshots are derived locally. Forwarding trust is derived from the listener on which the request arrived, not from client-controlled metadata.
+The cluster secret is reserved for the Raft plane and the dedicated peer service listener used for follower-to-leader forwarding. On the peer listener it is carried in `x-ledger-peer-auth`, separate from the user's `authorization` metadata. The public service listener rejects it; it is never a direct `ledgerctl` credential. Forwarded user tokens are evaluated at the terminal node, while calls without a user token are treated as node-system actions. Auth-disabled snapshots are derived locally. Forwarding trust is derived from the authenticated listener, not from client-controlled request fields.
 
 ## Caller identity in the audit chain
 
@@ -161,8 +161,8 @@ It is resolved into an opaque, validated `attribution.Capability` by
 `ResolveCallerAttribution()` (`internal/adapter/auth/caller_snapshot.go`), in precedence order:
 
 1. **System actor** — a background action marked with `WithSystemActor(ctx, component)` resolves to a `system` principal (e.g. `query-checkpoint-scheduler`, `mirror`, `events-sink`, `cluster-config`, `idempotency-eviction`, `backup`).
-2. **Trusted forwarded snapshot** — a follower authenticated with the cluster secret sends the authenticated, anonymous, or system snapshot it captured; the leader validates and freezes it before installing an opaque capability in the context. Auth-disabled snapshots are never forwarded: the leader derives the same explicit `auth_disabled` principal locally. Absent forwarded attribution resolves to `cluster-peer`; malformed supplied snapshots are rejected. A snapshot on a non-cluster-internal connection is rejected as spoofing. Plaintext clusters without a cluster secret are not trusted forwarding hops.
-3. **Cluster peer** — a request authenticated by the cluster secret with no forwarded caller resolves to the `cluster-peer` system principal rather than to an anonymous caller with transport-level scopes.
+2. **Trusted forwarded snapshot** — a follower authenticated with the peer transport credential sends the authenticated, anonymous, or system snapshot it captured; the leader validates and freezes it before installing an opaque capability in the context. Auth-disabled snapshots are never forwarded: the leader derives the same explicit `auth_disabled` principal locally. Absent forwarded attribution resolves to `cluster-peer`; malformed supplied snapshots are rejected. A snapshot on a non-cluster-internal connection is rejected as spoofing. Plaintext clusters without a cluster secret are not trusted forwarding hops.
+3. **Cluster peer** — a request authenticated by the peer transport credential with no forwarded caller resolves to the `cluster-peer` system principal rather than to an anonymous caller with transport-level scopes.
 4. **Local authentication state** — otherwise `buildCallerSnapshot()` produces `authenticated` from validated OIDC/Ed25519 claims, `anonymous` from configured anonymous access, or `auth_disabled` when authentication is disabled.
 
 Every admitted write proposal therefore records exactly one explicit principal.

@@ -9,7 +9,6 @@ rules:
   - ""
   resources:
   - configmaps
-  - pods
   - secrets
   - serviceaccounts
   - services
@@ -45,6 +44,14 @@ rules:
   - get
   - list
   - patch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - ""
   resources:

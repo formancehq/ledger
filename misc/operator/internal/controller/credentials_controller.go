@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -259,25 +258,6 @@ func (r *CredentialsReconciler) handleDeletion(ctx context.Context, credentials 
 // resolveMatchedClusters lists Clusters across all namespaces and returns
 // those matching the credentials's label selector.
 func (r *CredentialsReconciler) resolveMatchedClusters(ctx context.Context, credentials *ledgerv1alpha1.Credentials) ([]ledgerv1alpha1.MatchedCluster, error) {
-	for _, annotation := range []string{annotationOperatorCluster, annotationDebugBoxCluster} {
-		if target := credentials.Annotations[annotation]; target != "" {
-			parts := strings.SplitN(target, "/", 2)
-			if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-				return nil, fmt.Errorf("invalid %s annotation %q", annotation, target)
-			}
-			cluster := &ledgerv1alpha1.Cluster{}
-			if err := r.Get(ctx, types.NamespacedName{Namespace: parts[0], Name: parts[1]}, cluster); err != nil {
-				if apierrors.IsNotFound(err) {
-					return nil, nil
-				}
-
-				return nil, fmt.Errorf("getting target Cluster %s: %w", target, err)
-			}
-
-			return []ledgerv1alpha1.MatchedCluster{{Namespace: cluster.Namespace, Name: cluster.Name}}, nil
-		}
-	}
-
 	selector, err := metav1.LabelSelectorAsSelector(&credentials.Spec.Selector)
 	if err != nil {
 		return nil, fmt.Errorf("parsing label selector: %w", err)
@@ -527,20 +507,6 @@ func (r *CredentialsReconciler) clusterToCredentials(ctx context.Context, obj cl
 	requests := make([]ctrl.Request, 0)
 	for i := range credentials.Items {
 		credentials := &credentials.Items[i]
-		if target := credentials.Annotations[annotationOperatorCluster]; target != "" {
-			if target == service.Namespace+"/"+service.Name {
-				requests = append(requests, ctrl.Request{NamespacedName: types.NamespacedName{Name: credentials.Name}})
-			}
-
-			continue
-		}
-		if target := credentials.Annotations[annotationDebugBoxCluster]; target != "" {
-			if target == service.Namespace+"/"+service.Name {
-				requests = append(requests, ctrl.Request{NamespacedName: types.NamespacedName{Name: credentials.Name}})
-			}
-
-			continue
-		}
 		selector, err := metav1.LabelSelectorAsSelector(&credentials.Spec.Selector)
 		if err != nil {
 			continue

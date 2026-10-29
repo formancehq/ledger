@@ -1093,17 +1093,6 @@
       "description": "Debug enables debug logging. Equivalent to LogLevel=\"debug\".\nLogLevel takes precedence when both are set; prefer LogLevel for new\nmanifests since it also unlocks the trace level.",
       "type": "boolean"
     },
-    "debugBox": {
-      "additionalProperties": false,
-      "description": "DebugBox configures an optional interactive ledgerctl pod. When enabled,\nthe operator creates a dedicated superuser credential and mounts it only\nin this pod. The pod does not start the Ledger server.",
-      "properties": {
-        "enabled": {
-          "description": "Enabled creates the debug box and its dedicated superuser credential.",
-          "type": "boolean"
-        }
-      },
-      "type": "object"
-    },
     "dnsEndpoints": {
       "description": "DNSEndpoints configures one or more ExternalDNS DNSEndpoint resources.\nEach entry is reconciled into its own DNSEndpoint object, so distinct\nendpoints (e.g. a public and a private one) can carry different\nannotations. Entries are keyed by their unique name.",
       "items": {
