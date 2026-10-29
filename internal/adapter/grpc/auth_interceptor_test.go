@@ -88,6 +88,18 @@ func TestPeerCredentialUsesDedicatedTransportMetadata(t *testing.T) {
 		transport.PeerAuthMetadataKey, "Bearer cluster-secret",
 	))
 	require.NoError(t, requirePeerCredential(peer, cfg))
+
+	for _, value := range []string{
+		"INVALID cluster-secret",
+		"Bearer",
+		"Bearer ",
+		"Bearer cluster-secret extra",
+	} {
+		malformed := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+			transport.PeerAuthMetadataKey, value,
+		))
+		require.Equal(t, codes.Unauthenticated, status.Code(requirePeerCredential(malformed, cfg)), value)
+	}
 }
 
 func TestBearerTokenFromGRPCContextRejectsAmbiguousAuthorization(t *testing.T) {
