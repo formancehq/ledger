@@ -4,10 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"math/bits"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
@@ -17,6 +22,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -60,7 +66,7 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 
 	request := func(name, id string) *servicepb.Request {
 		filter := &commonpb.QueryFilter{}
-		require.NoError(t, json.Unmarshal([]byte(`{"$match":{"id":"`+id+`"}}`), filter))
+		require.NoError(t, json.Unmarshal([]byte(`{"$gte":{"id":"`+id+`"}}`), filter))
 
 		return &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{
 			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{Ledger: testLedgerName, Name: name, Filter: filter},
@@ -115,6 +121,14 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 	candidate := []*raftcmdpb.Order{retry[0].CloneVT(), retry[1].CloneVT()}
 	require.True(t, restoreEquivalentIDFilters(candidate, original, hash))
 	require.Equal(t, hash, processing.HashOrders(candidate))
+	changedTarget := newBulkOverlay()
+	changedTarget.preparedTargets.Put(domain.PreparedQueryKey{LedgerName: testLedgerName, Name: "transactions"}, commonpb.QueryTarget_QUERY_TARGET_LOGS)
+	toLogs, err := adm.requestToOrder(ctx, requests[1], nil, changedTarget)
+	require.NoError(t, err)
+	require.True(t, toLogs.GetLedgerScoped().GetUpdatePreparedQuery().GetIdResolvedToLog())
+	replay, err = adm.replayPreparedQueryIDRetry(ctx, key, []*raftcmdpb.Order{original[0].CloneVT(), toLogs})
+	require.NoError(t, err)
+	require.True(t, replay.Replayed, "public id also replays after TRANSACTIONS changes to LOGS")
 	readyAdmission, _ := createTestAdmission(t, store)
 	readyAdmission.readBarrier = func(context.Context) error { return nil }
 	plan := &admissionPlan{key: key, buildOrders: func(context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error) {
@@ -134,6 +148,33 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, replay)
 	require.NotEqual(t, hash, processing.HashOrders(other))
+
+	// An explicit legacy logId is different caller intent from public id,
+	// even when the numeric range is identical. Neither direction may replay.
+	legacy := func(name, id string) *servicepb.Request {
+		filter := &commonpb.QueryFilter{}
+		require.NoError(t, json.Unmarshal([]byte(`{"$gte":{"logId":"`+id+`"}}`), filter))
+
+		return &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{
+			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{Ledger: testLedgerName, Name: name, Filter: filter},
+		}}
+	}
+	legacyLog, err := adm.requestToOrder(ctx, legacy("logs", "7"), nil, newBulkOverlay())
+	require.NoError(t, err)
+	legacyTx, err := adm.requestToOrder(ctx, legacy("transactions", "8"), nil, newBulkOverlay())
+	require.NoError(t, err)
+	require.False(t, restoreEquivalentIDFilters(
+		[]*raftcmdpb.Order{retry[0].CloneVT()}, []*raftcmdpb.Order{legacyLog},
+		processing.HashOrders([]*raftcmdpb.Order{legacyLog}),
+	), "a historical explicit logId cannot become a public id retry")
+	for _, altered := range [][]*raftcmdpb.Order{
+		{legacyLog, retry[1].CloneVT()},
+		{retry[0].CloneVT(), legacyTx},
+	} {
+		replay, err = adm.replayPreparedQueryIDRetry(ctx, key, altered)
+		require.NoError(t, err)
+		require.Nil(t, replay)
+	}
 
 	// An expired record is no longer a replay candidate. The FSM advances the
 	// HLC by one before expiry comparison, so the E-1 boundary must be skipped.
@@ -201,6 +242,85 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 	replay, err = adm.replayPreparedQueryIDRetry(ctx, key, current)
 	require.Nil(t, replay)
 	require.ErrorIs(t, err, dal.ErrStoreClosed)
+}
+
+func TestLocateRetryAuditEntryCostShape(t *testing.T) {
+	t.Parallel()
+	for _, last := range []uint64{1, 1_024, 1_000_000} {
+		for _, target := range []uint64{1, last / 2, last} {
+			if target == 0 {
+				continue
+			}
+			reads := 0
+			entry, err := locateRetryAuditEntry(context.Background(), last, target+100, func(seq uint64) (*auditpb.AuditEntry, error) {
+				reads++
+
+				return &auditpb.AuditEntry{Sequence: seq, Timestamp: &commonpb.Timestamp{Data: seq + 100}}, nil
+			})
+			require.NoError(t, err)
+			require.Equal(t, target, entry.GetSequence())
+			require.LessOrEqual(t, reads, bits.Len64(last)+1, "audit reads must scale with log(history)")
+		}
+	}
+}
+
+func BenchmarkLocateRetryAuditEntry(b *testing.B) {
+	for _, last := range []uint64{1_000, 1_000_000} {
+		b.Run(strconv.FormatUint(last, 10), func(b *testing.B) {
+			read := func(seq uint64) (*auditpb.AuditEntry, error) {
+				return &auditpb.AuditEntry{Sequence: seq, Timestamp: &commonpb.Timestamp{Data: seq + 100}}, nil
+			}
+			b.ReportAllocs()
+			for range b.N {
+				entry, err := locateRetryAuditEntry(context.Background(), last, last/2+100, read)
+				if err != nil || entry.GetSequence() != last/2 {
+					b.Fatal("audit lookup failed")
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkLocateRetryAuditEntryPebble(b *testing.B) {
+	for _, last := range []uint64{1_000, 100_000} {
+		b.Run(strconv.FormatUint(last, 10), func(b *testing.B) {
+			b.StopTimer()
+			ctx := logging.TestingContext()
+			store, err := dal.NewStore(b.TempDir(), logging.FromContext(ctx), noop.NewMeterProvider().Meter("test"), dal.DefaultConfig())
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer func() { _ = store.Close() }()
+			batch := store.OpenWriteSession()
+			for seq := uint64(1); seq <= last; seq++ {
+				batch.KeyBuilder.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(seq)
+				if err := batch.SetProto(batch.KeyBuilder.Consume(), &auditpb.AuditEntry{
+					Sequence: seq, Timestamp: &commonpb.Timestamp{Data: seq + 100},
+				}); err != nil {
+					b.Fatal(err)
+				}
+			}
+			if err := batch.Commit(); err != nil {
+				b.Fatal(err)
+			}
+			handle, err := store.NewReadHandle()
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer func() { _ = handle.Close() }()
+			read := func(seq uint64) (*auditpb.AuditEntry, error) {
+				return query.ReadAuditEntry(ctx, handle, seq)
+			}
+			b.ReportAllocs()
+			b.StartTimer()
+			for b.Loop() {
+				entry, err := locateRetryAuditEntry(ctx, last, last/2+100, read)
+				if err != nil || entry.GetSequence() != last/2 {
+					b.Fatal("audit lookup failed")
+				}
+			}
+		})
+	}
 }
 
 func TestRequestToOrder_ResolvesStoredLogQueryIDBeforeCommit(t *testing.T) {
