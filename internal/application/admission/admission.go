@@ -662,6 +662,9 @@ func (a *Admission) prepareBatchOrders(ctx context.Context, batch verifiedBatch)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
+	if err := a.restorePreparedQueryIDRetry(ctx, admPlan.key, orders); err != nil {
+		return nil, nil, nil, fmt.Errorf("resolving prepared query idempotency retry: %w", err)
+	}
 
 	// Metadata shape was checked during conversion. Replicated metadata policy
 	// belongs to the FSM, after idempotency lookup: fresh refusals are audited,
