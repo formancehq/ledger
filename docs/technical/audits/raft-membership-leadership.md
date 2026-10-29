@@ -28,6 +28,8 @@ through the complete transition:
   log alone and have no store gate;
 - for snapshot catch-up, the snapshot term/index/ConfState, FSM snapshot horizon,
   spooled committed suffix, and main-store synchronization horizon.
+- for controlled drain, the epoch, captured member IDs, marker index, cutoff
+  index, local persisted index and release index on each member.
 
 Supported entries include bootstrap and join, explicit learner add/promotion,
 automatic promotion, normal removal, emergency force removal, leadership
@@ -120,6 +122,26 @@ election, commit, ReadIndex, and transfer. A partition experiment must record
 which voters acknowledged the relevant term/index. Availability loss on a
 minority side is expected CP behavior; success without the required majority is
 the violation.
+
+### Controlled drain membership fence
+
+Trace capability preflight on every current member, the membership operation
+lock, the Raft fence for already accepted changes, marker enqueue and apply,
+and a concurrent add, promotion or normal removal. An old member that lacks
+the drain RPC must make preflight fail closed during a rolling upgrade. After
+enqueue, a timed-out caller cannot lift the pending membership fence until
+the marker applies or Raft definitively drops it. The first applied marker
+fixes the captured set and cutoff; retries with its epoch cannot move them,
+and an already released epoch cannot be reused.
+
+Require the operator's `Drained` certificate to match current membership and
+each captured member's locally persisted cutoff. Leader `Match` is insufficient
+to prove follower Pebble durability. A lost or replaced member prevents the
+all-member certificate; emergency force removal can change the set and must
+not silently satisfy the old certificate. Repeat with leader transfer, member
+restart, retained-log catch-up and snapshot catch-up. The operator audit owns
+phase persistence and retry decisions, and the persistence audit owns local
+drain-state reconstruction and the cross-cluster restore discard rule.
 
 ### Force removal
 

@@ -26,6 +26,7 @@ that authorizes each operation:
 | Durable cursor | indexbuilder, auditindexer, usagebuilder and tail workers | Process Stop joins the fold. Restart resumes from the subsystem's atomic durable cursor contract; leadership alone does not restart per-replica workers. |
 | Request or session context | snapshot, restore, file stream, read lease and query checkpoint | Cancellation and completion converge on exactly-once release and cannot publish partial or superseded output. |
 | Admission request and proposal future | admission read handles, proposal guards and any request-scoped lifecycle lock | A request owns only the work it declared. Release every lifecycle lock before waiting for the proposal future. Never retain that lock through FSM application. The proposal guard is released when `Propose` returns; read handles close at their owning boundary. |
+| Drain epoch and pending marker | `Node.BeginDrain`, membership fence and proposal queue | Once a marker is enqueued, caller cancellation cannot reopen membership or write admission. Keep the pending fence until the marker applies or Raft definitively drops it. A release clears the applied gate only when its own Raft entry applies. |
 
 For event sinks, include startup-error report and clear proposals in the
 leadership-generation check. A manager-owned emitter waits for startup-error
@@ -166,6 +167,10 @@ At minimum, attempt to falsify these sequences with deterministic barriers:
    application is a failure. Separately verify the read-handle owner and close
    boundary, and whether an unrelated request can proceed. Repeat with a type
    transition that claims a wider lifecycle scope.
+8. A drain marker is enqueued and the caller times out before its result is
+   known. Interleave a membership change and a write with marker application
+   or definitive drop. Verify the fence stays closed until the outcome is
+   known, and that cancellation does not advance the cutoff or release epoch.
 
 For node readiness, hold a synchronous `LeaderReadyEvent` callback after entry
 and separately hold the real FSM catch-up wait. Exercise normal stop and task
@@ -199,6 +204,7 @@ reports and active fixes by mechanism, not only title.
 | `event-delivery-contracts` / `mirror-ingestion-contracts` | Own delivery acknowledgement/cursor semantics and source transformation respectively. This domain owns leader/config generation, resource shutdown and stale callback effects. |
 | `idempotency-retries-partial-failures` | Owns logical retry identity and ambiguous external outcomes. This domain owns the retry goroutine or callback outliving its authority token. |
 | `runtime-health-admission-contracts` | Owns measurement-to-verdict and admission consumption. This domain owns health worker/callback start, stop, join and stale-owner behavior. |
+| `operator-reconciliation-durability` | Owns persisted annotation intent, phase transitions and retries across controller replacement. This domain owns local cancellation and lock lifetime while a drain call is pending. |
 | `test-reachability-enforcement` | Owns test collection and CI execution. A missing concurrency test supports a concrete finding here but is not a separate product defect. |
 
 Follow callees outside the manifest only to prove the scoped lifecycle path. If

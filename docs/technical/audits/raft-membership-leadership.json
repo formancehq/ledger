@@ -65,7 +65,8 @@
     "docs/ops/cluster-operations.md",
     "docs/technical/contributing/testing.md",
     "docs/technical/contributing/ai-audit.md",
-    "docs/technical/contributing/ai-audit-challenge.md"
+    "docs/technical/contributing/ai-audit-challenge.md",
+    "docs/technical/architecture/subsystems/consensus/controlled-shutdown.md"
   ],
   "invariants": [
     "Valid historical remove/add/remove cycles at one ordinal replay in one Ready or across delayed cleanup without conflicts. Each committed removal retains independent identity admission protection until its durable applied index and matching tuple tombstone are verified; exact duplicates reuse the event, same-index contradictory identities fail, and stale cleanup cannot release another event. Caller cancellation cannot own protection.",
@@ -82,7 +83,8 @@
     "ReadIndex certification requires the active leader and a quorum of the current voter configuration, and the certified index must be applied before the read proceeds. Only an explicitly stale read may bypass that certificate; projection semantics after the barrier belong to read-consistency-projections.",
     "Snapshot send/install must bind compatible Raft metadata, ConfState, FSM snapshot, spool/catch-up state, and peer identity. The receiver must drain conflicting apply work and remain non-serving until installation and subsequent synchronization establish a coherent applied and durable horizon.",
     "Committed entry ordering and membership outcomes must survive leader crash, transfer, restart, retained-log catch-up, and snapshot catch-up without loss, double durable effect, or configuration regression. Pure deterministic FSM/cache correctness after the consensus boundary belongs to fsm-determinism-cache-coverage.",
-    "A combined snapshot/entry Ready must preserve its entry suffix in live Storage and after WAL reopen before any peer or local storage acknowledgement, retaining the original entries/HardState durability order."
+    "A combined snapshot/entry Ready must preserve its entry suffix in live Storage and after WAL reopen before any peer or local storage acknowledgement, retaining the original entries/HardState durability order.",
+    "Controlled drain preflights every current member for protocol support, fences prior membership changes before marker enqueue, and blocks normal membership changes from enqueue through applied release. Its completion certificate requires matching current membership and each captured member locally persisting the same cutoff; leader Match alone is insufficient."
   ],
   "adversarial_questions": [
     "Does an interrupted cluster command return retryable Unavailable when its Raft run has stopped, including wrapped raft.ErrStopped, while unrelated failures retain their sanitized error classification?",
@@ -101,7 +103,8 @@
     "When a committed ConfChangeUpdateNode refreshes an existing peer address, do Pebble, the membership cache, and the operational Raft and service connection pools converge before the next Raft tick without recreating the peer identity or send loop? Does a transient optional-TLS probe failure during the address refresh preserve the committed target for the loop's next retry, or does it strand the peer with no active retry owner?",
     "Can a follower-to-leader forwarded request loop, fall back locally without a valid leader/barrier, lose cancellation or committed-outcome metadata, or be executed twice because transport identity is confused with logical proposal identity?",
     "Which immediate leadership observers update routing and membership authority synchronously, and can their failure expose stale authority? Deep goroutine ownership, cancellation, shutdown joins, and event/mirror/backup worker generations belong to concurrency-lifecycle-shutdown.",
-    "Can snapshot installation discard entries carried by the same Ready, and what in-memory snapshot/cache state and durable WAL prefix remain if suffix restoration fails before storage acknowledgement?"
+    "Can snapshot installation discard entries carried by the same Ready, and what in-memory snapshot/cache state and durable WAL prefix remain if suffix restoration fails before storage acknowledgement?",
+    "Can a mixed-version member pass preflight, or can a membership change slip between preflight and marker application? Can a timed-out marker, lost member, leader transfer or force removal make the operator accept an obsolete captured set or a follower that has not persisted the cutoff?"
   ],
   "dynamic_checks_to_consider": [
     "replay remove(A), add(B), remove(B) through a real follower RawNode Ready and WAL restart; compare with durable apply between changes, retain both tombstones, delay cleanup across newer events, cancel foreground waits, and test duplicate observation, same-index contradictory identity, stale pointer deletion and per-ordinal cost shape",
@@ -121,6 +124,7 @@
     "blackhole an existing TCP connection without closing it, move the peer endpoint, and verify a new dial plus delivered Raft message; repeat under sustained nonempty queues and delayed or stale probe responses to distinguish recovery from false disconnects",
     "commit ConfChangeUpdateNode for an existing Match=0 learner at a new endpoint, inject one optional-TLS probe failure before recovery, then prove Pebble, cache, and the retried live Raft dial target use that endpoint while ConfState and peer identity remain unchanged; the existing send loop and retry owner must survive the probe failure without being removed",
     "differentially compare uninterrupted execution with leader crash, transfer, restart, retained-log replay, and snapshot catch-up using the same admitted operations and final ConfState",
-    "exercise combined snapshot/entry Ready suffix preservation through LastIndex, Term, Entries, HardState and ConfState and across real WAL reopen, with snapshot-only processing retaining its existing write budget (internal/infra/node/process_ready_snapshot_test.go)"
+    "exercise combined snapshot/entry Ready suffix preservation through LastIndex, Term, Entries, HardState and ConfState and across real WAL reopen, with snapshot-only processing retaining its existing write budget (internal/infra/node/process_ready_snapshot_test.go)",
+    "Exercise old-member Unimplemented preflight, concurrent add/promotion/removal, lost marker response, leader transfer and member restart; assert marker/cutoff identity and each member persisted-index certificate before Drained."
   ]
 }
