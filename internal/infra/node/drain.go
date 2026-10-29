@@ -20,13 +20,21 @@ var ErrDrainEpochReused = errors.New("drain epoch has already been released")
 // ErrNoActiveDrain means there is no active marker with the supplied epoch.
 var ErrNoActiveDrain = errors.New("no active drain with the supplied epoch")
 
-func (node *Node) drainActive() bool {
+func (node *Node) drainActiveOrPending() bool {
+	node.proposalAdmissionMu.Lock()
+	pending := node.drainOutstanding != 0
+	releaseSeen := node.drainReleaseSeen
+	node.proposalAdmissionMu.Unlock()
 	// Lightweight membership tests construct a Node without an FSM.
 	if node.fsm == nil {
-		return false
+		return pending
 	}
 	_, index := node.fsm.Drain()
-	return index != 0
+	if index != 0 {
+		return true
+	}
+	// An applied release supersedes a prior generation's local marker latch.
+	return pending && node.fsm.DrainReleaseIndex() <= releaseSeen
 }
 
 func (node *Node) waitForPriorMembership(ctx context.Context) error {

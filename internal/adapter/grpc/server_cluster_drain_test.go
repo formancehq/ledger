@@ -57,11 +57,13 @@ func TestDrainPeerPreflightDistinguishesCallerAndPeerTimeouts(t *testing.T) {
 func canceledDrainContext() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
+
 	return ctx
 }
 
 func expiredDrainContext() context.Context {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
+
 	return ctx
 }

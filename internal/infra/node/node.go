@@ -3113,9 +3113,10 @@ func (node *Node) addLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 			case existingLearnerAlreadyInCluster:
 				return ErrNodeAlreadyInCluster
 			case existingLearnerNeedsRefresh:
-				if node.drainActive() {
+				if node.drainActiveOrPending() {
 					return domain.ErrMaintenanceMode
 				}
+
 				return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
 					Changes: []*raftpb.ConfChangeSingle{{
 						Type:   new(raftpb.ConfChangeUpdateNode),
@@ -3125,7 +3126,7 @@ func (node *Node) addLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 				})
 			}
 		}
-		if node.drainActive() {
+		if node.drainActiveOrPending() {
 			return domain.ErrMaintenanceMode
 		}
 
@@ -3149,7 +3150,7 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 	return node.retryConfChange(ctx, proposalID, nodeID, "PromoteLearner", []raftpb.ConfChangeType{
 		raftpb.ConfChangeAddNode,
 	}, func() error {
-		if node.drainActive() {
+		if node.drainActiveOrPending() {
 			return domain.ErrMaintenanceMode
 		}
 		status := node.rawNode.Status()
@@ -3219,7 +3220,7 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 	var capturedInstanceID []byte
 
 	proposeFn := func() error {
-		if node.drainActive() {
+		if node.drainActiveOrPending() {
 			return domain.ErrMaintenanceMode
 		}
 		status := node.rawNode.Status()
@@ -3589,7 +3590,7 @@ func (node *Node) checkAndPromoteLearners() error {
 	if !node.isLeaderReady() {
 		return nil
 	}
-	if node.drainActive() {
+	if node.drainActiveOrPending() {
 		return nil
 	}
 

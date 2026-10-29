@@ -17,6 +17,29 @@ func TestProposeRejectsAfterDrainEnqueue(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrMaintenanceMode)
 }
 
+func TestMembershipFenceOutlivesTimedOutDrainCaller(t *testing.T) {
+	t.Parallel()
+	n, setup := newTestMaintenanceNode(t)
+	n.proposeCh = make(chan *Proposal, 1)
+	n.indexTracker = NewIndexTracker(1)
+	marker := NewProposal(1, []byte("drain marker"))
+	marker.drainMarker = true
+	n.indexTracker.Lock()
+	future, err := n.Propose(t.Context(), marker)
+	n.indexTracker.Unlock()
+	require.NoError(t, err)
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err = future.Wait(canceled)
+	require.ErrorIs(t, err, context.Canceled)
+	require.True(t, n.drainActiveOrPending(), "membership must stay fenced after caller cancellation")
+	n.applier.ResolveDroppedFuture(marker.commandID, ErrNotLeader)
+	require.False(t, n.drainActiveOrPending(), "definitive drop releases the fence")
+	n.drainOutstanding = 1
+	setup.sharedState.SetDrainReleased(7)
+	require.False(t, n.drainActiveOrPending(), "applied release supersedes an old latch")
+}
+
 func TestStableDrainMembershipWaitsForConfChangeAndHonorsCancellation(t *testing.T) {
 	t.Parallel()
 	n := &Node{}
