@@ -141,6 +141,15 @@ func (r *VolumeExpansionReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 		return ctrl.Result{}, nil
 	}
+	// Zero replicas are intentional during suspension. Preserve expansion
+	// bookkeeping and avoid disk-usage execs until the original topology returns.
+	if paused, err := clusterWorkloadsPaused(ctx, r.Client, &ledger); err != nil {
+		return ctrl.Result{}, err
+	} else if paused {
+		deleteVolumeMetrics(ledger.Namespace, ledger.Name)
+
+		return ctrl.Result{RequeueAfter: volumeExpansionRetryInterval}, nil
+	}
 	defer func() {
 		if err := r.persistVolumeExpansionConditions(ctx, &ledger); err != nil {
 			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("persisting volume expansion status: %w", err))

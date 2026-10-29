@@ -105,6 +105,12 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}()
 
+	// Suspension precedes validation, credentials and lifecycle gates: a bad
+	// desired upgrade/configuration must never prevent stopping the old workload.
+	if handled, result, err := (clusterSuspension{r}).reconcileSuspension(ctx, ledger); handled || err != nil {
+		return result, err
+	}
+
 	// Validate spec — report errors via status condition instead of retrying.
 	if err := validateSpec(ledger); err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -403,6 +409,11 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 		return err
 	}
 
+	// Never publish a stale pause/resume result as observation of a newer spec.
+	if latest.Generation != ledger.Generation || latest.Spec.Disabled != ledger.Spec.Disabled {
+		return nil
+	}
+
 	// ledger was fetched fresh at the top of Reconcile and this reconciler is the
 	// primary writer of Cluster status conditions, so its non-volume conditions
 	// are the authoritative desired set after this pass — including conditions removed
@@ -462,6 +473,8 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 		// (invalid spec, selector drift). Keep it visible — recomputing
 		// from StatefulSet readiness would mask the blocked state for
 		// users and automation that key off .status.phase.
+		case reconciledPhase == "Suspending" || reconciledPhase == "Suspended" || reconciledPhase == "Resuming":
+			latest.Status.Phase = reconciledPhase
 		case reconciledPhase == "Error":
 			latest.Status.Phase = "Error"
 		case sts.Status.ReadyReplicas == replicas:
@@ -490,7 +503,15 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 	} else {
 		condition.Status = metav1.ConditionFalse
 		condition.Reason = "ReplicasNotReady"
-		condition.Message = fmt.Sprintf("%d/%d replicas ready", latest.Status.ReadyReplicas, *latest.Spec.Replicas)
+		replicas := int32(3)
+		if latest.Spec.Replicas != nil {
+			replicas = *latest.Spec.Replicas
+		}
+		condition.Message = fmt.Sprintf("%d/%d replicas ready", latest.Status.ReadyReplicas, replicas)
+		if latest.Status.Phase == "Suspending" || latest.Status.Phase == "Suspended" || latest.Status.Phase == "Resuming" {
+			condition.Reason = latest.Status.Phase
+			condition.Message = "Cluster workloads are suspended or transitioning; serving availability is not asserted"
+		}
 	}
 	meta.SetStatusCondition(&latest.Status.Conditions, condition)
 

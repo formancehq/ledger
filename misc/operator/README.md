@@ -14,6 +14,17 @@ The Ledger Operator manages `Cluster` and `EventSink` custom resources to automa
 - **Event sinks** reconciled into Ledger's Raft-replicated runtime configuration
 - **Credentials** for application-level access control
 
+## Reversible suspension
+
+Set `Cluster.spec.disabled: true` to stop Ledger Pods and active backup Job
+Pods while retaining the Cluster identity, StatefulSet, PVCs, credentials and
+configuration. `spec.replicas` remains the configured topology. Clear the flag
+to cold-start the retained topology before normal reconciliation continues.
+See the [suspension contract](../../docs/ops/cluster-suspension.md) for retained
+resources, transition ordering, dependent controllers and recovery limits.
+
+## StatefulSet scale-down
+
 During StatefulSet scale-down, every removed ordinal must satisfy the Raft
 membership removal postcondition (EN-1999). A replacement Pod can be Pending,
 missing, or have no container status while its stable node ID is still a voter;

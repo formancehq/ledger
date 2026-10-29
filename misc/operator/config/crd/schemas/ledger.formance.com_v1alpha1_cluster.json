@@ -1114,6 +1114,10 @@
           "description": "Debug enables debug logging. Equivalent to LogLevel=\"debug\".\nLogLevel takes precedence when both are set; prefer LogLevel for new\nmanifests since it also unlocks the trace level.",
           "type": "boolean"
         },
+        "disabled": {
+          "description": "Disabled suspends workloads without removing Raft members or durable data.\nReplicas remains the configured topology for resumption. Omitted or false\nenables normal reconciliation.",
+          "type": "boolean"
+        },
         "dnsEndpoints": {
           "description": "DNSEndpoints configures one or more ExternalDNS DNSEndpoint resources.\nEach entry is reconciled into its own DNSEndpoint object, so distinct\nendpoints (e.g. a public and a private one) can carry different\nannotations. Entries are keyed by their unique name.",
           "items": {
@@ -4167,7 +4171,7 @@
           "type": "integer"
         },
         "phase": {
-          "description": "Phase of the Cluster: Pending, Running, Degraded, Error.",
+          "description": "Phase of the Cluster: Pending, Running, Degraded, Error, Suspending, Suspended, Resuming.",
           "type": "string"
         },
         "readyReplicas": {

@@ -1217,6 +1217,12 @@ spec:
                   LogLevel takes precedence when both are set; prefer LogLevel for new
                   manifests since it also unlocks the trace level.
                 type: boolean
+              disabled:
+                description: |-
+                  Disabled suspends workloads without removing Raft members or durable data.
+                  Replicas remains the configured topology for resumption. Omitted or false
+                  enables normal reconciliation.
+                type: boolean
               dnsEndpoints:
                 description: |-
                   DNSEndpoints configures one or more ExternalDNS DNSEndpoint resources.
@@ -4191,7 +4197,8 @@ spec:
                 format: int64
                 type: integer
               phase:
-                description: 'Phase of the Cluster: Pending, Running, Degraded, Error.'
+                description: 'Phase of the Cluster: Pending, Running, Degraded, Error,
+                  Suspending, Suspended, Resuming.'
                 type: string
               readyReplicas:
                 description: ReadyReplicas is the number of ready pods.
