@@ -1,0 +1,8 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Configuration
+metadata:
+  name: ledger-rolling-upgrade
+spec:
+  parallel: 1
+  timeouts:
+    assert: 5m
