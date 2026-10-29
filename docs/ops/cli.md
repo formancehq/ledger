@@ -5123,6 +5123,30 @@ The HTTP sink sends each event as an individual POST request with headers:
 
 Only a 2xx response acknowledges an event. The sink does not follow redirects: any 3xx response is a delivery failure, so `--http-endpoint` must be the final URL.
 
+### Databricks sequence column upgrade
+
+New Databricks sink tables use `DECIMAL(20,0)` for `log_sequence`. This exact
+numeric type holds every global-log sequence Ledger admits. Existing tables
+created with `BIGINT` are not changed by sink startup's `CREATE TABLE IF NOT
+EXISTS`. Before upgrading the sink, check the column with `DESCRIBE TABLE
+catalog.schema.table` and, if it is `BIGINT`, widen it while preserving rows:
+
+```sql
+ALTER TABLE catalog.schema.table SET TBLPROPERTIES ('delta.enableTypeWidening' = 'true');
+ALTER TABLE catalog.schema.table ALTER COLUMN log_sequence TYPE DECIMAL(20,0);
+```
+
+Run this once per existing sink table during the upgrade window, then verify
+`DESCRIBE TABLE` reports `DECIMAL(20,0)` and existing sequence values still
+match. Databricks type widening requires a supported Delta table and upgrades
+its table protocol; check other readers and writers for compatibility before
+enabling it. If that feature is unavailable, create a replacement table with
+the new schema and migrate existing rows before switching the sink to it.
+Low sequence values remain numerically identical, so old and new Ledger
+writers can coexist during a rolling upgrade. Queries or clients that read
+`log_sequence` into signed 64-bit values must change to a decimal or string
+representation before values exceed `MaxInt64`.
+
 ### `events remove-sink`
 
 Remove a named event sink. If this is the last sink, event emission is implicitly disabled. With `--controller-id`, removal succeeds only if the current Raft-applied configuration carries the exact same identity; a missing sink or different owner returns an error without removing anything. Omit the flag for ordinary unconditional removal.

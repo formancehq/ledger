@@ -402,6 +402,22 @@ Events are published to a configurable topic/subject per sink type:
 - **ClickHouse**: Events are inserted into the configured `table`.
 - **Databricks**: Events are inserted into the configured `catalog.schema.table`.
 
+Databricks stores `log_sequence` as `DECIMAL(20,0)`, an exact numeric type that
+holds the full admitted global-log sequence range (`0` through `MaxUint64-1`).
+The sink binds the unsigned sequence as base-10 text and explicitly casts it to
+`DECIMAL(20,0)` in the `INSERT`; binding a high-bit `uint64` directly is rejected
+by `database/sql` before the warehouse sees it. Query it as a decimal value,
+for example `SELECT log_sequence FROM catalog.schema.table ORDER BY log_sequence`.
+Consumers using a signed 64-bit client type must scan or stringify the decimal
+instead of converting it to `BIGINT` or floating point.
+
+`CREATE TABLE IF NOT EXISTS` does not alter an existing Databricks sink table.
+Before upgrading a sink whose `log_sequence` column is `BIGINT`, widen that
+column to `DECIMAL(20,0)` while preserving its rows; see the upgrade procedure
+in [the CLI guide](../../../../ops/cli.md#databricks-sequence-column-upgrade).
+The sink continues to deliver at least once and advances its cursor only after
+a successful insert, so an incompatible table retains the cursor and retries.
+
 ### NATS ledger-name routing (EN-2023)
 
 Every admitted ledger name must route without blocking later selected events.
