@@ -489,6 +489,11 @@ func errorConversionInterceptor(logger logging.Logger) ggrpc.UnaryServerIntercep
 		resp, err := handler(ctx, req)
 		if err != nil {
 			err = convertToGRPCErrorWithContext(ctx, err, logger)
+			if trailer := maintenanceRetryPushback(err); trailer != nil {
+				if trailerErr := ggrpc.SetTrailer(ctx, trailer); trailerErr != nil {
+					logger.Errorf("setting maintenance retry pushback: %v", trailerErr)
+				}
+			}
 		}
 
 		return resp, err
@@ -501,6 +506,9 @@ func errorConversionStreamInterceptor(logger logging.Logger) ggrpc.StreamServerI
 		err := handler(srv, ss)
 		if err != nil {
 			err = convertToGRPCErrorWithContext(ss.Context(), err, logger)
+			if trailer := maintenanceRetryPushback(err); trailer != nil {
+				ss.SetTrailer(trailer)
+			}
 		}
 
 		return err

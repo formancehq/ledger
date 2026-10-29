@@ -2932,6 +2932,17 @@ ledgerctl cluster maintenance <true|false|enable|disable> [flags]
 - The maintenance mode flag is replicated through Raft consensus
 - Visible in `cluster status` output
 
+Writes rejected by maintenance mode display `cluster is in maintenance mode:
+write operations are blocked`. The server retains the gRPC `Unavailable` status
+and `MAINTENANCE_MODE` reason but sends a negative retry-pushback trailer, so
+`ledgerctl` stops automatic retries as soon as that rejection arrives. Disable
+maintenance before retrying the write. Ordinary transient unavailable errors
+retain their five-attempt retry policy. This takes effect when the server the
+CLI connects to is upgraded; older servers may still retry. No new flags or
+protocol revision are required. If an earlier attempt lost its response, retain
+the original idempotency key and payload when recovering its outcome: a later
+maintenance rejection does not establish whether that attempt committed.
+
 **Example:**
 
 ```bash

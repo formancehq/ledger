@@ -28,6 +28,17 @@ func buildGRPCError(t *testing.T, code codes.Code, message, reason string, metad
 	return detailed.Err()
 }
 
+func TestFormatGRPCError_MaintenanceMode(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := buildGRPCError(t, codes.Unavailable,
+		"maintenance mode", "MAINTENANCE_MODE", nil)
+	err := FormatGRPCError("create transaction", grpcErr)
+	require.EqualError(t, err, "create transaction: cluster is in maintenance mode: write operations are blocked")
+	var displayed *CLIError
+	require.ErrorAs(t, err, &displayed)
+}
+
 func TestFormatGRPCError_Unauthenticated_IncludesServerMessage(t *testing.T) {
 	t.Parallel()
 

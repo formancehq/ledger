@@ -1499,6 +1499,16 @@ Note that `POST /v3/{ledgerName}/bulk` shares this classifier but can only expre
 
 ### gRPC Error Mapping
 
+Maintenance mode is a v3 cluster operation without a corresponding v2 service
+gRPC contract. Its rejection remains `UNAVAILABLE` with Ledger reason
+`MAINTENANCE_MODE`; the server adds `grpc-retry-pushback-ms: -1` to stop native
+gRPC retries. Local and forwarded statuses preserve their message and details,
+and `ledgerctl` renders a clear cluster-maintenance message. HTTP remains
+503 `MAINTENANCE_MODE`; routes, JSON envelopes, and OpenAPI are unchanged.
+Explicit application retries and keyed recovery after an uncertain commit
+retain their own policy. See the [gRPC error contract](../architecture/subsystems/api/grpc-api.md#error-handling)
+for rollout and compatibility details.
+
 Business errors from the processing layer are mapped to gRPC status codes with structured `ErrorInfo` details via the `Describable` contract in `internal/domain`. This allows clients to programmatically identify error types without parsing error messages. See `internal/domain/errors.go` for the canonical list — the `Reason()` method on each typed error returns the constant below, while `FailureDetails()` supplies the typed variant that determines the code and public structured context for serializable errors. `domain.PublicErrorDetails` renders the public message and facts without exposing diagnostic `Error()` text; the keys listed below describe the public response.
 
 Each error response includes a `google.rpc.ErrorInfo` detail with:
