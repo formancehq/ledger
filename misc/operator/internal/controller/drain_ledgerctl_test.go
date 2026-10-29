@@ -53,6 +53,7 @@ func TestLedgerctlDrainEpochBeginningWithDash(t *testing.T) {
 			require.Equal(t, []string{"/bin/sh", "-c"}, command[:2])
 			require.Contains(t, command[2], "'cluster' 'begin-drain' '--json'")
 			require.Contains(t, command[2], "'--' '-shutdown'")
+
 			return &execResult{Stdout: `{"cutoffIndex":"42","members":["1"]}`}, nil
 		},
 	}

@@ -246,6 +246,7 @@ func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clust
 				if status.Code(err) == codes.Unimplemented {
 					return nil, status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain support", id)
 				}
+
 				return nil, status.Errorf(codes.Unavailable, "member %d drain preflight: %v", id, err)
 			}
 			if peer.GetLocalNode() != id || !peer.GetSupportsDrain() {

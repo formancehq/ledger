@@ -68,6 +68,7 @@ func (node *Node) BeginDrain(ctx context.Context, epoch string, members []uint64
 			// proposal was definitively truncated. A timeout is not equivalent.
 			node.releaseDroppedDrain()
 		}
+
 		return nil, fmt.Errorf("waiting for drain apply: %w", err)
 	}
 	if result.Error != nil {
