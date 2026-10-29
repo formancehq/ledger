@@ -15,9 +15,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-// Retained index rows alone do not make a fully purged account searchable.
-// Current metadata or a surviving volume keeps exact transaction roles usable.
-func TestCompileAddressRequiresCurrentAccount(t *testing.T) {
+// Exact transaction filters use retained mappings even after all current account
+// attributes are purged; surviving metadata or volumes do not change history.
+func TestCompileHistoricalAddressIndependentOfCurrentAccount(t *testing.T) {
 	t.Parallel()
 	for _, residency := range []string{"absent", "metadata", "volume"} {
 		t.Run(residency, func(t *testing.T) {
@@ -54,6 +54,33 @@ func TestCompileAddressRequiresCurrentAccount(t *testing.T) {
 				readstore.EncodeString(nil, "blue"), id, 10, readstore.MetadataEventAdd), nil))
 			require.NoError(t, batch.Commit())
 			for _, reverse := range []bool{false, true} {
+				// Account-target membership still requires current attributes.
+				var accountIter interface {
+					Next() bool
+					Current() []byte
+					Err() error
+					Close()
+				}
+				var err error
+				filter := addressExactFilter(address, commonpb.AddressRole_ADDRESS_ROLE_ANY)
+				if reverse {
+					accountIter, err = query.CompileReverse(store.DB(), dal.NewKeyBuilder(), filter,
+						commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger, nil,
+						paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, store.DB(), parityPin)
+				} else {
+					accountIter, err = query.Compile(store.DB(), dal.NewKeyBuilder(), filter,
+						commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger, nil,
+						paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, store.DB(), parityPin)
+				}
+				require.NoError(t, err)
+				hasAccount := accountIter.Next()
+				require.Equal(t, residency != "absent", hasAccount)
+				if hasAccount {
+					require.Equal(t, address, string(accountIter.Current()))
+					require.False(t, accountIter.Next())
+				}
+				require.NoError(t, accountIter.Err())
+				accountIter.Close()
 				for _, tc := range []struct {
 					role commonpb.AddressRole
 					want []uint64
@@ -66,9 +93,6 @@ func TestCompileAddressRequiresCurrentAccount(t *testing.T) {
 					if reverse {
 						slices.Reverse(want)
 					}
-					if residency == "absent" {
-						want = nil
-					}
 					filter := addressExactFilter(address, tc.role)
 					require.Equal(t, want, historicalAddressPages(t, store, filter, nil, reverse))
 					filter.GetAddress().Match = &commonpb.AddressMatch_ParamExact{ParamExact: "address"}
@@ -77,11 +101,8 @@ func TestCompileAddressRequiresCurrentAccount(t *testing.T) {
 					}
 					require.Equal(t, want, historicalAddressPages(t, store, filter, params, reverse))
 				}
-				filter := addressExactFilter(address, commonpb.AddressRole_ADDRESS_ROLE_ANY)
+				filter = addressExactFilter(address, commonpb.AddressRole_ADDRESS_ROLE_ANY)
 				wantFunding, wantDraining := []uint64{100}, []uint64{101}
-				if residency == "absent" {
-					wantFunding, wantDraining = nil, nil
-				}
 				require.Equal(t, wantFunding, historicalAddressPages(t, store,
 					andFilter(filter, referenceFilter(parityReferenceA)), nil, reverse))
 				require.Equal(t, wantFunding, historicalAddressPages(t, store,

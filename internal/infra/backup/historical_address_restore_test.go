@@ -64,8 +64,8 @@ func TestBackup_HistoricalAddressSearchAfterPurgeDelta(t *testing.T) {
 			_, err = RunBackup(ctx, testLogger(), sourceStore, storage, bucket, "full")
 			require.NoError(t, err)
 
-			// The post-checkpoint drain removes the final volume cell. Metadata, when
-			// present, keeps the account searchable. Export the actual committed delta.
+			// The post-checkpoint drain removes the final volume cell. Transaction
+			// history must remain searchable with or without retained metadata.
 			source.apply(actions.CreateTransactionAction(ledger, []*commonpb.Posting{
 				actions.NewPosting(address, "world", big.NewInt(100), "USD"),
 			}, nil, nil))
@@ -113,11 +113,7 @@ func TestBackup_HistoricalAddressSearchAfterPurgeDelta(t *testing.T) {
 							}
 							for _, parameterized := range []bool{false, true} {
 								ids := restoredHistoricalAddressIDs(t, pair.store, rs, ledger, address, tc.role, reverse, parameterized)
-								if withMetadata {
-									require.Equal(t, want, ids)
-								} else {
-									require.Empty(t, ids, "role %s reverse %t parameterized %t", tc.role, reverse, parameterized)
-								}
+								require.Equal(t, want, ids, "role %s reverse %t parameterized %t", tc.role, reverse, parameterized)
 							}
 						}
 					}

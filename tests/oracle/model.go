@@ -1842,8 +1842,8 @@ func (s *LedgerState) historicalCellExcluded(base *LedgerState, key VolumeKey, c
 // posting side, the (account, role) pair is indexed unless the posting's cell
 // is steady-state TRANSIENT at end of bulk — mirroring the builder's
 // AppliedProposal transient set. EPHEMERAL purges and grandfathered TRANSIENT
-// drains retain mappings; query predicates separately require current account
-// existence. The any-role index is
+// drains retain mappings. Exact transaction queries read those mappings without
+// requiring current account existence. The any-role index is
 // the union of the two sides, so only source/destination bits are stored.
 // Replacing the records is safe: they were allocated by this Apply, so no
 // older clone aliases them. Must run before purgeZeroBalance, like
