@@ -607,13 +607,13 @@ func TestScaleDownNeverExecsIntoPodOfAnotherStatefulSet(t *testing.T) {
 	require.Equal(t, int32(3), *live.Spec.Replicas, "replicas must not drop before the Raft removal")
 }
 
-// TestDiskUsageAndSinkExecsRefusePodOfAnotherStatefulSet covers the remaining
-// exec paths: the volume-expansion disk-usage probe and the EventSink
-// ledgerctl helper (ClusterReconciler.ledgerctlExecOutput) fail with
-// errPodNotOwned before any exec when the target pod is controlled by an older
-// StatefulSet UID. Config is nil, so reaching the real exec would fail with
-// another error.
-func TestDiskUsageAndSinkExecsRefusePodOfAnotherStatefulSet(t *testing.T) {
+// TestDiskUsageSinkAndDrainExecsRefusePodOfAnotherStatefulSet covers the
+// remaining exec paths: the volume-expansion disk-usage probe, the EventSink
+// ledgerctl helper (ClusterReconciler.ledgerctlExecOutput) and the annotated
+// drain preflight, barrier and release fail with errPodNotOwned before any
+// exec when the target pod is controlled by an older StatefulSet UID. Config
+// is nil, so reaching the real exec would fail with another error.
+func TestDiskUsageSinkAndDrainExecsRefusePodOfAnotherStatefulSet(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cluster, sts := scaleDownOwnershipFixture()
@@ -643,6 +643,67 @@ func TestDiskUsageAndSinkExecsRefusePodOfAnotherStatefulSet(t *testing.T) {
 		require.ErrorIs(t, err, errPodNotOwned)
 		require.ErrorContains(t, err, "uid old-sts-uid")
 	})
+
+	for name, drain := range map[string]func(*ClusterReconciler) error{
+		"drain preflight": func(r *ClusterReconciler) error {
+			return r.PreflightDrainBarrier(ctx, cluster, tlsModeDisabled)
+		},
+		"drain barrier": func(r *ClusterReconciler) error {
+			_, err := r.EnsureDrainBarrier(ctx, cluster, "epoch", tlsModeDisabled)
+
+			return err
+		},
+		"drain release": func(r *ClusterReconciler) error {
+			_, err := r.EnsureDrainReleased(ctx, cluster, "epoch", tlsModeDisabled)
+
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			scheme := ownershipTestScheme(t)
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(sts.DeepCopy()).Build()
+
+			err := drain(&ClusterReconciler{Client: c, Scheme: scheme, Clientset: clientset})
+
+			require.ErrorIs(t, err, errPodNotOwned)
+			require.ErrorContains(t, err, "uid old-sts-uid")
+		})
+	}
+}
+
+// TestAnnotatedDrainRefusesStatefulSetNotControlledByCluster proves an
+// in-flight drain never takes its replica count, gRPC port or TLS mode from a
+// StatefulSet under the Cluster's name that another Cluster controls, and
+// never contacts its members.
+func TestAnnotatedDrainRefusesStatefulSetNotControlledByCluster(t *testing.T) {
+	t.Parallel()
+	scheme := ownershipTestScheme(t)
+	cluster := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "orders", Namespace: "ns", UID: "cluster-uid", Annotations: map[string]string{ClusterDrainAnnotation: "true"}},
+		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: new(int32(1)), GrpcPort: 8888},
+		Status:     ledgerv1alpha1.ClusterStatus{Drain: &ledgerv1alpha1.DrainStatus{Epoch: "epoch", Phase: drainPhasePreflighting}},
+	}
+	foreign := controlledByOtherCluster(&appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: cluster.Namespace},
+		Spec:       appsv1.StatefulSetSpec{Replicas: new(int32(1)), Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: ledgerContainer, Ports: []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888, Protocol: corev1.ProtocolTCP}}}}}}},
+		Status:     appsv1.StatefulSetStatus{ReadyReplicas: 1},
+	})
+	r := &ClusterReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster).WithObjects(cluster, foreign).Build()}
+	preflight := func(context.Context, *ledgerv1alpha1.Cluster, string) error {
+		t.Fatal("preflight must not contact the members of a foreign StatefulSet")
+
+		return nil
+	}
+	ensure := func(context.Context, *ledgerv1alpha1.Cluster, string, string) (bool, error) {
+		t.Fatal("drain must not contact the members of a foreign StatefulSet")
+
+		return false, nil
+	}
+
+	_, err := r.reconcileAnnotatedDrain(t.Context(), cluster, preflight, ensure, ensure)
+
+	require.ErrorIs(t, err, errResourceNameConflict)
 }
 
 // TestRequirePodControlledByRejectsPodWithoutController proves an orphaned pod

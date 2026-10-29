@@ -32,6 +32,7 @@ The helpers live in `misc/operator/internal/controller/derived_object_ownership.
 | VolumeClaimTemplate orphan-and-recreate delete of the StatefulSet | Ownership on the read, then `deleteInspected` with orphan propagation | `errResourceNameConflict`; nothing deleted |
 | Status readiness (`updateStatus`) | Ownership of the StatefulSet | Treated as absent; readiness of another runtime is never reported |
 | Ledger, ledger-index and EventSink `ledgerctl` execs | `fetchClusterStatefulSet` (StatefulSet controlled by the Cluster UID), then `ownedPodExec` (pod-0 controlled by that StatefulSet UID) | `errClusterRuntimeAbsent`, `errResourceNameConflict` or `errPodNotOwned`; nothing executed |
+| Annotated drain (`ledger.formance.com/drain`) preflight, barrier and release | `fetchClusterStatefulSet` for the live replica count, gRPC port and TLS mode, then `ownedPodExec` per member pod | `errClusterRuntimeAbsent` requeues; `errResourceNameConflict` or `errPodNotOwned` fail the step; no marker is proposed or released |
 | Raft scale-down execs | `ownedPodExec` on the StatefulSet just written by the guarded mutate function | `errPodNotOwned`; replicas are not reduced |
 | Volume-expansion disk probe | StatefulSet ownership, then `ownedPodExec` per pod | Expansion refused (`ResourceNameConflict` reason) or the measurement fails for that pod |
 | BackupRun Job creation | StatefulSet ownership (TLS mode) and ClusterIP Service ownership (`requireClusterService`, an uncached read of the address the Job dials) | No Job created; the run retries |

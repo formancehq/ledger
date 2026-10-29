@@ -35,8 +35,12 @@ func TestScaleDownPVCDeletionRecoversAfterReplicaPersistence(t *testing.T) {
 	}
 	_, err = reconciler.reconcileStatefulSetWithExec(ctx, ledger, "initial", nil, fixture.exec)
 	require.NoError(t, err)
+	// Pods are controlled by the Cluster's StatefulSet, as the StatefulSet
+	// controller creates them: scale-down execs only into pods it controls.
+	owner := &appsv1.StatefulSet{}
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: resourceName(ledger.Name)}, owner))
 	for ordinal := range 3 {
-		createScaleDownReconcilePod(t, clientset, namespace, podName(ledger.Name, ordinal), corev1.PodRunning)
+		createScaleDownReconcilePod(t, clientset, owner, podName(ledger.Name, ordinal), corev1.PodRunning)
 		for _, volume := range []string{"wal", "data"} {
 			_, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Create(ctx, &corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s-%d", volume, resourceName(ledger.Name), ordinal)},
