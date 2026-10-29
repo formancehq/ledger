@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strconv"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -62,6 +64,27 @@ func authKeysConfigMapName(crName string) string {
 // clusterSecretName returns the cluster inter-node Secret name for a Cluster.
 func clusterSecretName(crName string) string {
 	return resourceName(crName) + "-cluster-secret"
+}
+
+// operatorCredentialsSecretName returns the per-cluster replica Secret created
+// by the Credentials reconciler for the operator credential.
+func operatorCredentialsSecretName(credentialsName string) string {
+	return prefixedName(credentialsName) + "-credentials-keys"
+}
+
+// operatorCredentialsName returns the deterministic cluster-scoped Credentials
+// name managed for a namespaced Cluster. The namespace hash prevents two
+// namespaces containing same-named Clusters from sharing an identity.
+func operatorCredentialsName(ledger *ledgerv1alpha1.Cluster) string {
+	sum := sha256.Sum256([]byte(ledger.Namespace + "/" + ledger.Name))
+	return prefixedName("operator-" + hex.EncodeToString(sum[:])[:16])
+}
+
+// operatorCredentialsSelectorValue is stamped on the Cluster so the
+// cluster-scoped Credentials selector matches exactly this Cluster.
+func operatorCredentialsSelectorValue(ledger *ledgerv1alpha1.Cluster) string {
+	sum := sha256.Sum256([]byte(ledger.Namespace + "/" + ledger.Name))
+	return hex.EncodeToString(sum[:])[:16]
 }
 
 // credentialsCanonicalSecretName returns the name of the canonical seed Secret for a
