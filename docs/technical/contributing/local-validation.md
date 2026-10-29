@@ -67,7 +67,9 @@ A per-run directory was not needed for isolation: `t.TempDir`, `os.MkdirTemp`
 and Go's build work directories create uniquely named entries, so concurrent
 runs can share one `TMPDIR`. The only thing given up is the guaranteed removal
 of temporary files leaked by a crashed or careless test. Those now stay in the
-system temporary directory until the OS cleans it.
+inherited `TMPDIR`. Whether anything removes them depends on that directory's
+own retention policy: the OS may clean `/tmp`, but nothing cleans a custom
+`TMPDIR` automatically.
 
 One tool did rely on a private `TMPDIR`. By default golangci-lint locks
 `$TMPDIR/golangci-lint.lock` and gives up after 5s with `parallel golangci-lint
