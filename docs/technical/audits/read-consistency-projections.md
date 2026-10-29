@@ -179,3 +179,29 @@ opening snapshot, not fresh live state. Require cursor error propagation and
 owned-handle cleanup. The presentation/uint64 encoding oracle belongs to
 api-boundary-contracts; credential projection belongs to sensitive-data-exposure-boundaries.
 See [LedgerInfo](../architecture/subsystems/api/ledger-info.md).
+
+## Historical transaction address projection
+
+Current account memberships and immutable transaction mappings have different
+lifetimes. Live folding, generic replay and fast postings backfill exclude
+TRANSIENT cells from both, but purged/ephemeral cells only from current has-asset
+membership. Exercise draining, same-log net-zero and compensating transactions,
+including partial asset/color purges, with independent expected role mappings.
+TRANSIENT negative controls must use source and destination addresses without
+valid postings sharing their historical or has-asset keys. Keep a valid colored
+posting on an otherwise excluded address as a positive control in each mode.
+This contract does not require complete current-account lifecycle cleanup.
+
+For previously omitted mappings, seed non-empty READY indexes and drive supported
+drop/recreate/backfill. Require all configured affected role buckets, retained
+valid rows, failure without cursor advancement, successful retry and readiness
+only after completion. Restart or duplicate CreateIndex alone is not repair.
+Existing frozen query-checkpoint read stores remain unchanged by live repair;
+query-semantic-equivalence owns exact-versus-prefix predicate selection once
+index population and the query horizon are established. See the operational
+repair procedure in `docs/ops/upgrades.md`.
+
+The nonempty checkpoint-plus-purge-delta fixture in
+`internal/infra/backup/historical_address_restore_test.go` also checks fresh
+read-store reconstruction against independently expected historical role IDs.
+Persistence-restore-replay owns the primary restore and retained-history evidence.

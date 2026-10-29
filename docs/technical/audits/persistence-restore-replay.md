@@ -201,3 +201,17 @@ CreatedLedgerLog carries initial metadata so post-checkpoint creation reconstruc
 Does a restore with nonempty checkpoint files and a nonempty post-checkpoint creation delta reproduce typed initial metadata for normal and mirror ledgers, including explicit protobuf null and a schema type mismatch?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## Historical address search after a purge delta
+
+Checkpoint a funded EPHEMERAL account, then commit its final drain and require
+nonempty log/audit exports. Restore through the production checkpoint-plus-delta
+composition, run CheckStore, and verify that the checkpoint-era volume is absent
+while both funding and draining history remain searchable after rebuilding the
+peer read store. Compare independent ANY/SOURCE/DESTINATION IDs in both directions
+on source and restored stores. The real-admission fixture in
+`internal/infra/backup/historical_address_restore_test.go` is an evidence lead.
+Fresh read-store reconstruction uses retained transaction and AppliedProposal
+history; it does not repair pre-existing frozen query-checkpoint read copies.
+Read-consistency-projections owns index population/readiness, and
+query-semantic-equivalence owns exact-versus-prefix selection at a fixed horizon.
