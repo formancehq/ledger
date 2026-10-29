@@ -1405,8 +1405,8 @@ type ClusterUpgradeStatus struct {
 	StatefulSetUID   string `json:"statefulSetUID"`
 	TargetSpecHash   string `json:"targetSpecHash"`
 	ExpectedReplicas int32  `json:"expectedReplicas"`
-	// BarrierIndex is the leader commit index after maintenance became active.
-	BarrierIndex uint64 `json:"barrierIndex,omitempty"`
+	// DrainEpoch identifies the Raft admission cutoff across operator restarts.
+	DrainEpoch string `json:"drainEpoch,omitempty"`
 	// ClaimUIDs pins each pre-existing volume to its original claim.
 	ClaimUIDs map[string]string `json:"claimUIDs,omitempty"`
 	// VolumeUIDs pins every bound PV reused by the original claims.

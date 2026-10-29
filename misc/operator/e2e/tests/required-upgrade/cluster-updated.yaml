@@ -6,5 +6,5 @@ spec:
   replicas: 3
   image:
     repository: ledger
-    tag: v3.0.0-rc.2
+    tag: v3.0.0-rc.3
     pullPolicy: Never

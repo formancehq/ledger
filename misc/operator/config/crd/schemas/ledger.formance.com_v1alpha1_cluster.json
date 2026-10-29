@@ -4228,17 +4228,16 @@
           "additionalProperties": false,
           "description": "Upgrade records an interrupted mandatory stop-and-recreate upgrade.\nIt is persisted before the old StatefulSet is deleted.",
           "properties": {
-            "barrierIndex": {
-              "description": "BarrierIndex is the leader commit index after maintenance became active.",
-              "format": "int64",
-              "type": "integer"
-            },
             "claimUIDs": {
               "additionalProperties": {
                 "type": "string"
               },
               "description": "ClaimUIDs pins each pre-existing volume to its original claim.",
               "type": "object"
+            },
+            "drainEpoch": {
+              "description": "DrainEpoch identifies the Raft admission cutoff across operator restarts.",
+              "type": "string"
             },
             "expectedReplicas": {
               "format": "int32",

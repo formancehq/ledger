@@ -6,5 +6,5 @@ spec:
   replicas: 3
   image:
     repository: ghcr.io/formancehq/ledger
-    tag: v3.0.0-rc.1
+    tag: v3.0.0-rc.2
     pullPolicy: IfNotPresent

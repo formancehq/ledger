@@ -170,8 +170,8 @@ Kubernetes garbage collection and check the actual PVC identities after retry.
 ## Sequential RC and storage transition boundary
 
 For a hardcoded mandatory stop, prove that the operator persists source, target,
-StatefulSet UID and PVC UIDs, enables maintenance, records a leader commit
-barrier and verifies every voter's durable FSM cursor before deletion. Then
+StatefulSet UID and PVC UIDs, persists a drain epoch, preflights member support,
+and verifies every member has durably applied the Raft admission cutoff before deletion. Then
 prove that it observes Retain on the source
 StatefulSet, removes claim owner references, and verifies that every original
 claim remains bound. After deleting the StatefulSet, it must wait for both its

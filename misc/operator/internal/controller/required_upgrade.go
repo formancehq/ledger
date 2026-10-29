@@ -2,14 +2,13 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -25,7 +24,7 @@ import (
 // A release listed here cannot coexist with its predecessor. Entries denote
 // the first target version requiring a complete stop, including allowed jumps
 // that cross the boundary. RC adjacency is still checked by validateRCUpgrade.
-var mandatoryStopVersions = []string{"v3.0.0-rc.2"}
+var mandatoryStopVersions = []string{"v3.0.0-rc.3"}
 
 const requiredUpgradePoll = 5 * time.Second
 
@@ -107,6 +106,9 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if !requiresStoppedUpgrade(source, ledger.Spec.Image.Tag) {
 			return true, ctrl.Result{}, nil
 		}
+		if _, requested := ledger.Annotations[ClusterDrainAnnotation]; requested || ledger.Status.Drain != nil {
+			return false, ctrl.Result{}, errors.New("finish the annotated drain before starting a stopped upgrade")
+		}
 		if ledger.Spec.HeadlessService.Enabled != nil && !*ledger.Spec.HeadlessService.Enabled {
 			return false, ctrl.Result{}, errors.New("stopped upgrade requires spec.headlessService.enabled to remain true")
 		}
@@ -133,7 +135,7 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if ledger.Spec.Replicas == nil || *ledger.Spec.Replicas != *sts.Spec.Replicas {
 			return false, ctrl.Result{}, errors.New("finish replica changes before starting a stopped upgrade")
 		}
-		state = &ledgerv1alpha1.ClusterUpgradeStatus{Source: source, Target: ledger.Spec.Image.Tag, StatefulSetUID: string(sts.UID), TargetSpecHash: computeSpecHash(&ledger.Spec), ExpectedReplicas: *sts.Spec.Replicas, ClaimUIDs: claims, VolumeUIDs: volumes, Phase: "Maintenance"}
+		state = &ledgerv1alpha1.ClusterUpgradeStatus{Source: source, Target: ledger.Spec.Image.Tag, StatefulSetUID: string(sts.UID), TargetSpecHash: computeSpecHash(&ledger.Spec), ExpectedReplicas: *sts.Spec.Replicas, ClaimUIDs: claims, VolumeUIDs: volumes, DrainEpoch: uuid.NewString(), Phase: "Preflighting"}
 		if err := r.persistUpgrade(ctx, ledger, state); err != nil {
 			return false, ctrl.Result{}, err
 		}
@@ -166,35 +168,34 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		}
 	}
 	switch state.Phase {
-	case "Maintenance":
+	case "Preflighting":
 		if sts == nil {
-			return false, ctrl.Result{}, errors.New("source StatefulSet disappeared before maintenance barrier")
+			return false, ctrl.Result{}, errors.New("source StatefulSet disappeared before drain preflight")
 		}
-		if err := r.execUpgradeCommand(ctx, ledger, sts, exec, "cluster", "maintenance", "enable"); err != nil {
-			return false, ctrl.Result{}, fmt.Errorf("enabling maintenance: %w", err)
+		live, err := drainClusterFromWorkload(ledger, sts)
+		if err != nil {
+			return false, ctrl.Result{}, err
 		}
-		if err := r.advanceUpgrade(ctx, ledger, "Barrier"); err != nil {
+		if err := preflightDrain(ctx, r.upgradeDrainCluster(live, sts, exec)); err != nil {
+			return false, ctrl.Result{}, fmt.Errorf("preflighting stopped-upgrade drain: %w", err)
+		}
+		if err := r.advanceUpgrade(ctx, ledger, "Draining"); err != nil {
 			return false, ctrl.Result{}, err
 		}
 
 		return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
-	case "Barrier":
+	case "Draining":
 		if sts == nil {
-			return false, ctrl.Result{}, errors.New("source StatefulSet disappeared before maintenance barrier")
+			return false, ctrl.Result{}, errors.New("source StatefulSet disappeared before drain barrier")
 		}
-		if state.BarrierIndex == 0 {
-			barrier, err := r.readUpgradeBarrier(ctx, ledger, sts, exec)
-			if err != nil {
-				return false, ctrl.Result{}, err
-			}
-			updated := state.DeepCopy()
-			updated.BarrierIndex = barrier
-			if err := r.persistUpgrade(ctx, ledger, updated); err != nil {
-				return false, ctrl.Result{}, err
-			}
-			state = updated
+		if state.DrainEpoch == "" {
+			return false, ctrl.Result{}, errors.New("stopped upgrade has no drain epoch")
 		}
-		ready, err := r.upgradeVotersPersisted(ctx, ledger, sts, exec, state.BarrierIndex, state.ExpectedReplicas)
+		live, err := drainClusterFromWorkload(ledger, sts)
+		if err != nil {
+			return false, ctrl.Result{}, err
+		}
+		ready, err := ensureDrain(ctx, r.upgradeDrainCluster(live, sts, exec), state.DrainEpoch)
 		if err != nil {
 			return false, ctrl.Result{}, err
 		}
@@ -234,9 +235,13 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 				return false, ctrl.Result{}, err
 			}
 			if sts.DeletionTimestamp.IsZero() {
-				ready, err := r.upgradeVotersPersisted(ctx, ledger, sts, exec, state.BarrierIndex, state.ExpectedReplicas)
+				live, err := drainClusterFromWorkload(ledger, sts)
 				if err != nil {
-					return false, ctrl.Result{}, fmt.Errorf("rechecking maintenance barrier before delete: %w", err)
+					return false, ctrl.Result{}, err
+				}
+				ready, err := ensureDrain(ctx, r.upgradeDrainCluster(live, sts, exec), state.DrainEpoch)
+				if err != nil {
+					return false, ctrl.Result{}, fmt.Errorf("rechecking drain barrier before delete: %w", err)
 				}
 				if !ready {
 					return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
@@ -311,10 +316,10 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		}
 		tag, err := ledgerImageTag(sts)
 		if err != nil {
-			return false, ctrl.Result{}, fmt.Errorf("reading replacement StatefulSet image before maintenance release: %w", err)
+			return false, ctrl.Result{}, fmt.Errorf("reading replacement StatefulSet image before drain release: %w", err)
 		}
 		if tag != state.Target || string(sts.UID) == state.StatefulSetUID {
-			return false, ctrl.Result{}, fmt.Errorf("replacement StatefulSet identity changed before maintenance release: expected target %s with a new UID, got tag %s and UID %s", state.Target, tag, sts.UID)
+			return false, ctrl.Result{}, fmt.Errorf("replacement StatefulSet identity changed before drain release: expected target %s with a new UID, got tag %s and UID %s", state.Target, tag, sts.UID)
 		}
 		if err := verifyReplacementReplicaCount(sts, state); err != nil {
 			return false, ctrl.Result{}, err
@@ -325,8 +330,19 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if !replacementConverged(sts, state) {
 			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 		}
-		if err := r.execUpgradeCommand(ctx, ledger, sts, exec, "cluster", "maintenance", "disable"); err != nil {
-			return false, ctrl.Result{}, fmt.Errorf("disabling maintenance: %w", err)
+		if state.DrainEpoch == "" {
+			return false, ctrl.Result{}, errors.New("stopped upgrade has no drain epoch")
+		}
+		live, err := drainClusterFromWorkload(ledger, sts)
+		if err != nil {
+			return false, ctrl.Result{}, err
+		}
+		ready, err := ensureDrainReleased(ctx, r.upgradeDrainCluster(live, sts, exec), state.DrainEpoch)
+		if err != nil {
+			return false, ctrl.Result{}, fmt.Errorf("releasing stopped-upgrade drain: %w", err)
+		}
+		if !ready {
+			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 		}
 		if err := r.persistUpgrade(ctx, ledger, nil); err != nil {
 			return false, ctrl.Result{}, err
@@ -414,101 +430,11 @@ func (r *ClusterReconciler) advanceUpgrade(ctx context.Context, ledger *ledgerv1
 	return r.persistUpgrade(ctx, ledger, next)
 }
 
-type stoppedUpgradeClusterStatus struct {
-	State           string `json:"state"`
-	MaintenanceMode bool   `json:"maintenanceMode"`
-	SyncProgress    *struct {
-		Status string `json:"status"`
-	} `json:"syncProgress"`
-	RaftStatus struct {
-		Commit             uint64 `json:"commit,string"`
-		LastPersistedIndex uint64 `json:"lastPersistedIndex,string"`
-	} `json:"raftStatus"`
-}
-
-func (r *ClusterReconciler) execUpgradeCommand(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec, args ...string) error {
-	_, err := r.execUpgrade(ctx, ledger, sts, exec, 0, args...)
-
-	return err
-}
-
-func (r *ClusterReconciler) execUpgrade(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec, nodeID int32, args ...string) (*execResult, error) {
-	if r.Config == nil || r.Clientset == nil {
-		return nil, errors.New("kubernetes exec client is unavailable for stopped upgrade")
+func (r *ClusterReconciler) upgradeDrainCluster(live *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec) *ledgerctlDrainCluster {
+	return &ledgerctlDrainCluster{
+		cluster: live, tlsMode: currentTLSModeFromStatefulSet(sts),
+		config: r.Config, clientset: r.Clientset, exec: exec,
 	}
-	grpcPort := int32(0)
-	for _, container := range sts.Spec.Template.Spec.Containers {
-		if container.Name != "ledger" {
-			continue
-		}
-		for _, port := range container.Ports {
-			if port.Name == "grpc" {
-				grpcPort = port.ContainerPort
-
-				break
-			}
-		}
-	}
-	if grpcPort <= 0 {
-		return nil, errors.New("live StatefulSet has no ledger gRPC port")
-	}
-	serverAddr := podSelfServerAddr(headlessServiceName(ledger.Name), grpcPort)
-	result, err := exec(ctx, r.Config, r.Clientset, ledger.Namespace, podName(ledger.Name, 0), "ledger", ledgerctlCommand(serverAddr, currentTLSModeFromStatefulSet(sts), args...))
-	if err != nil {
-		return nil, err
-	}
-	if result == nil {
-		return nil, fmt.Errorf("ledgerctl returned no result for node %d", nodeID)
-	}
-
-	return result, nil
-}
-
-func (r *ClusterReconciler) readUpgradeStatus(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec, nodeID int32) (stoppedUpgradeClusterStatus, error) {
-	args := []string{"cluster", "status"}
-	if nodeID != 0 {
-		args = append(args, "--node-id", strconv.Itoa(int(nodeID)))
-	}
-	args = append(args, "--json")
-	result, err := r.execUpgrade(ctx, ledger, sts, exec, nodeID, args...)
-	if err != nil {
-		return stoppedUpgradeClusterStatus{}, fmt.Errorf("reading upgrade status for node %d: %w", nodeID, err)
-	}
-	var status stoppedUpgradeClusterStatus
-	if err := json.Unmarshal([]byte(result.Stdout), &status); err != nil {
-		return status, fmt.Errorf("decoding upgrade status for node %d: %w", nodeID, err)
-	}
-
-	return status, nil
-}
-
-func (r *ClusterReconciler) readUpgradeBarrier(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec) (uint64, error) {
-	status, err := r.readUpgradeStatus(ctx, ledger, sts, exec, 0)
-	if err != nil {
-		return 0, err
-	}
-	if !strings.EqualFold(status.State, "leader") || !status.MaintenanceMode || status.RaftStatus.Commit == 0 {
-		return 0, fmt.Errorf("maintenance barrier is not visible on the leader (state %q, maintenance %t, commit %d)", status.State, status.MaintenanceMode, status.RaftStatus.Commit)
-	}
-
-	return status.RaftStatus.Commit, nil
-}
-
-func (r *ClusterReconciler) upgradeVotersPersisted(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec, barrier uint64, expectedReplicas int32) (bool, error) {
-	if sts.Spec.Replicas == nil || *sts.Spec.Replicas != expectedReplicas {
-		return false, fmt.Errorf("source StatefulSet replica count differs from the pinned upgrade count %d", expectedReplicas)
-	}
-	for ordinal := range expectedReplicas {
-		status, err := r.readUpgradeStatus(ctx, ledger, sts, exec, ordinal+1)
-		if err != nil {
-			return false, err
-		}
-		if !status.MaintenanceMode || status.RaftStatus.LastPersistedIndex < barrier || (status.SyncProgress != nil && !strings.EqualFold(status.SyncProgress.Status, "normal")) {
-			return false, nil
-		}
-	}
-
-	return true, nil
 }
 
 func (r *ClusterReconciler) upgradeClaims(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (map[string]string, error) {

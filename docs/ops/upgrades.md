@@ -28,8 +28,11 @@ volume templates, the operator completes the RC rollout before recreating the
 StatefulSet for the volume change.
 Old and new voters must communicate and apply each committed entry identically
 while they coexist, except when the embedded operator requires a complete stop
-at a hardcoded release boundary. The first such boundary is `v3.0.0-rc.2`:
-the operator requires a stopped upgrade from `v3.0.0-rc.1` to `rc.2`.
+at a hardcoded release boundary. The first such boundary is `v3.0.0-rc.3`:
+the operator requires a stopped upgrade from `v3.0.0-rc.2` to `rc.3`.
+`rc.2` introduces the drain barrier; deploy it to every member before using
+the operator-required stopped upgrade. The `rc.1` to `rc.2` transition uses
+the separately validated maintenance-based procedure below.
 RC adjacency remains mandatory. Later RCs use the normal rolling path unless
 another boundary is explicitly added to the operator.
 When the running version precedes a mandatory boundary, pin the target to a
@@ -51,7 +54,7 @@ listed below.
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
 | Rolling | Default between adjacent RCs on the same release line. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
-| Operator-required stopped restart | An adjacent RC crossing a hardcoded operator boundary (`v3.0.0-rc.2`). | Enable maintenance and verify a durable barrier on every voter; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
+| Operator-required stopped restart | An adjacent RC crossing a hardcoded operator boundary (`v3.0.0-rc.3`). | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
 | Coordinated restart | A separate compatibility line that cannot safely mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart without a mixed-version window. Preserve or migrate the released data. |
 | Migrate or restore | A separate line with a changed persisted or backup format, or development state before the first RC. | Follow a tested migration or restore a backup supported by the target release. A wipe or external rebuild is permitted only for unsupported pre-RC development state. Verify the complete state before serving writes. |
 
@@ -64,15 +67,17 @@ results in release validation. If the path fails, fix it before release.
 ## Operator-required stopped restart
 
 At a listed boundary, the operator stores `status.upgrade` before any workload
-change. It enables replicated maintenance, reads a leader commit index after
-maintenance is visible, and waits until every voter reports maintenance active,
-normal sync and a durable FSM cursor at or beyond that index. This barrier
-ensures already committed business entries are applied under the source binary.
+change. It persists a drain epoch, preflights every member's drain and release
+support, then commits a Raft-ordered admission cutoff. The operator waits until
+every captured member reports that epoch and cutoff, normal sync, and a durable
+FSM cursor at or beyond the cutoff. This ensures already committed business
+entries are applied under the source binary. Deploy a drain-capable source
+binary to every member before requesting this upgrade.
 The upgrade state machine owns only the stop barrier, the PVC identity and
 retention checks, and the decision to release ordinary reconciliation. The
 ordinary StatefulSet reconciler creates the replacement and applies its pod
 template and mutable fields. Both paths use the same retention policy builder;
-while `status.upgrade` exists it selects `Retain`, and after maintenance is
+while `status.upgrade` exists it selects `Retain`, and after the drain is
 released it restores the requested policy.
 While the workload is stopped, reconciliation still repairs the headless Service
 needed to reach voters, the ServiceAccount, and the TLS cluster Secret and
@@ -93,14 +98,14 @@ acknowledgement or elapsed time does not satisfy this condition. It does not
 force-delete a stuck Pod. Only then may it create the target StatefulSet and
 reuse the same PVC names. The replacement keeps both PVC retention policies at
 `Retain` throughout the active upgrade, including recovery if the replacement
-disappears. After maintenance is released, normal reconciliation restores the
-requested retention policies. After all target replicas are ready, it disables
-maintenance. `status.upgrade` and the `Upgrade` condition show the
+disappears. After all target replicas are ready, the operator commits the drain
+release and waits for every member to persist it. Normal reconciliation then
+restores the requested retention policies. `status.upgrade` and the `Upgrade` condition show the
 phase or blocking error. The operator retries after API failures; do not remove
 the status record or create a replacement workload by hand while it is active.
-If the replacement StatefulSet disappears before maintenance is released, the
+If the replacement StatefulSet disappears before the drain is released, the
 operator waits for its Pods to terminate, verifies the original PVC/PV identities,
-and recreates it while keeping maintenance active.
+and recreates it while keeping the drain active.
 
 Keep the requested target tag, workload spec and replica count fixed until
 `status.upgrade` clears. An edit during the operation is rejected. A direct
@@ -111,8 +116,8 @@ operator keeps the cluster unavailable. Verify the replacement is fully ready,
 then check cluster status, representative reads and writes, audit verification
 and backup compatibility. The operator does not delete Raft members or volumes.
 
-Maintenance blocks business writes before the stop; in-flight proposals after
-the barrier reject at apply. Cluster-internal technical entries may continue
+The drain blocks business writes before the stop; in-flight proposals after
+the cutoff reject at apply. Cluster-internal technical entries may continue
 and must remain replay-compatible with the target. Clients must retry an
 unacknowledged request with the same idempotency key. A release that changes
 replay or apply semantics must prove this
@@ -175,9 +180,10 @@ with writes enabled is unsafe: an old voter may select a different typed
 failure, forking the authoritative audit hash. Admission on a new leader alone
 cannot protect an old leader or previously committed proposals.
 
-For an operator-managed `rc.1` to `rc.2` upgrade, use the mandatory stopped
-procedure above; it supplies the maintenance barrier and never mixes binaries.
-The rolling procedure below applies only where a separately validated manual
+For `rc.1` to `rc.2`, use the maintenance-based coordinated procedure below;
+the published `rc.1` binary cannot participate in an operator-owned drain.
+The operator-required drain-based stop begins with `rc.2` to `rc.3`. The
+rolling procedure below applies only where a separately validated manual
 rollout is required outside that operator boundary.
 
 1. With every voter still on the source binary, establish a healthy, consistent

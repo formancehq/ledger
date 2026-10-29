@@ -52,8 +52,8 @@ spec:
                 name: required-upgrade
               status:
                 upgrade:
-                  source: v3.0.0-rc.1
-                  target: v3.0.0-rc.2
+                  source: v3.0.0-rc.2
+                  target: v3.0.0-rc.3
     - name: Wait for replacement and unblocking
       try:
         - assert:
@@ -67,7 +67,7 @@ spec:
                   spec:
                     containers:
                       - name: ledger
-                        image: ledger:v3.0.0-rc.2
+                        image: ledger:v3.0.0-rc.3
               status:
                 readyReplicas: 3
         - assert:

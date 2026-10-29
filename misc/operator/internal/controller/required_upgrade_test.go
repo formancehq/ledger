@@ -33,18 +33,19 @@ func TestMandatoryStopVersionBoundary(t *testing.T) {
 		source, target string
 		stop           bool
 	}{
-		{"v3.0.0-rc.1", "v3.0.0-rc.2", true},
+		{"v3.0.0-rc.1", "v3.0.0-rc.2", false},
+		{"v3.0.0-rc.2", "v3.0.0-rc.3", true},
 		{"v3.0.0-rc.1", "v3.0.0-rc.3", true}, // Selection crosses the boundary; admission still rejects the RC jump.
-		{"v3.0.0-rc.2", "v3.0.0-rc.3", false},
-		{"v3.0.0-rc.2", "v3.0.0-rc.2", false},
-		{"v3.0.0-rc.3", "v3.0.0-rc.2", false},
-		{"latest", "v3.0.0-rc.2", false},
+		{"v3.0.0-rc.3", "v3.0.0-rc.4", false},
+		{"v3.0.0-rc.3", "v3.0.0-rc.3", false},
+		{"v3.0.0-rc.4", "v3.0.0-rc.3", false},
+		{"latest", "v3.0.0-rc.3", false},
 	} {
 		require.Equal(t, tt.stop, requiresStoppedUpgrade(tt.source, tt.target), "%s -> %s", tt.source, tt.target)
 	}
-	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.1", "latest"))
-	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.1", "3.0.0-rc.2"))
-	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest"))
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest"))
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "3.0.0-rc.3"))
+	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest"))
 }
 
 func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
@@ -52,7 +53,7 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 	ctx := context.Background()
 	cluster := newMinimalCluster()
 	cluster.UID = types.UID("cluster-uid")
-	cluster.Spec.Image.Tag = "v3.0.0-rc.2"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
 	cluster.Spec.TLS = &ledgerv1alpha1.TLSConfig{Enabled: true}
 	cluster.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: new(bool)}
 	*cluster.Spec.Auth.Enabled = true
@@ -60,9 +61,9 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 	cluster.Spec.Replicas = new(int32(1))
 	applyDefaults(cluster)
 	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{
-		Source: "v3.0.0-rc.1", Target: cluster.Spec.Image.Tag,
+		Source: "v3.0.0-rc.2", Target: cluster.Spec.Image.Tag,
 		StatefulSetUID: "old-sts", TargetSpecHash: computeSpecHash(&cluster.Spec),
-		ExpectedReplicas: 1, Phase: "Maintenance",
+		ExpectedReplicas: 1, DrainEpoch: "upgrade-epoch", Phase: "Preflighting",
 	}
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
@@ -75,7 +76,7 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 
 	for attempt := range 2 {
 		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		require.ErrorContains(t, err, "source StatefulSet disappeared before maintenance barrier")
+		require.ErrorContains(t, err, "source StatefulSet disappeared before drain preflight")
 
 		svc := &corev1.Service{}
 		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: headlessServiceName(cluster.Name), Namespace: cluster.Namespace}, svc))
@@ -106,7 +107,7 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 	current.Spec.HeadlessService.Enabled = new(bool)
 	require.NoError(t, c.Update(ctx, current))
 	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-	require.ErrorContains(t, err, "source StatefulSet disappeared before maintenance barrier")
+	require.ErrorContains(t, err, "source StatefulSet disappeared before drain preflight")
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: headlessServiceName(cluster.Name), Namespace: cluster.Namespace}, &corev1.Service{}))
 
 	// An existing Pod may still mount the ConfigMap after Credentials stop
@@ -115,20 +116,33 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 	cred.Spec.Selector.MatchLabels = map[string]string{"tier": "silver"}
 	require.NoError(t, c.Update(ctx, cred))
 	_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-	require.ErrorContains(t, err, "source StatefulSet disappeared before maintenance barrier")
+	require.ErrorContains(t, err, "source StatefulSet disappeared before drain preflight")
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: authKeysConfigMapName(cluster.Name), Namespace: cluster.Namespace}, &corev1.ConfigMap{}))
 }
 
 func TestStoppedUpgradeRequiresHeadlessService(t *testing.T) {
 	t.Parallel()
 	cluster := newMinimalCluster()
-	cluster.Spec.Image.Tag = "v3.0.0-rc.2"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
 	cluster.Spec.HeadlessService.Enabled = new(bool)
-	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.1", true)
+	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.2", true)
 	r := &ClusterReconciler{}
 	proceed, _, err := r.reconcileRequiredUpgrade(context.Background(), cluster, sts)
 	require.False(t, proceed)
 	require.ErrorContains(t, err, "spec.headlessService.enabled to remain true")
+	require.Nil(t, cluster.Status.Upgrade)
+}
+
+func TestStoppedUpgradeWaitsForAnnotatedDrain(t *testing.T) {
+	t.Parallel()
+	cluster := newMinimalCluster()
+	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+	cluster.Annotations = map[string]string{ClusterDrainAnnotation: "true"}
+	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.2", true)
+	r := &ClusterReconciler{}
+	proceed, _, err := r.reconcileRequiredUpgrade(t.Context(), cluster, sts)
+	require.False(t, proceed)
+	require.ErrorContains(t, err, "finish the annotated drain")
 	require.Nil(t, cluster.Status.Upgrade)
 }
 
@@ -137,10 +151,10 @@ func TestStoppedUpgradeDrainsPendingScaleDownCleanup(t *testing.T) {
 	ctx := context.Background()
 	cluster := newMinimalCluster()
 	cluster.UID = types.UID("cluster-uid")
-	cluster.Spec.Image.Tag = "v3.0.0-rc.2"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
 	cluster.Spec.Replicas = new(int32(1))
 	applyDefaults(cluster)
-	sts := rcStatefulSet("ledger:v3.0.0-rc.1", true)
+	sts := rcStatefulSet("ledger:v3.0.0-rc.2", true)
 	sts.Name, sts.Namespace, sts.UID = resourceName(cluster.Name), cluster.Namespace, types.UID("source-sts")
 	sts.Spec.Replicas = new(int32(1))
 	sts.Status.UpdatedReplicas, sts.Status.ReadyReplicas = 1, 1
@@ -201,15 +215,15 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	ctx := context.Background()
 	cluster := newMinimalCluster()
 	cluster.UID = types.UID("cluster-uid")
-	cluster.Spec.Image.Tag = "v3.0.0-rc.2"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
 	cluster.Spec.Replicas = new(int32(1))
 	cluster.Spec.Persistence.RetentionPolicy = &ledgerv1alpha1.RetentionPolicySpec{WhenDeleted: "Delete", WhenScaled: "Delete"}
-	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.1", true)
+	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.2", true)
 	sts.Name, sts.Namespace, sts.UID = resourceName(cluster.Name), cluster.Namespace, types.UID("old-sts")
 	sts.Generation = 1
 	sts.OwnerReferences = []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}
 	sts.Spec.Replicas = new(int32(1))
-	sts.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888}}
+	sts.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888, Protocol: corev1.ProtocolTCP}}
 	sts.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{{ObjectMeta: metav1.ObjectMeta{Name: "wal"}}, {ObjectMeta: metav1.ObjectMeta{Name: "data"}}}
 	sts.Spec.PersistentVolumeClaimRetentionPolicy = &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{WhenDeleted: appsv1.DeletePersistentVolumeClaimRetentionPolicyType, WhenScaled: appsv1.DeletePersistentVolumeClaimRetentionPolicyType}
 	sts.Status.ObservedGeneration = 0
@@ -225,46 +239,67 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts, claim, pv, dataClaim, dataPV, pod).Build()
 	r := &ClusterReconciler{Client: c, Scheme: scheme, Config: &rest.Config{}, Clientset: kubernetesfake.NewSimpleClientset()}
-	maintenance := false
+	drained := false
+	released := false
+	durable := false
 	var commands []string
-	exec := func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, _, _ string, command []string) (*execResult, error) {
+	exec := func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, pod, _ string, command []string) (*execResult, error) {
 		cmd := command[len(command)-1]
 		commands = append(commands, cmd)
 		switch {
-		case strings.Contains(cmd, "'maintenance' 'enable'"):
-			maintenance = true
+		case strings.Contains(cmd, "'begin-drain'"):
+			drained = true
 
-			return &execResult{}, nil
-		case strings.Contains(cmd, "'maintenance' 'disable'"):
-			if !maintenance {
-				return nil, errors.New("maintenance was not enabled")
+			return &execResult{Stdout: `{"cutoffIndex":"12","members":["1"]}`}, nil
+		case strings.Contains(cmd, "'end-drain'"):
+			if !drained && !released {
+				return nil, errors.New("drain was not active")
 			}
-			maintenance = false
+			drained, released = false, true
 
-			return &execResult{}, nil
+			return &execResult{Stdout: `{"releaseIndex":"13","members":["1"]}`}, nil
+		case strings.Contains(cmd, "'drain-status'"):
+			epoch, index, releaseIndex, persisted := "", "0", "0", "11"
+			if drained {
+				epoch, index = cluster.Status.Upgrade.DrainEpoch, "12"
+			}
+			if released {
+				releaseIndex = "13"
+			}
+			if durable {
+				persisted = "13"
+			}
+
+			return &execResult{Stdout: fmt.Sprintf(`{"localNode":"1","supportsDrain":true,"supportsRelease":true,"drainEpoch":%q,"drainIndex":%q,"releaseIndex":%q,"lastPersistedIndex":%q,"syncStatus":"normal"}`, epoch, index, releaseIndex, persisted)}, nil
 		case strings.Contains(cmd, "'cluster' 'status'"):
-			if !maintenance {
-				return nil, errors.New("status read before maintenance")
+			epoch, index := "", "0"
+			if drained {
+				epoch, index = cluster.Status.Upgrade.DrainEpoch, "12"
 			}
 
-			return &execResult{Stdout: `{"state":"Leader","maintenanceMode":true,"raftStatus":{"commit":"12","lastPersistedIndex":"12"}}`}, nil
+			return &execResult{Stdout: fmt.Sprintf(`{"state":"Leader","localNode":"1","drainEpoch":%q,"drainIndex":%q,"nodes":[{"id":"1"}]}`, epoch, index)}, nil
 		default:
-			return nil, fmt.Errorf("unexpected command: %s", cmd)
+			return nil, fmt.Errorf("unexpected command on %s: %s", pod, cmd)
 		}
 	}
 	key := types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}
-	// The intent is durable before maintenance, barrier and Retain mutations.
+	// The epoch is durable before the drain marker and Retain mutations.
 	proceed, _, err := r.reconcileRequiredUpgradeWithExec(ctx, cluster, sts, exec)
 	require.NoError(t, err)
 	require.False(t, proceed)
-	require.Equal(t, "Barrier", cluster.Status.Upgrade.Phase)
-	require.True(t, maintenance)
-	require.Contains(t, commands[0], "'maintenance' 'enable'")
+	require.Equal(t, "Draining", cluster.Status.Upgrade.Phase)
+	require.NotEmpty(t, cluster.Status.Upgrade.DrainEpoch)
+	require.False(t, drained)
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, sts, exec)
 	require.NoError(t, err)
 	require.False(t, proceed)
-	require.Equal(t, uint64(12), cluster.Status.Upgrade.BarrierIndex)
-	require.Contains(t, commands[1], "'cluster' 'status'")
+	require.True(t, drained)
+	require.Contains(t, strings.Join(commands, " "), "'begin-drain'")
+	require.Equal(t, "Draining", cluster.Status.Upgrade.Phase, "a committed cutoff alone is insufficient")
+	durable = true
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, sts, exec)
+	require.NoError(t, err)
+	require.False(t, proceed)
 	require.Equal(t, "Retaining", cluster.Status.Upgrade.Phase)
 	// A direct StatefulSet scale-down must not shrink the set of voters whose
 	// durable cursor the stopped upgrade checks.
@@ -323,11 +358,11 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.Equal(t, types.UID("pv-uid"), pv.UID)
 	require.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
 	// A replacement with the target image converges without deleting it again.
-	replacement := rcStatefulSet("ledger:v3.0.0-rc.2", true)
+	replacement := rcStatefulSet("ledger:v3.0.0-rc.3", true)
 	replacement.Name, replacement.Namespace, replacement.UID = sts.Name, sts.Namespace, types.UID("new-sts")
 	replacement.OwnerReferences = sts.OwnerReferences
 	replacement.Spec.Replicas = new(int32(1))
-	replacement.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888}}
+	replacement.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888, Protocol: corev1.ProtocolTCP}}
 	replacement.Generation = 1
 	replacement.Status.ObservedGeneration = 1
 	replacement.Status.UpdatedReplicas = 1
@@ -358,7 +393,7 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.ErrorContains(t, err, "restore the expected count")
 	require.False(t, proceed)
 	require.Equal(t, "Verifying", cluster.Status.Upgrade.Phase)
-	require.True(t, maintenance)
+	require.True(t, drained)
 	meta.SetStatusCondition(&cluster.Status.Conditions, metav1.Condition{Type: "Upgrade", Status: metav1.ConditionFalse, Reason: "Blocked", Message: "replica count differs"})
 	require.NoError(t, c.Status().Update(ctx, cluster))
 	replacement.Spec.Replicas = new(int32(1))
@@ -381,11 +416,11 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.False(t, proceed)
 	require.ErrorContains(t, err, "replacement StatefulSet identity changed")
 	require.Equal(t, metav1.ConditionFalse, meta.FindStatusCondition(cluster.Status.Conditions, "Upgrade").Status)
-	require.True(t, maintenance)
-	replacement.Spec.Template.Spec.Containers[0].Image = "ledger:v3.0.0-rc.2"
+	require.True(t, drained)
+	replacement.Spec.Template.Spec.Containers[0].Image = "ledger:v3.0.0-rc.3"
 	replacement.Status.ReadyReplicas = 1
 	// A replacement can itself disappear. Wait for its old Pods, then recreate
-	// while keeping the maintenance fence and original volume identities.
+	// while keeping the drain fence and original volume identities.
 	require.NoError(t, c.Delete(ctx, replacement))
 	replacementPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: sts.Name + "-0", Namespace: cluster.Namespace}}
 	require.NoError(t, c.Create(ctx, replacementPod))
@@ -393,13 +428,13 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, proceed)
 	require.Equal(t, "Unblocking", cluster.Status.Upgrade.Phase)
-	require.True(t, maintenance)
+	require.True(t, drained)
 	require.NoError(t, c.Delete(ctx, replacementPod))
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, nil, exec)
 	require.NoError(t, err)
 	require.True(t, proceed)
 	require.Equal(t, "Recreating", cluster.Status.Upgrade.Phase)
-	require.True(t, maintenance)
+	require.True(t, drained)
 	// A replacement Pod can outlive its StatefulSet after the phase was
 	// persisted. A restart in Recreating must not create over that Pod.
 	leftoverPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: sts.Name + "-0", Namespace: cluster.Namespace}}
@@ -427,8 +462,9 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.True(t, proceed)
 	require.Nil(t, cluster.Status.Upgrade)
 	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
-	require.False(t, maintenance)
-	require.Contains(t, commands[len(commands)-1], "'maintenance' 'disable'")
+	require.False(t, drained)
+	require.True(t, released)
+	require.Contains(t, strings.Join(commands, " "), "'end-drain'")
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 	require.NoError(t, err)
 	require.True(t, proceed)
@@ -446,9 +482,9 @@ func TestStoppedUpgradeRejectsChangedTargetAndMissingClaim(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cluster := newMinimalCluster()
-	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
 	cluster.Spec.Replicas = new(int32(1))
-	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.1", Target: "v3.0.0-rc.2", StatefulSetUID: "old", ExpectedReplicas: 1, Phase: "Deleting"}
+	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.2", Target: "v3.0.0-rc.3", StatefulSetUID: "old", ExpectedReplicas: 1, Phase: "Deleting"}
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
@@ -457,7 +493,7 @@ func TestStoppedUpgradeRejectsChangedTargetAndMissingClaim(t *testing.T) {
 	proceed, _, err := r.reconcileRequiredUpgrade(ctx, cluster, nil)
 	require.False(t, proceed)
 	require.ErrorContains(t, err, "restore spec.image.tag")
-	cluster.Spec.Image.Tag = "v3.0.0-rc.2"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
 	cluster.Status.Upgrade.TargetSpecHash = computeSpecHash(&cluster.Spec)
 	cluster.Status.Upgrade.ClaimUIDs = map[string]string{"wal-ledger-0": "original"}
 	proceed, _, err = r.reconcileRequiredUpgrade(ctx, cluster, nil)
@@ -469,7 +505,7 @@ func TestStoppedUpgradeBlocksUnpinnedTarget(t *testing.T) {
 	t.Parallel()
 	cluster := newMinimalCluster()
 	cluster.Spec.Image.Tag = "latest"
-	sts := rcStatefulSet("ledger:v3.0.0-rc.1", true)
+	sts := rcStatefulSet("ledger:v3.0.0-rc.2", true)
 	r := &ClusterReconciler{}
 	proceed, _, err := r.reconcileRequiredUpgrade(context.Background(), cluster, sts)
 	require.False(t, proceed)
@@ -480,11 +516,11 @@ func TestStoppedUpgradeTargetDriftUpdatesCondition(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cluster := newMinimalCluster()
-	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
 	cluster.Spec.Replicas = new(int32(3))
-	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.1", Target: "v3.0.0-rc.2", Phase: "Verifying"}
+	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.2", Target: "v3.0.0-rc.3", Phase: "Verifying"}
 	meta.SetStatusCondition(&cluster.Status.Conditions, metav1.Condition{Type: "Upgrade", Status: metav1.ConditionTrue, Reason: "Verifying", Message: "in progress"})
-	sts := rcStatefulSet("ledger:v3.0.0-rc.1", true)
+	sts := rcStatefulSet("ledger:v3.0.0-rc.2", true)
 	sts.Name, sts.Namespace = resourceName(cluster.Name), cluster.Namespace
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
@@ -505,8 +541,8 @@ func TestStoppedUpgradeUsesLiveGRPCPort(t *testing.T) {
 	t.Parallel()
 	cluster := newMinimalCluster()
 	cluster.Spec.GrpcPort = 9999
-	sts := rcStatefulSet("ledger:v3.0.0-rc.1", true)
-	sts.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888}}
+	sts := rcStatefulSet("ledger:v3.0.0-rc.2", true)
+	sts.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888, Protocol: corev1.ProtocolTCP}}
 	r := &ClusterReconciler{Config: &rest.Config{}, Clientset: kubernetesfake.NewSimpleClientset()}
 	exec := func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, _, _ string, command []string) (*execResult, error) {
 		require.Contains(t, command[len(command)-1], ":8888")
@@ -514,38 +550,8 @@ func TestStoppedUpgradeUsesLiveGRPCPort(t *testing.T) {
 
 		return &execResult{}, nil
 	}
-	require.NoError(t, r.execUpgradeCommand(context.Background(), cluster, sts, exec, "cluster", "maintenance", "enable"))
-}
-
-func TestStoppedUpgradeWaitsForEveryVoter(t *testing.T) {
-	t.Parallel()
-	cluster := newMinimalCluster()
-	sts := rcStatefulSet("ledger:v3.0.0-rc.1", true)
-	sts.Spec.Replicas = new(int32(3))
-	sts.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888}}
-	r := &ClusterReconciler{Config: &rest.Config{}, Clientset: kubernetesfake.NewSimpleClientset()}
-	lagging := true
-	var seen []string
-	exec := func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, _, _ string, command []string) (*execResult, error) {
-		cmd := command[len(command)-1]
-		seen = append(seen, cmd)
-		persisted := 12
-		if lagging && strings.Contains(cmd, "'--node-id' '2'") {
-			persisted = 11
-		}
-
-		return &execResult{Stdout: fmt.Sprintf(`{"state":"Leader","maintenanceMode":true,"raftStatus":{"commit":"12","lastPersistedIndex":"%d"}}`, persisted)}, nil
-	}
-	ready, err := r.upgradeVotersPersisted(context.Background(), cluster, sts, exec, 12, 3)
+	live, err := drainClusterFromWorkload(cluster, sts)
 	require.NoError(t, err)
-	require.False(t, ready)
-	require.Len(t, seen, 2)
-	require.Contains(t, seen[1], "'--node-id' '2'")
-	lagging = false
-	seen = nil
-	ready, err = r.upgradeVotersPersisted(context.Background(), cluster, sts, exec, 12, 3)
+	_, err = r.upgradeDrainCluster(live, sts, exec).run(t.Context(), 0, "cluster", "status", "--json")
 	require.NoError(t, err)
-	require.True(t, ready)
-	require.Len(t, seen, 3)
-	require.Contains(t, seen[2], "'--node-id' '3'")
 }
