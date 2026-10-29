@@ -96,6 +96,26 @@ func (a *Admission) replayPreparedQueryIDRetry(ctx context.Context, key string, 
 	if bytes.Equal(processing.HashOrders(orders), stored.GetHash()) {
 		return nil, nil
 	}
+	if a.readBarrier == nil {
+		return nil, errors.New("linearizable idempotency replay barrier unavailable")
+	}
+	if err := a.readBarrier(ctx); err != nil {
+		return nil, fmt.Errorf("waiting for idempotency replay barrier: %w", err)
+	}
+	// The initial lookup is only a cheap candidate check. Reopen the snapshot
+	// after the barrier so an overwritten or evicted key cannot be replayed.
+	_ = handle.Close()
+	handle, err = a.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("opening replay snapshot: %w", err)
+	}
+	stored, err = state.LoadIdempotencyKey(handle, key)
+	if err != nil || stored == nil {
+		return nil, err
+	}
+	if bytes.Equal(processing.HashOrders(orders), stored.GetHash()) {
+		return nil, nil
+	}
 	lastApplied, err := query.ReadLastAppliedTimestamp(handle)
 	if err != nil {
 		return nil, fmt.Errorf("reading retry HLC: %w", err)

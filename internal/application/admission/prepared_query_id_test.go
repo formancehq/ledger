@@ -54,7 +54,7 @@ func TestRequestToOrder_ResolvesPreparedQueryIDBeforeCommit(t *testing.T) {
 
 func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 	store := createTestStoreWithoutPolicy(t)
-	adm := &Admission{store: store, attrs: attributes.New()}
+	adm := &Admission{store: store, attrs: attributes.New(), readBarrier: func(context.Context) error { return nil }}
 	ctx := context.Background()
 	const key = "prepared-query-retry"
 
@@ -116,6 +116,7 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 	require.True(t, restoreEquivalentIDFilters(candidate, original, hash))
 	require.Equal(t, hash, processing.HashOrders(candidate))
 	readyAdmission, _ := createTestAdmission(t, store)
+	readyAdmission.readBarrier = func(context.Context) error { return nil }
 	plan := &admissionPlan{key: key, buildOrders: func(context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error) {
 		return retry, newBulkOverlay(), nil
 	}}
@@ -154,6 +155,30 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 	require.Nil(t, replay)
 	require.NotEqual(t, hash, processing.HashOrders(current))
 	require.NotNil(t, current[0].GetLedgerScoped().GetUpdatePreparedQuery().GetFilter().GetBuiltinUint())
+
+	// The first lookup can see a live key while a later committed write makes
+	// it expired. The barrier forces a fresh snapshot before replaying it.
+	batch = store.OpenWriteSession()
+	require.NoError(t, state.SaveIdempotencyKey(batch, key, &commonpb.IdempotencyKeyValue{
+		Hash: hash, CreatedAt: 100, FirstLogSequence: 1, LogCount: 2,
+	}))
+	require.NoError(t, state.StoreLastAppliedTimestamp(batch, 101))
+	require.NoError(t, batch.Commit())
+	barrierCalls := 0
+	adm.readBarrier = func(context.Context) error {
+		barrierCalls++
+		batch := store.OpenWriteSession()
+		require.NoError(t, state.SaveIdempotencyKey(batch, key, &commonpb.IdempotencyKeyValue{
+			Hash: hash, CreatedAt: 100, ExpiresAt: expiresAt, FirstLogSequence: 1, LogCount: 2,
+		}))
+		require.NoError(t, state.StoreLastAppliedTimestamp(batch, expiresAt))
+
+		return batch.Commit()
+	}
+	replay, err = adm.replayPreparedQueryIDRetry(ctx, key, current)
+	require.NoError(t, err)
+	require.Nil(t, replay)
+	require.Equal(t, 1, barrierCalls)
 }
 
 func TestRequestToOrder_ResolvesStoredLogQueryIDBeforeCommit(t *testing.T) {
