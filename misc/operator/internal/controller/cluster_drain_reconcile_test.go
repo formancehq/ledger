@@ -124,6 +124,7 @@ func TestAnnotatedDrainCancellationAfterFailedPreflight(t *testing.T) {
 	load := func() *ledgerv1alpha1.Cluster {
 		fresh := &ledgerv1alpha1.Cluster{}
 		require.NoError(t, r.Get(t.Context(), key, fresh))
+
 		return fresh
 	}
 	preflight := func(context.Context, *ledgerv1alpha1.Cluster, string) error {
@@ -131,10 +132,12 @@ func TestAnnotatedDrainCancellationAfterFailedPreflight(t *testing.T) {
 	}
 	barrier := func(context.Context, *ledgerv1alpha1.Cluster, string, string) (bool, error) {
 		t.Fatal("BeginDrain must not run before preflight succeeds")
+
 		return false, nil
 	}
 	release := func(context.Context, *ledgerv1alpha1.Cluster, string, string) (bool, error) {
 		t.Fatal("EndDrain must not run when no marker was proposed")
+
 		return false, nil
 	}
 	_, err := r.reconcileAnnotatedDrain(t.Context(), load(), preflight, barrier, release)
