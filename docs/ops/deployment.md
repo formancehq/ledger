@@ -249,7 +249,11 @@ spec:
 The headless Service also carries the internal peer gRPC port. This port is not
 published by the public gRPC Ingress and should be restricted with a
 `NetworkPolicy` so only Ledger pods can reach it. Peer requests authenticate
-with the cluster secret; the secret is not a public API credential.
+the node transport with the cluster secret in the dedicated
+`x-ledger-peer-auth` metadata. This metadata is distinct from the user
+`authorization` header: when a request is forwarded, the original JWT remains
+the caller credential and is evaluated at the terminal node. The cluster
+secret is not a public API credential.
 
 #### Custom Labels
 
@@ -415,18 +419,13 @@ ledgerctl ledgers list
 
 The injected `LEDGERCTL_SERVER` uses the pod DNS name covered by the TLS
 certificate rather than `localhost` or `127.0.0.1`. For TLS clusters the
-operator injects `LEDGERCTL_TLS_CA_CERT` when `tls.caSecretKey` is configured;
-for a plaintext cluster it injects `LEDGERCTL_INSECURE=true`. The regular
-Ledger pods do not receive a long-lived `LEDGERCTL_AUTH_TOKEN`. When
-authentication is enabled, however, they mount the operator signing seed so
-operator maintenance commands can generate short-lived tokens with the
-operator credential's scoped Ledger and cluster-admin permissions. Anyone with
-`exec` access to such a pod can therefore use that mounted seed to mint tokens
-with those same scopes. For interactive authenticated troubleshooting, use the
-opt-in debug box described in
-[Authentication](./authentication.md#interactive-debug-box), which has a
-dedicated short-lived superuser-token wrapper; `exec` access to that box exposes
-the superuser credential by design.
+operator injects `LEDGERCTL_AUTH_TOKEN` and, when `tls.caSecretKey` is
+configured, `LEDGERCTL_TLS_CA_CERT`; for a plaintext cluster it injects
+`LEDGERCTL_INSECURE=true`. These values follow TLS mode transitions through
+StatefulSet rollouts. If `headlessService.enabled` is `false`, `spec.extraEnv`
+must override `LEDGERCTL_SERVER` with a resolvable address. `spec.extraEnv` can
+also override any other injected `LEDGERCTL_*` value when a deployment needs
+custom client behavior.
 These values follow TLS mode transitions through StatefulSet rollouts. If
 `headlessService.enabled` is `false`, `spec.extraEnv` must override
 `LEDGERCTL_SERVER` with a resolvable address. `spec.extraEnv` can also override

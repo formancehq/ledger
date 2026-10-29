@@ -1,8 +1,6 @@
 package controller
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"strconv"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -64,49 +62,6 @@ func authKeysConfigMapName(crName string) string {
 // clusterSecretName returns the cluster inter-node Secret name for a Cluster.
 func clusterSecretName(crName string) string {
 	return resourceName(crName) + "-cluster-secret"
-}
-
-// operatorCredentialsSecretName returns the per-cluster replica Secret created
-// by the Credentials reconciler for an operator credential.
-func operatorCredentialsSecretName(credentialsName string) string {
-	return prefixedName(credentialsName) + "-credentials-keys"
-}
-
-// operatorCredentialsName returns the deterministic cluster-scoped Credentials
-// name managed for a namespaced Cluster. The namespace hash prevents two
-// namespaces containing same-named Clusters from sharing an identity.
-func operatorCredentialsName(ledger *ledgerv1alpha1.Cluster) string {
-	sum := sha256.Sum256([]byte(ledger.Namespace + "/" + ledger.Name))
-
-	return prefixedName("operator-" + hex.EncodeToString(sum[:])[:16])
-}
-
-// operatorCredentialsSelectorValue is stamped on the Cluster so the
-// cluster-scoped Credentials selector matches exactly this Cluster. Include
-// the immutable UID so another Cluster cannot forge the value from namespace
-// and name alone.
-func operatorCredentialsSelectorValue(ledger *ledgerv1alpha1.Cluster) string {
-	sum := sha256.Sum256([]byte(ledger.Namespace + "/" + ledger.Name + "/" + string(ledger.UID)))
-
-	return hex.EncodeToString(sum[:])[:16]
-}
-
-// debugBoxCredentialsName returns the cluster-scoped Credentials name for the
-// optional interactive debug pod.
-func debugBoxCredentialsName(ledger *ledgerv1alpha1.Cluster) string {
-	sum := sha256.Sum256([]byte(ledger.Namespace + "/" + ledger.Name))
-
-	return prefixedName("debug-box-" + hex.EncodeToString(sum[:])[:16])
-}
-
-func debugBoxCredentialsSelectorValue(ledger *ledgerv1alpha1.Cluster) string {
-	sum := sha256.Sum256([]byte(ledger.Namespace + "/" + ledger.Name + "/" + string(ledger.UID)))
-
-	return hex.EncodeToString(sum[:])[:16]
-}
-
-func debugBoxPodName(ledger *ledgerv1alpha1.Cluster) string {
-	return resourceName(ledger.Name) + "-debug-box"
 }
 
 // credentialsCanonicalSecretName returns the name of the canonical seed Secret for a

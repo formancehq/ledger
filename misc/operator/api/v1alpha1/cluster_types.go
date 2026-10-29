@@ -106,12 +106,6 @@ type ClusterSpec struct {
 	// +optional
 	Debug bool `json:"debug,omitempty"`
 
-	// DebugBox configures an optional interactive ledgerctl pod. When enabled,
-	// the operator creates a dedicated superuser credential and mounts it only
-	// in this pod. The pod does not start the Ledger server.
-	// +optional
-	DebugBox *DebugBoxSpec `json:"debugBox,omitempty"`
-
 	// LogLevel sets the server's log verbosity. One of trace|debug|info|error.
 	// Trace records are stdout-only and never exported via OTLP.
 	// When set, takes precedence over Debug.
@@ -373,13 +367,6 @@ type ClusterSpec struct {
 	// StartupProbe overrides the default startup probe for the ledger container.
 	// +optional
 	StartupProbe *corev1.Probe `json:"startupProbe,omitempty"`
-}
-
-// DebugBoxSpec configures the optional interactive ledgerctl pod.
-type DebugBoxSpec struct {
-	// Enabled creates the debug box and its dedicated superuser credential.
-	// +optional
-	Enabled bool `json:"enabled,omitempty"`
 }
 
 // ImageSpec defines container image configuration.

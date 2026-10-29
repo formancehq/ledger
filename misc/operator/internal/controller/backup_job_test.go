@@ -47,14 +47,12 @@ func TestBackupServerAddr(t *testing.T) {
 
 func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	t.Parallel()
-	enabled := true
 
 	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ledger-v3"},
 		Spec: ledgerv1alpha1.ClusterSpec{
 			Image: ledgerv1alpha1.ImageSpec{Repository: "ghcr.io/formancehq/ledger", Tag: "v0.0.8"},
 			TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-tls", CASecretKey: "ca.crt"},
-			Auth:  &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled},
 		},
 	}
 	backup := &ledgerv1alpha1.Backup{
@@ -97,21 +95,19 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	require.Contains(t, shell, "./ledgerctl 'store' 'backup'")
 	require.Contains(t, shell, `--server "ledger-ledger.ledger-v3.svc.cluster.local:8888"`)
 	require.Contains(t, shell, `--tls-ca-cert "$TLS_CA_CERT_FILE"`)
-	require.Contains(t, shell, `auth generate-token --signing-key "$OPERATOR_SIGNING_KEY"`)
+	require.Contains(t, shell, `--auth-token "$CLUSTER_SECRET"`)
 	require.Contains(t, shell, "'--driver' 's3'")
 	require.Contains(t, shell, "'--s3-bucket' 'my-bucket'")
 	require.Contains(t, shell, "'--s3-region' 'eu-west-1'")
 	require.Contains(t, shell, "'--json'")
 
 	// TLS volume must be present with the ledger-tls secret.
-	require.Len(t, job.Spec.Template.Spec.Volumes, 2)
-	require.Equal(t, "operator-credentials", job.Spec.Template.Spec.Volumes[0].Name)
-	require.Equal(t, operatorCredentialsSecretName(operatorCredentialsName(ls)), job.Spec.Template.Spec.Volumes[0].Secret.SecretName)
-	require.Equal(t, "tls-certs", job.Spec.Template.Spec.Volumes[1].Name)
-	require.NotNil(t, job.Spec.Template.Spec.Volumes[1].Secret)
-	require.Equal(t, "ledger-tls", job.Spec.Template.Spec.Volumes[1].Secret.SecretName)
-	require.Len(t, c.VolumeMounts, 2)
-	require.Equal(t, "/operator-credentials", c.VolumeMounts[0].MountPath)
+	require.Len(t, job.Spec.Template.Spec.Volumes, 1)
+	require.Equal(t, "tls-certs", job.Spec.Template.Spec.Volumes[0].Name)
+	require.NotNil(t, job.Spec.Template.Spec.Volumes[0].Secret)
+	require.Equal(t, "ledger-tls", job.Spec.Template.Spec.Volumes[0].Secret.SecretName)
+	require.Len(t, c.VolumeMounts, 1)
+	require.Equal(t, "/tls", c.VolumeMounts[0].MountPath)
 
 	// TLS_CA_CERT_FILE env must point inside the mounted volume.
 	envByName := func(name string) (corev1.EnvVar, bool) {
@@ -135,9 +131,11 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, podNs.ValueFrom)
 
-	operatorKey, ok := envByName("OPERATOR_SIGNING_KEY")
-	require.True(t, ok)
-	require.Equal(t, "/operator-credentials/seed.hex", operatorKey.Value)
+	clusterSecret, ok := envByName("CLUSTER_SECRET")
+	require.True(t, ok, "CLUSTER_SECRET must be injected when TLS is active")
+	require.NotNil(t, clusterSecret.ValueFrom)
+	require.NotNil(t, clusterSecret.ValueFrom.SecretKeyRef)
+	require.Equal(t, "ledger-ledger-cluster-secret", clusterSecret.ValueFrom.SecretKeyRef.Name)
 }
 
 func TestBuildBackupJob_DisabledTLS_NoClusterSecret(t *testing.T) {
@@ -159,7 +157,8 @@ func TestBuildBackupJob_DisabledTLS_NoClusterSecret(t *testing.T) {
 	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
 	require.NoError(t, err)
 	for _, e := range job.Spec.Template.Spec.Containers[0].Env {
-		require.NotEqual(t, "OPERATOR_SIGNING_KEY", e.Name)
+		require.NotEqual(t, "CLUSTER_SECRET", e.Name,
+			"CLUSTER_SECRET must not be injected when TLS is disabled — the operator deletes the Secret in that mode")
 	}
 }
 

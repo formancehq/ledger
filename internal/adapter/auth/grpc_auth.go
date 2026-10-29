@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"strings"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
 )
 
 var authTracer = otel.Tracer("auth")
@@ -32,7 +32,7 @@ type AuthConfig struct {
 	ScopeMapping         ScopeMapping
 	Ed25519AllowedScopes map[string][]string // keyID -> allowed scopes (nil = no Ed25519 auth)
 	Ed25519SuperuserKeys map[string]bool     // keyID -> true if the key can emit superuser-mode tokens
-	ClusterSecret        string              // shared secret for inter-node auth bypass (empty = disabled)
+	ClusterSecret        string              // shared secret for peer transport authentication (empty = disabled)
 }
 
 // EvaluateGRPCCredentials validates the JWT from gRPC metadata and stores an
@@ -69,36 +69,10 @@ func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Conte
 
 		return withAuthenticationState(ctx, true, false, effective), nil
 	}
-
-	// Fast path: cluster-internal shared secret bypasses JWT validation.
-	// Grant all granular scopes so that per-request scope checks (e.g. in Apply)
-	// succeed when a follower forwards a request to the leader. The
-	// cluster-internal marker (WithClusterInternal below) lets downstream
-	// handlers decide whether to trust per-request fields carrying the
-	// original caller's identity.
-	//
-	// Compare with crypto/subtle.ConstantTimeCompare to avoid leaking
-	// the secret's length and common-prefix timing via Go's variable-time
-	// string equality. The explicit length pre-check is itself constant-
-	// time in the sense that it does not branch on secret bytes (only
-	// on the public input length), and short-circuits the comparison
-	// when lengths differ — a timing leak there is harmless because the
-	// expected length is a fixed configuration value (#339 / Review-2 M-25).
-	// The cluster secret is a peer credential, not a general service API
-	// credential. It is accepted on the dedicated peer service listener and on
-	// the Raft listener; the public service listener rejects it before this
-	// function is called.
-	if cfg.ClusterSecret != "" &&
-		len(token) == len(cfg.ClusterSecret) &&
-		subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
-		span.SetAttributes(attribute.Bool("auth.cluster_internal", true))
-		effective := allScopes()
-		ctx = WithExpandedScopes(ctx, effective)
-		ctx = WithAuthPresented(ctx, true)
-		ctx = WithClusterInternal(ctx, true)
-
-		return withAuthenticationState(ctx, true, true, effective), nil
-	}
+	// Keep the original user credential available to the service connection
+	// pool. Peer transport credentials are injected separately, so forwarding
+	// does not turn the cluster secret into the caller's authorization token.
+	ctx = transport.WithForwardedBearerToken(ctx, token)
 
 	keyID := extractKeyID(token)
 	ctx = WithKeyID(ctx, keyID)
@@ -126,6 +100,18 @@ func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Conte
 	ctx = WithAuthPresented(ctx, true)
 
 	return withAuthenticationState(ctx, true, true, effective), nil
+}
+
+// WithPeerSystemAuthentication records an authenticated node-to-node call
+// that carries no end-user token. The peer transport credential identifies a
+// trusted node, while the authentication state below represents a system
+// action rather than a user bearing the cluster secret.
+func WithPeerSystemAuthentication(ctx context.Context) context.Context {
+	ctx = WithExpandedScopes(ctx, allScopes())
+	ctx = WithAuthPresented(ctx, true)
+	ctx = WithClusterInternal(ctx, true)
+
+	return withAuthenticationState(ctx, true, true, allScopes())
 }
 
 // AuthorizeGRPC checks required scopes against the immutable state produced by

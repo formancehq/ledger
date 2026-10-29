@@ -2,8 +2,6 @@ apiVersion: ledger.formance.com/v1alpha1
 kind: Cluster
 metadata:
   name: tls-en
-  labels:
-    tier: tls-enable
 spec:
   replicas: 3
   image:
@@ -14,5 +12,3 @@ spec:
     enabled: true
     secretName: tls-en-certs
     caSecretKey: ca.crt
-  auth:
-    enabled: true

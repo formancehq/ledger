@@ -852,7 +852,9 @@ func buildBaseServer(name, host string, port int, logger logging.Logger, tlsCfg 
 // service). When empty, the server runs unauthenticated — historical default,
 // matches single-node setups that never set --cluster-secret. When set, the
 // caller MUST present `authorization: Bearer <clusterSecret>` on every call
-// or the RPC is rejected with codes.Unauthenticated (#310).
+// or the RPC is rejected with codes.Unauthenticated (#310). The service peer
+// listener uses a separate x-ledger-peer-auth metadata value; this server is
+// the Raft-plane listener and keeps the standard authorization header.
 func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPlaintext bool, clusterSecret string, opts ...Option) (*RaftServer, error) {
 	serverOpts := []ggrpc.ServerOption{
 		ggrpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 5 * time.Second, PermitWithoutStream: true}),

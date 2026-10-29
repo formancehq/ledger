@@ -23,7 +23,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -40,19 +39,17 @@ type ClusterReconciler struct {
 	Recorder  record.EventRecorder
 }
 
-const operatorCredentialsFinalizer = "ledger.formance.com/operator-credentials"
-
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters/finalizers,verbs=update
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=credentials,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=credentials,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=delete;get;list;patch
 // +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;patch
-// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list
 // +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
@@ -70,58 +67,8 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, ignoreNotFound(err)
 	}
 
-	// Credentials is cluster-scoped while Cluster is namespaced, so Kubernetes
-	// cannot garbage-collect the generated credential through an owner reference.
-	// Use a Cluster finalizer to remove it explicitly.
 	if !ledger.DeletionTimestamp.IsZero() {
-		credentialsPending := false
-		for _, target := range []struct {
-			name, annotation string
-		}{
-			{operatorCredentialsName(ledger), annotationOperatorCluster},
-			{debugBoxCredentialsName(ledger), annotationDebugBoxCluster},
-		} {
-			credentials, managed, err := r.managedCredentials(ctx, ledger, target.name, target.annotation)
-			if err != nil {
-				// Never mutate or delete a foreign object with a colliding name.
-				if credentials != nil {
-					continue
-				}
-				return ctrl.Result{}, fmt.Errorf("checking generated Credentials %s: %w", target.name, err)
-			}
-			if !managed {
-				continue
-			}
-			if err := r.Delete(ctx, credentials); err != nil && !apierrors.IsNotFound(err) {
-				return ctrl.Result{}, fmt.Errorf("deleting generated Credentials %s: %w", target.name, err)
-			}
-
-			remaining := &ledgerv1alpha1.Credentials{}
-			err = r.Get(ctx, types.NamespacedName{Name: target.name}, remaining)
-			switch {
-			case err == nil:
-				credentialsPending = true
-			case !apierrors.IsNotFound(err):
-				return ctrl.Result{}, fmt.Errorf("checking generated Credentials %s deletion: %w", target.name, err)
-			}
-		}
-		if credentialsPending {
-			return ctrl.Result{RequeueAfter: authKeysPendingRequeueInterval}, nil
-		}
-		if controllerutil.ContainsFinalizer(ledger, operatorCredentialsFinalizer) {
-			controllerutil.RemoveFinalizer(ledger, operatorCredentialsFinalizer)
-			if err := r.Update(ctx, ledger); err != nil {
-				return ctrl.Result{}, fmt.Errorf("removing operator Credentials finalizer: %w", err)
-			}
-		}
-
 		return ctrl.Result{}, nil
-	}
-	if !controllerutil.ContainsFinalizer(ledger, operatorCredentialsFinalizer) {
-		controllerutil.AddFinalizer(ledger, operatorCredentialsFinalizer)
-		if err := r.Update(ctx, ledger); err != nil {
-			return ctrl.Result{}, fmt.Errorf("adding operator Credentials finalizer: %w", err)
-		}
 	}
 	// Commit the identity before any resource can start a Ledger process. An
 	// update conflict aborts this reconcile; the next read uses the winning ID.
@@ -333,70 +280,21 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	// Reconcile the cluster-secret before the operator Credentials readiness
-	// gate, but only its SAFE (create/update) side. A missing Secret must be
-	// repaired even while Credentials distribution is pending, otherwise a
-	// restarted pod cannot resolve CLUSTER_SECRET. Deletion remains deferred
-	// until after the StatefulSet pass below.
-	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
-		logger.Error(err, "failed to reconcile cluster secret")
-
-		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
-	}
-
-	debugBoxEnabled := ledger.Spec.DebugBox != nil && ledger.Spec.DebugBox.Enabled &&
-		ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled
-	// Revocation is independent of the maintenance credential. Clean up a
-	// disabled debug box before the readiness gate so a pending operator
-	// credential cannot keep its superuser Pod and Credentials alive.
-	if !debugBoxEnabled {
-		if _, err := r.reconcileDebugBox(ctx, ledger); err != nil {
-			return ctrl.Result{}, fmt.Errorf("cleaning up debug box: %w", err)
-		}
-	}
-
-	operatorCredentialReady, err := r.reconcileOperatorCredentials(ctx, ledger)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("reconciling operator Credentials: %w", err)
-	}
-	if ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled && !operatorCredentialReady {
-		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
-			Type:               "OperatorCredentialsPending",
-			Status:             metav1.ConditionTrue,
-			Reason:             "CredentialsNotReady",
-			Message:            "waiting for the operator-managed Credentials keypair to be distributed",
-			ObservedGeneration: ledger.Generation,
-		})
-
-		return r.reconcilePendingOperatorCredentials(ctx, ledger)
-	}
-	meta.RemoveStatusCondition(&ledger.Status.Conditions, "OperatorCredentialsPending")
-
-	debugBoxReady := true
-	if debugBoxEnabled {
-		debugBoxReady, err = r.reconcileDebugBox(ctx, ledger)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("reconciling debug box: %w", err)
-		}
-	}
-	if ledger.Spec.DebugBox != nil && ledger.Spec.DebugBox.Enabled && ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled && !debugBoxReady {
-		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
-			Type:               "DebugBoxPending",
-			Status:             metav1.ConditionTrue,
-			Reason:             "CredentialsNotReady",
-			Message:            "waiting for the debug box superuser Credentials keypair to be distributed",
-			ObservedGeneration: ledger.Generation,
-		})
-	} else {
-		meta.RemoveStatusCondition(&ledger.Status.Conditions, "DebugBoxPending")
-	}
-
 	// Reconcile auth keys from Credentials (before StatefulSet).
 	credentials, pendingReason, err := r.reconcileAuthKeys(ctx, ledger)
 	if err != nil {
 		logger.Error(err, "failed to reconcile auth keys")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
+	}
+
+	// Reconcile the cluster-secret before the AuthKeysPending gate, but only
+	// its safe (create/update) side. Deletion is deferred until after the
+	// StatefulSet pass below so no live pod references a deleted Secret.
+	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
+		logger.Error(err, "failed to reconcile cluster secret")
+
+		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
 	}
 
 	// Fail-safe (EN-1487): the auth-key set cannot be safely reconciled yet.
@@ -491,22 +389,6 @@ func validatePeerPortImmutability(ledger *ledgerv1alpha1.Cluster, statefulSet *a
 	return nil
 }
 
-// reconcilePendingOperatorCredentials keeps volume deletion protection
-// independent from the operator Credentials readiness gate. StatefulSet
-// changes remain deferred until the credentials are distributed, but PVC/PV
-// labels must continue to follow the Cluster spec while that gate is pending.
-func (r *ClusterReconciler) reconcilePendingOperatorCredentials(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (ctrl.Result, error) {
-	result, err := r.reconcileVolumeProtectionPass(ctx, ledger)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("reconciling volume protection while operator credentials pending: %w", err)
-	}
-	if !result.IsZero() {
-		return result, nil
-	}
-
-	return ctrl.Result{RequeueAfter: authKeysPendingRequeueInterval}, nil
-}
-
 // deletionProtectionPolicyInstalled reports whether the cluster-scoped volume
 // deletion-protection policy is installed, by probing for the fixed-name PVC
 // ValidatingAdmissionPolicyBinding. This reflects actual cluster state regardless
@@ -541,7 +423,6 @@ func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ServiceAccount{}).
 		Owns(&corev1.ConfigMap{}).
-		Owns(&corev1.Pod{}).
 		Owns(&networkingv1.Ingress{}).
 		Owns(&networkingv1.NetworkPolicy{}).
 		Watches(&ledgerv1alpha1.Credentials{}, handler.EnqueueRequestsFromMapFunc(r.credentialsToClusters)).

@@ -342,10 +342,9 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 	podAnnotations := make(map[string]string)
 	maps.Copy(podAnnotations, ledger.Spec.PodAnnotations)
 	podAnnotations[annotationSpecHash] = specHash
-	// Keep the hash present even when the credential set is empty. Removing the
-	// last Credentials must change the pod template so existing pods restart and
-	// stop serving with the revoked key material still loaded in memory.
-	podAnnotations[annotationAuthKeysHash] = computeAuthKeysHash(credentials)
+	if len(credentials) > 0 {
+		podAnnotations[annotationAuthKeysHash] = computeAuthKeysHash(credentials)
+	}
 
 	// Container ports
 	ports := []corev1.ContainerPort{
@@ -376,18 +375,6 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 
 	var volumeMounts []corev1.VolumeMount
 	var volumes []corev1.Volume
-
-	if targetTLSMode != tlsModeDisabled && ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled {
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name: "operator-credentials", MountPath: "/operator-credentials", ReadOnly: true,
-		})
-		volumes = append(volumes, corev1.Volume{
-			Name: "operator-credentials",
-			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
-				SecretName: operatorCredentialsSecretName(operatorCredentialsName(ledger)),
-			}},
-		})
-	}
 
 	for _, vd := range volumeDefs {
 		if vd.spec.HostPath != nil {

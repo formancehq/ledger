@@ -4541,14 +4541,15 @@ the value configured on the existing cluster nodes
 
 When `--cluster-secret` is set, every inter-node gRPC call (Raft transport,
 snapshot transfer, cluster bootstrap, and follower-to-leader forwarding on the
-dedicated peer service API) carries this shared secret as a bearer token. The value must be
-the same on all nodes in the cluster.
+dedicated peer service API) carries this shared secret as a transport
+credential. Raft and bootstrap use the `authorization` metadata; the peer
+service API uses `x-ledger-peer-auth`. The value must be the same on all nodes
+in the cluster.
 
 `--cluster-secret` is not a `ledgerctl` credential. Calls to the public
-service API with it are rejected; only the dedicated peer service API may use
-it. Operator automation uses an Ed25519 credential from the `Credentials` CRD,
-with only the scopes required for maintenance operations, and is never treated
-as a cluster peer.
+service API with it are rejected; only the dedicated peer service API and the
+Raft plane may use it. User JWTs remain in the standard `authorization`
+metadata when a request is forwarded and are evaluated by the terminal node.
 
 The cluster secret and `--auth-enabled` are separate mechanisms:
 

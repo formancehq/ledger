@@ -96,7 +96,7 @@ func backupJobName(run *ledgerv1alpha1.BackupRun) string {
 //
 // tlsMode mirrors the running pod's TLS_MODE so the Job's ledgerctl negotiates
 // the same transport. Pre-existing volumes/secrets from the ledger StatefulSet
-// are reused (TLS secret, operator Credentials); the Job uses the same
+// are reused (TLS secret, cluster-secret); the Job uses the same
 // ServiceAccount. Ambient S3 authentication is resolved on the Ledger server,
 // which performs the upload.
 //
@@ -152,21 +152,15 @@ func buildBackupJob(
 	)
 
 	if tlsMode == tlsModeRequired || tlsMode == tlsModeOptional {
-		if ls.Spec.Auth != nil && ls.Spec.Auth.Enabled != nil && *ls.Spec.Auth.Enabled {
-			volumes = append(volumes, corev1.Volume{
-				Name: "operator-credentials",
-				VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
-					SecretName: operatorCredentialsSecretName(operatorCredentialsName(ls)),
-				}},
-			})
-			mounts = append(mounts, corev1.VolumeMount{
-				Name: "operator-credentials", MountPath: "/operator-credentials", ReadOnly: true,
-			})
-			env = append(env,
-				strEnv("OPERATOR_SIGNING_KEY", "/operator-credentials/seed.hex"),
-				secretKeyEnv("OPERATOR_SIGNING_KEY_ID", operatorCredentialsSecretName(operatorCredentialsName(ls)), "key-id"),
-			)
-		}
+		// The cluster-secret only exists when TLS is at least partially active
+		// and must never travel in plaintext.
+		env = append(env, corev1.EnvVar{
+			Name: "CLUSTER_SECRET",
+			ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: clusterSecretName(ls.Name)},
+				Key:                  clusterSecretKey,
+			}},
+		})
 
 		if ls.Spec.TLS != nil && ls.Spec.TLS.SecretName != "" {
 			volumes = append(volumes, corev1.Volume{
