@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -115,6 +116,25 @@ func TestRestorePreparedQueryIDRetryAfterDeletion(t *testing.T) {
 	other := []*raftcmdpb.Order{changed, retry[1].CloneVT()}
 	require.NoError(t, adm.restorePreparedQueryIDRetry(ctx, key, other))
 	require.NotEqual(t, hash, processing.HashOrders(other))
+
+	// An expired record is no longer a replay candidate. Even if the HLC is
+	// ahead of wall time, the fresh update must keep the current target arm.
+	expiresAt := uint64(time.Now().Add(time.Hour).UnixMicro())
+	batch = store.OpenWriteSession()
+	require.NoError(t, state.SaveIdempotencyKey(batch, key, &commonpb.IdempotencyKeyValue{
+		Hash: hash, CreatedAt: 100, ExpiresAt: expiresAt, FirstLogSequence: 1, LogCount: 2,
+	}))
+	require.NoError(t, state.StoreLastAppliedTimestamp(batch, expiresAt))
+	_, err = adm.attrs.PreparedQuery.Set(batch, domain.PreparedQueryKey{LedgerName: testLedgerName, Name: "logs"}.Bytes(),
+		&commonpb.PreparedQuery{Name: "logs", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+	fresh, err := adm.requestToOrder(ctx, requests[0], nil, newBulkOverlay())
+	require.NoError(t, err)
+	current := []*raftcmdpb.Order{fresh, retry[1].CloneVT()}
+	require.NoError(t, adm.restorePreparedQueryIDRetry(ctx, key, current))
+	require.NotEqual(t, hash, processing.HashOrders(current))
+	require.NotNil(t, current[0].GetLedgerScoped().GetUpdatePreparedQuery().GetFilter().GetBuiltinUint())
 }
 
 func TestRequestToOrder_ResolvesStoredLogQueryIDBeforeCommit(t *testing.T) {
