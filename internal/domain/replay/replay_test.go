@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -18,6 +19,7 @@ import (
 type writerStub struct {
 	createIndex func(ledger string, id *commonpb.IndexID, createdAt *commonpb.Timestamp) error
 	dropIndex   func(ledger string, id *commonpb.IndexID) error
+	setMetadata func(key []byte, value *commonpb.MetadataValue) error
 
 	removedFieldTypes int
 }
@@ -26,7 +28,10 @@ func (w *writerStub) AddVolumeDelta([]byte, *big.Int, *big.Int) error { return n
 func (w *writerStub) GetVolume([]byte) (*raftcmdpb.VolumePair, error) { return nil, nil }
 func (w *writerStub) DeleteVolume([]byte) error                       { return nil }
 func (w *writerStub) MoveVolume([]byte, []byte) error                 { return nil }
-func (w *writerStub) SetMetadata([]byte, *commonpb.MetadataValue) error {
+func (w *writerStub) SetMetadata(key []byte, value *commonpb.MetadataValue) error {
+	if w.setMetadata != nil {
+		return w.setMetadata(key, value)
+	}
 	return nil
 }
 func (w *writerStub) DeleteMetadata([]byte) error       { return nil }
@@ -91,6 +96,23 @@ func replayOne(t *testing.T, w replay.Writer, date *commonpb.Timestamp, payload 
 	return replay.ReplayLedgerLog("ledger", 1, payload, date, w,
 		map[string]map[string]*commonpb.AccountType{},
 		map[string][]accounttype.CompiledType{}, nil)
+}
+
+func TestReplayLedgerLog_AccountMetadataUpdated(t *testing.T) {
+	t.Parallel()
+	var gotKey []byte
+	var gotValue *commonpb.MetadataValue
+	w := &writerStub{setMetadata: func(key []byte, value *commonpb.MetadataValue) error {
+		gotKey, gotValue = key, value
+		return nil
+	}}
+	require.NoError(t, replayOne(t, w, &commonpb.Timestamp{Data: 1}, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{
+			AccountMetadata: map[string]*commonpb.MetadataMap{"users:alice": {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")}}},
+		}},
+	}))
+	require.Equal(t, domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "users:alice"}, Key: "tier"}.Bytes(), gotKey)
+	require.Equal(t, "gold", gotValue.GetStringValue())
 }
 
 func TestReplayLedgerLog_CreateIndexDispatch(t *testing.T) {
