@@ -245,13 +245,13 @@ test-coverage:
     echo "==> Unit tests with coverage..."
     scripts/go-test-coverage {{coverage_dir}}/unit.out -race -coverpkg={{coverage_pkgs}} -timeout 20m ./...
 
-# Execute internal assertions behind optional feature tags (requires Docker).
+# Execute internal and offline bootstrap assertions behind optional feature tags (requires Docker).
 test-internal-coverage:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     echo "==> Internal tests with optional features and coverage..."
-    scripts/go-test-coverage {{coverage_dir}}/internal.out -race -tags "{{all_tags}}" -coverpkg={{coverage_pkgs}} -timeout 20m ./internal/...
+    scripts/go-test-coverage {{coverage_dir}}/internal.out -race -tags "{{all_tags}}" -coverpkg={{coverage_pkgs}} -timeout 20m ./internal/... ./cmd/ledgerctl/store
 
 # Run PostgreSQL mirror integration regressions (requires Docker or LEDGER_TEST_POSTGRES_DSN).
 test-postgres-mirror-coverage:
