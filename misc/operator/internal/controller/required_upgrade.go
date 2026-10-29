@@ -150,6 +150,9 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 	if sts != nil && string(sts.UID) != state.StatefulSetUID && state.Phase != "Recreating" && state.Phase != "Verifying" && state.Phase != "Unblocking" {
 		return false, ctrl.Result{}, fmt.Errorf("StatefulSet identity changed during stopped upgrade: expected %s, got %s", state.StatefulSetUID, sts.UID)
 	}
+	if sts != nil && string(sts.UID) == state.StatefulSetUID && (sts.Spec.Replicas == nil || *sts.Spec.Replicas != state.ExpectedReplicas) {
+		return false, ctrl.Result{}, fmt.Errorf("source StatefulSet replica count differs from the pinned upgrade count %d; restore the expected count before retrying", state.ExpectedReplicas)
+	}
 	if err := r.verifyUpgradeClaims(ctx, ledger, state); err != nil {
 		return false, ctrl.Result{}, err
 	}
@@ -191,7 +194,7 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 			}
 			state = updated
 		}
-		ready, err := r.upgradeVotersPersisted(ctx, ledger, sts, exec, state.BarrierIndex)
+		ready, err := r.upgradeVotersPersisted(ctx, ledger, sts, exec, state.BarrierIndex, state.ExpectedReplicas)
 		if err != nil {
 			return false, ctrl.Result{}, err
 		}
@@ -231,7 +234,7 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 				return false, ctrl.Result{}, err
 			}
 			if sts.DeletionTimestamp.IsZero() {
-				ready, err := r.upgradeVotersPersisted(ctx, ledger, sts, exec, state.BarrierIndex)
+				ready, err := r.upgradeVotersPersisted(ctx, ledger, sts, exec, state.BarrierIndex, state.ExpectedReplicas)
 				if err != nil {
 					return false, ctrl.Result{}, fmt.Errorf("rechecking maintenance barrier before delete: %w", err)
 				}
@@ -491,11 +494,11 @@ func (r *ClusterReconciler) readUpgradeBarrier(ctx context.Context, ledger *ledg
 	return status.RaftStatus.Commit, nil
 }
 
-func (r *ClusterReconciler) upgradeVotersPersisted(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec, barrier uint64) (bool, error) {
-	if sts.Spec.Replicas == nil {
-		return false, errors.New("source StatefulSet replica count is unknown")
+func (r *ClusterReconciler) upgradeVotersPersisted(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec, barrier uint64, expectedReplicas int32) (bool, error) {
+	if sts.Spec.Replicas == nil || *sts.Spec.Replicas != expectedReplicas {
+		return false, fmt.Errorf("source StatefulSet replica count differs from the pinned upgrade count %d", expectedReplicas)
 	}
-	for ordinal := range *sts.Spec.Replicas {
+	for ordinal := range expectedReplicas {
 		status, err := r.readUpgradeStatus(ctx, ledger, sts, exec, ordinal+1)
 		if err != nil {
 			return false, err

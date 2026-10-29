@@ -276,6 +276,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 			return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys during stopped upgrade: %w", err)
 		}
 	}
+	// A persisted scale-down cleanup marker lives on the source StatefulSet.
+	// Finish that cleanup before the stopped-upgrade gate may delete it.
+	if err := r.cleanupPendingScaleDownPVCs(ctx, ledger, existingStatefulSet); err != nil {
+		return ctrl.Result{}, fmt.Errorf("completing pending scale-down PVC cleanup before stopped upgrade: %w", err)
+	}
 
 	// The stop gate runs before any generic template mutation, including the
 	// scale-down and immutable claim-template recreation paths.

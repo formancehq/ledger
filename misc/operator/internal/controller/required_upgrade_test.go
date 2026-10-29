@@ -19,6 +19,7 @@ import (
 	kubernetesfake "k8s.io/client-go/kubernetes/fake"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	clientgotesting "k8s.io/client-go/testing"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -131,6 +132,48 @@ func TestStoppedUpgradeRequiresHeadlessService(t *testing.T) {
 	require.Nil(t, cluster.Status.Upgrade)
 }
 
+func TestStoppedUpgradeDrainsPendingScaleDownCleanup(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cluster := newMinimalCluster()
+	cluster.UID = types.UID("cluster-uid")
+	cluster.Spec.Image.Tag = "v3.0.0-rc.2"
+	cluster.Spec.Replicas = new(int32(1))
+	applyDefaults(cluster)
+	sts := rcStatefulSet("ledger:v3.0.0-rc.1", true)
+	sts.Name, sts.Namespace, sts.UID = resourceName(cluster.Name), cluster.Namespace, types.UID("source-sts")
+	sts.Spec.Replicas = new(int32(1))
+	sts.Status.UpdatedReplicas, sts.Status.ReadyReplicas = 1, 1
+	sts.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{"app.kubernetes.io/instance": cluster.Name, "app.kubernetes.io/name": "ledger"}}
+	sts.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{{ObjectMeta: metav1.ObjectMeta{Name: "wal"}}, {ObjectMeta: metav1.ObjectMeta{Name: "data"}}}
+	sts.Annotations = map[string]string{annotationScaleDownPVCFrom: "3"}
+	sts.OwnerReferences = []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()
+	clientset := kubernetesfake.NewSimpleClientset()
+	failCleanup := true
+	clientset.PrependReactor("delete", "persistentvolumeclaims", func(clientgotesting.Action) (bool, runtime.Object, error) {
+		if failCleanup {
+			return true, nil, errors.New("injected scale-down PVC deletion failure")
+		}
+
+		return false, nil, nil
+	})
+	r := &ClusterReconciler{Client: c, Scheme: scheme, Clientset: clientset}
+	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}})
+	require.ErrorContains(t, err, "injected scale-down PVC deletion failure")
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}, sts))
+	require.Equal(t, "3", sts.Annotations[annotationScaleDownPVCFrom])
+	require.Nil(t, cluster.Status.Upgrade)
+	failCleanup = false
+	_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}})
+	require.ErrorContains(t, err, "required upgrade PVC")
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}, sts))
+	require.NotContains(t, sts.Annotations, annotationScaleDownPVCFrom)
+}
+
 func TestStoppedUpgradePreservesAuthKeysWithUnresolvedCredentials(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -223,6 +266,14 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.Equal(t, uint64(12), cluster.Status.Upgrade.BarrierIndex)
 	require.Contains(t, commands[1], "'cluster' 'status'")
 	require.Equal(t, "Retaining", cluster.Status.Upgrade.Phase)
+	// A direct StatefulSet scale-down must not shrink the set of voters whose
+	// durable cursor the stopped upgrade checks.
+	sts.Spec.Replicas = new(int32(0))
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, sts, exec)
+	require.False(t, proceed)
+	require.ErrorContains(t, err, "source StatefulSet replica count differs from the pinned upgrade count")
+	require.Equal(t, "Retaining", cluster.Status.Upgrade.Phase)
+	sts.Spec.Replicas = new(int32(1))
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, sts, exec)
 	require.NoError(t, err)
 	require.False(t, proceed)
@@ -485,14 +536,14 @@ func TestStoppedUpgradeWaitsForEveryVoter(t *testing.T) {
 
 		return &execResult{Stdout: fmt.Sprintf(`{"state":"Leader","maintenanceMode":true,"raftStatus":{"commit":"12","lastPersistedIndex":"%d"}}`, persisted)}, nil
 	}
-	ready, err := r.upgradeVotersPersisted(context.Background(), cluster, sts, exec, 12)
+	ready, err := r.upgradeVotersPersisted(context.Background(), cluster, sts, exec, 12, 3)
 	require.NoError(t, err)
 	require.False(t, ready)
 	require.Len(t, seen, 2)
 	require.Contains(t, seen[1], "'--node-id' '2'")
 	lagging = false
 	seen = nil
-	ready, err = r.upgradeVotersPersisted(context.Background(), cluster, sts, exec, 12)
+	ready, err = r.upgradeVotersPersisted(context.Background(), cluster, sts, exec, 12, 3)
 	require.NoError(t, err)
 	require.True(t, ready)
 	require.Len(t, seen, 3)
