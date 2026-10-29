@@ -192,9 +192,12 @@ To migrate a hand-managed cluster:
 3. Once all nodes are running `optional`, restart them with
    `--tls-mode=required`.
 
-The dialer probes each peer the first time it connects in `optional` mode
-and re-probes on persistent connection failures, so a peer flipping
-between modes during the migration is followed automatically.
+The unauthenticated dialer probes each peer the first time it connects in
+`optional` mode and re-probes on persistent connection failures, so a peer
+flipping between modes during the migration is followed automatically. A pool
+configured with a cluster secret refuses optional/plaintext transport: the
+secret is sent only after strict TLS has converged. Authenticated deployments
+must therefore complete the transition before enabling peer credentials.
 
 ## Troubleshooting
 
