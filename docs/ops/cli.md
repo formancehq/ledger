@@ -2357,8 +2357,8 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 
 **Behavior:**
 
-1. Verifies the target data directory is fresh (no existing checkpoints via `ScanLatestCheckpointID`)
-2. Creates or opens the selected data directory and downloads checkpoint files sequentially into `restore-staging/` through rooted filesystem operations. Rejects a staging-root symlink (including one pointing inside the data directory), non-local manifest filenames and symlink escapes. Each filename is checked before its parent directories are created or its object is read; file size and sha256 verification still apply.
+1. Rejects a `RESTORED` marker, live database or incompatible checkpoint layout; reclaims a lone unmarked `checkpoints/0` left by interrupted finalization.
+2. Creates or opens the selected data directory, rejects a symlink or non-directory at `restore-staging/`, removes any old real staging directory through the data-directory root, then creates a fresh staging directory. Downloads checkpoint files sequentially through rooted filesystem operations. Rejects non-local manifest filenames and symlink escapes. Each filename is checked before its parent directories are created or its object is read; file size and sha256 verification still apply.
 3. Applies export segments and rebuilds derived state from logs (if any)
 4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
 5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
@@ -2367,10 +2367,15 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 8. Hard-links staging to `checkpoints/0`, writes `RESTORED` marker
 9. Cleans up the staging directory
 
-Staging is created even for export-only manifests. Download root handles close
-before replay and preview. A download failure stops before validation,
-confirmation and finalization, but can leave earlier or partially written files
-in staging; the command does not automatically clean up failed downloads.
+Every attempt resets staging, including export-only restores. This command
+requires exclusive offline use of the target directory. Reset failure aborts
+before replay or publication and may leave old staging partly removed or absent.
+Download root handles close before replay and preview. Download/rebuild failures
+or confirmation EOF may leave new partial or fully rebuilt staging; the next
+attempt discards it and starts from the backup again so additive projections
+are not replayed twice. A successful finalization places the checkpoint before
+writing the `RESTORED` commit marker, then removes staging. A marked restore
+cannot be overwritten by retrying this command.
 
 After bootstrap, start the server with `--bootstrap` to use the restored data.
 

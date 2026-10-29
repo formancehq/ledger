@@ -843,9 +843,21 @@ Tests built with event-sink feature tags such as `kafka` or `clickhouse` start T
 
 ### Optional-feature internal tests
 
+CI includes the offline bootstrap command tests in the optional-feature coverage
+recipe below. Run just these command tests with the `s3` tag:
+
+```bash
+nix develop .#ci --command go test -race -tags s3 ./cmd/ledgerctl/store -count=1 -timeout 5m
+```
+
+These command tests use an in-process object-store HTTP endpoint, without Docker
+or cloud credentials. The retry regression creates a real full checkpoint and
+nonempty incremental delta, interrupts after completed or partially committed
+rebuild, then checks exact volumes/balances and Checker health after retry.
+
 CI's `Tests` job runs `just test-internal-coverage` after light unit coverage.
-It selects `./internal/...` with every optional feature tag from `all_tags` and
-the race detector. This executes Kafka, NATS, ClickHouse and Databricks event
+It selects `./internal/...` and `./cmd/ledgerctl/store` with every optional feature
+tag from `all_tags` and the race detector. This executes Kafka, NATS, ClickHouse and Databricks event
 tests, S3 and Azure backup tests, and the S3 bootstrap lifecycle regression.
 Full-tag E2E runs select different packages and do not execute these assertions.
 The separate `integration` tag is not enabled by this recipe.

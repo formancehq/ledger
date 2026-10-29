@@ -161,6 +161,20 @@ cleanup. A permanently unavailable dependency, setup crash, unrelated mismatch,
 or partial state that is never activated and remains safely retryable rejects
 the claimed correctness impact.
 
+Offline bootstrap must reset prior `restore-staging` before every checkpoint
+download or export-only replay. Inspect `downloadBootstrapCheckpoint` together
+with `ApplyExportsAndRebuild`: test completed rebuild followed by retry and a
+committed rebuild prefix followed by failure then retry, with a non-empty
+checkpoint/delta and exact balance/volume comparisons plus clean `CheckStore`.
+Raw-history overwrite alone does not prove additive projection retry safety.
+Reset failure stops before replay/publication and may leave old staging partly
+removed or absent; later failure or confirmation EOF may leave new partial or
+committed staging, which the next invocation discards. Preserve marker/fresh-target
+admission and exclusive offline ownership. Helper composition does not establish
+full CLI confirmation/finalization coverage. Rooted deletion and namespace safety
+belong to `filesystem-confinement-contracts`; no persisted format migration or
+repair of a finalized corrupt restore is introduced by this reset.
+
 Reject or downgrade a candidate when current evidence shows that the state is
 explicitly discarded and safely reseeded, the delta cannot change a preserved
 value, the alleged export state is unreachable, validation fails before
