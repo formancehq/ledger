@@ -1331,6 +1331,42 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 	require.Equal(t, "viewer", commonpb.MetadataMapToGoMap(aliceMeta)["role"])
 }
 
+func TestProcessCreateTransaction_MetadataOnly_PersistsWithoutTransaction(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 7, NextLogId: 3}
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+
+	metaKey := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"}, Key: "tier"}
+	expectPutAccountMetadata(t, mockStore, metaKey, commonpb.NewStringValue("gold"))
+
+	request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		Ledger: "test-ledger",
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
+			Script: &commonpb.Script{Plain: `set_account_meta(@users:alice, "tier", "gold")`},
+		}}},
+	}}}
+
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	log := result.GetApply().GetLog()
+	require.NotNil(t, log.GetData().GetAccountMetadataUpdated())
+	require.Equal(t, uint64(7), boundaries.GetNextTransactionId(), "metadata-only execution must not allocate a transaction ID")
+	require.Equal(t, "gold", commonpb.MetadataMapToGoMap(log.GetData().GetAccountMetadataUpdated().GetAccountMetadata()["users:alice"])["tier"])
+}
+
 func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	t.Parallel()
 

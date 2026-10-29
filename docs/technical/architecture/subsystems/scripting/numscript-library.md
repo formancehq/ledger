@@ -175,9 +175,23 @@ message ScriptReference {
 
 message CreateTransactionPayload {
   // ...
-  ScriptReference script_reference = 9;
+  ScriptReference script_reference = 8;
 }
 ```
+
+### Metadata-only execution
+
+When a script-backed create action emits no postings but does emit
+`set_account_meta` updates, Ledger automatically treats it as a metadata-only
+execution. A successful execution writes all emitted account metadata atomically,
+emits an auditable
+`account_metadata_updated` ledger log, and does not allocate a transaction ID,
+create `TransactionState`, or emit a `created_transaction` log. Replaying the
+audit log applies the same account metadata writes.
+
+The existing transaction invariant remains unchanged: every created
+transaction has at least one posting. A script-backed create that emits neither
+postings nor account metadata still fails with `EMPTY_TRANSACTION`.
 
 ### Resolution Flow — admission plans, the FSM resolves
 

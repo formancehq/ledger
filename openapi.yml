@@ -4237,7 +4237,8 @@ components:
         A transaction must declare exactly one content source: explicit
         `postings`, an inline `script`, or a `scriptReference`. The
         `postings` array cannot be combined with `script` or
-        `scriptReference`. Idempotency is controlled exclusively via the
+        `scriptReference`. A script that emits account metadata but no postings
+        is applied without creating a transaction. Idempotency is controlled exclusively via the
         `Idempotency-Key` HTTP header — there is no body-level key.
       properties:
         accountMetadata:
